@@ -185,6 +185,74 @@ public sealed class ReviewApiClientTests
     }
 
     // ###########################################################################################
+    // *** AND THE REST OF CRT IS TOLD (owner request, 2026-10-09). *** Every answer of this client
+    // passes StatusFailureAsync, which raises ApiOutdatedSignal for the Maintainer tab on an "update
+    // CRT" - Main then covers that tab until CRT is updated. Once per refused request, on both send
+    // paths; an ordinary refusal raises nothing.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_update_CRT_answer_tells_the_rest_of_CRT_the_Maintainer_tab_is_turned_away()
+    {
+        Handlers.DataHandling.ClientOutdatedAnswer answer = Handlers.DataHandling.ClientVersionContract.OutdatedApi(
+            Handlers.DataHandling.CrtVersion.Parse("3.0.0"));
+
+        string body = System.Text.Json.JsonSerializer.Serialize(answer, Handlers.DataHandling.ReviewApiContract.WireSettings);
+        bool outdated = true;
+
+        var handler = new AnsweringHttpHandler(_ => outdated
+            ? new HttpResponseMessage((System.Net.HttpStatusCode)426)
+            {
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+            }
+            : AnsweringHttpHandler.Refused());
+
+        var raised = new List<(Handlers.Online.AppUpdateArea Area, string Words)>();
+
+        void Listen(Handlers.Online.AppUpdateArea area, string words) => raised.Add((area, words));
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        Handlers.Online.ApiOutdatedSignal.Raised += Listen;
+
+        try
+        {
+            await client.GetQueueAsync(ReviewApiClientTests.Session);
+            await client.GetSubmittedAssetAsync(ReviewApiClientTests.Session, 4, new string('a', 64));
+
+            outdated = false;
+            await client.GetQueueAsync(ReviewApiClientTests.Session);
+        }
+        finally
+        {
+            Handlers.Online.ApiOutdatedSignal.Raised -= Listen;
+        }
+
+        Assert.Equal(
+            [(Handlers.Online.AppUpdateArea.Maintainer, answer.Message), (Handlers.Online.AppUpdateArea.Maintainer, answer.Message)],
+            raised);
+    }
+
+    // A 426 can mean nothing but "update CRT" - read so with no words of the server's too, as
+    // SubmissionClient.OutdatedMessage reads one (2026-10-09). It was "The server answered 426."
+    [Theory]
+    [InlineData("")]
+    [InlineData("<html>Upgrade Required</html>")]
+    public async Task A_426_without_the_servers_words_is_still_ClientOutdated(string body)
+    {
+        var handler = new AnsweringHttpHandler(_ => new HttpResponseMessage((System.Net.HttpStatusCode)426)
+        {
+            Content = new StringContent(body)
+        });
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        ReviewApiResult<ReviewQueueResponse> queue = await client.GetQueueAsync(ReviewApiClientTests.Session);
+
+        Assert.Equal(ReviewApiFailure.ClientOutdated, queue.Failure);
+        Assert.Equal("This version of CRT is too old for the server - please update CRT.", queue.Message);
+    }
+
+    // ###########################################################################################
     // A refusal a newer server invents - a status this version has no case for - still reaches the
     // maintainer in the server's words, with the failure kind its status gives. A 401 stays "Sign in
     // to continue.": that kind is what sends the tab to its sign-in screen. A body with no sentence

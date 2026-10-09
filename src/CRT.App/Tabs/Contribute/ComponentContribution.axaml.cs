@@ -577,13 +577,13 @@ namespace CRT
         // ###########################################################################################
         private Action? thisAfterSaved;
 
-        // Asks whether the Drafts tab's table holds unsaved edits for a board (its ExcelDataFile) -
-        // Main wires it to TabDrafts.HasUnsavedTableEditsFor. Null (as in tests building the window
-        // alone) means no table to wait for.
-        private Func<string, bool>? thisHasUnsavedTableEditsFor;
+        // Asks whether the Drafts tab's table holds unsaved edits for a board (its ExcelDataFile),
+        // and which notice says so - Main wires it to TabDrafts.SavingBlockedFor. Null from it means
+        // nothing to wait for, and so does no check at all (tests building the window alone).
+        private Func<string, UnsavedTableEditsPrompt?>? thisSavingBlockedFor;
 
-        // Replaces the notice's dialog in tests, which cannot wait on ShowDialog.
-        internal Func<Task>? ShowSavingBlockedOverrideForTests { get; set; }
+        // Replaces the notice's dialog in tests, which cannot wait on ShowDialog - handed the notice.
+        internal Func<UnsavedTableEditsPrompt, Task>? ShowSavingBlockedOverrideForTests { get; set; }
 
         // True when the window was opened on a component that is not in the board data at all. The
         // board label then comes from the contributor rather than from the board, which is what the
@@ -642,9 +642,9 @@ namespace CRT
         }
 
         // Tells the window how to ask about the Drafts tab's table. See SubmitAsync.
-        public void SetUnsavedTableEditsCheck(Func<string, bool> hasUnsavedTableEditsFor)
+        public void SetUnsavedTableEditsCheck(Func<string, UnsavedTableEditsPrompt?> savingBlockedFor)
         {
-            this.thisHasUnsavedTableEditsFor = hasUnsavedTableEditsFor;
+            this.thisSavingBlockedFor = savingBlockedFor;
         }
 
         // ###########################################################################################
@@ -1323,10 +1323,11 @@ namespace CRT
             // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (owner
             // request, 2026-09-24). *** Both write the same draft: saving here would make the table's
             // own save refused, and its edits lost. So nothing is saved and a notice sends the
-            // contributor to the Drafts tab first - this window stays open exactly as it is.
-            if (this.thisHasUnsavedTableEditsFor?.Invoke(this.thisBoardExcelFile) == true)
+            // contributor to the Drafts tab first - this window stays open exactly as it is. With the
+            // Drafts tab covered ("CRT has to be updated"), the notice says what settles them then.
+            if (this.thisSavingBlockedFor?.Invoke(this.thisBoardExcelFile) is UnsavedTableEditsPrompt blocked)
             {
-                await (this.ShowSavingBlockedOverrideForTests?.Invoke() ?? UnsavedTableEditsWindow.ShowSavingBlockedAsync(this));
+                await (this.ShowSavingBlockedOverrideForTests?.Invoke(blocked) ?? UnsavedTableEditsWindow.ShowSavingBlockedAsync(this, blocked));
                 return;
             }
 

@@ -25,6 +25,9 @@ namespace CRT
         {
             bool? available = await UpdateService.CheckForUpdateAsync();
 
+            // A covered Drafts or Maintainer tab offers to install what was found (Main.UpdateRequired.cs).
+            this.ApplyAppUpdateRequired();
+
             if (available == true)
             {
                 this.ShowApplicationUpdateAvailableBanner();
@@ -427,8 +430,8 @@ namespace CRT
         {
             string version = UpdateService.PendingVersion ?? string.Empty;
             string url = string.IsNullOrWhiteSpace(version)
-                ? $"https://github.com/{AppConfig.GitHubOwner}/{AppConfig.GitHubRepo}/releases"
-                : $"https://github.com/{AppConfig.GitHubOwner}/{AppConfig.GitHubRepo}/releases/tag/{version}";
+                ? AppConfig.GitHubReleasesUrl
+                : AppConfig.GitHubReleaseUrl(version);
             OpenUrl(url);
         }
 
@@ -448,11 +451,30 @@ namespace CRT
         // before the await - is rethrown on the sync context with no caller to catch it and reaches
         // App's global handler as a process-fatal crash. Losing the whole application over a failed
         // update check would be a far worse outcome than the update not installing.
+        //
+        // *** ALSO THE "CRT HAS TO BE UPDATED" OVERLAY'S BUTTON (2026-10-09; Main.UpdateRequired.cs). ***
+        // The banner is where the download's progress and a failure are said, so it is shown for an
+        // install started there too - even one the user had dismissed.
+        //
+        // *** UNSAVED TABLE EDITS ARE ASKED ABOUT FIRST (code review, 2026-10-09). *** The restart
+        // exits the process without the window's Closing event, so quitting's question was never
+        // asked and the edits were gone - from the overlay's button above all, over a Drafts tab it
+        // had made unreachable, saying "nothing is lost". Cancel installs nothing.
         // ###########################################################################################
-        private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e)
+        private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e) =>
+            await this.InstallPendingUpdateAsync();
+
+        // Downloads and installs without GitHub or a restart - for tests: true as if installed.
+        internal Func<Task<bool>>? DownloadAndInstallOverrideForTests { get; set; }
+
+        internal async Task InstallPendingUpdateAsync()
         {
             try
             {
+                if (!await this.ConfirmLeavingTablesAsync())
+                    return;
+
+                this.UpdateBanner.IsVisible = true;
                 this.UpdateBannerInstallButton.IsEnabled = false;
                 this.UpdateBannerViewNotesButton.IsEnabled = false;
                 this.UpdateBannerDismissButton.IsEnabled = false;
@@ -466,7 +488,7 @@ namespace CRT
                 // application later under somebody who has carried on working.
                 // ###########################################################################################
                 WaitResult<bool> waited = await BusyOverlay.RunAsync(this, CrtWaitWording.DownloadingUpdate, context =>
-                    UpdateService.DownloadAndInstallAsync(
+                    this.DownloadAndInstallOverrideForTests?.Invoke() ?? UpdateService.DownloadAndInstallAsync(
                         progress =>
                         {
                             context.Report(CrtWaitWording.DownloadingUpdateAt(progress), progress / 100.0);

@@ -1,0 +1,62 @@
+<!--
+    "CRT has to be updated" over a whole TAB, and it cannot be closed (owner request, 2026-10-09).
+    See the header of UpdateRequiredOverlay.axaml.cs for how it behaves, and Handlers/Online/
+    AppUpdateRequirement.cs for when it is shown.
+
+    A host tab places ONE of these as the LAST child of its root Grid, spanning every row and
+    column, so it lies over everything else in the tab. Hidden until Show.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.UpdateRequiredOverlay"
+             IsVisible="False"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch">
+
+    <!-- The scrim takes every click meant for the tab beneath it. -->
+    <Border x:Name="Scrim" Background="#33000000">
+        <Border x:Name="Card"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MaxWidth="540"
+                Margin="16"
+                Padding="28,24"
+                CornerRadius="6"
+                Background="{DynamicResource Bg}"
+                BorderBrush="{DynamicResource Text_Warning_Fg}"
+                BorderThickness="2">
+            <StackPanel Spacing="12">
+                <TextBlock x:Name="HeadingText"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource Text_Warning_Fg}" />
+
+                <TextBlock x:Name="ReasonText"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource Fg}" />
+
+                <TextBlock x:Name="WhatItStopsText"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource Fg}" />
+
+                <TextBlock x:Name="RestOfCrtText"
+                           TextWrapping="Wrap"
+                           Opacity="0.8"
+                           Foreground="{DynamicResource Fg}" />
+
+                <TextBlock x:Name="ReadyText"
+                           TextWrapping="Wrap"
+                           IsVisible="False"
+                           Foreground="{DynamicResource Fg}" />
+
+                <!-- The one way out - there is no close button, on purpose. -->
+                <Button x:Name="ActionButton"
+                        HorizontalAlignment="Left"
+                        Margin="0,4,0,0"
+                        Click="OnActionClick" />
+            </StackPanel>
+        </Border>
+    </Border>
+</UserControl>

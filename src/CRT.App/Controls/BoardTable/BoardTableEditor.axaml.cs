@@ -161,6 +161,27 @@ namespace CRT
 
         public bool HasUnsavedChanges => this.thisDocument?.HasUnsavedChanges == true;
 
+        // ###########################################################################################
+        // Raised when HasUnsavedChanges turns true or false - an edit, an undo back to the save, a
+        // save, a table opened or closed (2026-10-09: the Boards screen's "Compare sources" is off
+        // while BETA's table holds a change, since comparing opens the table again). Checked
+        // wherever the Save button is (UpdateToolbar), so the two never disagree.
+        // ###########################################################################################
+        public event EventHandler? UnsavedChangesChanged;
+
+        private bool thisLastUnsaved;
+
+        private void NoteUnsavedState()
+        {
+            bool unsaved = this.HasUnsavedChanges;
+
+            if (unsaved == this.thisLastUnsaved)
+                return;
+
+            this.thisLastUnsaved = unsaved;
+            this.UnsavedChangesChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         public bool HasTable => this.thisDocument is not null;
 
         // ###########################################################################################
@@ -229,6 +250,20 @@ namespace CRT
             this.TableGrid.CommitEdit();
             return this.thisDocument;
         }
+
+        // ###########################################################################################
+        // A cell still in its editor, committed into the document - for a host acting on the table
+        // from a control of its own (the Boards screen's "Compare sources", code review 2026-10-09).
+        // The grid does not commit when focus moves to such a control, and every button of the
+        // table's own commits first for the same reason.
+        // ###########################################################################################
+        public void CommitCellEdit() => this.TableGrid.CommitEdit();
+
+        // Whether a cell is in its editor now - nothing may build the table again under it.
+        public bool IsEditingCell => this.thisIsEditingCell;
+
+        // Raised when a cell's editor closes, committed or cancelled.
+        public event EventHandler? CellEditEnded;
 
         // A message under the toolbar, for the host in document mode ("Saved.", "Not saved: ...").
         public void ShowMessage(string message) => this.ShowStatus(message ?? string.Empty);
@@ -306,6 +341,7 @@ namespace CRT
             this.OpenElsewhereBar.IsVisible = false;
             this.SetChangedOnDisk(false);
             this.UpdateFileWatching();
+            this.NoteUnsavedState();
         }
 
         // ###########################################################################################
@@ -1292,6 +1328,7 @@ namespace CRT
             // Off while the draft has changed underneath the table (that save would be refused) or is
             // held open in Excel (it would fail) - see BoardTableEditor.FileWatch.cs.
             this.SaveButton.IsEnabled = this.HasUnsavedChanges && !this.thisDraftChangedOnDisk && !this.thisDraftHeldElsewhere;
+            this.NoteUnsavedState();
         }
 
         private void ShowStatus(string message)

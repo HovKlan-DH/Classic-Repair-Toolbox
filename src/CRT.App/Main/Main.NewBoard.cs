@@ -1,4 +1,5 @@
 using Handlers.DataHandling;
+using Handlers.Online;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -33,6 +34,17 @@ namespace CRT
         // ###########################################################################################
         internal async Task OpenNewBoardWindowAsync()
         {
+            // The next step is in the Drafts tab, which says "CRT has to be updated" - out of reach
+            // under its cover. Nothing is asked or made, and the Contribute tab says why (code
+            // review, 2026-10-09).
+            if (this.TabDrafts.IsUpdateRequiredShown)
+            {
+                this.TabContribute.ShowDraftProblem(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered);
+                return;
+            }
+
+            this.TabContribute.ShowDraftProblem(null);
+
             var window = new NewBoardWindow();
             window.Initialize(DataManager.HardwareBoards);
 

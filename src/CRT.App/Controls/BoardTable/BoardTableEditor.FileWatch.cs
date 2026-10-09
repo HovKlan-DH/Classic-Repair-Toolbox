@@ -66,7 +66,11 @@ namespace CRT
 
             // After OnBeginningEdit, so an edit it refused (a red ghost) never counts as one.
             this.TableGrid.BeginningEdit += (_, e) => this.thisIsEditingCell = !e.Cancel;
-            this.TableGrid.CellEditEnded += (_, _) => this.thisIsEditingCell = false;
+            this.TableGrid.CellEditEnded += (_, _) =>
+            {
+                this.thisIsEditingCell = false;
+                this.CellEditEnded?.Invoke(this, EventArgs.Empty);
+            };
         }
 
         // ###########################################################################################

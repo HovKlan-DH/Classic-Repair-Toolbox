@@ -195,7 +195,8 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default,
             DateTimeOffset? now = null,
             IBoardViewStore? boardViews = null,
-            BoardListings? listings = null)
+            BoardListings? listings = null,
+            bool oneSubmissionInBeta = false)
         {
             ArgumentNullException.ThrowIfNull(inBeta);
             ArgumentNullException.ThrowIfNull(submissions);
@@ -287,6 +288,13 @@ namespace CRT.Server.Handlers.Submissions
                 () => submissions.GetChangesAsync(sent.Select(record => record.Submission.Id).ToList(), cancellationToken),
                 canRead: true);
 
+            // Whether this account may change its BETA data now, and why not (code review,
+            // 2026-10-09) - the table's own rule (BoardEditFlow), so the Boards screen says it above
+            // every view. Nothing to say for a board BETA does not hold: its table cannot be read.
+            string? mayNotEditReason = known is null
+                ? null
+                : await BoardEditFlow.WhyNotEditableAsync(access, boardId, submissions, oneSubmissionInBeta, cancellationToken);
+
             return BoardOverviewOutcome.Described(new BoardDetailAnswer(
                 entry,
                 BoardOverviewFlow.Maintainers(pool, showAddresses),
@@ -295,7 +303,9 @@ namespace CRT.Server.Handlers.Submissions
                 invitations,
                 BoardHistoryRules.Build(sent, named, audit, showAddresses),
                 views,
-                AddressesHidden: !showAddresses));
+                AddressesHidden: !showAddresses,
+                MayEdit: known is null ? null : mayNotEditReason is null,
+                MayNotEditReason: mayNotEditReason));
         }
 
         // ###########################################################################################

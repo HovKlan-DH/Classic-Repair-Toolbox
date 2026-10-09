@@ -114,6 +114,78 @@ public sealed class SubmissionClientVersionTests
         Assert.Null(SubmissionClient.OutdatedMessage(status, body));
     }
 
+    // ###########################################################################################
+    // *** "UPDATE CRT" REACHES THE REST OF CRT (owner request, 2026-10-09). *** Every refusal the
+    // client reads goes through SignalIfOutdated, which raises ApiOutdatedSignal for the Drafts tab -
+    // Main then covers that tab until CRT is updated. Any other refusal raises nothing.
+    // ###########################################################################################
+    [Fact]
+    public void An_update_CRT_answer_tells_the_rest_of_CRT_the_Drafts_tab_is_turned_away()
+    {
+        ClientOutdatedAnswer answer = ClientVersionContract.OutdatedApi(CrtVersion.Parse("3.0.0"));
+        string body = JsonSerializer.Serialize(answer, ReviewApiContract.WireSettings);
+        var raised = new List<(AppUpdateArea Area, string Words)>();
+
+        void Listen(AppUpdateArea area, string words) => raised.Add((area, words));
+
+        ApiOutdatedSignal.Raised += Listen;
+
+        try
+        {
+            Assert.Equal(answer.Message, SubmissionClient.SignalIfOutdated(426, body));
+            Assert.Null(SubmissionClient.SignalIfOutdated(400, """{"error":"Some files are missing."}"""));
+        }
+        finally
+        {
+            ApiOutdatedSignal.Raised -= Listen;
+        }
+
+        Assert.Equal([(AppUpdateArea.Drafts, answer.Message)], raised);
+    }
+
+    // ###########################################################################################
+    // *** THE DISCARD NOTICE TOO (code review, 2026-10-09). *** Its route is gated like every other
+    // submission route, but it returned the status alone - so a 426 there told nobody, and at a
+    // launch whose only request it was, the Drafts tab was not covered. Its answer is read like the
+    // others now: the status for DraftDiscardContract, and "update CRT" raised. Built answers, no
+    // network (test rule 6).
+    // ###########################################################################################
+    [Fact]
+    public async Task An_update_CRT_answer_to_the_discard_notice_tells_the_rest_of_CRT()
+    {
+        ClientOutdatedAnswer answer = ClientVersionContract.OutdatedApi(CrtVersion.Parse("3.0.0"));
+        var raised = new List<(AppUpdateArea Area, string Words)>();
+
+        void Listen(AppUpdateArea area, string words) => raised.Add((area, words));
+
+        ApiOutdatedSignal.Raised += Listen;
+
+        try
+        {
+            using var outdated = new HttpResponseMessage(System.Net.HttpStatusCode.UpgradeRequired)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(answer, ReviewApiContract.WireSettings))
+            };
+
+            using var done = new HttpResponseMessage(System.Net.HttpStatusCode.NoContent);
+
+            using var refused = new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("""{"error":"No such submission."}""")
+            };
+
+            Assert.Equal(426, await SubmissionClient.ReadDiscardAnswerAsync(outdated));
+            Assert.Equal(204, await SubmissionClient.ReadDiscardAnswerAsync(done));
+            Assert.Equal(404, await SubmissionClient.ReadDiscardAnswerAsync(refused));
+        }
+        finally
+        {
+            ApiOutdatedSignal.Raised -= Listen;
+        }
+
+        Assert.Equal([(AppUpdateArea.Drafts, answer.Message)], raised);
+    }
+
     // The resume query's answer is CRT.Data's BlobUploadAnswer as the server writes it.
     [Fact]
     public void The_resume_offset_is_read_from_the_servers_blob_answer()

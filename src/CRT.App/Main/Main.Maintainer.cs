@@ -73,6 +73,9 @@ namespace CRT
                 // discover there is work, and so bring the tab back.
                 if (this.thisMaintainerBadgeMayStart)
                     this.StartMaintainerBadge();
+
+                // Turned on: does the server still serve this CRT? (Main.UpdateRequired.cs)
+                this.AskApiRevisionOnceInUse();
             }
 
             if (!isShown)

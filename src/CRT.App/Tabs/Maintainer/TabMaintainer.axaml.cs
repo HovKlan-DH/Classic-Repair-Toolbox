@@ -60,8 +60,9 @@ namespace CRT
     // launch), TabMaintainer.Invitation.cs ("I have an invitation" on the sign-in screen),
     // TabMaintainer.SubmissionViews.cs (a submission's three views - Board data, Files,
     // Contributor - and which is shown), TabMaintainer.Files.cs (the Files view: the submission's
-    // file tree, and the count on its button) and TabMaintainer.Contributor.cs (the Contributor
-    // view: who sent it and everything they sent before).
+    // file tree, and the count on its button), TabMaintainer.Contributor.cs (the Contributor
+    // view: who sent it and everything they sent before) and TabMaintainer.UpdateRequired.cs
+    // ("CRT has to be updated" over the whole tab, when the server turns this version of CRT away).
     // The right-hand panels of the other three screens are controls of their own: BetaView,
     // BoardDetailView (a board's five views - Board data, Files, Contributor, Maintainer, Statistics -
     // with its own file map, and BoardPlacementView), and under Account MyAccountView (the name,
@@ -836,7 +837,7 @@ namespace CRT
             }
 
             this.ShowNotInTable([]);
-            this.ShowNoteLines("BeforeApprovingPanel", []);
+            this.ShowBeforeApproving([]);
 
             if (row is null)
             {
@@ -951,7 +952,7 @@ namespace CRT
                     ReviewNoteKind.Warning));
             }
 
-            this.ShowNoteLines("BeforeApprovingPanel", beforeApproving);
+            this.ShowBeforeApproving(beforeApproving);
         }
 
         // ###########################################################################################
@@ -1002,6 +1003,33 @@ namespace CRT
 
         // The short lines above the table - nothing at all when there is nothing to say.
         private void ShowNotInTable(IReadOnlyList<ReviewNoteLine> lines) => this.ShowNoteLines("NotInTablePanel", lines);
+
+        // ###########################################################################################
+        // What to settle before approving, above the three views, as THE AMBER NOTICE PANEL (owner
+        // request, 2026-10-09: "this should look the same as the previous highlighted panel ... The
+        // UI should have a uniform and consistent look") - App.axaml's Border.Notice, the Boards
+        // screen's ReadOnlyNotice's look: one NoticeText line per reason, the panel gone with none.
+        // SemiBold is set on the block too, so a line built of runs keeps it (ShowRuns copies it).
+        // ###########################################################################################
+        private void ShowBeforeApproving(IReadOnlyList<ReviewNoteLine> lines)
+        {
+            if (this.FindControl<StackPanel>("BeforeApprovingPanel") is not StackPanel panel)
+                return;
+
+            panel.Children.Clear();
+
+            foreach (ReviewNoteLine line in lines)
+            {
+                var block = new TextBlock { FontWeight = FontWeight.SemiBold };
+                block.Classes.Add("NoticeText");
+
+                TabMaintainer.ShowLine(block, line);
+                panel.Children.Add(block);
+            }
+
+            if (this.FindControl<Border>("BeforeApprovingNotice") is Border notice)
+                notice.IsVisible = lines.Count > 0;
+        }
 
         // One panel of note lines, coloured by kind - hidden when there is nothing to say.
         private void ShowNoteLines(string panelName, IReadOnlyList<ReviewNoteLine> lines)

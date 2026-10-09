@@ -62,6 +62,7 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.EnableMaintainerTab);
         Assert.False(UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting);
         Assert.Equal(BoardTableRowKinds.None, UserSettings.MaintainerTableFilter);
+        Assert.False(UserSettings.MaintainerCompareSources);
     }
 
     [Fact]
@@ -245,6 +246,26 @@ public sealed class UserSettingsTests : IDisposable
 
         UserSettings.LoadFrom(path);
         Assert.Equal(BoardTableRowKinds.None, UserSettings.MaintainerTableFilter);
+    }
+
+    // The Boards screen's "Compare sources" is kept as last ticked (owner request, 2026-10-09: "do
+    // keep the checkbox as last state") - and a false is written, so unticking survives too.
+    [Fact]
+    public void Compare_sources_persists_and_survives_a_reload()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.MaintainerCompareSources = true;
+
+        Assert.True(ReadJson(path)["maintainerCompareSources"]!.GetValue<bool>());
+
+        UserSettings.LoadFrom(path);
+        Assert.True(UserSettings.MaintainerCompareSources);
+
+        UserSettings.MaintainerCompareSources = false;
+
+        UserSettings.LoadFrom(path);
+        Assert.False(UserSettings.MaintainerCompareSources);
     }
 
     // ###########################################################################################

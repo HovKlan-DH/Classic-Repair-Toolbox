@@ -199,7 +199,7 @@ public sealed class BoardDetailViewSectionsTests
             Assert.Equal(0, editor.CommitAndGetDocument()!.ModifiedCount);
             Assert.Null(view.FindControl<TextBox>("ChangeDescriptionBox"));
             Assert.True(BoardDetailViewSectionsTests.Shown(editor, "SaveButton"));
-            Assert.Equal(BoardSections.OpenedMessage(BoardDetailViewSectionsTests.Table()), BoardDetailViewSectionsTests.Status(view));
+            Assert.Equal(BoardSections.TableNote(BoardDetailViewSectionsTests.Table(), comparedWithStable: false), BoardDetailViewSectionsTests.Status(view));
         });
     }
 
@@ -224,6 +224,39 @@ public sealed class BoardDetailViewSectionsTests
             // 2026-10-09), not the ordinary line.
             Assert.Equal("Only this board's maintainers can.", view.ReadOnlyNoticeForTests);
             Assert.Equal(string.Empty, BoardDetailViewSectionsTests.Status(view));
+        });
+    }
+
+    // ###########################################################################################
+    // *** WHY IT CANNOT BE CHANGED, ABOVE EVERY VIEW FROM THE START (code review, 2026-10-09). *** The
+    // panel was said only once BETA's table was read, so a board opened on Statistics showed none
+    // until Board data had been visited - the same board looked different by the views visited. The
+    // detail carries the table's answer now, so the panel is there before any table is read. An
+    // older server's detail says nothing either way and leaves the panel to the table.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_board_detail_says_why_BETA_cannot_be_changed_before_any_table_is_read()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+            await view.ShowSectionAsync(BoardSection.Statistics);
+
+            BoardOverviewEntry board = BoardDetailViewSectionsTests.Board();
+
+            view.ShowDetailForTests(new BoardDetailAnswer(board, [], [], [], MayEdit: false, MayNotEditReason: "It waits in BETA for the stable source."));
+
+            Assert.Equal(BoardSection.Statistics, view.ShownSection);
+            Assert.Equal("It waits in BETA for the stable source.", view.ReadOnlyNoticeForTests);
+
+            // Published to stable meanwhile: the minute check's detail takes the panel away.
+            view.ShowDetailForTests(new BoardDetailAnswer(board, [], [], [], MayEdit: true));
+            Assert.Equal(string.Empty, view.ReadOnlyNoticeForTests);
+
+            // An older server: nothing in the detail, so what the table said stays.
+            view.OpenTableForTests(BoardDetailViewSectionsTests.Table(mayEdit: false, reason: "Only this board's maintainers can."));
+            view.ShowDetailForTests(new BoardDetailAnswer(board, [], [], []));
+            Assert.Equal("Only this board's maintainers can.", view.ReadOnlyNoticeForTests);
         });
     }
 
@@ -308,8 +341,9 @@ public sealed class BoardDetailViewSectionsTests
     // reason, then the publish carries the fingerprint the table was opened on, the reason, BETA's
     // rows with the edit - calibrations included - and the (empty) list of removals the check gave.
     // The table then shows BETA as it is NOW - read-only while the board waits under BETA > Stable,
-    // the server's reason said after what the publish did - and the lists are read again
-    // (AfterPublished). Nothing is opened under Contributor Submissions.
+    // what the publish did said above it and the server's reason in the panel (code review,
+    // 2026-10-09: the panel says why, always) - and the lists are read again (AfterPublished).
+    // Nothing is opened under Contributor Submissions.
     // ###########################################################################################
     [Fact]
     public async Task A_change_is_checked_then_published_with_its_reason_and_BETA_is_shown_as_it_is_now()
@@ -340,9 +374,9 @@ public sealed class BoardDetailViewSectionsTests
             Assert.False(view.HasUnsavedTableEdits);
             Assert.True(view.BoardTableForTests.IsReadOnly);
             Assert.Equal(
-                BoardSections.Published(new BoardEditResult(57, [], Published: true, Revision: "2026-October-03")) + " " +
-                OneSubmissionInBeta.NoChangeMessage(BoardDetailViewSectionsTests.BoardId),
+                BoardSections.Published(new BoardEditResult(57, [], Published: true, Revision: "2026-October-03")),
                 BoardDetailViewSectionsTests.Status(view));
+            Assert.Equal(OneSubmissionInBeta.NoChangeMessage(BoardDetailViewSectionsTests.BoardId), view.ReadOnlyNoticeForTests);
         });
     }
 
@@ -457,7 +491,8 @@ public sealed class BoardDetailViewSectionsTests
             Assert.Equal(0, save.Published);
             Assert.False(view.HasUnsavedTableEdits);
             Assert.True(view.BoardTableForTests.IsReadOnly);
-            Assert.Equal(BoardSections.SavedNotPublished(notPublished) + " " + Waiting, BoardDetailViewSectionsTests.Status(view));
+            Assert.Equal(BoardSections.SavedNotPublished(notPublished), BoardDetailViewSectionsTests.Status(view));
+            Assert.Equal(Waiting, view.ReadOnlyNoticeForTests);
         });
     }
 
@@ -480,6 +515,7 @@ public sealed class BoardDetailViewSectionsTests
             Assert.True(view.BoardTableForTests.HasTable);
             Assert.True(view.BoardTableForTests.IsReadOnly);
             Assert.Equal(BoardSections.SavedNotPublished(notPublished), BoardDetailViewSectionsTests.Status(view));
+            Assert.Equal(BoardSections.ReadOnlyReason(mayEdit: false, null), view.ReadOnlyNoticeForTests);
         });
     }
 

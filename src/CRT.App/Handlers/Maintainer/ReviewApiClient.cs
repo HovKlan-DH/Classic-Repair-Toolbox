@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Online;
 using Handlers.OnlineHandling;
 
 namespace Handlers.MaintainerHandling
@@ -1445,7 +1446,8 @@ namespace Handlers.MaintainerHandling
             if (failure is null)
                 return null;
 
-            string body;
+            // A body that cannot be read is no words at all - the status code's sentence stands.
+            string? body;
 
             try
             {
@@ -1453,17 +1455,30 @@ namespace Handlers.MaintainerHandling
             }
             catch (Exception ex) when (ex is HttpRequestException or System.IO.IOException)
             {
-                return failure;
+                body = null;
             }
 
-            return ReviewApiClient.WithServersWords(failure, response.StatusCode, body);
+            ReviewApiResult<T> result = ReviewApiClient.WithServersWords(failure, response.StatusCode, body);
+
+            // ###########################################################################################
+            // *** "UPDATE CRT" REACHES THE REST OF CRT (owner request, 2026-10-09). *** Every request
+            // this tab makes comes through here, so this is the one place the Maintainer tab learns
+            // the server turns this CRT away - and the tab is then covered until CRT is updated
+            // (ApiOutdatedSignal, Main.UpdateRequired.cs).
+            // ###########################################################################################
+            if (result.Failure == ReviewApiFailure.ClientOutdated)
+                ApiOutdatedSignal.Raise(AppUpdateArea.Maintainer, result.Message);
+
+            return result;
         }
 
         // ###########################################################################################
         // *** THE SERVER'S OWN WORDS WIN (2026-10-04). *** A refusal body carrying a sentence -
         // `message` or `error` - replaces the status code's generic one, so a refusal a newer server
         // invents (a status this version has no case for) still reaches the maintainer in words. An
-        // "update CRT" answer (CRT.Data's ClientOutdatedAnswer, HTTP 426) becomes ClientOutdated.
+        // "update CRT" answer (CRT.Data's ClientOutdatedAnswer, HTTP 426) becomes ClientOutdated - a
+        // bare 426 too, as SubmissionClient.OutdatedMessage reads one (2026-10-09): it can mean
+        // nothing else, and the Maintainer tab is covered on ClientOutdated alone.
         //
         // A 401 keeps "Sign in to continue." whatever the body says: it is what sends the tab back to
         // its sign-in screen, and the failure kind is what decides that, not the words.
@@ -1473,7 +1488,7 @@ namespace Handlers.MaintainerHandling
         {
             ApiRefusal refusal = ApiRefusal.Read(body);
 
-            if (refusal.IsClientOutdated)
+            if (refusal.IsClientOutdated || status == HttpStatusCode.UpgradeRequired)
             {
                 return ReviewApiResult<T>.Failed(
                     ReviewApiFailure.ClientOutdated,

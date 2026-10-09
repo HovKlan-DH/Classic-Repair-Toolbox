@@ -305,13 +305,13 @@ public partial class TabSchematics
         // The same rule and the same notice as the Contribute tab's "Save to draft": both would
         // write the draft under the table, whose own save would then be refused and its edits lost.
         // Nothing is saved and the editor stays in its mode, ready to save once the table is dealt with.
-        if (this.MainWindow?.TabDrafts.HasUnsavedTableEditsFor(cacheKey) == true)
+        if (this.MainWindow?.TabDrafts.SavingBlockedFor(cacheKey) is UnsavedTableEditsPrompt blocked)
         {
             Logger.Info("Label editor save held back - the Drafts tab's table has unsaved edits for this board");
 
             if (TopLevel.GetTopLevel(this) is Window owner)
             {
-                await UnsavedTableEditsWindow.ShowSavingBlockedAsync(owner);
+                await UnsavedTableEditsWindow.ShowSavingBlockedAsync(owner, blocked);
             }
 
             return;

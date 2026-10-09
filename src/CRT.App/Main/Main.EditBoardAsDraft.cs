@@ -1,4 +1,5 @@
 using Handlers.DataHandling;
+using Handlers.Online;
 using System;
 using System.Threading.Tasks;
 
@@ -19,6 +20,8 @@ namespace CRT
     //     surface shows the draft, and the Drafts tab opened on the draft's table.
     //   - A draft already: DraftExistsWindow says so and offers it - "Open the draft" lands on the
     //     same table. Nothing is written.
+    //   - The Drafts tab says "CRT has to be updated" (code review, 2026-10-09): nothing is made or
+    //     opened - its table is out of reach under the cover - and the Contribute tab says why.
     // ###########################################################################################
     public partial class Main
     {
@@ -41,7 +44,13 @@ namespace CRT
             string dataRoot = DataManager.DataRoot;
             string excelDataFile = entry.ExcelDataFile;
 
-            this.TabContribute.ShowEditAsDraftProblem(null);
+            this.TabContribute.ShowDraftProblem(null);
+
+            if (this.TabDrafts.IsUpdateRequiredShown)
+            {
+                this.TabContribute.ShowDraftProblem(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered);
+                return;
+            }
 
             if (DraftBoardSource.HasDraft(draftsRoot, excelDataFile))
             {
@@ -64,7 +73,7 @@ namespace CRT
                 }
 
                 Logger.Warning($"Edit board as draft: no draft made for [{excelDataFile}] - [{seeded.Reason}]");
-                this.TabContribute.ShowEditAsDraftProblem($"No draft could be made of this board: {seeded.Reason}");
+                this.TabContribute.ShowDraftProblem($"No draft could be made of this board: {seeded.Reason}");
                 return;
             }
 

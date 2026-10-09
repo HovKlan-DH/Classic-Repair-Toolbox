@@ -136,4 +136,41 @@ public sealed class TabMaintainerBoardTableTests
             Assert.Equal(57, main.SelectedQueueRowForTests?.Id);
         });
     }
+
+    // The board's table too (code review, 2026-10-09): under "CRT has to be updated" its Save would be
+    // turned away out of sight, so leaving it - quitting CRT, installing the update - is Discard or
+    // Cancel, and nothing is sent.
+    [Fact]
+    public async Task While_CRT_has_to_be_updated_leaving_a_boards_table_asks_without_a_Save()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, _) = TabMaintainerBoardTableTests.WithChangedTable();
+            var asked = new List<UnsavedTableEditsPrompt>();
+            int checks = 0;
+
+            main.BoardDetailForTests.CheckOverrideForTests = _ =>
+            {
+                checks++;
+                return Task.FromResult(ReviewApiResult<BoardEditCheckAnswer>.Ok(new BoardEditCheckAnswer([])));
+            };
+
+            UnsavedTableEditsChoice answer = UnsavedTableEditsChoice.Save;
+            main.BoardDetailForTests.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return answer;
+            };
+
+            main.ShowUpdateRequired(Handlers.Online.AppUpdateRequiredWording.For(Handlers.Online.AppUpdateArea.Maintainer, "Please update CRT.", null));
+
+            Assert.False(await main.ConfirmLeavingTableAsync());
+            Assert.Equal([UnsavedTableEditsPrompt.LeavingUpdateRequired], asked);
+            Assert.Equal(0, checks);
+            Assert.True(main.BoardDetailForTests.HasUnsavedTableEdits);
+
+            answer = UnsavedTableEditsChoice.Discard;
+            Assert.True(await main.ConfirmLeavingTableAsync());
+        });
+    }
 }

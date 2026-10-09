@@ -72,23 +72,96 @@ namespace Handlers.MaintainerHandling
         };
 
         // ###########################################################################################
-        // Under the table's toolbar when it opens: what it is coloured against and what a save does -
-        // or, for a board this account may not change, the server's reason.
+        // WHY BETA'S TABLE CANNOT BE CHANGED - the amber panel above the views (owner request,
+        // 2026-10-09), said whichever view is open. The server's reason - from the table, or from the
+        // board's detail before the table is read (code review, 2026-10-09) - or null when it can be.
         // ###########################################################################################
-        public static string OpenedMessage(BoardTableAnswer table)
+        public static string? ReadOnlyReason(bool mayEdit, string? mayNotEditReason)
+        {
+            if (mayEdit)
+                return null;
+
+            return string.IsNullOrWhiteSpace(mayNotEditReason)
+                ? "You can look at this board's data, but not send a change to it."
+                : mayNotEditReason.Trim();
+        }
+
+        public static string? ReadOnlyReason(BoardTableAnswer table)
+        {
+            ArgumentNullException.ThrowIfNull(table);
+            return BoardSections.ReadOnlyReason(table.MayEdit, table.MayNotEditReason);
+        }
+
+        // ###########################################################################################
+        // The line above BETA's table, under the BETA / Stable switch: `said` first - what a publish
+        // just did, say - then what the table is. One that can be changed says what it is coloured
+        // against and what a save does; one that cannot says only what it is compared with, when
+        // compared (code review, 2026-10-09: its colours were otherwise explained nowhere) - why it
+        // cannot be changed is the panel's (ReadOnlyReason). Null when there is nothing to say.
+        // ###########################################################################################
+        public static string? TableNote(BoardTableAnswer table, bool comparedWithStable, string? said = null)
         {
             ArgumentNullException.ThrowIfNull(table);
 
-            if (!table.MayEdit)
+            string? what;
+
+            if (table.MayEdit)
             {
-                return string.IsNullOrWhiteSpace(table.MayNotEditReason)
-                    ? "You can look at this board's data, but not send a change to it."
-                    : table.MayNotEditReason.Trim();
+                string marked = comparedWithStable
+                    ? "BETA's board compared with the stable source - everything that differs from it is marked, and so is what you change."
+                    : "BETA's board as it is now - only what you change is marked.";
+
+                what = marked + " Saving asks for a reason and publishes your change straight to BETA, where it waits under " +
+                       MaintainerScreenWording.BetaQueueQuoted + " for the stable source.";
+            }
+            else
+            {
+                what = comparedWithStable ? BoardSections.ComparedReadOnlyLine : null;
             }
 
-            return "BETA's board as it is now - only what you change is marked. Saving asks for a reason and publishes your " +
-                   "change straight to BETA, where it waits under " + MaintainerScreenWording.BetaQueueQuoted + " for the stable source.";
+            string note = string.Join(" ", new[] { said?.Trim(), what }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+            return note.Length == 0 ? null : note;
         }
+
+        public const string ComparedReadOnlyLine =
+            "BETA's board compared with the stable source - everything that differs from it is marked.";
+
+        // ###########################################################################################
+        // "COMPARE SOURCES" (owner request, 2026-10-09: "a 'Compare sources' checkbox shown right after
+        // the two radio buttons ... the below table should show the changes as-if this was a normal
+        // board submission"). Ticked, BETA's table is coloured against the stable source and the
+        // stable source's against BETA, and a changed cell's tooltip names the OTHER source's value -
+        // "Stable source value:" or "BETA source value:", the Drafts tab's words
+        // (BoardTableDocument.SourceBaselineLabel). Remembered between launches.
+        //
+        // Only a board in BOTH can be compared, and never while BETA's table holds a change not
+        // saved: comparing opens the table again, which would throw the change away.
+        // ###########################################################################################
+        public const string CompareSourcesLabel = "Compare sources";
+
+        public const string CompareSourcesTip =
+            "Mark everything that differs between BETA and the stable source - a changed cell gives the other source's value.";
+
+        public const string CompareNeedsBothSources = "Only a board in both BETA and the stable source can be compared.";
+
+        public const string CompareNeedsSavedTable = "Save or undo your change in BETA's table first - comparing opens the table again.";
+
+        public static bool CanCompareSources(BoardOverviewEntry? board) => board is { InBeta: true, InProduction: true };
+
+        // Why the box cannot be used now, or null when it can.
+        public static string? CompareUnavailable(BoardOverviewEntry? board, bool betaHoldsUnsavedChange)
+        {
+            if (!BoardSections.CanCompareSources(board))
+                return BoardSections.CompareNeedsBothSources;
+
+            return betaHoldsUnsavedChange ? BoardSections.CompareNeedsSavedTable : null;
+        }
+
+        // A file cell's card, compared: each picture headed by the source it is from.
+        public const string StableSourceSide = "Stable source";
+
+        public const string BetaSourceSide = "BETA source";
 
         // ###########################################################################################
         // What the table calls its two sides - a changed cell's tooltip names the value it replaced
@@ -283,6 +356,9 @@ namespace Handlers.MaintainerHandling
         public const string StableBaselineLabel = "Stable now";
 
         public const string StableTreeName = "the stable source";
+
+        // And BETA, where a file cell's file is not: "There is no file at this path in BETA."
+        public const string BetaTreeName = "BETA";
 
         // ###########################################################################################
         // *** AN ANSWER THAT IS BETA'S IS NOT SHOWN AS STABLE. *** A server older than 4.5.0 does not

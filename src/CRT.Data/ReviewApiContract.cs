@@ -512,6 +512,12 @@ namespace Handlers.DataHandling
     // contributors' or its submissions' (null), nor any in its history (names instead, where there is
     // an account). The Maintainer tab says so rather than showing a contributor without an account
     // as one who gave no address. False from a server older than that, which sent every address.
+    //
+    // MayEdit / MayNotEditReason (code review, 2026-10-09): whether this account may change the
+    // board's BETA data now, and why not - BoardTableAnswer's own two, decided by the same rule, so
+    // the Boards screen says why BETA's table cannot be changed above EVERY view, not only once
+    // Board data has been read. Null for a board BETA does not hold (there is nothing to change),
+    // and from a server older than that.
     public sealed record BoardDetailAnswer(
         BoardOverviewEntry Board,
         IReadOnlyList<PoolMaintainerEntry> Maintainers,
@@ -520,7 +526,9 @@ namespace Handlers.DataHandling
         IReadOnlyList<MaintainerInvitationEntry>? Invitations = null,
         IReadOnlyList<BoardHistoryEntry>? History = null,
         BoardViewStatistics? Views = null,
-        bool AddressesHidden = false);
+        bool AddressesHidden = false,
+        bool? MayEdit = null,
+        string? MayNotEditReason = null);
 
     // ###########################################################################################
     // A BOARD'S BOARD DATA AND FILES ON THE "BOARDS" SCREEN (owner request, 2026-10-03: "all the

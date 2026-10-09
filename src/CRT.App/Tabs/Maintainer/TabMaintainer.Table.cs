@@ -114,6 +114,14 @@ namespace CRT
             }
         }
 
+        // ###########################################################################################
+        // The Boards screen's "Compare sources" as last ticked, and every later tick handed to
+        // `remember` (owner request, 2026-10-09: "do keep the checkbox as last state"). Called by
+        // Main, like UseRememberedChoices - a tab a test builds never touches UserSettings.
+        // ###########################################################################################
+        internal void UseRememberedComparison(bool compare, Action<bool> remember) =>
+            this.BoardDetail.UseRememberedComparison(compare, remember);
+
         // The tab's tables - a submission's, a board's, and a board's stable source's - which share
         // the picked pills (UseRememberedChoices).
         internal IReadOnlyList<BoardTableEditor> TableEditorsForSharedChoices =>
@@ -342,17 +350,22 @@ namespace CRT
         }
 
         // Save, Discard or Cancel - the Drafts tab's prompt, worded for a submission. True when the
-        // table may go.
+        // table may go. While the tab says "CRT has to be updated", Discard or Cancel: a save would
+        // only be turned away (TabMaintainer.UpdateRequired.cs).
         private async Task<bool> MayLeaveTableAsync(Window? owner = null)
         {
             if (!this.IsTableOpen || !this.TableEditor.HasUnsavedChanges)
                 return true;
 
+            UnsavedTableEditsPrompt asked = this.thisUpdateRequired
+                ? UnsavedTableEditsPrompt.LeavingUpdateRequired
+                : UnsavedTableEditsPrompt.LeavingSubmission;
+
             UnsavedTableEditsChoice? choice;
 
             if (this.UnsavedTableEditsAnswerForTests is { } answer)
             {
-                choice = answer(UnsavedTableEditsPrompt.LeavingSubmission);
+                choice = answer(asked);
             }
             else
             {
@@ -362,14 +375,14 @@ namespace CRT
                     return false;
 
                 var prompt = new UnsavedTableEditsWindow();
-                prompt.Initialize(UnsavedTableEditsPrompt.LeavingSubmission);
+                prompt.Initialize(asked);
 
                 choice = await prompt.ShowDialog<UnsavedTableEditsChoice?>(ownerWindow);
             }
 
             return choice switch
             {
-                UnsavedTableEditsChoice.Save => await this.SaveTableAsync(),
+                UnsavedTableEditsChoice.Save when !this.thisUpdateRequired => await this.SaveTableAsync(),
                 UnsavedTableEditsChoice.Discard => true,
                 _ => false
             };
@@ -457,7 +470,7 @@ namespace CRT
                 return true;
 
             await this.ShowModeAsync(MaintainerMode.Boards);
-            return await this.BoardDetail.MayLeaveTableAsync(owner);
+            return await this.BoardDetail.MayLeaveTableAsync(owner, canSend: !this.thisUpdateRequired);
         }
 
         // Answers the unsaved-changes prompt in a headless test, where a dialog cannot be answered.

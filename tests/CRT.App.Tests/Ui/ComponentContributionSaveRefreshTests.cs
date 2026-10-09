@@ -156,7 +156,7 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
         using var workspace = new TempWorkspace();
 
         var asked = new List<string>();
-        int notices = 0;
+        var notices = new List<UnsavedTableEditsPrompt>();
         int refreshes = 0;
         int afterSaved = 0;
 
@@ -168,11 +168,11 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
                 window.SetUnsavedTableEditsCheck(board =>
                 {
                     asked.Add(board);
-                    return true;
+                    return UnsavedTableEditsPrompt.SavingElsewhere;
                 });
-                window.ShowSavingBlockedOverrideForTests = () =>
+                window.ShowSavingBlockedOverrideForTests = notice =>
                 {
-                    notices++;
+                    notices.Add(notice);
                     return Task.CompletedTask;
                 };
                 window.SetRefreshBoardAfterSave(() => refreshes++);
@@ -182,7 +182,7 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
 
         // Asked about THIS window's board.
         Assert.Equal([ComponentContributionSaveRefreshTests.ExcelDataFile], asked);
-        Assert.Equal(1, notices);
+        Assert.Equal([UnsavedTableEditsPrompt.SavingElsewhere], notices);
         Assert.Equal(0, refreshes);
         Assert.Equal(0, afterSaved);
 
@@ -205,8 +205,8 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
             "Written",
             window =>
             {
-                window.SetUnsavedTableEditsCheck(_ => false);
-                window.ShowSavingBlockedOverrideForTests = () =>
+                window.SetUnsavedTableEditsCheck(_ => null);
+                window.ShowSavingBlockedOverrideForTests = _ =>
                 {
                     notices++;
                     return Task.CompletedTask;

@@ -34,8 +34,9 @@ namespace CRT
             this.EditBoardAsDraftButton.IsEnabled = boardData != null;
 
             // Why "Edit board as draft" made no draft is about the board it was pressed on - never
-            // left standing under another one (code review, 2026-10-09).
-            this.ShowEditAsDraftProblem(null);
+            // left standing under another one (code review, 2026-10-09). "Add a new board" says
+            // its own reason on the same line.
+            this.ShowDraftProblem(null);
 
             if (boardData == null)
             {
@@ -154,11 +155,11 @@ namespace CRT
             _ = this.thisMainWindow.EditBoardAsDraftAsync();
         }
 
-        // Why "Edit board as draft" made no draft - or nothing, to clear it.
-        internal void ShowEditAsDraftProblem(string? problem)
+        // Why "Edit board as draft" or "Add a new board" made no draft - or nothing, to clear it.
+        internal void ShowDraftProblem(string? problem)
         {
-            this.EditAsDraftProblemText.Text = problem ?? string.Empty;
-            this.EditAsDraftProblemText.IsVisible = !string.IsNullOrWhiteSpace(problem);
+            this.DraftProblemText.Text = problem ?? string.Empty;
+            this.DraftProblemText.IsVisible = !string.IsNullOrWhiteSpace(problem);
         }
 
         // ###########################################################################################

@@ -706,9 +706,8 @@ quick card). **Find the right partial here before grepping** (the map is repeate
   **A file replaced under its own path colours nothing - the Files button's COUNT says it**
   (`SubmissionViews.ChangingFiles`). The queue is grouped by board with DISABLED heading items, so it is
   read by ITEM, never by index. Approve is green, the others red; Approve stays last.
-- **A board has six views** (Board data, Files, Contributor, Maintainer, History, Statistics) and a
-  stage line (Submitted / BETA / Stable). Board data and Files have a **Data: BETA | Stable** switch;
-  stable is read-only. **A Board data edit goes STRAIGHT TO BETA** (save -> `edit/check` -> a reason in
+- **A board has six views** (Board data, Files, Contributor, Maintainer, History, Statistics). Board
+  data and Files have a **Data source: BETA | Stable** switch; stable is read-only. **A Board data edit goes STRAIGHT TO BETA** (save -> `edit/check` -> a reason in
   `PublishBoardChangeWindow` -> `boards/edit`), read-only for a board the account does not maintain
   or one waiting under BETA > Stable. The table and files are read again when BETA moves
   (`BetaContentHash`), never under unsaved edits.
@@ -728,10 +727,31 @@ quick card). **Find the right partial here before grepping** (the map is repeate
   server's history (`BoardHistoryRules`) names whoever did a thing and whoever a pool change names by
   account name, the address only without one. A pool change reads "Maintainer added: **Anna**" /
   "by **Dennis**". A line with bold runs has `Text == null` - tests read it through `TabMaintainer.TextOf`.
-- **The stage line is three numbered cards** (Submitted, BETA, Stable), each saying what the place is,
-  the one where the newest work sits outlined, and a "Now:" sentence under them (`BoardStagesDisplay.Now`
-  - BETA ahead of stable outranks a waiting submission, which cannot be approved until BETA moves).
-  **Why BETA's table cannot be changed is an amber panel of its own** (`ReadOnlyNotice`), not the line.
+- **No stage line under a board's name** (owner request, 2026-10-09: the three numbered cards -
+  Submitted, BETA, Stable - and their "Now:" sentence were removed as confusing, "and then decide
+  later"; `BoardStagesDisplay` is in git history). **Why BETA's table cannot be changed is an amber
+  panel of its own** (`ReadOnlyNotice`), and **so is why Approve is off on the queue**
+  (`BeforeApprovingNotice`; owner request, 2026-10-09: "The UI should have a uniform and consistent
+  look"). Both sit DIRECTLY ABOVE their view switch, said whichever view is open, and both are
+  App.axaml's `Border.Notice` with a `TextBlock.NoticeIcon` and `TextBlock.NoticeText` -
+  a new "why this cannot be done now" panel uses those classes, never its own colours. The read-only
+  reason comes from the board's DETAIL (`BoardDetailAnswer.MayEdit`/`MayNotEditReason`, the table's
+  own rule on the server) or BETA's table, whichever was read last - so it is there before Board data
+  is read. The line above BETA's table says what happened and what the table is, never why it is
+  read-only (`BoardSections.TableNote`; `ReadOnlyReason` is the panel's).
+- **"Compare sources"** (owner request, 2026-10-09; `BoardDetailView.Compare.cs`), right after the BETA |
+  Stable buttons, Board data only, remembered (`UserSettings.MaintainerCompareSources`, handed in by
+  `TabMaintainer.UseRememberedComparison`): BETA's table is BUILT against the stable source's board and
+  the stable table against BETA's (`BoardTableDocument.Create(otherSource, thisSource, ...)`), the
+  tooltip naming "Stable source value" / "BETA source value"; file cards read the other side from the
+  other source's address (`PublishedTableFileSource.Baseline`). Both tables are read when compared.
+  **It is off while BETA's table holds an unsaved change** (the editor's `UnsavedChangesChanged`):
+  comparing rebuilds the table. A cell still in its editor counts - the box commits it first
+  (`BoardTableEditor.CommitCellEdit`), and nothing rebuilds BETA's table under `IsEditingCell`. A save
+  still sends BETA's live rows applied to BETA as read - never the other source's red rows. **Every
+  table read or opened goes through `ShowTables`**: answers taken first, each table built ONCE against
+  the other as it now is, the other rebuilt only when what it is compared with moved
+  (`ApplyComparison`) - never build a table any other way.
 - **The Boards list says how each board's submissions went** ("19 submissions in total; 2 rejected, 1 in
   BETA, 17 in stable" - `BoardSubmissionCounts`, `BoardOverviewFlow.SubmissionCounts`). Account's
   Maintainers and "Delete a board" list boards in the Boards list's order (`BoardsDisplay.InBoardsListOrder`).
@@ -956,6 +976,22 @@ upload - held by their own contract tests)? No: change it freely. Yes:
   up. Raise it by hand for what the surface cannot see (a new meaning, a newly required field). Each
   raise is a MAJOR server bump. `GET /api/health` and Account > "Server version" show both revisions.
 - **CRT shows the server's words** (`ApiRefusal.Read`; `ReviewApiClient.WithServersWords`).
+- **An outdated CRT gets "CRT has to be updated" over the Drafts and Maintainer tabs, which cannot
+  be closed** (owner request, 2026-10-09; `Main.UpdateRequired.cs`, `AppUpdateRequirement`,
+  `UpdateRequiredOverlay` in `Controls/`). Once either tab is in use - the Drafts tab shown or the
+  Maintainer tab on (`AppUpdateRequirement.AsksServer`), at launch or later - CRT asks `/api/health`'s
+  `ApiRevision` once: a higher one covers BOTH tabs. Nobody using neither is asked. Any 426 either
+  client meets raises `ApiOutdatedSignal` (in `SubmissionClient.SignalIfOutdated` - every refusal it
+  reads, the discard notice's too - and `ReviewApiClient.StatusFailureAsync`) and covers only THAT
+  area's tab - a minimum version is per area - then the revision is asked again. Never lifted while
+  CRT runs; the overlay's one button installs the update found or opens the releases page. The
+  signal is a static event only `Main.StartAsync` subscribes to, so a test driving a client into a
+  426 leaks nothing. It is not a second `BusyOverlay`: it covers one tab on purpose, though both
+  fade and take keys through `OverlayCover`. **Installing an update asks about unsaved table edits
+  first** (`Main.ConfirmLeavingTablesAsync`, shared with quitting): Velopack's restart exits without a
+  Closing event. A covered Maintainer tab asks without a Save (`LeavingUpdateRequired`); a covered
+  Drafts tab gets nothing new - "Edit board as draft" and "Add a new board" make nothing - and another
+  editor held back by its table is told what settles it (`TabDrafts.SavingBlockedFor`).
 - **When CRT.App's `InformationalVersion` is a release (no `-`), the surface must be frozen as
   `crt-<version>.txt`**: the first test run writes it and fails once - commit it with the release.
   **Never edit a `crt-*.txt`**; put the field or route back instead. A break the owner decided on goes
@@ -986,10 +1022,12 @@ worked can now fail (a route or field renamed or removed, a field made required,
 refusing what it accepted); MINOR for new behaviour that breaks nobody; PATCH for a defect fix or
 anything no caller can observe. **A change only to `CRT.Data` still bumps the server** when the
 server's behaviour moves with it. **The numbering RESTARTED at `1.0.0` on 2026-10-05** (owner request,
-at go-live): the development numbering before it (up to `5.1.0`) is archived at the bottom of
-VERSION.md without backticks, so `ServerVersionTests` reads only the live table. A server version
-named in an older comment ("server 4.3.0") is that series; every 1.x holds all of it. `2.0.0`
-(2026-10-09) was the system-to-board rename; the next breaking change is `3.0.0`.
+at go-live) **and again on 2026-10-09** (owner request, with the contribution data reset again -
+nothing had been released to anybody else), the API version back at 1 with it (`api-revision-1.txt`
+then holds that day's API). The earlier numberings (development up to `5.1.0`, then `1.0.0` to
+`2.1.0`) are archived at the bottom of VERSION.md without backticks, so `ServerVersionTests` reads
+only the live table. A server version named in an older comment ("server 4.3.0") is one of those
+series; every version since the second restart holds all of it. The next breaking change is `2.0.0`.
 
 Two edits per bump: `InformationalVersion` in [CRT.Server.csproj](../src/CRT.Server/CRT.Server.csproj),
 and a row in VERSION.md's history saying what a caller would notice. `GET /api/health` reports it,

@@ -302,5 +302,12 @@
 				   VerticalAlignment="Top"
 				   IsVisible="False" />
 
+		<!-- "CRT has to be updated", over the whole tab, when the server turns this version of CRT
+		     away from submissions (owner request, 2026-10-09; Main.UpdateRequired.cs). It cannot be
+		     closed. LAST, so it lies over everything above. -->
+		<local:UpdateRequiredOverlay Grid.Row="0"
+									 Grid.RowSpan="2"
+									 x:Name="UpdateRequired" />
+
 	</Grid>
 </UserControl>

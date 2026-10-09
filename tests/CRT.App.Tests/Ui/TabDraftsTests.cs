@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Online;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -1329,6 +1330,34 @@ public sealed class TabDraftsTests : IDisposable
 
             Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.Save());
             Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // *** WHICH NOTICE HOLDS ANOTHER EDITOR'S SAVE BACK (code review, 2026-10-09). *** The ordinary
+    // one sends the contributor to this tab to save or discard the table first - but a tab saying
+    // "CRT has to be updated" cannot be used, so then the notice says what settles the table
+    // instead (updating or quitting CRT asks). Nothing holds a save back for another board.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_covered_Drafts_tab_holds_another_editors_save_back_with_its_own_notice()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+
+            Assert.Null(tab.SavingBlockedFor(TabDraftsTests.TableBoardA));
+
+            await tab.OpenTableAsync(EntryA(tab));
+            MakeUnsavedEdit(tab);
+
+            Assert.Equal(UnsavedTableEditsPrompt.SavingElsewhere, tab.SavingBlockedFor(TabDraftsTests.TableBoardA));
+            Assert.Null(tab.SavingBlockedFor(TabDraftsTests.TableBoardB));
+
+            tab.ShowUpdateRequired(AppUpdateRequiredWording.For(AppUpdateArea.Drafts, "Please update CRT.", null));
+
+            Assert.Equal(UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired, tab.SavingBlockedFor(TabDraftsTests.TableBoardA));
+            Assert.Null(tab.SavingBlockedFor(TabDraftsTests.TableBoardB));
         });
     }
 

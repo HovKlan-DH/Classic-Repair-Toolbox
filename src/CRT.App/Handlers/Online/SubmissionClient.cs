@@ -149,6 +149,8 @@ namespace Handlers.Online
             {
                 string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
+                SubmissionClient.SignalIfOutdated((int)response.StatusCode, body);
+
                 throw new SubmissionRejectedException(
                     (int)response.StatusCode,
                     SubmissionClient.ExtractFindings(body),
@@ -258,6 +260,8 @@ namespace Handlers.Online
 
                             ApiRefusal refusal = ApiRefusal.Read(body);
 
+                            SubmissionClient.SignalIfOutdated((int)response.StatusCode, body);
+
                             // "Update CRT" stands on its own; any other refusal names the file.
                             throw new SubmissionRejectedException(
                                 (int)response.StatusCode, [],
@@ -310,6 +314,8 @@ namespace Handlers.Online
             {
                 string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
+                SubmissionClient.SignalIfOutdated((int)response.StatusCode, body);
+
                 throw new SubmissionRejectedException(
                     (int)response.StatusCode,
                     SubmissionClient.ExtractFindings(body),
@@ -347,7 +353,7 @@ namespace Handlers.Online
 
                 using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
 
-                return (int)response.StatusCode;
+                return await SubmissionClient.ReadDiscardAnswerAsync(response, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -358,6 +364,22 @@ namespace Handlers.Online
                 // No answer: tried again at the next launch.
                 return null;
             }
+        }
+
+        // ###########################################################################################
+        // The discard notice's answer: its status - and, when the answer is "update CRT", the rest of
+        // CRT told so, as at every other refusal this client reads (code review, 2026-10-09: the
+        // route is gated, and a 426 here covered nothing - at a launch whose only request this was,
+        // the Drafts tab stayed open until something else happened to be refused).
+        // ###########################################################################################
+        internal static async Task<int> ReadDiscardAnswerAsync(HttpResponseMessage response, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(response);
+
+            if (!response.IsSuccessStatusCode)
+                SubmissionClient.SignalIfOutdated((int)response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken));
+
+            return (int)response.StatusCode;
         }
 
         // ###########################################################################################
@@ -405,7 +427,7 @@ namespace Handlers.Online
                     // 2026-10-04). Swallowed as null, every receipt froze and nothing said why.
                     string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
-                    if (SubmissionClient.OutdatedMessage((int)response.StatusCode, body) is string outdated)
+                    if (SubmissionClient.SignalIfOutdated((int)response.StatusCode, body) is string outdated)
                         throw new ClientOutdatedException(outdated);
 
                     return null;
@@ -507,6 +529,20 @@ namespace Handlers.Online
                 return null;
 
             return refusal.Message ?? ClientOutdatedException.FallbackMessage;
+        }
+
+        // ###########################################################################################
+        // OutdatedMessage, and - when the answer IS "update CRT" - tells the rest of CRT so
+        // (ApiOutdatedSignal; owner request, 2026-10-09): the Drafts tab is then covered until CRT
+        // is updated (Main.UpdateRequired.cs). Called at every refusal this client reads.
+        // ###########################################################################################
+        internal static string? SignalIfOutdated(int statusCode, string? body)
+        {
+            if (SubmissionClient.OutdatedMessage(statusCode, body) is not string outdated)
+                return null;
+
+            ApiOutdatedSignal.Raise(AppUpdateArea.Drafts, outdated);
+            return outdated;
         }
 
         // How much of a blob the server holds, out of its BlobUploadAnswer - 0 when not said. Throws
