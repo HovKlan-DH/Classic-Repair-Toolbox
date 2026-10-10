@@ -357,7 +357,7 @@ namespace CRT
             if (!this.IsTableOpen || !this.TableEditor.HasUnsavedChanges)
                 return true;
 
-            UnsavedTableEditsPrompt asked = this.thisUpdateRequired
+            UnsavedTableEditsPrompt asked = this.IsUpdateRequiredShown
                 ? UnsavedTableEditsPrompt.LeavingUpdateRequired
                 : UnsavedTableEditsPrompt.LeavingSubmission;
 
@@ -382,7 +382,7 @@ namespace CRT
 
             return choice switch
             {
-                UnsavedTableEditsChoice.Save when !this.thisUpdateRequired => await this.SaveTableAsync(),
+                UnsavedTableEditsChoice.Save when !this.IsUpdateRequiredShown => await this.SaveTableAsync(),
                 UnsavedTableEditsChoice.Discard => true,
                 _ => false
             };
@@ -470,7 +470,7 @@ namespace CRT
                 return true;
 
             await this.ShowModeAsync(MaintainerMode.Boards);
-            return await this.BoardDetail.MayLeaveTableAsync(owner, canSend: !this.thisUpdateRequired);
+            return await this.BoardDetail.MayLeaveTableAsync(owner, canSend: !this.IsUpdateRequiredShown);
         }
 
         // Answers the unsaved-changes prompt in a headless test, where a dialog cannot be answered.

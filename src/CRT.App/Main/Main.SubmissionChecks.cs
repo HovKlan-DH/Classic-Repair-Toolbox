@@ -39,27 +39,40 @@ namespace CRT
         private DispatcherTimer? thisSubmissionCheckTimer;
         private bool thisSubmissionCheckRunning;
 
-        // The server answered "update CRT" (code review, 2026-10-04): it will answer every minute
-        // the same way, so the checks stop for this run of CRT, and the banner says why once.
-        private bool thisSubmissionChecksOutdated;
+        // The status check's "update CRT" has been said in the banner - once a run (see below).
+        private bool thisSubmissionsOutdatedBannerShown;
 
         // ###########################################################################################
-        // Shows the server's "update CRT" words in the banner that already says an application update
-        // is needed - beside its main Excel reason when that is shown too, never instead of it - and
-        // stops the minute checks for this run. Shown once: a contributor who closed the banner is
-        // not shown it again every minute.
+        // *** THE CHECKS STOP WHEN THE SERVER TURNS SUBMISSIONS AWAY - ONE RECORD OF THAT (code
+        // review, 2026-10-10). *** It answers every minute the same way (code review, 2026-10-04),
+        // and that is what covers the Drafts tab (AppUpdateRequirement's Drafts reason). The checks
+        // kept a flag of their own, set only by their own refusal, so a 426 met by Submit, "My
+        // submissions" or the discard notice covered the tab while the checks went on asking - each
+        // refused, each asking /api/health again. Now they stop on the requirement, whatever set it.
+        // ###########################################################################################
+        private bool SubmissionChecksStopped => this.thisAppUpdateRequirement.IsRequiredFor(AppUpdateArea.Drafts);
+
+        // ###########################################################################################
+        // The status check was answered "update CRT": the server's words go in the banner that already
+        // says an application update is needed - beside its main Excel reason when that is shown too,
+        // never instead of it - and into the requirement, which covers the Drafts tab and stops the
+        // minute checks (the same as the refusal's signal does, so the two never disagree). The
+        // banner says it once: a contributor who closed it is not shown it again.
         // ###########################################################################################
         internal void ShowSubmissionChecksOutdated(string serversWords)
         {
-            if (this.thisSubmissionChecksOutdated)
+            if (this.thisAppUpdateRequirement.ApplyRefusal(AppUpdateArea.Drafts, serversWords, Main.OwnVersion))
+                this.ApplyAppUpdateRequired();
+
+            if (this.thisSubmissionsOutdatedBannerShown)
                 return;
 
-            this.thisSubmissionChecksOutdated = true;
+            this.thisSubmissionsOutdatedBannerShown = true;
             this.ShowSubmissionsRequireAppUpdateBanner(SubmissionStatusRefresh.DescribeOutdated(serversWords));
         }
 
         // Whether the minute checks have stopped for an "update CRT" answer - for tests.
-        internal bool SubmissionChecksOutdatedForTests => this.thisSubmissionChecksOutdated;
+        internal bool SubmissionChecksOutdatedForTests => this.SubmissionChecksStopped;
 
         // The count, or no badge at all for nothing unread.
         private void ShowDraftsTabBadge(int unread)
@@ -88,7 +101,7 @@ namespace CRT
         private async System.Threading.Tasks.Task CheckSubmissionsAsync()
         {
             if (this.thisSubmissionCheckRunning ||
-                this.thisSubmissionChecksOutdated ||
+                this.SubmissionChecksStopped ||
                 !SubmissionStatusRefresh.ChecksPeriodically(
                     SubmissionReceiptStore.All, DateTimeOffset.UtcNow, this.WindowState == WindowState.Minimized))
             {

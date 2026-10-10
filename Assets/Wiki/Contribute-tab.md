@@ -52,7 +52,8 @@ that one draft.
 
 While the Drafts tab says **CRT has to be updated**, this button and **Add a new board** below make
 nothing and say why: their next step is on the Drafts tab, which cannot be used until CRT is updated
-(see [Drafts tab](Drafts-tab)).
+(see [Drafts tab](Drafts-tab)). With no drafts yet, the first press of either button checks this with
+the server before anything is made.
 
 ## Adding a whole new board
 

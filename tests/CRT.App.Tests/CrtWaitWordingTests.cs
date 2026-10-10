@@ -21,6 +21,8 @@ public sealed class CrtWaitWordingTests
             CrtWaitWording.SavingDraft,
             CrtWaitWording.SavingLabels,
             CrtWaitWording.OpeningTable,
+            CrtWaitWording.MakingDraft,
+            CrtWaitWording.CheckingDraftsWithServer,
             CrtWaitWording.ComparingWithOfficial,
             CrtWaitWording.AddingSchematics,
             CrtWaitWording.ImportingKiCad,

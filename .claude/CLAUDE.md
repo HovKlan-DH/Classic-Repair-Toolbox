@@ -751,7 +751,8 @@ quick card). **Find the right partial here before grepping** (the map is repeate
   still sends BETA's live rows applied to BETA as read - never the other source's red rows. **Every
   table read or opened goes through `ShowTables`**: answers taken first, each table built ONCE against
   the other as it now is, the other rebuilt only when what it is compared with moved
-  (`ApplyComparison`) - never build a table any other way.
+  (`ApplyComparison`) - never build a table any other way. Ticked with the stable table unreadable,
+  BETA's line says it is not compared and why (`NotComparedReason`, part of what it is built against).
 - **The Boards list says how each board's submissions went** ("19 submissions in total; 2 rejected, 1 in
   BETA, 17 in stable" - `BoardSubmissionCounts`, `BoardOverviewFlow.SubmissionCounts`). Account's
   Maintainers and "Delete a board" list boards in the Boards list's order (`BoardsDisplay.InBoardsListOrder`).
@@ -980,7 +981,12 @@ upload - held by their own contract tests)? No: change it freely. Yes:
   be closed** (owner request, 2026-10-09; `Main.UpdateRequired.cs`, `AppUpdateRequirement`,
   `UpdateRequiredOverlay` in `Controls/`). Once either tab is in use - the Drafts tab shown or the
   Maintainer tab on (`AppUpdateRequirement.AsksServer`), at launch or later - CRT asks `/api/health`'s
-  `ApiRevision` once: a higher one covers BOTH tabs. Nobody using neither is asked. Any 426 either
+  `ApiRevision` once: a higher one covers BOTH tabs. Nobody using neither is asked - but "Edit board
+  as draft" and "Add a new board" ask it FIRST, awaited, when nothing has yet
+  (`AskApiRevisionBeforeFirstDraftAsync`), or a machine's first draft opens under the cover that
+  follows. **Whether a tab is covered has ONE record each**: the Maintainer tab reads its overlay
+  (`IsUpdateRequiredShown`), and the minute submission check stops on `AppUpdateRequirement`'s Drafts
+  reason - never a flag of their own beside it. Any 426 either
   client meets raises `ApiOutdatedSignal` (in `SubmissionClient.SignalIfOutdated` - every refusal it
   reads, the discard notice's too - and `ReviewApiClient.StatusFailureAsync`) and covers only THAT
   area's tab - a minimum version is per area - then the revision is asked again. Never lifted while

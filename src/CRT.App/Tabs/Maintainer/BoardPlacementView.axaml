@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:CRT"
+             xmlns:mh="using:Handlers.MaintainerHandling"
              x:Class="CRT.BoardPlacementView">
 
     <!--
@@ -24,7 +25,8 @@
 
     <StackPanel Spacing="8">
 
-        <TextBlock Text="Place it in the drop-down lists"
+        <!-- Named by the queue's "cannot be approved" panel (BoardPlacementDisplay.ReviewLine). -->
+        <TextBlock Text="{x:Static mh:BoardPlacementDisplay.Heading}"
                    FontSize="14"
                    FontWeight="SemiBold" />
 

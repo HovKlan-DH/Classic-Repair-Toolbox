@@ -196,15 +196,31 @@ namespace Handlers.MaintainerHandling
                 : "Placed - listed when published to BETA";
         }
 
+        // The heading of the placement panel in a board's Maintainer view - ReviewLine sends the
+        // maintainer to it by name.
+        public const string Heading = "Place it in the drop-down lists";
+
         // ###########################################################################################
         // The line above a submission's table when its board has no place in the lists yet - the
         // approval would be refused, and the maintainer should know before reading the whole table.
         // Null once a place is saved, or for a board already listed.
+        //
+        // It says WHO places a board and WHERE (owner request, 2026-10-10: shown to a maintainer who
+        // does not necessarily know how it works). Who is the server's rule for saving a place
+        // (BoardListingFlow, ReviewAuthority.CanPublish): the administrator or a maintainer of the
+        // board - so a maintainer reading it in the queue is one of those who may.
         // ###########################################################################################
         public static string? ReviewLine(BoardListingAnswer? listing, string? boardId) =>
             BoardPlacementDisplay.UnlistedEntry(listing, boardId) is { Placement: null }
-                ? "This new board has no place in CRT's drop-down lists yet, so it cannot be approved. Place it on the Boards screen first."
+                ? BoardPlacementDisplay.UnplacedReviewLine
                 : null;
+
+        internal static readonly string UnplacedReviewLine =
+            "This new board has no place in CRT's drop-down lists yet, so it cannot be approved: it needs the hardware " +
+            "and board names people choose it by, and its position in the lists. The administrator or a maintainer of " +
+            $"this board gives it that place - on the {MaintainerScreenWording.Boards} screen, choose this board, open its " +
+            $"{BoardSections.Label(BoardSection.Maintainer)} view and save its place under \"{BoardPlacementDisplay.Heading}\". " +
+            "It can be approved once its place is saved.";
 
         // Boards needing a place that THIS account can give one - the Boards button's attention.
         public static int NeedingPlace(BoardListingAnswer? listing) =>

@@ -444,4 +444,114 @@ public sealed class BoardDetailViewCompareTests
             Assert.Equal("It waits in BETA for the stable source.", view.ReadOnlyNoticeForTests);
         });
     }
+
+    // ###########################################################################################
+    // *** A STABLE SOURCE THAT CANNOT BE READ: BETA'S TABLE SAYS IT IS NOT COMPARED (code review,
+    // 2026-10-10). *** Ticked, with BETA on screen, a failed stable read was said only on the stable
+    // half, hidden behind the switch - and BETA's table, coloured against itself, showed every row
+    // white under a box still ticked: "BETA and stable are identical". Now BETA's line says why it
+    // is not compared, and Board data shown again tries again - and, read, compares.
+    //
+    // Read-only, so the line has nothing else to say: what it says is all the failure's.
+    // ###########################################################################################
+    [Fact]
+    public async Task Ticked_with_the_stable_source_unreadable_BETAs_table_says_it_is_not_compared()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string NoAnswer = "The server could not be reached.";
+            var view = new BoardDetailView();
+            view.UseRememberedComparison(true, _ => { });
+
+            BoardTableAnswer waiting = BoardDetailViewCompareTests.Beta with { MayEdit = false, MayNotEditReason = "It waits in BETA for the stable source." };
+            bool stableAnswers = false;
+
+            view.ReadTableOverrideForTests = _ => Task.FromResult(ReviewApiResult<BoardTableAnswer>.Ok(waiting));
+            view.ReadStableTableOverrideForTests = _ => Task.FromResult(stableAnswers
+                ? ReviewApiResult<BoardTableAnswer>.Ok(BoardDetailViewCompareTests.Stable)
+                : ReviewApiResult<BoardTableAnswer>.Failed(ReviewApiFailure.Unreachable, NoAnswer));
+
+            view.ShowDetailForTests(BoardDetailViewCompareTests.Detail(BoardDetailViewCompareTests.Board()));
+            await view.ShowSectionAsync(BoardSection.BoardData);
+
+            Assert.False(view.ShowsStableForTests);
+            Assert.True(view.CompareBoxForTests.IsChecked);
+            Assert.Null(view.TableComparedWithForTests);
+            Assert.Equal(0, Components(view.BoardTableForTests).ChangeCount);
+            Assert.Equal(BoardSections.NotComparedLine(NoAnswer), view.TableNoteForTests);
+
+            // Board data shown again reads what is missing - and now compares.
+            stableAnswers = true;
+            await view.ShowSectionAsync(BoardSection.Files);
+            await view.ShowSectionAsync(BoardSection.BoardData);
+
+            Assert.Same(BoardDetailViewCompareTests.Stable, view.TableComparedWithForTests);
+            Assert.Equal(3, Components(view.BoardTableForTests).ChangeCount);
+            Assert.Equal(BoardSections.ComparedReadOnlyLine, view.TableNoteForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // The same when BETA's table is already on screen and the box is ticked: BETA's table is not read
+    // again, so it is built again for the line to say so - and unticked, the line goes.
+    // ###########################################################################################
+    [Fact]
+    public async Task Ticking_with_BETAs_table_open_and_the_stable_source_unreadable_says_it_is_not_compared()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string NoAnswer = "The server could not be reached.";
+            var (view, betaReads, stableReads, _) = BoardDetailViewCompareTests.View();
+
+            view.ReadStableTableOverrideForTests = _ =>
+                Task.FromResult(ReviewApiResult<BoardTableAnswer>.Failed(ReviewApiFailure.Unreachable, NoAnswer));
+
+            view.ShowDetailForTests(BoardDetailViewCompareTests.Detail(BoardDetailViewCompareTests.Board()));
+            await view.ShowSectionAsync(BoardSection.BoardData);
+            Assert.DoesNotContain("Not compared", view.TableNoteForTests, StringComparison.Ordinal);
+
+            await view.CompareSourcesAsync(true);
+
+            Assert.Equal(1, betaReads());
+            Assert.Null(view.TableComparedWithForTests);
+            Assert.StartsWith(BoardSections.NotComparedLine(NoAnswer), view.TableNoteForTests, StringComparison.Ordinal);
+
+            await view.CompareSourcesAsync(false);
+
+            Assert.DoesNotContain("Not compared", view.TableNoteForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE TWO TABLES ARE ASKED FOR TOGETHER (code review, 2026-10-10). *** They are independent;
+    // asked one after the other, every compared board chosen paid two round trips back to back
+    // under the "please wait". BETA's is asked for while the stable source's is still out - and
+    // each is still built once, against the other.
+    // ###########################################################################################
+    [Fact]
+    public async Task Compared_both_tables_are_asked_for_at_once_and_each_is_built_once()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var (view, betaReads, _, _) = BoardDetailViewCompareTests.View(compare: true);
+            var stableAnswer = new TaskCompletionSource<ReviewApiResult<BoardTableAnswer>>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            view.ReadStableTableOverrideForTests = _ => stableAnswer.Task;
+            view.ShowDetailForTests(BoardDetailViewCompareTests.Detail(BoardDetailViewCompareTests.Board()));
+
+            Task shown = view.ShowSectionAsync(BoardSection.BoardData);
+
+            // The stable source has not answered, and BETA's table has been asked for already.
+            Assert.Equal(1, betaReads());
+            Assert.Equal(0, view.TableBuildsForTests);
+
+            stableAnswer.SetResult(ReviewApiResult<BoardTableAnswer>.Ok(BoardDetailViewCompareTests.Stable));
+            await shown;
+
+            Assert.Equal(1, view.TableBuildsForTests);
+            Assert.Equal(1, view.StableTableBuildsForTests);
+            Assert.Same(BoardDetailViewCompareTests.Stable, view.TableComparedWithForTests);
+            Assert.Same(BoardDetailViewCompareTests.Beta, view.StableComparedWithForTests);
+        });
+    }
 }

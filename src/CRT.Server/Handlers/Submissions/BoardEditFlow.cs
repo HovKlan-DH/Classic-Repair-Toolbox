@@ -454,12 +454,10 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? waiting = (await store.GetPendingForBoardAsync(boardId, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault(record => record.AccountId == access!.Account.Id);
 
-            return waiting is null ? null : BoardEditFlow.AlreadyWaitingMessage(waiting.Id);
+            // The words are CRT.Data's: CRT's Maintainer tab says the same when it cannot read the
+            // table again after such a change (code review, 2026-10-10).
+            return waiting is null ? null : BoardEditWording.AlreadyWaitingMessage(waiting.Id);
         }
-
-        public static string AlreadyWaitingMessage(long submissionId) =>
-            $"Your earlier change to this board, submission #{submissionId}, is still waiting under {MaintainerScreenWording.ContributorQueueQuoted}. " +
-            "Approve or reject it there first - or make this change in its table there. A new change from here would replace it.";
 
         // ###########################################################################################
         // The file at `path` as BETA holds it - its hash from the tree's cache and its size from

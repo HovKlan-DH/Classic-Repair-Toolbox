@@ -462,6 +462,116 @@ public sealed class MainUpdateRequiredTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** THE FIRST DRAFT OF A RUN ASKS THE SERVER FIRST (code review, 2026-10-10). *** With no
+    // drafts and the Maintainer tab off, nothing had asked - so the guard above could not fire: the
+    // draft was made, the Drafts tab appeared, its first showing asked, and the answer covered the
+    // table just opened. Now "Edit board as draft" asks first and makes nothing; "Add a new board"
+    // after it finds the tab covered without asking again - one question a run.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_first_draft_of_a_run_asks_the_server_first_and_makes_nothing_when_turned_away()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+            DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
+
+            var (window, asked) = BuildWindow(ClientVersionContract.ApiRevision + 1);
+            window.EditAsDraftBoardOverrideForTests = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = excelDataFile };
+
+            // No drafts, the Maintainer tab off: StartAsync's question does not go out.
+            window.AllowApiRevisionQuestionForTests();
+            await SettleAsync(() => true);
+            Assert.Equal(0, asked());
+            Assert.False(window.TabDrafts.IsUpdateRequiredShown);
+
+            TextBlock problem = window.TabContribute.GetControl<TextBlock>("DraftProblemText");
+
+            await window.EditBoardAsDraftAsync();
+
+            Assert.Equal(1, asked());
+            Assert.True(window.TabDrafts.IsUpdateRequiredShown);
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile));
+            Assert.Equal(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered, problem.Text);
+
+            window.TabContribute.ShowDraftProblem(null);
+            await window.OpenNewBoardWindowAsync();
+
+            Assert.Equal(1, asked());
+            Assert.Equal(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered, problem.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** ONE RECORD OF "SUBMISSIONS TURNED AWAY" (code review, 2026-10-10). *** The minute
+    // submission check kept a flag of its own, set only by its own refusal: a 426 met by Submit, "My
+    // submissions" or the discard notice covered the Drafts tab while the check went on asking every
+    // minute - each refused, each asking /api/health again. Now whatever covers the Drafts tab stops
+    // the check, and the check's own refusal covers the tab. A Maintainer-only refusal stops nothing.
+    // ###########################################################################################
+    [Fact]
+    public async Task Whatever_turns_submissions_away_covers_the_Drafts_tab_and_stops_the_minute_check()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string Words = "Please update CRT.";
+
+            // A refusal met elsewhere - Submit, say.
+            var (refused, refusedAsked) = BuildWindow(ClientVersionContract.ApiRevision);
+            Assert.False(refused.SubmissionChecksOutdatedForTests);
+
+            refused.ReportApiOutdated(AppUpdateArea.Drafts, Words);
+            await SettleAsync(() => refusedAsked() == 1);
+
+            Assert.True(refused.TabDrafts.IsUpdateRequiredShown);
+            Assert.True(refused.SubmissionChecksOutdatedForTests);
+
+            // The server on a higher API revision.
+            var (behind, _) = BuildWindow(ClientVersionContract.ApiRevision + 1);
+            await behind.AskServerApiRevisionAsync();
+
+            Assert.True(behind.SubmissionChecksOutdatedForTests);
+
+            // The minute check's own refusal: the Drafts tab is covered too.
+            var (statusCheck, _) = BuildWindow(ClientVersionContract.ApiRevision);
+            statusCheck.ShowSubmissionChecksOutdated(Words);
+
+            Assert.True(statusCheck.SubmissionChecksOutdatedForTests);
+            Assert.True(statusCheck.TabDrafts.IsUpdateRequiredShown);
+            Assert.Equal(Words, statusCheck.TabDrafts.UpdateRequiredView!.Reason);
+
+            // A Maintainer-only refusal leaves submissions alone.
+            var (maintainerOnly, maintainerAsked) = BuildWindow(ClientVersionContract.ApiRevision);
+            maintainerOnly.ReportApiOutdated(AppUpdateArea.Maintainer, Words);
+            await SettleAsync(() => maintainerAsked() == 1);
+
+            Assert.False(maintainerOnly.SubmissionChecksOutdatedForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE COVER IS THE ONE RECORD (code review, 2026-10-10). *** The Maintainer tab kept a flag
+    // beside its overlay, set only by ShowUpdateRequired - the overlay shown any other way left the
+    // minute checks free to start. Now they read the overlay itself.
+    // ###########################################################################################
+    [Fact]
+    public void However_the_Maintainer_tab_is_covered_no_minute_check_starts()
+    {
+        UiTest.Run(() =>
+        {
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis");
+            var tab = MainUpdateRequiredTests.TabWithRememberedSession(session);
+
+            tab.UpdateRequired.Show(AppUpdateRequiredWording.For(AppUpdateArea.Maintainer, "Please update CRT.", null));
+            tab.RestoreSignInQuietly();
+
+            Assert.True(tab.IsUpdateRequiredShown);
+            Assert.False(tab.QueueChecksRunningForTests);
+            Assert.Same(session, tab.SignedIn);
+        });
+    }
+
     // A tab whose remembered sign-in and server are the test's own - never the user's file or the
     // real server.
     private static TabMaintainer TabWithRememberedSession(ReviewSession session)

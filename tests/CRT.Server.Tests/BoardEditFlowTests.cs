@@ -537,7 +537,7 @@ namespace CRT.Server.Tests
 
             BoardTableAnswer table = (await this.ReadAsync(store)).Answer!;
             Assert.False(table.MayEdit);
-            Assert.Equal(BoardEditFlow.AlreadyWaitingMessage(earlier), table.MayNotEditReason);
+            Assert.Equal(BoardEditWording.AlreadyWaitingMessage(earlier), table.MayNotEditReason);
 
             BoardEditOutcome sent = await this.PublishAsync(store, await this.EditedAsync(store));
 
@@ -672,7 +672,7 @@ namespace CRT.Server.Tests
             const string ContributorQueue = "\"Queue: Contributor submissions\"";
             const string BetaQueue = "\"Queue: Awaiting push from BETA to stable\"";
 
-            Assert.Contains($"still waiting under {ContributorQueue}.", BoardEditFlow.AlreadyWaitingMessage(57), StringComparison.Ordinal);
+            Assert.Contains($"still waiting under {ContributorQueue}.", BoardEditWording.AlreadyWaitingMessage(57), StringComparison.Ordinal);
             // A board BETA lacks no longer claims its first submission is in the queue (owner report,
             // 2026-10-04: said also for one whose only submission was turned down long ago) - the
             // Maintainer tab's stage line says where it is.

@@ -113,32 +113,39 @@ namespace CRT
         }
 
         private bool BetaTableNeedsReading() =>
-            !this.HoldsTableFor(this.ShownBoard?.BoardId) || (!this.HasUnsavedTableEdits && this.TableIsBehind());
+            !this.HoldsTableFor(this.ShownBoard?.BoardId) ||
+            (!this.HasUnsavedTableEdits && (this.TableIsBehind() || this.TableMayEditIsBehind()));
 
         // ###########################################################################################
         // Both tables, for "Compare sources": what is not held, or held but behind. Both are READ
         // first, then each is BUILT once against the other as it now is (ShowTables) - built as each
         // arrived, the stable source's was built twice for every compared board chosen (code review,
         // 2026-10-09).
+        //
+        // *** THE TWO REQUESTS GO OUT TOGETHER (code review, 2026-10-10). *** They are independent -
+        // each touches only its own half - and asked one after the other, every compared board chosen
+        // paid two round trips back to back under the "please wait". Both continue on the UI thread.
         // ###########################################################################################
         private async Task LoadBothTablesAsync()
         {
             if (this.ShownBoard is not { } board)
                 return;
 
-            BoardTableAnswer? stable = this.StableNeedsReading(BoardSection.BoardData)
-                ? await this.ReadStableTableForAsync(board)
-                : null;
+            Task<BoardTableAnswer?> stableRead = this.StableNeedsReading(BoardSection.BoardData)
+                ? this.ReadStableTableForAsync(board)
+                : Task.FromResult<BoardTableAnswer?>(null);
+
+            Task<BoardTableAnswer?> betaRead = this.BetaTableNeedsReading()
+                ? this.ReadTableForAsync(board)
+                : Task.FromResult<BoardTableAnswer?>(null);
+
+            await Task.WhenAll(stableRead, betaRead);
 
             if (!this.IsShowing(board))
                 return;
 
-            BoardTableAnswer? beta = this.BetaTableNeedsReading()
-                ? await this.ReadTableForAsync(board)
-                : null;
-
-            if (!this.IsShowing(board))
-                return;
+            BoardTableAnswer? stable = await stableRead;
+            BoardTableAnswer? beta = await betaRead;
 
             this.ShowTables(beta, betaMessage: null, stable);
 
@@ -152,6 +159,11 @@ namespace CRT
         private bool TableIsBehind() =>
             this.thisTableReadAt is { } readAt && this.ShownBoard is { } now &&
             QueueRefreshRules.BoardTableChanged(readAt, now, this.thisTableReadAtMaintainers, this.thisShownMaintainers);
+
+        // The board's detail, read after BETA's table, says otherwise about whether this account may
+        // change the board (thisMayEditSaid) - the table is behind, whatever its row says.
+        private bool TableMayEditIsBehind() =>
+            this.thisTable is { } table && this.thisMayEditSaid is bool said && table.MayEdit != said;
 
         private bool FilesAreBehind() =>
             this.thisFilesReadAt is { } readAt && this.ShownBoard is { } now &&
@@ -167,19 +179,23 @@ namespace CRT
         //
         // A table read just after a publish of its own takes this reading as the state it was read
         // at (thisTableReadAt null): reading it again would only replace the line saying what the
-        // publish did.
+        // publish did - UNLESS the board's detail, just read, says otherwise about whether it may be
+        // changed (code review, 2026-10-10): the board was promoted in between, say, and the table
+        // opened read-only would stay so, its panel gone, with nothing to read it again.
         // ###########################################################################################
         private async Task CatchUpWithBetaAsync(BoardOverviewEntry now)
         {
             if (this.HoldsTableFor(now.BoardId))
             {
-                if (this.thisTableReadAt is null)
+                bool mayEditMoved = this.TableMayEditIsBehind();
+
+                if (this.thisTableReadAt is null && !mayEditMoved)
                 {
                     this.thisTableReadAt = now;
                     this.thisTableReadAtMaintainers = this.thisShownMaintainers;
                 }
-                else if (QueueRefreshRules.BoardTableChanged(
-                    this.thisTableReadAt, now, this.thisTableReadAtMaintainers, this.thisShownMaintainers))
+                else if (mayEditMoved || (this.thisTableReadAt is { } readAt && QueueRefreshRules.BoardTableChanged(
+                    readAt, now, this.thisTableReadAtMaintainers, this.thisShownMaintainers)))
                 {
                     if (this.HasUnsavedTableEdits)
                         this.ShowTableNote(BoardSections.BetaMovedUnderChange);
@@ -229,6 +245,7 @@ namespace CRT
             this.ClearFiles();
             this.ForgetStableContent();
             this.thisShownMaintainers = null;
+            this.thisMayEditSaid = null;
         }
     }
 }

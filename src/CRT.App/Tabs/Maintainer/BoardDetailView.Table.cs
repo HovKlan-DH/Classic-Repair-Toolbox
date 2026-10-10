@@ -66,6 +66,16 @@ namespace CRT
         private IReadOnlyCollection<long>? thisTableReadAtMaintainers;
         private IReadOnlyCollection<long>? thisShownMaintainers;
 
+        // ###########################################################################################
+        // Whether this account may change the board on screen, as last said - by BETA's table or the
+        // board's detail, whichever was read last (the read-only panel's own rule); null while
+        // neither has said. A table that says otherwise than a detail read after it is behind
+        // (TableMayEditIsBehind; code review, 2026-10-10): a board promoted between a publish here
+        // and the next reading of its detail hid the panel, the table stayed read-only, and nothing
+        // read it again.
+        // ###########################################################################################
+        private bool? thisMayEditSaid;
+
         // The sheet last looked at in each board, so coming back to one opens it where it was left -
         // the submission table's own rule (TabMaintainer.Table.cs). For as long as CRT runs.
         private readonly Dictionary<string, string> thisSheetByBoard = new(StringComparer.Ordinal);
@@ -156,8 +166,15 @@ namespace CRT
             this.thisTableReadAtMaintainers = this.thisShownMaintainers;
         }
 
-        private bool IsShowing(BoardOverviewEntry board) =>
-            string.Equals(this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal);
+        // ###########################################################################################
+        // Whether an answer about a board is still about the board on screen - the ONE spelling of
+        // that question (code review, 2026-10-10: three coexisted), for every read, publish and
+        // board switch in this class.
+        // ###########################################################################################
+        private bool IsShowing(BoardOverviewEntry board) => this.IsShowing(board.BoardId);
+
+        private bool IsShowing(string? boardId) =>
+            boardId is not null && string.Equals(this.ShownBoard?.BoardId, boardId, StringComparison.Ordinal);
 
         private bool CanReadTable =>
             this.ReadTableOverrideForTests is not null || (this.thisClient is not null && this.thisSession is not null);
@@ -204,6 +221,10 @@ namespace CRT
             BoardTableAnswer? stable = this.StableToCompareWith(table.BoardId);
             this.thisTableComparedWith = stable;
 
+            // Wanted but not made - the stable source's table could not be read - said in the line.
+            string? notCompared = this.NotComparedReason(table.BoardId);
+            this.thisTableNotCompared = notCompared;
+
             if (this.thisClient is ReviewApiClient client)
             {
                 editor.FileSource = new PublishedTableFileSource(client, table.BetaDataUrl, this.LaunchFileAsync)
@@ -232,7 +253,7 @@ namespace CRT
             // Why it cannot be changed is the panel above the views (ShowReadOnlyNotice), never
             // this line - which says what a read-only table is compared with, when it is (code
             // review, 2026-10-09).
-            this.ShowTableNote(BoardSections.TableNote(table, comparedWithStable: stable is not null, said: message));
+            this.ShowTableNote(BoardSections.TableNote(table, comparedWithStable: stable is not null, said: message, notComparedReason: notCompared));
         }
 
         // ###########################################################################################
@@ -334,7 +355,7 @@ namespace CRT
                 }
                 else if (result.IsOk)
                 {
-                    await this.ReopenAfterSentAsync(table, BoardSections.SavedNotPublished(result.Value!));
+                    await this.ReopenAfterSentAsync(table, BoardSections.SavedNotPublished(result.Value!), result.Value!.SubmissionId);
                 }
             });
 
@@ -377,21 +398,24 @@ namespace CRT
         // waits, so the table opens on the server's own answer - read-only, with its reason. Reopening
         // the answer the table was read from left it editable, a second change was refused only at
         // Save, and nothing on the board's row (BoardTableChanged) moves to catch it. Not read
-        // again, it opens as it was read but not to be edited, saying why.
+        // again, it opens as it was read but not to be edited - and the amber panel says why in
+        // the server's own sentence for it (code review, 2026-10-10: the panel fell back to "You can
+        // look at this board's data, but not send a change to it", the real reason only in the grey
+        // line below).
         // ###########################################################################################
-        private async Task ReopenAfterSentAsync(BoardTableAnswer table, string line)
+        private async Task ReopenAfterSentAsync(BoardTableAnswer table, string line, long submissionId)
         {
             ReviewApiResult<BoardTableAnswer> fresh = this.CanReadTable
                 ? await this.ReadTableAsync(table.BoardId)
                 : ReviewApiResult<BoardTableAnswer>.Failed(ReviewApiFailure.Unreachable, WaitWording.NoAnswer);
 
-            if (!string.Equals(this.ShownBoard?.BoardId, table.BoardId, StringComparison.Ordinal))
+            if (!this.IsShowing(table.BoardId))
                 return;
 
             if (fresh.IsOk)
                 this.OpenTable(fresh.Value!, line);
             else
-                this.OpenTable(table with { MayEdit = false, MayNotEditReason = null }, line);
+                this.OpenTable(table with { MayEdit = false, MayNotEditReason = BoardEditWording.AlreadyWaitingMessage(submissionId) }, line);
 
             // Taken as the state read at the board's next reading, as after a publish.
             this.thisTableReadAt = null;
@@ -413,7 +437,7 @@ namespace CRT
                 ? await this.ReadTableAsync(boardId)
                 : ReviewApiResult<BoardTableAnswer>.Failed(ReviewApiFailure.Unreachable, WaitWording.NoAnswer);
 
-            if (!string.Equals(this.ShownBoard?.BoardId, boardId, StringComparison.Ordinal))
+            if (!this.IsShowing(boardId))
                 return;
 
             if (fresh.IsOk)
@@ -469,7 +493,7 @@ namespace CRT
                 return true;
             }
 
-            await BusyOverlay.HoldAsync(this, BoardSections.PublishingWait, () => this.ReopenAfterSentAsync(table, line));
+            await BusyOverlay.HoldAsync(this, BoardSections.PublishingWait, () => this.ReopenAfterSentAsync(table, line, found.Id));
 
             if (this.AfterSent is { } afterSent)
                 await afterSent(found.Id);
@@ -575,6 +599,7 @@ namespace CRT
             this.thisTableReadAt = null;
             this.thisTableReadAtMaintainers = null;
             this.thisTableComparedWith = null;
+            this.thisTableNotCompared = null;
             this.thisUnsentReason = null;
 
             BoardTableEditor editor = this.BoardTable;

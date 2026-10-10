@@ -261,13 +261,30 @@ public sealed class BoardPlacementDisplayTests
     public void A_submission_for_an_unplaced_new_board_says_so_above_its_table()
     {
         Assert.Contains(
-            "cannot be approved. Place it on the Boards screen first.",
+            "no place in CRT's drop-down lists yet, so it cannot be approved",
             BoardPlacementDisplay.ReviewLine(BoardPlacementDisplayTests.Listing(BoardPlacementDisplayTests.Entry()), Open128));
 
         Assert.Null(BoardPlacementDisplay.ReviewLine(
             BoardPlacementDisplayTests.Listing(BoardPlacementDisplayTests.Entry(new BoardPlacement("H", "B", string.Empty, null))), Open128));
         Assert.Null(BoardPlacementDisplay.ReviewLine(BoardPlacementDisplayTests.Listing(), "Commodore/C64/250407"));
         Assert.Null(BoardPlacementDisplay.ReviewLine(null, Open128));
+    }
+
+    // The maintainer reading it may not know how a new board gets its place (owner request,
+    // 2026-10-10), so it says who may give it one - the server's rule: the administrator or a
+    // maintainer of the board - and where: the Boards screen, the board's Maintainer view, and the
+    // placement panel's own heading, so renaming either cannot leave the line pointing at nothing.
+    [Fact]
+    public void The_unplaced_line_says_who_places_the_board_and_where()
+    {
+        string? line = BoardPlacementDisplay.ReviewLine(BoardPlacementDisplayTests.Listing(BoardPlacementDisplayTests.Entry()), Open128);
+
+        Assert.NotNull(line);
+        Assert.Contains("The administrator or a maintainer of this board gives it that place", line);
+        Assert.Contains($"on the {MaintainerScreenWording.Boards} screen, choose this board", line);
+        Assert.Contains($"open its {BoardSections.Label(BoardSection.Maintainer)} view", line);
+        Assert.Contains($"under \"{BoardPlacementDisplay.Heading}\"", line);
+        Assert.Contains("It can be approved once its place is saved.", line);
     }
 
     [Fact]

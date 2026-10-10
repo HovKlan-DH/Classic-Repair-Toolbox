@@ -73,7 +73,7 @@ namespace CRT
         {
             // The server turns this CRT away: every check would be answered "update CRT"
             // (TabMaintainer.UpdateRequired.cs) - a remembered sign-in restored after that starts none.
-            if (this.thisUpdateRequired)
+            if (this.IsUpdateRequiredShown)
                 return;
 
             if (this.thisQueueTimer is null)
@@ -81,6 +81,13 @@ namespace CRT
                 this.thisQueueTimer = new DispatcherTimer { Interval = QueueRefreshRules.PollInterval };
                 this.thisQueueTimer.Tick += async (_, _) =>
                 {
+                    // Covered since the last tick, however it came: no more checks.
+                    if (this.IsUpdateRequiredShown)
+                    {
+                        this.StopQueueChecks();
+                        return;
+                    }
+
                     switch (QueueRefreshRules.MinuteCheck(this.IsOnScreenAndInFront, this.thisTabBadgeCanBeSeen?.Invoke() == true))
                     {
                         case QueueCheck.Everything:

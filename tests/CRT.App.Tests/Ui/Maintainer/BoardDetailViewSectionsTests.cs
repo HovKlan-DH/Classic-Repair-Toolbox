@@ -496,7 +496,12 @@ public sealed class BoardDetailViewSectionsTests
         });
     }
 
-    // Not read again: the table as it was read, but not to be edited, saying why.
+    // ###########################################################################################
+    // Not read again: the table as it was read, but not to be edited, saying why - and the amber
+    // panel says WHY in the server's own sentence for a change still waiting, naming its submission
+    // (code review, 2026-10-10: it said only "You can look at this board's data, but not send a
+    // change to it", the real reason left to the grey line below).
+    // ###########################################################################################
     [Fact]
     public async Task A_change_made_but_not_published_whose_table_cannot_be_read_again_is_still_read_only()
     {
@@ -515,7 +520,8 @@ public sealed class BoardDetailViewSectionsTests
             Assert.True(view.BoardTableForTests.HasTable);
             Assert.True(view.BoardTableForTests.IsReadOnly);
             Assert.Equal(BoardSections.SavedNotPublished(notPublished), BoardDetailViewSectionsTests.Status(view));
-            Assert.Equal(BoardSections.ReadOnlyReason(mayEdit: false, null), view.ReadOnlyNoticeForTests);
+            Assert.Equal(BoardEditWording.AlreadyWaitingMessage(58), view.ReadOnlyNoticeForTests);
+            Assert.Contains("submission #58", view.ReadOnlyNoticeForTests, StringComparison.Ordinal);
         });
     }
 
