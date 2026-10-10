@@ -98,8 +98,12 @@ namespace Handlers.MaintainerHandling
         // against and what a save does; one that cannot says only what it is compared with, when
         // compared (code review, 2026-10-09: its colours were otherwise explained nowhere) - why it
         // cannot be changed is the panel's (ReadOnlyReason). Null when there is nothing to say.
+        //
+        // `notComparedReason`: "Compare sources" is ticked but the stable source's table could not be
+        // read - said after `said` (NotComparedLine), since the table is then coloured against
+        // nothing but itself.
         // ###########################################################################################
-        public static string? TableNote(BoardTableAnswer table, bool comparedWithStable, string? said = null)
+        public static string? TableNote(BoardTableAnswer table, bool comparedWithStable, string? said = null, string? notComparedReason = null)
         {
             ArgumentNullException.ThrowIfNull(table);
 
@@ -119,13 +123,32 @@ namespace Handlers.MaintainerHandling
                 what = comparedWithStable ? BoardSections.ComparedReadOnlyLine : null;
             }
 
-            string note = string.Join(" ", new[] { said?.Trim(), what }.Where(part => !string.IsNullOrWhiteSpace(part)));
+            string? notCompared = notComparedReason is null ? null : BoardSections.NotComparedLine(notComparedReason);
+
+            string note = string.Join(" ", new[] { said?.Trim(), notCompared, what }.Where(part => !string.IsNullOrWhiteSpace(part)));
 
             return note.Length == 0 ? null : note;
         }
 
         public const string ComparedReadOnlyLine =
             "BETA's board compared with the stable source - everything that differs from it is marked.";
+
+        // ###########################################################################################
+        // "COMPARE SOURCES" TICKED, BUT THE STABLE SOURCE'S TABLE COULD NOT BE READ (code review,
+        // 2026-10-10). BETA's table is then coloured against itself - every row white - under a box
+        // still ticked, and read as "BETA and stable are the same" while the failure was said only on
+        // the stable half, hidden behind the switch. So BETA's line says it too, with the stable
+        // read's own reason, and how to try again: coming back to Board data reads what is missing.
+        // ###########################################################################################
+        public static string NotComparedLine(string? reason)
+        {
+            string why = string.IsNullOrWhiteSpace(reason) ? "Its table could not be read." : reason.Trim();
+
+            if (!why.EndsWith('.') && !why.EndsWith('!') && !why.EndsWith('?'))
+                why += ".";
+
+            return $"Not compared with the stable source. {why} Choose another view and come back to Board data to try again.";
+        }
 
         // ###########################################################################################
         // "COMPARE SOURCES" (owner request, 2026-10-09: "a 'Compare sources' checkbox shown right after

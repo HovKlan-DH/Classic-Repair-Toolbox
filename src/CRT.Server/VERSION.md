@@ -82,6 +82,7 @@ this"); a CRT built for a lower one is told to update.
 
 | Version | Date | Bump | API | What changed for a caller |
 | --- | --- | --- | --- | --- |
+| `1.0.1` | 2026-10-10 | PATCH | 1 | Nothing changed for a caller. The read-only reason a board's table carries while this account's earlier change of it still waits ("Your earlier change to this board, submission #N, is still waiting ...") is now written once in CRT.Data (`BoardEditWording`), so CRT's Maintainer tab says the same words when it cannot read the table again after such a change. Same sentence, same answers. |
 | `1.0.0` | 2026-10-09 | - | 1 | **The numbering restarts here again** (owner request, 2026-10-09: the contribution data was reset again, and nothing had been released to anybody but the project owner). Nothing changed for a caller: this is the service as the first restart's numbering left it at 2.1.0 - every route, field and rule of the rows under "Before the second restart" and "Before the restart" - with the **API version back at 1**, which now stands for the API with "board" everywhere. So a CRT built before 2026-10-09 - built for API 1 as it was then, with "system" in its routes - is no longer told to update, and fails instead; none was ever given to anybody else. |
 
 ## Before the second restart (2026-10-05 to 2026-10-09)

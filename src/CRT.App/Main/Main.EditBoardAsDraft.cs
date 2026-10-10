@@ -21,7 +21,9 @@ namespace CRT
     //   - A draft already: DraftExistsWindow says so and offers it - "Open the draft" lands on the
     //     same table. Nothing is written.
     //   - The Drafts tab says "CRT has to be updated" (code review, 2026-10-09): nothing is made or
-    //     opened - its table is out of reach under the cover - and the Contribute tab says why.
+    //     opened - its table is out of reach under the cover - and the Contribute tab says why. The
+    //     first draft of a run asks the server first (AskApiRevisionBeforeFirstDraftAsync, code
+    //     review 2026-10-10), so this holds on a machine whose Drafts tab was never in use.
     // ###########################################################################################
     public partial class Main
     {
@@ -45,6 +47,9 @@ namespace CRT
             string excelDataFile = entry.ExcelDataFile;
 
             this.TabContribute.ShowDraftProblem(null);
+
+            // The first draft of a run: the server is asked first, so the guard below can fire.
+            await this.AskApiRevisionBeforeFirstDraftAsync();
 
             if (this.TabDrafts.IsUpdateRequiredShown)
             {

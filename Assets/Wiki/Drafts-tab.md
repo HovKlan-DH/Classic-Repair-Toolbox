@@ -347,8 +347,8 @@ and the cross closes the notice.
 
 Now and then the server that drafts are sent to changes in a way an older CRT cannot follow. While
 you have drafts (or the [Maintainer tab](Maintainer-tab) is turned on), CRT asks the server about this
-when it starts - or when your first draft appears - and it notices it whenever the server answers
-that way. The whole Drafts tab is then covered by **CRT has to be updated**, which cannot be closed:
+when it starts - or, with no drafts yet, as soon as **Edit board as draft** or **Add a new board** is
+pressed, before your first draft is made - and it notices it whenever the server answers that way. The whole Drafts tab is then covered by **CRT has to be updated**, which cannot be closed:
 until CRT is updated, drafts cannot be submitted and the server cannot be asked how your submissions
 are getting on. Your drafts stay on this computer, untouched, and are all there again after the
 update. Everything else in CRT works as before.

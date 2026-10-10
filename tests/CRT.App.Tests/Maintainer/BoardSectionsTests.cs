@@ -320,4 +320,34 @@ public sealed class BoardSectionsTests
         Assert.Contains("straight to BETA", compared, StringComparison.Ordinal);
         Assert.Contains("only what you change is marked", BoardSections.TableNote(table, comparedWithStable: false), StringComparison.Ordinal);
     }
+
+    // ###########################################################################################
+    // *** A COMPARISON THAT COULD NOT BE MADE SAYS SO (code review, 2026-10-10). *** With the stable
+    // source's table not read, BETA's table is all white under a ticked box - read as "the same" -
+    // so its line says it was not compared, why (the stable read's own words, kept whole as a
+    // sentence), and how to try again. After what a publish did; before what the table is. A
+    // read-only table, which otherwise says nothing, says it too.
+    // ###########################################################################################
+    [Fact]
+    public void A_table_that_could_not_be_compared_says_why_and_how_to_try_again()
+    {
+        Assert.Equal(
+            "Not compared with the stable source. The server could not be reached. Choose another view and come back to Board data to try again.",
+            BoardSections.NotComparedLine(" The server could not be reached "));
+        Assert.Equal(
+            "Not compared with the stable source. Is it there? Choose another view and come back to Board data to try again.",
+            BoardSections.NotComparedLine("Is it there?"));
+        Assert.Equal(
+            "Not compared with the stable source. Its table could not be read. Choose another view and come back to Board data to try again.",
+            BoardSections.NotComparedLine(null));
+
+        var editable = new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: true);
+        string note = BoardSections.TableNote(editable, comparedWithStable: false, said: "Published to BETA.", notComparedReason: "No answer.")!;
+
+        Assert.StartsWith("Published to BETA. " + BoardSections.NotComparedLine("No answer."), note, StringComparison.Ordinal);
+        Assert.EndsWith(BoardSections.TableNote(editable, comparedWithStable: false)!, note, StringComparison.Ordinal);
+
+        var readOnly = new BoardTableAnswer(BoardSectionsTests.BoardId, "f", new SubmissionRows(), MayEdit: false, "It waits in BETA.");
+        Assert.Equal(BoardSections.NotComparedLine("No answer."), BoardSections.TableNote(readOnly, comparedWithStable: false, notComparedReason: "No answer."));
+    }
 }

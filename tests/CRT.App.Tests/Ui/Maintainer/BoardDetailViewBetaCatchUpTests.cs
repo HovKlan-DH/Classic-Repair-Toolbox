@@ -247,4 +247,74 @@ public sealed class BoardDetailViewBetaCatchUpTests
             Assert.False(view.HoldsFilesForTests(BoardId));
         });
     }
+
+    // ###########################################################################################
+    // *** A DETAIL THAT SAYS OTHERWISE THAN THE TABLE READS IT AGAIN (code review, 2026-10-10). ***
+    // After a publish here the table opens read-only - the board waits under BETA > Stable - and the
+    // next reading of the board is taken as the state it was read at. Promoted before that reading,
+    // the board's detail says it may be changed: the panel went, the table stayed read-only, and
+    // nothing read it again - not even Board data shown again. Now the table is read again; and if
+    // that fails, Board data shown again tries again.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_read_only_table_is_read_again_when_the_boards_detail_says_it_may_now_be_changed()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardOverviewEntry waiting = Board("bbb", awaiting: true);
+            BoardOverviewEntry promoted = Board("bbb", awaiting: false);
+            var view = new BoardDetailView();
+            Show(view, waiting);
+
+            // As after a publish here: read-only, read at the board's next reading.
+            view.OpenTableForTests(Table(After(), mayEdit: false), readAt: null);
+            Assert.True(view.BoardTableForTests.IsReadOnly);
+
+            int reads = 0;
+            view.ReadTableOverrideForTests = _ => Task.FromResult(++reads == 1
+                ? ReviewApiResult<BoardTableAnswer>.Failed(ReviewApiFailure.Unreachable, "No answer.")
+                : ReviewApiResult<BoardTableAnswer>.Ok(Table(After(), mayEdit: true)));
+
+            // The first reading after the publish: the board promoted meanwhile.
+            view.ShowDetailForTests(new BoardDetailAnswer(promoted, [], [], [], MayEdit: true));
+            await view.CatchUpWithBetaForTests(promoted);
+
+            // Read again - which failed: still read-only, and Board data shown again tries again.
+            Assert.Equal(1, reads);
+            Assert.True(view.BoardTableForTests.IsReadOnly);
+
+            await view.ShowSectionAsync(BoardSection.BoardData);
+
+            Assert.Equal(2, reads);
+            Assert.False(view.BoardTableForTests.IsReadOnly);
+            Assert.Equal(string.Empty, view.ReadOnlyNoticeForTests);
+        });
+    }
+
+    // A detail that agrees with the table read after a publish reads nothing - the publish's own rule.
+    [Fact]
+    public async Task A_read_only_table_is_not_read_again_when_the_boards_detail_agrees()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardOverviewEntry waiting = Board("bbb", awaiting: true);
+            var view = new BoardDetailView();
+            Show(view, waiting);
+            view.OpenTableForTests(Table(After(), mayEdit: false), readAt: null);
+
+            int reads = 0;
+            view.ReadTableOverrideForTests = _ =>
+            {
+                reads++;
+                return Task.FromResult(ReviewApiResult<BoardTableAnswer>.Ok(Table(After(), mayEdit: false)));
+            };
+
+            view.ShowDetailForTests(new BoardDetailAnswer(waiting, [], [], [], MayEdit: false, MayNotEditReason: "It waits."));
+            await view.CatchUpWithBetaForTests(waiting);
+            await view.ShowSectionAsync(BoardSection.BoardData);
+
+            Assert.Equal(0, reads);
+            Assert.True(view.BoardTableForTests.IsReadOnly);
+        });
+    }
 }

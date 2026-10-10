@@ -29,6 +29,12 @@ namespace CRT
     //
     // *** EVERY TABLE READ GOES THROUGH ShowTables, *** so each is built once, and the other follows.
     //
+    // *** A COMPARISON THAT COULD NOT BE MADE SAYS SO ON BETA'S TABLE (code review, 2026-10-10). ***
+    // Ticked, with the stable source's table not read (a failed request, say), BETA's table is
+    // coloured against itself - all white, under a box still ticked - and the failure was said only
+    // on the stable half, hidden behind the switch. So why it is not compared is part of what BETA's
+    // table is built against (NotComparedReason), and its line says it (BoardSections.NotComparedLine).
+    //
     // What a save SENDS does not move with it: a save sends BETA's live rows applied to BETA as it
     // was read (BoardSections.RowsToSend) - never the stable source's rows drawn as deleted.
     //
@@ -44,6 +50,10 @@ namespace CRT
         // What each table was built against: the OTHER source's answer, or null - itself as opened.
         private BoardTableAnswer? thisTableComparedWith;
         private BoardTableAnswer? thisStableComparedWith;
+
+        // Why BETA's table was built against itself although a comparison was wanted, or null - what
+        // its line said (see the header).
+        private string? thisTableNotCompared;
 
         // Whether the two tables are compared - ticked, and the board in both sources.
         private bool ComparesSources => this.thisCompareWanted && BoardSections.CanCompareSources(this.ShownBoard);
@@ -132,6 +142,7 @@ namespace CRT
                 this.BuildTable(betaMessage);
 
                 // Why it cannot be changed, as just read - the board's detail says it too.
+                this.thisMayEditSaid = beta.MayEdit;
                 this.ShowReadOnlyNotice(BoardSections.ReadOnlyReason(beta));
             }
 
@@ -139,14 +150,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Builds each table held again when what it is compared with is not what it should be now.
-        // Never BETA's under a change not saved, nor under a cell still being typed in - it keeps
-        // what it was built against until saved, or until the cell is done (WireCompare).
+        // Builds each table held again when what it is compared with is not what it should be now -
+        // for BETA's, also when why it could not be compared moved. Never BETA's under a change not
+        // saved, nor under a cell still being typed in - it keeps what it was built against until
+        // saved, or until the cell is done (WireCompare).
         // ###########################################################################################
         private void ApplyComparison()
         {
             if (this.thisTable is { } beta &&
-                !ReferenceEquals(this.thisTableComparedWith, this.StableToCompareWith(beta.BoardId)) &&
+                (!ReferenceEquals(this.thisTableComparedWith, this.StableToCompareWith(beta.BoardId)) ||
+                 !string.Equals(this.thisTableNotCompared, this.NotComparedReason(beta.BoardId), StringComparison.Ordinal)) &&
                 !this.HasUnsavedTableEdits &&
                 !this.BoardTable.IsEditingCell)
             {
@@ -172,6 +185,11 @@ namespace CRT
         // And the stable source's: BETA's table as read.
         private BoardTableAnswer? BetaToCompareWith(string boardId) =>
             this.ComparesSources && this.HoldsTableFor(boardId) ? this.thisTable : null;
+
+        // Why BETA's table of `boardId` is not compared although it is to be: the stable source's
+        // table is not held because it could not be read - or null.
+        private string? NotComparedReason(string boardId) =>
+            this.ComparesSources && !this.HoldsStableTableFor(boardId) ? this.thisStableNotRead : null;
 
         // ###########################################################################################
         // The box: with Board data only, ticked as wanted, and off - saying why - when the board is

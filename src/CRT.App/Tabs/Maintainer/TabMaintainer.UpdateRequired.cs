@@ -20,17 +20,18 @@ namespace CRT
     // ###########################################################################################
     public partial class TabMaintainer
     {
-        // Set by the first ShowUpdateRequired - StartQueueChecks does nothing from then on.
-        private bool thisUpdateRequired;
-
         // Covers the tab, or - covered already - says `view` instead.
         internal void ShowUpdateRequired(AppUpdateRequiredView view)
         {
-            this.thisUpdateRequired = true;
             this.StopQueueChecks();
             this.UpdateRequired.Show(view);
         }
 
+        // ###########################################################################################
+        // Whether the tab is covered - THE one record of it (code review, 2026-10-10: a flag beside
+        // the overlay said the same and could drift from it). StartQueueChecks, every minute check
+        // and both leaving prompts read it, so the checks stay stopped however the overlay came.
+        // ###########################################################################################
         internal bool IsUpdateRequiredShown => this.UpdateRequired.IsShown;
 
         // What the overlay says, or null while the tab is not covered.

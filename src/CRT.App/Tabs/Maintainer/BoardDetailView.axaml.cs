@@ -131,8 +131,7 @@ namespace CRT
         {
             int request = ++this.thisRequest;
 
-            bool sameBoard = board is not null && string.Equals(
-                this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal);
+            bool sameBoard = board is not null && this.IsShowing(board);
 
             bool quiet = keepShown && sameBoard;
 
@@ -208,9 +207,13 @@ namespace CRT
             this.ShowSections(detail);
 
             // Why BETA's table cannot be changed, above whichever view is open (code review,
-            // 2026-10-09) - not known from an older server, which leaves it to the table.
+            // 2026-10-09) - not known from an older server, which leaves it to the table. A table
+            // held that says otherwise is read again (CatchUpWithBetaAsync, TableMayEditIsBehind).
             if (detail.MayEdit is bool mayEdit)
+            {
+                this.thisMayEditSaid = mayEdit;
                 this.ShowReadOnlyNotice(BoardSections.ReadOnlyReason(mayEdit, detail.MayNotEditReason));
+            }
         }
 
         // ###########################################################################################

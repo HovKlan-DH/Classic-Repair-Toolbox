@@ -43,7 +43,7 @@ namespace CRT
 
             ReviewApiResult<BoardFilesAnswer> answer = await client.GetBoardFilesAsync(session, board.BoardId);
 
-            if (!string.Equals(this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal))
+            if (!this.IsShowing(board))
                 return;
 
             if (!answer.IsOk)

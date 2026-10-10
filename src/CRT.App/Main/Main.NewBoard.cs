@@ -36,7 +36,10 @@ namespace CRT
         {
             // The next step is in the Drafts tab, which says "CRT has to be updated" - out of reach
             // under its cover. Nothing is asked or made, and the Contribute tab says why (code
-            // review, 2026-10-09).
+            // review, 2026-10-09). The first draft of a run asks the server first, so this can fire
+            // (code review, 2026-10-10; Main.UpdateRequired.cs).
+            await this.AskApiRevisionBeforeFirstDraftAsync();
+
             if (this.TabDrafts.IsUpdateRequiredShown)
             {
                 this.TabContribute.ShowDraftProblem(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered);

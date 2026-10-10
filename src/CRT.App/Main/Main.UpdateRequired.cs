@@ -97,6 +97,26 @@ namespace CRT
             _ = this.AskServerApiRevisionAsync();
         }
 
+        // ###########################################################################################
+        // *** BEFORE THE FIRST DRAFT, THE REVISION IS ASKED - AND WAITED FOR (code review,
+        // 2026-10-10). *** "Edit board as draft" and "Add a new board" make nothing while the Drafts
+        // tab is covered. But on a machine with no drafts and the Maintainer tab off nothing had
+        // asked yet (AsksServer), so their guard could not fire: the draft was made, the tab
+        // appeared, its first showing asked - and the answer covered the table just opened. So the
+        // two ask first, under the window's "please wait", when nothing has asked in this run. It
+        // is the question the tab's first showing asks anyway, only sooner: no extra request. No
+        // answer is not a refusal - the draft is made as before. Nothing before StartAsync.
+        // ###########################################################################################
+        internal async Task AskApiRevisionBeforeFirstDraftAsync()
+        {
+            if (!this.thisMayAskApiRevision || this.thisAskedApiRevisionInUse)
+                return;
+
+            this.thisAskedApiRevisionInUse = true;
+
+            await BusyOverlay.RunAsync(this, CrtWaitWording.CheckingDraftsWithServer, _ => this.AskServerApiRevisionAsync());
+        }
+
         private void StopAppUpdateRequiredChecks() =>
             ApiOutdatedSignal.Raised -= this.OnApiOutdatedSignal;
 

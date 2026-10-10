@@ -35,6 +35,10 @@ namespace CRT
         private BoardTableAnswer? thisStableTable;
         private BoardOverviewEntry? thisStableTableReadAt;
 
+        // Why the stable source's table could not be read for the board on screen, or null - said
+        // on BETA's table too while it is to be compared with it (BoardDetailView.Compare.cs).
+        private string? thisStableNotRead;
+
         // The board the stable files are held for, and as it was when they were read.
         private string? thisStableFilesFor;
         private BoardOverviewEntry? thisStableFilesReadAt;
@@ -173,6 +177,7 @@ namespace CRT
         // The stable source's table of `board` as the server answers it, or null - with why said
         // above it. A board the stable source does not hold, and an older server's answer that is
         // BETA's, close the stable table. Null too for an answer about a board no longer chosen.
+        // Why it was not read is kept (thisStableNotRead) for BETA's table, compared with it.
         // ###########################################################################################
         private async Task<BoardTableAnswer?> ReadStableTableForAsync(BoardOverviewEntry board)
         {
@@ -180,6 +185,7 @@ namespace CRT
                 return null;
 
             WindowMessage.Show(this.FindControl<TextBlock>("StableTableMessageText"), null, isError: false);
+            this.thisStableNotRead = null;
 
             ReviewApiResult<BoardTableAnswer> result = await this.ReadStableTableAsync(board.BoardId);
 
@@ -197,6 +203,7 @@ namespace CRT
                     result.Message,
                     isError: result.Failure != ReviewApiFailure.NotFound);
 
+                this.thisStableNotRead = result.Message;
                 return null;
             }
 
@@ -205,6 +212,7 @@ namespace CRT
             {
                 this.CloseStableTable();
                 WindowMessage.Show(this.FindControl<TextBlock>("StableTableMessageText"), BoardSections.StableNeedsNewerServer, isError: true);
+                this.thisStableNotRead = BoardSections.StableNeedsNewerServer;
                 return null;
             }
 
@@ -296,6 +304,7 @@ namespace CRT
             this.thisStableTable = null;
             this.thisStableTableReadAt = null;
             this.thisStableComparedWith = null;
+            this.thisStableNotRead = null;
 
             BoardTableEditor editor = this.StableBoardTable;
             editor.Clear();
@@ -319,7 +328,7 @@ namespace CRT
 
             ReviewApiResult<BoardFilesAnswer> answer = await client.GetBoardFilesAsync(session, board.BoardId, DataTreeNames.Production);
 
-            if (!string.Equals(this.ShownBoard?.BoardId, board.BoardId, StringComparison.Ordinal))
+            if (!this.IsShowing(board))
                 return;
 
             if (!answer.IsOk)
