@@ -30,13 +30,15 @@ namespace CRT
         // lifecycle (position/size/placement/closing), the tab-visibility switches, and the small
         // shared helpers several other files call into. The others:
         //
-        //   Main.Updates.cs           - app update banner, install, data-sync banner and flow
+        //   Main.Updates.cs           - app update notice, install, data-sync notice and flow
         //   Main.BoardSelection.cs    - hardware/board drop-downs, board loading, catalogue visibility
         //   Main.SchematicsWindows.cs - detached thumbnails window, fullscreen schematics window
         //   Main.Worklog.cs           - worklog bar, workbook activation, worklog entry mode
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
+        //   Main.Notices.cs           - what the notice cards over the tabs' bottom-right corner share
+        //   Main.NoticeDemo.cs        - "--demo-notices": every notice played once after launch
         //   Main.NewBoard.cs         - "Add a new board": the create dialog, draft creation, navigation
         //   Main.EditBoardAsDraft.cs - "Edit board as draft": a draft of the board shown, or the one there is
         //   Main.DraftDrift.cs        - the "official data moved under your draft" banner and report
@@ -48,6 +50,8 @@ namespace CRT
         //   Main.SubmissionChecks.cs  - the Drafts tab's badge, and asking about sent submissions while CRT runs
         //   Main.UpdateRequired.cs    - "CRT has to be updated" over the Drafts and Maintainer tabs when
         //                               the server turns this version away (API revision, or a 426)
+        //   Main.SchematicRenames.cs  - a schematic image renamed (published, or in a draft): this
+        //                               machine's worklogs and settings that name it follow
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -100,8 +104,6 @@ namespace CRT
         private int _dataSyncStatusIconSpinRequestCount;
         private double _dataSyncStatusIconSpinAngle;
         private bool _isHoveringDataSyncStatusIcon;
-
-        private string _currentSyncFileRelativePath = string.Empty;
 
         // ###########################################################################################
         // The workbook id the "Show worklogs" checkbox is currently showing entries for (0 when
@@ -300,6 +302,10 @@ namespace CRT
                 this.OnModeHintDismissPointerPressed,
                 RoutingStrategies.Tunnel);
 
+            // The notices: sized to the tabs, and a card that has just appeared lets clicks through
+            // for a moment (Main.Notices.cs).
+            this.WireNotices();
+
             // Subscribe to splitter pointer-release to persist positions when a drag ends.
             // handledEventsToo: true is required because GridSplitter marks the event as handled.
             this.MainSplitter.AddHandler(
@@ -480,6 +486,13 @@ namespace CRT
                 this.StartAppUpdateRequiredChecks();
 
                 await this.StartBackgroundSyncAsync();
+
+                // "--demo-notices": every notice once, after the launch check has said its piece
+                // (Main.NoticeDemo.cs). Not awaited; it catches its own failures.
+                if (SimulationOptions.Current.DemoNotices)
+                {
+                    _ = this.PlayNoticeDemoAsync();
+                }
 
                 // ###########################################################################################
                 // ASK THE SERVER WHETHER A MAINTAINER HAS REPLIED (owner report, 2026-09-22).

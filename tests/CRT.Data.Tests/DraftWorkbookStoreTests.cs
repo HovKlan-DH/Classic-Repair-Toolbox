@@ -238,6 +238,31 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A WRITE WHOSE SIDECAR FAILS CHANGED NOTHING (code review, 2026-10-11). *** The sidecar is
+    // written after the workbook has been moved into place, and a failure there answered "not
+    // saved" with the NEW workbook already on disk - "Schematic images" then deleted the images it
+    // had copied, and the draft's new rows named files that were gone. The workbook goes back as it
+    // was. The sidecar's place is taken by a folder, so its write fails on every system.
+    // ###########################################################################################
+    [Fact]
+    public void A_write_whose_sidecar_cannot_be_written_puts_the_workbook_back()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+        byte[] before = File.ReadAllBytes(this.WorkbookPath);
+
+        Directory.CreateDirectory(BoardComponentHighlightStorage.GetJsonPath(this.WorkbookPath));
+
+        bool saved = DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU (corrected)"));
+
+        Assert.False(saved);
+        Assert.Equal(before, File.ReadAllBytes(this.WorkbookPath));
+        Assert.Equal("CPU", DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!.Components.Single().FriendlyName);
+    }
+
+    // ###########################################################################################
     // *** HIGHLIGHTS ARE SAVED, AND THIS TEST EXISTS BECAUSE THEY WERE NOT (found 2026-09-23). ***
     //
     // BoardWorkbookSchema has NO SHEET for ComponentHighlights - BoardDataReader loads them from
@@ -601,5 +626,252 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Assert.Equal(
             DraftWorkbookEditOutcome.NoDraft,
             DraftWorkbookStore.EditIfUnchanged(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "anything", board => board));
+    }
+
+    // ------------------------------------------------------------------ Renaming a schematic image
+    //
+    // Owner request, 2026-10-10: rename an image in the "Schematic images" window. The name is a key
+    // in the sidecar too, so the rename has to carry the image's highlights and calibration.
+
+    // A draft with two images, a highlight on each, and a calibration for the first.
+    private void CreateDraftWithTwoImages()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+
+        DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board =>
+            {
+                var updated = DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU");
+                updated.Schematics.Add(new BoardSchematicEntry { SchematicName = "Top", CadName = "Open128 - PCB Top", SchematicImageFile = "Commodore/C64/250407/top.png" });
+                updated.Schematics.Add(new BoardSchematicEntry { SchematicName = "Bottom", SchematicImageFile = "Commodore/C64/250407/bottom.png" });
+                updated.ComponentHighlights.Add(new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U8", X = "10", Y = "20", Width = "30", Height = "40" });
+                updated.ComponentHighlights.Add(new ComponentHighlightEntry { SchematicName = "Bottom", BoardLabel = "U8", X = "1", Y = "2", Width = "3", Height = "4" });
+
+                return updated;
+            });
+
+        BoardComponentHighlightStorage.SaveKiCadCalibration(
+            this.WorkbookPath, "Top", "Open128 - PCB Top", 1.0, 2.0, 3.5, 4.0, true, false);
+    }
+
+    // The "Top" row as the window points at it: its name and its image file.
+    private static readonly SchematicRowRef TopRow = new("Top", "Commodore/C64/250407/top.png");
+
+    // ###########################################################################################
+    // *** THE CALIBRATION SURVIVES THE RENAME. *** An ordinary Edit collects calibrations under
+    // the board's names AFTER the change, and the sidecar still filed this one under the old name -
+    // it was dropped. The rename collects them before and moves the one.
+    // ###########################################################################################
+    [Fact]
+    public void Renaming_an_image_carries_its_highlights_and_its_calibration_to_the_new_name()
+    {
+        this.CreateDraftWithTwoImages();
+
+        Assert.Equal(
+            SchematicRenameOutcome.Renamed,
+            DraftWorkbookStore.RenameSchematic(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.TopRow, " PCB; Top "));
+
+        BoardData board = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!;
+
+        Assert.Equal(["PCB; Top", "Bottom"], board.Schematics.Select(entry => entry.SchematicName));
+        Assert.Equal("Open128 - PCB Top", board.Schematics[0].CadName);
+        Assert.Equal(
+            ["Bottom/U8", "PCB; Top/U8"],
+            board.ComponentHighlights.Select(highlight => $"{highlight.SchematicName}/{highlight.BoardLabel}").Order());
+
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "PCB; Top", out string cadName, out _, out _, out double scaleX, out _, out bool mirrorX, out _));
+        Assert.Equal("Open128 - PCB Top", cadName);
+        Assert.Equal(3.5, scaleX);
+        Assert.True(mirrorX);
+
+        Assert.False(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "Top", out _, out _, out _, out _, out _, out _, out _));
+
+        // The board is still a board: its other sheets and its caption untouched.
+        Assert.Equal("CPU", board.Components.Single().FriendlyName);
+    }
+
+    // The sidecar files by the exact name, so "top" to "Top" has to move the calibration too.
+    [Fact]
+    public void A_change_of_capitals_alone_keeps_the_calibration()
+    {
+        this.CreateDraftWithTwoImages();
+
+        Assert.Equal(
+            SchematicRenameOutcome.Renamed,
+            DraftWorkbookStore.RenameSchematic(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.TopRow, "TOP"));
+
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "TOP", out _, out _, out _, out double scaleX, out _, out _, out _));
+        Assert.Equal(3.5, scaleX);
+    }
+
+    [Theory]
+    [InlineData("bottom", SchematicRenameOutcome.NameTaken)]
+    [InlineData("   ", SchematicRenameOutcome.Blank)]
+    [InlineData("Top", SchematicRenameOutcome.Unchanged)]
+    public void A_refused_or_needless_rename_writes_nothing(string newName, SchematicRenameOutcome expected)
+    {
+        this.CreateDraftWithTwoImages();
+        string before = DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+
+        Assert.Equal(expected, DraftWorkbookStore.RenameSchematic(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.TopRow, newName));
+
+        Assert.Equal(before, DraftWorkbookStore.Fingerprint(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
+    }
+
+    [Fact]
+    public void Renaming_an_image_the_draft_does_not_have_says_so()
+    {
+        this.CreateDraftWithTwoImages();
+
+        Assert.Equal(
+            SchematicRenameOutcome.NotFound,
+            DraftWorkbookStore.RenameSchematic(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, new SchematicRowRef("Gone", "Commodore/C64/250407/gone.png"), "New"));
+    }
+
+    // ###########################################################################################
+    // *** OF TWO IMAGES SHARING A NAME, THE ONE MEANT IS RENAMED (code review, 2026-10-10). *** The
+    // rename went to the FIRST row of the name, whichever the Name box belonged to. The row is found
+    // by its image file too now, and what hangs on the name stays on the image that keeps it.
+    // ###########################################################################################
+    [Fact]
+    public void Renaming_the_second_of_two_images_sharing_a_name_renames_that_one()
+    {
+        this.CreateDraftWithTwoImages();
+
+        DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => board.WithSchematics(board.Schematics.Select(entry => entry.WithSchematicName("Top")).ToList()));
+
+        Assert.Equal(
+            SchematicRenameOutcome.Renamed,
+            DraftWorkbookStore.RenameSchematic(
+                this.DraftsRoot,
+                DraftWorkbookStoreTests.BoardKey,
+                new SchematicRowRef("Top", "Commodore/C64/250407/bottom.png"),
+                "Bottom"));
+
+        BoardData board = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!;
+
+        Assert.Equal(["Top", "Bottom"], board.Schematics.Select(entry => entry.SchematicName));
+        Assert.Equal("Commodore/C64/250407/bottom.png", board.Schematics[1].SchematicImageFile);
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "Top", out _, out _, out _, out _, out _, out _, out _));
+    }
+
+    // The name is right but the image file is not the one the window showed: changed outside it.
+    [Fact]
+    public void A_row_whose_image_file_changed_meanwhile_is_not_found()
+    {
+        this.CreateDraftWithTwoImages();
+
+        Assert.Equal(
+            SchematicRenameOutcome.NotFound,
+            DraftWorkbookStore.RenameSchematic(
+                this.DraftsRoot,
+                DraftWorkbookStoreTests.BoardKey,
+                new SchematicRowRef("Top", "Commodore/C64/250407/other.png"),
+                "New"));
+    }
+
+    [Fact]
+    public void Renaming_on_a_board_with_NO_draft_says_so()
+    {
+        Assert.Equal(
+            SchematicRenameOutcome.NoDraft,
+            DraftWorkbookStore.RenameSchematic(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.TopRow, "New"));
+    }
+
+    // ###########################################################################################
+    // *** EVERY EDIT FOLLOWS A RENAMED OR DELETED SCHEMATIC (owner request, 2026-10-10 - "And fix
+    // all"). *** A "Board schematics" row renamed in the Drafts tab's table, or deleted there or with
+    // Remove, used to leave its highlights on a name the board no longer has (an error at submit
+    // that nothing in the table can fix) and lose its calibration. Now an edit follows them with the
+    // server's rule for a table edit: same image file, new name - a rename; no such twin - deleted.
+    // ###########################################################################################
+
+    [Fact]
+    public void An_edit_that_renames_a_schematic_row_carries_its_highlights_and_calibration()
+    {
+        this.CreateDraftWithTwoImages();
+
+        DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => board.WithSchematics(board.Schematics
+                .Select(entry => entry.SchematicName == "Top" ? entry.WithSchematicName("PCB; Top") : entry)
+                .ToList()));
+
+        BoardData board = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!;
+
+        Assert.Equal(
+            ["Bottom/U8", "PCB; Top/U8"],
+            board.ComponentHighlights.Select(highlight => $"{highlight.SchematicName}/{highlight.BoardLabel}").Order());
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "PCB; Top", out _, out _, out _, out double scaleX, out _, out _, out _));
+        Assert.Equal(3.5, scaleX);
+    }
+
+    [Fact]
+    public void An_edit_that_deletes_a_schematic_row_takes_its_highlights_and_calibration_with_it()
+    {
+        this.CreateDraftWithTwoImages();
+
+        DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => board.WithSchematics(board.Schematics.Where(entry => entry.SchematicName != "Top").ToList()));
+
+        BoardData board = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!;
+
+        Assert.Equal(["Bottom/U8"], board.ComponentHighlights.Select(highlight => $"{highlight.SchematicName}/{highlight.BoardLabel}"));
+        Assert.False(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "Top", out _, out _, out _, out _, out _, out _, out _));
+
+        // And no highlight names a schematic the board does not have - the error the checks refuse.
+        Assert.All(board.ComponentHighlights, highlight =>
+            Assert.Contains(board.Schematics, schematic => SchematicRename.SameName(schematic.SchematicName, highlight.SchematicName)));
+    }
+
+    // An unrelated edit moves nothing.
+    [Fact]
+    public void An_edit_that_renames_no_schematic_keeps_the_calibration()
+    {
+        this.CreateDraftWithTwoImages();
+
+        DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU (corrected)"));
+
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.WorkbookPath, "Top", out _, out _, out _, out _, out _, out _, out _));
+    }
+
+    // The board's published renames, in the draft's copy of its .json, survive every draft write -
+    // the writer builds the whole file, and a list it was not handed would be gone.
+    [Fact]
+    public void A_draft_write_keeps_the_boards_rename_list()
+    {
+        this.CreateDraftWithTwoImages();
+
+        SchematicRenameRecord[] renames = [new("Old top", "Top", "Commodore/C64/250407/top.png", "2026-October-10")];
+        BoardSidecarWriter.Write(
+            this.WorkbookPath,
+            BoardComponentHighlightStorage.LoadComponentHighlights(this.WorkbookPath),
+            DraftBoardSource.CollectCalibrations(this.WorkbookPath, DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)),
+            renames);
+
+        DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU (corrected)"));
+
+        Assert.Equal(renames, BoardComponentHighlightStorage.LoadSchematicRenames(this.WorkbookPath));
     }
 }

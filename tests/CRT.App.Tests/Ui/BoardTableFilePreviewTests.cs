@@ -95,7 +95,13 @@ public sealed class BoardTableFilePreviewTests
 
     private static bool LabelShown(StackPanel side) => side.Children[0].IsVisible;
 
-    private static Image? PictureOf(StackPanel side) => side.Children.OfType<Image>().SingleOrDefault();
+    // The picture sits in its 1px frame, under which its size is written (owner request, 2026-10-10).
+    private static Image? PictureOf(StackPanel side) => side.GetVisualDescendants().OfType<Image>().SingleOrDefault();
+
+    private static TextBlock? PictureSizeOf(StackPanel side) =>
+        side.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(text => text.Classes.Contains(BoardTableFilePreview.PictureSizeClass));
+
+    private static Border? FrameOf(StackPanel side) => PictureOf(side)?.Parent as Border;
 
     private static string StatusOf(StackPanel side) =>
         side.Children.OfType<TextBlock>().Skip(2).FirstOrDefault(text => text.IsVisible)?.Text ?? string.Empty;
@@ -335,7 +341,80 @@ public sealed class BoardTableFilePreviewTests
 
             // Nothing to open, so no link offering to.
             Assert.False(LinkOf(side).IsVisible);
+
+            // Nor an empty frame, nor a size for a picture that is not there: the panel holding
+            // both stays hidden.
+            Assert.False(((Control)FrameOf(side)!.Parent!).IsVisible);
+            Assert.Same(FrameOf(side)!.Parent, PictureSizeOf(side)!.Parent);
         });
+    }
+
+    // ###########################################################################################
+    // *** A 1px FRAME ROUND THE PICTURE, ITS SIZE IN PIXELS UNDER IT (owner request, 2026-10-10:
+    // "so it is possible to see the real size of the image"). *** The frame hugs the picture (left-
+    // aligned, never the column's width) and takes its colour from the theme, in both themes. The
+    // card is the table's AND the Maintainer tab's file tree's, so this one test covers both.
+    //
+    // The size is read off the FILE before the card scales a big scan down; the headless platform
+    // decodes every picture as a 1x1 stub, so the numbers themselves are pinned on
+    // DescribePixelSize below.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picture_has_a_1px_frame_and_its_size_in_pixels_under_it()
+    {
+        var source = new FakeFileSource();
+        source.Files[("Commodore/C64/250407/top.png", BoardTableFileSide.Current)] = PixelA;
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardTableEditor editor = Open(null, new BoardData { ComponentImages = [Image("Commodore/C64/250407/top.png")] }, source);
+
+            BoardTableFilePreview preview = editor.BuildFilePreview(OnlyRow(editor), ImageFileColumn)!;
+            await preview.Loading;
+
+            // On screen, as in the popup, so the frame's colour resolves from the theme.
+            var host = new Window { Content = preview };
+            host.Show();
+
+            try
+            {
+                StackPanel side = Assert.Single(VisibleSides(preview));
+                Border frame = FrameOf(side)!;
+
+                Assert.Equal(new Thickness(1), frame.BorderThickness);
+                Assert.Equal(Avalonia.Layout.HorizontalAlignment.Left, frame.HorizontalAlignment);
+                Assert.True(frame.IsEffectivelyVisible);
+                Assert.NotNull(frame.BorderBrush);
+
+                TextBlock size = PictureSizeOf(side)!;
+                Assert.True(size.IsEffectivelyVisible);
+                Assert.Equal(BoardTableFilePreview.DescribePixelSize(new PixelSize(1, 1)), size.Text);
+
+                // The picture is shown, so "Loading..." is not.
+                Assert.Equal(string.Empty, StatusOf(side));
+            }
+            finally
+            {
+                preview.ReleaseImages();
+                host.Close();
+            }
+
+            foreach (ThemeVariant theme in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+            {
+                Assert.True(
+                    Application.Current!.TryGetResource(BoardTableFilePreview.ImageFrameBrushKey, theme, out _),
+                    $"{theme} has no {BoardTableFilePreview.ImageFrameBrushKey}");
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(4961, 3508, "4961 x 3508 pixels")]
+    [InlineData(1, 1, "1 x 1 pixels")]
+    [InlineData(12000, 800, "12000 x 800 pixels")]
+    public void A_pictures_size_is_written_width_first_with_no_thousands_separator(int width, int height, string expected)
+    {
+        Assert.Equal(expected, BoardTableFilePreview.DescribePixelSize(new PixelSize(width, height)));
     }
 
     // No source, no card - a host that supplies no files keeps the table as it was. And only a file

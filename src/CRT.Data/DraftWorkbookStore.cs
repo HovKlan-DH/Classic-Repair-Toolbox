@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -69,7 +70,8 @@ namespace Handlers.DataHandling
         // *** THE WRITE IS ATOMIC. *** BoardWorkbookWriter writes the file in place, so a crash
         // mid-write would leave a truncated workbook - and that workbook is now the only copy of
         // the contributor's work. Writing to a temporary file and moving it into place means a
-        // failure leaves the previous, complete draft.
+        // failure leaves the previous, complete draft - its sidecar included: a sidecar that cannot
+        // be written puts the previous workbook back (EditCore), so false means nothing changed.
         // ###########################################################################################
         public static bool Edit(
             string draftsRoot,
@@ -144,7 +146,8 @@ namespace Handlers.DataHandling
             string draftsRoot,
             string excelDataFile,
             string? expectedFingerprint,
-            Func<BoardData, BoardData> transform)
+            Func<BoardData, BoardData> transform,
+            Func<BoardData, BoardData, IReadOnlyDictionary<string, string?>>? followFor = null)
         {
             ArgumentNullException.ThrowIfNull(transform);
 
@@ -190,12 +193,51 @@ namespace Handlers.DataHandling
                 return DraftWorkbookEditOutcome.Saved;
             }
 
+            // ###########################################################################################
+            // *** WHAT HANGS ON A SCHEMATIC'S NAME FOLLOWS IT (owner request, 2026-10-10: renaming an
+            // image - "And fix all"). *** The sidecar files every highlight and the KiCad calibration
+            // under a schematic's NAME. An edit that renamed a schematic - its "Board schematics" row
+            // in the table, or its Name box - used to leave the highlights on the old name (an error
+            // the checks refuse at submit, and nothing in the table can fix) and drop the calibration
+            // (collected under the names AFTER the edit). One that deleted a schematic - in the table,
+            // or with Remove - left its highlights behind, the same error.
+            //
+            // Now every edit follows them, with the server's own rule for a table edit
+            // (SubmissionRowsBoard.FollowSchematics: a removed name and an added one on the same image
+            // file are a rename; a removed name with no such twin was deleted). A rename moves them,
+            // a deletion drops them. RenameSchematic says outright what it renamed (`followFor`).
+            // ###########################################################################################
+            IReadOnlyDictionary<string, string?> follow =
+                followFor?.Invoke(current, updated) ??
+                SubmissionRowsBoard.FollowSchematics(current.Schematics, updated.Schematics);
+
+            if (follow.Count > 0)
+            {
+                updated = updated.WithComponentHighlights(SchematicRename.FollowHighlights(updated.ComponentHighlights, follow));
+            }
+
             string temporary = workbook + ".writing.tmp";
+
+            // The workbook as it was, while the sidecar is written - see the catch below.
+            byte[]? previousWorkbook = null;
 
             try
             {
+                // Read BEFORE the workbook is replaced: the sidecar still files the calibrations under
+                // the names the board had.
+                List<KiCadCalibrationEntry> calibrations = DraftWorkbookStore.CalibrationsAfter(workbook, current, updated, follow);
+
+                // The board's published renames, as the draft's copy has them - passed on as they
+                // are. A draft does not add to them: the server records a rename when it publishes
+                // one (SchematicRenameLog.ForPublish), and CRT follows a draft's own renames by the
+                // image files it remembers instead (LocalSchematicRename).
+                List<SchematicRenameRecord> renameLog = BoardComponentHighlightStorage.LoadSchematicRenames(workbook);
+
                 BoardWorkbookWriter.Write(temporary, updated);
+
+                byte[] before = DraftWorkbookStore.ReadAllBytesShared(workbook);
                 File.Move(temporary, workbook, overwrite: true);
+                previousWorkbook = before;
 
                 // ###########################################################################################
                 // *** HIGHLIGHTS AND CALIBRATIONS LIVE IN THE SIDECAR, NOT THE WORKBOOK. ***
@@ -216,12 +258,7 @@ namespace Handlers.DataHandling
                 // straight into this file) and are not part of BoardData at all, so a save that
                 // passed none would erase the contributor's calibration work on the next label edit.
                 // ###########################################################################################
-                BoardSidecarWriter.Write(
-                    workbook,
-                    updated.ComponentHighlights,
-                    DraftBoardSource.CollectCalibrations(workbook, updated));
-
-                return DraftWorkbookEditOutcome.Saved;
+                BoardSidecarWriter.Write(workbook, updated.ComponentHighlights, calibrations, renameLog);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -231,8 +268,176 @@ namespace Handlers.DataHandling
 
                 DraftWorkbookStore.TryDelete(temporary);
 
+                // ###########################################################################################
+                // *** A FAILED WRITE CHANGED NOTHING (code review, 2026-10-11). *** The sidecar is
+                // written after the workbook, so a sidecar that could not be written (held open by an
+                // editor, say) left the NEW workbook beside the OLD sidecar - and WriteFailed, which
+                // every caller reads as "nothing written": "Schematic images" then deleted the images
+                // it had copied, and the draft's new rows named files that were gone. The workbook as
+                // it was is put back, so WriteFailed means what it says. The sidecar writer replaces
+                // its file whole (FileReplacer), so a failed sidecar write left the old one in place.
+                // ###########################################################################################
+                if (previousWorkbook is not null)
+                {
+                    DraftWorkbookStore.PutBack(workbook, previousWorkbook);
+                }
+
                 return DraftWorkbookEditOutcome.WriteFailed;
             }
+
+            return DraftWorkbookEditOutcome.Saved;
+        }
+
+        // A workbook's bytes, readable while Excel holds it open (it locks against writing only).
+        private static byte[] ReadAllBytesShared(string path)
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+
+            return copy.ToArray();
+        }
+
+        // The workbook as it was before a write that did not finish - replaced whole, like the write.
+        private static void PutBack(string workbook, byte[] previous)
+        {
+            try
+            {
+                FileReplacer.Replace(workbook, temporary => File.WriteAllBytes(temporary, previous));
+
+                CrtLog.Info($"Put the draft workbook [{workbook}] back as it was - its sidecar could not be written");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Critical(
+                    $"Could not put the draft workbook [{workbook}] back after its sidecar failed to write - the " +
+                    $"workbook holds the new rows and the sidecar the old ones - [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // The calibrations a write keeps: the sidecar's, collected under the names the board had
+        // BEFORE the edit and moved or dropped with their schematic (`follow`) - plus any filed under
+        // a name the edit brought in that the board did not have, which a collection of the old
+        // names alone would not see (what Edit always wrote).
+        //
+        // Both sets come from ONE read of the sidecar (code review, 2026-10-10): it was parsed once
+        // per schematic, twice over, on every save.
+        // ###########################################################################################
+        private static List<KiCadCalibrationEntry> CalibrationsAfter(
+            string workbook,
+            BoardData current,
+            BoardData updated,
+            IReadOnlyDictionary<string, string?> follow)
+        {
+            HashSet<string> NamesOf(BoardData board) => new(
+                board.Schematics.Select(entry => entry.SchematicName?.Trim() ?? string.Empty).Where(name => name.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+
+            HashSet<string> before = NamesOf(current);
+            HashSet<string> after = NamesOf(updated);
+
+            List<KiCadCalibrationEntry> filed = BoardComponentHighlightStorage.LoadKiCadCalibrations(
+                workbook,
+                before.Concat(after.Where(name => !before.Contains(name))));
+
+            List<KiCadCalibrationEntry> kept = SchematicRename.FollowCalibrations(
+                filed.Where(entry => before.Contains(entry.SchematicName)).OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase),
+                follow);
+
+            var named = new HashSet<string>(kept.Select(entry => entry.SchematicName.Trim()), StringComparer.OrdinalIgnoreCase);
+
+            kept.AddRange(filed
+                .Where(entry => after.Contains(entry.SchematicName) && !named.Contains(entry.SchematicName))
+                .OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase));
+
+            return kept;
+        }
+
+        // ###########################################################################################
+        // Renames one schematic image of the draft - its "Board schematics" row, the highlights
+        // drawn on it and its KiCad calibration together, in ONE write (SchematicRename has the
+        // rules; owner request, 2026-10-10).
+        //
+        // *** IT SAYS WHAT IT RENAMED. *** Any edit follows a rename it can recognise (a removed
+        // name and an added one on the same image file - see EditCore). This one does not have to
+        // guess: it names the one rename, so an image whose file another image shares still keeps
+        // its highlights and calibration - and when ANOTHER image keeps the old name, nothing moves
+        // (SchematicRename.Apply). The row is found by its name AND its image file (SchematicRows),
+        // so of two images sharing a name it is the one meant that is renamed.
+        //
+        // Judged against the draft as it is on disk NOW, like every edit here: a name taken
+        // meanwhile (in Excel, say) is refused, and an image renamed or removed meanwhile is
+        // NotFound. Nothing is written for any outcome but Renamed.
+        // ###########################################################################################
+        public static SchematicRenameOutcome RenameSchematic(
+            string draftsRoot,
+            string excelDataFile,
+            SchematicRowRef row,
+            string newName)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            string wanted = newName?.Trim() ?? string.Empty;
+            SchematicRenameOutcome outcome = SchematicRenameOutcome.Renamed;
+            bool moved = false;
+            string renamedFrom = string.Empty;
+
+            DraftWorkbookEditOutcome written = DraftWorkbookStore.EditCore(
+                draftsRoot,
+                excelDataFile,
+                expectedFingerprint: null,
+                current =>
+                {
+                    int index = SchematicRows.IndexOf(current.Schematics, row);
+
+                    if (index < 0)
+                    {
+                        outcome = SchematicRenameOutcome.NotFound;
+                        return null!;
+                    }
+
+                    if (string.Equals(current.Schematics[index].SchematicName?.Trim(), wanted, StringComparison.Ordinal))
+                    {
+                        outcome = SchematicRenameOutcome.Unchanged;
+                        return null!;
+                    }
+
+                    string? problem = SchematicRename.Problem(
+                        wanted,
+                        current.Schematics.Where((_, other) => other != index).Select(entry => entry.SchematicName));
+
+                    if (problem is not null)
+                    {
+                        outcome = wanted.Length == 0 ? SchematicRenameOutcome.Blank : SchematicRenameOutcome.NameTaken;
+                        return null!;
+                    }
+
+                    renamedFrom = current.Schematics[index].SchematicName ?? string.Empty;
+
+                    (BoardData renamed, bool movedItsData) = SchematicRename.Apply(current, index, wanted);
+                    moved = movedItsData;
+
+                    return renamed;
+                },
+                (_, _) =>
+                {
+                    var follow = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+                    if (moved)
+                    {
+                        follow[renamedFrom] = wanted;
+                    }
+
+                    return follow;
+                });
+
+            return written switch
+            {
+                DraftWorkbookEditOutcome.NoDraft => SchematicRenameOutcome.NoDraft,
+                DraftWorkbookEditOutcome.Saved => outcome,
+                _ => SchematicRenameOutcome.WriteFailed,
+            };
         }
 
         // ###########################################################################################
@@ -440,6 +645,10 @@ namespace Handlers.DataHandling
         Saved,
         NoDraft,
         ChangedOnDisk,
-        WriteFailed
+        WriteFailed,
+
+        // Never the store's answer: the table's save called off before anything was written - the
+        // contributor kept the schematic images it would have removed (BoardTableEditor.SaveAsync).
+        Cancelled
     }
 }

@@ -190,7 +190,7 @@ On Linux and macOS, install `minipro` yourself, but please view [MiniPro program
 * **`dotnet` cannot find a .NET 10 SDK**
   * Run `dotnet --list-sdks`. No `10.x` entry means it is not installed or not on `PATH`. On Gentoo,
 check you ran `eselect dotnet set` and re-sourced `/etc/profile`.
-* **`--simulate-update` shows no banner**
+* **`--simulate-update` shows no update notice**
   * Tick "Check for new version at application launch" in the "Configuration" tab. Without it no update
 check runs, so there is nothing for the simulation to answer. The log states this at startup.
 * **Builds on Linux but exits immediately**

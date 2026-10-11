@@ -79,10 +79,26 @@ namespace CRT.Server.Handlers.Submissions
 
         // `listing`: a NEW board's row for the main Excel data file (2026-09-27), written after the
         // board and before the database - see step 2c. Null for everything already listed.
+        public Task<PublishOutcome> ExecuteAsync(
+            PublishPlanDetail plan,
+            BoardData boardData,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            long? submissionId,
+            DateTimeOffset nowUtc,
+            MasterRowInsert? listing,
+            CancellationToken cancellationToken = default) =>
+            this.ExecuteAsync(plan, boardData, calibrations, renames: null, submissionId, nowUtc, listing, cancellationToken);
+
+        // ###########################################################################################
+        // `renames`: the board's whole "Schematic renames" list as the sidecar is to hold it - the
+        // approval's (ApprovePublishFlow.RenameLogFor: what it had, plus this publish's renames;
+        // owner decision 2026-10-10). Null keeps the list the board's sidecar has now, unchanged.
+        // ###########################################################################################
         public async Task<PublishOutcome> ExecuteAsync(
             PublishPlanDetail plan,
             BoardData boardData,
             IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord>? renames,
             long? submissionId,
             DateTimeOffset nowUtc,
             MasterRowInsert? listing,
@@ -90,6 +106,10 @@ namespace CRT.Server.Handlers.Submissions
         {
             ArgumentNullException.ThrowIfNull(plan);
             ArgumentNullException.ThrowIfNull(boardData);
+
+            // Read before anything is written - the sidecar is replaced in step 2b.
+            IReadOnlyList<SchematicRenameRecord> renameLog =
+                renames ?? BoardComponentHighlightStorage.LoadSchematicRenames(plan.WorkbookPath);
 
             // *** REFUSED RATHER THAN DEFAULTED TO EMPTY. *** A caller passing null has almost
             // certainly failed to read the submission's calibrations rather than genuinely meaning
@@ -284,7 +304,7 @@ namespace CRT.Server.Handlers.Submissions
                 // Only when its content changes (owner request, 2026-09-28): a sidecar already
                 // holding these highlights keeps its bytes, so "Publish to production" does not list
                 // it as a file to copy when nothing in it changed - see WriteIfChanged.
-                if (!BoardSidecarWriter.WriteIfChanged(plan.WorkbookPath, boardData.ComponentHighlights, calibrations))
+                if (!BoardSidecarWriter.WriteIfChanged(plan.WorkbookPath, boardData.ComponentHighlights, calibrations, renameLog))
                     this.thisLogger.LogInformation("The highlight file of {BoardId} is unchanged and was kept as it is.", plan.BoardId);
 
                 sidecarHash = await PublishExecutor

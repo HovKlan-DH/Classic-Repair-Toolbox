@@ -365,27 +365,8 @@ namespace Handlers.DataHandling
                 DraftStatusReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(status.PublishedWorkbookPath)));
         }
 
-        private static string FileStamp(string? path)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return "-";
-            }
-
-            try
-            {
-                var info = new FileInfo(path);
-
-                return info.Exists
-                    ? $"{info.Length}:{info.LastWriteTimeUtc.Ticks}"
-                    : "-";
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
-            {
-                // Unreadable metadata is never a cache hit: a unique stamp forces a recount.
-                return Guid.NewGuid().ToString("N");
-            }
-        }
+        // The board reader's stamp, so every cache over a board's files agrees on "unchanged".
+        private static string FileStamp(string? path) => BoardDataReader.FileStamp(path);
 
         // ###########################################################################################
         // The full change list, for the "what changed" window.

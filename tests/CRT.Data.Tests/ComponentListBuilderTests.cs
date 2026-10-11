@@ -363,24 +363,6 @@ public class ComponentListBuilderTests
         Assert.Equal(expected, ComponentListBuilder.IsSupportedKiCadRawFile(path));
     }
 
-    // -------------------------------------------------------------- BuildSyncBannerText
-
-    [Fact]
-    public void The_sync_banner_gains_a_protected_file_count_only_when_there_are_some()
-    {
-        Assert.Equal("Sync done", ComponentListBuilder.BuildSyncBannerText("Sync done", 0));
-        Assert.Equal(
-            "Sync done; protected contribution related files are [3]",
-            ComponentListBuilder.BuildSyncBannerText("Sync done", 3));
-    }
-
-    // A negative count is treated the same as none rather than rendering "[-1]".
-    [Fact]
-    public void A_negative_protected_file_count_is_treated_as_none()
-    {
-        Assert.Equal("Sync done", ComponentListBuilder.BuildSyncBannerText("Sync done", -1));
-    }
-
     // -------------------------------------------------------------- BuildComponentsInScope
 
     // This backs the worklog entry card's "Mark components in scope" checklist: given the set of

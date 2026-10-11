@@ -32,14 +32,51 @@
 			<Setter Property="CornerRadius" Value="3" />
 			<Setter Property="Padding" Value="6,1" />
 		</Style>
+
+		<!-- The components left to label: IndianRed (owner request, 2026-10-10), so the to-do list
+		     stands out from the components that already match. -->
+		<Style Selector="Border.ReferenceBadge.Todo">
+			<Setter Property="Background" Value="{DynamicResource Draft_ReferenceBadge_Todo_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Draft_ReferenceBadge_Todo_Border}" />
+		</Style>
+		<Style Selector="Border.ReferenceBadge.Todo > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Draft_ReferenceBadge_Todo_Fg}" />
+		</Style>
+
+		<!-- A KiCad net name an "Important signals" row already uses. -->
+		<Style Selector="Border.ReferenceBadge.Used">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Success_Fg}" />
+		</Style>
+		<Style Selector="Border.ReferenceBadge.Used > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Text_Success_Fg}" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+		</Style>
 	</Window.Styles>
 
 	<Window.Resources>
-		<!-- Shared by the three component lists (not labelled / will not light up / match), so
-		     the three cannot drift into looking different. -->
+		<!-- Shared by the component lists (not labelled / will not light up / match), so they cannot
+		     drift into looking different. -->
 		<DataTemplate x:Key="ReferenceBadgeTemplate">
 			<Border Classes="ReferenceBadge">
 				<TextBlock Text="{Binding}" FontSize="12" />
+			</Border>
+		</DataTemplate>
+
+		<DataTemplate x:Key="TodoReferenceBadgeTemplate">
+			<Border Classes="ReferenceBadge Todo">
+				<TextBlock Text="{Binding}" FontSize="12" />
+			</Border>
+		</DataTemplate>
+
+		<!-- One KiCad net name: a click copies it (owner request, 2026-10-10), for pasting into the
+		     "Important signals" sheet. -->
+		<DataTemplate x:Key="NetNameBadgeTemplate" DataType="local:KiCadNetNameBadge">
+			<Border Classes="ReferenceBadge NetName"
+					Classes.Used="{Binding IsUsed}"
+					Cursor="Hand"
+					ToolTip.Tip="{Binding ToolTipText}"
+					Tapped="OnNetNameTapped">
+				<TextBlock Text="{Binding Name}" FontSize="12" />
 			</Border>
 		</DataTemplate>
 
@@ -70,6 +107,18 @@
 							   FontSize="12"
 							   Opacity="0.8"
 							   Text="A photo, a scan or a PCB render - one per view you want to look at. The KiCad traces are drawn on top of these, so no image means no overlay. Drag an image up or down to change the order the views are listed in." />
+					<TextBlock TextWrapping="Wrap"
+							   FontSize="12"
+							   Opacity="0.8"
+							   Text="Under each image you can change its name - what the view is called in CRT - and pick its CAD name, the KiCad view its traces are drawn from. Each name can be used by one image only, so a picked CAD name disappears from the other images' lists." />
+
+					<!-- Whether there are CAD names to pick (BoardFilesWindow.CadNames.cs). -->
+					<TextBlock x:Name="CadNamesStateText"
+							   TextWrapping="Wrap"
+							   FontSize="12"
+							   FontStyle="Italic"
+							   Opacity="0.75"
+							   IsVisible="False" />
 
 					<Border Classes="DropTarget" x:Name="SchematicDropTarget">
 						<StackPanel Spacing="8">
@@ -127,14 +176,16 @@
 											BorderThickness="1"
 											CornerRadius="3"
 											Padding="8,6">
-										<Grid ColumnDefinitions="*,Auto">
+										<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
 
 											<!-- The drag handle: the whole row but its Remove button, which
-											     handles its own press and so never starts a drag. Background
-											     must be set, or the blank space between the texts is not
-											     hit-testable. No tooltip, as on the worklog rows: the
-											     north/south cursor already says the row can be moved. -->
+											     handles its own press and so never starts a drag, and the CAD
+											     name line under it. Background must be set, or the blank space
+											     between the texts is not hit-testable. No tooltip, as on the
+											     worklog rows: the north/south cursor already says the row can
+											     be moved. -->
 											<Grid Grid.Column="0"
+												  Grid.Row="0"
 												  Classes="SchematicDragHandle"
 												  ColumnDefinitions="Auto,Auto,*"
 												  Background="Transparent"
@@ -199,6 +250,7 @@
 											</Grid>
 
 											<Button Grid.Column="1"
+													Grid.Row="0"
 													Content="Remove"
 													Margin="10,0,0,0"
 													VerticalAlignment="Center"
@@ -207,6 +259,60 @@
 													BorderBrush="{DynamicResource Button_Cancel_Border}"
 													Tag="{Binding}"
 													Click="OnRemoveSchematicClick" />
+
+											<!-- The image's NAME and its CAD name (owner requests, 2026-10-10), one under the
+											     other with their boxes lined up, under the image's name. OUTSIDE the drag handle,
+											     so typing a name or opening the list never starts a drag.
+
+											     Name: the "Schematic name" column. Saved on Enter or on leaving the box, Escape
+											     puts it back (BoardFilesWindow.SchematicNames.cs).
+
+											     CAD name: the KiCad view this image's traces are drawn from, picked from the
+											     board's KiCad data. A name another image has is not listed at all
+											     (SchematicCadNameChoices). -->
+											<Grid Grid.Column="0"
+											      Grid.ColumnSpan="2"
+											      Grid.Row="1"
+											      ColumnDefinitions="Auto,Auto"
+											      RowDefinitions="Auto,Auto"
+											      ColumnSpacing="8"
+											      RowSpacing="6"
+											      HorizontalAlignment="Left"
+											      Margin="120,6,0,0">
+												<TextBlock Grid.Row="0"
+														   Grid.Column="0"
+														   Text="Name"
+														   FontSize="12"
+														   Opacity="0.75"
+														   VerticalAlignment="Center" />
+												<TextBox Grid.Row="0"
+														 Grid.Column="1"
+														 Classes="SchematicNameBox"
+														 Width="300"
+														 FontSize="12"
+														 Text="{Binding NameDraft}"
+														 KeyDown="OnSchematicNameKeyDown"
+														 LostFocus="OnSchematicNameLostFocus" />
+												<TextBlock Grid.Row="1"
+														   Grid.Column="0"
+														   Text="CAD name"
+														   FontSize="12"
+														   Opacity="0.75"
+														   VerticalAlignment="Center" />
+												<ComboBox Grid.Row="1"
+														  Grid.Column="1"
+														  Classes="CadNamePicker"
+														  Width="300"
+														  FontSize="12"
+														  ItemsSource="{Binding CadNameChoices}"
+														  SelectedItem="{Binding SelectedCadNameChoice}">
+													<ComboBox.ItemTemplate>
+														<DataTemplate DataType="local:CadNameChoiceItem">
+															<TextBlock Text="{Binding Label}" />
+														</DataTemplate>
+													</ComboBox.ItemTemplate>
+												</ComboBox>
+											</Grid>
 										</Grid>
 									</Border>
 								</Grid>
@@ -312,6 +418,14 @@
 					<StackPanel Spacing="8">
 						<TextBlock Text="What the KiCad data lines up with" FontWeight="Bold" />
 
+						<!-- Which KiCad data the report read, when it is more than the draft's own files
+						     (KiCadImportedFiles.ReportSourceLine). -->
+						<TextBlock x:Name="ReportSourceText"
+								   TextWrapping="Wrap"
+								   FontSize="11"
+								   Opacity="0.8"
+								   IsVisible="False" />
+
 						<TextBlock x:Name="ReportSummaryText"
 								   TextWrapping="Wrap"
 								   FontWeight="SemiBold" />
@@ -344,7 +458,7 @@
 									   Opacity="0.8"
 									   Text="Components the KiCad data knows about that this board has no label for yet - in other words, what is left to label." />
 							<ItemsControl x:Name="UnusedList"
-										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
+										  ItemTemplate="{StaticResource TodoReferenceBadgeTemplate}"
 										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
 						</StackPanel>
 
@@ -353,8 +467,36 @@
 							<TextBlock TextWrapping="Wrap"
 									   FontSize="11"
 									   Opacity="0.8"
-									   Text="Put one of these in a schematic image's CAD name to back it with the KiCad data." />
+									   Text="Each of these can back one schematic image with the KiCad data. Pick it as the image's CAD name in the &quot;Schematic images&quot; window - the button beside &quot;KiCad data&quot; in the Drafts tab." />
 							<TextBlock x:Name="ViewNamesListText" TextWrapping="Wrap" FontSize="12" />
+						</StackPanel>
+
+						<!-- The "Important signals" rows naming a net the KiCad data does not have -
+						     each one silently left out of the Schematics tab's panel, the same kind of
+						     silent failure as a component that will not light up. -->
+						<StackPanel x:Name="UnresolvedSignalsPanel" Spacing="3" IsVisible="False">
+							<TextBlock x:Name="UnresolvedSignalsHeaderText" FontWeight="SemiBold" />
+							<TextBlock TextWrapping="Wrap"
+									   FontSize="11"
+									   Opacity="0.8"
+									   Text="These rows of the board's &quot;Important signals&quot; sheet (display name: KiCad net name) name a net the KiCad data does not have, so the Schematics tab leaves them out. Use one of the net names below." />
+							<ItemsControl x:Name="UnresolvedSignalsList"
+										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
+										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+						</StackPanel>
+
+						<!-- Every net name of the KiCad data (owner request, 2026-10-10) - what the
+						     logfile listed as "normalized KiCad net name [...]", each one copied by a
+						     click for the "Important signals" sheet. -->
+						<StackPanel x:Name="NetNamesPanel" Spacing="3" IsVisible="False">
+							<TextBlock x:Name="NetNamesHeaderText" FontWeight="SemiBold" />
+							<TextBlock x:Name="NetNamesIntroText"
+									   TextWrapping="Wrap"
+									   FontSize="11"
+									   Opacity="0.8" />
+							<ItemsControl x:Name="NetNamesList"
+										  ItemTemplate="{StaticResource NetNameBadgeTemplate}"
+										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
 						</StackPanel>
 					</StackPanel>
 				</Border>

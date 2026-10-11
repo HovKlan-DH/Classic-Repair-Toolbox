@@ -152,4 +152,55 @@ public sealed class KiCadImportedFilesTests : IDisposable
         Assert.False(KiCadImportedFiles.TryRemove(string.Empty, "x.kicad_pcb"));
         Assert.False(KiCadImportedFiles.TryRemove(this.KiCadFolder, "  "));
     }
+
+    // ------------------------------------------------------------------ copying a project IN
+
+    private string SourceFolder => Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+
+    [Fact]
+    public void A_project_is_copied_in_with_its_sub_folders_and_overwrites_what_was_there()
+    {
+        string pcb = this.Write(this.SourceFolder, "Open128.kicad_pcb");
+        string page = this.Write(this.SourceFolder, "Pages/vic.kicad_sch");
+        File.WriteAllText(pcb, "(kicad_pcb new)");
+
+        string old = this.Write(this.KiCadFolder, "Open128.kicad_pcb");
+
+        (int copied, bool complete) = KiCadImportedFiles.CopyIn(this.SourceFolder, [pcb, page], this.KiCadFolder);
+
+        Assert.Equal(2, copied);
+        Assert.True(complete);
+        Assert.Equal("(kicad_pcb new)", File.ReadAllText(old));
+        Assert.True(File.Exists(Path.Combine(this.KiCadFolder, "Pages", "vic.kicad_sch")));
+    }
+
+    // ###########################################################################################
+    // *** A COPY THAT STOPS PART-WAY SAYS HOW FAR IT GOT (code review, 2026-10-10). *** The files
+    // before the one that failed are already overwritten, so the window must count the draft as
+    // changed - a plain "failed" left the board on screen drawing the old project. A FOLDER where
+    // the second file goes makes that copy fail on every system.
+    // ###########################################################################################
+    [Fact]
+    public void A_copy_that_stops_part_way_says_how_many_files_it_copied()
+    {
+        string first = this.Write(this.SourceFolder, "a.kicad_pcb");
+        string second = this.Write(this.SourceFolder, "b.kicad_sch");
+        Directory.CreateDirectory(Path.Combine(this.KiCadFolder, "b.kicad_sch"));
+
+        (int copied, bool complete) = KiCadImportedFiles.CopyIn(this.SourceFolder, [first, second], this.KiCadFolder);
+
+        Assert.Equal(1, copied);
+        Assert.False(complete);
+        Assert.True(File.Exists(Path.Combine(this.KiCadFolder, "a.kicad_pcb")));
+    }
+
+    // The report reads the published KiCad data too, and says so - only then.
+    [Fact]
+    public void The_report_says_it_read_the_published_KiCad_data_only_when_it_did()
+    {
+        Assert.Equal(string.Empty, KiCadImportedFiles.ReportSourceLine(publishedFiles: 0, draftFiles: 3));
+        Assert.Equal(string.Empty, KiCadImportedFiles.ReportSourceLine(publishedFiles: 0, draftFiles: 0));
+        Assert.Contains("published KiCad data - your draft has none of its own", KiCadImportedFiles.ReportSourceLine(publishedFiles: 2, draftFiles: 0));
+        Assert.Contains("published KiCad data together with your draft's", KiCadImportedFiles.ReportSourceLine(publishedFiles: 2, draftFiles: 1));
+    }
 }

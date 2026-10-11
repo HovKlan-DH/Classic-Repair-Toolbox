@@ -324,7 +324,8 @@ public sealed class FileTreeViewTests
             StackPanel side = Assert.Single(VisibleSides(preview));
             Assert.False(side.Children[0].IsVisible);
             Assert.Equal("Commodore/C128/310378/Images/a.png", ((TextBlock)side.Children[1]).Text);
-            Assert.NotNull(side.Children.OfType<Image>().Single().Source);
+            // The picture sits in its 1px frame (owner request, 2026-10-10).
+            Assert.NotNull(side.GetVisualDescendants().OfType<Image>().Single().Source);
             Assert.Equal(["Commodore/C128/310378/Images/a.png"], files.Read);
 
             MoveTo(window, CentreOfRow(window, "Images"));

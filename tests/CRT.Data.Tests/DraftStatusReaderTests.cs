@@ -230,7 +230,7 @@ public sealed class DraftStatusReaderTests : IDisposable
             {
                 new() { SchematicName = "Top", BoardLabel = "U0", X = "1", Y = "2", Width = "3", Height = "4" },
             },
-            new List<KiCadCalibrationEntry>());
+            new List<KiCadCalibrationEntry>(), []);
 
         Assert.Equal(1, DraftStatusReader.CountChangesCached(status));
     }

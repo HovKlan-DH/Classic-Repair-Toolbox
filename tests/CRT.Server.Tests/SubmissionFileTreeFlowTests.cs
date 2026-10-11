@@ -121,7 +121,7 @@ namespace CRT.Server.Tests
 
             Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
             BoardWorkbookWriter.Write(workbook, PublishMerge.Build(before, null));
-            BoardSidecarWriter.Write(workbook, before.Rows.ComponentHighlights, []);
+            BoardSidecarWriter.Write(workbook, before.Rows.ComponentHighlights, [], []);
 
             File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Data C64 250407.xlsx"), "older generation");
             Directory.CreateDirectory(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Images"));
@@ -152,7 +152,7 @@ namespace CRT.Server.Tests
 
             Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
             BoardWorkbookWriter.Write(workbook, PublishMerge.Build(before, null));
-            BoardSidecarWriter.Write(workbook, before.Rows.ComponentHighlights, []);
+            BoardSidecarWriter.Write(workbook, before.Rows.ComponentHighlights, [], []);
 
             SubmissionManifest moved = SubmissionFileTreeFlowTests.Manifest("a");
             moved.Rows.ComponentHighlights[0] = new ComponentHighlightEntry

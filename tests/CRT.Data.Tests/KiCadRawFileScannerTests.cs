@@ -219,4 +219,47 @@ public sealed class KiCadRawFileScannerTests : IDisposable
 
         Assert.Empty(KiCadRawFileScanner.Scan(this.Project));
     }
+
+    // ###########################################################################################
+    // A BOARD reads its published "KiCad data" folder AND its draft's - the Schematics tab's rule,
+    // shared with the "Schematic images" window's CAD names (2026-10-10), so the names offered are
+    // the views of exactly the files the traces are drawn from.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_reads_both_its_published_and_its_draft_KiCad_folders_sorted_together()
+    {
+        string published = Path.Combine(this.thisWorkspace.Root, "Data", "KiCad data");
+        string draft = Path.Combine(this.thisWorkspace.Root, "Drafts", "KiCad data");
+
+        Directory.CreateDirectory(Path.Combine(published, "Pages"));
+        Directory.CreateDirectory(draft);
+        File.WriteAllText(Path.Combine(published, "board.kicad_pcb"), "(kicad_pcb)");
+        File.WriteAllText(Path.Combine(published, "Pages", "vic.kicad_sch"), "(kicad_sch)");
+        File.WriteAllText(Path.Combine(draft, "extra.kicad_sch"), "(kicad_sch)");
+
+        List<string> files = KiCadRawFileScanner.ScanBoard(published, draft);
+
+        Assert.Equal(3, files.Count);
+        Assert.Equal(files.OrderBy(path => path, StringComparer.OrdinalIgnoreCase), files);
+        Assert.Contains(Path.Combine(published, "Pages", "vic.kicad_sch"), files);
+        Assert.Contains(Path.Combine(draft, "extra.kicad_sch"), files);
+    }
+
+    [Fact]
+    public void A_board_with_one_folder_missing_or_unnamed_reads_the_other()
+    {
+        this.Write("Open128.kicad_pcb", "(kicad_pcb)");
+
+        Assert.Single(KiCadRawFileScanner.ScanBoard(this.Project, string.Empty));
+        Assert.Single(KiCadRawFileScanner.ScanBoard(Path.Combine(this.thisWorkspace.Root, "nope"), this.Project));
+        Assert.Empty(KiCadRawFileScanner.ScanBoard(string.Empty, string.Empty));
+    }
+
+    [Fact]
+    public void The_same_folder_named_twice_lists_each_file_once()
+    {
+        this.Write("Open128.kicad_pcb", "(kicad_pcb)");
+
+        Assert.Single(KiCadRawFileScanner.ScanBoard(this.Project, this.Project));
+    }
 }

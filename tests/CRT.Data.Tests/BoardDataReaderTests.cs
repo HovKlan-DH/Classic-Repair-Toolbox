@@ -365,17 +365,85 @@ public sealed class BoardDataReaderTests : IDisposable
         Assert.NotSame(first, second);
     }
 
+    // ###########################################################################################
+    // *** A CACHED BOARD ANSWERS ONLY FOR THE FILES AS THEY WERE READ (owner report, 2026-10-11).
+    // *** The cache used to answer until something cleared it, and only the board SELECTED in the
+    // drop-down lists was cleared after a draft write - so an image renamed in "Schematic images"
+    // for another board was submitted under its old name. The workbook and its JSON sidecar (the
+    // highlights) are each stamped by length and last-write time; either changing is a new read.
+    //
+    // The write time is moved on explicitly: two writes inside one tick of the file system's clock
+    // can share a write time, and a test must not depend on that tick.
+    // ###########################################################################################
+    private static void MoveWriteTimeOn(string path) =>
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(2));
+
     [Fact]
-    public async Task A_cached_board_is_returned_even_when_the_file_has_since_been_deleted()
+    public async Task A_cached_board_is_read_again_once_its_workbook_changed_on_disk()
     {
-        // Documents the current behaviour: the cache is checked before the file exists check.
         string excel = this.CompleteBoard();
         string key = this.NewCacheKey();
 
         BoardData? first = await BoardDataReader.LoadAsync(excel, key);
+
+        BoardWorkbookBuilder.WriteCompleteBoard(excel, revisionDate: "2026-10-11");
+        BoardDataReaderTests.MoveWriteTimeOn(excel);
+
+        BoardData? second = await BoardDataReader.LoadAsync(excel, key);
+
+        Assert.Equal("2026-01-15", first!.RevisionDate);
+        Assert.Equal("2026-10-11", second!.RevisionDate);
+    }
+
+    [Fact]
+    public async Task A_cached_board_is_read_again_once_its_sidecar_changed_on_disk()
+    {
+        string excel = this.CompleteBoard();
+        string key = this.NewCacheKey();
+
+        BoardData? first = await BoardDataReader.LoadAsync(excel, key);
+
+        BoardComponentHighlightStorage.SaveComponentHighlights(
+            excel,
+            "Sheet 1",
+            new[] { new LabelEditorSaveRow { SchematicName = "Sheet 1", BoardLabel = "U1", X = 5, Y = 6, Width = 7, Height = 8 } });
+        BoardDataReaderTests.MoveWriteTimeOn(BoardComponentHighlightStorage.GetJsonPath(excel));
+
+        BoardData? second = await BoardDataReader.LoadAsync(excel, key);
+
+        Assert.Empty(first!.ComponentHighlights);
+        Assert.Equal("U1", Assert.Single(second!.ComponentHighlights).BoardLabel);
+    }
+
+    [Fact]
+    public async Task The_cached_revision_date_is_not_given_once_the_workbook_changed_on_disk()
+    {
+        string excel = this.CompleteBoard();
+        string key = this.NewCacheKey();
+
+        await BoardDataReader.LoadAsync(excel, key);
+        Assert.Equal("2026-01-15", BoardDataReader.TryGetCachedRevisionDate(key));
+
+        BoardWorkbookBuilder.WriteCompleteBoard(excel, revisionDate: "2026-10-11");
+        BoardDataReaderTests.MoveWriteTimeOn(excel);
+
+        // Null sends the drift check to the file itself.
+        Assert.Null(BoardDataReader.TryGetCachedRevisionDate(key));
+    }
+
+    // Was "A_cached_board_is_returned_even_when_the_file_has_since_been_deleted", which documented
+    // the cache answering before the file was looked at. Changed on purpose with the stamps above:
+    // a board whose file is gone is no longer served from memory.
+    [Fact]
+    public async Task A_cached_board_is_not_returned_once_its_file_has_been_deleted()
+    {
+        string excel = this.CompleteBoard();
+        string key = this.NewCacheKey();
+
+        Assert.NotNull(await BoardDataReader.LoadAsync(excel, key));
         File.Delete(excel);
 
-        Assert.Same(first, await BoardDataReader.LoadAsync(excel, key));
+        Assert.Null(await BoardDataReader.LoadAsync(excel, key));
     }
 
     // ###########################################################################################

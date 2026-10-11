@@ -58,6 +58,9 @@
                  Excel shades a selected range - translucent, so the green, orange or red
                  underneath still shows. One selected cell keeps the dashed frame alone. -->
             <SolidColorBrush x:Key="BoardTable_Selection_Fill">#330B5CAD</SolidColorBrush>
+            <!-- The 1px frame round a picture in a file's hover card (owner request, 2026-10-10),
+                 so where a scan with a white or transparent edge really ends can be seen. -->
+            <SolidColorBrush x:Key="BoardTable_PreviewImage_Border">#5A5A5A</SolidColorBrush>
         </ResourceDictionary>
 
         <!-- The same meanings as deep tints the light foreground stays readable on. -->
@@ -83,6 +86,7 @@
             <SolidColorBrush x:Key="BoardTable_Error_Bg">#4A1C1C</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Warning_Bg">#4A3A0E</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Selection_Fill">#405A9FE0</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_PreviewImage_Border">#B0B0B0</SolidColorBrush>
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
@@ -408,8 +409,48 @@ public sealed class BoardFilesWindowTests : IDisposable
         var window = new BoardFilesWindow();
 
         window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>(), section);
+        BoardFilesWindowTests.WaitForOpening(window);
 
         return window;
+    }
+
+    // ###########################################################################################
+    // The window reads the draft, the previews and the KiCad data OFF the UI thread, under its
+    // "please wait" (owner request, 2026-10-10), so a test lets that finish - as the user waits for
+    // it. The reads run on the pool; what they hand back runs here, through RunJobs.
+    // ###########################################################################################
+    private static void WaitForOpening(BoardFilesWindow window)
+    {
+        for (int i = 0; i < 1000 && !window.Opening.IsCompleted; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(window.Opening.IsCompleted, "The window should have finished reading what it shows.");
+    }
+
+    // ###########################################################################################
+    // Every change the window makes to the draft is written OFF the UI thread, under its "please
+    // wait", one at a time (code review, 2026-10-10 - BoardFilesWindow.DraftChanges.cs). A test lets
+    // the queue empty, as the user waits for the overlay. Jobs first: a CAD name pick is queued by
+    // a posted job.
+    // ###########################################################################################
+    private static void WaitForChanges(BoardFilesWindow window)
+    {
+        Dispatcher.UIThread.RunJobs();
+
+        for (int i = 0; i < 1000 && !window.DraftChanging.IsCompleted; i++)
+        {
+            Thread.Sleep(5);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(window.DraftChanging.IsCompleted, "The window should have finished writing the draft.");
     }
 
     // ------------------------------------------------------------------ ONE section per opening
@@ -436,7 +477,8 @@ public sealed class BoardFilesWindowTests : IDisposable
 
             Assert.Single(window.Schematics);
 
-            // The KiCad file is on disk, and deliberately not read.
+            // The KiCad file is on disk, and deliberately not listed or parsed for a report. (Its
+            // opening IS read, for the CAD names - see BoardFilesWindow.CadNames.cs.)
             Assert.Empty(window.KiCadFiles);
             Assert.False(window.GetControl<Border>("ReportPanel").IsVisible);
         });
@@ -612,6 +654,7 @@ public sealed class BoardFilesWindowTests : IDisposable
 
             // Re-initialising is what an import does once it has written its files.
             window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>(), BoardFilesSection.SchematicImages);
+            BoardFilesWindowTests.WaitForOpening(window);
 
             Avalonia.Media.Imaging.Bitmap? second = Assert.Single(window.Schematics).Thumbnail;
             Assert.NotNull(second);
@@ -619,6 +662,96 @@ public sealed class BoardFilesWindowTests : IDisposable
             // A fresh decode, and the old one released.
             Assert.NotSame(first, second);
             Assert.Throws<ObjectDisposedException>(() => first!.PixelSize);
+        });
+    }
+
+    // ###########################################################################################
+    // *** OPENING IS UNDER THE WINDOW'S "PLEASE WAIT" (owner request, 2026-10-10: "it can take a
+    // few secs to display, so please do show that new standard wait method"). *** From the first
+    // moment - before anything is read - until all of it is in, and then it lets go.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(BoardFilesSection.SchematicImages, CrtWaitWording.OpeningSchematicImages)]
+    [InlineData(BoardFilesSection.KiCadData, CrtWaitWording.CheckingKiCadMatches)]
+    public void Opening_reads_under_the_windows_please_wait_and_lets_go_when_done(BoardFilesSection section, string sentence)
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+        this.WriteKiCadFiles("Open128.kicad_pcb");
+
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>(), section);
+
+            BusyOverlay overlay = BusyOverlay.For(window)!;
+            Assert.True(overlay.IsBusy);
+            Assert.Equal(sentence, overlay.Message);
+
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            Assert.False(overlay.IsBusy);
+        });
+    }
+
+    // The previews are decoded off the UI thread; the rows swap in only once ALL of them are in.
+    [Fact]
+    public void The_rows_appear_with_their_previews_once_the_reading_is_done()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>(), BoardFilesSection.SchematicImages);
+
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            Assert.NotNull(Assert.Single(window.Schematics).Thumbnail);
+        });
+    }
+
+    // ###########################################################################################
+    // *** OPENING AND CLOSING CHANGES NOTHING (owner report, 2026-10-10: closing the window
+    // refreshed the detached schematic thumbnails although nothing had changed). *** The Drafts tab
+    // reloads the board on screen only when ChangedTheDraft says so - and looking is no change,
+    // however the CAD names and the KiCad report were read.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(BoardFilesSection.SchematicImages)]
+    [InlineData(BoardFilesSection.KiCadData)]
+    public void Opening_and_closing_without_a_change_says_nothing_changed(BoardFilesSection section)
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+        this.WriteKiCadFiles("Open128.kicad_pcb");
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.OpenOnSeededBoard(section);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.Close();
+
+            Assert.False(window.ChangedTheDraft);
+        });
+    }
+
+    // Closed while it was still reading: what the read hands back has nowhere to go, and is not
+    // put on the closed window (its previews are released instead).
+    [Fact]
+    public void A_window_closed_while_it_reads_is_left_empty()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>(), BoardFilesSection.SchematicImages);
+            window.Show();
+            window.Close();
+
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            Assert.Empty(window.Schematics);
         });
     }
 
@@ -840,6 +973,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             Assert.Equal(new[] { "Open128.kicad_pcb" }, window.KiCadFiles.Select(row => row.RelativePath));
             Assert.Equal("1 KiCad file imported:", window.GetControl<TextBlock>("KiCadStateText").Text);
             Assert.Contains("Removed [Pages/vic.kicad_sch]", window.StatusTextForTests, StringComparison.Ordinal);
+            Assert.True(window.ChangedTheDraft);
         });
     }
 
@@ -971,8 +1105,9 @@ public sealed class BoardFilesWindowTests : IDisposable
     }
 
     // Tall enough by default that five rows are all on screen - a press on a row scrolled out of
-    // sight lands on nothing. The auto-scroll test asks for a short window on purpose.
-    private BoardFilesWindow ShowOnSeededBoard(double height = 1000)
+    // sight lands on nothing. The auto-scroll test asks for a short window on purpose. (1000 until
+    // each row gained its Name and CAD name line, 2026-10-10.)
+    private BoardFilesWindow ShowOnSeededBoard(double height = 1400)
     {
         BoardFilesWindow window = this.OpenOnSeededBoard(BoardFilesSection.SchematicImages);
         window.Height = height;
@@ -981,6 +1116,12 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         return window;
     }
+
+    // Where a hand presses to drag a row: its drag handle - the image and its names. The Name box
+    // and the CAD name under them are not part of it (2026-10-10), and a row's middle can fall on
+    // them, so a test presses here and only AIMS by RowCentres.
+    private static Point HandleCentre(BoardFilesWindow window, int index) =>
+        CentreOf(window, HandleOf(window, index));
 
     private static Control RowContainer(BoardFilesWindow window, int index) =>
         window.GetControl<ItemsControl>("SchematicsItemsControl").ContainerFromIndex(index)!;
@@ -1012,6 +1153,12 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         window.MouseUp(point, Avalonia.Input.MouseButton.Left);
         Dispatcher.UIThread.RunJobs();
+
+        // The new order is saved as one of the window's queued changes.
+        if (window is BoardFilesWindow files)
+        {
+            WaitForChanges(files);
+        }
     }
 
     private static List<string> Order(BoardFilesWindow window) =>
@@ -1152,8 +1299,10 @@ public sealed class BoardFilesWindowTests : IDisposable
     // any height but the row's own shifts every row below it the moment the drag starts, and again
     // with every move - so the rows run from under a still pointer. The worklog's placeholder was
     // drawn at a fixed height for exactly that reason once (its PlaceholderHeight did not notify).
-    // Here with a row made TALLER than the rest by a long CAD name, so a fixed default cannot pass
-    // by coincidence: the gap is the row's own height, and the row below it does not move.
+    // Here with a row made TALLER than the rest by a long image file name (it wraps under the
+    // row's name), so a fixed default cannot pass by coincidence: the gap is the row's own height,
+    // and the row below it does not move. It was a long CAD name until the CAD name got its own
+    // drop-down (2026-10-10).
     // ###########################################################################################
     [Fact]
     public void A_tall_rows_placeholder_is_exactly_its_height_so_nothing_below_it_moves()
@@ -1169,8 +1318,8 @@ public sealed class BoardFilesWindowTests : IDisposable
                 board.Schematics[2] = new BoardSchematicEntry
                 {
                     SchematicName = plain.SchematicName,
-                    SchematicImageFile = plain.SchematicImageFile,
-                    CadName = string.Join(" ", Enumerable.Repeat("Open128 - Address Multiplexing, both banks", 14)),
+                    SchematicImageFile = BoardFilesWindowTests.StoredImagePath(
+                        string.Join(" ", Enumerable.Repeat("Open128 - Address Multiplexing, both banks", 14)) + ".png"),
                 };
 
                 return board;
@@ -1181,13 +1330,13 @@ public sealed class BoardFilesWindowTests : IDisposable
             BoardFilesWindow window = this.ShowOnSeededBoard();
 
             double tall = RowContainer(window, 2).Bounds.Height;
-            Assert.True(tall > RowContainer(window, 0).Bounds.Height + 20, "The long CAD name must make the fixture row taller.");
+            Assert.True(tall > RowContainer(window, 0).Bounds.Height + 20, "The long image file name must make the fixture row taller.");
 
             Point[] centres = RowCentres(window);
             Point rowBelow = centres[3];
 
             // Pressed and moved within its own slot: it becomes the gap and nothing reorders.
-            PressAt(window, centres[2]);
+            PressAt(window, HandleCentre(window, 2));
             DragTo(window, centres[2] + new Point(0, 10));
 
             Assert.True(window.Schematics[2].IsDropPlaceholder);
@@ -1218,6 +1367,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             Assert.All(window.Schematics, row => Assert.False(row.IsDropPlaceholder));
 
             Assert.Equal("Moved [PCB; Top] to position 3 of 5.", window.StatusTextForTests);
+            Assert.True(window.ChangedTheDraft);
 
             window.Close();
         });
@@ -1258,7 +1408,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             BoardFilesWindow window = this.ShowOnSeededBoard();
             Point[] centres = RowCentres(window);
 
-            PressAt(window, centres[0]);
+            PressAt(window, HandleCentre(window, 0));
             DragTo(window, centres[0] + new Point(0, 12));
 
             Assert.True(window.Schematics[0].IsDropPlaceholder);
@@ -1288,6 +1438,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             Assert.Equal(FiveViews, Order(window));
             Assert.All(window.Schematics, row => Assert.False(row.IsDropPlaceholder));
             Assert.Equal(before, DraftWrittenAt());
+            Assert.False(window.ChangedTheDraft);
 
             window.Close();
         });
@@ -1343,7 +1494,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             Point[] centres = RowCentres(window);
             DateTime before = DraftWrittenAt();
 
-            PressAt(window, centres[1]);
+            PressAt(window, HandleCentre(window, 1));
             DragTo(window, centres[3] + new Point(0, 5));
             DragTo(window, centres[1]);
             ReleaseAt(window, centres[1]);
@@ -1394,7 +1545,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             Point[] centres = RowCentres(window);
             DateTime before = DraftWrittenAt();
 
-            PressAt(window, centres[0]);
+            PressAt(window, HandleCentre(window, 0));
             DragTo(window, centres[3] + new Point(0, 5));
             Assert.NotEqual(FiveViews, Order(window));
 
@@ -1475,12 +1626,13 @@ public sealed class BoardFilesWindowTests : IDisposable
 
             Button remove = RowContainer(window, 1).GetVisualDescendants().OfType<Button>().Single();
             remove.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Dispatcher.UIThread.RunJobs();
+            WaitForChanges(window);
 
             BoardData draft = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey)!;
             Assert.Equal(4, draft.Schematics.Count);
             Assert.Equal("C64", draft.HardwareName);
             Assert.Equal("250407", draft.BoardName);
+            Assert.True(window.ChangedTheDraft);
 
             window.Close();
         });
@@ -1496,7 +1648,7 @@ public sealed class BoardFilesWindowTests : IDisposable
             BoardFilesWindow window = this.ShowOnSeededBoard();
             Point[] centres = RowCentres(window);
 
-            PressAt(window, centres[0]);
+            PressAt(window, HandleCentre(window, 0));
             DragTo(window, centres[2] + new Point(0, 5));
             ReleaseAt(window, centres[2] + new Point(0, 5));
 
@@ -1505,6 +1657,1230 @@ public sealed class BoardFilesWindowTests : IDisposable
             Assert.Equal("250407", draft.BoardName);
 
             window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE COMPONENTS LEFT TO LABEL ARE INDIANRED (owner request, 2026-10-10: "3 components are
+    // not labelled yet - please have them highlighted with the (standard?) IndianRed color"). ***
+    // The to-do list's badges carry the Todo class, the other lists' do not, and the class's
+    // colours are CRT's IndianRed in both themes.
+    // ###########################################################################################
+    [Fact]
+    public void Only_the_components_left_to_label_are_drawn_in_IndianRed()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+
+            window.ShowReport(Report(
+                matched: new[] { "U8" },
+                unmatched: new[] { "PLA/U17" },
+                unused: new[] { "LOGO3", "N1", "NT1" }));
+
+            window.Show();
+
+            try
+            {
+                List<Border> BadgesOf(string list) => window.GetControl<ItemsControl>(list)
+                    .GetVisualDescendants().OfType<Border>()
+                    .Where(border => border.Classes.Contains("ReferenceBadge"))
+                    .ToList();
+
+                Assert.Equal(3, BadgesOf("UnusedList").Count);
+                Assert.All(BadgesOf("UnusedList"), badge => Assert.Contains("Todo", badge.Classes));
+                Assert.All(BadgesOf("MatchedList").Concat(BadgesOf("UnmatchedList")), badge => Assert.DoesNotContain("Todo", badge.Classes));
+
+                foreach (Avalonia.Styling.ThemeVariant theme in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
+                {
+                    Assert.True(Application.Current!.TryGetResource("Draft_ReferenceBadge_Todo_Bg", theme, out object? brush));
+                    Assert.Equal(Avalonia.Media.Colors.IndianRed, ((Avalonia.Media.ISolidColorBrush)brush!).Color);
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // The CAD names are picked in the "Schematic images" window now - the list says where.
+    [Fact]
+    public void The_CAD_names_list_says_they_are_picked_in_the_Schematic_images_window()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+
+            window.ShowReport(Report(
+                matched: new[] { "U8" },
+                unmatched: Array.Empty<string>(),
+                unused: Array.Empty<string>(),
+                views: new[] { "Open128 - PCB Top" }));
+
+            string explanation = window.GetControl<StackPanel>("ViewNamesPanel").Children.OfType<TextBlock>().ElementAt(1).Text!;
+
+            Assert.Contains("\"Schematic images\"", explanation);
+            Assert.Contains("CAD name", explanation);
+        });
+    }
+
+    // ------------------------------------------------------------------ the KiCad NET NAMES
+    //
+    // Owner request, 2026-10-10: show in the window what the logfile listed as "normalized KiCad
+    // net name [...]", each one copyable for the "Important signals" sheet. Which row finds which
+    // net is KiCadNetNames' (CRT.Data.Tests); these cover how the window shows it.
+
+    private static KiCadImportantSignalEntry Signal(string displayName, string netName) =>
+        new() { DisplayName = displayName, KiCadNetName = netName };
+
+    private static List<KiCadNetNameBadge> NetBadgesOf(BoardFilesWindow window) =>
+        (window.GetControl<ItemsControl>("NetNamesList").ItemsSource ?? Array.Empty<KiCadNetNameBadge>())
+            .Cast<KiCadNetNameBadge>()
+            .ToList();
+
+    [Fact]
+    public void Every_net_name_is_listed_counted_and_the_used_ones_are_marked()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+
+            window.ShowNetNameReport(KiCadNetNames.Build(
+                [("/A10", "A10", false), ("/A1", "A1", false), ("+5V", "+5V", false)],
+                [Signal("Address 1", "/A1")]));
+
+            Assert.True(VisibleOf(window, "NetNamesPanel"));
+            Assert.Equal("3 KiCad net names you can use", TextOf(window, "NetNamesHeaderText"));
+            Assert.Equal(["+5V", "A1", "A10"], NetBadgesOf(window).Select(badge => badge.Name));
+            Assert.Equal(["A1"], NetBadgesOf(window).Where(badge => badge.IsUsed).Select(badge => badge.Name));
+            Assert.Contains("Click a name to copy it", TextOf(window, "NetNamesIntroText"));
+            Assert.Contains("\"Important signals\"", TextOf(window, "NetNamesIntroText"));
+            Assert.Contains("The one in green is already used", TextOf(window, "NetNamesIntroText"));
+
+            Assert.False(VisibleOf(window, "UnresolvedSignalsPanel"));
+        });
+    }
+
+    // The same silent failure as a component that will not light up: the panel drops the row.
+    [Fact]
+    public void An_important_signal_naming_no_net_is_shown_and_counted()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+
+            window.ShowNetNameReport(KiCadNetNames.Build(
+                [("PHI2", "PHI2", false)],
+                [Signal("PHI2", "PH12"), Signal("Reset", "RES")]));
+
+            Assert.True(VisibleOf(window, "UnresolvedSignalsPanel"));
+            Assert.Equal("2 important signals will NOT light up", TextOf(window, "UnresolvedSignalsHeaderText"));
+            Assert.Equal(["PHI2: PH12", "Reset: RES"], ItemsOf(window, "UnresolvedSignalsList"));
+        });
+    }
+
+    [Fact]
+    public void A_project_with_no_nets_shows_no_net_names()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow();
+
+            window.ShowNetNameReport(KiCadNetNames.Build([], [Signal("Clock", "CLK")]));
+
+            Assert.False(VisibleOf(window, "NetNamesPanel"));
+        });
+    }
+
+    [Fact]
+    public async Task Clicking_a_net_name_copies_it_to_the_clipboard_and_says_so()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Show();
+
+            try
+            {
+                await window.CopyNetNameAsync("128_64");
+
+                Avalonia.Input.Platform.IClipboard clipboard = TopLevel.GetTopLevel(window)!.Clipboard!;
+                Assert.Equal("128_64", await clipboard.TryGetTextAsync());
+                Assert.Contains("Copied [128_64]", window.StatusTextForTests);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // The real path: the PCB's nets read from the draft's KiCad data, the board's "Important
+    // signals" rows handed in by the Drafts tab.
+    [Fact]
+    public async Task Opening_on_KiCad_data_lists_its_nets_against_the_boards_important_signals()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string root = Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data");
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+
+            window.Initialize(
+                "C64 - 250407",
+                BoardFilesWindowTests.BoardKey,
+                new[] { "U1" },
+                BoardFilesSection.KiCadData,
+                [Signal("Ground", "GND"), Signal("Clock", "CLK")]);
+
+            for (int i = 0; i < 100 && !VisibleOf(window, "NetNamesPanel"); i++)
+            {
+                await Task.Delay(20);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            // The fixture's (net 0 "") - KiCad's "no net" - is not listed (owner decision, 2026-10-10).
+            Assert.Equal(["GND"], NetBadgesOf(window).Select(badge => badge.Name));
+            Assert.True(Assert.Single(NetBadgesOf(window)).IsUsed);
+            Assert.Equal(["Clock: CLK"], ItemsOf(window, "UnresolvedSignalsList"));
+        });
+    }
+
+    // ------------------------------------------------------------------ picking each image's CAD NAME
+    //
+    // Owner request, 2026-10-10: "In the "Schematic images" then have that mapping available, so I
+    // can select a KiCad name. Once selected, it cannot be selected again." Which names an image may
+    // pick is SchematicCadNameChoices' (CRT.Data.Tests); these cover the window - reading the names,
+    // keeping each drop-down's selection, saving a pick into the draft.
+
+    // The draft's KiCad data: one PCB (two views named after the file) and a root sheet naming its
+    // child "Power supply".
+    private void WriteCadNameKiCadData()
+    {
+        string root = Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data");
+
+        Directory.CreateDirectory(root);
+        File.WriteAllText(Path.Combine(root, "Open128.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(root, "root.kicad_sch"), KiCadFixtures.SchematicRootWithChildSheet);
+        File.WriteAllText(Path.Combine(root, "child.kicad_sch"), KiCadFixtures.SchematicChildSheet);
+    }
+
+    private static readonly string[] CadViews = ["Open128 - PCB Top", "Open128 - PCB Bottom", "root", "Power supply"];
+
+    // Gives one seeded image a CAD name, as the draft would hold it. Seeded images are named after
+    // their files (SeedBoardWithSchematics).
+    private static void SetDraftCadName(string schematicName, string cadName) =>
+        DraftWorkbookStore.Edit(
+            DraftManager.DraftsRoot,
+            BoardFilesWindowTests.BoardKey,
+            board => SchematicRows.WithCadName(
+                board,
+                new SchematicRowRef(schematicName, BoardFilesWindowTests.StoredImagePath(schematicName + ".png")),
+                cadName).Board);
+
+    private static string DraftCadName(string schematicName) =>
+        DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey)!
+            .Schematics.Single(entry => entry.SchematicName == schematicName).CadName;
+
+    private static ComboBox PickerOf(BoardFilesWindow window, int index) =>
+        RowContainer(window, index).GetVisualDescendants().OfType<ComboBox>()
+            .Single(combo => combo.Classes.Contains("CadNamePicker"));
+
+    // A name another image has is not offered at all (owner request, 2026-10-10: "remove the CAD
+    // name entirely from the drop-down when it has been selected once"). It replaces the first
+    // version's greyed-out "(used by ...)" entry, changed on purpose.
+    [Fact]
+    public async Task Every_image_is_offered_the_KiCad_view_names_but_not_one_another_image_has()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+        this.WriteCadNameKiCadData();
+        SetDraftCadName("Top scan", "Open128 - PCB Top");
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.OpenOnSeededBoard(BoardFilesSection.SchematicImages);
+            await window.CadNamesLoading;
+
+            BoardSchematicRow top = window.Schematics[0];
+            BoardSchematicRow bottom = window.Schematics[1];
+
+            Assert.Equal(["", .. CadViews], top.CadNameChoices.Select(choice => choice.CadName));
+            Assert.Equal("Open128 - PCB Top", top.SelectedCadNameChoice!.CadName);
+            Assert.Equal(string.Empty, bottom.SelectedCadNameChoice!.CadName);
+
+            Assert.Equal(["", .. CadViews.Skip(1)], bottom.CadNameChoices.Select(choice => choice.CadName));
+
+            Assert.False(window.GetControl<TextBlock>("CadNamesStateText").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE SELECTION SURVIVES THE NAMES ARRIVING. *** The rows are on screen before the KiCad
+    // data is read, each drop-down holding only "No CAD name" and the image's own name. Had the
+    // names arrived as a NEW list, every ComboBox would have let go of its selection - and its
+    // binding written "nothing" back, wiping each image's CAD name. Read off the SHOWN drop-down.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_shown_drop_down_keeps_its_images_CAD_name_when_the_KiCad_names_arrive()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+        this.WriteCadNameKiCadData();
+        SetDraftCadName("Bottom scan", "Power supply");
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            try
+            {
+                CadNameChoiceItem before = (CadNameChoiceItem)PickerOf(window, 1).SelectedItem!;
+                Assert.Equal("Power supply", before.CadName);
+
+                await window.CadNamesLoading;
+                Dispatcher.UIThread.RunJobs();
+
+                ComboBox picker = PickerOf(window, 1);
+                Assert.Same(before, picker.SelectedItem);
+                Assert.Equal(CadViews.Length + 1, picker.ItemCount);
+
+                Assert.Equal("Power supply", DraftCadName("Bottom scan"));
+                Assert.Equal(string.Empty, DraftCadName("Top scan"));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Picking_a_CAD_name_saves_it_into_the_draft_and_takes_it_from_the_other_images()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+        this.WriteCadNameKiCadData();
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            try
+            {
+                await window.CadNamesLoading;
+                Dispatcher.UIThread.RunJobs();
+
+                ComboBox picker = PickerOf(window, 0);
+                picker.SelectedItem = window.Schematics[0].CadNameChoices.Single(choice => choice.CadName == "Open128 - PCB Bottom");
+                WaitForChanges(window);
+
+                Assert.Equal("Open128 - PCB Bottom", DraftCadName("Top scan"));
+                Assert.Equal("Open128 - PCB Bottom", window.Schematics[0].CadName);
+                Assert.Contains("[Top scan] now has the CAD name [Open128 - PCB Bottom]", window.StatusTextForTests);
+                Assert.True(window.ChangedTheDraft);
+
+                // Gone from the other image's list - the shown drop-down too.
+                Assert.DoesNotContain(window.Schematics[1].CadNameChoices, choice => choice.CadName == "Open128 - PCB Bottom");
+                Assert.Equal(CadViews.Length, PickerOf(window, 1).ItemCount);
+
+                // Saved in place: the rows were not read again, so the drop-down still holds its pick.
+                Assert.Equal("Open128 - PCB Bottom", ((CadNameChoiceItem)PickerOf(window, 0).SelectedItem!).CadName);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Picking_No_CAD_name_clears_it_and_frees_the_name_for_the_other_images()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+        this.WriteCadNameKiCadData();
+        SetDraftCadName("Top scan", "root");
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            try
+            {
+                await window.CadNamesLoading;
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.DoesNotContain(window.Schematics[1].CadNameChoices, choice => choice.CadName == "root");
+
+                PickerOf(window, 0).SelectedItem = window.Schematics[0].CadNameChoices[0];
+                WaitForChanges(window);
+
+                Assert.Equal(string.Empty, DraftCadName("Top scan"));
+                // Back in the other image's list, in its place in the project's order.
+                Assert.Equal(["", .. CadViews], window.Schematics[1].CadNameChoices.Select(choice => choice.CadName));
+                Assert.Contains("[Top scan] has no CAD name now.", window.StatusTextForTests);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** TAKING A NAME OUT OF A SHOWN DROP-DOWN LEAVES ITS OWN PICK ALONE. *** Another image picks
+    // "root", which sits ABOVE this image's "Power supply" in the list: it is removed in place, and
+    // this drop-down keeps showing the very entry it showed - nothing is written for this image.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_name_taken_out_of_a_shown_drop_down_leaves_its_own_pick_alone()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+        this.WriteCadNameKiCadData();
+        SetDraftCadName("Bottom scan", "Power supply");
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            try
+            {
+                await window.CadNamesLoading;
+                Dispatcher.UIThread.RunJobs();
+
+                object before = PickerOf(window, 1).SelectedItem!;
+
+                PickerOf(window, 0).SelectedItem = window.Schematics[0].CadNameChoices.Single(choice => choice.CadName == "root");
+                WaitForChanges(window);
+
+                Assert.Equal("root", DraftCadName("Top scan"));
+                Assert.Equal(
+                    ["", "Open128 - PCB Top", "Open128 - PCB Bottom", "Power supply"],
+                    window.Schematics[1].CadNameChoices.Select(choice => choice.CadName));
+                Assert.Same(before, PickerOf(window, 1).SelectedItem);
+                Assert.Equal("Power supply", DraftCadName("Bottom scan"));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task A_board_with_no_KiCad_data_says_there_is_no_CAD_name_to_pick()
+    {
+        this.SeedBoardWithSchematics("Top scan");
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.OpenOnSeededBoard(BoardFilesSection.SchematicImages);
+            await window.CadNamesLoading;
+
+            TextBlock state = window.GetControl<TextBlock>("CadNamesStateText");
+            Assert.True(state.IsVisible);
+            Assert.Contains("no KiCad data yet", state.Text);
+
+            Assert.Equal([""], window.Schematics[0].CadNameChoices.Select(choice => choice.CadName));
+        });
+    }
+
+    // The drop-down sits OUTSIDE the drag handle, so opening it can never start a row drag.
+    [Fact]
+    public void The_CAD_name_drop_down_is_outside_the_drag_handle()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            for (int i = 0; i < FiveViews.Length; i++)
+            {
+                ComboBox picker = PickerOf(window, i);
+
+                Assert.True(picker.IsEffectivelyVisible);
+                Assert.DoesNotContain(picker, HandleOf(window, i).GetVisualDescendants());
+            }
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Picking_a_CAD_name_keeps_the_rows_other_columns_the_other_rows_and_the_caption()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+
+        DraftWorkbookStore.Edit(
+            DraftManager.DraftsRoot,
+            BoardFilesWindowTests.BoardKey,
+            board =>
+            {
+                BoardSchematicEntry plain = board.Schematics[0];
+                board.Schematics[0] = new BoardSchematicEntry
+                {
+                    SchematicName = plain.SchematicName,
+                    SchematicImageFile = plain.SchematicImageFile,
+                    SchematicHighlightColor = "#FF0000",
+                    ThumbnailHighlightOpacity = "0.5",
+                };
+
+                return board;
+            });
+
+        SetDraftCadName("top SCAN", "Open128 - PCB Top");
+
+        BoardData draft = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey)!;
+
+        Assert.Equal("Open128 - PCB Top", draft.Schematics[0].CadName);
+        Assert.Equal("#FF0000", draft.Schematics[0].SchematicHighlightColor);
+        Assert.Equal("0.5", draft.Schematics[0].ThumbnailHighlightOpacity);
+        Assert.Equal(string.Empty, draft.Schematics[1].CadName);
+        Assert.Equal("C64", draft.HardwareName);
+        Assert.Equal("250407", draft.BoardName);
+    }
+
+    // ###########################################################################################
+    // A row's choices are changed IN PLACE (BoardSchematicRow.ApplyCadNameChoices): the entries
+    // already there keep their objects, so a ComboBox showing one keeps showing it.
+    // ###########################################################################################
+    [Fact]
+    public void A_rows_choices_are_updated_in_place_and_its_selected_entry_keeps_its_object()
+    {
+        UiTest.Run(() =>
+        {
+            var row = new BoardSchematicRow { SchematicName = "Top scan", CadName = "Reset" };
+
+            row.ApplyCadNameChoices(SchematicCadNameChoices.For([("Top scan", "Reset")], 0, []));
+            CadNameChoiceItem none = row.CadNameChoices[0];
+            CadNameChoiceItem reset = row.SelectedCadNameChoice!;
+            Assert.Equal("Reset", reset.CadName);
+
+            // The names arrive: inserted around the selected entry, which keeps its object.
+            row.ApplyCadNameChoices(SchematicCadNameChoices.For([("Top scan", "Reset"), ("Other", "")], 0, ["Clock", "Reset", "VIC"]));
+
+            Assert.Equal(["", "Clock", "Reset", "VIC"], row.CadNameChoices.Select(choice => choice.CadName));
+            Assert.Same(none, row.CadNameChoices[0]);
+            Assert.Same(reset, row.CadNameChoices[2]);
+            Assert.Same(reset, row.SelectedCadNameChoice);
+
+            // Another image takes "Clock", ABOVE the selected entry: removed, the rest untouched.
+            CadNameChoiceItem vic = row.CadNameChoices[3];
+            row.ApplyCadNameChoices(SchematicCadNameChoices.For([("Top scan", "Reset"), ("Other", "Clock")], 0, ["Clock", "Reset", "VIC"]));
+
+            Assert.Equal(["", "Reset", "VIC"], row.CadNameChoices.Select(choice => choice.CadName));
+            Assert.Same(reset, row.SelectedCadNameChoice);
+            Assert.Same(vic, row.CadNameChoices[2]);
+
+            // The names going away again: only what is still wanted stays, the selection with it.
+            row.ApplyCadNameChoices(SchematicCadNameChoices.For([("Top scan", "Reset")], 0, []));
+
+            Assert.Equal(["", "Reset"], row.CadNameChoices.Select(choice => choice.CadName));
+            Assert.Same(reset, row.SelectedCadNameChoice);
+        });
+    }
+
+    // ------------------------------------------------------------------ RENAMING an image
+    //
+    // Owner request, 2026-10-10: "add management of the name of the schematic image also" - the
+    // "Schematic name" column. Typed into the row's Name box, saved on Enter or on leaving the box.
+    // What the rename carries (highlights, calibration) is DraftWorkbookStoreTests'.
+
+    private static TextBox NameBoxOf(BoardFilesWindow window, int index) =>
+        RowContainer(window, index).GetVisualDescendants().OfType<TextBox>()
+            .Single(box => box.Classes.Contains("SchematicNameBox"));
+
+    // The row's bold title - what the list shows the image as.
+    private static string TitleOf(BoardFilesWindow window, int index) =>
+        HandleOf(window, index).GetVisualDescendants().OfType<TextBlock>()
+            .Single(text => text.FontWeight == Avalonia.Media.FontWeight.SemiBold).Text ?? string.Empty;
+
+    // Empties a row's Name box and types `name` into it, as a contributor would.
+    private static void TypeName(BoardFilesWindow window, int index, string name)
+    {
+        TextBox box = NameBoxOf(window, index);
+        box.Focus();
+        box.Text = string.Empty;
+
+        if (name.Length > 0)
+        {
+            window.KeyTextInput(name);
+        }
+
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    private static void Press(Window window, Avalonia.Input.Key key, Avalonia.Input.PhysicalKey physicalKey)
+    {
+        window.KeyPress(key, Avalonia.Input.RawInputModifiers.None, physicalKey, keySymbol: null);
+        Dispatcher.UIThread.RunJobs();
+
+        // Enter saves a name as one of the window's queued changes.
+        if (window is BoardFilesWindow files)
+        {
+            WaitForChanges(files);
+        }
+    }
+
+    [Fact]
+    public void Typing_a_new_name_and_pressing_Enter_renames_the_image_in_the_draft()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 0, "PCB top side");
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+
+            Assert.Equal(["PCB top side", "PCB; Bottom", "Address Multiplexing", "Clock", "CPU 8502"], DraftOrder());
+            Assert.Equal("PCB top side", window.Schematics[0].SchematicName);
+            Assert.Equal("PCB top side", TitleOf(window, 0));
+            Assert.Equal("Renamed [PCB; Top] to [PCB top side].", window.StatusTextForTests);
+            Assert.True(window.ChangedTheDraft);
+
+            // Enter saved the name; it did not close the window.
+            Assert.True(window.IsVisible);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Leaving_the_Name_box_saves_the_name()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 1, "PCB bottom side");
+            NameBoxOf(window, 2).Focus();
+            WaitForChanges(window);
+
+            Assert.Equal("PCB bottom side", DraftOrder()[1]);
+
+            window.Close();
+        });
+    }
+
+    // The name is the sheet's key: a second image of one name is refused, with the reason, and the
+    // box shows the name the image still has.
+    [Fact]
+    public void A_name_another_image_has_is_refused_and_the_box_shows_the_name_again()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+            DateTime before = DraftWrittenAt();
+
+            TypeName(window, 0, "clock");
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+
+            Assert.Equal(SchematicRename.NameTaken("clock"), window.StatusTextForTests);
+            Assert.Equal("PCB; Top", NameBoxOf(window, 0).Text);
+            Assert.Equal(FiveViews, DraftOrder());
+            Assert.Equal(before, DraftWrittenAt());
+            Assert.False(window.ChangedTheDraft);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_blank_name_is_refused()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 3, string.Empty);
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+
+            Assert.Equal(SchematicRename.NeedsAName, window.StatusTextForTests);
+            Assert.Equal("Clock", NameBoxOf(window, 3).Text);
+            Assert.Equal(FiveViews, DraftOrder());
+
+            window.Close();
+        });
+    }
+
+    // Escape in a box holding an unsaved name puts the name back - it does not close the window,
+    // which Escape anywhere else in it does.
+    [Fact]
+    public void Escape_puts_the_name_back_without_closing_the_window()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 0, "Not this");
+            Press(window, Avalonia.Input.Key.Escape, Avalonia.Input.PhysicalKey.Escape);
+
+            Assert.True(window.IsVisible);
+            Assert.Equal("PCB; Top", NameBoxOf(window, 0).Text);
+            Assert.Equal(FiveViews, DraftOrder());
+
+            // With nothing left to put back, Escape closes the window as it always did.
+            Press(window, Avalonia.Input.Key.Escape, Avalonia.Input.PhysicalKey.Escape);
+            Assert.False(window.IsVisible);
+
+            // And the name put back was not saved on the way out.
+            Assert.Equal(FiveViews, DraftOrder());
+        });
+    }
+
+    // Closed by its title bar, which takes no focus from the box: the typed name is still saved,
+    // before the Drafts tab looks at ChangedTheDraft.
+    [Fact]
+    public void Closing_the_window_with_a_name_still_typed_saves_it()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 4, "CPU 8502 and 6510");
+            window.Close();
+            WaitForChanges(window);
+
+            Assert.Equal("CPU 8502 and 6510", DraftOrder()[4]);
+            Assert.True(window.ChangedTheDraft);
+            Assert.False(window.IsVisible);
+        });
+    }
+
+    // Every other save in the window finds its row by its name, so after a rename they must use the
+    // new one.
+    [Fact]
+    public void A_CAD_name_picked_after_a_rename_lands_on_the_renamed_image()
+    {
+        this.SeedBoardWithSchematics("Top scan", "Bottom scan");
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 0, "Top side");
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+
+            _ = window.SaveCadNameAsync(window.Schematics[0], "Open128 - PCB Top");
+            WaitForChanges(window);
+
+            Assert.Equal("Open128 - PCB Top", DraftCadName("Top side"));
+
+            window.Close();
+        });
+    }
+
+    // The Name box sits OUTSIDE the drag handle, like the CAD name, so pressing in it to type never
+    // starts a drag.
+    [Fact]
+    public void The_Name_box_is_outside_the_drag_handle()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            for (int i = 0; i < FiveViews.Length; i++)
+            {
+                TextBox box = NameBoxOf(window, i);
+
+                Assert.True(box.IsEffectivelyVisible);
+                Assert.Equal(FiveViews[i], box.Text);
+                Assert.DoesNotContain(box, HandleOf(window, i).GetVisualDescendants());
+            }
+
+            window.Close();
+        });
+    }
+
+    // ------------------------------------------------------------------ the code review of 2026-10-10
+    //
+    // Every change the window makes to the draft goes to the row it was made on, is written under
+    // the "please wait", one at a time, and closing waits for them (BoardFilesWindow.DraftChanges.cs).
+
+    // A drafted board with these images, each named and filed as given - so two can share a name.
+    private void SeedBoardWithImages(params (string Name, string File)[] images)
+    {
+        DraftSeeder.CreateNewBoard(
+            DraftManager.DraftsRoot,
+            new NewBoardRegistration
+            {
+                HardwareName = "C64",
+                BoardName = "250407",
+                ExcelDataFile = BoardFilesWindowTests.BoardKey,
+            });
+
+        DraftWorkbookStore.Edit(
+            DraftManager.DraftsRoot,
+            BoardFilesWindowTests.BoardKey,
+            board =>
+            {
+                foreach ((string name, string file) in images)
+                {
+                    board.Schematics.Add(new BoardSchematicEntry
+                    {
+                        SchematicName = name,
+                        SchematicImageFile = BoardFilesWindowTests.StoredImagePath(file),
+                    });
+                }
+
+                return board;
+            });
+    }
+
+    private static List<string> DraftFiles() =>
+        DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey)!
+            .Schematics.Select(entry => entry.SchematicImageFile).ToList();
+
+    // Highlight rectangles drawn on one image of the seeded draft, one per label.
+    private static void AddHighlights(string schematicName, params string[] labels) =>
+        DraftWorkbookStore.Edit(
+            DraftManager.DraftsRoot,
+            BoardFilesWindowTests.BoardKey,
+            board =>
+            {
+                board.ComponentHighlights.AddRange(labels.Select(label => new ComponentHighlightEntry
+                {
+                    SchematicName = schematicName,
+                    BoardLabel = label,
+                    X = "1",
+                    Y = "2",
+                    Width = "3",
+                    Height = "4",
+                }));
+
+                return board;
+            });
+
+    // A one-pixel image outside the draft, to add to it.
+    private string WriteScan(string fileName)
+    {
+        string scan = Path.Combine(this.thisWorkspace.Root, "Scans", fileName);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(scan)!);
+        File.WriteAllBytes(scan, BoardFilesWindowTests.OnePixelPng);
+
+        return scan;
+    }
+
+    // ###########################################################################################
+    // *** OF TWO IMAGES SHARING A NAME, A CHANGE GOES TO THE ONE IT WAS MADE ON. *** Every save
+    // found its row by the name alone: renaming the second "Top" renamed the first, and a CAD name
+    // picked for one could land on the other. The row is found by its image file too now.
+    // ###########################################################################################
+    [Fact]
+    public void A_change_to_one_of_two_images_sharing_a_name_lands_on_that_image()
+    {
+        this.SeedBoardWithImages(("Top", "top-a.png"), ("Top", "top-b.png"), ("Clock", "clock.png"));
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 1, "Top (second scan)");
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+
+            Assert.Equal(["Top", "Top (second scan)", "Clock"], DraftOrder());
+            Assert.Equal(BoardFilesWindowTests.StoredImagePath("top-b.png"), DraftFiles()[1]);
+            Assert.Equal("Top (second scan)", window.Schematics[1].SchematicName);
+
+            _ = window.SaveCadNameAsync(window.Schematics[1], "Open128 - PCB Bottom");
+            WaitForChanges(window);
+
+            Assert.Equal("Open128 - PCB Bottom", DraftCadName("Top (second scan)"));
+            Assert.Equal(string.Empty, DraftCadName("Top"));
+
+            window.Close();
+        });
+    }
+
+    // Remove took EVERY row of the name.
+    [Fact]
+    public void Removing_one_of_two_images_sharing_a_name_removes_only_that_one()
+    {
+        this.SeedBoardWithImages(("Top", "top-a.png"), ("Top", "top-b.png"));
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            _ = window.RemoveSchematicAsync(window.Schematics[1]);
+            WaitForChanges(window);
+
+            Assert.Equal([BoardFilesWindowTests.StoredImagePath("top-a.png")], DraftFiles());
+            Assert.Equal("Removed [Top]. The image file is kept in your draft folder.", window.StatusTextForTests);
+            Assert.True(window.ChangedTheDraft);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** REMOVE ASKS FIRST WHEN THE IMAGE HAS SOMETHING DRAWN ON IT. *** Its highlights (and its
+    // KiCad calibration) go with the row, and adding the image again brings none of them back - it
+    // used to go without a word. A "no" leaves the draft as it was.
+    // ###########################################################################################
+    [Fact]
+    public void Removing_an_image_with_highlights_on_it_asks_first_and_a_no_keeps_everything()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+        AddHighlights("PCB; Top", "U1", "U2");
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+            DateTime before = DraftWrittenAt();
+            var asked = new List<(string Name, SchematicRemovalLoss Loss)>();
+
+            window.ConfirmRemovalOverrideForTests = (name, loss) =>
+            {
+                asked.Add((name, loss));
+                return Task.FromResult(false);
+            };
+
+            _ = window.RemoveSchematicAsync(window.Schematics[0]);
+            WaitForChanges(window);
+
+            Assert.Equal([("PCB; Top", new SchematicRemovalLoss(2, false))], asked);
+            Assert.Equal(FiveViews, DraftOrder());
+            Assert.Equal(before, DraftWrittenAt());
+            Assert.False(window.ChangedTheDraft);
+
+            window.ConfirmRemovalOverrideForTests = (_, _) => Task.FromResult(true);
+
+            _ = window.RemoveSchematicAsync(window.Schematics[0]);
+            WaitForChanges(window);
+
+            Assert.Equal(FiveViews.Skip(1), DraftOrder());
+            Assert.DoesNotContain(
+                DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey)!.ComponentHighlights,
+                highlight => highlight.SchematicName == "PCB; Top");
+            Assert.True(window.ChangedTheDraft);
+
+            window.Close();
+        });
+    }
+
+    // Nothing drawn on it, nothing lost: removed at once, as it always was.
+    [Fact]
+    public void Removing_an_image_with_nothing_drawn_on_it_does_not_ask()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+        AddHighlights("PCB; Top", "U1");
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+            bool asked = false;
+
+            window.ConfirmRemovalOverrideForTests = (_, _) =>
+            {
+                asked = true;
+                return Task.FromResult(true);
+            };
+
+            _ = window.RemoveSchematicAsync(window.Schematics[3]);
+            WaitForChanges(window);
+
+            Assert.False(asked);
+            Assert.Equal(["PCB; Top", "PCB; Bottom", "Address Multiplexing", "CPU 8502"], DraftOrder());
+
+            window.Close();
+        });
+    }
+
+    // A disposable that does nothing - a reveal the test never runs.
+    private sealed class NoReveal : IDisposable
+    {
+        public void Dispose()
+        {
+        }
+    }
+
+    // ###########################################################################################
+    // *** A RENAME IS WRITTEN UNDER THE "PLEASE WAIT". *** It rewrote the whole workbook on the UI
+    // thread - up to a couple of seconds on the largest board - with nothing on screen, against the
+    // rule that every wait the user watches runs under BusyOverlay. Every wait that starts is seen
+    // here by the sentence it starts with.
+    // ###########################################################################################
+    [Fact]
+    public void A_rename_is_written_under_the_windows_please_wait()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+            BusyOverlay overlay = BusyOverlay.For(window)!;
+            var started = new List<string>();
+
+            overlay.ScheduleRevealOverrideForTests = (_, _) =>
+            {
+                started.Add(overlay.Message);
+                return new NoReveal();
+            };
+
+            TypeName(window, 0, "PCB top side");
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+
+            Assert.Equal([CrtWaitWording.SavingSchematicName], started);
+            Assert.False(overlay.IsBusy);
+            Assert.Equal("PCB top side", DraftOrder()[0]);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A NAME THAT CANNOT BE SAVED KEEPS THE WINDOW OPEN, WITH THE REASON. *** Closed with a name
+    // another image has, the window used to close and drop the name - its reason shown on a status
+    // line nobody saw. Closed again, with nothing left to save, it goes.
+    // ###########################################################################################
+    [Fact]
+    public void Closing_with_a_name_that_cannot_be_saved_keeps_the_window_open_and_says_why()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 0, "clock");
+            window.Close();
+            WaitForChanges(window);
+
+            Assert.True(window.IsVisible);
+            Assert.Equal(SchematicRename.NameTaken("clock"), window.StatusTextForTests);
+            Assert.Equal("PCB; Top", NameBoxOf(window, 0).Text);
+            Assert.Equal(FiveViews, DraftOrder());
+
+            window.Close();
+            WaitForChanges(window);
+
+            Assert.False(window.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A NAME THE DRAFT COULD NOT BE WRITTEN WITH STAYS IN ITS BOX (code review, 2026-10-11). ***
+    // The name was fine - the file could not be written, as when Excel holds it - yet the box showed
+    // the old name again: after closing Excel the name had to be typed again, and closing the window
+    // a second time went through without it. Now it stays, and the next close saves it. The write is
+    // stopped by a folder where the draft's JSON sidecar goes, which stops it on every system.
+    // ###########################################################################################
+    [Fact]
+    public void A_name_that_could_not_be_written_stays_in_its_box_and_is_saved_once_the_file_is_free()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            // The JSON beside the workbook (CRT.Data's storage class is not visible here).
+            string sidecar = Path.ChangeExtension(
+                DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey), ".json");
+            string aside = sidecar + ".aside";
+            File.Move(sidecar, aside);
+            Directory.CreateDirectory(sidecar);
+
+            TypeName(window, 0, "PCB top side");
+            window.Close();
+            WaitForChanges(window);
+
+            Assert.True(window.IsVisible);
+            Assert.Equal(BoardFilesWindow.NameNotWritten, window.StatusTextForTests);
+            Assert.Equal("PCB top side", NameBoxOf(window, 0).Text);
+            Assert.Equal(FiveViews, DraftOrder());
+
+            Directory.Delete(sidecar);
+            File.Move(aside, sidecar);
+
+            window.Close();
+            WaitForChanges(window);
+
+            Assert.False(window.IsVisible);
+            Assert.Equal("PCB top side", DraftOrder()[0]);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A NAME STILL BEING TYPED SURVIVES THE LIST BEING READ AGAIN. *** Images dropped in while a
+    // Name box held a name replaced every row, and the typed name went with its old row. It stays in
+    // the box of the same image, unsaved - and is saved the way a typed name always is.
+    // ###########################################################################################
+    [Fact]
+    public void A_name_still_being_typed_when_images_are_added_stays_in_its_box()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+        string scan = this.WriteScan("Keyboard.png");
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 1, "PCB bottom side");
+            _ = window.ImportSchematicsAsync([scan]);
+            WaitForChanges(window);
+
+            Assert.Equal(6, window.Schematics.Count);
+            Assert.Equal("PCB bottom side", window.Schematics[1].NameDraft);
+            Assert.Equal("PCB; Bottom", DraftOrder()[1]);
+
+            window.Close();
+            WaitForChanges(window);
+
+            Assert.Equal("PCB bottom side", DraftOrder()[1]);
+            Assert.False(window.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** IMAGES THE DRAFT CANNOT TAKE ARE NOT "ADDED". *** The draft's answer was ignored: a
+    // workbook Excel held open still read "Added 1 schematic image." with nothing new in the list,
+    // and the copy stayed in the draft folder for no row. A workbook that cannot be read cannot be
+    // written either - on every system, unlike a file another program holds.
+    // ###########################################################################################
+    [Fact]
+    public void Images_the_draft_cannot_take_are_not_reported_as_added_and_their_copies_are_taken_back()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+        string scan = this.WriteScan("Keyboard.png");
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            File.WriteAllText(
+                DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey),
+                "not a workbook");
+
+            _ = window.ImportSchematicsAsync([scan]);
+            WaitForChanges(window);
+
+            Assert.Contains("could not be added to your draft", window.StatusTextForTests);
+            Assert.False(window.ChangedTheDraft);
+            Assert.False(File.Exists(Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "Keyboard.png")));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** ESCAPE ON AN OPEN CAD NAME LIST CLOSES THE LIST, NOT THE WINDOW. *** The window's Escape
+    // runs on the tunnel route, before the drop-down sees the key, and closed the whole window.
+    // ###########################################################################################
+    [Fact]
+    public void Escape_on_an_open_CAD_name_list_closes_the_list_and_not_the_window()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+            ComboBox picker = PickerOf(window, 0);
+
+            picker.Focus();
+            picker.IsDropDownOpen = true;
+            Dispatcher.UIThread.RunJobs();
+
+            Press(window, Avalonia.Input.Key.Escape, Avalonia.Input.PhysicalKey.Escape);
+
+            Assert.True(window.IsVisible);
+            Assert.False(picker.IsDropDownOpen);
+
+            // With no list open, Escape closes the window as it always did.
+            Press(window, Avalonia.Input.Key.Escape, Avalonia.Input.PhysicalKey.Escape);
+
+            Assert.False(window.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A KiCad IMPORT THAT STOPS PART-WAY STILL CHANGED THE DRAFT. *** The files before the one
+    // that failed are overwritten, so the board on screen has to be read again when the window
+    // closes - it went on drawing the old project. A folder where the second file goes makes that
+    // copy fail on every system.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_KiCad_import_that_stops_part_way_still_counts_as_a_change()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(source, "b.kicad_sch"), "(kicad_sch (version 20230121))");
+
+        Directory.CreateDirectory(Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data", "b.kicad_sch"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.OpenOnSeededBoard(BoardFilesSection.KiCadData);
+
+            await window.ImportKiCadFolderAsync(source);
+
+            Assert.True(window.ChangedTheDraft);
+            Assert.Contains("Only 1 of the 2 KiCad files could be copied", window.StatusTextForTests);
+            Assert.Equal(["a.kicad_pcb"], window.KiCadFiles.Select(row => row.RelativePath));
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE KiCad REPORT READS THE PUBLISHED KiCad DATA TOO. *** Like the Schematics tab, which
+    // draws the traces from the published board's files and the draft's. Read from the draft's
+    // alone, a component or net only the published files have was reported as "will NOT light up".
+    // The draft's own list still lists only the draft's files - those are what Remove takes.
+    // ###########################################################################################
+    [Fact]
+    public void The_KiCad_report_reads_the_published_KiCad_data_too()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+        string published = Path.Combine(dataRoot, "Commodore", "C64", "250407", "KiCad data");
+        Directory.CreateDirectory(published);
+        File.WriteAllText(Path.Combine(published, "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+
+        UiTest.Run(() =>
+        {
+            var window = new BoardFilesWindow { DataRootOverrideForTests = dataRoot };
+
+            window.Initialize(
+                "C64 - 250407",
+                BoardFilesWindowTests.BoardKey,
+                new[] { "U1" },
+                BoardFilesSection.KiCadData,
+                [Signal("Ground", "GND")]);
+
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            Assert.True(window.GetControl<Border>("ReportPanel").IsVisible);
+            Assert.Equal(["U1"], ItemsOf(window, "MatchedList"));
+            Assert.Equal(["GND"], NetBadgesOf(window).Select(badge => badge.Name));
+            Assert.False(VisibleOf(window, "UnresolvedSignalsPanel"));
+
+            TextBlock source = window.GetControl<TextBlock>("ReportSourceText");
+            Assert.True(source.IsVisible);
+            Assert.Contains("published KiCad data", source.Text);
+
+            Assert.Empty(window.KiCadFiles);
         });
     }
 }

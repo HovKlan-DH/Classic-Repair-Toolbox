@@ -191,7 +191,9 @@ still matches a file in `Assets/Wiki/`. Add an entry there for any new help butt
   - `--drafts-root=<path>` - another folder for drafts. `DraftManager`.
   - `--simulate-update[=<version>]` - offer a fake update (default `99.0.0`), fake the download and
     skip the restart. `Handlers/Data/SimulationOptions.cs`. Active in RELEASE too, on purpose; the log
-    shouts about it and the banner says `(simulated)`. Set for F5 and `watch`.
+    shouts about it and the update notice says `(simulated)`. Set for F5 and `watch`.
+  - `--demo-notices` - play every notice once after launch, narrated by the mode hint, with example
+    words (`Main.NoticeDemo.cs`). Leaves a notice showing for a real reason alone. Not set for F5.
 - **To skip the online data sync while iterating, untick "Check for new or updated data at
   application launch" in the Configuration tab.** It is a normal user setting.
 - **macOS data folder**: .NET 8+ maps `LocalApplicationData` to `~/Library/Application Support` on
@@ -389,6 +391,17 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   and CRT's tooltips are popup windows, so the next click went to the tooltip (Approve needed three
   clicks). **Do not set `ToolTip.Placement="Pointer"` or a positive `VerticalOffset` on a control.**
   `ToolTipPlacementTests` reproduces the lost click.
+- **Main's notices FLOAT over the tabs' bottom-right corner, never in a row of their own** (owner
+  report, 2026-10-11; `NoticeStack` in Main.axaml, `Main.Notices.cs`). As rows above the tabs, every
+  notice that came or went moved the window, and RESIZED the schematic, which is fitted to its
+  container. The right panel has two rows, worklog bar and tabs (`MainWindowTests` holds the tabs still
+  while each card comes and goes). A new notice is a card of its OWN in the stack (no more sharing
+  one card's text between flows), added to `NoticeNames` and to the demo (`--demo-notices`; its test
+  fails on a card it never shows). **A card stays when there is something to do or somebody asked,
+  and otherwise goes by itself** (`HideNoticeLater`): the data check's "all up to date" goes, its
+  "please refresh board" stays (`DataCheckNotice`). The launch check MUST say something - silence
+  was reported as a bug. The stack is at most half the tabs' width (`NoticeStackGeometry`), and a
+  card that has just appeared lets clicks through for half a second, the tooltip lesson again.
 - **Every wait the user watches runs under `BusyOverlay`** (owner decision, 2026-09-28). One per
   window, the last child of its root Grid (`Main`, and each dialog that waits); the Maintainer tab
   has none of its own. Find it with `BusyOverlay.For`/`RunAsync(this, ...)`. It blocks clicks AND
@@ -442,7 +455,51 @@ the draft differs from the published copy, and submits.
   written, `DraftExistsWindow` says a board has ONE draft and offers it.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
 `SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `BoardFilesWindow`,
-`DiscardDraftWindow`, `ForgetSubmissionWindow`).
+`DiscardDraftWindow`, `ForgetSubmissionWindow`, `RemoveSchematicWindow`).
+
+- **"Schematic images" picks each image's CAD name** (owner request, 2026-10-10;
+  `BoardFilesWindow.CadNames.cs`): the board's KiCad VIEW names, from its published AND draft "KiCad
+  data" (`KiCadRawFileScanner.ScanBoard`, `Main.GetCurrentBoardKiCadRawPaths`' rule too), read WITHOUT
+  parsing the PCB (`KiCadRawProjectLoader.LoadViewDisplayNamesAsync`); a name one image has is LEFT
+  OUT of the other images' lists, not greyed out (owner request; `SchematicCadNameChoices`). **Each row's drop-down list is changed IN
+  PLACE** (`BoardSchematicRow.ApplyCadNameChoices`, `InPlaceList.Sync`) - a replaced ItemsSource lets go
+  of the selection and the binding writes "nothing" back over the image's CAD name.
+- **Every change "Schematic images" and "KiCad data" make to the draft is ONE queued change**
+  (code review, 2026-10-10; `BoardFilesWindow.DraftChanges.cs`): written off the UI thread under the
+  window's BusyOverlay, each after the one before it (a click whose press came before the overlay
+  still lands - two writes of one workbook would lose one), reading the rows only when it runs.
+  **Closing waits for the queue and saves a typed name; a name that cannot be saved keeps the window
+  open with the reason.** A test waits for `DraftChanging`. **A row is found by its name AND its image
+  file** (`SchematicRows`, `SchematicOrder`) - two rows can share a name, and by name alone a change
+  went to the first and Remove took both. **Remove asks first when the image has highlights or a
+  KiCad calibration** (`SchematicRemoval`, `RemoveSchematicWindow`) - they go with the row.
+- **What hangs on a schematic's NAME follows it in every draft write** (owner request, 2026-10-10;
+  `DraftWorkbookStore.EditCore`): the sidecar files highlights and the KiCad calibration by schematic
+  name, so a rename moves them and a deletion drops them - the server's own rule for a table edit
+  (`SubmissionRowsBoard.FollowSchematics`: same image file, new name = a rename). The Name box
+  (`RenameSchematic`) names its rename outright. A KiCad calibration is looked up without regard to
+  capitals (`BoardComponentHighlightStorage`), like every other schematic name, and a write reads the
+  sidecar's calibrations ONCE (`LoadKiCadCalibrations` - it parsed the file once per schematic, twice).
+- **A renamed schematic image is followed by every user's own data** (owner decisions, 2026-10-10:
+  "it must also change for everyone updating to this data ... in the board JSON file, as I do not
+  want this data in Excel", with the image file "to be unambiguous"). **CRT follows the IMAGE FILE,
+  not the name**: it remembers each board's images as last shown (`UserSettings.SchematicImagesByBoard`,
+  name + file), and whenever a board is SHOWN `LocalSchematicRename.CatchUp` moves worklog areas, image
+  orders, hidden images and the last image to wherever their file is now (`SchematicRenameLog.Resolver`)
+  - a published rename, the user's draft rename, a draft discarded, a BETA push-back, a swap, a name
+  given to another image. The board's `.json` carries a third root, **"Schematic renames"** (oldest
+  first, `{From, To, File, Date}`), which the SERVER adds to at each publish
+  (`ApprovePublishFlow.RenameLogFor`: same image file, new name) - nothing is sent with a submission.
+  It is used only when CRT has nothing remembered for the board; then a name the board HAS stays.
+  **Every sidecar writer passes the list on** (`BoardSidecarWriter` builds the whole file; a list it
+  is not handed is gone).
+- **The KiCad data window lists every KiCad net name** (a click copies it) and the Important signals
+  rows naming no net. `KiCadNetNames.Resolver` IS the Schematics tab's Important signals panel's rule
+  - change it there, never beside it. **Its whole report reads the files the Schematics tab draws
+  from - the published "KiCad data" AND the draft's** (`KiCadRawFileScanner.ScanBoard`); its file
+  list (what Remove deletes) stays the draft's. KiCad's "no net" is the LOADER's mark
+  (`KiCadNetRef.IsNoNet`: a declared `(net 0 "")`) - a KiCad 9 net NAMED "0" reads the same by id
+  and name.
 
 - **The badge** (`Main.SubmissionChecks.cs`): `SubmissionReceiptStore.UnreadCommentCount`, the same
   number as "My submissions". Sent submissions are asked about at launch and every minute while the
@@ -453,6 +510,11 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   matches its LATEST submission, Submit is greyed out with the reason - unless that submission never
   finished sending. An empty fingerprint never blocks. `TabDrafts.SubmitAsync` checks again after
   settling the table's edits.
+- **What a submit sends is the draft WORKBOOK read from disk** (`TabDrafts.BoardToSendAsync`) - the
+  file its fingerprint is taken from. Never `DataManager.LoadBoardDataAsync` there: it answered from
+  its cache (an image renamed for a board not selected in the drop-down lists went to the queue
+  under its OLD name, 2026-10-11) and answers the PUBLISHED board under "view boards as officially
+  published". `TabDraftsSubmitBoardTests`.
 - **A submission the server no longer knows reads "No longer on the server"** (404 after a board
   deletion or the data reset; `SubmissionReceipt.NotFoundUtc`): neutral colour, never blocks Submit,
   no BETA try, not reported on a discard.
@@ -464,6 +526,10 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   the `SavingElsewhere` notice (Cancel alone; the owner rejected "save the table first" from there).
 - **Each draft's row counts problems too** (`DraftStatusReader.CountProblemsCached`), and the list is
   read again when the tab is shown or CRT's window is activated - when an Excel edit arrives.
+  **That read keeps every unchanged row** (`TabDrafts.KeepUnchangedRows` - `InPlaceList.KeepUnchanged` -
+  and `DraftListItem.ShowsTheSameAs`)
+  - never Clear and rebuild: a click INTO CRT activates it between the press and the release, and a
+  rebuilt row threw the pressed button away ("I need to click it twice", 2026-10-10).
 - **Retiring a published draft** (`PublishedDraftRetirer`, CRT.Data's `DraftRetirement`): a draft whose
   work reached the STABLE source is deleted (BETA alone is not enough - a push-back can undo it), after
   every launch status check and when "My submissions" closes; never one with unsaved table edits.
@@ -781,6 +847,10 @@ in CRT.App (Avalonia types, 21 call sites).
 
 - **`BoardWorkbookSchema.AllSheets` is the order of every workbook written and of the table's tabs,
   ending in "Credits".** Readers find sheets by name.
+- **`BoardDataReader`'s cache answers only while the workbook AND its JSON sidecar are as they were
+  read** (length + write time, `BoardDataReader.StampOf`; owner report 2026-10-11) - a write by
+  anything (CRT, Excel, the sync) is a new read. The `ClearBoardCache` calls stay, but nothing may
+  depend on one being made: after a draft write only the SELECTED board's cache was cleared.
 - **How every written workbook looks is read off the shipped references** (C64 250407, C128 310378):
   the title band is BLACK with white text, the header row's height differs per sheet, and every sheet
   has the same preamble - hardware, board, revision date, a blank line, the title band, headers on row

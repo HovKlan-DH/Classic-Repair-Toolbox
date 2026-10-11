@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Handlers.DataHandling;
@@ -12,12 +13,26 @@ namespace CRT
 {
     // ###########################################################################################
     // Data-sync settings reactions (check-on-launch, workbooks scope, worklog currency), the
-    // "local edit disables launch sync" banner and its confirmation dialog, the sync status
-    // icon (spin, hover, click-to-sync), and the startup background data validation / orphan
-    // file cleanup passes. See Main.axaml.cs for the file map of the whole partial class.
+    // "local edit disables launch sync" notice and its confirmation dialog, the sync status
+    // icon (spin, hover, click-to-sync, and a running check's progress in its tooltip), and the
+    // startup background data validation / orphan file cleanup passes. See Main.axaml.cs for the
+    // file map of the whole partial class.
     // ###########################################################################################
     public partial class Main
     {
+        // A running check's progress, shown in the sync icon's tooltip (DataSyncStatusTip): the
+        // status line, and the file being transferred.
+        private string thisDataSyncProgress = string.Empty;
+        private string _currentSyncFileRelativePath = string.Empty;
+
+        // What the last finished check found, under the tooltip's idle text - null before one ran.
+        private string? thisLastDataSyncCheck;
+
+        // The data-check card shows a running check (rather than what one found), and whether it
+        // was closed while it did.
+        private bool thisIsDataCheckOnCard;
+        private bool thisDataCheckClosedWhileRunning;
+
         // ###########################################################################################
         // Reacts to "Check for new or updated data at application launch" changes.
         // Re-enabling hides the local-edit warning banner, but disabling from Configuration must
@@ -80,7 +95,6 @@ namespace CRT
         {
             this.SyncBannerText.Text =
                 "Data synchronization has been disabled because the board Excel data was edited locally. Re-enable it in the \"Configuration\" tab when safe.";
-            this.SyncBannerRefreshButton.IsVisible = false;
             this.SyncBanner.IsVisible = true;
             this._isShowingDataSyncDisabledBanner = true;
         }
@@ -96,7 +110,6 @@ namespace CRT
             }
 
             this.SyncBanner.IsVisible = false;
-            this.SyncBannerRefreshButton.IsVisible = false;
             this._isShowingDataSyncDisabledBanner = false;
         }
 
@@ -230,15 +243,126 @@ namespace CRT
                     ? StandardCursorType.Hand
                     : StandardCursorType.Arrow);
 
+            this.RefreshDataSyncStatusTip();
+        }
+
+        // ###########################################################################################
+        // Rewrites the sync icon's tooltip alone - cheap enough for every file a check transfers. An
+        // open tooltip follows the change, so whoever points at the icon watches the check go.
+        // ###########################################################################################
+        private void RefreshDataSyncStatusTip()
+        {
             ToolTip.SetTip(
                 this.DataSyncStatusIconBorder,
-                isCheckingOnline
-                    ? $"Checking data from the {AppConfig.GetOnlineSourceLabel()}..."
-                    : isEnabled
-                        ? "Data update is enabled. Click to refresh data now"
-                        : this._isHoveringDataSyncStatusIcon
-                            ? "Data update at launch is disabled. Click to run a manual refresh now"
-                            : "Data update at launch is disabled. Hover to show manual refresh");
+                DataSyncStatusTip.Build(
+                    isChecking: this._dataSyncStatusIconSpinRequestCount > 0,
+                    isEnabled: UserSettings.CheckDataOnLaunch,
+                    isHovering: this._isHoveringDataSyncStatusIcon,
+                    sourceLabel: AppConfig.GetOnlineSourceLabel(),
+                    progress: this.thisDataSyncProgress,
+                    file: this._currentSyncFileRelativePath,
+                    lastCheck: this.thisLastDataSyncCheck));
+        }
+
+        // ###########################################################################################
+        // THE DATA-CHECK NOTICE (owner report, 2026-10-11: "I am checking for new data updates at
+        // app launch, but I do not see any information about that anywhere"). The check has its own
+        // card over the tabs (DataCheckBanner): what it is doing while it runs, then what it found
+        // (DataCheckNotice) - "all up to date" goes by itself, "please refresh board" stays. The
+        // card floats, so coming and going moves nothing. The sync icon's tooltip says the same,
+        // for whoever closed the card.
+        //
+        // Internal for MainWindowTests (and the demo) - the checks that call these need a network.
+        // ###########################################################################################
+
+        // A check is starting: no progress from the one before, and its card says it has started.
+        internal void BeginDataSyncProgress()
+        {
+            this.thisDataSyncProgress = string.Empty;
+            this._currentSyncFileRelativePath = string.Empty;
+            this.thisIsDataCheckOnCard = true;
+            this.thisDataCheckClosedWhileRunning = false;
+
+            this.CancelNoticeHide(this.DataCheckBanner);
+            this.DataCheckBannerRefreshButton.IsVisible = false;
+            this.DataCheckBanner.IsVisible = true;
+            this.RefreshDataSyncProgress();
+        }
+
+        // A status the sync reported. Its closing summaries are left out - the outcome says that.
+        internal void ReportDataSyncStatus(string status)
+        {
+            if (!DataSyncStatusTip.IsProgress(status))
+            {
+                return;
+            }
+
+            this.thisDataSyncProgress = status;
+            this.RefreshDataSyncProgress();
+        }
+
+        // The file the sync is transferring now.
+        internal void ReportDataSyncFile(string? filePath)
+        {
+            this._currentSyncFileRelativePath = filePath ?? string.Empty;
+            this.RefreshDataSyncProgress();
+        }
+
+        // ###########################################################################################
+        // A check has finished: the card says what it found and the tooltip keeps it. `atLaunch` is
+        // the check CRT runs by itself at launch - see DataCheckNotice for what stays and what goes.
+        //
+        // Closed while it ran, the card is not brought back to say something that needs nothing
+        // done - only for files to refresh, or a failure somebody asked about.
+        // ###########################################################################################
+        internal void FinishDataCheck(int changedCount, bool atLaunch)
+        {
+            this.thisLastDataSyncCheck = DataSyncStatusTip.LastCheck(changedCount, DateTime.Now);
+            this._currentSyncFileRelativePath = string.Empty;
+            this.thisIsDataCheckOnCard = false;
+            this.RefreshDataSyncStatusTip();
+
+            var notice = DataCheckNotice.After(changedCount, atLaunch, AppConfig.GetOnlineSourceLabel());
+
+            if (notice.GoesByItself && this.thisDataCheckClosedWhileRunning)
+            {
+                return;
+            }
+
+            this.CancelNoticeHide(this.DataCheckBanner);
+            this.DataCheckBannerText.Text = notice.Text;
+            this.DataCheckBannerRefreshButton.IsVisible = notice.OffersRefresh;
+            this.DataCheckBanner.IsVisible = true;
+
+            if (notice.GoesByItself)
+            {
+                this.HideNoticeLater(this.DataCheckBanner);
+            }
+        }
+
+        // The tooltip, and the card while it shows a running check.
+        private void RefreshDataSyncProgress()
+        {
+            this.RefreshDataSyncStatusTip();
+
+            if (this.thisIsDataCheckOnCard)
+            {
+                this.DataCheckBannerText.Text = DataSyncStatusTip.Checking(
+                    AppConfig.GetOnlineSourceLabel(),
+                    this.thisDataSyncProgress,
+                    this._currentSyncFileRelativePath);
+            }
+        }
+
+        // Its close button, or a click anywhere on it.
+        private void OnDataCheckBannerDismiss(object? sender, RoutedEventArgs e) => this.CloseDataCheckNotice();
+
+        private void OnDataCheckBannerPointerPressed(object? sender, PointerPressedEventArgs e) => this.CloseDataCheckNotice();
+
+        private void CloseDataCheckNotice()
+        {
+            this.thisDataCheckClosedWhileRunning = this.thisIsDataCheckOnCard;
+            this.DataCheckBanner.IsVisible = false;
         }
 
         // ###########################################################################################
@@ -252,7 +376,7 @@ namespace CRT
                 return;
             }
 
-            if (this._dataSyncStatusIconSpinRequestCount > 0)
+            if (this.IsDataSyncStatusIconSpinning)
             {
                 return;
             }
@@ -263,8 +387,8 @@ namespace CRT
             // network work, so this covers the rest of the path rather than the sync itself.
             try
             {
-                // Allow the banner to update with progress + current file (2-line banner).
-                await this.CheckForDataUpdatesNowAsync(keepBannerTextStatic: false);
+                // The pointer is on the icon, so its tooltip shows the check's progress as it goes.
+                await this.CheckForDataUpdatesNowAsync();
             }
             catch (Exception ex)
             {
@@ -293,14 +417,16 @@ namespace CRT
         // ###########################################################################################
         // Starts animating the top-right data-sync status spinner while online data checks are running.
         // Nested calls are reference-counted so overlapping sync flows do not stop the spinner early.
+        //
+        // It spins with "Check for new or updated data at application launch" OFF too (2026-10-11).
+        // A manual check runs then as well, and the spinning icon - its tooltip saying how far the
+        // check got - is what is left of it on screen once its card has been closed. Refusing here
+        // also unbalanced the count: the matching Stop still took one off, ending the spinner under
+        // another check still running. So every Stop is paired with a Start that ran (see
+        // StartBackgroundSyncAsync).
         // ###########################################################################################
-        private void StartDataSyncStatusIconSpin()
+        internal void StartDataSyncStatusIconSpin()
         {
-            if (!UserSettings.CheckDataOnLaunch)
-            {
-                return;
-            }
-
             this._dataSyncStatusIconSpinRequestCount++;
 
             if (this._dataSyncStatusIconSpinTimer == null)
@@ -329,7 +455,7 @@ namespace CRT
         // ###########################################################################################
         // Stops animating the top-right data-sync status spinner after online data checks finish.
         // ###########################################################################################
-        private void StopDataSyncStatusIconSpin()
+        internal void StopDataSyncStatusIconSpin()
         {
             if (this._dataSyncStatusIconSpinRequestCount > 0)
             {
@@ -347,6 +473,9 @@ namespace CRT
 
             this.UpdateDataSyncStatusIcon();
         }
+
+        // Whether a check is running by the spinner's count - for tests (and what the icon's click asks).
+        internal bool IsDataSyncStatusIconSpinning => this._dataSyncStatusIconSpinRequestCount > 0;
 
         // ###########################################################################################
         // Starts the background data validation task and converts failures into log entries only.
@@ -417,26 +546,5 @@ namespace CRT
             }
         }
 
-        // ###########################################################################################
-        // Rebuilds the sync banner text as two lines:
-        // Line 1: status/progress only
-        // Line 2: current relative path being transferred (single-line, optional)
-        // ###########################################################################################
-        private void SetSyncBannerText(string statusLine)
-        {
-            string cleanStatus = (statusLine ?? string.Empty)
-                .Replace("\r", string.Empty, StringComparison.Ordinal)
-                .Replace("\n", " ", StringComparison.Ordinal)
-                .Trim();
-
-            string cleanFile = (this._currentSyncFileRelativePath ?? string.Empty)
-                .Replace("\r", string.Empty, StringComparison.Ordinal)
-                .Replace("\n", string.Empty, StringComparison.Ordinal)
-                .Trim();
-
-            this.SyncBannerText.Text = string.IsNullOrWhiteSpace(cleanFile)
-                ? cleanStatus
-                : $"{cleanStatus}\n{cleanFile}";
-        }
     }
 }

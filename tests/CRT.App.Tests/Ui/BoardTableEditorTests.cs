@@ -861,6 +861,101 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A SAVE THAT REMOVES A SCHEMATIC IMAGE WITH SOMETHING DRAWN ON IT ASKS FIRST (code review,
+    // 2026-10-11). *** The save drops the image's highlights and KiCad calibration, and a row
+    // deleted in the table took them without a word, where Remove in "Schematic images" asks. A no
+    // writes nothing and keeps the edit on screen; a yes saves, and they are gone.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_that_removes_a_marked_schematic_image_asks_first()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            this.WriteDraft(new BoardData
+            {
+                Schematics =
+                [
+                    new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Commodore/C64/250407/top.png" },
+                    new BoardSchematicEntry { SchematicName = "Bottom", SchematicImageFile = "Commodore/C64/250407/bottom.png" },
+                ],
+                Components = [Component("U1", "CPU")],
+            });
+            BoardSidecarWriter.Write(
+                this.WorkbookPath,
+                [new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" }],
+                [],
+                []);
+
+            var editor = new BoardTableEditor();
+            Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.BoardKey, published: null));
+            var overlay = new BusyOverlay { LimitOverrideForTests = token => Task.Delay(Timeout.Infinite, token) };
+            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            IReadOnlyList<SchematicDrop>? asked = null;
+            bool answer = false;
+            editor.ConfirmRemovingSchematics = drops =>
+            {
+                asked = drops;
+                return Task.FromResult(answer);
+            };
+
+            BoardTableSheet schematics = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+            int nameColumn = schematics.Columns.ToList().IndexOf(BoardWorkbookSchema.ColSchematicName);
+            Assert.True(schematics.DeleteRow(schematics.Rows.Single(row => row.Cells[nameColumn].Text == "Top")));
+
+            Assert.Equal(DraftWorkbookEditOutcome.Cancelled, await editor.SaveAsync());
+
+            Assert.Equal([new SchematicDrop("Top", new SchematicRemovalLoss(1, false))], asked);
+            Assert.True(editor.HasUnsavedChanges);
+            Assert.Equal(BoardTableEditor.NotSavedKeptSchematics, editor.GetControl<TextBlock>("StatusText").Text);
+            Assert.Equal(
+                ["Top", "Bottom"],
+                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Schematics.Select(entry => entry.SchematicName));
+
+            answer = true;
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
+
+            BoardData saved = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!;
+            Assert.Equal(["Bottom"], saved.Schematics.Select(entry => entry.SchematicName));
+            Assert.Empty(saved.ComponentHighlights);
+
+            window.Close();
+        });
+    }
+
+    // A save that removes nothing, or only images with nothing drawn on them, does not ask.
+    [Fact]
+    public async Task A_save_that_removes_no_marked_image_does_not_ask()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardTableEditor editor = this.OpenEditor(
+                new BoardData
+                {
+                    Schematics = [new BoardSchematicEntry { SchematicName = "Clock", SchematicImageFile = "Commodore/C64/250407/clock.png" }],
+                    Components = [Component("U1", "CPU")],
+                },
+                published: null);
+
+            bool asked = false;
+            editor.ConfirmRemovingSchematics = _ =>
+            {
+                asked = true;
+                return Task.FromResult(false);
+            };
+
+            BoardTableSheet schematics = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+            Assert.True(schematics.DeleteRow(schematics.Rows.Single()));
+            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
+
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
+            Assert.False(asked);
+        });
+    }
+
+    // ###########################################################################################
     // *** PAST THE WAIT LIMIT THE TABLE IS LOCKED UNTIL THE WRITE ENDS (code review, 2026-10-01). ***
     // The overlay lifts at the limit and the save carries on; with the grid live a contributor could
     // type, and the finished save then reopened the table on the re-read file and discarded it

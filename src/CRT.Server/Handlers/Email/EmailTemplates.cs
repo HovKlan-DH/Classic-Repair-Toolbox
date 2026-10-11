@@ -357,8 +357,8 @@ namespace CRT.Server.Handlers.Email
                     "The BETA source is for testing only, so you will hear from us again: either your contribution is published " +
                     "to the stable source, or it is taken back out of BETA, and then you are told why.")
                 .Paragraph(
-                    "Don't be put off if that happens - a maintainer often only spots a problem once the data is \"live\" in BETA. " +
-                    "It is all part of the process :-)")
+                    "If your contribution is rejected, please do not take it personally - a maintainer often only spots a problem once " +
+                    "the data is \"live\" in BETA. It is all part of the process, and we must strive for the best possible data quality :-)")
                 .Paragraph("Your draft stays in the \"Drafts\" tab until your contribution has been published to the stable source.")
                 .WithContactLine()
                 .ToMessage(toAddress, "Your CRT contribution is accepted and ready to test in the BETA source");

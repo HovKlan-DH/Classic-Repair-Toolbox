@@ -119,13 +119,37 @@ never moved. If the table is open with unsaved changes, you are asked about them
 
 **Schematic images** - drag image files onto the window, or use **Choose image files**. Each image is
 one schematic of the board. Drag the images up or down to change the order they are listed in, and
-**Remove** takes one out.
+**Remove** takes one out, together with the component markings and the KiCad calibration on it. If it
+has any, you are asked first: adding the image again later does not bring them back. The image file
+itself stays in your draft folder. Under each image,
+**Name** is what the view is called - type a new one and press Enter, or click elsewhere, to rename
+it (Escape puts the old name back). A name can be used once. The image's component markings and
+KiCad calibration go with the rename, and so do your own worklog markings, image order and hidden
+images for the board - back again if the draft is discarded or rejected, or the rename is taken back
+out of BETA. Once the rename is published, everybody else's follow it too. **CAD name** picks the KiCad view its traces are drawn
+from, out of the board's KiCad data. A CAD name can back one image only: once an image has it, it
+is gone from the other images' lists, so the lists get shorter as you go. **No CAD name** clears it,
+and the name is back in the other lists. Each pick is saved straight into your draft.
+
+Each change is saved as soon as you make it, one after the other, while the window shows "please
+wait". If you close the window with a name still typed, it is saved first. If that name cannot be
+used, the window stays open and says why. If it could not be saved because the board's Excel file is
+open in Excel, the name stays in its box: close the file in Excel and close the window again to save
+it - or press Escape in the box to keep the old name. Escape closes an open **CAD name** list; pressed
+anywhere else, it closes the window.
 
 **KiCad data** - drag the KiCad project folder onto the window, or use **Choose KiCad folder**.
 Sub-folders are included, so a project with several sheets keeps them all; footprint libraries, 3D
-models and gerbers are left out. Under "What the KiCad data lines up with", the window lists the
-component labels with no match in the KiCad data, the KiCad components that have no label yet, and
-the CAD names you can use for a schematic image.
+models and gerbers are left out. Under "What the KiCad data lines up with", the window checks the
+same KiCad data the Schematics tab draws the traces from: the board's published KiCad data, and the
+files in your draft. It lists:
+
+* the component labels with no match in the KiCad data;
+* the KiCad components that have no label yet, in red - what is left to label;
+* the CAD names the KiCad data offers - pick them in **Schematic images**;
+* any row of the board's Important signals sheet whose KiCad net name is not in the KiCad data;
+* every KiCad net name, for the Important signals sheet. Click a name to copy it, then paste it into
+  the sheet. The names already used by an important signal are green.
 
 The full walkthrough is [Add new board with KiCad data](Add-new-board-with-KiCad-data).
 
@@ -204,7 +228,8 @@ On a Mac, use Cmd instead of Ctrl. Every text is shown in full, over several lin
 Point at a file name - "Schematic image file" on Board schematics, or "File" on Component images,
 Component local files and Board local files - and a card opens beside it straight away:
 
-* a picture is shown. If you changed it, the published one and yours are shown side by side as
+* a picture is shown, with a thin frame round it so you can see where it really ends, and its size
+  in pixels under it. If you changed it, the published one and yours are shown side by side as
   "Published" and "Your draft" - also when you replaced a picture under the same file name. The card
   says "New file", "Removed", "Changed to another file", "Replaced - same file name, new content" or
   "Unchanged", and **Open full size** opens the picture;
@@ -237,6 +262,12 @@ table. What the checks look for:
 Nothing is written until you press **Save changes** (greyed out while there is nothing to save). It
 says "Saved." when done, and the draft's row and the board on the other tabs follow. **Reload** beside
 it reads the draft again from its file.
+
+A save that removes a schematic image with component markings or a KiCad calibration on it asks
+first, in a "Remove schematic image" window: **Save and remove**, or **Cancel**, which saves nothing -
+the markings and the calibration go with the image. A schematic you renamed on Board schematics keeps
+them, as long as its "Schematic image file" stays the same in that save: to change both, save the new
+name first and the new file after.
 
 Closing the table, submitting, **Schematic images**, **KiCad data** or quitting CRT while the table has
 unsaved changes asks first, in an "Unsaved edits" window: **Save changes**, **Discard edits** or

@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using CRT;
 using Handlers.DataHandling;
 
@@ -549,6 +551,595 @@ public sealed class MainWindowTests : IDisposable
             Assert.True(excelBanner.IsVisible);
             Assert.False(updateBanner.IsVisible);
         });
+    }
+
+    // The notices, by name - the shift test below shows each one in turn.
+    private static readonly string[] NoticeNames =
+    {
+        "MainExcelRequiresAppUpdateBanner",
+        "UpdateBanner",
+        "DataCheckBanner",
+        "SyncBanner",
+        "SourceSwitchBanner",
+        "SchematicsLabelEditorModeBanner",
+    };
+
+    // ###########################################################################################
+    // A notice coming or going must not move the tabs (owner report, 2026-10-11).
+    //
+    // The notices were rows above the tabs, so every one that appeared or went moved the whole
+    // window down or up - the launch data check alone did it twice - and on the Schematics tab
+    // the image is fitted to its container, so it was resized as well. They float over the tabs'
+    // bottom-right corner now. Each one is shown in turn on a SHOWN window (an unshown one has no
+    // layout), and the tabs' place and size compared with nothing showing.
+    // ###########################################################################################
+    [Fact]
+    public void Showing_or_hiding_a_notice_leaves_the_tabs_where_they_are()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            main.Show();
+
+            try
+            {
+                var tabs = main.GetControl<TabControl>("MainTabControl");
+                main.UpdateLayout();
+                Rect before = tabs.Bounds;
+
+                foreach (string name in NoticeNames)
+                {
+                    var notice = main.GetControl<Border>(name);
+
+                    notice.IsVisible = true;
+                    main.UpdateLayout();
+
+                    Assert.True(notice.Bounds.Height > 0, $"{name} was not laid out");
+                    Assert.Equal(before, tabs.Bounds);
+
+                    // In the tabs' bottom-right corner, not above them.
+                    Point corner = notice.TranslatePoint(new Point(notice.Bounds.Width, notice.Bounds.Height), tabs)!.Value;
+                    Assert.InRange(tabs.Bounds.Width - corner.X, 0, 24);
+                    Assert.InRange(tabs.Bounds.Height - corner.Y, 0, 24);
+
+                    notice.IsVisible = false;
+                    main.UpdateLayout();
+
+                    Assert.Equal(before, tabs.Bounds);
+                }
+            }
+            finally
+            {
+                main.IsApplicationShuttingDownForTests = true;
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // In a small window a notice stays in the right half of the tabs.
+    //
+    // Found by rendering CRT at its smallest: a full-width card ran off the thumbnail list and over
+    // the Schematics tab's "Global settings" and "Labels visible" panels - and the label editor's
+    // card cannot be closed, so they stayed covered for the whole edit. Half the tabs' width keeps
+    // it over the thumbnails, at the default split.
+    // ###########################################################################################
+    [Fact]
+    public void In_a_small_window_a_notice_stays_in_the_right_half_of_the_tabs()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main { Width = 820, Height = 520 };
+            main.Show();
+
+            try
+            {
+                var tabs = main.GetControl<TabControl>("MainTabControl");
+                var notice = main.GetControl<Border>("SchematicsLabelEditorModeBanner");
+                notice.IsVisible = true;
+                main.UpdateLayout();
+
+                Point left = notice.TranslatePoint(new Point(0, 0), tabs)!.Value;
+                Assert.True(
+                    left.X >= tabs.Bounds.Width / 2,
+                    $"the notice starts at {left.X:0}, left of the middle of tabs {tabs.Bounds.Width:0} wide");
+            }
+            finally
+            {
+                main.IsApplicationShuttingDownForTests = true;
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // The launch data check says what happened (owner report, 2026-10-11: "I am checking for new
+    // data updates at app launch, but I do not see any information about that anywhere").
+    //
+    // Here the online check could not run at all - no manifest was fetched, as when offline - which
+    // used to pass in complete silence. The tests never fetch one, so this is that launch.
+    // ###########################################################################################
+    [Fact]
+    public async Task When_the_launch_data_check_could_not_run_a_notice_says_so()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+        bool saved = UserSettings.CheckDataOnLaunch;
+
+        try
+        {
+            UserSettings.CheckDataOnLaunch = true;
+            CRT.Main? main = null;
+            var timers = new NoticeTimers();
+
+            await UiTest.RunAsync(async () =>
+            {
+                main = new CRT.Main();
+                main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+                await main.StartBackgroundSyncForTests();
+            });
+
+            UiTest.Run(() =>
+            {
+                var shown = main!.GetControl<StackPanel>("NoticeStack").Children
+                    .Where(card => card.IsVisible)
+                    .SelectMany(card => card.GetLogicalDescendants().OfType<TextBlock>())
+                    .Select(text => text.Text ?? string.Empty)
+                    .ToList();
+
+                // The source is BETA or stable by whatever the settings say - the words around it count.
+                Assert.Contains(shown, text =>
+                    text.StartsWith("Could not check the ", StringComparison.Ordinal) &&
+                    text.Contains(" source for new data", StringComparison.Ordinal));
+
+                // Nobody asked for this one, and it would greet everybody working offline at every
+                // launch - so it goes by itself.
+                timers.RunHides();
+                Assert.False(main!.GetControl<Border>("DataCheckBanner").IsVisible);
+            });
+        }
+        finally
+        {
+            UserSettings.CheckDataOnLaunch = saved;
+        }
+    }
+
+    // ###########################################################################################
+    // A launch check that could not run ends nothing it did not start (code review, 2026-10-11).
+    // Its finally stopped the spinner and finished the card whether or not it had started them, so
+    // a check already running lost its spinner - the icon clickable mid-check, letting a second
+    // check start beside it - and its card said it could not check.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_launch_check_that_could_not_run_leaves_a_running_check_alone()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+        bool saved = UserSettings.CheckDataOnLaunch;
+
+        try
+        {
+            UserSettings.CheckDataOnLaunch = true;
+
+            await UiTest.RunAsync(async () =>
+            {
+                var main = new CRT.Main();
+                main.ScheduleNoticeTimerOverrideForTests = new NoticeTimers().Schedule;
+
+                main.BeginDataSyncProgress();
+                main.StartDataSyncStatusIconSpin();
+
+                await main.StartBackgroundSyncForTests();
+
+                Assert.True(main.IsDataSyncStatusIconSpinning);
+                Assert.StartsWith("Checking data from the ", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+
+                main.StopDataSyncStatusIconSpin();
+                Assert.False(main.IsDataSyncStatusIconSpinning);
+            });
+        }
+        finally
+        {
+            UserSettings.CheckDataOnLaunch = saved;
+        }
+    }
+
+    // While a check runs, its card says what it is doing - the same lines as the sync icon's tooltip.
+    [Fact]
+    public void A_running_data_check_says_on_its_card_what_it_is_doing()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var card = main.GetControl<Border>("DataCheckBanner");
+            var text = main.GetControl<TextBlock>("DataCheckBannerText");
+
+            main.BeginDataSyncProgress();
+
+            Assert.True(card.IsVisible);
+            Assert.StartsWith("Checking data from the ", text.Text);
+            Assert.False(main.GetControl<Button>("DataCheckBannerRefreshButton").IsVisible);
+
+            main.ReportDataSyncStatus("Downloading file [2] of [9] from the stable source:");
+            main.ReportDataSyncFile("Commodore/C64/250407/pcb.png");
+
+            string[] lines = text.Text!.Split('\n');
+            Assert.Equal(3, lines.Length);
+            Assert.Equal("Downloading file [2] of [9] from the stable source:", lines[1]);
+            Assert.Equal("Commodore/C64/250407/pcb.png", lines[2]);
+
+            // A closing summary is not progress - the card keeps the last real line.
+            main.ReportDataSyncStatus("Sync complete (0 new, 0 updated, 0 failed, 0 invalid)");
+            Assert.Equal("Downloading file [2] of [9] from the stable source:", text.Text!.Split('\n')[1]);
+        });
+    }
+
+    // Nothing changed: the card says so and goes by itself - the launch check's usual outcome.
+    [Fact]
+    public void A_data_check_that_changed_nothing_says_so_and_goes_by_itself()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var timers = new NoticeTimers();
+            main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+            var card = main.GetControl<Border>("DataCheckBanner");
+
+            main.BeginDataSyncProgress();
+            main.FinishDataCheck(0, atLaunch: true);
+
+            Assert.True(card.IsVisible);
+            Assert.StartsWith("All data files are up to date with the ", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+            Assert.Equal(1, timers.HideCount);
+
+            timers.RunHides();
+
+            Assert.False(card.IsVisible);
+        });
+    }
+
+    // Files changed: the card offers "Refresh Board" and stays - there is something to do.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_data_check_that_changed_files_stays_and_offers_to_refresh_the_board(bool atLaunch)
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var timers = new NoticeTimers();
+            main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+
+            main.BeginDataSyncProgress();
+            main.FinishDataCheck(3, atLaunch);
+
+            Assert.True(main.GetControl<Border>("DataCheckBanner").IsVisible);
+            Assert.True(main.GetControl<Button>("DataCheckBannerRefreshButton").IsVisible);
+            Assert.EndsWith("- please refresh board", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+            Assert.Equal(0, timers.HideCount);
+        });
+    }
+
+    // Closed while it ran, the card is not brought back to say "all up to date" - but it is for
+    // files to refresh, which the user would otherwise not know about.
+    [Fact]
+    public void A_data_check_closed_while_it_ran_comes_back_only_with_something_to_do()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var card = main.GetControl<Border>("DataCheckBanner");
+            var close = main.GetControl<Button>("DataCheckBannerDismissButton");
+
+            main.BeginDataSyncProgress();
+            RaiseClick(close);
+            main.FinishDataCheck(0, atLaunch: true);
+
+            Assert.False(card.IsVisible);
+
+            main.BeginDataSyncProgress();
+            RaiseClick(close);
+            main.FinishDataCheck(2, atLaunch: true);
+
+            Assert.True(card.IsVisible);
+        });
+    }
+
+    // A new check puts "please wait" back on the card - the earlier "all up to date" must not then
+    // take the new check's card down when its time comes.
+    [Fact]
+    public void A_new_data_check_is_not_taken_down_by_the_last_ones_timer()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var timers = new NoticeTimers();
+            main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+            var card = main.GetControl<Border>("DataCheckBanner");
+
+            main.BeginDataSyncProgress();
+            main.FinishDataCheck(0, atLaunch: false);
+            main.BeginDataSyncProgress();
+
+            timers.RunHides();
+
+            Assert.True(card.IsVisible);
+            Assert.StartsWith("Checking data from the ", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+        });
+    }
+
+    // ###########################################################################################
+    // "--demo-notices" plays every notice once (owner request, 2026-10-11). Run here without its
+    // waits: every card in the stack must have been shown, so a new card cannot be left out of the
+    // demo - and a pretend check must leave no "last check" behind in the tooltip.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_notice_demo_shows_every_notice_and_claims_no_real_check()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new CRT.Main();
+            var timers = new NoticeTimers();
+            main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+            main.NoticeDemoDelayOverrideForTests = _ => Task.CompletedTask;
+
+            var shown = new HashSet<string>();
+            foreach (Control card in main.GetControl<StackPanel>("NoticeStack").Children)
+            {
+                card.PropertyChanged += (_, e) =>
+                {
+                    if (e.Property == Visual.IsVisibleProperty && e.NewValue is true)
+                    {
+                        shown.Add(card.Name!);
+                    }
+                };
+            }
+
+            await main.PlayNoticeDemoAsync();
+
+            Assert.Equal(NoticeNames.OrderBy(name => name), shown.OrderBy(name => name));
+
+            string tip = ToolTip.GetTip(main.GetControl<Border>("DataSyncStatusIconBorder")) as string ?? string.Empty;
+            Assert.DoesNotContain("Last check", tip, StringComparison.Ordinal);
+
+            // The demo ends with "files updated", which stays - and the label editor's card is gone.
+            Assert.True(main.GetControl<Border>("DataCheckBanner").IsVisible);
+            Assert.False(main.GetControl<Border>("SchematicsLabelEditorModeBanner").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // A real data check's card is left as it is by the demo (code review, 2026-10-11). The demo
+    // put its own progress over a real "please refresh board" and then "all up to date", which goes
+    // by itself - so the real card's reason to stay was gone.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_notice_demo_leaves_a_real_data_check_card_alone()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new CRT.Main();
+            main.ScheduleNoticeTimerOverrideForTests = new NoticeTimers().Schedule;
+            main.NoticeDemoDelayOverrideForTests = _ => Task.CompletedTask;
+
+            main.BeginDataSyncProgress();
+            main.FinishDataCheck(5, atLaunch: true);
+            string real = main.GetControl<TextBlock>("DataCheckBannerText").Text!;
+
+            await main.PlayNoticeDemoAsync();
+
+            Assert.True(main.GetControl<Border>("DataCheckBanner").IsVisible);
+            Assert.Equal(real, main.GetControl<TextBlock>("DataCheckBannerText").Text);
+        });
+    }
+
+    // Collects the notices' timers instead of a DispatcherTimer, which never ticks headless. A
+    // "goes by itself" timer is told apart from a click guard by its length.
+    private sealed class NoticeTimers
+    {
+        private readonly List<Action> thisHides = new();
+
+        public int HideCount => this.thisHides.Count;
+
+        public IDisposable Schedule(Action elapsed, TimeSpan after)
+        {
+            if (after == CRT.Main.NoticeGoesAfter)
+            {
+                this.thisHides.Add(elapsed);
+            }
+
+            return new CancelOnDispose();
+        }
+
+        public void RunHides()
+        {
+            foreach (Action hide in this.thisHides.ToList())
+            {
+                hide();
+            }
+        }
+    }
+
+    // The stack holds exactly the notices above, so the shift test covers every card - a new one
+    // has to be added to NoticeNames - and each starts hidden: one showing at construction would
+    // mean something ran that should not have.
+    [Fact]
+    public void Every_notice_is_in_the_stack_and_starts_hidden()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var stack = main.GetControl<StackPanel>("NoticeStack");
+
+            Assert.Equal(NoticeNames, stack.Children.Select(card => card.Name ?? string.Empty));
+            Assert.All(stack.Children, card => Assert.False(card.IsVisible, $"{card.Name} is showing"));
+
+            // No background: the gaps between cards, and an empty stack, let clicks through.
+            Assert.Null(stack.Background);
+        });
+    }
+
+    // Nothing but the worklog bar and the tabs takes a row of the right panel. A notice given a
+    // row of its own above the tabs is exactly what moved the window every time it came or went.
+    [Fact]
+    public void The_right_panel_has_a_row_for_the_worklog_bar_and_one_for_the_tabs_and_nothing_else()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var grid = Assert.IsType<Grid>(main.GetControl<Border>("RightPanel").Child);
+
+            Assert.Equal(2, grid.RowDefinitions.Count);
+            Assert.Equal(GridUnitType.Auto, grid.RowDefinitions[0].Height.GridUnitType);
+            Assert.Equal(GridUnitType.Star, grid.RowDefinitions[1].Height.GridUnitType);
+
+            Assert.Equal(0, Grid.GetRow(main.GetControl<Border>("WorklogBar")));
+            Assert.All(
+                grid.Children.Where(child => child.Name != "WorklogBar"),
+                child => Assert.Equal(1, Grid.GetRow(child)));
+        });
+    }
+
+    // ###########################################################################################
+    // A notice that has just appeared lets clicks through for a moment.
+    //
+    // It appears on its own, at a moment nobody chose, possibly right under a pointer about to
+    // click a thumbnail - and that click would land on its Install or close button instead. The
+    // tooltips taught the same lesson. The release is run by hand here: a headless test's
+    // DispatcherTimer never ticks.
+    // ###########################################################################################
+    [Fact]
+    public void A_notice_that_has_just_appeared_lets_clicks_through_until_its_guard_ends()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var releases = new List<(Action Release, TimeSpan After)>();
+            main.ScheduleNoticeTimerOverrideForTests = (release, after) =>
+            {
+                releases.Add((release, after));
+                return new CancelOnDispose();
+            };
+
+            var update = main.GetControl<Border>("UpdateBanner");
+            update.IsVisible = true;
+
+            Assert.False(update.IsHitTestVisible);
+            Assert.Equal(CRT.Main.NoticeClickGuard, Assert.Single(releases).After);
+
+            releases[0].Release();
+
+            Assert.True(update.IsHitTestVisible);
+        });
+    }
+
+    // Hidden and shown again, a card starts its guard over - and the first showing's release,
+    // already queued, must not end the second guard early.
+    [Fact]
+    public void A_notice_shown_again_starts_its_guard_over()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var releases = new List<Action>();
+            var cancelled = new List<CancelOnDispose>();
+            main.ScheduleNoticeTimerOverrideForTests = (release, _) =>
+            {
+                releases.Add(release);
+                var handle = new CancelOnDispose();
+                cancelled.Add(handle);
+                return handle;
+            };
+
+            var sync = main.GetControl<Border>("SyncBanner");
+            sync.IsVisible = true;
+            sync.IsVisible = false;
+            sync.IsVisible = true;
+
+            Assert.Equal(2, releases.Count);
+            Assert.True(cancelled[0].IsDisposed);
+
+            // The first release slipped through anyway - as one the dispatcher had already queued.
+            releases[0]();
+            Assert.False(sync.IsHitTestVisible);
+
+            releases[1]();
+            Assert.True(sync.IsHitTestVisible);
+        });
+    }
+
+    // Each card has its own guard: one appearing does not lock another that is already usable.
+    [Fact]
+    public void A_notice_appearing_leaves_the_cards_already_showing_clickable()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var releases = new List<Action>();
+            main.ScheduleNoticeTimerOverrideForTests = (release, _) =>
+            {
+                releases.Add(release);
+                return new CancelOnDispose();
+            };
+
+            var update = main.GetControl<Border>("UpdateBanner");
+            update.IsVisible = true;
+            releases[0]();
+
+            main.GetControl<Border>("SourceSwitchBanner").IsVisible = true;
+
+            Assert.True(update.IsHitTestVisible);
+            Assert.False(main.GetControl<Border>("SourceSwitchBanner").IsHitTestVisible);
+        });
+    }
+
+    private sealed class CancelOnDispose : IDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public void Dispose() => this.IsDisposed = true;
     }
 
     // -----------------------------------------------------------------------------------------

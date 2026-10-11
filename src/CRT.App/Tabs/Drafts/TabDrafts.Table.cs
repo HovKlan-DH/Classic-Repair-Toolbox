@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using Handlers.DataHandling;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -12,8 +13,9 @@ namespace CRT
     // TABLE MODE on the Drafts tab - "Edit in table format" (owner request, 2026-09-24).
     //
     // Owns: which draft's table is open, switching the tab between its list layout and its table
-    // layout, and every prompt about unsaved table edits. The table itself is BoardTableEditor;
-    // this part only decides when it opens, closes and saves.
+    // layout, every prompt about unsaved table edits, and the question before a save that removes
+    // schematic images with something drawn on them. The table itself is BoardTableEditor; this
+    // part only decides when it opens, closes and saves.
     //
     // *** ONE RULE RUNS THROUGH ALL OF IT: the table's unsaved edits are never silently lost, and
     // never silently left out. *** Closing asks. Discarding the draft is covered by the discard
@@ -311,6 +313,33 @@ namespace CRT
                 this.RefreshDrafts();
             }
         }
+
+        // ###########################################################################################
+        // A save of the table that would remove schematic images with something drawn on them asks
+        // first, with the question Remove in "Schematic images" asks (code review, 2026-10-11 -
+        // BoardTableEditor.ConfirmRemovingSchematics). True saves and removes them.
+        // ###########################################################################################
+        private async Task<bool> ConfirmRemovingSchematicsAsync(IReadOnlyList<SchematicDrop> drops)
+        {
+            if (this.ConfirmRemovingSchematicsOverrideForTests is { } answer)
+            {
+                return answer(drops);
+            }
+
+            if (TopLevel.GetTopLevel(this) is not Window owner)
+            {
+                return false;
+            }
+
+            var dialog = new RemoveSchematicWindow();
+            dialog.InitializeForTableSave(drops);
+
+            return await dialog.ShowDialog<bool?>(owner) == true;
+        }
+
+        // Answers that question for a headless test, which cannot answer a dialog. Null is the real
+        // dialog.
+        internal Func<IReadOnlyList<SchematicDrop>, bool>? ConfirmRemovingSchematicsOverrideForTests { get; set; }
 
         // The published board to colour against, or null when there is none (a draft-only board,
         // or a published file that is missing - the table then simply shows no colours rather

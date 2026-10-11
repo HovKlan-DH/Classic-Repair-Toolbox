@@ -86,6 +86,21 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain("http", message.Body, StringComparison.OrdinalIgnoreCase);
         }
 
+        // The project owner's words (2026-10-10), replacing "Don't be put off if that happens": a
+        // rejection after BETA is not personal, and it is how the data stays good.
+        [Fact]
+        public void The_first_mail_asks_the_contributor_not_to_take_a_later_rejection_personally()
+        {
+            EmailMessage message = EmailTemplates.SubmissionPublishedToBeta("c@example.com", "X/Y/Z", null);
+
+            Assert.Contains(
+                "If your contribution is rejected, please do not take it personally - a maintainer often only spots a problem once " +
+                "the data is \"live\" in BETA. It is all part of the process, and we must strive for the best possible data quality :-)",
+                message.Body,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("put off", message.Body, StringComparison.Ordinal);
+        }
+
         // A maintainer changed rows in the Maintainer tab before publishing (2026-09-25): the
         // contributor is told, and only then - and through the notifier's mapping too.
         [Fact]

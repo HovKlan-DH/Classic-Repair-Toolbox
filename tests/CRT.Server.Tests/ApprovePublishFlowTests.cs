@@ -310,6 +310,75 @@ namespace CRT.Server.Tests
                 this.thisDataTree, "Commodore", "C64", "250407", "Images", "sheet1.png")));
         }
 
+        // ###########################################################################################
+        // *** A RENAME THAT IS PUBLISHED IS LISTED IN THE BOARD'S .json (owner decision, 2026-10-10:
+        // it "must also change for everyone updating to this data", in the board JSON file and not
+        // in Excel). *** The second publish names the same image "PCB top side": the server sees
+        // the image it published as "Top", lists the rename with the publish's revision date - the
+        // list every CRT follows for its user's own worklogs and settings - and the next publish
+        // keeps it. Nothing extra is sent with the submission.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_published_rename_is_listed_in_the_boards_json_and_kept_by_the_next_publish()
+        {
+            byte[] image = PublishExecutorTests.Png("PNGDATA");
+            string hash = await this.PutBlobAsync(image);
+            var file = new SubmissionFile { Path = "Commodore/C64/250407/Images/top.png", Sha256 = hash, SizeBytes = image.LongLength };
+
+            SubmissionManifest Named(string name)
+            {
+                SubmissionManifest manifest = ApprovePublishFlowTests.Manifest(file);
+                manifest.Rows.Schematics.Add(new BoardSchematicEntry { SchematicName = name, SchematicImageFile = file.Path });
+                return manifest;
+            }
+
+            async Task<long> PendingWithAsync(FakeSubmissionStore store, SubmissionManifest manifest, string email)
+            {
+                long id = await store.CreateAsync(
+                    new NewSubmission(
+                        manifest.BoardId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
+                        null, email, "192.0.2.2", "hash-" + email, "2026-August-21",
+                        "Renamed an image.", 1, [.. manifest.Files], ApprovePublishFlowTests.Now,
+                        ApprovePublishFlowTests.Now.AddHours(24)),
+                    CancellationToken.None);
+
+                await store.SavePayloadAsync(id, manifest, CancellationToken.None);
+                await store.SetStateAsync(id, SubmissionState.Pending, ApprovePublishFlowTests.Now, CancellationToken.None);
+
+                return id;
+            }
+
+            (FakeSubmissionStore store, long first) = await ApprovePublishFlowTests.PendingAsync(Named("Top"));
+            ApprovePublishFlow flow = this.Flow(store);
+
+            ApproveOutcome published = await flow.ApproveAsync(first, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
+            Assert.True(published.IsPublished, published.Error);
+
+            string workbook = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx");
+            Assert.Empty(BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
+
+            long second = await PendingWithAsync(store, Named("PCB top side"), "renamer@example.com");
+            ApproveOutcome renamed = await flow.ApproveAsync(second, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now.AddDays(1), CancellationToken.None);
+            Assert.True(renamed.IsPublished, renamed.Error);
+
+            SchematicRenameRecord rename = Assert.Single(BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
+            Assert.Equal("Top", rename.From);
+            Assert.Equal("PCB top side", rename.To);
+
+            // The image it was renamed on - so a CRT can tell it from another image given the old
+            // name later (owner request, 2026-10-10: "to be unambiguous").
+            Assert.Equal(file.Path, rename.File);
+
+            BoardData? board = BoardDataReader.ReadWorkbookUncached(workbook);
+            Assert.Equal(board!.RevisionDate, rename.Date);
+
+            long third = await PendingWithAsync(store, Named("PCB top side"), "later@example.com");
+            ApproveOutcome later = await flow.ApproveAsync(third, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now.AddDays(2), CancellationToken.None);
+            Assert.True(later.IsPublished, later.Error);
+
+            Assert.Equal([rename], BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
+        }
+
         // -----------------------------------------------------------------------------------
         // What it changed, for the board's History view (owner request, 2026-10-04: "summarize
         // each submission change in a textual form ... to get an idea, besides the sometimes vague

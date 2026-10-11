@@ -154,6 +154,12 @@
 					     draft edit, and amber would mark every one of several hundred as "changed". -->
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#E6E6E6</SolidColorBrush>
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#C8C8C8</SolidColorBrush>
+					<!-- A component the KiCad data has and the board has no label for yet - the to-do
+					     list, highlighted in the IndianRed CRT's own Remove buttons use (owner request,
+					     2026-10-10). -->
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#B85C5C</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Fg">White</SolidColorBrush>
 
 					<!-- Light, the table editor's colours (BoardTable_*) now live in
 					     Controls/BoardTable/BoardTableColors.axaml, merged above, so the Maintainer tab's
@@ -365,6 +371,9 @@
 				     Form_Bg the report sits on, where the light one steps darker. -->
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#B85C5C</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Fg">White</SolidColorBrush>
 
 				<!-- Dark, the table editor: see Controls/BoardTable/BoardTableColors.axaml. -->
 

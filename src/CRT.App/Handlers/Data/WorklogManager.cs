@@ -1659,6 +1659,54 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Several worklogs of one workbook written back as given, each to its own index.json, in
+        // order - with the workbook's worklogs read ONCE (code review, 2026-10-11): UpdateEntry read
+        // every worklog of the workbook again for each one, and LocalSchematicRename moves every
+        // worklog marked on a renamed image at once, during a board load. Stops at the first that is
+        // not in the workbook or cannot be written, and returns how many were written - the first
+        // that many. The workbook's status is recomputed once.
+        // ###########################################################################################
+        public static int UpdateEntries(int workbookId, IReadOnlyList<WorklogEntryRecord> updatedEntries)
+        {
+            string? folder = GetWorkbookFolder(workbookId);
+            if (folder == null)
+            {
+                Logger.Warning($"Failed to update worklogs: workbook [#{workbookId}] folder not found");
+                return 0;
+            }
+
+            var entries = ReadEntries(folder);
+            int written = 0;
+
+            foreach (WorklogEntryRecord updatedEntry in updatedEntries)
+            {
+                int index = entries.FindIndex(e => e.Id == updatedEntry.Id);
+                if (index < 0)
+                {
+                    Logger.Warning($"Failed to update worklog: worklog [#{updatedEntry.Id}] not found in workbook [#{workbookId}]");
+                    break;
+                }
+
+                if (!SaveEntry(folder, updatedEntry))
+                {
+                    break;
+                }
+
+                entries[index] = updatedEntry;
+                written++;
+            }
+
+            if (written > 0)
+            {
+                RecomputeWorkbookStatus(folder, workbookId, entries);
+
+                Logger.Info($"Setting changed: [Worklog] updated [{written}] worklogs in workbook [#{workbookId}]");
+            }
+
+            return written;
+        }
+
+        // ###########################################################################################
         // Deletes one worklog from a workbook by removing its whole "worklog_{id}" folder - its own
         // index.json and its photos and files together - then recomputes the workbook's status the
         // same way UpdateEntry does: removing the last still-Open worklog closes the workbook, and

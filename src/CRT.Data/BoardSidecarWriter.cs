@@ -36,6 +36,11 @@ namespace Handlers.DataHandling
     // BoardComponentHighlightStorage's own readers and savers - integer rects under
     // "Component highlights", and the seven calibration fields under "KiCad calibration points".
     // It is the reader that decides what the format is; this file follows it.
+    //
+    // *** AND A THIRD ROOT, "Schematic renames" (owner decision, 2026-10-10). *** The board's
+    // renamed schematic images, oldest first (SchematicRenameLog) - written only when there is one,
+    // so a board nobody renamed keeps exactly the file it had. Every writer passes the list on:
+    // dropped from one write, it would be gone for good.
     // ###########################################################################################
     public static class BoardSidecarWriter
     {
@@ -59,11 +64,13 @@ namespace Handlers.DataHandling
         public static void Write(
             string workbookPath,
             IReadOnlyList<ComponentHighlightEntry> highlights,
-            IReadOnlyList<KiCadCalibrationEntry> calibrations)
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord> renames)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(workbookPath);
             ArgumentNullException.ThrowIfNull(highlights);
             ArgumentNullException.ThrowIfNull(calibrations);
+            ArgumentNullException.ThrowIfNull(renames);
 
             // The same derivation the reader uses. A mismatch here means a file nobody ever loads
             // and a board that publishes with no highlights at all.
@@ -72,7 +79,7 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(sidecarPath))
                 throw new InvalidOperationException($"Could not resolve a sidecar path for [{workbookPath}].");
 
-            JsonObject root = BoardSidecarWriter.BuildDocument(highlights, calibrations);
+            JsonObject root = BoardSidecarWriter.BuildDocument(highlights, calibrations, renames);
 
             string directory = Path.GetDirectoryName(sidecarPath) ?? string.Empty;
 
@@ -104,16 +111,18 @@ namespace Handlers.DataHandling
         public static bool WriteIfChanged(
             string workbookPath,
             IReadOnlyList<ComponentHighlightEntry> highlights,
-            IReadOnlyList<KiCadCalibrationEntry> calibrations)
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord> renames)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(workbookPath);
             ArgumentNullException.ThrowIfNull(highlights);
             ArgumentNullException.ThrowIfNull(calibrations);
+            ArgumentNullException.ThrowIfNull(renames);
 
-            if (BoardSidecarWriter.HoldsTheSameContent(workbookPath, highlights, calibrations))
+            if (BoardSidecarWriter.HoldsTheSameContent(workbookPath, highlights, calibrations, renames))
                 return false;
 
-            BoardSidecarWriter.Write(workbookPath, highlights, calibrations);
+            BoardSidecarWriter.Write(workbookPath, highlights, calibrations, renames);
             return true;
         }
 
@@ -132,10 +141,12 @@ namespace Handlers.DataHandling
         public static bool HoldsTheSameContent(
             string workbookPath,
             IReadOnlyList<ComponentHighlightEntry> highlights,
-            IReadOnlyList<KiCadCalibrationEntry> calibrations)
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord> renames)
         {
             ArgumentNullException.ThrowIfNull(highlights);
             ArgumentNullException.ThrowIfNull(calibrations);
+            ArgumentNullException.ThrowIfNull(renames);
 
             string sidecarPath = BoardComponentHighlightStorage.GetJsonPath(workbookPath);
 
@@ -154,7 +165,12 @@ namespace Handlers.DataHandling
             }
 
             if (existing is null ||
-                existing.Any(root => root.Key is not (BoardSidecarWriter.HighlightsRoot or BoardSidecarWriter.CalibrationRoot)))
+                existing.Any(root => root.Key is not (BoardSidecarWriter.HighlightsRoot or BoardSidecarWriter.CalibrationRoot or SchematicRenameLog.Root)))
+            {
+                return false;
+            }
+
+            if (existing[SchematicRenameLog.Root] is not (null or JsonArray))
             {
                 return false;
             }
@@ -191,9 +207,11 @@ namespace Handlers.DataHandling
             }
 
             string before = BoardSidecarWriter.BuildDocument(
-                BoardComponentHighlightStorage.LoadComponentHighlights(workbookPath), existingCalibrations).ToJsonString();
+                BoardComponentHighlightStorage.LoadComponentHighlights(workbookPath),
+                existingCalibrations,
+                BoardComponentHighlightStorage.LoadSchematicRenames(workbookPath)).ToJsonString();
 
-            return string.Equals(before, BoardSidecarWriter.BuildDocument(highlights, calibrations).ToJsonString(), StringComparison.Ordinal);
+            return string.Equals(before, BoardSidecarWriter.BuildDocument(highlights, calibrations, renames).ToJsonString(), StringComparison.Ordinal);
         }
 
         // ###########################################################################################
@@ -204,12 +222,51 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static JsonObject BuildDocument(
             IReadOnlyList<ComponentHighlightEntry> highlights,
-            IReadOnlyList<KiCadCalibrationEntry> calibrations) =>
-            new()
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord> renames)
+        {
+            var document = new JsonObject
             {
                 [BoardSidecarWriter.HighlightsRoot] = BoardSidecarWriter.BuildHighlights(highlights),
                 [BoardSidecarWriter.CalibrationRoot] = BoardSidecarWriter.BuildCalibrations(calibrations)
             };
+
+            JsonArray renameList = BoardSidecarWriter.BuildRenames(renames);
+
+            if (renameList.Count > 0)
+                document[SchematicRenameLog.Root] = renameList;
+
+            return document;
+        }
+
+        // ###########################################################################################
+        // The "Schematic renames" root: one { From, To, File, Date } per rename, IN THE ORDER GIVEN - the
+        // order is the history (a rename and a later one back are two entries, both kept). A rename
+        // missing either name is no rename and is left out.
+        // ###########################################################################################
+        private static JsonArray BuildRenames(IReadOnlyList<SchematicRenameRecord> renames)
+        {
+            var list = new JsonArray();
+
+            foreach (SchematicRenameRecord rename in renames)
+            {
+                string from = rename.From?.Trim() ?? string.Empty;
+                string to = rename.To?.Trim() ?? string.Empty;
+
+                if (from.Length == 0 || to.Length == 0)
+                    continue;
+
+                list.Add(new JsonObject
+                {
+                    ["From"] = from,
+                    ["To"] = to,
+                    ["File"] = rename.File?.Trim() ?? string.Empty,
+                    ["Date"] = rename.Date?.Trim() ?? string.Empty
+                });
+            }
+
+            return list;
+        }
 
         // ###########################################################################################
         // The "Component highlights" root: schematic -> board label -> an ARRAY of rects.

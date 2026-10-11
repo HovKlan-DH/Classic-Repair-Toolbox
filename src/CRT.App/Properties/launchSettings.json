@@ -3,6 +3,11 @@
     "Classic-Repair-Toolbox": {
       "commandName": "Project",
       "hotReloadEnabled": false
+    },
+    "Classic-Repair-Toolbox (notice demo)": {
+      "commandName": "Project",
+      "commandLineArgs": "--demo-notices --simulate-update",
+      "hotReloadEnabled": false
     }
   }
 }

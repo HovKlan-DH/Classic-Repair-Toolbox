@@ -16,7 +16,8 @@ The short version: _the Excel file says **what** a component is, the JSON file s
 
 Nothing in the JSON is descriptive. There are no names, no values, no datasheets, no links - it is pure
 geometry: the rectangle that lights up when you select `U17` in the component list, and the alignment
-that makes a KiCad copper overlay sit exactly on top of a board photo.
+that makes a KiCad copper overlay sit exactly on top of a board photo. The one exception is the list of
+schematic images that have been renamed - see [Schematic renames](#schematic-renames).
 
 ---
 
@@ -50,16 +51,17 @@ sheet exists in one and not in the other.
 
 ## Structure
 
-The file has two independent top-level sections ("roots"), both optional:
+The file has up to three independent top-level sections ("roots"), all optional:
 
 ```json
 {
   "Component highlights": { },
-  "KiCad calibration points": { }
+  "KiCad calibration points": { },
+  "Schematic renames": [ ]
 }
 ```
 
-Most boards only have the first. Saving one never disturbs the other.
+Most boards only have the first. Saving one never disturbs the others.
 
 ---
 
@@ -186,6 +188,42 @@ KiCad geometry has to be stretched to sit on top of *that particular image*:
 These numbers are the result of dragging a box in the app until the copper lines up with the image, so
 they come out with fifteen decimals and are meaningless in isolation. **Do not hand-edit them.** If an
 overlay drifts, redo the calibration; it takes a minute and it is the only reliable way to get it right.
+
+---
+
+## `Schematic renames`
+
+Only present once a schematic image of the board has been renamed. It lists every rename, oldest first:
+
+```json
+{
+  "Schematic renames": [
+    {
+      "From": "Top (replica)",
+      "To": "PCB top side",
+      "File": "Commodore/C64/250407/C64 250407 PCB Replica.1.1 Top.png",
+      "Date": "2026-October-10"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `From` | The image's name before the rename |
+| `To` | Its name after |
+| `File` | The image file that was renamed |
+| `Date` | The revision date of the publish that renamed it |
+
+Your worklogs, your own order of the images, an image you hid in the "Configuration" tab and the image
+you last looked at are all kept under the image's name. CRT remembers which image file each name was
+on, so when an image is renamed, they move with the image to its new name - also when the old name is
+later given to another image. The first time CRT shows a board after you update it, it has nothing
+remembered yet and uses this list instead.
+
+**You never write this list.** It is added to when a renamed image is published: an image file that comes
+back under a new name is a rename. To rename an image, use its **Name** box in the Drafts tab's
+**Schematic images** window - see [Board Excel](Board-Excel).
 
 ---
 

@@ -52,6 +52,18 @@ settings below, which have nothing to act on without it.
 The check replaces any downloaded data file that differs from the server's copy - so a data file
 you have edited by hand is put back at the next launch. Untick this while you test such an edit.
 
+While a check runs - at launch, or when you click the round arrows at the right end of the tab
+row - the arrows spin, and a notice in the bottom-right corner says what it is doing. When it is
+done, the notice says what it found:
+
+* **All data files are up to date** - the notice goes by itself after a few seconds.
+* **Files updated - please refresh board** - the notice stays until you click **Refresh Board** or
+  close it, because the board on screen may be showing the old data.
+* **Could not check for new data** - for example when you are offline. After the check at launch
+  this goes by itself; after a check you started, it stays until you close it.
+
+Pointing at the arrows tells you when the last check ran and what it found.
+
 **Download data from the BETA source instead of the stable source** - CRT has two sources of board
 data. The **stable source** is the tested data everybody gets, and is what CRT uses unless you say
 otherwise. The **BETA source** holds data a maintainer has just approved, before it has had its

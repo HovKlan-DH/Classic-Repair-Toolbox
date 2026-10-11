@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using Handlers.DataHandling;
 using Handlers.Theming;
 using System;
@@ -32,7 +33,12 @@ namespace CRT
     //
     // FILE MAP:
     //   BoardFilesWindow.axaml.cs          - opening, the image and KiCad imports, the report
+    //   BoardFilesWindow.DraftChanges.cs   - every change to the draft: queued, off the UI thread,
+    //                                        under the "please wait"; and closing after them
     //   BoardFilesWindow.SchematicOrder.cs - dragging the schematic images into a new order
+    //   BoardFilesWindow.CadNames.cs       - picking each image's CAD name from the KiCad views
+    //   BoardFilesWindow.SchematicNames.cs - renaming an image (its "Schematic name")
+    //   BoardFilesWindow.NetNames.cs       - the report's KiCad net names and Important signals
     // ###########################################################################################
     public partial class BoardFilesWindow : Window
     {
@@ -53,6 +59,10 @@ namespace CRT
         // MERGED BoardData (official plus draft), so this works the same on a brand-new board
         // (where every label is drafted) and on an existing board.
         private IReadOnlyList<string> thisBoardLabels = Array.Empty<string>();
+
+        // The board's "Important signals" rows, from the same merged BoardData as the labels - the
+        // report says which of them name a net the KiCad data does not have (2026-10-10).
+        private IReadOnlyList<KiCadImportantSignalEntry> thisImportantSignals = Array.Empty<KiCadImportantSignalEntry>();
 
         public ObservableCollection<BoardSchematicRow> Schematics { get; } = new();
 
@@ -100,11 +110,13 @@ namespace CRT
             string displayName,
             string excelDataFile,
             IReadOnlyList<string> boardLabels,
-            BoardFilesSection section)
+            BoardFilesSection section,
+            IReadOnlyList<KiCadImportantSignalEntry>? importantSignals = null)
         {
             this.thisExcelDataFile = excelDataFile;
             this.thisDraftFolder = DraftManager.GetBoardFolder(excelDataFile);
             this.thisBoardLabels = boardLabels;
+            this.thisImportantSignals = importantSignals ?? Array.Empty<KiCadImportantSignalEntry>();
 
             this.HeaderText.Text = displayName;
 
@@ -118,9 +130,26 @@ namespace CRT
             this.SchematicsSection.IsVisible = !isKiCad;
             this.KiCadSection.IsVisible = isKiCad;
 
+            // ###########################################################################################
+            // *** WHAT IS READ ON OPENING IS READ UNDER THE "PLEASE WAIT" (owner request, 2026-10-10:
+            // "it can take a few secs to display, so please do show that new standard wait
+            // method"). *** The draft workbook, every image's preview and the KiCad data used to be
+            // read on the UI thread, so the window froze - and, opened from the Drafts tab, appeared
+            // seconds after the click with nothing to say why. Now each is read off the UI thread
+            // while the window's BusyOverlay holds it; Opening completes when all of it is in.
+            // ###########################################################################################
             if (!isKiCad)
             {
-                this.ReloadSchematicsFromDraft();
+                this.Opening = BusyOverlay.HoldAsync(this, CrtWaitWording.OpeningSchematicImages, async () =>
+                {
+                    // The CAD names come from the KiCad data, read without parsing the PCB - see
+                    // BoardFilesWindow.CadNames.cs - alongside the images.
+                    this.CadNamesLoading = this.LoadCadViewNamesAsync();
+
+                    await this.ReloadSchematicsFromDraftAsync();
+                    await this.CadNamesLoading;
+                });
+
                 return;
             }
 
@@ -133,48 +162,116 @@ namespace CRT
             // The match report used to be built only at the end of an import, so reopening the
             // window on a board that already had KiCad data showed an empty panel - the one piece
             // of information that says whether the board labels line up with the KiCad references
-            // was available exactly once, and only to whoever performed the import.
-            //
-            // Fire-and-forget because Initialize is called from a synchronous caller and parsing a
-            // 45 MB .kicad_pcb takes a moment; the panel simply appears when it is ready, exactly as
-            // it does after an import.
+            // was available exactly once, and only to whoever performed the import. Parsing a
+            // 45 MB .kicad_pcb takes a moment, so it is under the "please wait" too.
             // ###########################################################################################
-            _ = this.RefreshReportAsync();
+            this.Opening = BusyOverlay.HoldAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
         }
+
+        // Completes when everything the window reads on opening is in - for tests, which wait for it
+        // as the user does.
+        internal Task Opening { get; private set; } = Task.CompletedTask;
+
+        // ###########################################################################################
+        // Whether anything in this window changed the draft - an image added, removed or moved, a
+        // CAD name picked, KiCad files imported or removed. The Drafts tab reloads the board on
+        // screen after the window closes ONLY then (owner report, 2026-10-10: closing the window
+        // refreshed the detached schematic thumbnails for no reason - it reloaded the board every
+        // time, changed or not). Set only once the change is on disk.
+        // ###########################################################################################
+        internal bool ChangedTheDraft { get; private set; }
+
+        // Set by OnClosed: a read still in flight then has nowhere to show what it read.
+        private bool thisClosed;
+
+        // The draft's schematic rows read again, under the "please wait" - for a change made in
+        // this window that has to show what the draft now holds.
+        private Task ReloadSchematicsUnderOverlayAsync() =>
+            BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingSchematicImages, this.ReloadSchematicsFromDraftAsync);
 
         // ###########################################################################################
         // Rebuilds the schematic list from the draft on disk, so what is shown is always what was
         // actually saved rather than an in-memory copy that could drift from it.
+        //
+        // The workbook and every preview are read OFF the UI thread (2026-10-10) - a couple of
+        // dozen board scans took seconds to decode, with the window frozen - and the rows on screen
+        // are swapped for the new ones only once all of it is in. Callers run it under the window's
+        // "please wait" (Opening, ReloadSchematicsUnderOverlayAsync).
         // ###########################################################################################
-        private void ReloadSchematicsFromDraft()
+        private async Task ReloadSchematicsFromDraftAsync()
         {
+            string draftsRoot = DraftManager.DraftsRoot;
+            string dataRoot = this.DataRoot;
+            string draftFolder = this.thisDraftFolder;
+            string excelDataFile = this.thisExcelDataFile;
+
+            // Reads the draft's own BOARD rather than a delta list (Phase 6): the schematics ARE
+            // the workbook's rows, so there is no Deleted state to skip and no loosely-typed Entry
+            // to type-check - a row that is gone is simply not there.
+            List<(BoardSchematicEntry Entry, Bitmap? Thumbnail)> read = await Task.Run(() =>
+                (DraftWorkbookStore.LoadDraftBoard(draftsRoot, excelDataFile)?.Schematics ?? [])
+                    .Select(entry => (entry, BoardFilesWindow.LoadThumbnail(dataRoot, draftFolder, entry.SchematicImageFile)))
+                    .ToList());
+
+            if (this.thisClosed)
+            {
+                // Nothing will show these, and OnClosed has already released what it could see.
+                foreach ((_, Bitmap? thumbnail) in read)
+                {
+                    thumbnail?.Dispose();
+                }
+
+                return;
+            }
+
             // A drag cannot survive its rows being replaced - it would hold a row no longer listed.
             this.ResetSchematicRowDrag();
+
+            // ###########################################################################################
+            // *** A NAME STILL BEING TYPED STAYS IN ITS BOX (code review, 2026-10-10). *** Images
+            // dropped in while a Name box held an unsaved name replaced every row, and the typed name
+            // went with its old row, without a word. It is handed to the new row of the same image
+            // (SchematicRows: name, file, place), still unsaved - Enter, leaving the box or closing
+            // the window saves it as before.
+            // ###########################################################################################
+            List<(SchematicRowRef Row, string Typed)> typed = this.Schematics
+                .Where(row => row.HasNameEdit)
+                .Select(row => (this.RefOf(row), row.NameDraft))
+                .ToList();
 
             // Before the Clear, or the rows holding them are gone before they can be released.
             this.DisposeThumbnails();
 
             this.Schematics.Clear();
 
-            // Reads the draft's own BOARD rather than a delta list (Phase 6): the schematics ARE
-            // the workbook's rows, so there is no Deleted state to skip and no loosely-typed Entry
-            // to type-check - a row that is gone is simply not there.
-            BoardData? board = DraftWorkbookStore.LoadDraftBoard(
-                DraftManager.DraftsRoot,
-                this.thisExcelDataFile);
-
-            if (board != null)
-            {
-                foreach (BoardSchematicEntry entry in board.Schematics)
+            var rows = read
+                .Select(item => new BoardSchematicRow
                 {
-                    this.Schematics.Add(new BoardSchematicRow
-                    {
-                        SchematicName = entry.SchematicName,
-                        ImageFile = entry.SchematicImageFile,
-                        CadName = entry.CadName,
-                        Thumbnail = this.LoadThumbnail(entry.SchematicImageFile),
-                    });
+                    SchematicName = item.Entry.SchematicName,
+                    ImageFile = item.Entry.SchematicImageFile,
+                    CadName = item.Entry.CadName,
+                    Thumbnail = item.Thumbnail,
+                    CadNameChosen = this.OnCadNameChosen,
+                })
+                .ToList();
+
+            foreach ((SchematicRowRef row, string text) in typed)
+            {
+                int index = SchematicRows.IndexOf(read.Select(item => item.Entry).ToList(), row);
+
+                if (index >= 0)
+                {
+                    rows[index].NameDraft = text;
                 }
+            }
+
+            // Each row's CAD name choices are in place BEFORE it is listed, so its drop-down never
+            // starts out empty (BoardFilesWindow.CadNames.cs).
+            this.ApplyCadNameChoices(rows);
+
+            foreach (BoardSchematicRow row in rows)
+            {
+                this.Schematics.Add(row);
             }
 
             this.NoSchematicsText.IsVisible = this.Schematics.Count == 0;
@@ -189,6 +286,8 @@ namespace CRT
         // ###########################################################################################
         protected override void OnClosed(EventArgs e)
         {
+            this.thisClosed = true;
+
             // A drag still in flight (released outside the window) stops its auto-scroll timer here.
             this.ResetSchematicRowDrag();
 
@@ -210,7 +309,9 @@ namespace CRT
         // contributor looks to find out that an import went wrong, so it has to survive a corrupt
         // or half-copied file and SHOW that rather than refusing to open.
         // ###########################################################################################
-        private Bitmap? LoadThumbnail(string imageFile)
+        // Static, and handed its two roots: it runs on a pool thread (ReloadSchematicsFromDraftAsync),
+        // where nothing of the window may be touched.
+        private static Bitmap? LoadThumbnail(string dataRoot, string draftFolder, string imageFile)
         {
             if (string.IsNullOrWhiteSpace(imageFile))
             {
@@ -234,8 +335,8 @@ namespace CRT
                 // (a shared file is not copied into a draft), which a draft-only lookup never could.
                 // ###########################################################################################
                 string? path = DraftFileResolver.Resolve(
-                    DataManager.DataRoot,
-                    this.thisDraftFolder,
+                    dataRoot,
+                    draftFolder,
                     imageFile);
 
                 if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -388,6 +489,17 @@ namespace CRT
                 ? string.Empty
                 : Path.Combine(this.thisDraftFolder, AppConfig.KiCadDataFolderName);
 
+        // The board's published "KiCad data" folder (DraftBoardSource.PublishedKiCadFolderOf) - read
+        // with the draft's, as the Schematics tab reads both (KiCadRawFileScanner.ScanBoard).
+        private string PublishedKiCadFolder =>
+            DraftBoardSource.PublishedKiCadFolderOf(this.DataRoot, this.thisExcelDataFile);
+
+        // The published data tree - DataManager's, or a test's (set before Initialize: a test may not
+        // point DataManager anywhere from the HeadlessUi collection).
+        internal string? DataRootOverrideForTests { get; set; }
+
+        private string DataRoot => this.DataRootOverrideForTests ?? DataManager.DataRoot;
+
         // ------------------------------------------------------------------ Schematic import
 
         private async void OnAddSchematicsClick(object? sender, RoutedEventArgs e)
@@ -443,14 +555,15 @@ namespace CRT
         // *** THE COPYING AND THE DRAFT WRITE RUN OFF THE UI THREAD, under the "please wait"
         // overlay (2026-09-28). *** A handful of large scans and a whole-workbook rewrite used to
         // freeze the window with nothing on screen. What is decided from the window (which names are
-        // taken) is read here first; the pool thread sees only plain values.
+        // taken) is read here first; the pool thread sees only plain values. One of the window's
+        // draft changes, queued behind any before it (BoardFilesWindow.DraftChanges.cs).
         // ###########################################################################################
-        private async Task ImportSchematicsAsync(IEnumerable<string> sourcePaths)
+        internal Task ImportSchematicsAsync(IEnumerable<string> sourcePaths)
         {
             if (string.IsNullOrWhiteSpace(this.thisDraftFolder))
             {
                 this.ShowStatus("Could not resolve where to save - no drafts folder for this board.", isError: true);
-                return;
+                return Task.CompletedTask;
             }
 
             var accepted = sourcePaths
@@ -461,36 +574,61 @@ namespace CRT
             if (accepted.Count == 0)
             {
                 this.ShowStatus("No usable image files - pick PNG, JPG, GIF, BMP or WEBP.", isError: true);
-                return;
+                return Task.CompletedTask;
             }
-
-            // Names taken so far, seeded from what is already drafted and added to as this batch
-            // goes. The list on screen is only reloaded from disk once the whole batch is saved, so
-            // checking it alone would let two files imported together collide with each other - and
-            // a colliding schematic name REPLACES the earlier row (the name is the section's
-            // natural key), silently leaving one schematic where two were imported.
-            var takenNames = new HashSet<string>(
-                this.Schematics.Select(row => row.SchematicName),
-                StringComparer.OrdinalIgnoreCase);
 
             string draftFolder = this.thisDraftFolder;
             string excelDataFile = this.thisExcelDataFile;
 
-            int importedCount = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingSchematics, () => Task.Run(() =>
-                BoardFilesWindow.CopySchematicsIntoDraft(accepted, draftFolder, excelDataFile, takenNames)));
-
-            if (importedCount == 0)
+            // The copy AND the list read again are one wait, so the window does not brighten for a
+            // moment between them.
+            return this.ChangeDraftAsync(() => BusyOverlay.HoldAsync(this, CrtWaitWording.AddingSchematics, async () =>
             {
-                this.ShowStatus("Could not import those images - see the log for details.", isError: true);
-                return;
-            }
+                // Names taken so far, seeded from what is already drafted and added to as this batch
+                // goes. The list on screen is only reloaded from disk once the whole batch is saved, so
+                // checking it alone would let two files imported together collide with each other - and
+                // a colliding schematic name REPLACES the earlier row (the name is the section's
+                // natural key), silently leaving one schematic where two were imported.
+                var takenNames = new HashSet<string>(
+                    this.Schematics.Select(row => row.SchematicName),
+                    StringComparer.OrdinalIgnoreCase);
 
-            this.ReloadSchematicsFromDraft();
-            this.ShowStatus(importedCount == 1 ? "Added 1 schematic image." : $"Added {importedCount} schematic images.");
+                (int importedCount, bool saved) = await this.WriteDraftAsync(CrtWaitWording.AddingSchematics, () =>
+                    BoardFilesWindow.CopySchematicsIntoDraft(accepted, draftFolder, excelDataFile, takenNames));
+
+                if (importedCount == 0)
+                {
+                    this.ShowStatus("Could not import those images - see the log for details.", isError: true);
+                    return;
+                }
+
+                if (!saved)
+                {
+                    // The copies were taken back out (CopySchematicsIntoDraft) - nothing changed.
+                    this.ShowStatus(
+                        "The images could not be added to your draft. If this board's Excel file is open in Excel, close it there and try again.",
+                        isError: true);
+                    return;
+                }
+
+                this.ChangedTheDraft = true;
+
+                await this.ReloadSchematicsUnderOverlayAsync();
+                this.ShowStatus(importedCount == 1 ? "Added 1 schematic image." : $"Added {importedCount} schematic images.");
+            }));
         }
 
-        // The copying and the one draft edit, on the pool thread. Returns how many were imported.
-        private static int CopySchematicsIntoDraft(
+        // ###########################################################################################
+        // The copying and the one draft edit, on the pool thread: how many images were copied, and
+        // whether the draft took them.
+        //
+        // *** A DRAFT THAT DID NOT TAKE THEM GETS NO COPIES EITHER (code review, 2026-10-10). *** The
+        // edit's answer was ignored, so a workbook Excel held open still read "Added 2 schematic
+        // images." with nothing new in the list - and the copies stayed in the draft folder, rows
+        // nothing would ever name. They are deleted again: each was copied to a file name nothing had
+        // (ResolveFreeImageFileName), so nothing else is lost with them.
+        // ###########################################################################################
+        private static (int Imported, bool Saved) CopySchematicsIntoDraft(
             IReadOnlyList<string> accepted,
             string draftFolder,
             string excelDataFile,
@@ -534,15 +672,32 @@ namespace CRT
                 }
             }
 
-            if (importedCount > 0)
+            if (importedCount == 0)
             {
-                DraftWorkbookStore.Edit(
-                    DraftManager.DraftsRoot,
-                    excelDataFile,
-                    board => BoardFilesWindow.WithSchematics(board, excelDataFile, importedSchematics));
+                return (0, false);
             }
 
-            return importedCount;
+            bool saved = DraftWorkbookStore.Edit(
+                DraftManager.DraftsRoot,
+                excelDataFile,
+                board => BoardFilesWindow.WithSchematics(board, excelDataFile, importedSchematics));
+
+            if (!saved)
+            {
+                foreach ((_, string storedFileName) in importedSchematics)
+                {
+                    try
+                    {
+                        File.Delete(Path.Combine(draftFolder, storedFileName));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        Logger.Warning($"Could not take back the copied image [{storedFileName}] - [{ex.Message}]");
+                    }
+                }
+            }
+
+            return (importedCount, saved);
         }
 
         // ###########################################################################################
@@ -613,23 +768,6 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The board with one schematic row removed. The IMAGE FILE is deliberately left on disk -
-        // the status message says so, and a contributor who removes a row by mistake would
-        // otherwise lose the file they imported.
-        // ###########################################################################################
-        private static BoardData WithoutSchematic(BoardData board, string schematicName)
-        {
-            var schematics = board.Schematics
-                .Where(entry => !string.Equals(
-                    entry.SchematicName?.Trim(),
-                    schematicName?.Trim(),
-                    StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            return BoardFilesWindow.WithSchematicList(board, schematics);
-        }
-
-        // ###########################################################################################
         // Copies the board with its Schematics section replaced. Every OTHER field is carried
         // across - one left out of this copy is erased from the workbook, silently.
         //
@@ -665,27 +803,107 @@ namespace CRT
 
         // ###########################################################################################
         // Removes a schematic row from the draft. The copied image file is deliberately LEFT in the
-        // draft's Files/ folder: it costs a few megabytes that the eventual discard reclaims anyway
+        // draft folder: it costs a few megabytes that the eventual discard reclaims anyway
         // (DiscardDraft deletes the whole folder), and deleting it here would destroy the only copy
         // if the contributor removed the row by mistake.
+        //
+        // *** IT ASKS FIRST WHEN SOMETHING IS LOST WITH IT (code review, 2026-10-10). *** The
+        // highlights drawn on the image and its KiCad calibration go with the row (every draft
+        // write follows what hangs on a schematic's name), and adding the image again brings none
+        // of them back - SchematicRemoval has why. An image with nothing on it goes at once.
+        //
+        // Only the row pressed on goes - found by its name AND its image file (SchematicRows). By
+        // name alone, two rows sharing a name both went.
         // ###########################################################################################
-        private void OnRemoveSchematicClick(object? sender, RoutedEventArgs e)
+        private async void OnRemoveSchematicClick(object? sender, RoutedEventArgs e)
         {
-            if (sender is not Button { Tag: BoardSchematicRow row })
+            if (sender is Button { Tag: BoardSchematicRow row })
             {
-                return;
+                await this.RemoveSchematicAsync(row);
+            }
+        }
+
+        internal Task RemoveSchematicAsync(BoardSchematicRow row) =>
+            this.ChangeDraftAsync(async () =>
+            {
+                if (!this.Schematics.Contains(row))
+                {
+                    return;
+                }
+
+                string name = row.SchematicName;
+                string draftsRoot = DraftManager.DraftsRoot;
+                string excelDataFile = this.thisExcelDataFile;
+                string workbook = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
+                SchematicRowRef target = this.RefOf(row);
+
+                // Another image keeping the name keeps what hangs on it, too.
+                bool nameStays = this.Schematics.Any(other => !ReferenceEquals(other, row) && SchematicRename.SameName(other.SchematicName, name));
+
+                SchematicRemovalLoss loss = nameStays
+                    ? SchematicRemovalLoss.Nothing
+                    : await this.WriteDraftAsync(CrtWaitWording.CheckingSchematicRemoval, () => SchematicRemoval.Read(workbook, name));
+
+                if (!loss.IsNothing && !await this.ConfirmRemovalAsync(name, loss))
+                {
+                    return;
+                }
+
+                await BusyOverlay.HoldAsync(this, CrtWaitWording.RemovingSchematic, async () =>
+                {
+                    bool found = false;
+
+                    // Removing the ROW, not the file - the image bytes stay in the draft folder, which
+                    // is what the status message below promises. Dropping a row from a board is simply
+                    // absence now; there is no tombstone to write.
+                    bool saved = await this.WriteDraftAsync(CrtWaitWording.RemovingSchematic, () => DraftWorkbookStore.Edit(
+                        draftsRoot,
+                        excelDataFile,
+                        board =>
+                        {
+                            (BoardData without, bool wasFound) = SchematicRows.Without(board, target);
+                            found = wasFound;
+                            return without;
+                        }));
+
+                    if (saved && found)
+                    {
+                        this.ChangedTheDraft = true;
+                    }
+
+                    await this.ReloadSchematicsUnderOverlayAsync();
+
+                    if (!saved)
+                    {
+                        this.ShowStatus(
+                            $"[{name}] could not be removed. If this board's Excel file is open in Excel, close it there and try again.",
+                            isError: true);
+                    }
+                    else if (!found)
+                    {
+                        this.ShowStatus(
+                            $"[{name}] is no longer in the draft - it changed outside this window, so the list has been read again.",
+                            isError: true);
+                    }
+                    else
+                    {
+                        this.ShowStatus($"Removed [{name}]. The image file is kept in your draft folder.");
+                    }
+                });
+            });
+
+        // The question RemoveSchematicWindow asks - or the test's stand-in for it.
+        private async Task<bool> ConfirmRemovalAsync(string schematicName, SchematicRemovalLoss loss)
+        {
+            if (this.ConfirmRemovalOverrideForTests is { } confirm)
+            {
+                return await confirm(schematicName, loss);
             }
 
-            // Removing the ROW, not the file - the image bytes stay in the draft folder, which is
-            // what the status message below promises. Dropping a row from a board is simply
-            // absence now; there is no tombstone to write.
-            DraftWorkbookStore.Edit(
-                DraftManager.DraftsRoot,
-                this.thisExcelDataFile,
-                board => BoardFilesWindow.WithoutSchematic(board, row.SchematicName));
+            var dialog = new RemoveSchematicWindow();
+            dialog.Initialize(schematicName, loss);
 
-            this.ReloadSchematicsFromDraft();
-            this.ShowStatus($"Removed [{row.SchematicName}]. The image file is kept in your draft folder.");
+            return await dialog.ShowDialog<bool?>(this) == true;
         }
 
         // ------------------------------------------------------------------ KiCad import
@@ -742,22 +960,26 @@ namespace CRT
             }
         }
 
-        internal async Task RemoveKiCadFileAsync(BoardKiCadFileRow row)
-        {
-            // A report still parsing these files would hold this one open - see thisPendingReport.
-            await this.WaitForPendingReportAsync();
-
-            if (!KiCadImportedFiles.TryRemove(this.KiCadImportFolder, row.FullPath))
+        // One of the window's draft changes, so closing waits for it (BoardFilesWindow.DraftChanges.cs).
+        internal Task RemoveKiCadFileAsync(BoardKiCadFileRow row) =>
+            this.ChangeDraftAsync(async () =>
             {
-                this.ShowStatus($"Could not remove [{row.RelativePath}] - see the log for details.", isError: true);
-                return;
-            }
+                // A report still parsing these files would hold this one open - see thisPendingReport.
+                await this.WaitForPendingReportAsync();
 
-            this.RefreshKiCadState();
-            this.ShowStatus($"Removed [{row.RelativePath}] from your draft. Your own KiCad project is not touched - import it again to get the file back.");
+                if (!KiCadImportedFiles.TryRemove(this.KiCadImportFolder, row.FullPath))
+                {
+                    this.ShowStatus($"Could not remove [{row.RelativePath}] - see the log for details.", isError: true);
+                    return;
+                }
 
-            await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
-        }
+                this.ChangedTheDraft = true;
+
+                this.RefreshKiCadState();
+                this.ShowStatus($"Removed [{row.RelativePath}] from your draft. Your own KiCad project is not touched - import it again to get the file back.");
+
+                await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
+            });
 
         // Builds the match report and records it as the one in flight, so a Remove can wait for it.
         private Task RefreshReportAsync()
@@ -797,7 +1019,7 @@ namespace CRT
         // The rule is KiCadRawFileScanner's, shared with the reader that later loads the folder, so
         // what is imported is exactly what will be read.
         // ###########################################################################################
-        private async Task ImportKiCadFolderAsync(string sourceFolder)
+        internal async Task ImportKiCadFolderAsync(string sourceFolder)
         {
             if (string.IsNullOrWhiteSpace(this.thisDraftFolder))
             {
@@ -833,66 +1055,70 @@ namespace CRT
             await this.WaitForPendingReportAsync();
 
             // The copy AND the report that follows are one wait (2026-09-28): the window is held
-            // across both, so it does not brighten for a moment between them.
-            await BusyOverlay.HoldAsync(this, CrtWaitWording.ImportingKiCad, async () =>
+            // across both, so it does not brighten for a moment between them. One of the window's
+            // draft changes, so closing waits for it (BoardFilesWindow.DraftChanges.cs).
+            await this.ChangeDraftAsync(() => BusyOverlay.HoldAsync(this, CrtWaitWording.ImportingKiCad, async () =>
             {
-                bool copied = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ImportingKiCad, () => Task.Run(() =>
-                {
-                    try
-                    {
-                        Directory.CreateDirectory(destinationFolder);
+                (int copied, bool complete) = await this.WriteDraftAsync(
+                    CrtWaitWording.ImportingKiCad,
+                    () => KiCadImportedFiles.CopyIn(sourceFolder, sourceFiles, destinationFolder));
 
-                        foreach (string sourceFile in sourceFiles)
-                        {
-                            // The file's path RELATIVE to the folder that was picked, so "Pages/vic.kicad_sch"
-                            // lands under Pages/ rather than being flattened into the root.
-                            string destination = Path.Combine(
-                                destinationFolder,
-                                KiCadRawFileScanner.RelativeDestinationFor(sourceFolder, sourceFile));
-
-                            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-
-                            // Overwrite on purpose here, unlike an imported image: re-importing the KiCad
-                            // folder is how a contributor picks up a change they made in KiCad, and the file
-                            // name is the project's own identity rather than an arbitrary attachment name.
-                            File.Copy(sourceFile, destination, overwrite: true);
-                        }
-
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warning($"Failed to import KiCad data from [{sourceFolder}] - [{ex.Message}]");
-                        return false;
-                    }
-                }));
-
-                if (!copied)
+                if (copied == 0)
                 {
                     this.ShowStatus("Could not copy those KiCad files - see the log for details.", isError: true);
                     return;
                 }
 
+                // ###########################################################################################
+                // *** EVEN A COPY THAT STOPPED PART-WAY CHANGED THE DRAFT (code review, 2026-10-10). ***
+                // The files before the one that failed have been overwritten, so the board on screen
+                // is read again when the window closes - it used to go on drawing the old project.
+                // ###########################################################################################
+                this.ChangedTheDraft = true;
+
                 this.RefreshKiCadState();
-                this.ShowStatus(sourceFiles.Count == 1
-                    ? "Imported 1 KiCad file. Checking what it lines up with..."
-                    : $"Imported {sourceFiles.Count} KiCad files. Checking what they line up with...");
+
+                if (complete)
+                {
+                    this.ShowStatus(sourceFiles.Count == 1
+                        ? "Imported 1 KiCad file. Checking what it lines up with..."
+                        : $"Imported {sourceFiles.Count} KiCad files. Checking what they line up with...");
+                }
+                else
+                {
+                    this.ShowStatus(
+                        $"Only {copied} of the {sourceFiles.Count} KiCad files could be copied - see the log for details. Import the folder again once the rest can be read.",
+                        isError: true);
+                }
 
                 await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
-            });
+            }));
         }
 
         // ###########################################################################################
-        // Parses the imported KiCad data and shows the matched/unmatched report.
+        // Parses the board's KiCad data and shows the matched/unmatched report.
         //
         // The comparison is built from root.Pcb[0]'s footprint references, which is EXACTLY what
         // TabSchematics.KiCad.cs's BuildKiCadNormalizedNetNamesForReferences uses to turn a board
         // label into copper. Reporting anything else - schematic symbols, or every PCB file unioned
         // together - would claim matches that light up nothing, which is worse than saying nothing.
+        //
+        // *** THE FILES ARE THE ONES THE SCHEMATICS TAB READS (code review, 2026-10-10): the
+        // published board's "KiCad data" AND the draft's (KiCadRawFileScanner.ScanBoard). *** Read
+        // from the draft's alone, a net or a footprint only the published files have was reported
+        // as missing - "will NOT light up" for an important signal the Schematics tab draws - and
+        // the CAD names on offer differed from the "Schematic images" window's.
         // ###########################################################################################
         private async Task BuildAndShowReportAsync()
         {
-            var files = this.EnumerateImportedKiCadFiles();
+            List<string> publishedFiles = KiCadRawFileScanner.Scan(this.PublishedKiCadFolder);
+            List<string> draftFiles = this.EnumerateImportedKiCadFiles();
+            List<string> files = KiCadRawFileScanner.ScanBoard(this.PublishedKiCadFolder, this.KiCadImportFolder);
+
+            string source = KiCadImportedFiles.ReportSourceLine(publishedFiles.Count, draftFiles.Count);
+            this.ReportSourceText.Text = source;
+            this.ReportSourceText.IsVisible = source.Length > 0;
+
             if (files.Count == 0)
             {
                 this.ReportPanel.IsVisible = false;
@@ -921,6 +1147,12 @@ namespace CRT
                 root.Project.Views.Select(view => view.DisplayName));
 
             this.ShowReport(report);
+
+            // The net names the "Important signals" sheet can use, from EVERY PCB file - the
+            // Schematics tab's panel reads them all (BoardFilesWindow.NetNames.cs).
+            this.ShowNetNameReport(KiCadNetNames.Build(
+                root.Pcb.SelectMany(pcb => pcb.Nets.List).Select(net => (net.Name, net.NormalizedName, net.IsNoNet)),
+                this.thisImportantSignals));
         }
 
         // ###########################################################################################
@@ -1001,6 +1233,25 @@ namespace CRT
         {
             if (e.Key == Key.Escape)
             {
+                // In a Name box holding an unsaved name, Escape puts the name back - it does not
+                // close the window (BoardFilesWindow.SchematicNames.cs).
+                if (this.RevertNameEdit(e.Source))
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                // ###########################################################################################
+                // *** AN OPEN DROP-DOWN IS CLOSED BY ITS OWN ESCAPE (code review, 2026-10-10). *** This
+                // handler runs on the TUNNEL route, before the ComboBox sees the key - so Escape pressed
+                // to put away an image's CAD name list closed the whole window instead. Left alone, the
+                // ComboBox closes its list and keeps its pick.
+                // ###########################################################################################
+                if (this.SchematicsItemsControl.GetVisualDescendants().OfType<ComboBox>().Any(combo => combo.IsDropDownOpen))
+                {
+                    return;
+                }
+
                 this.Close();
                 e.Handled = true;
             }
@@ -1091,9 +1342,52 @@ namespace CRT
 
         private double thisPlaceholderHeight = 72.0;
 
-        public string SchematicName { get; init; } = string.Empty;
+        // ###########################################################################################
+        // The image's name as the draft holds it, and what the Name box shows (owner request,
+        // 2026-10-10). The box edits NameDraft; only a rename the draft took sets SchematicName
+        // (BoardFilesWindow.SchematicNames.cs) - every save in this window finds its row by it.
+        // ###########################################################################################
+        public string SchematicName
+        {
+            get => this.thisSchematicName;
+            set
+            {
+                if (string.Equals(this.thisSchematicName, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                this.thisSchematicName = value ?? string.Empty;
+                this.RaiseChanged(nameof(this.SchematicName));
+            }
+        }
+
+        private string thisSchematicName = string.Empty;
+
+        public string NameDraft
+        {
+            get => this.thisNameDraft ?? this.thisSchematicName;
+            set
+            {
+                if (string.Equals(this.NameDraft, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                this.thisNameDraft = value;
+                this.RaiseChanged(nameof(this.NameDraft));
+            }
+        }
+
+        private string? thisNameDraft;
+
+        // Whether the Name box holds something the draft does not.
+        internal bool HasNameEdit => !string.Equals(this.NameDraft, this.thisSchematicName, StringComparison.Ordinal);
+
         public string ImageFile { get; init; } = string.Empty;
-        public string CadName { get; init; } = string.Empty;
+
+        // What the draft holds in this image's "CAD name" - set again once a pick is saved.
+        public string CadName { get; set; } = string.Empty;
 
         // ###########################################################################################
         // A small preview of the image this row names (owner request, 2026-09-24), so a
@@ -1112,8 +1406,107 @@ namespace CRT
 
         public bool IsMissing => this.Thumbnail == null;
 
-        public string DetailText => string.IsNullOrWhiteSpace(this.CadName)
-            ? this.ImageFile
-            : $"{this.ImageFile}  -  CAD name: {this.CadName}";
+        // The image's file. The CAD name used to follow it here; it has its own drop-down now.
+        public string DetailText => this.ImageFile;
+
+        // ###########################################################################################
+        // The CAD name drop-down (owner request, 2026-10-10) - see BoardFilesWindow.CadNames.cs.
+        //
+        // ONE list for the row's lifetime, changed in place by ApplyCadNameChoices: a ComboBox
+        // whose items are replaced lets go of its selection, and this row would hear "nothing
+        // chosen" for every image.
+        // ###########################################################################################
+        public ObservableCollection<CadNameChoiceItem> CadNameChoices { get; } = new();
+
+        // Told when the user picks another CAD name - the window saves it. Never for the drop-down
+        // letting go of its items (null).
+        internal Action<BoardSchematicRow, string>? CadNameChosen { get; init; }
+
+        public CadNameChoiceItem? SelectedCadNameChoice
+        {
+            get => this.thisSelectedCadNameChoice;
+            set
+            {
+                if (value is null || ReferenceEquals(value, this.thisSelectedCadNameChoice))
+                {
+                    return;
+                }
+
+                this.thisSelectedCadNameChoice = value;
+                this.RaiseChanged(nameof(this.SelectedCadNameChoice));
+
+                if (!string.Equals(value.CadName, this.CadName?.Trim() ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                {
+                    this.CadNameChosen?.Invoke(this, value.CadName);
+                }
+            }
+        }
+
+        private CadNameChoiceItem? thisSelectedCadNameChoice;
+
+        // ###########################################################################################
+        // Makes CadNameChoices read the given choices, in order, changing the list IN PLACE
+        // (InPlaceList.Sync): an entry already there keeps its object, a new one is inserted, one no
+        // longer wanted (a name another image has just taken) is removed - never the selected one,
+        // which the choices always hold (SchematicCadNameChoices lists the image's own name). Then
+        // selects the entry SchematicCadNameChoices.Selected names for CadName.
+        // ###########################################################################################
+        internal void ApplyCadNameChoices(IReadOnlyList<SchematicCadNameChoice> choices)
+        {
+            InPlaceList.Sync(
+                this.CadNameChoices,
+                choices,
+                (item, choice) => string.Equals(item.CadName, choice.CadName, StringComparison.OrdinalIgnoreCase),
+                choice => new CadNameChoiceItem(choice),
+                keep: this.thisSelectedCadNameChoice);
+
+            this.thisSelectedCadNameChoice = choices.Count == 0
+                ? null
+                : this.CadNameChoices.FirstOrDefault(item => string.Equals(
+                    item.CadName,
+                    SchematicCadNameChoices.Selected(choices, this.CadName).CadName,
+                    StringComparison.OrdinalIgnoreCase));
+
+            // Always said, so a drop-down that lost its selection while its items moved shows it again.
+            this.RaiseChanged(nameof(this.SelectedCadNameChoice));
+        }
+
+        private void RaiseChanged(string propertyName) =>
+            this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+    }
+
+    // ###########################################################################################
+    // One entry in a schematic image's CAD name drop-down. An object of its own rather than the
+    // CRT.Data record, so the entry a drop-down shows keeps its identity while the entries around
+    // it come and go (BoardSchematicRow.ApplyCadNameChoices).
+    // ###########################################################################################
+    public sealed class CadNameChoiceItem
+    {
+        public CadNameChoiceItem(SchematicCadNameChoice choice)
+        {
+            this.CadName = choice.CadName;
+            this.Label = choice.Label;
+        }
+
+        public string CadName { get; }
+
+        public string Label { get; }
+
+        public override string ToString() => this.Label;
+    }
+
+    // ###########################################################################################
+    // One KiCad net name in the report: copied by a click (BoardFilesWindow.NetNames.cs), and
+    // marked when an "Important signals" row already uses it.
+    // ###########################################################################################
+    public sealed class KiCadNetNameBadge
+    {
+        public string Name { get; init; } = string.Empty;
+
+        public bool IsUsed { get; init; }
+
+        public string ToolTipText => this.IsUsed
+            ? "Click to copy - already used in Important signals"
+            : "Click to copy";
     }
 }

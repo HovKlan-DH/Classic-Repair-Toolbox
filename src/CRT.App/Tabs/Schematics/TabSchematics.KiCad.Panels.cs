@@ -86,26 +86,14 @@ public partial class TabSchematics
                 .Where(netName => !string.IsNullOrWhiteSpace(netName)),
             StringComparer.OrdinalIgnoreCase);
 
-        var normalizedNameByAnyKnownName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // The one rule for how a row's "KiCad net name" finds its net - shared with the Drafts tab's
+        // KiCad data window, which lists the names and the rows that find none (2026-10-10).
+        var nets = root.Pcb
+            .SelectMany(pcb => pcb.Nets.List)
+            .Select(net => (net.Name, net.NormalizedName, net.IsNoNet))
+            .ToList();
 
-        foreach (var pcb in root.Pcb)
-        {
-            foreach (var net in pcb.Nets.List)
-            {
-                string normalizedName = net.NormalizedName?.Trim() ?? string.Empty;
-                string name = net.Name?.Trim() ?? string.Empty;
-
-                if (!string.IsNullOrWhiteSpace(normalizedName))
-                {
-                    normalizedNameByAnyKnownName[normalizedName] = normalizedName;
-                }
-
-                if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(normalizedName))
-                {
-                    normalizedNameByAnyKnownName[name] = normalizedName;
-                }
-            }
-        }
+        var normalizedNameByAnyKnownName = KiCadNetNames.Resolver(nets.Select(net => (net.Name, net.NormalizedName)));
 
         bool isContributorMode = UserSettings.ContributorMode;
 
@@ -115,13 +103,7 @@ public partial class TabSchematics
             Logger.Info($"Important signals debug: loaded [{knownNetNames.Count}] raw KiCad net names");
             Logger.Info($"Important signals debug: built [{normalizedNameByAnyKnownName.Count}] KiCad net name mappings");
 
-            var normalizedNetNames = root.Pcb
-                .SelectMany(pcb => pcb.Nets.List)
-                .Select(net => net.NormalizedName?.Trim() ?? string.Empty)
-                .Where(netName => !string.IsNullOrWhiteSpace(netName))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(netName => netName, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            var normalizedNetNames = KiCadNetNames.NormalizedNames(nets);
 
             Logger.Info($"Important signals debug: loaded [{normalizedNetNames.Count}] normalized KiCad net names");
 

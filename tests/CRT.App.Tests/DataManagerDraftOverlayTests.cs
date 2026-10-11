@@ -271,6 +271,10 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     // Proved by what the second load can still see: after the drafted load, the published file
     // is overwritten with garbage. The toggled load is then only right if it is served from the
     // entry the comparison already made - a fresh parse of the garbage would answer null.
+    //
+    // The garbage has the workbook's LENGTH and is given back its WRITE TIME: since 2026-10-11 a
+    // cached board answers only while its files are as they were read (BoardDataReader's stamps),
+    // so plainly rewritten garbage would be read - correctly - as a changed file.
     // ###########################################################################################
     [Fact]
     public async Task The_published_view_reuses_the_workbook_the_drafted_load_already_parsed()
@@ -284,7 +288,11 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
             this.thisWorkspace.Root,
             this.thisExcelDataFile.Replace('/', Path.DirectorySeparatorChar));
 
-        File.WriteAllText(publishedPath, "this is no longer a workbook");
+        long length = new FileInfo(publishedPath).Length;
+        DateTime writtenUtc = File.GetLastWriteTimeUtc(publishedPath);
+
+        File.WriteAllBytes(publishedPath, new byte[length]);
+        File.SetLastWriteTimeUtc(publishedPath, writtenUtc);
 
         UserSettings.ViewOfficialPublishedOnly = true;
         BoardData? result = await DataManager.LoadBoardDataAsync(this.BoardEntry);

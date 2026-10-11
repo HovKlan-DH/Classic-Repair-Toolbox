@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
@@ -1744,6 +1745,123 @@ public sealed class TabDraftsTests : IDisposable
             {
                 SubmissionReceiptStore.LoadFrom(string.Empty);
             }
+        });
+    }
+
+    // ###########################################################################################
+    // *** A CLICK SURVIVES THE LIST BEING READ AGAIN (owner report, 2026-10-10: "I do need to click
+    // it twice before it does react"). *** CRT's window coming to the front reads the list again
+    // (TabDrafts.OutsideChanges.cs) - and a click INTO the window is what brings it to the front,
+    // so that read ran between the press and the release. It rebuilt every row: the pressed button
+    // was thrown away, and the release landed on a new one that had never seen the press. A read
+    // that finds nothing changed must keep the rows, and so the buttons on them.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Schematic images")]
+    [InlineData("KiCad data")]
+    [InlineData("Edit in table format")]
+    public void A_click_on_a_rows_button_survives_the_list_being_read_again_mid_click(string label)
+    {
+        string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+        WriteDraftWithChanges(excelDataFile);
+
+        UiTest.Run(() =>
+        {
+            var tab = new TabDrafts { HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)] };
+            tab.RefreshDrafts();
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            try
+            {
+                Button button = tab.GetVisualDescendants().OfType<Button>().Single(candidate => (candidate.Content as string) == label);
+
+                // The window the button opens is not what is tested here - only that the click lands.
+                int clicks = 0;
+                button.Command = null;
+                button.Click += (_, _) => clicks++;
+
+                Point centre = button.TranslatePoint(new Point(button.Bounds.Width / 2, button.Bounds.Height / 2), window)!.Value;
+
+                window.MouseDown(centre, Avalonia.Input.MouseButton.Left);
+                tab.RefreshDrafts();
+                Dispatcher.UIThread.RunJobs();
+                window.MouseUp(centre, Avalonia.Input.MouseButton.Left);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Equal(1, clicks);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE BOARD ON SCREEN IS READ AGAIN ONLY WHEN "Schematic images" OR "KiCad data" CHANGED
+    // THE DRAFT (owner report, 2026-10-10: closing the window refreshed the detached schematic
+    // thumbnails although nothing had changed). ***
+    // ###########################################################################################
+    [Fact]
+    public void Closing_the_board_files_window_reloads_the_board_only_after_a_change()
+    {
+        string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+        WriteDraftWithChanges(excelDataFile);
+
+        UiTest.Run(() =>
+        {
+            HardwareBoardEntry entry = BoardEntry("Commodore 64", "250407", excelDataFile);
+            var reloaded = new List<string>();
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [entry],
+                ReloadBoardOverrideForTests = reloaded.Add,
+            };
+
+            tab.RefreshDrafts();
+
+            tab.CatchUpAfterBoardFiles(entry, changedTheDraft: false);
+            Assert.Empty(reloaded);
+
+            tab.CatchUpAfterBoardFiles(entry, changedTheDraft: true);
+            Assert.Equal([excelDataFile], reloaded);
+        });
+    }
+
+    // Nothing changed: the same row objects stay. Something changed: only that row is replaced.
+    [Fact]
+    public void Reading_the_list_again_keeps_every_row_whose_content_did_not_change()
+    {
+        string first = "Commodore/C64/250407/Data.xlsx";
+        string second = "Commodore/C64/250469/Data.xlsx";
+        WriteDraftWithChanges(first, rowCount: 1);
+        WriteDraftWithChanges(second, rowCount: 2);
+
+        UiTest.Run(() =>
+        {
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", first), BoardEntry("Commodore 64", "250469", second)]
+            };
+
+            tab.RefreshDrafts();
+            List<DraftListItem> before = tab.Drafts.ToList();
+
+            tab.RefreshDrafts();
+            Assert.Equal(before, tab.Drafts);
+
+            // The second draft gains a row in Excel, say - only its own row is new.
+            WriteDraftWithChanges(second, rowCount: 3);
+            tab.RefreshDrafts();
+
+            Assert.Equal(2, tab.Drafts.Count);
+            Assert.Same(before[0], tab.Drafts[0]);
+            Assert.NotSame(before[1], tab.Drafts[1]);
+            Assert.Equal("3 rows changed", tab.Drafts[1].RowSummary);
         });
     }
 }

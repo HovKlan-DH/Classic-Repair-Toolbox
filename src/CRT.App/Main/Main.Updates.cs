@@ -149,54 +149,23 @@ namespace CRT
         // ###########################################################################################
         // Performs the manual UI data update check as a single visible sync flow.
         // Startup sync behavior remains unchanged and is handled separately during application launch.
-        // keepBannerTextStatic: when true, the banner keeps its initial text during the full refresh.
+        //
+        // Its own card says what it is doing and then what it found (owner report, 2026-10-11 - see
+        // the data-check notice in Main.DataSyncStatus.cs). Somebody asked for this check, from the
+        // icon or the Configuration tab, so a check that could not finish stays on screen until closed.
         // ###########################################################################################
-        internal async Task CheckForDataUpdatesNowAsync(bool keepBannerTextStatic = false)
+        internal async Task CheckForDataUpdatesNowAsync()
         {
-            this._currentSyncFileRelativePath = string.Empty;
-
-            this.SetSyncBannerText($"Checking data from the {AppConfig.GetOnlineSourceLabel()} - please wait...");
-            this.SyncBannerRefreshButton.IsVisible = false;
-            this.SyncBanner.IsVisible = true;
-
+            this.BeginDataSyncProgress();
             this.StartDataSyncStatusIconSpin();
 
             try
             {
                 var syncResult = await DataManager.CheckForDataUpdatesNowAsync(
-                    status => Dispatcher.UIThread.Post(() =>
-                    {
-                        if (keepBannerTextStatic)
-                        {
-                            return;
-                        }
+                    status => Dispatcher.UIThread.Post(() => this.ReportDataSyncStatus(status)),
+                    filePath => Dispatcher.UIThread.Post(() => this.ReportDataSyncFile(filePath)));
 
-                        if (status.Contains("up to date", StringComparison.OrdinalIgnoreCase) ||
-                            status.StartsWith("Update complete", StringComparison.OrdinalIgnoreCase))
-                        {
-                            return;
-                        }
-
-                        // IMPORTANT: status only on line 1 (file path is line 2, managed separately)
-                        this.SetSyncBannerText(status);
-                    }),
-                    filePath => Dispatcher.UIThread.Post(() =>
-                    {
-                        // IMPORTANT: file path only on line 2
-                        this._currentSyncFileRelativePath = filePath ?? string.Empty;
-
-                        if (keepBannerTextStatic)
-                        {
-                            return;
-                        }
-
-                        // Keep whatever line 1 currently says; only refresh line 2.
-                        string currentLine1 = this.SyncBannerText.Text?
-                            .Split('\n')[0]
-                            .Trim() ?? string.Empty;
-
-                        this.SetSyncBannerText(currentLine1);
-                    }));
+                this.FinishDataCheck(syncResult.ChangedCount, atLaunch: false);
 
                 if (syncResult.ChangedCount < 0)
                 {
@@ -206,41 +175,6 @@ namespace CRT
                 if (syncResult.MainExcelChanged)
                 {
                     this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
-                }
-
-                // Clear file line once we switch to the final summary.
-                this._currentSyncFileRelativePath = string.Empty;
-
-                if (syncResult.ChangedCount > 0)
-                {
-                    string bannerText = syncResult.ChangedCount == 1
-                        ? "[1] file updated - please refresh board"
-                        : $"[{syncResult.ChangedCount}] files updated - please refresh board";
-
-                    this.SetSyncBannerText(ComponentListBuilder.BuildSyncBannerText(bannerText, syncResult.ProtectedFilesCount));
-                    this.SyncBannerRefreshButton.IsVisible = true;
-                    this.SyncBanner.IsVisible = true;
-                }
-                else if (syncResult.ProtectedFilesCount > 0)
-                {
-                    this.SetSyncBannerText(ComponentListBuilder.BuildSyncBannerText("All data files are up to date", syncResult.ProtectedFilesCount));
-                    this.SyncBannerRefreshButton.IsVisible = false;
-                    this.SyncBanner.IsVisible = true;
-                }
-                else
-                {
-                    this.SyncBanner.IsVisible = false;
-
-                    // The sync claimed nothing, so the banner is free - re-check whether the board
-                    // on screen has drifted (session 2d). Deliberately only in this branch: a sync
-                    // that DID change files owns the banner with its own "please refresh board"
-                    // message, which is both more urgent and the thing that would resolve the
-                    // drift reading anyway.
-                    //
-                    // No board reload is forced here. Doing IO behind the user's back to raise a
-                    // warning would be worse than the warning arriving on their next real load.
-                    this._isShowingDraftDriftBanner = false;
-                    this.EvaluateDraftDriftForCurrentBoard();
                 }
 
                 if (DataManager.DataUpdateRequiresAppUpdate)
@@ -274,6 +208,13 @@ namespace CRT
             }
             finally
             {
+                // A check that threw never said what it found - without this its card would read
+                // "please wait" for ever.
+                if (this.thisIsDataCheckOnCard)
+                {
+                    this.FinishDataCheck(-1, atLaunch: false);
+                }
+
                 this._currentSyncFileRelativePath = string.Empty;
                 this.StopDataSyncStatusIconSpin();
             }
@@ -281,9 +222,8 @@ namespace CRT
 
         // ###########################################################################################
         // Syncs any remaining non-Excel files and returns the number of files that changed.
-        // keepBannerTextStatic: when true, intermediate status text is suppressed during the run.
         // ###########################################################################################
-        private async Task<int> SyncRemainingFilesAsync(bool keepBannerTextStatic = false)
+        private async Task<int> SyncRemainingFilesAsync()
         {
             if (!DataManager.HasPendingSync)
             {
@@ -291,39 +231,12 @@ namespace CRT
             }
 
             return await DataManager.SyncRemainingAsync(
-                status => Dispatcher.UIThread.Post(() =>
-                {
-                    if (keepBannerTextStatic)
-                    {
-                        return;
-                    }
-
-                    if (status.Contains("up to date", StringComparison.OrdinalIgnoreCase) ||
-                        status.StartsWith("Sync complete", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return;
-                    }
-
-                    // status only on line 1
-                    this.SetSyncBannerText(status);
-                }),
-                filePath => Dispatcher.UIThread.Post(() =>
-                {
-                    // file only on line 2
-                    this._currentSyncFileRelativePath = filePath ?? string.Empty;
-
-                    if (keepBannerTextStatic)
-                    {
-                        return;
-                    }
-
-                    string currentLine1 = this.SyncBannerText.Text?
-                        .Split('\n')[0]
-                        .Trim() ?? string.Empty;
-
-                    this.SetSyncBannerText(currentLine1);
-                }));
+                status => Dispatcher.UIThread.Post(() => this.ReportDataSyncStatus(status)),
+                filePath => Dispatcher.UIThread.Post(() => this.ReportDataSyncFile(filePath)));
         }
+
+        // The launch sync, for tests - with no manifest fetched, it touches no network.
+        internal Task StartBackgroundSyncForTests() => this.StartBackgroundSyncAsync();
 
         // ###########################################################################################
         // Starts the remaining background sync without blocking the caller.
@@ -331,53 +244,57 @@ namespace CRT
         // Returns a Task rather than being async void so StartAsync can compose it. It still swallows
         // its own exceptions in the catch below, so nothing faults out of here either way - the
         // signature change is about being awaitable, not about changing failure behaviour.
+        //
+        // *** IT SAYS WHAT IT DID, ON ITS OWN CARD (owner report, 2026-10-11). *** The splash screen
+        // fetched the manifest and the Excel files; this compares the rest. The data-check card
+        // shows it running and then what it found (Main.DataSyncStatus.cs) - including a launch
+        // whose manifest could not be fetched, which used to pass in silence. It never touches the
+        // card the draft drift uses: that is raised by the first board load just before this runs,
+        // and the old shared card hid it again here, so a draft's board having moved was never said
+        // at launch.
         // ###########################################################################################
-        private async Task StartBackgroundSyncAsync(bool keepBannerTextStatic = false)
+        private async Task StartBackgroundSyncAsync()
         {
+            // ###########################################################################################
+            // *** ONLY WHAT THIS CHECK STARTED IS ENDED HERE (code review, 2026-10-11). *** The early
+            // returns below start nothing, and the finally still stopped the spinner and finished
+            // whatever check was on the card - another check's, had one been running: its spinner
+            // count went one short (the icon clickable again mid-check, so a second check could start
+            // beside it) and its card said it could not check.
+            // ###########################################################################################
+            bool started = false;
+
             try
             {
-                if (!UserSettings.CheckDataOnLaunch || !DataManager.HasPendingSync)
+                if (!UserSettings.CheckDataOnLaunch)
                 {
-                    if (!this._isShowingDataSyncDisabledBanner)
+                    return;
+                }
+
+                // Launch sync is on, yet nothing to sync: the splash screen could not fetch the
+                // manifest (offline, or the server did not answer). A check already running says
+                // what it found itself - its card is not this one's to finish.
+                if (!DataManager.HasPendingSync)
+                {
+                    if (!this.thisIsDataCheckOnCard)
                     {
-                        this.SyncBanner.IsVisible = false;
-                        this.SyncBannerRefreshButton.IsVisible = false;
+                        this.FinishDataCheck(-1, atLaunch: true);
                     }
 
                     return;
                 }
 
-                this.SyncBannerText.Text = $"Checking data from the {AppConfig.GetOnlineSourceLabel()} - please wait...";
-                this.SyncBannerRefreshButton.IsVisible = false;
-                this.SyncBanner.IsVisible = true;
-
+                this.BeginDataSyncProgress();
                 this.StartDataSyncStatusIconSpin();
+                started = true;
 
-                int changed = await this.SyncRemainingFilesAsync(keepBannerTextStatic);
+                int changed = await this.SyncRemainingFilesAsync();
 
+                // Rebuilt from the data just synced, for the orphan cleanup below - which must not
+                // delete these files.
                 DataManager.LoadProtectedContributionStateForCurrentData();
-                int protectedFilesCount = DataManager.ProtectedContributionFileCount;
 
-                if (changed > 0)
-                {
-                    string bannerText = changed == 1
-                        ? "[1] file updated in background - please refresh board"
-                        : $"[{changed}] files updated in background - please refresh board";
-
-                    this.SyncBannerText.Text = ComponentListBuilder.BuildSyncBannerText(bannerText, protectedFilesCount);
-                    this.SyncBannerRefreshButton.IsVisible = true;
-                    this.SyncBanner.IsVisible = true;
-                }
-                else if (protectedFilesCount > 0)
-                {
-                    this.SyncBannerText.Text = ComponentListBuilder.BuildSyncBannerText("All data files are up to date", protectedFilesCount);
-                    this.SyncBannerRefreshButton.IsVisible = false;
-                    this.SyncBanner.IsVisible = true;
-                }
-                else
-                {
-                    this.SyncBanner.IsVisible = false;
-                }
+                this.FinishDataCheck(changed, atLaunch: true);
 
                 if (UserSettings.AllowDeletionOfOrphanAndNonUsedFiles)
                 {
@@ -390,8 +307,18 @@ namespace CRT
             }
             finally
             {
+                if (started)
+                {
+                    // A sync that threw never said what it found - see CheckForDataUpdatesNowAsync.
+                    if (this.thisIsDataCheckOnCard)
+                    {
+                        this.FinishDataCheck(-1, atLaunch: true);
+                    }
+
+                    this.StopDataSyncStatusIconSpin();
+                }
+
                 this.thisBackgroundStartupSyncCompletionSource.TrySetResult(true);
-                this.StopDataSyncStatusIconSpin();
             }
         }
 
@@ -400,8 +327,7 @@ namespace CRT
         // ###########################################################################################
         private void OnRefreshBoardClick(object? sender, RoutedEventArgs e)
         {
-            this.SyncBanner.IsVisible = false;
-            this.SyncBannerRefreshButton.IsVisible = false;
+            this.DataCheckBanner.IsVisible = false;
             this.ReloadCurrentBoardFromDisk(string.Empty);
         }
 

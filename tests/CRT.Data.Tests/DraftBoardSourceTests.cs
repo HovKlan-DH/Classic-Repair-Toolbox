@@ -403,4 +403,19 @@ public sealed class DraftBoardSourceTests : IDisposable
         Assert.False(selection.IsDraft);
         Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, string.Empty));
     }
+
+    // The KiCad data the "Schematic images" and "KiCad data" windows read beside the draft's -
+    // where Main.GetCurrentBoardKiCadRawPaths reads it (code review, 2026-10-10: the window derived
+    // the path a second way, beside PublishedPathOf).
+    [Fact]
+    public void The_published_KiCad_folder_is_beside_the_published_workbook()
+    {
+        Assert.Equal(
+            Path.Combine(this.DataRoot, "Commodore", "C128", "310378 Open128", "KiCad data"),
+            DraftBoardSource.PublishedKiCadFolderOf(this.DataRoot, "Commodore/C128/310378 Open128/Data C128 310378 Open128.xlsx"));
+
+        // No data root: nothing, rather than a path read against whatever folder CRT started in.
+        Assert.Equal(string.Empty, DraftBoardSource.PublishedKiCadFolderOf(string.Empty, DraftBoardSourceTests.BoardKey));
+        Assert.Equal(string.Empty, DraftBoardSource.PublishedKiCadFolderOf(this.DataRoot, "  "));
+    }
 }

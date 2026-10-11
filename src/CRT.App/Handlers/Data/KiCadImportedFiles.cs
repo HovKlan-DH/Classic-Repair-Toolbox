@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -26,6 +27,62 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     internal static class KiCadImportedFiles
     {
+        // ###########################################################################################
+        // Copies a picked KiCad project's files (KiCadRawFileScanner.Scan of `sourceFolder`) into
+        // the draft's "KiCad data" folder, each at its path relative to the folder picked - so
+        // "Pages/vic.kicad_sch" lands under Pages/ (KiCadRawFileScanner.RelativeDestinationFor).
+        //
+        // Overwrites on purpose, unlike an imported image: re-importing the folder is how a
+        // contributor picks up a change made in KiCad, and the file name is the project's own.
+        //
+        // *** IT SAYS HOW MANY IT COPIED, NOT ONLY WHETHER IT FINISHED (code review, 2026-10-10). ***
+        // A copy that stops part-way - one file locked - has still overwritten the files before it,
+        // so the board on screen has to be read again when the window closes; reporting a plain
+        // "failed" left it drawing the old project.
+        // ###########################################################################################
+        public static (int Copied, bool Complete) CopyIn(string sourceFolder, IReadOnlyList<string> sourceFiles, string destinationFolder)
+        {
+            int copied = 0;
+
+            try
+            {
+                Directory.CreateDirectory(destinationFolder);
+
+                foreach (string sourceFile in sourceFiles)
+                {
+                    string destination = Path.Combine(
+                        destinationFolder,
+                        KiCadRawFileScanner.RelativeDestinationFor(sourceFolder, sourceFile));
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Copy(sourceFile, destination, overwrite: true);
+
+                    copied++;
+                }
+
+                return (copied, true);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to import KiCad data from [{sourceFolder}] after {copied} of {sourceFiles.Count} files - [{ex.Message}]");
+                return (copied, false);
+            }
+        }
+
+        // ###########################################################################################
+        // What the KiCad data window's report was checked against, when it is more than the draft's
+        // own files (code review, 2026-10-10). The report reads every KiCad file the Schematics tab
+        // draws the board's traces from - the published board's too (KiCadRawFileScanner.ScanBoard)
+        // - so it cannot call a component good that lights up nothing, or the other way round. With
+        // only the draft's files it says nothing more: those are listed right above it.
+        // ###########################################################################################
+        public static string ReportSourceLine(int publishedFiles, int draftFiles) =>
+            publishedFiles == 0
+                ? string.Empty
+                : draftFiles == 0
+                    ? "Checked against the board's published KiCad data - your draft has none of its own yet."
+                    : "Checked against the board's published KiCad data together with your draft's, as the Schematics tab draws them.";
+
         public static bool TryRemove(string kiCadFolder, string filePath)
         {
             if (string.IsNullOrWhiteSpace(kiCadFolder) || string.IsNullOrWhiteSpace(filePath))

@@ -76,6 +76,12 @@ namespace Handlers.DataHandling
         // delete shows. Case-insensitive, as labels are.
         private Dictionary<string, int> thisHighlightCounts = new(StringComparer.OrdinalIgnoreCase);
 
+        // The board's schematic images as the table opened with them - what a save is measured
+        // against to tell which images it removes (SchematicsRemovedBySave). The draft on disk is
+        // still exactly this when a save goes through: a save refuses a workbook changed since it
+        // was read (DraftTableSession).
+        private IReadOnlyList<BoardSchematicEntry> thisOpenedSchematics = [];
+
         // ###########################################################################################
         // Builds the table for one draft. `published` is null when there is nothing published to
         // compare against.
@@ -106,6 +112,7 @@ namespace Handlers.DataHandling
                 BaselineLabel = string.IsNullOrWhiteSpace(baselineLabel) ? DefaultBaselineLabel : baselineLabel,
                 thisFiles = files,
                 thisHighlights = draft.ComponentHighlights.ToList(),
+                thisOpenedSchematics = draft.Schematics.ToList(),
                 thisCreating = true,
             };
 
@@ -587,6 +594,29 @@ namespace Handlers.DataHandling
                     .Where(highlight => !deleted.Contains((highlight.BoardLabel ?? string.Empty).Trim()))
                     .ToList());
             };
+        }
+
+        // ###########################################################################################
+        // The schematic images a save would take off the board, by name: opened with this table,
+        // and neither kept nor renamed by the rows the save writes - by the rule every draft write
+        // follows what hangs on a schematic's name with (SubmissionRowsBoard.FollowSchematics: a
+        // renamed row is followed by its image file). Whatever is drawn on them goes with them at the
+        // save (DraftWorkbookStore.EditCore), so the Drafts tab asks first
+        // (DraftTableSession.SchematicsLostBySave; code review, 2026-10-11).
+        // ###########################################################################################
+        public IReadOnlyList<string> SchematicsRemovedBySave()
+        {
+            if (this.FindSheet(BoardWorkbookSchema.SheetBoardSchematics) is not BoardTableSheet sheet)
+            {
+                return [];
+            }
+
+            BoardData saved = BoardWorkbookSchema.WithRows(new BoardData(), sheet.Definition, sheet.BuildRows());
+
+            return SubmissionRowsBoard.FollowSchematics(this.thisOpenedSchematics, saved.Schematics)
+                .Where(pair => pair.Value is null && pair.Key.Trim().Length > 0)
+                .Select(pair => pair.Key)
+                .ToList();
         }
 
         // The labels of components deleted in this table: opened with a row that is no longer

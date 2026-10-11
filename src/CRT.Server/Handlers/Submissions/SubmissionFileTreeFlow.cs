@@ -66,7 +66,10 @@ namespace CRT.Server.Handlers.Submissions
                     SubmissionFileTreeFlow.Relative(root, detail.SidecarPath),
                     sidecarExists,
                     Changes: !sidecarExists || !BoardSidecarWriter.HoldsTheSameContent(
-                        detail.WorkbookPath, board.ComponentHighlights, PublishMerge.CalibrationsOf(manifest)));
+                        detail.WorkbookPath,
+                        board.ComponentHighlights,
+                        PublishMerge.CalibrationsOf(manifest),
+                        ApprovePublishFlow.RenameLogFor(detail, published, board)));
             }
 
             IReadOnlyList<BoardFileEntry> entries = BoardFileEntries.ForApproval(

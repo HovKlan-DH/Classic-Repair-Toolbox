@@ -76,6 +76,81 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // The view names LoadAsync would give these files, in the same order - WITHOUT PARSING A
+        // PCB (2026-10-10). The "Schematic images" window offers them as CAD names, and a board's
+        // .kicad_pcb runs to tens of megabytes that window has no other use for.
+        //
+        // A PCB's two views are named after its FILE, so only its opening is read, to keep a file
+        // that is no KiCad board out as LoadAsync keeps it out. The schematic sheets ARE read as
+        // LoadAsync reads them, because a child sheet's name is the one its parent gives it.
+        //
+        // Never throws: an unreadable file gives fewer names, not a broken window.
+        // ###########################################################################################
+        public static async Task<List<string>> LoadViewDisplayNamesAsync(IReadOnlyList<string> rawPaths)
+        {
+            try
+            {
+                var pcbs = new List<KiCadPcb>();
+                var schematicPaths = new List<string>();
+
+                foreach (string path in ExpandRawKiCadPaths(rawPaths).Where(File.Exists))
+                {
+                    string extension = Path.GetExtension(path);
+
+                    if (string.Equals(extension, ".kicad_pcb", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (await StartsAsKiCadPcbAsync(path).ConfigureAwait(false))
+                        {
+                            pcbs.Add(new KiCadPcb { Filename = Path.GetFileName(path) });
+                        }
+
+                        continue;
+                    }
+
+                    if (string.Equals(extension, ".kicad_sch", StringComparison.OrdinalIgnoreCase))
+                    {
+                        schematicPaths.Add(path);
+                    }
+                }
+
+                var schematics = new List<KiCadSchematic>();
+                await LoadSchematicsAsync(schematicPaths, schematics).ConfigureAwait(false);
+
+                return BuildProjectViews(pcbs, schematics)
+                    .Select(view => view.DisplayName?.Trim() ?? string.Empty)
+                    .Where(name => name.Length > 0)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Could not read the KiCad view names - [{ex.Message}]");
+                return new List<string>();
+            }
+        }
+
+        // True when the file opens with a "(kicad_pcb" form - LoadAsync's test for a PCB, made on
+        // the first few hundred characters instead of the whole parsed file.
+        private static async Task<bool> StartsAsKiCadPcbAsync(string path)
+        {
+            using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
+
+            char[] buffer = new char[256];
+            int read = await reader.ReadBlockAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+
+            string opening = new string(buffer, 0, read).TrimStart();
+
+            if (!opening.StartsWith('('))
+            {
+                return false;
+            }
+
+            string head = opening.Substring(1).TrimStart();
+
+            return head.StartsWith("kicad_pcb", StringComparison.OrdinalIgnoreCase) &&
+                   (head.Length == "kicad_pcb".Length || char.IsWhiteSpace(head["kicad_pcb".Length]) || head["kicad_pcb".Length] == ')');
+        }
+
+        // ###########################################################################################
         // Logs a compact KiCad project summary grouped by source file and matching display names.
         // ###########################################################################################
         private static void LogKiCadInformation(
@@ -264,13 +339,18 @@ namespace Handlers.DataHandling
 
                 string name = string.IsNullOrWhiteSpace(rawName) ? id : rawName.Trim();
 
+                // KiCad's "no net", declared (net 0 "") - a name GIVEN, and blank. A KiCad 9 net
+                // named "0" is (net "0"), with no second value (KiCadNetRef.IsNoNet).
+                bool declaredNoNet = id == "0" && rawName is not null && rawName.Trim().Length == 0;
+
                 if (!netsById.ContainsKey(id))
                 {
                     netsById[id] = new KiCadNetRef
                     {
                         Id = id,
                         Name = name,
-                        NormalizedName = NormalizeNetName(name)
+                        NormalizedName = NormalizeNetName(name),
+                        IsNoNet = declaredNoNet
                     };
 
                     return;
@@ -283,7 +363,11 @@ namespace Handlers.DataHandling
                     {
                         Id = existing.Id,
                         Name = name,
-                        NormalizedName = NormalizeNetName(name)
+                        NormalizedName = NormalizeNetName(name),
+
+                        // A later mention by number alone - a track on net 0 - keeps what the net
+                        // is; a real name given later makes it a net like any other.
+                        IsNoNet = string.IsNullOrWhiteSpace(rawName) && (existing.IsNoNet || declaredNoNet)
                     };
                 }
             }
