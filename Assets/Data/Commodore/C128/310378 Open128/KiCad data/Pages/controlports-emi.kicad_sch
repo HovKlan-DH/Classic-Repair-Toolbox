@@ -1,0 +1,2847 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "899be807-5467-494b-9383-fade7a604b08")
+	(paper "A4")
+	(title_block
+		(title "Open128")
+		(comment 1 "Licensed under CC BY-SA 4.0")
+		(comment 2 "Open Source clone of the Commodore 128")
+		(comment 3 "https://github.com/jgrip/open128/")
+	)
+	(lib_symbols
+		(symbol "Device:Filter_EMI_LCL"
+			(pin_names
+				(offset 0.254)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "FL"
+				(at 0 6.985 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "Filter_EMI_LCL"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+				(at 0 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "EMI T-filter (LCL)"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "EMI T-filter"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Filter* Resonator*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "Filter_EMI_LCL_0_1"
+				(rectangle
+					(start -5.715 3.81)
+					(end 5.715 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(arc
+					(start -5.08 2.54)
+					(mid -4.572 3.0458)
+					(end -4.064 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start -4.064 2.54)
+					(mid -3.556 3.0458)
+					(end -3.048 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start -3.048 2.54)
+					(mid -2.54 3.0458)
+					(end -2.032 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start -2.032 2.54)
+					(mid -1.524 3.0458)
+					(end -1.016 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -1.016 2.54) (xy 1.016 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -1.016 0.762)
+					(end 1.016 1.016)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(circle
+					(center 0 2.54)
+					(radius 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 2.54) (xy 0 1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 0.762) (xy 0 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start 1.016 1.524)
+					(end -1.016 1.778)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(arc
+					(start 1.016 2.54)
+					(mid 1.524 3.0458)
+					(end 2.032 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 2.032 2.54)
+					(mid 2.54 3.0458)
+					(end 3.048 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 3.048 2.54)
+					(mid 3.556 3.0458)
+					(end 4.064 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 4.064 2.54)
+					(mid 4.572 3.0458)
+					(end 5.08 2.54)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Filter_EMI_LCL_1_1"
+				(pin passive line
+					(at -7.62 2.54 0)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -2.54 90)
+					(length 2.54)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 7.62 2.54 180)
+					(length 2.54)
+					(name "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "power:GND"
+			(power global)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "#PWR"
+				(at 0 -6.35 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "GND"
+				(at 0 -3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "global power"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "GND_0_1"
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "GND_1_1"
+				(pin power_in line
+					(at 0 0 270)
+					(length 0)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+	)
+	(junction
+		(at 161.29 121.92)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "0ca0214d-b8ed-4ec4-804a-8489c34d37a7")
+	)
+	(junction
+		(at 74.93 96.52)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "1bb40c3d-7ac2-4895-b02c-97bc1b25f3d1")
+	)
+	(junction
+		(at 161.29 109.22)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "2395c1f9-90a3-41df-bf6b-f2f636bdc5cf")
+	)
+	(junction
+		(at 161.29 83.82)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "25e4a063-f92d-4909-8a00-87c091905a02")
+	)
+	(junction
+		(at 161.29 58.42)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "31a04478-26a0-45b0-8663-f5836b7ac737")
+	)
+	(junction
+		(at 74.93 83.82)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "53e88113-65c8-4504-bebd-66b18d1971fe")
+	)
+	(junction
+		(at 161.29 96.52)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "703c7a10-ac9d-46f5-b211-ab0485b495cc")
+	)
+	(junction
+		(at 74.93 109.22)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "bf05ede5-fa62-4a4a-9f9a-0c5808cf7b5c")
+	)
+	(junction
+		(at 74.93 121.92)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "bfc8a299-2449-47e4-a27b-13afff749b56")
+	)
+	(junction
+		(at 74.93 58.42)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "d08f0cf0-237c-4d16-8c98-3898e46f1afe")
+	)
+	(junction
+		(at 74.93 71.12)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "fa2ff197-6bdf-49d9-89e5-7050082b12e4")
+	)
+	(junction
+		(at 161.29 71.12)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "fb653435-20a0-4ea5-b21d-6586e85a1477")
+	)
+	(wire
+		(pts
+			(xy 62.23 83.82) (xy 74.93 83.82)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d22d928-58a0-4285-8c84-ad1a5f7b63b2")
+	)
+	(wire
+		(pts
+			(xy 62.23 109.22) (xy 74.93 109.22)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1d57c38c-6c72-4ea1-8ead-608a8467d189")
+	)
+	(wire
+		(pts
+			(xy 161.29 83.82) (xy 161.29 96.52)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2090c185-49d4-4914-9df2-77ad048aeb74")
+	)
+	(wire
+		(pts
+			(xy 161.29 128.27) (xy 161.29 121.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "22451d91-f424-43e3-802c-9cf4a15209b7")
+	)
+	(wire
+		(pts
+			(xy 74.93 96.52) (xy 74.93 109.22)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "28615c39-2d9e-4c88-b7e2-35aad2c161e7")
+	)
+	(wire
+		(pts
+			(xy 167.64 53.34) (xy 156.21 53.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2a2aacf1-4984-4619-9a11-5462e5fbc0a3")
+	)
+	(wire
+		(pts
+			(xy 167.64 78.74) (xy 156.21 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2b441afe-4f04-4534-9f3f-8d0c43023e95")
+	)
+	(wire
+		(pts
+			(xy 129.54 66.04) (xy 140.97 66.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2d1541a0-ecbc-40b2-93bf-bc3c4885f4ee")
+	)
+	(wire
+		(pts
+			(xy 167.64 66.04) (xy 156.21 66.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "2d722c55-55bc-4519-b60e-698c6de966d1")
+	)
+	(wire
+		(pts
+			(xy 74.93 121.92) (xy 62.23 121.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3628f5a1-a1bb-457d-b4fc-a04405e1bf54")
+	)
+	(wire
+		(pts
+			(xy 148.59 58.42) (xy 161.29 58.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "38194bc7-64f5-4eb2-ba0d-97a4cefaa657")
+	)
+	(wire
+		(pts
+			(xy 43.18 91.44) (xy 54.61 91.44)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "38cd35c9-83cd-42f6-86e0-81ef1e75c57d")
+	)
+	(wire
+		(pts
+			(xy 161.29 109.22) (xy 161.29 121.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4332ca67-7c1e-4065-85fb-c00473e13954")
+	)
+	(wire
+		(pts
+			(xy 148.59 109.22) (xy 161.29 109.22)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "474b0dbb-f573-4eee-ae6f-7480abc7c22d")
+	)
+	(wire
+		(pts
+			(xy 81.28 78.74) (xy 69.85 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "47cf3b36-9dc8-407d-9b76-db55b0d27320")
+	)
+	(wire
+		(pts
+			(xy 129.54 53.34) (xy 140.97 53.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "4e4351c8-c98e-466f-b26b-f3b186410ea4")
+	)
+	(wire
+		(pts
+			(xy 167.64 104.14) (xy 156.21 104.14)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "528a0776-95a7-433f-90b2-52e84cb2b1ea")
+	)
+	(wire
+		(pts
+			(xy 81.28 91.44) (xy 69.85 91.44)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5439a355-ec66-482e-8ed1-1ac4281b3b6b")
+	)
+	(wire
+		(pts
+			(xy 43.18 66.04) (xy 54.61 66.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "54adb756-283c-48bb-a687-99f7d2cfcdef")
+	)
+	(wire
+		(pts
+			(xy 62.23 58.42) (xy 74.93 58.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5a201d16-8f08-4242-be07-0c6da08facfe")
+	)
+	(wire
+		(pts
+			(xy 74.93 45.72) (xy 74.93 58.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5b12f9b3-f380-46e8-acaa-b007d06cdfeb")
+	)
+	(wire
+		(pts
+			(xy 148.59 83.82) (xy 161.29 83.82)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "669e85a7-b1b3-49e1-8f0a-2c8b031c7a82")
+	)
+	(wire
+		(pts
+			(xy 74.93 128.27) (xy 74.93 121.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6a2760d7-f6cf-4e6b-a3b4-f300310df600")
+	)
+	(wire
+		(pts
+			(xy 167.64 91.44) (xy 156.21 91.44)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "73f6bd50-c0a5-4e43-a03b-4c51886d28db")
+	)
+	(wire
+		(pts
+			(xy 81.28 104.14) (xy 69.85 104.14)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7602f909-358c-4743-84a0-fbc0346e36ea")
+	)
+	(wire
+		(pts
+			(xy 161.29 121.92) (xy 148.59 121.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "770afb8b-9390-45f2-a66f-75d83a688f1a")
+	)
+	(wire
+		(pts
+			(xy 129.54 78.74) (xy 140.97 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "78c92521-584f-4949-bf4d-29695606853f")
+	)
+	(wire
+		(pts
+			(xy 43.18 78.74) (xy 54.61 78.74)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7f6c2558-0e4f-4f46-94f2-9f481396e50b")
+	)
+	(wire
+		(pts
+			(xy 74.93 83.82) (xy 74.93 96.52)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8a9efc2c-28dc-4636-a35a-c7ef4bbb6d8f")
+	)
+	(wire
+		(pts
+			(xy 43.18 104.14) (xy 54.61 104.14)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "9428e7c5-c55f-4b9e-9f55-ab97d144e71b")
+	)
+	(wire
+		(pts
+			(xy 167.64 40.64) (xy 156.21 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "97b17a84-b3b1-4803-a715-b574351ff2da")
+	)
+	(wire
+		(pts
+			(xy 129.54 116.84) (xy 140.97 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a6a44cff-24f1-41d6-b98c-e8e804337d44")
+	)
+	(wire
+		(pts
+			(xy 43.18 40.64) (xy 54.61 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ae104e9e-a3e9-4e93-a86d-2f36194d5200")
+	)
+	(wire
+		(pts
+			(xy 74.93 58.42) (xy 74.93 71.12)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b063be89-db3f-45fd-b458-b213dac9f638")
+	)
+	(wire
+		(pts
+			(xy 161.29 96.52) (xy 161.29 109.22)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b434494a-75ed-4d19-a604-94b1dc64eb21")
+	)
+	(wire
+		(pts
+			(xy 148.59 45.72) (xy 161.29 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b73fd346-5b4c-4db5-adf2-195ee625c9c8")
+	)
+	(wire
+		(pts
+			(xy 43.18 116.84) (xy 54.61 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "baba9ac5-6878-43ce-ae61-67ac09d5307e")
+	)
+	(wire
+		(pts
+			(xy 161.29 45.72) (xy 161.29 58.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bd2d051a-df5e-4cbc-bded-da6bf90e94a5")
+	)
+	(wire
+		(pts
+			(xy 81.28 40.64) (xy 69.85 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "be74b6d5-c674-48e3-91be-7cc243cca20a")
+	)
+	(wire
+		(pts
+			(xy 62.23 45.72) (xy 74.93 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bf28f890-03fb-4a88-ab63-8022ece93639")
+	)
+	(wire
+		(pts
+			(xy 43.18 53.34) (xy 54.61 53.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c0dead19-0ec8-4330-bf4a-2b60c631c533")
+	)
+	(wire
+		(pts
+			(xy 81.28 53.34) (xy 69.85 53.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c4f97195-ceb1-4871-b635-39a0996d39a9")
+	)
+	(wire
+		(pts
+			(xy 129.54 91.44) (xy 140.97 91.44)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c91f4948-8f02-4e1c-ba23-bcffee0d6111")
+	)
+	(wire
+		(pts
+			(xy 74.93 71.12) (xy 74.93 83.82)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ca3c3850-3582-4df2-b6c1-9d6a30ab8cff")
+	)
+	(wire
+		(pts
+			(xy 129.54 104.14) (xy 140.97 104.14)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d0f3575d-aad0-4e11-92f8-c19a4e099c71")
+	)
+	(wire
+		(pts
+			(xy 161.29 58.42) (xy 161.29 71.12)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d9d924a2-0c00-45f2-a7ae-0896240ffe77")
+	)
+	(wire
+		(pts
+			(xy 81.28 116.84) (xy 69.85 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "dc882baf-8e62-4db9-8944-0191e094304f")
+	)
+	(wire
+		(pts
+			(xy 161.29 71.12) (xy 161.29 83.82)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "de68af47-d6fc-4bd9-b8a1-4d50ed99d9de")
+	)
+	(wire
+		(pts
+			(xy 148.59 71.12) (xy 161.29 71.12)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e3c80c16-7b47-47ac-8242-577aa073bbba")
+	)
+	(wire
+		(pts
+			(xy 167.64 116.84) (xy 156.21 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e3d59464-15a0-4805-b91f-4ae73a0ee0bd")
+	)
+	(wire
+		(pts
+			(xy 129.54 40.64) (xy 140.97 40.64)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "edc13cb1-2003-4567-bec8-e4f17cf382b3")
+	)
+	(wire
+		(pts
+			(xy 74.93 109.22) (xy 74.93 121.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ee3f57ff-06c1-4e01-bbad-364b7ee61e49")
+	)
+	(wire
+		(pts
+			(xy 62.23 96.52) (xy 74.93 96.52)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "eeb2d890-eda9-4079-ad28-91add9f3cfef")
+	)
+	(wire
+		(pts
+			(xy 62.23 71.12) (xy 74.93 71.12)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f3170b3e-8c96-4638-94f2-f1c887a55708")
+	)
+	(wire
+		(pts
+			(xy 148.59 96.52) (xy 161.29 96.52)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f7829845-ef6f-4e38-809d-be9b4aa75880")
+	)
+	(wire
+		(pts
+			(xy 81.28 66.04) (xy 69.85 66.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f817caf0-bb25-4c68-b1e8-cd91a888d8f2")
+	)
+	(hierarchical_label "IN_POTBX"
+		(shape bidirectional)
+		(at 129.54 40.64 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "020c74bd-0a6e-43ce-9ecb-6fc56e3424b5")
+	)
+	(hierarchical_label "IN_POTBY"
+		(shape bidirectional)
+		(at 129.54 53.34 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0ae31964-17c8-49ed-afea-26dd64a2e259")
+	)
+	(hierarchical_label "IN_POTAX"
+		(shape bidirectional)
+		(at 43.18 40.64 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1a1de97a-a412-4fc0-b7ba-8ae57a195840")
+	)
+	(hierarchical_label "IN_JOYA3"
+		(shape bidirectional)
+		(at 43.18 104.14 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1a5969b8-aab1-4e3c-bae5-44212ca063d9")
+	)
+	(hierarchical_label "OUT_JOYB1"
+		(shape bidirectional)
+		(at 167.64 78.74 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1ec54311-7638-431e-9bb6-1de47f3700a4")
+	)
+	(hierarchical_label "OUT_JOYA1"
+		(shape bidirectional)
+		(at 81.28 78.74 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "223b45d4-ba7f-41f2-8757-1de6f3c28ea1")
+	)
+	(hierarchical_label "IN_JOYB3"
+		(shape bidirectional)
+		(at 129.54 104.14 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "28452779-cb4b-4c94-a34c-dde217eb7cfe")
+	)
+	(hierarchical_label "IN_JOYA1"
+		(shape bidirectional)
+		(at 43.18 78.74 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "3800de71-9bb0-42f0-afaa-e18985df0c27")
+	)
+	(hierarchical_label "OUT_JOYA0"
+		(shape bidirectional)
+		(at 81.28 66.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4b6aafd0-f97d-4e94-a8dd-4914c6d8afef")
+	)
+	(hierarchical_label "OUT_POTAY"
+		(shape bidirectional)
+		(at 81.28 53.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4f936903-545e-46cd-8dfe-4b6ade023bb4")
+	)
+	(hierarchical_label "OUT_JOYA2"
+		(shape bidirectional)
+		(at 81.28 91.44 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "5a3aea0d-2281-4eb7-8af2-ff8103ea064e")
+	)
+	(hierarchical_label "OUT_POTAX"
+		(shape bidirectional)
+		(at 81.28 40.64 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "63af74e2-1ceb-4b7b-a3f1-d9e801abe321")
+	)
+	(hierarchical_label "IN_JOYB0"
+		(shape bidirectional)
+		(at 129.54 66.04 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "687e1885-16de-4c19-a60c-b0fc5b0ecdf0")
+	)
+	(hierarchical_label "IN_JOYB1"
+		(shape bidirectional)
+		(at 129.54 78.74 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "7087f7cf-2898-4a77-ae90-e590a081cff7")
+	)
+	(hierarchical_label "OUT_FBTNA"
+		(shape bidirectional)
+		(at 81.28 116.84 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7fca62cf-c624-4e61-830e-0fbaf6f14598")
+	)
+	(hierarchical_label "OUT_POTBX"
+		(shape bidirectional)
+		(at 167.64 40.64 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "92b9915e-54a4-4c57-a241-f605bbaf7f94")
+	)
+	(hierarchical_label "IN_FBTNB"
+		(shape bidirectional)
+		(at 129.54 116.84 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "93a96224-b697-4298-b7d3-4105ae6476c6")
+	)
+	(hierarchical_label "OUT_JOYB2"
+		(shape bidirectional)
+		(at 167.64 91.44 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "955c9661-9b49-4cf6-89c0-7e09a1aa3fdd")
+	)
+	(hierarchical_label "OUT_JOYB0"
+		(shape bidirectional)
+		(at 167.64 66.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "bd4f4d34-d5fb-41ec-b85a-b347ea5f2689")
+	)
+	(hierarchical_label "OUT_POTBY"
+		(shape bidirectional)
+		(at 167.64 53.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "bef377ba-735f-465b-a44f-75cd81607bcf")
+	)
+	(hierarchical_label "OUT_JOYA3"
+		(shape bidirectional)
+		(at 81.28 104.14 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c389e331-1904-4b7c-86a8-45eb19b4672b")
+	)
+	(hierarchical_label "IN_POTAY"
+		(shape bidirectional)
+		(at 43.18 53.34 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "dc274723-b29d-448c-bc31-e8233cb4044b")
+	)
+	(hierarchical_label "OUT_JOYB3"
+		(shape bidirectional)
+		(at 167.64 104.14 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ddf3c248-592f-4336-96f9-b84d732a11e2")
+	)
+	(hierarchical_label "IN_JOYB2"
+		(shape bidirectional)
+		(at 129.54 91.44 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "df73ca21-8d44-47e3-8a36-dc0f1c6c74f2")
+	)
+	(hierarchical_label "IN_JOYA2"
+		(shape bidirectional)
+		(at 43.18 91.44 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "e36dffab-8320-4f35-aa60-e49dadbf222b")
+	)
+	(hierarchical_label "OUT_FBTNB"
+		(shape bidirectional)
+		(at 167.64 116.84 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "e8cb622b-b6c2-4b2e-8ebe-6c941ea74434")
+	)
+	(hierarchical_label "IN_JOYA0"
+		(shape bidirectional)
+		(at 43.18 66.04 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f194ba39-e74a-49f9-b8d0-64df596a08cb")
+	)
+	(hierarchical_label "IN_FBTNA"
+		(shape bidirectional)
+		(at 43.18 116.84 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f6e50fad-ef8a-45e3-9da0-2f4ce331ee4c")
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 43.18 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe24ee")
+		(property "Reference" "EMI1"
+			(at 62.23 35.1282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "47 pF"
+			(at 62.23 37.4396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 43.18 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 43.18 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "652-EMI470T-RC"
+			(at 62.23 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "3fdba04c-c031-4628-bd83-4301db4eefb4")
+		)
+		(pin "2"
+			(uuid "5cfeb072-29e3-4026-8ae4-8dac0a2aa54b")
+		)
+		(pin "3"
+			(uuid "e197d93c-a242-43d8-b0d9-6786ab08b392")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 55.88 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe2efd")
+		(property "Reference" "EMI2"
+			(at 62.23 47.8282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "47 pF"
+			(at 62.23 50.1396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 55.88 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 55.88 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "652-EMI470T-RC"
+			(at 62.23 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "316d3430-fddd-4c17-95ff-466687e74baf")
+		)
+		(pin "2"
+			(uuid "706c7e8c-82fa-4245-8a24-6690ebfd1ed9")
+		)
+		(pin "3"
+			(uuid "06af217b-8b65-4093-b5db-ad00e5b6484b")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 68.58 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe3460")
+		(property "Reference" "EMI3"
+			(at 62.23 60.5282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 62.23 62.8396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 68.58 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 68.58 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 62.23 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "7f6ee893-c051-4003-bc93-8cc8b20b1ff3")
+		)
+		(pin "2"
+			(uuid "02a370bd-4817-453a-837e-67c6fdfcac69")
+		)
+		(pin "3"
+			(uuid "e887fc88-adfb-42dc-95b4-c7b04e958f1b")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 81.28 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe3e8b")
+		(property "Reference" "EMI4"
+			(at 62.23 73.2282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 62.23 75.5396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 81.28 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 81.28 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 81.28 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 62.23 81.28 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "92027f46-a446-42e1-9523-756b91865d96")
+		)
+		(pin "2"
+			(uuid "2d4bf4e3-55af-494a-aa62-43320e5ba77a")
+		)
+		(pin "3"
+			(uuid "a1cb3eec-290c-4006-b767-7c7f6e1c1311")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 93.98 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe436c")
+		(property "Reference" "EMI5"
+			(at 62.23 85.9282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 62.23 88.2396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 93.98 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 93.98 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 62.23 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b416bfbd-6b63-4724-9b93-748aa7562e28")
+		)
+		(pin "2"
+			(uuid "a7e25c3f-0341-42f2-aa12-b6daa050674e")
+		)
+		(pin "3"
+			(uuid "8f75652d-a7b0-4b93-8085-3b4543037368")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 106.68 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe4b30")
+		(property "Reference" "EMI6"
+			(at 62.23 98.6282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 62.23 100.9396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 106.68 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 106.68 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 106.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 62.23 106.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "d4ae4e6c-2784-435b-bb46-e7239f10b0d6")
+		)
+		(pin "2"
+			(uuid "8306cb3f-24e3-4c30-8848-cdcf1b6249ff")
+		)
+		(pin "3"
+			(uuid "4a8baad8-e0cd-46c1-862d-aacfa296270d")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 62.23 119.38 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe4fa6")
+		(property "Reference" "EMI69"
+			(at 62.23 111.3282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 62.23 113.6396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 62.23 119.38 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 62.23 119.38 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 62.23 119.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 62.23 119.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "4cc18c39-d136-4b95-97d8-2c654ea43857")
+		)
+		(pin "2"
+			(uuid "44fb9e3b-4a3b-48a9-8d91-945d690d821b")
+		)
+		(pin "3"
+			(uuid "434deab6-38f7-41e8-bd9b-32f02a8573dd")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI69")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 74.93 128.27 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbe7045")
+		(property "Reference" "#PWR0159"
+			(at 74.93 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 75.057 132.6642 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 74.93 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 74.93 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 74.93 128.27 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b335a49d-b325-46f1-b4e2-5345982c7a57")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "#PWR0159")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 43.18 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11cb")
+		(property "Reference" "EMI9"
+			(at 148.59 35.1282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "47 pF"
+			(at 148.59 37.4396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 43.18 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 43.18 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "652-EMI470T-RC"
+			(at 148.59 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "102c1475-8c50-48b8-a132-77bff8f70c53")
+		)
+		(pin "2"
+			(uuid "1f22f2f8-73d8-4340-b813-7846ad54ee56")
+		)
+		(pin "3"
+			(uuid "58b1a719-949e-451a-a492-2319b1d637a0")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI9")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 55.88 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11d1")
+		(property "Reference" "EMI10"
+			(at 148.59 47.8282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "47 pF"
+			(at 148.59 50.1396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 55.88 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 55.88 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "652-EMI470T-RC"
+			(at 148.59 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "34069bf5-973a-4c42-870d-bcb632b4956e")
+		)
+		(pin "2"
+			(uuid "855d4d8f-19e7-4f49-b0d7-f20593469da0")
+		)
+		(pin "3"
+			(uuid "57562288-8c81-4161-8e88-aa41891aec60")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI10")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 68.58 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11d7")
+		(property "Reference" "EMI11"
+			(at 148.59 60.5282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "47 pF"
+			(at 148.59 62.8396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 68.58 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 68.58 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "652-EMI470T-RC"
+			(at 148.59 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "752e2192-c1b7-4b03-b301-e7290a6fc431")
+		)
+		(pin "2"
+			(uuid "e3e00dea-4270-459a-89d3-a9c864165ea8")
+		)
+		(pin "3"
+			(uuid "d6212e74-4ee5-4719-b0f2-5f12cb8e88b5")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI11")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 81.28 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11dd")
+		(property "Reference" "EMI12"
+			(at 148.59 73.2282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 148.59 75.5396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 81.28 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 81.28 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 81.28 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 148.59 81.28 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "26ccde0a-9216-4314-b7b1-6f8f67d6d812")
+		)
+		(pin "2"
+			(uuid "a5a24783-77b0-4778-aca6-df70163f5dc0")
+		)
+		(pin "3"
+			(uuid "488712d8-6d22-4c77-a877-2b185c00306f")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI12")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 93.98 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11e3")
+		(property "Reference" "EMI13"
+			(at 148.59 85.9282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 148.59 88.2396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 93.98 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 93.98 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 148.59 93.98 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "5ba688da-3809-4d66-94ff-3927a18b9e4d")
+		)
+		(pin "2"
+			(uuid "0738acc8-5d3c-4178-90eb-a8d4d3e52a34")
+		)
+		(pin "3"
+			(uuid "ad8645b9-16dc-4590-9fe2-ac3cbca5146d")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI13")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 106.68 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11e9")
+		(property "Reference" "EMI14"
+			(at 148.59 98.6282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 148.59 100.9396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 106.68 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 106.68 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 106.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 148.59 106.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "310eb11c-20cf-4925-a15c-c1b25ee61a25")
+		)
+		(pin "2"
+			(uuid "66ba938f-592d-408a-8d8c-90a2876ddc54")
+		)
+		(pin "3"
+			(uuid "4c5b8363-f49d-4f4d-b096-656eb3283d0d")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI14")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Filter_EMI_LCL")
+		(at 148.59 119.38 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf11ef")
+		(property "Reference" "EMI15"
+			(at 148.59 111.3282 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100 pF"
+			(at 148.59 113.6396 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Open128:EMI-Filter"
+			(at 148.59 119.38 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "http://www.murata.com/~/media/webrenewal/support/library/catalog/products/emc/emifil/c31e.ashx?la=en-gb"
+			(at 148.59 119.38 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "EMI T-filter (LCL)"
+			(at 148.59 119.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Mouser Part" "81-DSS1NB32A101Q91A"
+			(at 148.59 119.38 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "0e792f2e-4bdc-4992-8888-5b6a809907c9")
+		)
+		(pin "2"
+			(uuid "8f813435-f37f-4c00-baff-5df23fc1951f")
+		)
+		(pin "3"
+			(uuid "ca521396-421e-4e48-832c-01a7d1263d65")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "EMI15")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 161.29 128.27 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "00000000-0000-0000-0000-00005dbf1211")
+		(property "Reference" "#PWR0160"
+			(at 161.29 134.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 161.417 132.6642 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 161.29 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 161.29 128.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 161.29 128.27 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "9e958646-5354-4145-bbad-35833def970b")
+		)
+		(instances
+			(project "Open128"
+				(path "/5f8076c4-f6fe-40bf-8da9-1311c8c67791/00000000-0000-0000-0000-00005da44980/00000000-0000-0000-0000-00005daf521b/00000000-0000-0000-0000-00005daf525e"
+					(reference "#PWR0160")
+					(unit 1)
+				)
+			)
+		)
+	)
+)
