@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.OnlineHandling;
+using Handlers.Theming;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -83,14 +84,14 @@ namespace CRT
                 .Select(reason => reason!)
                 .ToArray();
 
-            this.MainExcelRequiresAppUpdateBannerText.Text = string.Join(Environment.NewLine + Environment.NewLine, reasons);
+            NoticeEmphasis.Show(this.MainExcelRequiresAppUpdateBannerText, string.Join(Environment.NewLine + Environment.NewLine, reasons));
             this.MainExcelRequiresAppUpdateBannerDismissButton.IsEnabled = true;
             this.MainExcelRequiresAppUpdateBanner.IsVisible = reasons.Length > 0;
         }
 
         // The banner's words while it is shown, or null - for tests.
         internal string? RequiresAppUpdateBannerTextForTests =>
-            this.MainExcelRequiresAppUpdateBanner.IsVisible ? this.MainExcelRequiresAppUpdateBannerText.Text : null;
+            this.MainExcelRequiresAppUpdateBanner.IsVisible ? NoticeEmphasis.TextOf(this.MainExcelRequiresAppUpdateBannerText) : null;
 
         // ###########################################################################################
         // Hides the dedicated main-Excel compatibility warning banner and clears its persisted
@@ -112,7 +113,7 @@ namespace CRT
             // The "(simulated)" suffix is the only thing distinguishing a faked update from a real
             // one on screen, and screenshots are what arrive in bug reports.
             string simulatedSuffix = SimulationOptions.Current.SimulateUpdate ? " (simulated)" : string.Empty;
-            this.UpdateBannerText.Text = $"Version [{UpdateService.PendingVersion}] is available{simulatedSuffix}";
+            NoticeEmphasis.Show(this.UpdateBannerText, $"Version [{UpdateService.PendingVersion}] is available{simulatedSuffix}");
             this.UpdateBannerInstallButton.IsVisible = true;
             this.UpdateBannerViewNotesButton.IsVisible = true;
             this.UpdateBannerInstallButton.IsEnabled = true;
@@ -404,7 +405,7 @@ namespace CRT
                 this.UpdateBannerInstallButton.IsEnabled = false;
                 this.UpdateBannerViewNotesButton.IsEnabled = false;
                 this.UpdateBannerDismissButton.IsEnabled = false;
-                this.UpdateBannerText.Text = "Downloading update...";
+                NoticeEmphasis.Show(this.UpdateBannerText, "Downloading update...");
 
                 // ###########################################################################################
                 // *** UNDER THE "PLEASE WAIT" OVERLAY (2026-09-28). *** The application restarts at the
@@ -418,14 +419,14 @@ namespace CRT
                         progress =>
                         {
                             context.Report(CrtWaitWording.DownloadingUpdateAt(progress), progress / 100.0);
-                            Dispatcher.UIThread.Post(() => this.UpdateBannerText.Text = $"Downloading update: {progress}%");
+                            Dispatcher.UIThread.Post(() => NoticeEmphasis.Show(this.UpdateBannerText, $"Downloading update: {progress}%"));
                         },
                         context.Token));
 
                 if (waited.IsTimedOut)
                 {
                     this.RestoreUpdateBannerAfterFailedInstall();
-                    this.UpdateBannerText.Text = CrtWaitWording.UpdateNoProgress;
+                    NoticeEmphasis.Show(this.UpdateBannerText, CrtWaitWording.UpdateNoProgress);
                     return;
                 }
 
@@ -450,7 +451,7 @@ namespace CRT
         // ###########################################################################################
         private void RestoreUpdateBannerAfterFailedInstall()
         {
-            this.UpdateBannerText.Text = "The update could not be installed - see the log for details.";
+            NoticeEmphasis.Show(this.UpdateBannerText, "The update could not be installed - see the log for details.");
 
             this.UpdateBannerInstallButton.IsEnabled = true;
             this.UpdateBannerViewNotesButton.IsEnabled = true;

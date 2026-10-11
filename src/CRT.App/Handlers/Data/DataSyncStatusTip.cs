@@ -18,6 +18,10 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // What a running check is doing: a heading, the sync's own status line, and the file it is
         // on - each left out until the sync has said it. Shared by the tooltip and the notice.
+        //
+        // No status of the sync's says the heading's sentence: the manual check's last one did, and
+        // the card read it twice until the first file came (owner report, 2026-10-11) - so
+        // DataManager says "Checking board data files..." there instead.
         // ###########################################################################################
         public static string Checking(string sourceLabel, string progress, string file)
         {

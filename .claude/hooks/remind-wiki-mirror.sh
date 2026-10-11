@@ -65,6 +65,7 @@ src/CRT.Data/MasterListing=Main-Excel
 src/CRT.App/Handlers/MiniPro/=MiniPro-programmer
 src/CRT.App/Handlers/Oscilloscope/|src/CRT.App/Tabs/Oscilloscope/=Synchronize-oscilloscope Controlling-oscilloscope-with-keyboard
 src/CRT.App/Handlers/Data/KiCadRawProjectLoader|src/CRT.App/Handlers/Data/KiCadProjectData=KiCad-folder Add-new-board-with-KiCad-data
+src/CRT.Data/KiCadSheetReferences=KiCad-folder
 src/CRT.App/Tabs/Contribute/|src/CRT.App/Main/Main\.EditBoardAsDraft=Contribute-data-via-CRT Contribute-tab Drafts-tab
 src/CRT.App/Tabs/Drafts/|src/CRT.App/Main/Main\.NewBoard|src/CRT.Data/NewBoard=Drafts-tab Add-new-board-with-KiCad-data Contribute-tab Contribute-data-via-CRT
 src/CRT.Data/BoardTable|src/CRT.Data/DraftTableSession|src/CRT.Data/BoardDataDiffer=Drafts-tab Contribute-data-via-CRT Maintainer-tab

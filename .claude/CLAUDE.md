@@ -878,7 +878,20 @@ the master by version (highest at or below the app's own); the server writes onl
   the untested TCP boundary. `ScopeCommandResolver`/`ScopeValueMapper` turn the master workbook's
   command strings into scope interactions.
 - `MiniPro/` - `IMiniproRunner` (`MiniproProcessRunner` spawns the bundled `minipro.exe`, Windows
-  only; `MockMiniproRunner` simulates).
+  only; `MockMiniproRunner` simulates). **The demo mode proves nothing about a test's vectors** -
+  `MockMiniproRunner` passes whatever they say. The IC test catalogue (`Assets/Data/.../MiniPro/IC
+  tests`, read by released 2.5.0 too) is proven by `IcTestCatalogueShippedDataTests`: every runnable
+  logic part against its datasheet model (`LogicIcReferenceModels`, typed in from the datasheet, never
+  from the vectors) and through `IcTestService` against a simulated T48 (`SimulatedT48Runner`, the
+  bundled minipro's two-pass pull-up/pull-down test) - a good chip passes, one broken pin fails. **A
+  new runnable part without a model fails the suite.** Only add a part nobody can try on hardware
+  when it uses what the shipped tests already use (driven inputs, outputs read as L/H/Z, fixed roles).
+  A pin may swap between driven and read (the 4066's two directions) only across a step
+  where nothing on the chip can drive it: the suite checks every mix of each two neighbouring vectors,
+  the last-to-first wrap included (the T48 runs the whole list twice). A SEQUENTIAL part's test
+  (74LS74, 74LS373, 74LS193, 556 - `ChipInSocket`) must read the same from any power-up state, with
+  every plausible clock-pulse shape, and in every order of one vector's pin changes; the T48's "C" is
+  played as high-then-low, the only shape the manufacturer's own 74193 test in minipro's DB agrees with.
 - `Security/ExternalTargetLauncher` - **the only sanctioned way to open an external link or local
   file**: HTTP/HTTPS/mailto, or a local path inside the data root with an allowlisted extension.
 - **QuestPDF**: used under its Community licence (free under $1M revenue - a condition on any fork).

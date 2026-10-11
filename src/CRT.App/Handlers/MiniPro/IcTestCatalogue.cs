@@ -47,35 +47,8 @@ public static class IcTestCatalogue
     /// <summary>(Re)load the catalogue from <paramref name="dir"/> (or the bundled default).</summary>
     public static void Load(string? dir = null)
     {
-        var catalogueDir = dir ?? DefaultCatalogueDir;
-        var entries = new List<IcTestEntry>();
-        if (Directory.Exists(catalogueDir))
-        {
-            foreach (var file in Directory.EnumerateFiles(catalogueDir, "*.json").OrderBy(f => f))
-            {
-                if (string.Equals(Path.GetFileName(file), "index.json", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                try
-                {
-                    var entry = JsonSerializer.Deserialize<IcTestEntry>(File.ReadAllText(file), Json);
-                    if (entry is not null && !string.IsNullOrWhiteSpace(entry.Id))
-                        entries.Add(entry);
-                }
-                catch (JsonException)
-                {
-                    // A malformed entry must not take the whole catalogue down.
-                }
-            }
-        }
-
-        var index = new Dictionary<string, IcTestEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var e in entries)
-            foreach (var m in e.Match)
-            {
-                var key = Normalize(m);
-                if (key.Length > 0)
-                    index.TryAdd(key, e);
-            }
+        var entries = ReadEntries(dir ?? DefaultCatalogueDir);
+        var index = IndexByMatch(entries);
 
         lock (Gate)
         {
@@ -86,14 +59,61 @@ public static class IcTestCatalogue
         }
     }
 
+    // Every entry in a catalogue folder: each "*.json" but index.json, in file-name order. Pure -
+    // the cache Load fills is not touched, so the tests read the SHIPPED catalogue through the
+    // code CRT reads it with, without changing what the rest of the run sees.
+    internal static List<IcTestEntry> ReadEntries(string catalogueDir)
+    {
+        var entries = new List<IcTestEntry>();
+        if (!Directory.Exists(catalogueDir))
+            return entries;
+
+        foreach (var file in Directory.EnumerateFiles(catalogueDir, "*.json").OrderBy(f => f))
+        {
+            if (string.Equals(Path.GetFileName(file), "index.json", StringComparison.OrdinalIgnoreCase))
+                continue;
+            try
+            {
+                var entry = JsonSerializer.Deserialize<IcTestEntry>(File.ReadAllText(file), Json);
+                if (entry is not null && !string.IsNullOrWhiteSpace(entry.Id))
+                    entries.Add(entry);
+            }
+            catch (JsonException)
+            {
+                // A malformed entry must not take the whole catalogue down.
+            }
+        }
+        return entries;
+    }
+
+    // Each "match" name, normalised, to the FIRST entry (in file-name order) that names it.
+    internal static Dictionary<string, IcTestEntry> IndexByMatch(IEnumerable<IcTestEntry> entries)
+    {
+        var index = new Dictionary<string, IcTestEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in entries)
+            foreach (var m in e.Match)
+            {
+                var key = Normalize(m);
+                if (key.Length > 0)
+                    index.TryAdd(key, e);
+            }
+        return index;
+    }
+
     /// <summary>The test entry for a component's technical name/value, or null.</summary>
     public static IcTestEntry? Lookup(string? technicalNameOrValue)
     {
         if (string.IsNullOrWhiteSpace(technicalNameOrValue))
             return null;
         EnsureLoaded(null);
-        return _byMatch!.GetValueOrDefault(Normalize(technicalNameOrValue));
+        return Find(_byMatch!, technicalNameOrValue);
     }
+
+    // Lookup's rule against a given index rather than the cache.
+    internal static IcTestEntry? Find(IReadOnlyDictionary<string, IcTestEntry> index, string? technicalNameOrValue) =>
+        string.IsNullOrWhiteSpace(technicalNameOrValue)
+            ? null
+            : index.GetValueOrDefault(Normalize(technicalNameOrValue));
 
     /// <summary>True when a component is an IC with a catalogue entry (gates the Test button).</summary>
     public static bool IsTestable(string? category, string? technicalNameOrValue) =>

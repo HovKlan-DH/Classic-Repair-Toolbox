@@ -18,6 +18,7 @@ Rules:
 * The folder name is `KiCad data`, spelled exactly like that - capital letters included.
 * Only `.kicad_pcb`, `.kicad_sch` and `.kicad_pro` are read (KiCad 6 and newer). Legacy `.brd` / `.sch` files are ignored.
 * Sub-folders are read too, so a multi-sheet project can keep its pages in, say, `Pages/vic.kicad_sch`. KiCad's own `*-backups` folders, and folders whose name starts with a dot, are skipped.
+* Every sheet of a multi-sheet project must be a `.kicad_sch` file inside `KiCad data`. A sheet that the schematic points to somewhere else - another drive, a network share, or out of the folder with `..` - is not read, and a submission carrying such a schematic is refused, as is one pointing a sheet at a file that is not a `.kicad_sch`. Keep the whole project in the folder and save it again from KiCad.
 * Keep exactly **one** `.kicad_pcb`. It is what components are matched against to light up their copper, and with several only the first is used.
 * Nothing to register. The application finds the folder on its own.
 * Do not add footprint libraries, 3D models, gerbers or backups. Everything here is downloaded by every user.

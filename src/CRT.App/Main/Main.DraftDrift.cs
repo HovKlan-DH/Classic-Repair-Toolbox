@@ -1,5 +1,6 @@
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.IO;
 using System.Threading.Tasks;
@@ -95,8 +96,9 @@ namespace CRT
             // The second sentence is load-bearing: without it this reads as "your work may be
             // lost", which is false - Drafts/ and Data/ are separate trees and the overlay still
             // applies.
-            this.SyncBannerText.Text =
-                $"The official data for this board {what} since you started your draft. Your edits are still applied.";
+            NoticeEmphasis.Show(
+                this.SyncBannerText,
+                $"The official data for this board {what} since you started your draft. Your edits are still applied.");
 
             this.SyncBannerDriftButton.IsVisible = true;
             this.SyncBanner.IsVisible = true;

@@ -371,8 +371,9 @@ namespace Handlers.DataHandling
         }
 
         // Keeps a hostile path from flooding a log line or a UI message. The value is still shown
-        // because a contributor needs to know WHICH path was refused.
-        private static string Trim(string value)
+        // because a contributor needs to know WHICH path was refused. KiCadSheetReferences quotes a
+        // sheet's path through here too.
+        internal static string Trim(string value)
         {
             return value.Length <= 80 ? value : value[..80] + "...";
         }

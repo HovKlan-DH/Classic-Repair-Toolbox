@@ -91,37 +91,89 @@ public sealed class DraftDiscardShownTests
         });
     }
 
-    // The owner's own advice, under the contributor's line: push it back and ask them.
+    // ###########################################################################################
+    // The owner's own advice - push it back and ask - in THE AMBER NOTICE PANEL under the board's
+    // name (owner request, 2026-10-11: "it should show this as a normal highlight, which has the
+    // yellow'ish panel and shown in same place as normal"). It was a red line among the contributors,
+    // inside the panel that scrolls; the queue says the same thing in BeforeApprovingNotice, at the
+    // top of its side, so BETA's side says it the same way and in the same place.
+    // ###########################################################################################
     [Fact]
-    public void The_beta_plan_says_who_discarded_their_draft_and_to_consider_pushing_it_back()
+    public void The_beta_plan_says_who_discarded_their_draft_in_the_notice_panel_above_everything_else()
     {
         UiTest.Run(() =>
         {
             var view = new BetaView();
             var carried = new CarriedSubmission(41, "dennis@example.com", "Change 41", Discarded.AddDays(-1), DraftDiscardedUtc: Discarded);
+            var kept = new CarriedSubmission(42, "anna@example.com", "Change 42", Discarded.AddDays(-1));
 
-            view.ShowPlanForTests(
-                new ProductionPlanView(
-                    "Commodore/C128/310378",
-                    "2026-September-27",
-                    new string('c', 64),
-                    TouchesSharedFiles: false,
-                    CanPublish: true,
-                    Refusal: null,
-                    UnchangedCount: 10,
-                    Files: [],
-                    Problems: [],
-                    Approval: null,
-                    Removals: null,
-                    Carrying: [carried]),
-                new ProductionBoardRow("Commodore/C128/310378", "Commodore", "C128", "310378", null, "hash", null, null));
+            view.ShowPlanForTests(Plan(carried, kept), BetaRow());
 
-            List<string> lines = view.FindControl<StackPanel>("CarryingPanel")!.Children.OfType<TextBlock>().Select(block => block.Text ?? string.Empty).ToList();
+            var notice = view.FindControl<Border>("BeforePublishingNotice")!;
+            List<string> warnings = view.FindControl<StackPanel>("BeforePublishingPanel")!.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf).ToList();
 
-            Assert.Contains(DraftDiscardWording.BetaWarning(carried), lines);
+            Assert.True(notice.IsVisible);
+            Assert.Contains("Notice", notice.Classes);
+            Assert.Equal([DraftDiscardWording.BetaWarning(carried)], warnings);
+            Assert.All(view.FindControl<StackPanel>("BeforePublishingPanel")!.Children, line => Assert.Contains("NoticeText", line.Classes));
             Assert.Contains("pushing it back to the queue", DraftDiscardWording.BetaWarning(carried), StringComparison.Ordinal);
+
+            // Which contribution, and its contributor in bold as on the carried line (code review,
+            // 2026-10-11) - away from that line, the warning has to say it itself.
+            TextBlock warning = view.FindControl<StackPanel>("BeforePublishingPanel")!.Children.OfType<TextBlock>().Single();
+            Assert.StartsWith("#41 (Change 41) - ", TabMaintainer.TextOf(warning), StringComparison.Ordinal);
+            Assert.Equal(["dennis@example.com"], Handlers.Theming.BoldRuns.BoldPiecesOf(warning));
+
+            // Said once: no longer a red line among the contributors as well.
+            List<string> carrying = view.FindControl<StackPanel>("CarryingPanel")!.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf).ToList();
+            Assert.DoesNotContain(DraftDiscardWording.BetaWarning(carried), carrying);
+
+            // Directly under the board's name - before who must approve, and outside the panel
+            // that scrolls, so it is on screen whatever the plan holds.
+            List<Control> top = ((DockPanel)view.Content!).Children.ToList();
+            Assert.Equal(top.IndexOf(view.FindControl<TextBlock>("SelectedBoardText")!) + 1, top.IndexOf(notice));
         });
     }
+
+    // Nothing to settle: no panel - and none carried over to the next board, or to an empty view.
+    [Fact]
+    public void The_beta_notice_panel_is_gone_when_nothing_carried_was_discarded()
+    {
+        UiTest.Run(() =>
+        {
+            var view = new BetaView();
+            var notice = view.FindControl<Border>("BeforePublishingNotice")!;
+
+            view.ShowPlanForTests(Plan(new CarriedSubmission(41, "dennis@example.com", "Change 41", Discarded, DraftDiscardedUtc: Discarded)), BetaRow());
+            Assert.True(notice.IsVisible);
+
+            view.ShowPlanForTests(Plan(new CarriedSubmission(42, "anna@example.com", "Change 42", Discarded)), BetaRow());
+            Assert.False(notice.IsVisible);
+            Assert.Empty(view.FindControl<StackPanel>("BeforePublishingPanel")!.Children);
+
+            view.ShowPlanForTests(Plan(new CarriedSubmission(41, "dennis@example.com", "Change 41", Discarded, DraftDiscardedUtc: Discarded)), BetaRow());
+            view.ShowPlanForTests(null, null);
+            Assert.False(notice.IsVisible);
+        });
+    }
+
+    private static ProductionPlanView Plan(params CarriedSubmission[] carrying) =>
+        new(
+            "Commodore/C128/310378",
+            "2026-September-27",
+            new string('c', 64),
+            TouchesSharedFiles: false,
+            CanPublish: true,
+            Refusal: null,
+            UnchangedCount: 10,
+            Files: [],
+            Problems: [],
+            Approval: null,
+            Removals: null,
+            Carrying: carrying);
+
+    private static ProductionBoardRow BetaRow() =>
+        new("Commodore/C128/310378", "Commodore", "C128", "310378", null, "hash", null, null);
 
     [Fact]
     public void The_boards_screen_marks_the_submission_whose_draft_was_discarded()

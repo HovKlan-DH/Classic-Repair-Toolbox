@@ -166,6 +166,32 @@ namespace CRT.Server.Tests
             Assert.Contains("already have", mailer.Last!.Subject, StringComparison.OrdinalIgnoreCase);
         }
 
+        // ###########################################################################################
+        // *** A TAKEN ADDRESS COSTS THE SAME HASHING AS A NEW ONE (security review, 2026-10-11). ***
+        // Only a new account's password was hashed, so a registration answered measurably faster
+        // for an address that already had an account - the answer was the same, the time was not.
+        // ###########################################################################################
+        [Fact]
+        public async Task Registering_a_taken_address_costs_the_same_hashing_as_a_new_one()
+        {
+            var store = new FakeAccountStore();
+            var mailer = new FakeEmailSender();
+
+            Argon2PasswordHasher forNewAddress = AccountFlowTests.Hasher();
+            Argon2PasswordHasher forTakenAddress = AccountFlowTests.Hasher();
+
+            await AccountFlows.RegisterAsync(
+                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
+                store, mailer, forNewAddress, AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            await AccountFlows.RegisterAsync(
+                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone Else", null),
+                store, mailer, forTakenAddress, AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.Equal(1, forNewAddress.Computations);
+            Assert.Equal(forNewAddress.Computations, forTakenAddress.Computations);
+        }
+
         [Fact]
         public async Task An_invalid_registration_is_rejected_and_sends_no_mail()
         {
@@ -328,6 +354,86 @@ namespace CRT.Server.Tests
             Assert.False(locked.IsSuccess);
             Assert.False(locked.IsRateLimited);
             Assert.Null(locked.Session);
+        }
+
+        // ###########################################################################################
+        // *** EVERY FAILED LOGIN COSTS ONE ARGON2 RUN, WHATEVER IT FOUND (security review,
+        // 2026-10-11). *** The ANSWER was already the same for an unknown address, a locked account
+        // and a wrong password, but only the wrong password ran Argon2 - hundreds of milliseconds at
+        // the configured cost - so the response TIME said which addresses have an account, one
+        // request per address. Counted rather than timed, because a wall-clock test would be flaky.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("nobody@example.com", "the wrong password entirely", false)]
+        [InlineData("dennis@example.com", "the wrong password entirely", false)]
+        [InlineData("dennis@example.com", AccountFlowTests.GoodPassword, true)]
+        public async Task Every_failed_login_costs_exactly_one_password_verification(
+            string email, string password, bool locked)
+        {
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+
+            if (locked)
+                store.Accounts[1] = store.Accounts[1] with { IsLocked = true };
+
+            Argon2PasswordHasher hasher = AccountFlowTests.Hasher();
+
+            LoginOutcome outcome = await AccountFlows.LoginAsync(
+                new LoginRequest(email, password, null, "192.0.2.1"),
+                store, hasher, AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.False(outcome.IsSuccess);
+            Assert.False(outcome.IsRateLimited);
+            Assert.Equal(1, hasher.Computations);
+        }
+
+        // An account whose stored hash cannot be read fails like any other - and costs the same.
+        [Fact]
+        public async Task A_login_to_an_account_with_an_unreadable_stored_hash_costs_one_verification()
+        {
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+
+            store.Accounts[1] = store.Accounts[1] with { PasswordHash = "not a password hash" };
+
+            Argon2PasswordHasher hasher = AccountFlowTests.Hasher();
+
+            LoginOutcome outcome = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, null, "192.0.2.1"),
+                store, hasher, AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.False(outcome.IsSuccess);
+            Assert.Equal(1, hasher.Computations);
+        }
+
+        // ###########################################################################################
+        // *** AFTER THE COST IS RAISED, A WRONG PASSWORD STILL COSTS WHAT AN UNKNOWN ADDRESS COSTS
+        // (code review, 2026-10-11). *** A hash keeps the cost it was made with until its account
+        // signs in again, while an unknown address costs the configured one - so every account not
+        // yet rehashed answered a wrong password sooner, and could be told apart by the clock.
+        // Counted as Argon2 work (memory x passes over lanes), not timed.
+        // ###########################################################################################
+        [Fact]
+        public async Task After_the_cost_is_raised_a_wrong_password_costs_the_same_work_as_an_unknown_address()
+        {
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+
+            ServerOptions raised = AccountFlowTests.Options();
+            raised.Argon2MemoryKib = 16384;
+            raised.Argon2Iterations = 2;
+
+            var forUnknownAddress = new Argon2PasswordHasher(raised);
+            var forOldAccount = new Argon2PasswordHasher(raised);
+
+            await AccountFlows.LoginAsync(
+                new LoginRequest("nobody@example.com", "the wrong password entirely", null, "192.0.2.1"),
+                store, forUnknownAddress, raised, AccountFlowTests.Now);
+
+            LoginOutcome outcome = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", "the wrong password entirely", null, "192.0.2.2"),
+                store, forOldAccount, raised, AccountFlowTests.Now);
+
+            Assert.False(outcome.IsSuccess);
+            Assert.Equal(Argon2PasswordHasher.Cost(16384, 2, 1), forUnknownAddress.Work);
+            Assert.Equal(forUnknownAddress.Work, forOldAccount.Work);
         }
 
         // -----------------------------------------------------------------------------------

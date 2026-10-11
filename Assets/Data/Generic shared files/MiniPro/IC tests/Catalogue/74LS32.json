@@ -2,7 +2,8 @@
   "schema": 1,
   "id": "74ls32",
   "match": [
-    "74LS32"
+    "74LS32",
+    "74F32"
   ],
   "description": "Quad 2-input OR gate",
   "kind": "logic-combinational",

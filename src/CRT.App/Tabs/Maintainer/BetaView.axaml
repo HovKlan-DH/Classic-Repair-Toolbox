@@ -32,6 +32,26 @@
                    Margin="0,0,0,4" />
 
         <!--
+        WHAT TO SETTLE BEFORE PUBLISHING, directly under the board's name and above everything else:
+        a contribution this carries whose contributor has since discarded the draft (owner request,
+        2026-09-28), with the owner's advice - push it back and ask. THE AMBER NOTICE PANEL (owner
+        request, 2026-10-11: "it should show this as a normal highlight, which has the yellow'ish
+        panel and shown in same place as normal") - App.axaml's Border.Notice, the queue's
+        BeforeApprovingNotice's look and place: the first thing on the side. It was a red line among
+        the contributors, inside the panel below that scrolls. One line per such contribution.
+        -->
+        <Border DockPanel.Dock="Top"
+                x:Name="BeforePublishingNotice"
+                Classes="Notice"
+                IsVisible="False"
+                Margin="0,4,0,10">
+            <Grid ColumnDefinitions="Auto,*">
+                <TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+                <StackPanel Grid.Column="1" x:Name="BeforePublishingPanel" Spacing="4" />
+            </Grid>
+        </Border>
+
+        <!--
         WHO MUST APPROVE (2026-09-25): a board whose copy list changes a shared file needs its
         maintainer AND the administrator before it goes to production. Hidden otherwise.
         -->

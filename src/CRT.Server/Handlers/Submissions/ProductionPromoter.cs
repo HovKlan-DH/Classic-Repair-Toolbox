@@ -1,3 +1,4 @@
+using System.Text;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
@@ -9,8 +10,9 @@ namespace CRT.Server.Handlers.Submissions
     // *** EVERYTHING IS CHECKED BEFORE THE FIRST BYTE LANDS, as PublishExecutor does. *** Every
     // source and destination resolves inside its own tree through SubmissionPathRules, and neither
     // path passes through a symbolic link (PublishPathSafety) - a link in either tree would make a
-    // perfectly contained path read from, or write to, somewhere else. A refusal found at file 600
-    // would otherwise leave Production half-promoted.
+    // perfectly contained path read from, or write to, somewhere else. A KiCad schematic's sheets
+    // are checked too (KiCadSheetReferences). A refusal found at file 600 would otherwise leave
+    // Production half-promoted.
     //
     // *** EACH COPY IS VERIFIED AGAINST THE HASH THE PLAN SAW. *** The plan read BETA; a file that
     // changed in BETA since (a hand edit, a publish racing without the lock) must not reach every
@@ -59,6 +61,19 @@ namespace CRT.Server.Handlers.Submissions
 
                 if (!File.Exists(source))
                     return PromotionCopyOutcome.Failed($"[{file.Path}] is no longer in BETA. Nothing was copied.");
+
+                // A KiCad schematic's sheets, read from BETA's file (code review, 2026-10-11). BETA
+                // may hold one approved before the server had KiCadSheetReferences, and copying it
+                // would hand it to every CRT on the stable source - the CRTs already installed follow
+                // whatever its sheets name. The one content rule a file in BETA may never have met,
+                // so the one checked again here; every other content rule ran at its publish.
+                if (KiCadSheetReferences.AppliesTo(file.Path))
+                {
+                    using var text = new StreamReader(source, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+
+                    if (!KiCadSheetReferences.Check(file.Path, text, out string sheetReason))
+                        return PromotionCopyOutcome.Failed($"[{file.Path}] cannot be published to the stable source: {sheetReason} Nothing was copied.");
+                }
 
                 resolved.Add((file, source, destination));
             }

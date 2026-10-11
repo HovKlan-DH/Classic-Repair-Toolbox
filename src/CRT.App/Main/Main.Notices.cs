@@ -29,6 +29,11 @@ namespace CRT
     //
     // *** A CARD WITH NOTHING TO DO GOES BY ITSELF *** after NoticeGoesAfter (HideNoticeLater) -
     // today the data check's "all up to date". Anything new put on the card first cancels that.
+    //
+    // *** A CARD'S WORDS GO THROUGH NoticeEmphasis.Show, never into Text (owner request,
+    // 2026-10-11). *** It puts a bracketed value and a data source's name in bold ("[3] files
+    // updated", "the BETA source"), the same on every card; the words are then in Inlines and Text
+    // is null, so they are read through NoticeEmphasis.TextOf. MainWindowTests checks every card.
     // ###########################################################################################
     public partial class Main
     {

@@ -627,6 +627,44 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** A KiCad SCHEMATIC NAMING A SHEET OUTSIDE ITS "KiCad data" FOLDER IS NEVER WRITTEN
+        // (security review, 2026-10-11). *** Finalise refuses one; the publish checks again, as it
+        // does every file's content, so a submission that reached the queue before the rule existed
+        // cannot carry one into BETA - where every CRT already installed would follow it.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_KiCad_sheet_naming_a_file_outside_its_KiCad_folder_stops_the_publish()
+        {
+            byte[] schematic = Encoding.UTF8.GetBytes(
+                "(kicad_sch (version 20231120)\n" +
+                "  (sheet (property \"Sheetname\" \"x\") (property \"Sheetfile\" \"//attacker.example/share/x.kicad_sch\"))\n" +
+                ")\n");
+
+            string hash = await this.PutBlobAsync(schematic);
+
+            SubmissionManifest manifest = PublishExecutorTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                Sha256 = hash,
+                SizeBytes = schematic.LongLength
+            });
+
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
+            PublishPlanDetail plan = this.Plan(manifest);
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Contains("Commodore/C64/250407/KiCad data/root.kicad_sch", outcome.Failure);
+
+            Assert.False(File.Exists(Path.Combine(this.thisBoardFolder, "KiCad data", "root.kicad_sch")));
+            Assert.False(File.Exists(plan.WorkbookPath));
+            Assert.Empty(store.PublishedBoards);
+        }
+
+        // ###########################################################################################
         // *** A DESTINATION THAT CANNOT BE WRITTEN IS A REPORTED FAILURE, NOT A 500 (owner
         // report, 2026-09-23). ***
         //
