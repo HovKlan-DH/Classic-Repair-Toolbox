@@ -270,7 +270,7 @@ public sealed class DraftTableSessionTests : IDisposable
         BoardSidecarWriter.Write(
             this.WorkbookPath,
             [new ComponentHighlightEntry { SchematicName = "Main", BoardLabel = "U1", X = "10", Y = "20", Width = "30", Height = "40" }],
-            []);
+            [], []);
 
         DraftTableSession session = DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, null)!;
         FriendlyNameOf(session, "U1").Text = "CPU 6510";
@@ -418,6 +418,99 @@ public sealed class DraftTableSessionTests : IDisposable
         DraftFileStatus stale = session.CheckFile();
         Assert.True(stale.IsOpenElsewhere);
         Assert.False(stale.IsHeldOpenElsewhere);
+    }
+
+    // ------------------------------------------------------------------ Schematic images a save removes (2026-10-11)
+
+    private const string TopFile = "Commodore/C64/250407/top.png";
+
+    // A draft with three images: "Top" with a highlight and a calibration, "Bottom" with a
+    // highlight only, and "Clock" with nothing drawn on it.
+    private DraftTableSession OpenSessionWithImages()
+    {
+        this.WriteDraft(new BoardData
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = DraftTableSessionTests.TopFile },
+                new BoardSchematicEntry { SchematicName = "Bottom", SchematicImageFile = "Commodore/C64/250407/bottom.png" },
+                new BoardSchematicEntry { SchematicName = "Clock", SchematicImageFile = "Commodore/C64/250407/clock.png" },
+            ],
+            Components = [Component("U1", "CPU"), Component("U2", "RAM")],
+        });
+
+        BoardSidecarWriter.Write(
+            this.WorkbookPath,
+            [
+                new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" },
+                new ComponentHighlightEntry { SchematicName = "Bottom", BoardLabel = "U2", X = "1", Y = "2", Width = "3", Height = "4" },
+            ],
+            [new KiCadCalibrationEntry { SchematicName = "Top", CadName = "Open128 - PCB Top" }],
+            []);
+
+        return DraftTableSession.Open(this.DraftsRoot, DraftTableSessionTests.BoardKey, published: null)!;
+    }
+
+    private static BoardTableRow SchematicRow(DraftTableSession session, string name)
+    {
+        BoardTableSheet sheet = session.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+        int nameColumn = sheet.Columns.ToList().IndexOf(BoardWorkbookSchema.ColSchematicName);
+
+        return sheet.Rows.Single(row => !row.IsDeleted && row.Cells[nameColumn].Text == name);
+    }
+
+    private static void Set(DraftTableSession session, string name, string column, string value)
+    {
+        BoardTableSheet sheet = session.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+        SchematicRow(session, name).Cells[sheet.Columns.ToList().IndexOf(column)].Text = value;
+    }
+
+    // ###########################################################################################
+    // *** WHAT A SAVE WOULD TAKE WITH THE IMAGES IT REMOVES (code review, 2026-10-11). *** A row
+    // deleted in the table took the image's highlights and KiCad calibration at the save without a
+    // word; the table asks first now, and this is what it asks about. An image with nothing drawn on
+    // it is not asked about - as Remove in "Schematic images" does not ask.
+    // ###########################################################################################
+    [Fact]
+    public void A_save_that_deletes_images_says_what_is_drawn_on_them()
+    {
+        DraftTableSession session = this.OpenSessionWithImages();
+        BoardTableSheet sheet = session.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+
+        Assert.Empty(session.SchematicsLostBySave());
+
+        Assert.True(sheet.DeleteRow(SchematicRow(session, "Top")));
+        Assert.True(sheet.DeleteRow(SchematicRow(session, "Clock")));
+
+        Assert.Equal([new SchematicDrop("Top", new SchematicRemovalLoss(1, true))], session.SchematicsLostBySave());
+    }
+
+    // A rename keeping its image file is followed - its highlights and calibration move with it, so
+    // there is nothing to ask. The same rename with the file changed too is an image removed.
+    [Fact]
+    public void A_rename_is_asked_about_only_when_its_image_file_changed_too()
+    {
+        DraftTableSession session = this.OpenSessionWithImages();
+
+        Set(session, "Top", BoardWorkbookSchema.ColSchematicName, "PCB top side");
+        Assert.Empty(session.SchematicsLostBySave());
+
+        Set(session, "PCB top side", BoardWorkbookSchema.ColSchematicImageFile, "Commodore/C64/250407/top-v2.png");
+        Assert.Equal([new SchematicDrop("Top", new SchematicRemovalLoss(1, true))], session.SchematicsLostBySave());
+    }
+
+    // What it asks about is what the save then drops - the same rule.
+    [Fact]
+    public void A_save_drops_exactly_what_it_said_would_go()
+    {
+        DraftTableSession session = this.OpenSessionWithImages();
+        BoardTableSheet sheet = session.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+        Assert.True(sheet.DeleteRow(SchematicRow(session, "Top")));
+
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+
+        Assert.Equal(["Bottom"], BoardComponentHighlightStorage.LoadComponentHighlights(this.WorkbookPath).Select(highlight => highlight.SchematicName));
+        Assert.False(BoardComponentHighlightStorage.TryLoadKiCadCalibration(this.WorkbookPath, "Top", out _, out _, out _, out _, out _, out _, out _));
     }
 
     [Fact]

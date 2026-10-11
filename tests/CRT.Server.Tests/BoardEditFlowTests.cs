@@ -63,7 +63,7 @@ namespace CRT.Server.Tests
             BoardSidecarWriter.Write(
                 this.WorkbookPath,
                 [new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U8", X = "1", Y = "2", Width = "3", Height = "4" }],
-                [new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "board", OffsetX = 1, OffsetY = 2, ScaleX = 1, ScaleY = 1 }]);
+                [new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "board", OffsetX = 1, OffsetY = 2, ScaleX = 1, ScaleY = 1 }], []);
         }
 
         public void Dispose()

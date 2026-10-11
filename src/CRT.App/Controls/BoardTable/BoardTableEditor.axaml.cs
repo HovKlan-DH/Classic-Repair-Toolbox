@@ -396,6 +396,30 @@ namespace CRT
 
             this.TableGrid.CommitEdit();
 
+            // ###########################################################################################
+            // *** A SAVE THAT REMOVES SCHEMATIC IMAGES ASKS FIRST (code review, 2026-10-11). *** The
+            // save drops what is drawn on an image it removes - its highlights and KiCad calibration -
+            // and a row deleted here took them without a word, where Remove in "Schematic images"
+            // asks. The host asks (ConfirmRemovingSchematics); a no writes nothing.
+            // ###########################################################################################
+            if (this.ConfirmRemovingSchematics is { } confirm &&
+                session.SchematicsLostBySave() is { Count: > 0 } lost &&
+                !await confirm(lost))
+            {
+                if (ReferenceEquals(this.thisSession, session))
+                {
+                    this.ShowStatus(BoardTableEditor.NotSavedKeptSchematics);
+                }
+
+                return DraftWorkbookEditOutcome.Cancelled;
+            }
+
+            // Closed, or another table opened, while it asked.
+            if (!ReferenceEquals(this.thisSession, session))
+            {
+                return DraftWorkbookEditOutcome.Cancelled;
+            }
+
             bool placesNewComponents = session.Document.Sheets.Any(sheet => sheet.HasRowsToPlaceOnSave);
 
             Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
@@ -460,6 +484,17 @@ namespace CRT
         }
 
         public const string SavingWait = "Saving the table into your draft...";
+
+        // Said when the contributor kept the schematic images a save would have removed.
+        public const string NotSavedKeptSchematics = "Not saved. Ctrl+Z brings back a row you deleted.";
+
+        // ###########################################################################################
+        // Asked before a save that would take schematic images off the draft together with what is
+        // drawn on them (DraftTableSession.SchematicsLostBySave) - true to save anyway. The host
+        // asks: the Drafts tab, with RemoveSchematicWindow. With none set the save goes ahead - so
+        // does Save(), the synchronous save the tests drive.
+        // ###########################################################################################
+        public Func<IReadOnlyList<SchematicDrop>, Task<bool>>? ConfirmRemovingSchematics { get; set; }
 
         // Said while the table is locked past the wait limit - see SaveAsync.
         public const string StillSaving =

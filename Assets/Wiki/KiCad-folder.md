@@ -22,7 +22,7 @@ Rules:
 * Nothing to register. The application finds the folder on its own.
 * Do not add footprint libraries, 3D models, gerbers or backups. Everything here is downloaded by every user.
 
-For your own board, use the **KiCad data** button on the board's row in the [Drafts tab](Drafts-tab): it creates the folder in your draft, copies only the three file types above, and shows which components will light up and which **CAD name** each image can use. Only those three file types travel with your submission.
+For your own board, use the **KiCad data** button on the board's row in the [Drafts tab](Drafts-tab): it creates the folder in your draft, copies only the three file types above, and shows which components will light up, which **CAD name** each image can use (picked under each image in **Schematic images**), and every KiCad net name for the `Important signals` sheet. Only those three file types travel with your submission.
 
 The board is not required to have this folder. Without it the board works as normal, just without clickable traces.
 

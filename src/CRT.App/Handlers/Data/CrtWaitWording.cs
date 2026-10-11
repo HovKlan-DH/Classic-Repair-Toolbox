@@ -37,6 +37,26 @@ namespace Handlers.DataHandling
 
         public const string AddingSchematics = "Adding the schematic images to your draft...";
 
+        // The Drafts tab's "Schematic images" and "KiCad data" buttons, reading the board before
+        // their window opens - and that window, reading what it shows (2026-10-10).
+        public const string OpeningBoardFiles = "Reading the board...";
+
+        public const string OpeningSchematicImages = "Reading the schematic images and the KiCad views...";
+
+        public const string ReadingSchematicImages = "Reading the schematic images...";
+
+        // Each change made in the "Schematic images" window is a draft write - up to a couple of
+        // seconds on a large board - so each runs under the wait too (code review, 2026-10-10).
+        public const string SavingSchematicName = "Saving the new name of the schematic image...";
+
+        public const string SavingCadName = "Saving the CAD name...";
+
+        public const string SavingSchematicOrder = "Saving the new order of the schematic images...";
+
+        public const string CheckingSchematicRemoval = "Checking what is drawn on the schematic image...";
+
+        public const string RemovingSchematic = "Removing the schematic image from your draft...";
+
         public const string ImportingKiCad = "Importing the KiCad data...";
 
         public const string CheckingKiCadMatches = "Checking what the KiCad data lines up with...";

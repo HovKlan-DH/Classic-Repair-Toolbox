@@ -70,7 +70,7 @@ Same rules as `--data-root` above.
 
 ## --simulate-update
 
-Shows the "a new version is available" banner without a new version existing, so you can see what it looks like. The banner says `(simulated)` after the version.
+Shows the "a new version is available" notice in the bottom-right corner without a new version existing, so you can see what it looks like. The notice says `(simulated)` after the version.
 
 ```
 --simulate-update
@@ -80,6 +80,16 @@ Shows the "a new version is available" banner without a new version existing, so
 Without a version number it pretends version `99.0.0` is available.
 
 Clicking "Install" runs the progress bar from 0% to 100% and stops there - nothing is downloaded and the application does not restart.
+
+## --demo-notices
+
+Shows every kind of notice CRT can put in the bottom-right corner, one after the other, a few seconds after launch - so you can see them all and how they behave, without waiting for each one to happen for real. A label in the top-left corner says what each one is.
+
+```
+--demo-notices
+```
+
+The words in the notices are examples: the version, the board and the files are made up. A notice that is already showing for a real reason is left as it is. You can click the buttons and close the notices as usual. "Install" says the update could not be installed, unless there really is an update, or you also use `--simulate-update`.
 
 ## Which folders am I actually using?
 

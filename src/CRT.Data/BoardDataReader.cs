@@ -58,12 +58,23 @@ namespace Handlers.DataHandling
         // corrupt the table, and the corruption surfaces as a board silently loading as null.
         // Two concurrent first-loads of the same key may both parse the file; the last write wins,
         // which is the same benign outcome the old code had on its lucky days.
-        private static readonly ConcurrentDictionary<string, BoardData> _cache = new(StringComparer.OrdinalIgnoreCase);
+        //
+        // *** AN ENTRY ANSWERS ONLY WHILE ITS FILES ARE AS THEY WERE READ (owner report, 2026-10-11).
+        // *** It used to answer until something cleared it, and after a draft write only the board
+        // SELECTED in the drop-down lists was cleared - so an image renamed in "Schematic images" for
+        // another board went to the queue under its old name, highlights and all. Each entry keeps
+        // the workbook's and its JSON sidecar's stamps (StampOf), taken BEFORE the read; a hit with
+        // either changed is a new read, whoever wrote it - CRT, Excel or the sync. The explicit
+        // ClearCache calls stay: they cost nothing and say where a write happened.
+        private sealed record CachedBoard(BoardData Board, string ExcelPath, string Stamp);
+
+        private static readonly ConcurrentDictionary<string, CachedBoard> _cache = new(StringComparer.OrdinalIgnoreCase);
 
         // ###########################################################################################
         // Lazily loads and caches all sheets from a board-specific Excel file.
         // Returns null if the file cannot be opened or parsed.
-        // Subsequent calls for the same cacheKey return the cached instance instantly.
+        // Subsequent calls for the same cacheKey return the cached instance instantly - while the
+        // workbook and its JSON sidecar are unchanged on disk (see _cache).
         //
         // draft, when given, is a local BoardDraft (NewContributeStrategy.md Phase 2) overlaid onto
         // the OFFICIAL result via BoardDraftApplier.ApplyDraft before it is returned. Deliberately
@@ -86,8 +97,17 @@ namespace Handlers.DataHandling
             string cacheKey,
             bool allowMissingOfficialFile = false)
         {
-            if (_cache.TryGetValue(cacheKey, out var cached))
-                return cached;
+            string stamp = BoardDataReader.StampOf(excelPath);
+
+            if (_cache.TryGetValue(cacheKey, out CachedBoard? cached))
+            {
+                if (string.Equals(cached.Stamp, stamp, StringComparison.Ordinal))
+                    return cached.Board;
+
+                // Changed on disk since it was read. Only THIS entry goes - another load may
+                // already have put a fresh one in its place.
+                _cache.TryRemove(new KeyValuePair<string, CachedBoard>(cacheKey, cached));
+            }
 
             if (!File.Exists(excelPath))
             {
@@ -115,8 +135,17 @@ namespace Handlers.DataHandling
                     return null;
                 }
 
-                _cache[cacheKey] = data;
-                CrtLog.Info($"Board Excel data loaded and cached for [{cacheKey}]");
+                // Remembered only when neither file changed WHILE it was read (WorkbookReadCache's
+                // rule) - otherwise the next load reads it again.
+                if (string.Equals(BoardDataReader.StampOf(excelPath), stamp, StringComparison.Ordinal))
+                {
+                    _cache[cacheKey] = new CachedBoard(data, excelPath, stamp);
+                    CrtLog.Info($"Board Excel data loaded and cached for [{cacheKey}]");
+                }
+                else
+                {
+                    CrtLog.Info($"Board Excel data loaded for [{cacheKey}] - not cached, it changed while it was read");
+                }
 
                 return data;
             });
@@ -410,7 +439,41 @@ namespace Handlers.DataHandling
         // the drift check skip the disk entirely for the board on screen, which is the common case.
         // ###########################################################################################
         public static string? TryGetCachedRevisionDate(string cacheKey) =>
-            _cache.TryGetValue(cacheKey, out var cached) ? cached.RevisionDate : null;
+            _cache.TryGetValue(cacheKey, out CachedBoard? cached) &&
+            string.Equals(cached.Stamp, BoardDataReader.StampOf(cached.ExcelPath), StringComparison.Ordinal)
+                ? cached.Board.RevisionDate
+                : null;
+
+        // ###########################################################################################
+        // A board workbook as it is on disk now: its own stamp and its JSON sidecar's, which holds
+        // the highlights a BoardData carries. Equal stamps mean neither file was written since.
+        // ###########################################################################################
+        internal static string StampOf(string? excelPath) =>
+            $"{BoardDataReader.FileStamp(excelPath)}|{BoardDataReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(excelPath ?? string.Empty))}";
+
+        // One file's length and last-write time, or "-" when it is not there - so a file arriving or
+        // vanishing is a change too. DraftStatusReader's caches stamp with it as well.
+        internal static string FileStamp(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return "-";
+            }
+
+            try
+            {
+                var info = new FileInfo(path);
+
+                return info.Exists
+                    ? $"{info.Length}:{info.LastWriteTimeUtc.Ticks}"
+                    : "-";
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                // Unreadable metadata is never a cache hit: a unique stamp forces a new read.
+                return Guid.NewGuid().ToString("N");
+            }
+        }
 
 
 

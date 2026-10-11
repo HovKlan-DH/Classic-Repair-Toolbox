@@ -89,8 +89,6 @@ namespace Handlers.DataHandling
 
         private static readonly HashSet<string> _protectedContributionFiles = new(StringComparer.OrdinalIgnoreCase);
 
-        public static int ProtectedContributionFileCount => _protectedContributionFiles.Count;
-
         // ###########################################################################################
         // Result details returned from an immediate manual data sync.
         // ###########################################################################################
@@ -99,7 +97,6 @@ namespace Handlers.DataHandling
             public int ChangedCount { get; init; }
             public bool MainExcelChanged { get; init; }
             public bool AnyExcelChanged { get; init; }
-            public int ProtectedFilesCount { get; init; }
         }
 
         private sealed class MainExcelResolution
@@ -484,8 +481,7 @@ namespace Handlers.DataHandling
                 {
                     ChangedCount = -1,
                     MainExcelChanged = false,
-                    AnyExcelChanged = false,
-                    ProtectedFilesCount = _protectedContributionFiles.Count
+                    AnyExcelChanged = false
                 };
             }
 
@@ -510,8 +506,7 @@ namespace Handlers.DataHandling
                 {
                     ChangedCount = -1,
                     MainExcelChanged = false,
-                    AnyExcelChanged = false,
-                    ProtectedFilesCount = _protectedContributionFiles.Count
+                    AnyExcelChanged = false
                 };
             }
 
@@ -627,8 +622,7 @@ namespace Handlers.DataHandling
             {
                 ChangedCount = changedCount,
                 MainExcelChanged = finalMainExcelChanged,
-                AnyExcelChanged = anyExcelChanged,
-                ProtectedFilesCount = _protectedContributionFiles.Count
+                AnyExcelChanged = anyExcelChanged
             };
         }
 

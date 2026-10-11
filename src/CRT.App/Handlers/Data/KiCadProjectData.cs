@@ -110,6 +110,16 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("normalized_name")]
         public string? NormalizedName { get; init; }
+
+        // ###########################################################################################
+        // Whether this is KiCad's "no net" - net 0, what an unconnected pad is on - which the net
+        // name lists leave out (KiCadNetNames). Only an older file declares it, as (net 0 ""): a net
+        // with no name is named by its number, so its Name reads "0" - as a real KiCad 9 net NAMED
+        // "0" does, (net "0"). The declared blank name is the one thing that tells them apart, and
+        // only the loader sees it.
+        // ###########################################################################################
+        [JsonIgnore]
+        public bool IsNoNet { get; init; }
     }
 
     public sealed class KiCadPcbFootprint

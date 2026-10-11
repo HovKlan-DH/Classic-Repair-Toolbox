@@ -189,6 +189,68 @@ public class SimulationOptionsTests
         Assert.Single(lines);
     }
 
+    // ------------------------------------------------------------------ --demo-notices (2026-10-11)
+
+    // Plays every notice once after launch - on its own, without faking an update.
+    [Theory]
+    [InlineData("--demo-notices")]
+    [InlineData("--DEMO-NOTICES")]
+    [InlineData("  --demo-notices  ")]
+    public void The_notice_demo_switch_turns_on_the_demo_alone(string arg)
+    {
+        var options = SimulationOptions.Parse(new[] { arg });
+
+        Assert.True(options.DemoNotices);
+        Assert.False(options.SimulateUpdate);
+        Assert.True(options.IsAnyActive);
+    }
+
+    // Beside the update switch, in either order - each is found, and the update keeps its version.
+    [Fact]
+    public void The_notice_demo_and_the_simulated_update_combine_in_any_order()
+    {
+        foreach (string[] args in new[]
+        {
+            new[] { "--demo-notices", "--simulate-update=4.5.6" },
+            new[] { "--simulate-update=4.5.6", "--demo-notices" },
+        })
+        {
+            var options = SimulationOptions.Parse(args);
+
+            Assert.True(options.DemoNotices);
+            Assert.True(options.SimulateUpdate);
+            Assert.Equal("4.5.6", options.SimulatedUpdateVersion);
+        }
+    }
+
+    // Exact match, like the update switch - a near miss switches nothing on.
+    [Theory]
+    [InlineData("--demo-notice")]
+    [InlineData("--demo-notices=1")]
+    [InlineData("--demo-noticesx")]
+    public void A_near_miss_does_not_start_the_notice_demo(string arg)
+    {
+        Assert.False(SimulationOptions.Parse(new[] { arg }).DemoNotices);
+    }
+
+    // The log says the demo's words are examples - a screenshot of it must not pass for a real update
+    // or a real submission.
+    [Fact]
+    public void The_notice_demo_says_in_the_log_that_its_words_are_examples()
+    {
+        string line = Assert.Single(SimulationOptions.Parse(new[] { "--demo-notices" }).DescribeForLog(checkVersionOnLaunchEnabled: true));
+
+        Assert.Contains(SimulationOptions.DemoNoticesArg, line);
+        Assert.Contains("none of them is real", line);
+    }
+
+    [Fact]
+    public void No_arguments_means_no_notice_demo()
+    {
+        Assert.False(SimulationOptions.Parse(Array.Empty<string>()).DemoNotices);
+        Assert.False(SimulationOptions.None.DemoNotices);
+    }
+
     // ###########################################################################################
     // Below here the process-wide SimulationOptions.Current is assigned, so these belong to the
     // "SimulationOptions" collection - alone they pass either way, but in a full parallel run an

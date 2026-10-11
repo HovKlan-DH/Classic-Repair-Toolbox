@@ -468,4 +468,113 @@ public sealed class BoardComponentHighlightStorageTests : IDisposable
 
         Assert.Equal(new[] { "Component highlights", "KiCad calibration points" }, rootKeys);
     }
+
+    // ###########################################################################################
+    // *** A CALIBRATION IS FOUND WHATEVER THE CAPITALS OF ITS SCHEMATIC'S NAME (owner request,
+    // 2026-10-10 - "And fix all"). *** Every other schematic name compares without regard to
+    // capitals; this exact lookup did not, so a schematic renamed from "top" to "Top" kept its
+    // highlights and silently lost its KiCad calibration.
+    // ###########################################################################################
+    [Fact]
+    public void TryLoadKiCadCalibration_finds_a_calibration_filed_under_other_capitals()
+    {
+        BoardComponentHighlightStorage.SaveKiCadCalibration(this.ExcelPath, "top", "B.Cu", 1.0, 2.0, 3.5, 4.0, true, false);
+
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.ExcelPath, "Top", out string cadName, out _, out _, out double scaleX, out _, out bool mirrorX, out _));
+
+        Assert.Equal("B.Cu", cadName);
+        Assert.Equal(3.5, scaleX);
+        Assert.True(mirrorX);
+    }
+
+    // The exact name wins over another capitalisation of it.
+    [Fact]
+    public void TryLoadKiCadCalibration_prefers_the_exact_name()
+    {
+        File.WriteAllText(this.JsonPath, """
+        {
+          "KiCad calibration points": {
+            "TOP": { "CadName": "wrong", "ScaleX": 9.0 },
+            "Top": { "CadName": "right", "ScaleX": 2.0 }
+          }
+        }
+        """);
+
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.ExcelPath, "Top", out string cadName, out _, out _, out double scaleX, out _, out _, out _));
+
+        Assert.Equal("right", cadName);
+        Assert.Equal(2.0, scaleX);
+    }
+
+    // Saving under new capitals replaces the old key rather than keeping both.
+    [Fact]
+    public void SaveKiCadCalibration_replaces_the_same_schematic_under_other_capitals()
+    {
+        BoardComponentHighlightStorage.SaveKiCadCalibration(this.ExcelPath, "top", "B.Cu", 1.0, 2.0, 3.5, 4.0, false, false);
+        BoardComponentHighlightStorage.SaveKiCadCalibration(this.ExcelPath, "Top", "F.Cu", 5.0, 6.0, 7.0, 8.0, false, false);
+
+        JsonObject calibrations = (JsonObject)JsonNode.Parse(File.ReadAllText(this.JsonPath))!["KiCad calibration points"]!;
+
+        Assert.Equal(["Top"], calibrations.Select(pair => pair.Key));
+        Assert.Equal("F.Cu", calibrations["Top"]!["CadName"]!.GetValue<string>());
+    }
+
+    // ------------------------------------------------------------------ LoadKiCadCalibrations
+
+    // ###########################################################################################
+    // A board's calibrations from ONE read of the file (code review, 2026-10-10) - every draft
+    // write collected them through TryLoadKiCadCalibration, parsing the file once per schematic,
+    // twice over. The same answers as TryLoadKiCadCalibration: named as asked, found under other
+    // capitals, a blank or unknown name skipped.
+    // ###########################################################################################
+    [Fact]
+    public void LoadKiCadCalibrations_reads_every_name_asked_for_in_order()
+    {
+        BoardComponentHighlightStorage.SaveKiCadCalibration(
+            this.ExcelPath, "Top", "F.Cu", 1.5, -2.5, 0.25, 4.0, true, false);
+        BoardComponentHighlightStorage.SaveKiCadCalibration(
+            this.ExcelPath, "Bottom", "B.Cu", 0, 0, 1, 1, false, true);
+
+        List<KiCadCalibrationEntry> calibrations = BoardComponentHighlightStorage.LoadKiCadCalibrations(
+            this.ExcelPath,
+            [" bottom ", "Gone", "", null, "Top"]);
+
+        Assert.Equal(["bottom", "Top"], calibrations.Select(entry => entry.SchematicName));
+        Assert.Equal("B.Cu", calibrations[0].CadName);
+        Assert.True(calibrations[0].MirrorY);
+        Assert.Equal(1.5, calibrations[1].OffsetX);
+        Assert.Equal(-2.5, calibrations[1].OffsetY);
+        Assert.Equal(0.25, calibrations[1].ScaleX);
+        Assert.Equal(4.0, calibrations[1].ScaleY);
+        Assert.True(calibrations[1].MirrorX);
+    }
+
+    // One entry that cannot be read loses only itself.
+    [Fact]
+    public void LoadKiCadCalibrations_skips_an_unreadable_entry_and_keeps_the_others()
+    {
+        File.WriteAllText(this.JsonPath, """
+            {
+              "KiCad calibration points": {
+                "Top": { "CadName": "F.Cu", "ScaleX": "not a number" },
+                "Bottom": { "CadName": "B.Cu" }
+              }
+            }
+            """);
+
+        Assert.Equal(
+            ["Bottom"],
+            BoardComponentHighlightStorage.LoadKiCadCalibrations(this.ExcelPath, ["Top", "Bottom"]).Select(entry => entry.SchematicName));
+    }
+
+    [Fact]
+    public void LoadKiCadCalibrations_is_empty_for_a_missing_or_malformed_file()
+    {
+        Assert.Empty(BoardComponentHighlightStorage.LoadKiCadCalibrations(this.ExcelPath, ["Top"]));
+
+        File.WriteAllText(this.JsonPath, "{ not json");
+        Assert.Empty(BoardComponentHighlightStorage.LoadKiCadCalibrations(this.ExcelPath, ["Top"]));
+    }
 }

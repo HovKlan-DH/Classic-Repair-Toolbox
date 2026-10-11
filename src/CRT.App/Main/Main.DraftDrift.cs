@@ -15,10 +15,9 @@ namespace CRT
     // Drafts tab, which is where a contributor actually spends their time. The Drafts tab remains
     // the primary home: it is the one surface that is ABOUT drafts, and drift is a per-board fact.
     //
-    // This reuses the existing SyncBanner rather than adding a fourth banner mechanism, and follows
-    // _isShowingDataSyncDisabledBanner's precedent for shared ownership of that one text slot:
-    // a sync flow always wins, because a sync in progress is both more urgent and transient. The
-    // drift banner re-evaluates once the sync has settled.
+    // This reuses the SyncBanner card, and follows _isShowingDataSyncDisabledBanner's precedent
+    // for shared ownership of that one text slot. A data check used to share it too, and win; it
+    // has a card of its own since the notices float (2026-10-11), so the two no longer meet.
     // ###########################################################################################
     public partial class Main
     {
@@ -99,7 +98,6 @@ namespace CRT
             this.SyncBannerText.Text =
                 $"The official data for this board {what} since you started your draft. Your edits are still applied.";
 
-            this.SyncBannerRefreshButton.IsVisible = false;
             this.SyncBannerDriftButton.IsVisible = true;
             this.SyncBanner.IsVisible = true;
             this._isShowingDraftDriftBanner = true;

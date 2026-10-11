@@ -32,12 +32,17 @@ namespace Handlers.DataHandling
 
         private const string SimulateUpdateValueArg = SimulateUpdateArg + "=";
 
+        // Plays every notice once after launch, in the real window (Main.NoticeDemo.cs), so their
+        // look and behaviour can be seen without waiting for each real cause (owner request,
+        // 2026-10-11). Bare only.
+        public const string DemoNoticesArg = "--demo-notices";
+
         // ###########################################################################################
         // The "no simulation" value - what an ordinary launch gets, and the starting value of Current
         // so that anything constructed before Initialize (or in a test) sees real behaviour.
         // ###########################################################################################
         public static readonly SimulationOptions None =
-            new(simulateUpdate: false, simulatedUpdateVersion: AppConfig.SimulatedUpdateVersion);
+            new(simulateUpdate: false, simulatedUpdateVersion: AppConfig.SimulatedUpdateVersion, demoNotices: false);
 
         // ###########################################################################################
         // The options this process was started with. Set once by Program.Main.
@@ -50,13 +55,17 @@ namespace Handlers.DataHandling
         // The version the fake update claims to be. Only meaningful while SimulateUpdate is true.
         public string SimulatedUpdateVersion { get; }
 
-        // True when any simulation at all is active, so callers can log the warning block once.
-        public bool IsAnyActive => this.SimulateUpdate;
+        // True when every notice is to be played once after launch (--demo-notices).
+        public bool DemoNotices { get; }
 
-        private SimulationOptions(bool simulateUpdate, string simulatedUpdateVersion)
+        // True when any simulation at all is active, so callers can log the warning block once.
+        public bool IsAnyActive => this.SimulateUpdate || this.DemoNotices;
+
+        private SimulationOptions(bool simulateUpdate, string simulatedUpdateVersion, bool demoNotices)
         {
             this.SimulateUpdate = simulateUpdate;
             this.SimulatedUpdateVersion = simulatedUpdateVersion;
+            this.DemoNotices = demoNotices;
         }
 
         // ###########################################################################################
@@ -66,12 +75,17 @@ namespace Handlers.DataHandling
         // "--simulate-update" alone uses the default simulated version; "--simulate-update=2.7.0"
         // overrides it; "--simulate-update=" falls back to the default rather than claiming an
         // empty version. Unrecognised arguments are ignored so that "--data-root=" and anything
-        // added later cannot accidentally trip a switch.
+        // added later cannot accidentally trip a switch. "--demo-notices" is found anywhere, beside
+        // the update switch or not.
         // ###########################################################################################
         public static SimulationOptions Parse(IEnumerable<string>? args)
         {
             if (args == null)
                 return SimulationOptions.None;
+
+            bool simulateUpdate = false;
+            string simulatedVersion = AppConfig.SimulatedUpdateVersion;
+            bool demoNotices = false;
 
             foreach (var arg in args)
             {
@@ -80,11 +94,23 @@ namespace Handlers.DataHandling
 
                 string candidate = arg.Trim();
 
+                // Exact match, like the update switch below.
+                if (string.Equals(candidate, SimulationOptions.DemoNoticesArg, StringComparison.OrdinalIgnoreCase))
+                {
+                    demoNotices = true;
+                    continue;
+                }
+
+                // The first occurrence of the update switch wins.
+                if (simulateUpdate)
+                    continue;
+
                 // Exact match, not StartsWith - otherwise a future "--simulate-updates" or a typo
                 // like "--simulate-update-now" would silently switch the simulation on.
                 if (string.Equals(candidate, SimulationOptions.SimulateUpdateArg, StringComparison.OrdinalIgnoreCase))
                 {
-                    return new SimulationOptions(true, AppConfig.SimulatedUpdateVersion);
+                    simulateUpdate = true;
+                    continue;
                 }
 
                 if (candidate.StartsWith(SimulationOptions.SimulateUpdateValueArg, StringComparison.OrdinalIgnoreCase))
@@ -93,13 +119,14 @@ namespace Handlers.DataHandling
                         .Trim('"', '\'')
                         .Trim();
 
-                    return new SimulationOptions(
-                        true,
-                        string.IsNullOrWhiteSpace(version) ? AppConfig.SimulatedUpdateVersion : version);
+                    simulateUpdate = true;
+                    simulatedVersion = string.IsNullOrWhiteSpace(version) ? AppConfig.SimulatedUpdateVersion : version;
                 }
             }
 
-            return SimulationOptions.None;
+            return simulateUpdate || demoNotices
+                ? new SimulationOptions(simulateUpdate, simulatedVersion, demoNotices)
+                : SimulationOptions.None;
         }
 
         // ###########################################################################################
@@ -129,6 +156,13 @@ namespace Handlers.DataHandling
                         "Simulated update requested, but [Check for new version at application launch] is not checked " +
                         "in \"Configuration\" tab - enable that for the simulation to run");
                 }
+            }
+
+            if (this.DemoNotices)
+            {
+                lines.Add(
+                    $"[{SimulationOptions.DemoNoticesArg}] every notice is played once after launch, with example words - " +
+                    "none of them is real");
             }
 
             return lines;

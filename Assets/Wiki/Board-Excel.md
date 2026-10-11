@@ -76,7 +76,9 @@ Depicts which schematic images are available for the board, in the order they ar
 
 Exact same name as shown in the thumbnail label.\
 Keep the name short, so it can fit in the label.\
-A schematic name must be unique in the board - capital letters do not count, and a repeat is an error.
+A schematic name must be unique in the board - capital letters do not count, and a repeat is an error.\
+To rename an image, use its **Name** box in the Drafts tab's **Schematic images** window, or change the cell in **Edit in table format**. Either way, the component markings drawn on the image and its KiCad calibration move to the new name, and so do your own worklog markings, image order and hidden images for the board. Renamed in Excel, they do not.\
+Once the rename is published, everybody else's worklog markings, image order and hidden images follow it too - the board's [JSON file](Board-JSON#schematic-renames) lists every rename.
 
 ### Column: Schematic image file
 
@@ -102,7 +104,7 @@ On a view backed by KiCad data: the colour of the copper on the other side of th
 
 ### Column: CAD name
 
-The KiCad view this image shows, copied exactly from "CAD names you can use" in the Drafts tab's **KiCad data** window - for example `250407_ - PCB Top`. The logfile lists them too, as `Display name [...]` lines.\
+The KiCad view this image shows - for example `250407_ - PCB Top`. The easiest way to fill it is to pick it under the image in the Drafts tab's **Schematic images** window, which lists the board's KiCad views and lets each be used by one image only. Typed by hand, it must be exactly one of "CAD names you can use" in the **KiCad data** window. The logfile lists them too, as `Display name [...]` lines.\
 Leave it blank for an image with no KiCad data. See [How to add a new board with KiCad data](Add-new-board-with-KiCad-data).
 
 ## Worksheet: Components
@@ -306,7 +308,7 @@ A display name can be repeated many times, as it then will show all the KiCad ne
 ### Column: KiCad net name
 
 The net name as the KiCad data has it. The full name and its last part both work (`/CPU/PHI2` or `PHI2`), and capital letters do not matter.\
-With "Enable contributor mode" ticked on the Schematics tab, the logfile lists every net name of the board.\
+The Drafts tab's **KiCad data** window lists every net name of the board's KiCad data - click one to copy it - and names any row here whose net is not in the KiCad data. With "Enable contributor mode" ticked on the Schematics tab, the logfile lists them too.\
 A row missing either column is left out when the file is saved, and the draft's table warns about it.
 
 ## Worksheet: Credits

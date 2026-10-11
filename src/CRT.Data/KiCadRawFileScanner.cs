@@ -115,6 +115,21 @@ namespace Handlers.DataHandling
             return found;
         }
 
+        // ###########################################################################################
+        // Every raw KiCad file a BOARD reads: its published "KiCad data" folder first, then its
+        // draft's (Main.GetCurrentBoardKiCadRawPaths' rule). Both are read because a contributor
+        // can import KiCad data into a draft of a board whose published copy already has some.
+        //
+        // Shared with the "Schematic images" window (2026-10-10), which offers the view names of
+        // exactly the files the Schematics tab will draw that board's traces from.
+        // ###########################################################################################
+        public static List<string> ScanBoard(string publishedKiCadFolder, string draftKiCadFolder) =>
+            KiCadRawFileScanner.Scan(publishedKiCadFolder)
+                .Concat(KiCadRawFileScanner.Scan(draftKiCadFolder))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
         private static void Walk(string folder, List<string> found)
         {
             try

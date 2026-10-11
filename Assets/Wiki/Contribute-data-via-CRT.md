@@ -258,7 +258,8 @@ is wrong:
     complete.
 
 The highlights on the schematics are not in any sheet, so a problem with one - a highlight on a
-schematic you renamed in the table, say - is listed in a line above the table instead.
+schematic renamed in Excel, say - is listed in a line above the table instead. A schematic renamed
+or deleted in the table takes its highlights and KiCad calibration with it.
 
 You do not have to open the table to know: **each draft's row on the "Drafts" tab says how many
 errors and warnings it has**, in a red and an amber mark beside its name, from the moment the draft
@@ -299,7 +300,8 @@ and so does closing the table or opening another draft; it stays when you switch
 image file* column, or *File* on the Component images, Component local files and Board local files
 sheets - and a small card opens beside it straight away:
 
-* a **picture** is shown in it. If you changed it, the published picture and yours are shown side by
+* a **picture** is shown in it, with a thin frame round it so you can see where it really ends, and
+  its size in pixels under it. If you changed it, the published picture and yours are shown side by
   side, labelled "Published" and "Your draft", and that includes a picture you replaced under the
   same file name. A line on the card says what happened to the file - "New file", "Removed",
   "Changed to another file", "Replaced - same file name, new content" or "Unchanged" - and

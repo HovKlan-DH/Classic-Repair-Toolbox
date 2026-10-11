@@ -150,6 +150,31 @@ namespace Handlers.DataHandling
             }
         }
 
+        // ###########################################################################################
+        // What a save would take with the schematic images it removes
+        // (BoardTableDocument.SchematicsRemovedBySave): each one that has highlights drawn on it or
+        // a KiCad calibration, read from the draft's sidecar, where both live. The save drops them
+        // (DraftWorkbookStore.EditCore), so the table asks first - as Remove in "Schematic images"
+        // does (code review, 2026-10-11: a row deleted in the table took them without a word).
+        // Empty when nothing would go; the sidecar is read only for an image the save removes.
+        // ###########################################################################################
+        public IReadOnlyList<SchematicDrop> SchematicsLostBySave()
+        {
+            IReadOnlyList<string> removed = this.Document.SchematicsRemovedBySave();
+
+            if (removed.Count == 0)
+            {
+                return [];
+            }
+
+            string workbook = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, this.ExcelDataFile);
+
+            return removed
+                .Select(name => new SchematicDrop(name, SchematicRemoval.Read(workbook, name)))
+                .Where(drop => !drop.Loss.IsNothing)
+                .ToList();
+        }
+
         // True when the workbook on disk is no longer the one this table was read from - so the
         // UI can say "changed outside the table" before the contributor has typed anything.
         public bool HasChangedOnDisk() =>

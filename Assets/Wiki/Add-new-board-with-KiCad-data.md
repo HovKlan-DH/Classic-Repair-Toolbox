@@ -148,6 +148,9 @@ Drag your image files onto the box, or use **Choose image files**. PNG, JPG, GIF
 work. Each image becomes one board view, named after the file, and a **copy** is taken into your
 draft - your original files stay where they are.
 
+To give a view a better name, type it in the image's **Name** box and press Enter. Keep it short - it
+is the label under the thumbnail - and use each name once.
+
 The order of this list is the board's own order - the order everyone using the board gets its views
 in. To change it, press on an image's grip (the dotted handle at its left edge, or anywhere on its
 panel but the **Remove** button) and drag it up or down. A dashed box shows where it will land, and
@@ -203,14 +206,19 @@ columns are explained in [Board Excel](Board-Excel).
 
 ## Step 5 - Check what the KiCad data lines up with
 
-Open **KiCad data** again. Under the list of KiCad files the application tells you exactly where you stand:
+Open **KiCad data** again. Under the list of KiCad files the application tells you exactly where you stand.
+It checks every KiCad file the Schematics tab will draw the board's traces from - for a board that
+is already published, that is the published KiCad data together with what you imported, and it says
+so:
 
 | What it says | What it means |
 | --- | --- |
 | **N components will NOT light up** | These labels have no component of that name in the KiCad data. This is the list to fix - rename them to the bare reference designator (`U17`, not `PLA/U17`). |
 | **N components match** | These will highlight copper correctly. |
-| **N components are not labelled yet** | The KiCad data knows about these but your board has no label for them. This is your to-do list. |
+| **N components are not labelled yet** | The KiCad data knows about these but your board has no label for them. This is your to-do list, shown in red. |
 | **CAD names you can use** | The view names the KiCad project generates - see the next step. |
+| **N important signals will NOT light up** | Rows of your `Important signals` sheet whose KiCad net name is not in the KiCad data - see step 8. |
+| **N KiCad net names you can use** | Every net name in the KiCad data, for the `Important signals` sheet - see step 8. |
 
 You no longer have to read any of this out of the logfile.
 
@@ -219,11 +227,17 @@ You no longer have to read any of this out of the logfile.
 ## Step 6 - Fill in the CAD name for each view
 
 Each board image that should be backed by KiCad data needs a **CAD name** naming which KiCad view it
-shows. The names are listed for you in the window above - copy one across verbatim.
+shows.
 
-Nothing fills it in for you. Click **Edit in table format** on your board's row in the Drafts tab,
-open the `Board schematics` sheet, and type the name into the image's `CAD name` cell - or do the same
-in the board's Excel file.
+On the **Drafts** tab, click **Schematic images** for your board. Under each image, pick its view in
+the **CAD name** list - the list holds the views of your KiCad data, the same names "CAD names you
+can use" shows. Each name can back one image only: once an image has it, it is gone from the other
+images' lists, so the lists get shorter as you go. **No CAD name** takes it off again, and puts it
+back in the other lists. Every pick is saved straight into your draft.
+
+You can also type the name yourself: click **Edit in table format** on your board's row in the Drafts
+tab, open the `Board schematics` sheet, and type it into the image's `CAD name` cell - or do the same
+in the board's Excel file. Then it must be copied across verbatim.
 
 Views are generated like this:
 
@@ -237,8 +251,9 @@ So `250407_.kicad_pcb` yields `250407_ - PCB Top` and `250407_ - PCB Bottom`, wh
 yields `250407_sheet2`.
 
 > [!WARNING]
-> A typo in a `CAD name` produces no error and no overlay - it simply behaves as if the board had no
-> KiCad data at all. If traces do not appear on one view, suspect this first.
+> A typo in a typed `CAD name` produces no error and no overlay - it simply behaves as if the board had
+> no KiCad data at all. If traces do not appear on one view, suspect this first. Picking the name in
+> **Schematic images** avoids it.
 
 ---
 
@@ -274,11 +289,15 @@ table format** on the Drafts tab, or in the board's Excel file:
 | `+5VDC` | `+5V` |
 | `+5VDC CAN` | `CAN+5V` |
 
+* **The net names are listed for you.** Open **KiCad data** on the Drafts tab: under "N KiCad net
+  names you can use" is every net name of your KiCad data. Click one to copy it, then paste it into
+  the `KiCad net name` column. The names already used by an important signal are green.
 * You may write either the full KiCad net name or its last path segment - `/CPU/PHI2` and `PHI2` both
   resolve. Matching is case-insensitive.
 * Several rows may share a display name; they become one entry lighting up all of those nets.
-* A row that matches no net in the project is skipped silently in normal use - **but in contributor
-  mode the logfile names it**:
+* A row that matches no net in the project is left out of the Schematics tab's panel without a word -
+  **but the KiCad data window lists it** under "N important signals will NOT light up", as
+  `display name: KiCad net name`. In contributor mode the logfile names it too:
 
   ```
   Important signals debug: Excel KiCad net name [PH12] for display name [PHI2] did not match any
@@ -319,7 +338,7 @@ at runtime, so some mistakes are a warning there rather than a visible failure.
 | Traces appear but are offset or stretched | Calibration missing or stale for that view |
 | Component highlights, but no copper lights up | Reference designator != board label. **The report names every one of these** - see step 5 |
 | Only some nets ever light up | Those nets are unnamed in KiCad, or the component's pads have no net assignment |
-| Signal missing from the Important signals panel | Net name does not resolve - turn on contributor mode and read the log |
+| Signal missing from the Important signals panel | Net name does not resolve - re-open **KiCad data** and read "important signals will NOT light up" |
 | "Mark first pin on component" is not offered | Only PCB views carry pad data; schematic views cannot mark pin 1 |
 | "KiCad data initializing..." for a long time | Normal on a large `.kicad_pcb`; it loads in the background |
 | Your board shows as empty | "View boards as officially coming from online source" is ticked on the Configuration tab. A draft-only board has nothing published yet, so that view is correctly blank |

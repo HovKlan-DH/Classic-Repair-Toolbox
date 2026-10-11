@@ -256,23 +256,20 @@ namespace Handlers.DataHandling
                     return false;
                 }
 
-                JsonNode? rootNode = JsonNode.Parse(json);
-                JsonObject? rootObject = rootNode as JsonObject;
-                JsonObject? calibrationRoot = rootObject?["KiCad calibration points"] as JsonObject;
-                JsonObject? schematicObject = calibrationRoot?[normalizedSchematicName] as JsonObject;
+                JsonObject? calibrationRoot = (JsonNode.Parse(json) as JsonObject)?["KiCad calibration points"] as JsonObject;
 
-                if (schematicObject == null)
+                if (BoardComponentHighlightStorage.ReadCalibration(calibrationRoot, normalizedSchematicName) is not KiCadCalibrationEntry entry)
                 {
                     return false;
                 }
 
-                cadName = schematicObject["CadName"]?.GetValue<string>()?.Trim() ?? string.Empty;
-                offsetX = schematicObject["OffsetX"]?.GetValue<double>() ?? 0.0;
-                offsetY = schematicObject["OffsetY"]?.GetValue<double>() ?? 0.0;
-                scaleX = schematicObject["ScaleX"]?.GetValue<double>() ?? 1.0;
-                scaleY = schematicObject["ScaleY"]?.GetValue<double>() ?? 1.0;
-                mirrorX = schematicObject["MirrorX"]?.GetValue<bool>() ?? false;
-                mirrorY = schematicObject["MirrorY"]?.GetValue<bool>() ?? false;
+                cadName = entry.CadName;
+                offsetX = entry.OffsetX;
+                offsetY = entry.OffsetY;
+                scaleX = entry.ScaleX;
+                scaleY = entry.ScaleY;
+                mirrorX = entry.MirrorX;
+                mirrorY = entry.MirrorY;
 
                 return true;
             }
@@ -281,6 +278,167 @@ namespace Handlers.DataHandling
                 CrtLog.Warning($"Failed to load KiCad calibration JSON entry for schematic [{schematicName}] from [{jsonPath}] - [{ex.Message}]");
                 return false;
             }
+        }
+
+        // ###########################################################################################
+        // The KiCad calibrations filed for these schematic names, in the order asked, each named as
+        // asked (trimmed) - with the sidecar read and parsed ONCE (code review, 2026-10-10).
+        //
+        // TryLoadKiCadCalibration parses the whole file for one schematic. Collecting a board's
+        // calibrations through it parsed the file once per schematic, and every draft write collects
+        // them twice (the names before the edit and after it) - 50 parses of a large highlight file
+        // per save on a 25-image board. A name with no calibration, a blank one, or an entry that
+        // cannot be read is skipped, as TryLoadKiCadCalibration skips it.
+        // ###########################################################################################
+        public static List<KiCadCalibrationEntry> LoadKiCadCalibrations(string excelPath, IEnumerable<string?> schematicNames)
+        {
+            var result = new List<KiCadCalibrationEntry>();
+
+            string jsonPath = GetJsonPath(excelPath);
+            if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
+            {
+                return result;
+            }
+
+            JsonObject? calibrationRoot;
+
+            try
+            {
+                string json = File.ReadAllText(jsonPath);
+                if (string.IsNullOrWhiteSpace(json))
+                {
+                    return result;
+                }
+
+                calibrationRoot = (JsonNode.Parse(json) as JsonObject)?["KiCad calibration points"] as JsonObject;
+            }
+            catch (Exception ex)
+            {
+                CrtLog.Warning($"Failed to load the KiCad calibrations from [{jsonPath}] - [{ex.Message}]");
+                return result;
+            }
+
+            foreach (string schematicName in schematicNames.Select(name => name?.Trim() ?? string.Empty))
+            {
+                if (schematicName.Length == 0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (BoardComponentHighlightStorage.ReadCalibration(calibrationRoot, schematicName) is KiCadCalibrationEntry entry)
+                    {
+                        result.Add(entry);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CrtLog.Warning($"Failed to load KiCad calibration JSON entry for schematic [{schematicName}] from [{jsonPath}] - [{ex.Message}]");
+                }
+            }
+
+            return result;
+        }
+
+        // One schematic's calibration out of the parsed "KiCad calibration points" root, named as
+        // asked - or null when it has none. Throws on an entry whose values are not of their type.
+        private static KiCadCalibrationEntry? ReadCalibration(JsonObject? calibrationRoot, string schematicName)
+        {
+            if (BoardComponentHighlightStorage.CalibrationKeyOf(calibrationRoot, schematicName) is not string key ||
+                calibrationRoot![key] is not JsonObject schematicObject)
+            {
+                return null;
+            }
+
+            return new KiCadCalibrationEntry
+            {
+                SchematicName = schematicName,
+                CadName = schematicObject["CadName"]?.GetValue<string>()?.Trim() ?? string.Empty,
+                OffsetX = schematicObject["OffsetX"]?.GetValue<double>() ?? 0.0,
+                OffsetY = schematicObject["OffsetY"]?.GetValue<double>() ?? 0.0,
+                ScaleX = schematicObject["ScaleX"]?.GetValue<double>() ?? 1.0,
+                ScaleY = schematicObject["ScaleY"]?.GetValue<double>() ?? 1.0,
+                MirrorX = schematicObject["MirrorX"]?.GetValue<bool>() ?? false,
+                MirrorY = schematicObject["MirrorY"]?.GetValue<bool>() ?? false,
+            };
+        }
+
+        // ###########################################################################################
+        // The board's renamed schematic images, oldest first - the "Schematic renames" root
+        // (SchematicRenameLog; owner decision, 2026-10-10). Empty when the file, the root or the
+        // list is not there, or does not parse: a board nobody renamed has none, and an unreadable
+        // list must not stop a board from loading. An entry without both names is skipped.
+        // ###########################################################################################
+        public static List<SchematicRenameRecord> LoadSchematicRenames(string excelPath)
+        {
+            var result = new List<SchematicRenameRecord>();
+
+            string jsonPath = GetJsonPath(excelPath);
+            if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
+            {
+                return result;
+            }
+
+            try
+            {
+                if (JsonNode.Parse(File.ReadAllText(jsonPath)) is not JsonObject root ||
+                    root[SchematicRenameLog.Root] is not JsonArray list)
+                {
+                    return result;
+                }
+
+                foreach (JsonObject entry in list.OfType<JsonObject>())
+                {
+                    string from = BoardComponentHighlightStorage.TextOf(entry["From"]);
+                    string to = BoardComponentHighlightStorage.TextOf(entry["To"]);
+
+                    if (from.Length > 0 && to.Length > 0)
+                    {
+                        result.Add(new SchematicRenameRecord(
+                            from,
+                            to,
+                            BoardComponentHighlightStorage.TextOf(entry["File"]),
+                            BoardComponentHighlightStorage.TextOf(entry["Date"])));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                CrtLog.Warning($"Failed to read the schematic renames from [{jsonPath}] - [{ex.Message}]");
+                return new List<SchematicRenameRecord>();
+            }
+
+            return result;
+        }
+
+        // A JSON string value, trimmed - or empty for anything else.
+        private static string TextOf(JsonNode? node) =>
+            node is JsonValue value && value.TryGetValue(out string? text) ? text.Trim() : string.Empty;
+
+        // ###########################################################################################
+        // The key a schematic's calibration is filed under: its exact name, or else the name in other
+        // capitals (owner request, 2026-10-10 - "And fix all"). Every other schematic name in CRT
+        // and on the server compares without regard to capitals - the highlights, the checks, the
+        // Schematics tab - and this exact lookup was the one that did not: a schematic renamed from
+        // "top" to "Top" (its Name box, a table cell, Excel) kept its highlights and silently lost
+        // its KiCad calibration. Null when there is none.
+        // ###########################################################################################
+        private static string? CalibrationKeyOf(JsonObject? calibrationRoot, string schematicName)
+        {
+            if (calibrationRoot is null)
+            {
+                return null;
+            }
+
+            if (calibrationRoot.ContainsKey(schematicName))
+            {
+                return schematicName;
+            }
+
+            return calibrationRoot
+                .Select(pair => pair.Key)
+                .FirstOrDefault(key => string.Equals(key.Trim(), schematicName, StringComparison.OrdinalIgnoreCase));
         }
 
         // ###########################################################################################
@@ -321,6 +479,17 @@ namespace Handlers.DataHandling
             {
                 calibrationRoot = new JsonObject();
                 rootObject["KiCad calibration points"] = calibrationRoot;
+            }
+
+            // The same schematic under other capitals is this one (CalibrationKeyOf) - replaced, not
+            // kept beside it.
+            foreach (string otherCase in calibrationRoot
+                         .Select(pair => pair.Key)
+                         .Where(key => !string.Equals(key, normalizedSchematicName, StringComparison.Ordinal) &&
+                                       string.Equals(key.Trim(), normalizedSchematicName, StringComparison.OrdinalIgnoreCase))
+                         .ToList())
+            {
+                calibrationRoot.Remove(otherCase);
             }
 
             calibrationRoot[normalizedSchematicName] = new JsonObject

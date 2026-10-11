@@ -120,6 +120,50 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
         Assert.Equal("GND", gnd.NormalizedName);
     }
 
+    // ###########################################################################################
+    // *** KiCad's "NO NET" IS MARKED - AND ONLY IT (code review, 2026-10-10). *** An older file
+    // declares it (net 0 ""), and a net with no name is named by its number, so it reads as id "0",
+    // name "0" - exactly like a KiCad 9 net NAMED "0" (net "0"), which a net-name list must keep.
+    // The declared blank name is what tells them apart. A track on net 0 keeps the mark.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_older_files_declared_net_0_is_marked_as_no_net()
+    {
+        KiCadProjectRoot? root = await this.LoadAsync(this.WritePcb("""
+            (kicad_pcb (version 20221018) (generator pcbnew)
+              (net 0 "")
+              (net 1 "GND")
+              (segment (start 0 0) (end 1 1) (width 0.25) (layer "F.Cu") (net 0))
+            )
+            """));
+
+        KiCadNetRef noNet = root!.Pcb[0].Nets.List.Single(n => n.Id == "0");
+
+        Assert.Equal("0", noNet.Name);
+        Assert.True(noNet.IsNoNet);
+        Assert.False(root.Pcb[0].Nets.List.Single(n => n.Id == "1").IsNoNet);
+    }
+
+    [Fact]
+    public async Task A_KiCad_9_net_named_0_is_a_net_like_any_other()
+    {
+        KiCadProjectRoot? root = await this.LoadAsync(this.WritePcb("""
+            (kicad_pcb (version 20241229) (generator "pcbnew")
+              (footprint "Resistor_SMD:R_0805" (layer "F.Cu")
+                (at 100 50)
+                (property "Reference" "R1")
+                (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net "0"))
+                (pad "2" smd rect (at 2 0) (size 1 1) (layers "F.Cu") (net "VCC"))
+              )
+            )
+            """));
+
+        KiCadNetRef ground = root!.Pcb[0].Nets.List.Single(n => n.Name == "0");
+
+        Assert.False(ground.IsNoNet);
+        Assert.False(root.Pcb[0].Nets.List.Single(n => n.Name == "VCC").IsNoNet);
+    }
+
     // ------------------------------------------------------------------- footprints
 
     [Fact]
@@ -777,5 +821,58 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
 
         // The SAME geometry, not a second copy of it: an alias is another way to ask for one net.
         Assert.Same(index["CNT1"], index["CNT"]);
+    }
+
+    // --------------------------------------------------------------- view names without the PCB
+    //
+    // The "Schematic images" window offers a board's KiCad view names as CAD names (2026-10-10),
+    // read WITHOUT parsing the PCB - which runs to tens of megabytes. What it offers must be exactly
+    // what LoadAsync names the views, or a picked name would match no view on the Schematics tab.
+
+    [Fact]
+    public async Task The_view_names_alone_are_LoadAsyncs_view_names_in_the_same_order()
+    {
+        string pcb = this.WritePcb();
+        string child = this.thisWorkspace.WriteFile("child.kicad_sch", KiCadFixtures.SchematicChildSheet);
+        string parent = this.thisWorkspace.WriteFile("root.kicad_sch", KiCadFixtures.SchematicRootWithChildSheet);
+
+        // The child first, as a folder listing has it - the parent still names it.
+        string[] paths = [pcb, child, parent];
+
+        KiCadProjectRoot? root = await KiCadRawProjectLoader.LoadAsync(paths);
+        List<string> names = await KiCadRawProjectLoader.LoadViewDisplayNamesAsync(paths);
+
+        Assert.Equal(root!.Project.Views.Select(view => view.DisplayName), names);
+        Assert.Equal(["board - PCB Top", "board - PCB Bottom", "root", "Power supply"], names);
+    }
+
+    // LoadAsync keeps a .kicad_pcb that is no KiCad board out; so must the quick read, which only
+    // looks at the file's opening.
+    [Fact]
+    public async Task A_kicad_pcb_file_that_is_no_KiCad_board_gives_no_view_names()
+    {
+        string notABoard = this.WritePcb("(kicad_sch (version 20230121))", "fake.kicad_pcb");
+        string alsoNot = this.WritePcb("garbage", "garbage.kicad_pcb");
+        string prefixOnly = this.WritePcb("(kicad_pcbnew (version 1))", "prefix.kicad_pcb");
+
+        Assert.Empty(await KiCadRawProjectLoader.LoadViewDisplayNamesAsync([notABoard, alsoNot, prefixOnly]));
+    }
+
+    [Fact]
+    public async Task A_kicad_pcb_opening_with_white_space_and_a_byte_order_mark_still_counts()
+    {
+        string path = Path.Combine(this.thisWorkspace.Root, "bom.kicad_pcb");
+        File.WriteAllText(path, "\n  ( kicad_pcb (version 20221018))", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+        Assert.Equal(
+            ["bom - PCB Top", "bom - PCB Bottom"],
+            await KiCadRawProjectLoader.LoadViewDisplayNamesAsync([path]));
+    }
+
+    [Fact]
+    public async Task Missing_files_give_no_view_names_and_no_exception()
+    {
+        Assert.Empty(await KiCadRawProjectLoader.LoadViewDisplayNamesAsync(
+            [Path.Combine(this.thisWorkspace.Root, "gone.kicad_pcb"), Path.Combine(this.thisWorkspace.Root, "gone.kicad_sch")]));
     }
 }

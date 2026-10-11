@@ -292,6 +292,11 @@ namespace CRT
 
             this._currentBoardData = boardData;
 
+            // A schematic image renamed - in the board's published data or in this user's draft:
+            // their own worklogs and settings that name it follow, before anything below reads them
+            // (Main.SchematicRenames.cs).
+            this.CatchUpOnSchematicRenames(entry, boardData);
+
             // A view of this board starts now, and counts after ten seconds (Main.BoardViews.cs) - a
             // reload of the board already on screen is not a new one.
             this.NoteBoardOnScreen(entry);
@@ -808,8 +813,6 @@ namespace CRT
                 return new List<string>();
             }
 
-            var paths = new List<string>();
-
             // ###########################################################################################
             // BOTH ROOTS ARE STILL SEARCHED, but the drafted one has moved (Phase 6, 2026-09-23).
             //
@@ -819,46 +822,20 @@ namespace CRT
             //
             // Both are still searched rather than just the resolved one: a contributor can import
             // KiCad data into a draft for a board whose published copy already has some, and
-            // showing only one set would silently hide traces they can see in KiCad itself.
+            // showing only one set would silently hide traces they can see in KiCad itself. The
+            // rule is KiCadRawFileScanner.ScanBoard, shared with the "Schematic images" window's
+            // CAD names (2026-10-10).
             // ###########################################################################################
             string boardExcelPath = this.GetCurrentBoardExcelPath();
             string boardDirectory = Path.GetDirectoryName(boardExcelPath) ?? string.Empty;
-            AddKiCadRawFilesFrom(paths, Path.Combine(boardDirectory, AppConfig.KiCadDataFolderName));
 
             // The VIEWED draft folder, so "view boards as officially published" shows only the
             // published KiCad data - a drafted import is not something everyone else sees yet.
             string draftFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
 
-            if (!string.IsNullOrWhiteSpace(draftFolder))
-            {
-                AddKiCadRawFilesFrom(paths, Path.Combine(draftFolder, AppConfig.KiCadDataFolderName));
-            }
-
-            var result = paths
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            return result;
-        }
-
-        // ###########################################################################################
-        // Adds every supported raw KiCad file at or below one folder.
-        //
-        // *** SUB-FOLDERS ARE READ, which they were not before (owner report, 2026-09-24). ***
-        //
-        // This was top level only, and the shipped Commodore C128 "310378 Open128" board keeps 22 of
-        // its 25 sheets under Pages/ - so the app read the root sheet, which only REFERENCES the
-        // pages, and none of the circuitry. The files were already on disk: DataManager syncs this
-        // folder with SearchOption.AllDirectories, so the sync and the read disagreed and the read
-        // was the half that was wrong.
-        //
-        // The rule now lives in KiCadRawFileScanner, shared with the importer that writes the
-        // folder - one definition, so what is imported and what is read cannot drift apart.
-        // ###########################################################################################
-        private static void AddKiCadRawFilesFrom(List<string> paths, string kiCadDirectory)
-        {
-            paths.AddRange(KiCadRawFileScanner.Scan(kiCadDirectory));
+            return KiCadRawFileScanner.ScanBoard(
+                Path.Combine(boardDirectory, AppConfig.KiCadDataFolderName),
+                string.IsNullOrWhiteSpace(draftFolder) ? string.Empty : Path.Combine(draftFolder, AppConfig.KiCadDataFolderName));
         }
 
         // ###########################################################################################

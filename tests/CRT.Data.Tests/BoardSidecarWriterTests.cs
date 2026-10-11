@@ -78,7 +78,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200", "40", "20")],
-            []);
+            [], []);
 
         List<ComponentHighlightEntry> read =
             BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath);
@@ -117,7 +117,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")],
-            []);
+            [], []);
 
         Assert.Equal("U8", Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath)).BoardLabel);
     }
@@ -154,7 +154,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         List<ComponentHighlightEntry> same = BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath);
         Assert.NotEmpty(same);
 
-        Assert.False(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, same, []));
+        Assert.False(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, same, [], []));
         Assert.Equal(before, File.ReadAllBytes(this.SidecarPath));
     }
 
@@ -174,16 +174,16 @@ public sealed class BoardSidecarWriterTests : IDisposable
                 BoardSidecarWriterTests.Highlight("Sheet 1", "C10", "5", "6", "7", "8"),
                 BoardSidecarWriterTests.Highlight("Sheet 1", "C2", "1", "2", "3", "4")
             ],
-            []));
+            [], []));
     }
 
     [Fact]
     public void A_moved_highlight_is_a_change_and_is_written()
     {
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], []);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], [], []);
 
         Assert.True(BoardSidecarWriter.WriteIfChanged(
-            this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "101", "200")], []));
+            this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "101", "200")], [], []));
 
         Assert.Equal("101", Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath)).X);
     }
@@ -193,9 +193,9 @@ public sealed class BoardSidecarWriterTests : IDisposable
     [Fact]
     public void Removing_every_highlight_is_a_change()
     {
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], []);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], [], []);
 
-        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], [], []));
         Assert.Empty(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
     }
 
@@ -203,11 +203,11 @@ public sealed class BoardSidecarWriterTests : IDisposable
     public void A_changed_calibration_is_a_change()
     {
         var calibration = new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "pcb", OffsetX = 1.5, ScaleX = 2 };
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [calibration]);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [calibration], []);
 
-        Assert.True(BoardSidecarWriter.HoldsTheSameContent(this.thisWorkbookPath, [], [calibration]));
+        Assert.True(BoardSidecarWriter.HoldsTheSameContent(this.thisWorkbookPath, [], [calibration], []));
         Assert.False(BoardSidecarWriter.HoldsTheSameContent(
-            this.thisWorkbookPath, [], [new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "pcb", OffsetX = 1.5, ScaleX = 2, MirrorX = true }]));
+            this.thisWorkbookPath, [], [new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "pcb", OffsetX = 1.5, ScaleX = 2, MirrorX = true }], []));
     }
 
     // ###########################################################################################
@@ -220,18 +220,18 @@ public sealed class BoardSidecarWriterTests : IDisposable
     {
         File.WriteAllText(this.SidecarPath, "{ \"Component highlights\": {}, \"Something else\": { \"a\": 1 } }");
 
-        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], [], []));
         Assert.DoesNotContain("Something else", File.ReadAllText(this.SidecarPath), StringComparison.Ordinal);
     }
 
     [Fact]
     public void A_file_that_does_not_parse_or_is_missing_is_written()
     {
-        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], [], []));
         Assert.True(File.Exists(this.SidecarPath));
 
         File.WriteAllText(this.SidecarPath, "{ not json");
-        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], []));
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], [], []));
         Assert.Contains(BoardSidecarWriter.HighlightsRoot, File.ReadAllText(this.SidecarPath), StringComparison.Ordinal);
     }
 
@@ -245,7 +245,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U9", "30", "40"),
                 BoardSidecarWriterTests.Highlight("Sheet 2", "R1", "50", "60")
             ],
-            []);
+            [], []);
 
         List<ComponentHighlightEntry> read =
             BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath);
@@ -266,7 +266,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20"),
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "300", "400")
             ],
-            []);
+            [], []);
 
         List<ComponentHighlightEntry> read =
             BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath);
@@ -289,7 +289,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20"),
                 BoardSidecarWriterTests.Highlight("Sheet 2", "R1", "50", "60")
             ],
-            []);
+            [], []);
 
         Assert.Equal(2, BoardComponentHighlightStorage
             .LoadComponentHighlights(this.thisWorkbookPath).Count);
@@ -298,7 +298,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")],
-            []);
+            [], []);
 
         ComponentHighlightEntry entry = Assert.Single(
             BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
@@ -315,9 +315,9 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")],
-            []);
+            [], []);
 
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [], []);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [], []);
 
         Assert.True(File.Exists(this.SidecarPath));
         Assert.Empty(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
@@ -338,7 +338,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
                 BoardSidecarWriterTests.Highlight(schematic, label, "10", "20"),
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U9", "30", "40")
             ],
-            []);
+            [], []);
 
         ComponentHighlightEntry entry = Assert.Single(
             BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
@@ -362,7 +362,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
             BoardSidecarWriter.Write(
                 this.thisWorkbookPath,
                 [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100.5", "200.4", "40", "20")],
-                []);
+                [], []);
         }
         finally
         {
@@ -388,7 +388,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "not-a-number", "20"),
                 BoardSidecarWriterTests.Highlight("Sheet 1", "U9", "30", "40")
             ],
-            []);
+            [], []);
 
         ComponentHighlightEntry entry = Assert.Single(
             BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
@@ -416,7 +416,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
     public void A_calibration_ROUND_TRIPS_through_the_real_reader()
     {
         BoardSidecarWriter.Write(
-            this.thisWorkbookPath, [], [BoardSidecarWriterTests.Calibration("Sheet 1")]);
+            this.thisWorkbookPath, [], [BoardSidecarWriterTests.Calibration("Sheet 1")], []);
 
         Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
             this.thisWorkbookPath,
@@ -449,7 +449,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")],
-            [BoardSidecarWriterTests.Calibration("Sheet 1")]);
+            [BoardSidecarWriterTests.Calibration("Sheet 1")], []);
 
         Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath));
 
@@ -462,9 +462,9 @@ public sealed class BoardSidecarWriterTests : IDisposable
     public void A_REMOVED_calibration_is_gone_after_a_rewrite()
     {
         BoardSidecarWriter.Write(
-            this.thisWorkbookPath, [], [BoardSidecarWriterTests.Calibration("Sheet 1")]);
+            this.thisWorkbookPath, [], [BoardSidecarWriterTests.Calibration("Sheet 1")], []);
 
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [], []);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [], []);
 
         Assert.False(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
             this.thisWorkbookPath, "Sheet 1",
@@ -477,7 +477,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [],
-            [BoardSidecarWriterTests.Calibration(""), BoardSidecarWriterTests.Calibration("Sheet 1")]);
+            [BoardSidecarWriterTests.Calibration(""), BoardSidecarWriterTests.Calibration("Sheet 1")], []);
 
         JsonObject root = JsonNode.Parse(File.ReadAllText(this.SidecarPath))!.AsObject();
 
@@ -496,7 +496,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         BoardSidecarWriter.Write(
             this.thisWorkbookPath,
             [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")],
-            []);
+            [], []);
 
         Assert.True(File.Exists(Path.Combine(this.thisRoot, "Data C64 250407 v2.0.0.json")));
     }
@@ -507,7 +507,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         // A board with no highlights and no calibrations still gets both roots, so the file has one
         // shape rather than four. The app's own loaders tolerate a missing root, but a consistent
         // file is far easier to diff by hand - which is how the project owner inspects the tree.
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [], []);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [], []);
 
         JsonObject root = JsonNode.Parse(File.ReadAllText(this.SidecarPath))!.AsObject();
 
@@ -523,7 +523,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         // root forward would publish data no maintainer ever saw.
         File.WriteAllText(this.SidecarPath, """{"Something else":{"kept":true}}""");
 
-        BoardSidecarWriter.Write(this.thisWorkbookPath, [], []);
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [], []);
 
         JsonObject root = JsonNode.Parse(File.ReadAllText(this.SidecarPath))!.AsObject();
 
@@ -537,7 +537,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
         string nested = Path.Combine(this.thisRoot, "new", "board", "Data X Y v2.0.0.xlsx");
 
         BoardSidecarWriter.Write(
-            nested, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")], []);
+            nested, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "10", "20")], [], []);
 
         Assert.True(File.Exists(Path.ChangeExtension(nested, ".json")));
     }
@@ -545,7 +545,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
     [Fact]
     public void A_BLANK_workbook_path_is_refused()
     {
-        Assert.Throws<ArgumentException>(() => BoardSidecarWriter.Write("", [], []));
+        Assert.Throws<ArgumentException>(() => BoardSidecarWriter.Write("", [], [], []));
     }
 
     [Fact]
@@ -555,9 +555,91 @@ public sealed class BoardSidecarWriterTests : IDisposable
         // load something rather than genuinely meaning "this board has no highlights", and
         // treating the two alike is how a publish quietly wipes a board.
         Assert.Throws<ArgumentNullException>(
-            () => BoardSidecarWriter.Write(this.thisWorkbookPath, null!, []));
+            () => BoardSidecarWriter.Write(this.thisWorkbookPath, null!, [], []));
 
         Assert.Throws<ArgumentNullException>(
-            () => BoardSidecarWriter.Write(this.thisWorkbookPath, [], null!));
+            () => BoardSidecarWriter.Write(this.thisWorkbookPath, [], null!, []));
+    }
+
+    // ------------------------------------------------------------------ "Schematic renames"
+    //
+    // Owner decision, 2026-10-10: an accepted rename of a schematic image "must also change for
+    // everyone updating to this data", kept in the board's JSON file and not in Excel.
+
+    private static readonly SchematicRenameRecord[] TwoRenames =
+    [
+        new("Top", "PCB top", "Commodore/C64/250407/top.png", "2026-October-10"),
+        new("PCB top", "PCB top side", "Commodore/C64/250407/top.png", "2026-November-2"),
+    ];
+
+    [Fact]
+    public void The_renames_ROUND_TRIP_in_their_order_through_the_real_reader()
+    {
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [], TwoRenames);
+
+        Assert.Equal(TwoRenames, BoardComponentHighlightStorage.LoadSchematicRenames(this.thisWorkbookPath));
+
+        JsonArray list = (JsonArray)JsonNode.Parse(File.ReadAllText(this.SidecarPath))![SchematicRenameLog.Root]!;
+        Assert.Equal("Top", list[0]!["From"]!.GetValue<string>());
+        Assert.Equal("PCB top side", list[1]!["To"]!.GetValue<string>());
+        Assert.Equal("2026-November-2", list[1]!["Date"]!.GetValue<string>());
+        Assert.Equal("Commodore/C64/250407/top.png", list[1]!["File"]!.GetValue<string>());
+    }
+
+    // A board nobody renamed keeps exactly the file it had - no empty list added to every board.
+    [Fact]
+    public void A_board_without_renames_gets_no_rename_root()
+    {
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [BoardSidecarWriterTests.Highlight("Sheet 1", "U8", "100", "200")], [], []);
+
+        Assert.Null(JsonNode.Parse(File.ReadAllText(this.SidecarPath))![SchematicRenameLog.Root]);
+        Assert.Empty(BoardComponentHighlightStorage.LoadSchematicRenames(this.thisWorkbookPath));
+    }
+
+    // The publish rewrites the file only when its content changes - and a new rename is a change.
+    [Fact]
+    public void A_new_rename_is_a_change_and_the_same_list_is_not()
+    {
+        BoardSidecarWriter.Write(this.thisWorkbookPath, [], [], TwoRenames[..1]);
+
+        Assert.True(BoardSidecarWriter.HoldsTheSameContent(this.thisWorkbookPath, [], [], TwoRenames[..1]));
+        Assert.False(BoardSidecarWriter.HoldsTheSameContent(this.thisWorkbookPath, [], [], TwoRenames));
+        Assert.False(BoardSidecarWriter.HoldsTheSameContent(this.thisWorkbookPath, [], [], []));
+        Assert.True(BoardSidecarWriter.WriteIfChanged(this.thisWorkbookPath, [], [], TwoRenames));
+        Assert.Equal(TwoRenames, BoardComponentHighlightStorage.LoadSchematicRenames(this.thisWorkbookPath));
+    }
+
+    // A list that cannot be read must not stop a board from loading - it reads as none.
+    [Fact]
+    public void An_unreadable_rename_list_reads_as_none_and_a_half_entry_is_skipped()
+    {
+        File.WriteAllText(this.SidecarPath, """
+        { "Schematic renames": [ { "From": "Top", "To": "PCB top side", "Date": "2026-October-10" }, { "From": "Bottom" }, 7 ] }
+        """);
+
+        // An entry written before "File" was added reads with no file.
+        Assert.Equal([new SchematicRenameRecord("Top", "PCB top side", "", "2026-October-10")], BoardComponentHighlightStorage.LoadSchematicRenames(this.thisWorkbookPath));
+
+        File.WriteAllText(this.SidecarPath, """{ "Schematic renames": "not a list" }""");
+        Assert.Empty(BoardComponentHighlightStorage.LoadSchematicRenames(this.thisWorkbookPath));
+
+        File.WriteAllText(this.SidecarPath, "{ not json");
+        Assert.Empty(BoardComponentHighlightStorage.LoadSchematicRenames(this.thisWorkbookPath));
+    }
+
+    // An older CRT reads the highlights and calibrations of a file that also lists renames.
+    [Fact]
+    public void The_highlights_and_calibrations_still_read_beside_a_rename_list()
+    {
+        BoardSidecarWriter.Write(
+            this.thisWorkbookPath,
+            [BoardSidecarWriterTests.Highlight("PCB top side", "U8", "100", "200")],
+            [new KiCadCalibrationEntry { SchematicName = "PCB top side", CadName = "F.Cu", ScaleX = 2.0 }],
+            TwoRenames);
+
+        Assert.Equal("U8", Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.thisWorkbookPath)).BoardLabel);
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
+            this.thisWorkbookPath, "PCB top side", out _, out _, out _, out double scaleX, out _, out _, out _));
+        Assert.Equal(2.0, scaleX);
     }
 }

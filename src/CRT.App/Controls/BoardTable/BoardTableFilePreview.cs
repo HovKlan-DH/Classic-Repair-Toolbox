@@ -45,6 +45,10 @@ namespace CRT
         private const double ImageMaxHeight = 300;
         private const int DecodedMaxWidth = 720;
 
+        // The picture's frame colour (BoardTableColors.axaml), and the class its size line carries.
+        internal const string ImageFrameBrushKey = "BoardTable_PreviewImage_Border";
+        internal const string PictureSizeClass = "PictureSize";
+
         private readonly BoardTableFileCell thisFile;
         private readonly IBoardTableFileSource thisSource;
         private readonly TextBlock thisHeadline;
@@ -128,8 +132,13 @@ namespace CRT
             this.thisBitmaps.Clear();
         }
 
+        // Each picture sits in its frame (Border) inside the side's picture panel - see BuildSide.
         private IEnumerable<Image> GetImages() =>
-            this.Sides.OfType<StackPanel>().SelectMany(side => side.Children.OfType<Image>());
+            this.Sides.OfType<StackPanel>()
+                .SelectMany(side => side.Children.OfType<StackPanel>())
+                .SelectMany(picture => picture.Children.OfType<Border>())
+                .Select(frame => frame.Child)
+                .OfType<Image>();
 
         private async Task BuildSidesAsync(StackPanel sides)
         {
@@ -245,11 +254,34 @@ namespace CRT
                     HorizontalAlignment = HorizontalAlignment.Left
                 };
 
+                // ###########################################################################################
+                // *** A 1px FRAME HUGS THE PICTURE, AND ITS SIZE IN PIXELS IS WRITTEN UNDER IT (owner
+                // request, 2026-10-10). *** A scan with a white or transparent margin melts into the
+                // card, so where the image really ends could not be seen. The frame sizes to the
+                // picture as drawn (left-aligned, never stretched to the column), and stays hidden
+                // until there is a picture - an empty frame would be a 2px dot under "Loading...".
+                // The size is the FILE's, not the scaled-down copy the card draws.
+                // ###########################################################################################
+                var frame = new Border
+                {
+                    BorderThickness = new Thickness(1),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Child = image
+                };
+                frame.Bind(Border.BorderBrushProperty, frame.GetResourceObservable(BoardTableFilePreview.ImageFrameBrushKey));
+
+                var size = new TextBlock { FontSize = 11, Opacity = 0.7 };
+                size.Classes.Add(BoardTableFilePreview.PictureSizeClass);
+
+                var picture = new StackPanel { Spacing = 2, IsVisible = false };
+                picture.Children.Add(frame);
+                picture.Children.Add(size);
+
                 status.Text = "Loading...";
-                column.Children.Add(image);
+                column.Children.Add(picture);
                 column.Children.Add(status);
 
-                load = this.LoadImageAsync(path, side, image, status, link);
+                load = this.LoadImageAsync(path, side, image, picture, size, status, link);
             }
             else
             {
@@ -267,8 +299,16 @@ namespace CRT
         // Reads and draws one picture, returning the bytes (null when there were none) so the two
         // sides of the same path can be compared.
         // ###########################################################################################
-        // A picture with no bytes has nothing to open, so its link goes with it.
-        private async Task<byte[]?> LoadImageAsync(string path, BoardTableFileSide side, Image target, TextBlock status, Button link)
+        // A picture with no bytes has nothing to open, so its link goes with it. `picture` holds the
+        // framed image and its size line, shown together once the picture is drawn.
+        private async Task<byte[]?> LoadImageAsync(
+            string path,
+            BoardTableFileSide side,
+            Image target,
+            Control picture,
+            TextBlock size,
+            TextBlock status,
+            Button link)
         {
             byte[]? bytes;
 
@@ -298,7 +338,7 @@ namespace CRT
 
             try
             {
-                Bitmap bitmap = await Task.Run(() => BoardTableFilePreview.DecodeForPreview(bytes));
+                (Bitmap bitmap, PixelSize fileSize) = await Task.Run(() => BoardTableFilePreview.DecodeForPreview(bytes));
 
                 // Closed while it decoded: nothing will show it.
                 if (this.thisReleased)
@@ -310,6 +350,8 @@ namespace CRT
                 this.thisBitmaps.Add(bitmap);
 
                 target.Source = bitmap;
+                size.Text = BoardTableFilePreview.DescribePixelSize(fileSize);
+                picture.IsVisible = true;
                 status.IsVisible = false;
             }
             catch (Exception exception)
@@ -322,25 +364,32 @@ namespace CRT
             return bytes;
         }
 
-        private static Bitmap DecodeForPreview(byte[] bytes)
+        // The picture to draw, and the size of the FILE it came from - read before the scale-down,
+        // which is all the card keeps.
+        private static (Bitmap Bitmap, PixelSize FileSize) DecodeForPreview(byte[] bytes)
         {
             using var stream = new MemoryStream(bytes, writable: false);
             var full = new Bitmap(stream);
+            PixelSize fileSize = full.PixelSize;
 
-            if (full.PixelSize.Width <= DecodedMaxWidth)
-                return full;
+            if (fileSize.Width <= DecodedMaxWidth)
+                return (full, fileSize);
 
-            int height = Math.Max(1, (int)Math.Round(full.PixelSize.Height * (double)DecodedMaxWidth / full.PixelSize.Width));
+            int height = Math.Max(1, (int)Math.Round(fileSize.Height * (double)DecodedMaxWidth / fileSize.Width));
 
             try
             {
-                return full.CreateScaledBitmap(new PixelSize(DecodedMaxWidth, height));
+                return (full.CreateScaledBitmap(new PixelSize(DecodedMaxWidth, height)), fileSize);
             }
             finally
             {
                 full.Dispose();
             }
         }
+
+        // "4961 x 3508 pixels" - width first, as an image viewer says it. Plain ASCII "x".
+        internal static string DescribePixelSize(PixelSize size) =>
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{size.Width} x {size.Height} pixels");
 
         // ###########################################################################################
         // "Open PDF file" - or, for a picture, "Open full size". Opened by the host (its viewer, the

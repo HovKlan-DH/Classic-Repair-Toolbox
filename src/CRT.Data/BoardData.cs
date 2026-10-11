@@ -12,6 +12,28 @@ namespace Handlers.DataHandling
         public string OppositeTraceHighlightColor { get; init; } = string.Empty;
         public string ThumbnailHighlightColor { get; init; } = string.Empty;
         public string ThumbnailHighlightOpacity { get; init; } = string.Empty;
+
+        // This row with another CAD name and every other column as it was - what picking a KiCad
+        // name in the "Schematic images" window writes (2026-10-10). A column left out of this
+        // copy would be erased from the workbook, silently; BoardSchematicEntryTests compares
+        // every property by reflection, so a new one cannot be forgotten here.
+        public BoardSchematicEntry WithCadName(string cadName) => this.With(this.SchematicName, cadName);
+
+        // This row under another schematic name - what renaming an image in the "Schematic images"
+        // window writes (2026-10-10). Same rule as WithCadName.
+        public BoardSchematicEntry WithSchematicName(string schematicName) => this.With(schematicName, this.CadName);
+
+        private BoardSchematicEntry With(string schematicName, string cadName) => new()
+        {
+            SchematicName = schematicName,
+            CadName = cadName,
+            SchematicImageFile = this.SchematicImageFile,
+            SchematicHighlightColor = this.SchematicHighlightColor,
+            SchematicHighlightOpacity = this.SchematicHighlightOpacity,
+            OppositeTraceHighlightColor = this.OppositeTraceHighlightColor,
+            ThumbnailHighlightColor = this.ThumbnailHighlightColor,
+            ThumbnailHighlightOpacity = this.ThumbnailHighlightOpacity,
+        };
     }
 
     public class ComponentEntry
@@ -47,6 +69,18 @@ namespace Handlers.DataHandling
         public string Y { get; init; } = string.Empty;
         public string Width { get; init; } = string.Empty;
         public string Height { get; init; } = string.Empty;
+
+        // This rectangle on a renamed schematic, every other value as it was (2026-10-10).
+        // BoardSchematicEntryTests compares every property by reflection.
+        public ComponentHighlightEntry WithSchematicName(string schematicName) => new()
+        {
+            SchematicName = schematicName,
+            BoardLabel = this.BoardLabel,
+            X = this.X,
+            Y = this.Y,
+            Width = this.Width,
+            Height = this.Height,
+        };
     }
 
     public class ComponentLocalFileEntry
@@ -114,6 +148,20 @@ namespace Handlers.DataHandling
         public double ScaleY { get; init; } = 1.0;
         public bool MirrorX { get; init; }
         public bool MirrorY { get; init; }
+
+        // This calibration filed under a renamed schematic, every other value as it was
+        // (2026-10-10). BoardSchematicEntryTests compares every property by reflection.
+        public KiCadCalibrationEntry WithSchematicName(string schematicName) => new()
+        {
+            SchematicName = schematicName,
+            CadName = this.CadName,
+            OffsetX = this.OffsetX,
+            OffsetY = this.OffsetY,
+            ScaleX = this.ScaleX,
+            ScaleY = this.ScaleY,
+            MirrorX = this.MirrorX,
+            MirrorY = this.MirrorY,
+        };
     }
 
     // ###########################################################################################

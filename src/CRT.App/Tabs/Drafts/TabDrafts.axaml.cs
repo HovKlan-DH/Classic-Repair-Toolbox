@@ -94,6 +94,8 @@ namespace CRT
 
             // A reload because Excel (say) changed the draft needs the same refreshes as a save.
             this.TableEditor.ReloadedFromOutside += this.OnTableSaved;
+
+            this.TableEditor.ConfirmRemovingSchematics = this.ConfirmRemovingSchematicsAsync;
         }
 
         // ###########################################################################################
@@ -117,7 +119,9 @@ namespace CRT
         {
             this.RefreshSubmissionBadge();
 
-            this.Drafts.Clear();
+            // The rows read now - put on the list by KeepUnchangedRows, which keeps every row
+            // that would draw the same.
+            var fresh = new List<DraftListItem>();
             this.thisDraftedBoards.Clear();
 
             var hardwareBoards = this.HardwareBoardsOverrideForTests ?? DataManager.HardwareBoards;
@@ -159,7 +163,7 @@ namespace CRT
                     BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile),
                     status.CreatedUtc);
 
-                this.Drafts.Add(new DraftListItem(
+                fresh.Add(new DraftListItem(
                     entry,
                     status,
                     DraftStatusReader.CountChangesCached(status),
@@ -181,6 +185,8 @@ namespace CRT
                     lastSubmission,
                     TabDrafts.IsAlreadySent(entry, status, lastSubmission)));
             }
+
+            TabDrafts.KeepUnchangedRows(this.Drafts, fresh);
 
             this.ApplyTableMode();
 
@@ -205,6 +211,21 @@ namespace CRT
                     : "No local drafts yet. Edits made through the Contribute tab that have not been submitted will appear here.";
             }
         }
+
+        // ###########################################################################################
+        // *** THE LIST IS READ AGAIN IN PLACE, NOT REBUILT (owner report, 2026-10-10: "I do need
+        // to click it twice before it does react"). ***
+        //
+        // RefreshDrafts runs whenever CRT's window comes to the front (TabDrafts.OutsideChanges.cs)
+        // - and a click INTO the window is what brings it there, so it ran between that click's
+        // press and its release. Replacing every row threw away the button being pressed, and the
+        // release landed on a new one not even laid out yet: the click did nothing, and only the
+        // second one worked. A row that draws the same (DraftListItem.ShowsTheSameAs) is now kept,
+        // buttons and all (InPlaceList.KeepUnchanged); only a row that changed is replaced, and the
+        // list grows or shrinks at its end.
+        // ###########################################################################################
+        internal static void KeepUnchangedRows(ObservableCollection<DraftListItem> rows, IReadOnlyList<DraftListItem> fresh) =>
+            InPlaceList.KeepUnchanged(rows, fresh, (row, other) => row.ShowsTheSameAs(other));
 
         // ###########################################################################################
         // Confirms via DiscardDraftWindow (the same shape as DeleteWorkbookWindow - a permanent,
@@ -436,9 +457,9 @@ namespace CRT
         // Opens the board-image OR the KiCad import window for one drafted board (session 2c,
         // task 9) - one button each since 2026-09-24, both landing in BoardFilesWindow.
         //
-        // The board labels handed over come from the MERGED BoardData for that board - official
-        // plus draft - so the KiCad report compares against exactly what the board renders, whether
-        // this is a brand-new board (every label drafted) or an overlay on a published one.
+        // The board labels and the "Important signals" rows handed over - what the KiCad report
+        // judges the KiCad data against - are the DRAFT's, read from its workbook on disk
+        // (BoardForFilesWindowAsync).
         // ###########################################################################################
         private async Task ManageFilesAsync(HardwareBoardEntry entry, BoardFilesSection section)
         {
@@ -454,7 +475,13 @@ namespace CRT
                 return;
             }
 
-            var boardData = await DataManager.LoadBoardDataAsync(entry);
+            // Under CRT's "please wait" (owner request, 2026-10-10): reading the board took a few
+            // seconds with nothing on screen, and then the window opened. The window says what it
+            // reads itself, under its own (BoardFilesWindow.Opening).
+            BoardData? boardData = await BusyOverlay.RunLocalAsync(
+                this,
+                CrtWaitWording.OpeningBoardFiles,
+                () => TabDrafts.BoardForFilesWindowAsync(entry));
 
             var boardLabels = boardData?.Components
                 .Select(component => component.BoardLabel)
@@ -462,22 +489,49 @@ namespace CRT
                 .ToList() ?? new List<string>();
 
             var window = new BoardFilesWindow();
-            window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, section);
+            // The "Important signals" rows from the same draft, for the KiCad report's net names
+            // (2026-10-10).
+            window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, section, boardData?.KiCadImportantSignals);
 
             await window.ShowDialog(ownerWindow);
 
-            // Importing a board image adds a Schematics row, so the row count shown here changes -
-            // and the board itself has to be reloaded for a newly imported image or KiCad file to
-            // actually appear on the Schematics tab.
-            this.RefreshDrafts();
-            this.thisMainWindow?.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
+            this.CatchUpAfterBoardFiles(entry, window.ChangedTheDraft);
+        }
 
-            // An import adds rows (a Board schematics row per image), so an open table catches up.
+        // ###########################################################################################
+        // After "Schematic images" or "KiCad data" closes - and ONLY when it changed the draft
+        // (owner report, 2026-10-10: closing it refreshed the detached schematic thumbnails although
+        // nothing had changed; the board on screen was reloaded every time). Then the row's count
+        // follows, the board on screen is read again if it is this one - a new or moved image is a
+        // new thumbnail list, a picked CAD name or new KiCad files new traces - and an open table
+        // catches up with the rows the window wrote.
+        // ###########################################################################################
+        internal void CatchUpAfterBoardFiles(HardwareBoardEntry entry, bool changedTheDraft)
+        {
+            if (!changedTheDraft)
+            {
+                return;
+            }
+
+            this.RefreshDrafts();
+
+            if (this.ReloadBoardOverrideForTests is { } reload)
+            {
+                reload(entry.ExcelDataFile);
+            }
+            else
+            {
+                this.thisMainWindow?.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
+            }
+
             if (this.IsTableOpenFor(entry))
             {
                 this.TableEditor.CheckDraftFile();
             }
         }
+
+        // Stands in for Main's reload of the board on screen in a test, which has no Main.
+        internal Action<string>? ReloadBoardOverrideForTests { get; set; }
 
         // ###########################################################################################
         // Sends one drafted board for review (Phase 4) - the point of the whole Drafts tab.
@@ -547,10 +601,10 @@ namespace CRT
             }
 
             // The board as it should READ after publishing. Since Phase 6 that is simply the
-            // draft's own workbook - LoadBoardDataAsync resolves it - rather than an official
-            // board with drafted rows merged over it. The submission contract is unchanged:
-            // SubmissionManifestBuilder has always wanted the complete intended state.
-            var mergedData = await DataManager.LoadBoardDataAsync(entry);
+            // draft's own workbook rather than an official board with drafted rows merged over it.
+            // The submission contract is unchanged: SubmissionManifestBuilder has always wanted the
+            // complete intended state.
+            var mergedData = await TabDrafts.BoardToSendAsync(status);
             if (mergedData == null)
             {
                 return;
@@ -665,6 +719,30 @@ namespace CRT
             // stale row would then still describe the state that failed.
             this.RefreshDrafts();
         }
+
+        // ###########################################################################################
+        // *** WHAT A SUBMIT SENDS IS THE DRAFT WORKBOOK ON DISK, read now - the file its fingerprint
+        // was just taken from (owner report, 2026-10-11). *** It was DataManager.LoadBoardDataAsync,
+        // which answered from its cache: an image renamed in "Schematic images" for a board not
+        // selected in the drop-down lists went to the queue under its OLD name, with its highlights
+        // under it and its KiCad calibration left out (collected under the board's names) - and the
+        // receipt, fingerprinted from the file, then greyed Submit out as "already sent". It also
+        // answers the PUBLISHED board while "view boards as officially published" is ticked.
+        // TabDraftsSubmitBoardTests holds both.
+        // ###########################################################################################
+        internal static Task<BoardData?> BoardToSendAsync(DraftStatus status) =>
+            Task.Run(() => BoardDataReader.ReadWorkbookUncached(status.WorkbookPath));
+
+        // ###########################################################################################
+        // The board "Schematic images" and "KiCad data" are handed - its labels and its "Important
+        // signals" rows, which the KiCad report judges the draft's KiCad data against: the draft
+        // WORKBOOK as it is on disk, like BoardToSendAsync and for its reasons (code review,
+        // 2026-10-11). It was DataManager.LoadBoardDataAsync, which answers the PUBLISHED board under
+        // "view boards as officially published" - so the report's "will NOT light up" list and its
+        // "already used" marks described the published rows, not the ones just drafted.
+        // ###########################################################################################
+        internal static Task<BoardData?> BoardForFilesWindowAsync(HardwareBoardEntry entry) =>
+            Task.Run(() => DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, entry.ExcelDataFile));
 
         // What the draft holds, as DraftFingerprint gives it - see that class.
         private static string FingerprintOf(HardwareBoardEntry entry, DraftStatus status) =>
@@ -855,6 +933,19 @@ namespace CRT
     {
         public string DisplayName { get; }
 
+        // The board this row acts on - its buttons are bound to it (see ShowsTheSameAs).
+        private readonly HardwareBoardEntry thisEntry;
+
+        // ###########################################################################################
+        // Whether this row draws exactly what `other` would, for the same board - TabDrafts
+        // keeps an unchanged row rather than replacing it (TabDrafts.KeepUnchangedRows).
+        //
+        // Every value the row shows is compared (ShownValues); the commands are not. The board
+        // ENTRY must be the very same object, because the kept row's buttons act on its entry.
+        // ###########################################################################################
+        internal bool ShowsTheSameAs(DraftListItem other) =>
+            ReferenceEquals(this.thisEntry, other.thisEntry) && ShownValues.Same(this, other);
+
         // The badge beside the name: this board's latest submission, in "My submissions"' words
         // and colour. Hidden when it was never sent.
         // ###########################################################################################
@@ -926,6 +1017,7 @@ namespace CRT
             SubmissionReceipt? lastSubmission,
             bool alreadySent = false)
         {
+            this.thisEntry = entry;
             this.DisplayName = entry.ToString();
             this.ExcelDataFile = entry.ExcelDataFile;
 

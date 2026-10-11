@@ -106,46 +106,15 @@ namespace Handlers.DataHandling
             {
                 RevisionDate = current.RevisionDate,
 
-                ComponentHighlights = current.ComponentHighlights
-                    .Where(highlight =>
+                // Moved or dropped by the one rule a draft write follows them by too (SchematicRename;
+                // code review, 2026-10-11 - this was a second, field-by-field copy of it).
+                ComponentHighlights = SchematicRename.FollowHighlights(
+                    current.ComponentHighlights.Where(highlight =>
                         editedLabels.Contains((highlight.BoardLabel ?? string.Empty).Trim()) ||
-                        editedHighlights.Contains(SubmissionRowsBoard.HighlightKey(highlight)))
-                    .Select(highlight => SubmissionRowsBoard.Follow(follow, highlight.SchematicName) switch
-                    {
-                        null => null,
-                        string name when name == highlight.SchematicName => highlight,
-                        string name => new ComponentHighlightEntry
-                        {
-                            SchematicName = name,
-                            BoardLabel = highlight.BoardLabel,
-                            X = highlight.X,
-                            Y = highlight.Y,
-                            Width = highlight.Width,
-                            Height = highlight.Height
-                        }
-                    })
-                    .OfType<ComponentHighlightEntry>()
-                    .ToList(),
+                        editedHighlights.Contains(SubmissionRowsBoard.HighlightKey(highlight))),
+                    follow),
 
-                KiCadCalibrations = current.KiCadCalibrations
-                    .Select(calibration => SubmissionRowsBoard.Follow(follow, calibration.SchematicName) switch
-                    {
-                        null => null,
-                        string name when name == calibration.SchematicName => calibration,
-                        string name => new KiCadCalibrationEntry
-                        {
-                            SchematicName = name,
-                            CadName = calibration.CadName,
-                            OffsetX = calibration.OffsetX,
-                            OffsetY = calibration.OffsetY,
-                            ScaleX = calibration.ScaleX,
-                            ScaleY = calibration.ScaleY,
-                            MirrorX = calibration.MirrorX,
-                            MirrorY = calibration.MirrorY
-                        }
-                    })
-                    .OfType<KiCadCalibrationEntry>()
-                    .ToList(),
+                KiCadCalibrations = SchematicRename.FollowCalibrations(current.KiCadCalibrations, follow),
 
                 Schematics = edited.Schematics.ToList(),
                 Components = edited.Components.ToList(),
@@ -226,7 +195,7 @@ namespace Handlers.DataHandling
         // The name a highlight or calibration on `schematicName` carries after the edit: unchanged,
         // renamed, or null when its schematic was deleted. A name the CURRENT rows never had is left
         // as it is - it was not the maintainer's edit that made it unknown.
-        private static string? Follow(IReadOnlyDictionary<string, string?> follow, string? schematicName)
+        internal static string? Follow(IReadOnlyDictionary<string, string?> follow, string? schematicName)
         {
             string name = schematicName ?? string.Empty;
 

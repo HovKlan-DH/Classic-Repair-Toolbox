@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.RemoveSchematicWindow"
+        Title="Remove schematic image"
+        Width="440"
+        MinWidth="400"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeadingText" Text="Remove schematic image" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<TextBlock x:Name="QuestionText" TextWrapping="Wrap" FontWeight="Bold" />
+
+		<!-- What is lost - the highlights drawn on the image and its KiCad calibration
+		     (SchematicRemoval.WhatGoes). The reason this asks at all. -->
+		<TextBlock x:Name="WhatGoesText" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="RemoveButton"
+					Content="Remove image"
+					Foreground="{DynamicResource Button_Cancel_Fg}"
+					Background="{DynamicResource Button_Cancel_Bg}"
+					BorderBrush="{DynamicResource Button_Cancel_Border}"
+					Click="OnRemoveClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

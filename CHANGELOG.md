@@ -1,27 +1,29 @@
 # 3.0.0, 2026-October-?
 -----------------------
 - **Application**
+  - Added completely new method for board contributions:
+    - Almost everything can be handled from inside of application, including adding a new board
+    - A board can have one or more dedicated board maintainers
   - Added ability to detach thumbnails into its own window
   - Added ability to hide hardware, board or schematic images from "Configuration" tab
   - Added update notification to `ALPHA` development versions from "Configuration" tab
-  - Added completely new backend for system review
-  - Added mandatory data gathering of "system" usage (when selecting a board in drop-down)
-    - Required for the option to remove non-used systems
-    - Fun-fact for system maintainers, to see usage level of their system
+  - Added mandatory data gathering of board usage (when selecting a board in drop-down)
+    - Data needed for the option to remove non-used boards
+    - Fun-fact for board maintainers, to see usage level of their boards
   - Changed a "wait" state will have clear UI indication
+  - Changed all files are now digitally signed (where possible) to have less false-positives in virus scanners
+  - Changed notifications now shows in bottom right corner as stacked panels
   - Fixed traces will react correctly after KiCad calibration applied
   - Fixed all traces for a selected component will highlight (depends on checkbox selection)
   - Fixed KiCad calibration now feels more responsive when dragging traces
-  - Fixed all files are now digitally signed (where possible)
   - Refactored parts of code base
 - **Data**
   - **New**
-    - Added **Commodore 128** / **388??? (Open128)**
+    - Added **Commodore 128** / **310378 (Open128)**
 
 > [!CAUTION]
 > Due to breaking data format changes, the major version has been increased to reflect this is important.
-> No more data updates will be given for versions **below 3.0.0**, and as future versions may break current
-> data, then you are recommended to update.
+> No more data updates will be given for versions **below 3.0.0**.
 
 
 # 2.5.0, 2026-September-9

@@ -322,6 +322,7 @@ namespace CRT.Server.Handlers.Submissions
                     plan.Plan!,
                     board,
                     PublishMerge.CalibrationsOf(manifest),
+                    ApprovePublishFlow.RenameLogFor(plan.Plan!, published, board),
                     submissionId,
                     nowUtc,
                     listing.Insert,
@@ -537,6 +538,21 @@ namespace CRT.Server.Handlers.Submissions
                 new Dictionary<string, IReadOnlyCollection<string>> { [workbook] = after.ToList() },
                 ApprovePublishFlow.PreviewReads);
         }
+
+        // ###########################################################################################
+        // The board's "Schematic renames" list after this publish (owner decision, 2026-10-10: a
+        // rename that is accepted "must also change for everyone updating to this data"): the list
+        // its .json in the tree holds now, then every image this publish renames, dated with the
+        // publish's revision date - SchematicRenameLog.ForPublish. Every CRT that syncs the board
+        // follows it for its user's own worklogs and settings. Shared with the file list, so the
+        // maintainer is told the .json changes exactly when the publish will change it.
+        // ###########################################################################################
+        internal static List<SchematicRenameRecord> RenameLogFor(PublishPlanDetail plan, BoardData? published, BoardData board) =>
+            SchematicRenameLog.ForPublish(
+                BoardComponentHighlightStorage.LoadSchematicRenames(plan.WorkbookPath),
+                published,
+                board,
+                plan.Descriptor.Revision);
 
         // ###########################################################################################
         // The preview for the review screen: the same plan the approval would build - but only when

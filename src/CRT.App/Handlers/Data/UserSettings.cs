@@ -231,6 +231,11 @@ namespace Handlers.DataHandling
         [JsonPropertyName("schematicsShowTracesOnComponentSelect")] public bool SchematicsShowTracesOnComponentSelect { get; set; } = true;
         [JsonPropertyName("blinkSelected")] public bool BlinkSelected { get; set; } = false;
         [JsonPropertyName("schematicsOrderByBoard")] public Dictionary<string, List<string>> SchematicsOrderByBoard { get; set; } = new();
+
+        // Each board's schematic images as CRT last showed them - name and image file (2026-10-10).
+        // The next time the board is shown, the user's own worklogs and settings that name an image
+        // follow its FILE to whatever it is called now (LocalSchematicRename.CatchUp).
+        [JsonPropertyName("schematicImagesByBoard")] public Dictionary<string, List<SchematicImageSetting>> SchematicImagesByBoard { get; set; } = new();
         [JsonPropertyName("contactEmail")] public string ContactEmail { get; set; } = string.Empty;
 
         [JsonPropertyName("oscilloscopeVendor")] public string LastOscilloscopeVendor { get; set; } = string.Empty;
@@ -278,6 +283,13 @@ namespace Handlers.DataHandling
         [JsonPropertyName("windowHeight")] public double WindowHeight { get; set; } = 600.0;
         [JsonPropertyName("windowX")] public int WindowX { get; set; }
         [JsonPropertyName("windowY")] public int WindowY { get; set; }
+    }
+
+    // One schematic image of a board as CRT last showed it: its name and its image file.
+    public sealed class SchematicImageSetting
+    {
+        [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
+        [JsonPropertyName("file")] public string File { get; set; } = string.Empty;
     }
 
     // ###########################################################################################
@@ -1926,6 +1938,38 @@ namespace Handlers.DataHandling
 
             _data.LastOscilloscopeSeriesByVendor[vendorName] = seriesName;
             Logger.Info($"Setting changed: [OscilloscopeSeriesByVendor] [{vendorName}] [{seriesName}]");
+            Save();
+        }
+
+        // ###########################################################################################
+        // The board's schematic images as CRT last showed them, or null when it never has - see
+        // UserSettingsData.SchematicImagesByBoard. A null the settings file holds (a hand edit) is
+        // read as nothing: a null entry is skipped, a null name or file is blank.
+        // ###########################################################################################
+        public static IReadOnlyList<SchematicImage>? GetSchematicImages(string boardKey) =>
+            !string.IsNullOrWhiteSpace(boardKey) &&
+            _data.SchematicImagesByBoard?.TryGetValue(boardKey, out List<SchematicImageSetting>? images) == true &&
+            images is not null
+                ? images
+                    .Where(image => image is not null)
+                    .Select(image => new SchematicImage(image.Name ?? string.Empty, image.File ?? string.Empty))
+                    .ToList()
+                : null;
+
+        public static void SetSchematicImages(string boardKey, IReadOnlyList<SchematicImage> images)
+        {
+            if (string.IsNullOrWhiteSpace(boardKey) || images is null)
+                return;
+
+            if (GetSchematicImages(boardKey) is { } known && SchematicRenameLog.SameImages(known, images))
+                return;
+
+            _data.SchematicImagesByBoard ??= new();
+            _data.SchematicImagesByBoard[boardKey] = images
+                .Select(image => new SchematicImageSetting { Name = image.Name, File = image.File })
+                .ToList();
+
+            Logger.Info($"Setting changed: [SchematicImages] [{boardKey}] [{images.Count} images]");
             Save();
         }
 

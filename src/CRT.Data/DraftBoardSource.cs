@@ -276,46 +276,26 @@ namespace Handlers.DataHandling
                 return [];
             }
 
-            var entries = new List<KiCadCalibrationEntry>();
-
-            foreach (BoardSchematicEntry schematic in board.Schematics)
-            {
-                string schematicName = schematic.SchematicName?.Trim() ?? string.Empty;
-                if (schematicName.Length == 0)
-                {
-                    continue;
-                }
-
-                if (!BoardComponentHighlightStorage.TryLoadKiCadCalibration(
-                        workbookPath,
-                        schematicName,
-                        out string cadName,
-                        out double offsetX,
-                        out double offsetY,
-                        out double scaleX,
-                        out double scaleY,
-                        out bool mirrorX,
-                        out bool mirrorY))
-                {
-                    continue;
-                }
-
-                entries.Add(new KiCadCalibrationEntry
-                {
-                    SchematicName = schematicName,
-                    CadName = cadName,
-                    OffsetX = offsetX,
-                    OffsetY = offsetY,
-                    ScaleX = scaleX,
-                    ScaleY = scaleY,
-                    MirrorX = mirrorX,
-                    MirrorY = mirrorY,
-                });
-            }
-
-            return entries
+            // The sidecar parsed once for every schematic (code review, 2026-10-10).
+            return BoardComponentHighlightStorage
+                .LoadKiCadCalibrations(workbookPath, board.Schematics.Select(schematic => schematic.SchematicName))
                 .OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        // ###########################################################################################
+        // The board's published "KiCad data" folder: beside its published workbook, under the data
+        // root - where Main.GetCurrentBoardKiCadRawPaths reads it. Empty when there is no data root:
+        // a relative path would be read against whatever folder CRT happened to start in.
+        // ###########################################################################################
+        public static string PublishedKiCadFolderOf(string dataRoot, string excelDataFile)
+        {
+            string workbook = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
+            string? boardFolder = workbook.Length == 0 ? null : Path.GetDirectoryName(workbook);
+
+            return string.IsNullOrEmpty(boardFolder)
+                ? string.Empty
+                : Path.Combine(boardFolder, DataTreeUsage.KiCadFolderName);
         }
 
         // ###########################################################################################

@@ -29,6 +29,16 @@
 			<Setter Property="BorderThickness" Value="0" />
 		</Style>
 
+		<!-- A notice card floating over the tabs' bottom-right corner (NoticeStack) -->
+		<Style Selector="Border.NoticeCard">
+			<Setter Property="Background" Value="{DynamicResource Main_Banner_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Main_BannerButtonsHover_Bg}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="6" />
+			<Setter Property="Padding" Value="12,8,8,8" />
+			<Setter Property="BoxShadow" Value="0 3 12 0 #59000000" />
+		</Style>
+
 		<!-- Region toggle buttons -->
 		<Style Selector="Button.RegionToggle.active">
 			<Setter Property="BorderThickness" Value="2" />
@@ -278,226 +288,20 @@
 				BorderThickness="1"
 				Padding="0,0,0,0">
 			<Grid>
+				<!-- TWO ROWS: the worklog bar and the tabs - and no notice may take one (owner report,
+				     2026-10-11). The notices were five Auto rows here, and each one that came or went
+				     moved everything below it; on the Schematics tab it resized the image as well, which
+				     is fitted to its container. They float over the tabs now (NoticeStack, below). -->
 				<Grid.RowDefinitions>
-					<RowDefinition Height="Auto" />
-					<RowDefinition Height="Auto" />
-					<RowDefinition Height="Auto" />
-					<RowDefinition Height="Auto" />
-					<RowDefinition Height="Auto" />
 					<RowDefinition Height="Auto" />
 					<RowDefinition Height="*" />
 				</Grid.RowDefinitions>
 
-				<!-- Main Excel compatibility warning banner -->
-				<Border x:Name="MainExcelRequiresAppUpdateBanner"
-					Grid.Row="0"
-					IsVisible="False"
-					Background="{DynamicResource Main_Banner_Bg}"
-					CornerRadius="0"
-					Margin="0,0,0,1"
-					Padding="12,6">
-					<Grid>
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="*" />
-							<ColumnDefinition Width="Auto" />
-						</Grid.ColumnDefinitions>
-
-						<TextBlock x:Name="MainExcelRequiresAppUpdateBannerText"
-								   Grid.Column="0"
-								   VerticalAlignment="Center"
-								   Foreground="{DynamicResource Main_Banner_Fg}"
-								   FontSize="12"
-								   TextWrapping="Wrap" />
-
-						<Button x:Name="MainExcelRequiresAppUpdateBannerDismissButton"
-								Grid.Column="1"
-								Classes="BannerDismissButton"
-								Content="✕"
-								FontSize="11"
-								Padding="6,3"
-								Click="OnMainExcelRequiresAppUpdateBannerDismiss" />
-					</Grid>
-				</Border>
-
-				<!-- Update notification banner -->
-				<Border x:Name="UpdateBanner"
-					Grid.Row="1"
-					IsVisible="False"
-					Background="{DynamicResource Main_Banner_Bg}"
-					CornerRadius="0"
-					Margin="0,0,0,4"
-					Padding="12,6">
-					<Grid>
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="*" />
-							<ColumnDefinition Width="Auto" />
-							<ColumnDefinition Width="Auto" />
-							<ColumnDefinition Width="Auto" />
-						</Grid.ColumnDefinitions>
-
-						<TextBlock x:Name="UpdateBannerText"
-								   Grid.Column="0"
-								   VerticalAlignment="Center"
-								   Foreground="{DynamicResource Main_Banner_Fg}"
-								   FontSize="12" />
-
-						<Button x:Name="UpdateBannerViewNotesButton"
-								Grid.Column="1"
-								Classes="BannerDismissButton"
-								Content="View release notes"
-								Margin="12,0,4,0"
-								FontSize="11"
-								Padding="6,3"
-								Click="OnViewReleaseNotesClick" />
-
-						<Button x:Name="UpdateBannerInstallButton"
-								Grid.Column="2"
-								Classes="BannerInstallButton"
-								Content="Install"
-								Margin="0,0,4,0"
-								Background="{DynamicResource Button_Highlighted_Bg}"
-								Foreground="{DynamicResource Button_Highlighted_Fg}"
-								BorderBrush="{DynamicResource Button_Highlighted_Border}"
-								FontSize="11"
-								Padding="10,3"
-								Click="OnInstallUpdateClick" />
-
-						<Button x:Name="UpdateBannerDismissButton"
-								Grid.Column="3"
-								Classes="BannerDismissButton"
-								Content="✕"
-								FontSize="11"
-								Padding="6,3"
-								Click="OnUpdateBannerDismiss" />
-					</Grid>
-				</Border>
-
-				<!-- Data sync notification banner -->
-				<Border x:Name="SyncBanner"
-						Grid.Row="2"
-						IsVisible="False"
-						Background="{DynamicResource Main_Banner_Bg}"
-						CornerRadius="0"
-						Margin="0,0,0,4"
-						Padding="12,6"
-						Cursor="Hand"
-						PointerPressed="OnSyncBannerPointerPressed">
-					<Grid>
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="*" />
-							<ColumnDefinition Width="Auto" />
-							<ColumnDefinition Width="Auto" />
-							<ColumnDefinition Width="Auto" />
-						</Grid.ColumnDefinitions>
-
-						<TextBlock x:Name="SyncBannerText"
-							   Grid.Column="0"
-							   VerticalAlignment="Center"
-							   Foreground="{DynamicResource Main_Banner_Fg}"
-							   FontSize="12"
-							   TextWrapping="Wrap"
-							   TextTrimming="CharacterEllipsis"
-							   MaxLines="2" />
-
-						<Button x:Name="SyncBannerRefreshButton"
-								Grid.Column="1"
-								Classes="BannerInstallButton"
-								Content="Refresh Board"
-								IsVisible="False"
-								Margin="12,0,4,0"
-								Background="{DynamicResource Button_Highlighted_Bg}"
-								Foreground="{DynamicResource Button_Highlighted_Fg}"
-								BorderBrush="{DynamicResource Button_Highlighted_Border}"
-								FontSize="11"
-								Padding="10,3"
-								Click="OnRefreshBoardClick" />
-
-						<!-- Its own button with its own handler, deliberately NOT an overload of
-						     "Refresh Board" above - the two do entirely different things and are
-						     shown by different flows. -->
-						<Button x:Name="SyncBannerDriftButton"
-								Grid.Column="2"
-								Classes="BannerInstallButton"
-								Content="What changed"
-								IsVisible="False"
-								Margin="12,0,4,0"
-								Background="{DynamicResource Button_Highlighted_Bg}"
-								Foreground="{DynamicResource Button_Highlighted_Fg}"
-								BorderBrush="{DynamicResource Button_Highlighted_Border}"
-								FontSize="11"
-								Padding="10,3"
-								Click="OnSyncBannerDriftClick" />
-
-						<Button x:Name="SyncBannerDismissButton"
-								Grid.Column="3"
-								Classes="BannerDismissButton"
-								Content="✕"
-								FontSize="11"
-								Padding="6,3"
-								Click="OnSyncBannerDismiss" />
-					</Grid>
-				</Border>
-
-				<!-- "Your submission is now in the stable source - switch back from BETA" (owner request,
-				     2026-09-27). See Main.SourceSwitchNotice.cs. -->
-				<Border x:Name="SourceSwitchBanner"
-						Grid.Row="3"
-						IsVisible="False"
-						Background="{DynamicResource Main_Banner_Bg}"
-						CornerRadius="0"
-						Margin="0,0,0,4"
-						Padding="12,6">
-					<Grid ColumnDefinitions="*,Auto,Auto">
-						<TextBlock x:Name="SourceSwitchBannerText"
-								   Grid.Column="0"
-								   VerticalAlignment="Center"
-								   Foreground="{DynamicResource Main_Banner_Fg}"
-								   FontSize="12"
-								   TextWrapping="Wrap" />
-				
-						<Button x:Name="SourceSwitchBannerConfigurationButton"
-								Grid.Column="1"
-								Classes="BannerInstallButton"
-								Content="Open Configuration"
-								Margin="12,0,4,0"
-								Background="{DynamicResource Button_Highlighted_Bg}"
-								Foreground="{DynamicResource Button_Highlighted_Fg}"
-								BorderBrush="{DynamicResource Button_Highlighted_Border}"
-								FontSize="11"
-								Padding="10,3"
-								Click="OnSourceSwitchBannerConfigurationClick" />
-				
-						<Button x:Name="SourceSwitchBannerDismissButton"
-								Grid.Column="2"
-								Classes="BannerDismissButton"
-								Content="✕"
-								FontSize="11"
-								Padding="6,3"
-								ToolTip.Tip="Do not tell me about these submissions again"
-								Click="OnSourceSwitchBannerDismiss" />
-					</Grid>
-				</Border>
-
-				<!-- Component label editor mode banner -->
-				<Border x:Name="SchematicsLabelEditorModeBanner"
-						Grid.Row="4"
-						IsVisible="False"
-						Background="{DynamicResource Main_Banner_Bg}"
-						CornerRadius="0"
-						Margin="0,0,0,4"
-						Padding="12,6">
-					<TextBlock Text="Component label editor mode is active. Hardware, board, and schematic navigation are temporarily locked until changes are applied or discarded."
-							   VerticalAlignment="Center"
-							   Foreground="{DynamicResource Main_Banner_Fg}"
-							   FontSize="12"
-							   TextWrapping="Wrap" />
-				</Border>
-
 				<!-- Worklog bar: shows the active repair worklog job for the selected board. Permanently
 				     visible above the tabs (toggled by "Enable Worklog" in Configuration), not a
-				     dismissible banner like the ones above it. -->
+				     dismissible notice like the ones floating over the tabs. -->
 				<Border x:Name="WorklogBar"
-						Grid.Row="5"
+						Grid.Row="0"
 						IsVisible="False"
 						Background="{DynamicResource Schematics_Panels_Bg}"
 						BorderBrush="{DynamicResource Schematics_Panels_Border}"
@@ -615,7 +419,7 @@
 					</Grid>
 				</Border>
 
-				<TabControl x:Name="MainTabControl" Grid.Row="6" Padding="0">
+				<TabControl x:Name="MainTabControl" Grid.Row="1" Padding="0">
 
 					<TabItem x:Name="SchematicsTabItem" Header="Schematics">
 						<local:TabSchematics x:Name="TabSchematicsControl" />
@@ -735,7 +539,7 @@
 				</TabControl>
 
 				<Border x:Name="DataSyncStatusIconBorder"
-						Grid.Row="6"
+						Grid.Row="1"
 						ZIndex="10"
 						HorizontalAlignment="Right"
 						VerticalAlignment="Top"
@@ -780,6 +584,248 @@
 
 					</Grid>
 				</Border>
+
+				<!-- THE NOTICES (owner report, 2026-10-11): cards over the tabs' bottom-right corner,
+				     stacked upwards, so one that comes or goes moves nothing else on screen.
+				     Main.Notices.cs owns what they share; each card's own part shows and hides it.
+
+				     A notice here is something to act on, a mode holding the window, or the data check:
+				     its card says what it is doing while it runs, then what it found - and the spinning
+				     sync icon's tooltip says the same, for whoever closed the card (Main.DataSyncStatus.cs).
+
+				     The stack has no Background, so the gaps between cards, and an empty stack, let
+				     clicks through to the tab below. Its width and margin are set in code
+				     (NoticeStackGeometry): at most half the tabs' width, so on the Schematics tab it
+				     stays over the thumbnail list. -->
+				<StackPanel x:Name="NoticeStack"
+							Grid.Row="1"
+							ZIndex="20"
+							HorizontalAlignment="Right"
+							VerticalAlignment="Bottom"
+							Spacing="8">
+
+					<!-- Data that needs a newer CRT, and the server's "update CRT" for submissions - a
+					     paragraph per reason (Main.Updates.cs). -->
+					<Border x:Name="MainExcelRequiresAppUpdateBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="MainExcelRequiresAppUpdateBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="MainExcelRequiresAppUpdateBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnMainExcelRequiresAppUpdateBannerDismiss" />
+						</Grid>
+					</Border>
+
+					<!-- A newer CRT to install (Main.Updates.cs) - also where its download's progress
+					     and a failed install are said. -->
+					<Border x:Name="UpdateBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="UpdateBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="UpdateBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnUpdateBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right"
+										Spacing="4">
+								<Button x:Name="UpdateBannerViewNotesButton"
+										Classes="BannerDismissButton"
+										Content="View release notes"
+										Margin="0,8,0,0"
+										FontSize="11"
+										Padding="6,3"
+										Click="OnViewReleaseNotesClick" />
+
+								<Button x:Name="UpdateBannerInstallButton"
+										Classes="BannerInstallButton"
+										Content="Install"
+										Margin="0,8,0,0"
+										Background="{DynamicResource Button_Highlighted_Bg}"
+										Foreground="{DynamicResource Button_Highlighted_Fg}"
+										BorderBrush="{DynamicResource Button_Highlighted_Border}"
+										FontSize="11"
+										Padding="10,3"
+										Click="OnInstallUpdateClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- A data check: what it is doing while it runs, then what it found - "all up to
+					     date" goes by itself after a few seconds, "please refresh board" stays
+					     (Main.DataSyncStatus.cs, DataCheckNotice). A click anywhere on it closes it. -->
+					<Border x:Name="DataCheckBanner"
+							Classes="NoticeCard"
+							IsVisible="False"
+							Cursor="Hand"
+							PointerPressed="OnDataCheckBannerPointerPressed">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="DataCheckBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="DataCheckBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnDataCheckBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right">
+								<Button x:Name="DataCheckBannerRefreshButton"
+										Classes="BannerInstallButton"
+										Content="Refresh Board"
+										IsVisible="False"
+										Margin="0,8,0,0"
+										Background="{DynamicResource Button_Highlighted_Bg}"
+										Foreground="{DynamicResource Button_Highlighted_Fg}"
+										BorderBrush="{DynamicResource Button_Highlighted_Border}"
+										FontSize="11"
+										Padding="10,3"
+										Click="OnRefreshBoardClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- ONE card for two notices: launch sync turned off by a local edit
+					     (Main.DataSyncStatus.cs) and the official data moving under a draft
+					     (Main.DraftDrift.cs). A data check never writes here - it has its own card above.
+					     A click anywhere on it closes it. -->
+					<Border x:Name="SyncBanner"
+							Classes="NoticeCard"
+							IsVisible="False"
+							Cursor="Hand"
+							PointerPressed="OnSyncBannerPointerPressed">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="SyncBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="SyncBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnSyncBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right"
+										Spacing="4">
+								<!-- Its own button with its own handler, deliberately NOT an overload of the
+								     data check's "Refresh Board" - the two do entirely different things and
+								     are shown by different flows. -->
+								<Button x:Name="SyncBannerDriftButton"
+										Classes="BannerInstallButton"
+										Content="What changed"
+										IsVisible="False"
+										Margin="0,8,0,0"
+										Background="{DynamicResource Button_Highlighted_Bg}"
+										Foreground="{DynamicResource Button_Highlighted_Fg}"
+										BorderBrush="{DynamicResource Button_Highlighted_Border}"
+										FontSize="11"
+										Padding="10,3"
+										Click="OnSyncBannerDriftClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- "Your submission is now in the stable source - switch back from BETA" (owner
+					     request, 2026-09-27). See Main.SourceSwitchNotice.cs. -->
+					<Border x:Name="SourceSwitchBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="SourceSwitchBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="SourceSwitchBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									ToolTip.Tip="Do not tell me about these submissions again"
+									Click="OnSourceSwitchBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right">
+								<Button x:Name="SourceSwitchBannerConfigurationButton"
+										Classes="BannerInstallButton"
+										Content="Open Configuration"
+										Margin="0,8,0,0"
+										Background="{DynamicResource Button_Highlighted_Bg}"
+										Foreground="{DynamicResource Button_Highlighted_Fg}"
+										BorderBrush="{DynamicResource Button_Highlighted_Border}"
+										FontSize="11"
+										Padding="10,3"
+										Click="OnSourceSwitchBannerConfigurationClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- The label editor holds the board: hardware, board and schematic stay put until
+					     its changes are applied or discarded (TabSchematics.LabelEditor.cs). No close
+					     button - it goes when the mode does. A card rather than the mode hint, which
+					     clears on the first click: this lasts the whole edit, and the corner it covers
+					     is mostly the thumbnail list, which is locked meanwhile anyway. -->
+					<Border x:Name="SchematicsLabelEditorModeBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<TextBlock Text="Component label editor mode is active. Hardware, board, and schematic navigation are temporarily locked until changes are applied or discarded."
+								   VerticalAlignment="Center"
+								   Foreground="{DynamicResource Main_Banner_Fg}"
+								   FontSize="12"
+								   TextWrapping="Wrap" />
+					</Border>
+				</StackPanel>
 
 			</Grid>
 		</Border>

@@ -307,15 +307,5 @@ namespace Handlers.DataHandling
                    string.Equals(extension, ".kicad_pro", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(extension, ".kicad_sch", StringComparison.OrdinalIgnoreCase);
         }
-
-        // ###########################################################################################
-        // Appends protected-file count information to a sync banner message when applicable.
-        // ###########################################################################################
-        public static string BuildSyncBannerText(string message, int protectedFilesCount)
-        {
-            return protectedFilesCount > 0
-                ? $"{message}; protected contribution related files are [{protectedFilesCount}]"
-                : message;
-        }
     }
 }
