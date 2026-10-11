@@ -1,5 +1,5 @@
-# 3.0.0, 2026-October-?
------------------------
+# 3.0.0, 2026-October-11
+------------------------
 - **Application**
   - Added completely new method for board contributions:
     - Almost everything can be handled from inside of application, including adding a new board
