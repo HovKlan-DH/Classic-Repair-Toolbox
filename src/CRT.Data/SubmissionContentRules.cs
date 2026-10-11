@@ -109,6 +109,31 @@ namespace Handlers.DataHandling
             return matches;
         }
 
+        // ###########################################################################################
+        // The whole content check for one submitted file (code review, 2026-10-11): its opening
+        // bytes (Matches) and - for a KiCad schematic - every sheet it names, anywhere in the file
+        // (KiCadSheetReferences). Finalise and the publish to BETA both ask this one method, so the
+        // two cannot drift apart.
+        //
+        // `openText` opens the whole file as text, the way CRT reads a KiCad file, and is called
+        // only when a rule reads past `head`. Null - the file has gone since its caller verified
+        // it - passes that part: a publish verifies every file again before it writes anything.
+        // ###########################################################################################
+        public static bool MatchesWholeFile(string? path, ReadOnlySpan<byte> head, Func<TextReader?> openText, out string reason)
+        {
+            ArgumentNullException.ThrowIfNull(openText);
+
+            if (!SubmissionContentRules.Matches(path, head, out reason))
+                return false;
+
+            if (!KiCadSheetReferences.AppliesTo(path))
+                return true;
+
+            using TextReader? text = openText();
+
+            return text is null || KiCadSheetReferences.Check(path!, text, out reason);
+        }
+
         // The opening bytes of any of the five image formats board data carries.
         private static bool IsImage(ReadOnlySpan<byte> head) =>
             head.StartsWith(SubmissionContentRules.PngSignature) ||

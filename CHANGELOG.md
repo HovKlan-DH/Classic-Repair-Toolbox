@@ -3,19 +3,33 @@
 - **Application**
   - Added completely new method for board contributions:
     - Almost everything can be handled from inside of application, including adding a new board
-    - A board can have one or more dedicated board maintainers
+    - A board can have one or more dedicated board maintainers, who can review and approve/reject user contributions
   - Added ability to detach thumbnails into its own window
   - Added ability to hide hardware, board or schematic images from "Configuration" tab
   - Added update notification to `ALPHA` development versions from "Configuration" tab
+  - Added more ICs that can be tested with MiniPro programmer:
+    - `7402` now use the existing `74LS02` test
+    - `74HCU04` now use the existing `74LS04` test
+    - `7407` and `74LS07` (HEX buffer)
+    - `74F32` now use the existing `74LS32` test
+    - `74LS74` (flip-flop)
+    - `74LS132` (NAND, Schmitt trigger)
+    - `74LS133` (NAND)
+    - `74LS145` (BCD-to-decimal)
+    - `74LS153` (4-to-1 multiplexer)
+    - `74LS193` (counter)
+    - `74LS373` (latch)
+    - `4066` (bilateral switch)
+    - `556` (timer)
   - Added mandatory data gathering of board usage (when selecting a board in drop-down)
     - Data needed for the option to remove non-used boards
     - Fun-fact for board maintainers, to see usage level of their boards
   - Changed a "wait" state will have clear UI indication
-  - Changed all files are now digitally signed (where possible) to have less false-positives in virus scanners
-  - Changed notifications now shows in bottom right corner as stacked panels
-  - Fixed traces will react correctly after KiCad calibration applied
+  - Changed all files are digitally signed (where possible) to have less false-positives in virus scanners
+  - Changed notifications shows in bottom right corner as stacked panels
+  - Fixed traces reacts correctly after KiCad calibration applied
   - Fixed all traces for a selected component will highlight (depends on checkbox selection)
-  - Fixed KiCad calibration now feels more responsive when dragging traces
+  - Fixed KiCad calibration feels more responsive when dragging traces
   - Refactored parts of code base
 - **Data**
   - **New**

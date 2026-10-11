@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Submissions
@@ -369,6 +370,34 @@ namespace CRT.Server.Handlers.Submissions
 
             path = candidate;
             return true;
+        }
+
+        // ###########################################################################################
+        // A stored blob opened as text, decoded the way CRT reads a KiCad file (UTF-8 unless a byte
+        // order mark says otherwise) - for a content rule that must look past the opening bytes
+        // VerifyAsync hands back: a KiCad schematic names its sheets anywhere in the file
+        // (KiCadSheetReferences, security review 2026-10-11).
+        //
+        // *** A READER, NEVER THE WHOLE TEXT (code review, 2026-10-11). *** A blob may be as large
+        // as MaximumBlobBytes, and submitting needs no account: reading one into a string held
+        // twice its size, per finalise. The rule reads it a buffer at a time.
+        //
+        // Null when the blob is not there. Its callers have just verified it, so that means it
+        // vanished since - and a publish verifies every blob again before it writes anything.
+        // ###########################################################################################
+        public TextReader? OpenText(string hash)
+        {
+            if (!this.TryGetReadablePath(hash, out string path))
+                return null;
+
+            try
+            {
+                return new StreamReader(path, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            }
+            catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+            {
+                return null;
+            }
         }
 
         // ###########################################################################################

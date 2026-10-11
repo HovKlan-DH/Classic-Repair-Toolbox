@@ -826,7 +826,9 @@ namespace CRT.Server.Handlers.Submissions
                     continue;
                 }
 
-                if (!SubmissionContentRules.Matches(file.Path, blob.Head, out string reason))
+                // A KiCad schematic's sheets are read from the WHOLE file - a sheet can be named
+                // anywhere in it (security review, 2026-10-11; KiCadSheetReferences).
+                if (!SubmissionContentRules.MatchesWholeFile(file.Path, blob.Head, () => blobs.OpenText(file.Sha256), out string reason))
                 {
                     findings.Add(new ValidationFinding
                     {
@@ -865,12 +867,20 @@ namespace CRT.Server.Handlers.Submissions
         // A finding's Subject is often a board label or a path straight from the contributor's
         // rows, and nothing bounded it: a label of ten thousand characters produced a finding whose
         // INSERT failed against submission_findings.subject VARCHAR(500) - AFTER the submission row
-        // had been written, answering a 500 and stranding a half-made submission. The message is
-        // TEXT and needs no cut; the code is ours and always short, but is bounded anyway.
+        // had been written, answering a 500 and stranding a half-made submission. The code is ours
+        // and always short, but is bounded anyway.
+        //
+        // The message is what the contributor reads, so it is cut only where the column could not
+        // hold it anyway (code review, 2026-10-11). It is TEXT - 65,535 bytes - and was thought too
+        // big to fill, until a refusal quoted a contributor's KiCad sheet path whole: a path of
+        // 70,000 characters failed the INSERT at finalise, answering a 500 and leaving the
+        // submission "uploading". 16,000 characters take at most 48,000 bytes of UTF-8.
         // ###########################################################################################
         internal const int MaximumFindingSubjectLength = 500;
 
         internal const int MaximumFindingCodeLength = 64;
+
+        internal const int MaximumFindingMessageLength = 16_000;
 
         internal static IReadOnlyList<ValidationFinding> FitForStorage(IReadOnlyList<ValidationFinding> findings)
         {
@@ -882,7 +892,7 @@ namespace CRT.Server.Handlers.Submissions
                     Severity = finding.Severity,
                     Code = SubmissionFlows.Cut(finding.Code, SubmissionFlows.MaximumFindingCodeLength),
                     Subject = SubmissionFlows.Cut(finding.Subject, SubmissionFlows.MaximumFindingSubjectLength),
-                    Message = finding.Message ?? string.Empty
+                    Message = SubmissionFlows.Cut(finding.Message, SubmissionFlows.MaximumFindingMessageLength)
                 })
                 .ToList();
         }

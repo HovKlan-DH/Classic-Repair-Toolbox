@@ -203,7 +203,7 @@ namespace CRT.Server.Handlers.Submissions
 
             // Only now, holding a real open invitation: the memory-hard hash (see the header).
             long? accountId = await accounts.AcceptInvitationsAsync(
-                new NewAccount(invitation.Email, invitation.NormalisedEmail, hasher.Hash(password!), displayName!.Trim(), now),
+                new NewAccount(invitation.Email, invitation.NormalisedEmail, await hasher.HashAsync(password!, cancellationToken), displayName!.Trim(), now),
                 now,
                 cancellationToken);
 

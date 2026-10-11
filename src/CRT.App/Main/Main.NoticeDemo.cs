@@ -1,5 +1,6 @@
 using Handlers.DataHandling;
 using Handlers.OnlineHandling;
+using Handlers.Theming;
 using System;
 using System.Threading.Tasks;
 
@@ -61,7 +62,7 @@ namespace CRT
                     // would for real - "could not be installed" - which is safe to try.
                     if (UpdateService.PendingVersion == null)
                     {
-                        this.UpdateBannerText.Text = "Version [99.0.0] is available";
+                        NoticeEmphasis.Show(this.UpdateBannerText, "Version [99.0.0] is available");
                     }
                 }
                 await wait(TimeSpan.FromSeconds(5));
@@ -87,9 +88,10 @@ namespace CRT
                     "Your submission reached the stable source while you download from the BETA source.");
                 if (!this.SourceSwitchBanner.IsVisible)
                 {
-                    this.SourceSwitchBannerText.Text =
+                    NoticeEmphasis.Show(
+                        this.SourceSwitchBannerText,
                         "Commodore / C64 / 250407 is now published to the stable source. You are downloading data from " +
-                        "the BETA source - you can switch back to the stable source on the Configuration tab.";
+                        "the BETA source - you can switch back to the stable source on the Configuration tab.");
                     this.SourceSwitchBanner.IsVisible = true;
                 }
                 await wait(TimeSpan.FromSeconds(5));
@@ -136,7 +138,7 @@ namespace CRT
         private bool CanPretendDataCheck() =>
             !this.thisIsDataCheckOnCard &&
             (!this.DataCheckBanner.IsVisible ||
-             string.Equals(this.DataCheckBannerText.Text, this.thisNoticeDemoDataCheckText, StringComparison.Ordinal));
+             string.Equals(NoticeEmphasis.TextOf(this.DataCheckBannerText), this.thisNoticeDemoDataCheckText, StringComparison.Ordinal));
 
         // ###########################################################################################
         // A check through the real card and spinner, with made-up files. The tooltip's "last check"
@@ -178,7 +180,7 @@ namespace CRT
                 this.StopDataSyncStatusIconSpin();
                 this.FinishDataCheck(changedCount, atLaunch: true);
                 this.thisLastDataSyncCheck = lastRealCheck;
-                this.thisNoticeDemoDataCheckText = this.DataCheckBannerText.Text;
+                this.thisNoticeDemoDataCheckText = NoticeEmphasis.TextOf(this.DataCheckBannerText);
                 this.RefreshDataSyncStatusTip();
             }
         }

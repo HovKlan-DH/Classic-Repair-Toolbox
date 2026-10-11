@@ -395,7 +395,7 @@ namespace CRT.Server.Handlers.Accounts
             if (!mailVerdict.IsAllowed)
                 return AccountChangeOutcome.RateLimited(mailVerdict.RetryAfter);
 
-            await store.SetPasswordHashAsync(account.Id, hasher.Hash(newPassword!), cancellationToken);
+            await store.SetPasswordHashAsync(account.Id, await hasher.HashAsync(newPassword!, cancellationToken), cancellationToken);
 
             // A reset code already in a mailbox must not set the password back over this one.
             await store.ConsumeOutstandingTokensAsync(account.Id, TokenPurpose.PasswordReset, now, cancellationToken);

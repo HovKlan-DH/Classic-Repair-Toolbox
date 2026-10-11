@@ -1009,12 +1009,15 @@ namespace Handlers.DataHandling
 
             foreach (var entry in parsedRoots)
             {
-                string directory = Path.GetDirectoryName(entry.Key) ?? string.Empty;
+                foreach (var sheetRef in ExtractSchematicSheetRefs(entry.Value))
+                {
+                    string? childPath = ResolveChildSheetPath(entry.Key, sheetRef.FileName, parsedRoots);
 
-                childPaths.UnionWith(
-                    ExtractSchematicSheetRefs(entry.Value)
-                        .Where(sheetRef => !string.IsNullOrWhiteSpace(sheetRef.FileName))
-                        .Select(sheetRef => Path.GetFullPath(Path.Combine(directory, sheetRef.FileName!))));
+                    if (childPath != null)
+                    {
+                        childPaths.Add(childPath);
+                    }
+                }
             }
 
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1071,7 +1074,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Loads a KiCad schematic file and recursively loads any child sheet files referenced by it.
         // Files already parsed by the caller are reused; a child sheet that was not in the board
-        // folder listing is read from disk here.
+        // folder listing is read from disk here - only from inside its parent's own folder
+        // (ResolveChildSheetPath).
         // ###########################################################################################
         private static async Task LoadSchematicAndChildSheetsAsync(
             string path,
@@ -1100,16 +1104,20 @@ namespace Handlers.DataHandling
             var schematic = ParseSchematic(root, Path.GetFileName(fullPath), displayName);
             schematics.Add(schematic);
 
-            string directory = Path.GetDirectoryName(fullPath) ?? string.Empty;
-
             foreach (var sheetRef in ExtractSchematicSheetRefs(root))
             {
-                if (string.IsNullOrWhiteSpace(sheetRef.FileName))
+                string? childPath = ResolveChildSheetPath(fullPath, sheetRef.FileName, parsedRoots);
+
+                if (childPath == null)
                 {
+                    if (!string.IsNullOrWhiteSpace(sheetRef.FileName))
+                    {
+                        Logger.Warning(
+                            $"KiCad sheet [{sheetRef.SheetName}] in [{fullPath}] names a file outside the board's KiCad files, which is not read: [{sheetRef.FileName}]");
+                    }
+
                     continue;
                 }
-
-                string childPath = Path.Combine(directory, sheetRef.FileName);
 
                 await LoadSchematicAndChildSheetsAsync(
                         childPath,
@@ -1119,6 +1127,68 @@ namespace Handlers.DataHandling
                         parsedRoots)
                     .ConfigureAwait(false);
             }
+        }
+
+        // ###########################################################################################
+        // Where a child sheet a parent names may be read from - or null, and it is not read at all.
+        //
+        // *** ONLY FROM THE BOARD'S OWN KiCad FILES (security review, 2026-10-11). *** The path is
+        // written INSIDE the parent file, and a contributed file can write anything there. Combined
+        // with the parent's folder as it was, a "Sheetfile" of "//server/share/x.kicad_sch" became
+        // a network path, and the File.Exists on it made every Windows CRT that showed the board
+        // open an SMB connection to that server - handing it the user's NTLM hash - with no click
+        // beyond picking the board. So a child is followed only when it is
+        //
+        //   - one of the files the loader was handed (`parsedRoots` - the board's "KiCad data"
+        //     folders, scanned), however the parent spells the way to it; or
+        //   - a .kicad_sch inside the parent's OWN folder or below it, read from disk - the
+        //     project folder a .kicad_pro was expanded from (ExpandRawKiCadPaths).
+        //
+        // Nothing here touches the disk: the full path is worked out as text, and whatever is
+        // refused is never looked at. The server refuses such a file too (CRT.Data's
+        // KiCadSheetReferences), for the CRTs installed before this.
+        // ###########################################################################################
+        private static string? ResolveChildSheetPath(
+            string parentFullPath,
+            string? sheetFile,
+            IReadOnlyDictionary<string, SExpressionNode> parsedRoots)
+        {
+            if (string.IsNullOrWhiteSpace(sheetFile))
+            {
+                return null;
+            }
+
+            string directory = Path.GetDirectoryName(parentFullPath) ?? string.Empty;
+            string childPath;
+
+            try
+            {
+                childPath = Path.GetFullPath(Path.Combine(directory, sheetFile));
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                return null;
+            }
+
+            if (parsedRoots.ContainsKey(childPath))
+            {
+                return childPath;
+            }
+
+            // Case folded on Windows only - the comparison ExternalTargetLauncher holds its
+            // data-root containment to.
+            StringComparison comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            string folder = Path.EndsInDirectorySeparator(directory)
+                ? directory
+                : directory + Path.DirectorySeparatorChar;
+
+            return childPath.StartsWith(folder, comparison) &&
+                   string.Equals(Path.GetExtension(childPath), ".kicad_sch", StringComparison.OrdinalIgnoreCase)
+                ? childPath
+                : null;
         }
 
         // ###########################################################################################
@@ -1145,7 +1215,7 @@ namespace Handlers.DataHandling
                         continue;
                     }
 
-                    if (string.Equals(propertyName, "Sheetfile", StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(propertyName, KiCadSheetReferences.SheetFileProperty, StringComparison.OrdinalIgnoreCase))
                     {
                         fileName = propertyValue;
                     }
@@ -1412,24 +1482,16 @@ namespace Handlers.DataHandling
             public List<SExpressionNode> Items { get; init; } = new();
         }
 
-        private readonly struct SExpressionToken
-        {
-            public SExpressionToken(string text)
-            {
-                this.Text = text;
-            }
-
-            public string Text { get; }
-        }
-
         private static class SExpressionParser
         {
             // ###########################################################################################
-            // Parses KiCad S-expression content into root expression nodes.
+            // Parses KiCad S-expression content into root expression nodes. The tokens are CRT.Data's
+            // KiCadSExpressionTokens, which the server's KiCad sheet rule reads too - so the two
+            // cannot disagree about what a file says.
             // ###########################################################################################
             public static List<SExpressionNode> Parse(string content)
             {
-                var tokens = Tokenize(content);
+                var tokens = KiCadSExpressionTokens.Tokenize(content);
                 int index = 0;
                 var result = new List<SExpressionNode>();
 
@@ -1442,101 +1504,21 @@ namespace Handlers.DataHandling
             }
 
             // ###########################################################################################
-            // Tokenizes KiCad S-expression text while preserving quoted strings as scalar tokens.
-            // ###########################################################################################
-            private static List<SExpressionToken> Tokenize(string input)
-            {
-                var tokens = new List<SExpressionToken>();
-                int i = 0;
-
-                while (i < input.Length)
-                {
-                    char ch = input[i];
-
-                    if (char.IsWhiteSpace(ch))
-                    {
-                        i++;
-                        continue;
-                    }
-
-                    if (ch == ';')
-                    {
-                        while (i < input.Length && input[i] != '\n')
-                        {
-                            i++;
-                        }
-
-                        continue;
-                    }
-
-                    if (ch == '(' || ch == ')')
-                    {
-                        tokens.Add(new SExpressionToken(ch.ToString()));
-                        i++;
-                        continue;
-                    }
-
-                    if (ch == '"')
-                    {
-                        i++;
-                        var value = new System.Text.StringBuilder();
-
-                        while (i < input.Length)
-                        {
-                            char c = input[i];
-
-                            if (c == '\\' && i + 1 < input.Length)
-                            {
-                                value.Append(input[i + 1]);
-                                i += 2;
-                                continue;
-                            }
-
-                            if (c == '"')
-                            {
-                                i++;
-                                break;
-                            }
-
-                            value.Append(c);
-                            i++;
-                        }
-
-                        tokens.Add(new SExpressionToken(value.ToString()));
-                        continue;
-                    }
-
-                    int start = i;
-                    while (i < input.Length &&
-                           !char.IsWhiteSpace(input[i]) &&
-                           input[i] != '(' &&
-                           input[i] != ')')
-                    {
-                        i++;
-                    }
-
-                    tokens.Add(new SExpressionToken(input[start..i]));
-                }
-
-                return tokens;
-            }
-
-            // ###########################################################################################
             // Parses one S-expression node from the token stream.
             // ###########################################################################################
-            private static SExpressionNode ParseNode(IReadOnlyList<SExpressionToken> tokens, ref int index)
+            private static SExpressionNode ParseNode(IReadOnlyList<string> tokens, ref int index)
             {
-                if (tokens[index].Text == "(")
+                if (tokens[index] == "(")
                 {
                     index++;
                     var items = new List<SExpressionNode>();
 
-                    while (index < tokens.Count && tokens[index].Text != ")")
+                    while (index < tokens.Count && tokens[index] != ")")
                     {
                         items.Add(ParseNode(tokens, ref index));
                     }
 
-                    if (index < tokens.Count && tokens[index].Text == ")")
+                    if (index < tokens.Count && tokens[index] == ")")
                     {
                         index++;
                     }
@@ -1547,7 +1529,7 @@ namespace Handlers.DataHandling
                     };
                 }
 
-                string atom = tokens[index].Text;
+                string atom = tokens[index];
                 index++;
 
                 return new SExpressionNode

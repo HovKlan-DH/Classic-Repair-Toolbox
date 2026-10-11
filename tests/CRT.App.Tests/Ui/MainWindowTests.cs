@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.LogicalTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Theming;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -690,7 +691,7 @@ public sealed class MainWindowTests : IDisposable
                 var shown = main!.GetControl<StackPanel>("NoticeStack").Children
                     .Where(card => card.IsVisible)
                     .SelectMany(card => card.GetLogicalDescendants().OfType<TextBlock>())
-                    .Select(text => text.Text ?? string.Empty)
+                    .Select(NoticeEmphasis.TextOf)
                     .ToList();
 
                 // The source is BETA or stable by whatever the settings say - the words around it count.
@@ -738,7 +739,7 @@ public sealed class MainWindowTests : IDisposable
                 await main.StartBackgroundSyncForTests();
 
                 Assert.True(main.IsDataSyncStatusIconSpinning);
-                Assert.StartsWith("Checking data from the ", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+                Assert.StartsWith("Checking data from the ", NoticeEmphasis.TextOf(main.GetControl<TextBlock>("DataCheckBannerText")));
 
                 main.StopDataSyncStatusIconSpin();
                 Assert.False(main.IsDataSyncStatusIconSpinning);
@@ -766,20 +767,24 @@ public sealed class MainWindowTests : IDisposable
             main.BeginDataSyncProgress();
 
             Assert.True(card.IsVisible);
-            Assert.StartsWith("Checking data from the ", text.Text);
+            Assert.StartsWith("Checking data from the ", NoticeEmphasis.TextOf(text));
             Assert.False(main.GetControl<Button>("DataCheckBannerRefreshButton").IsVisible);
 
             main.ReportDataSyncStatus("Downloading file [2] of [9] from the stable source:");
             main.ReportDataSyncFile("Commodore/C64/250407/pcb.png");
 
-            string[] lines = text.Text!.Split('\n');
+            string[] lines = NoticeEmphasis.TextOf(text).Split('\n');
             Assert.Equal(3, lines.Length);
             Assert.Equal("Downloading file [2] of [9] from the stable source:", lines[1]);
             Assert.Equal("Commodore/C64/250407/pcb.png", lines[2]);
 
+            // The heading's source name, the counts and the line's source in bold (owner request,
+            // 2026-10-11) - the heading names whichever source the settings say.
+            Assert.Equal([AppConfig.GetOnlineSourceLabel().Split(' ')[0], "2", "9", "stable"], BoldRuns.BoldPiecesOf(text));
+
             // A closing summary is not progress - the card keeps the last real line.
             main.ReportDataSyncStatus("Sync complete (0 new, 0 updated, 0 failed, 0 invalid)");
-            Assert.Equal("Downloading file [2] of [9] from the stable source:", text.Text!.Split('\n')[1]);
+            Assert.Equal("Downloading file [2] of [9] from the stable source:", NoticeEmphasis.TextOf(text).Split('\n')[1]);
         });
     }
 
@@ -801,7 +806,7 @@ public sealed class MainWindowTests : IDisposable
             main.FinishDataCheck(0, atLaunch: true);
 
             Assert.True(card.IsVisible);
-            Assert.StartsWith("All data files are up to date with the ", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+            Assert.StartsWith("All data files are up to date with the ", NoticeEmphasis.TextOf(main.GetControl<TextBlock>("DataCheckBannerText")));
             Assert.Equal(1, timers.HideCount);
 
             timers.RunHides();
@@ -830,7 +835,7 @@ public sealed class MainWindowTests : IDisposable
 
             Assert.True(main.GetControl<Border>("DataCheckBanner").IsVisible);
             Assert.True(main.GetControl<Button>("DataCheckBannerRefreshButton").IsVisible);
-            Assert.EndsWith("- please refresh board", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+            Assert.EndsWith("- please refresh board", NoticeEmphasis.TextOf(main.GetControl<TextBlock>("DataCheckBannerText")));
             Assert.Equal(0, timers.HideCount);
         });
     }
@@ -885,7 +890,7 @@ public sealed class MainWindowTests : IDisposable
             timers.RunHides();
 
             Assert.True(card.IsVisible);
-            Assert.StartsWith("Checking data from the ", main.GetControl<TextBlock>("DataCheckBannerText").Text);
+            Assert.StartsWith("Checking data from the ", NoticeEmphasis.TextOf(main.GetControl<TextBlock>("DataCheckBannerText")));
         });
     }
 
@@ -951,12 +956,50 @@ public sealed class MainWindowTests : IDisposable
 
             main.BeginDataSyncProgress();
             main.FinishDataCheck(5, atLaunch: true);
-            string real = main.GetControl<TextBlock>("DataCheckBannerText").Text!;
+            string real = NoticeEmphasis.TextOf(main.GetControl<TextBlock>("DataCheckBannerText"));
 
             await main.PlayNoticeDemoAsync();
 
             Assert.True(main.GetControl<Border>("DataCheckBanner").IsVisible);
-            Assert.Equal(real, main.GetControl<TextBlock>("DataCheckBannerText").Text);
+            Assert.Equal(real, NoticeEmphasis.TextOf(main.GetControl<TextBlock>("DataCheckBannerText")));
+        });
+    }
+
+    // ###########################################################################################
+    // Every card's bracketed values and source names are bold (owner request, 2026-10-11:
+    // "[<b>3</b>] files updated in background", "Checking data from the <b>stable</b> source", "and
+    // do that for others also"). Checked on every card the demo puts words on, against the rule
+    // itself - so a card whose words go into Text directly, past NoticeEmphasis.Show, fails here.
+    // ###########################################################################################
+    [Fact]
+    public async Task Every_notice_card_shows_its_counts_and_source_names_in_bold()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new CRT.Main();
+            main.ScheduleNoticeTimerOverrideForTests = new NoticeTimers().Schedule;
+            main.NoticeDemoDelayOverrideForTests = _ => Task.CompletedTask;
+
+            await main.PlayNoticeDemoAsync();
+
+            foreach (Control card in main.GetControl<StackPanel>("NoticeStack").Children)
+            {
+                foreach (TextBlock block in card.GetLogicalDescendants().OfType<TextBlock>())
+                {
+                    string words = NoticeEmphasis.TextOf(block);
+
+                    Assert.Equal(
+                        NoticeEmphasis.Runs(words).Where(run => run.IsBold).Select(run => run.Text).ToList(),
+                        BoldRuns.BoldPiecesOf(block));
+                }
+            }
+
+            // And the demo did put such words on the cards - the check above is not vacuous.
+            Assert.Equal(["3"], BoldRuns.BoldPiecesOf(main.GetControl<TextBlock>("DataCheckBannerText")));
+            Assert.Equal(["stable", "BETA", "stable"], BoldRuns.BoldPiecesOf(main.GetControl<TextBlock>("SourceSwitchBannerText")));
         });
     }
 
@@ -1284,7 +1327,7 @@ public sealed class MainWindowTests : IDisposable
             install.IsEnabled = false;
             viewNotes.IsEnabled = false;
             dismiss.IsEnabled = false;
-            text.Text = "Downloading update...";
+            NoticeEmphasis.Show(text, "Downloading update...");
 
             main.RestoreUpdateBannerAfterFailedInstallForTests();
 
@@ -1295,8 +1338,8 @@ public sealed class MainWindowTests : IDisposable
             Assert.True(dismiss.IsEnabled);
 
             // And it no longer claims to still be downloading.
-            Assert.DoesNotContain("Downloading", text.Text!);
-            Assert.Contains("could not be installed", text.Text!);
+            Assert.DoesNotContain("Downloading", NoticeEmphasis.TextOf(text));
+            Assert.Contains("could not be installed", NoticeEmphasis.TextOf(text));
         });
     }
 

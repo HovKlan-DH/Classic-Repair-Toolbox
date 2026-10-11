@@ -230,5 +230,35 @@ namespace CRT.Data.Tests
             Assert.True(cited.Count > 1000, $"Only {cited.Count} cited files were found.");
             Assert.Empty(refusals);
         }
+
+        // ###########################################################################################
+        // *** EVERY SHIPPED KiCad SCHEMATIC NAMES ITS SHEETS INSIDE ITS "KiCad data" FOLDER
+        // (security review, 2026-10-11). *** KiCadSheetReferences refuses a schematic naming a sheet
+        // anywhere else, or one that is not a .kicad_sch (code review, 2026-10-11), and a board's
+        // KiCad data travels in its submissions - so a rule refusing a published project would make
+        // that board unsubmittable. Every .kicad_sch in the tree, whether a row cites it or not.
+        // ###########################################################################################
+        [Fact]
+        public void Every_shipped_KiCad_schematic_names_its_sheets_inside_its_KiCad_folder()
+        {
+            string dataRoot = SubmissionRulesShippedDataTests.DataRoot();
+            var refusals = new List<string>();
+            int sheetFiles = 0;
+
+            foreach (string full in Directory.EnumerateFiles(dataRoot, "*.kicad_sch", SearchOption.AllDirectories))
+            {
+                string path = Path.GetRelativePath(dataRoot, full).Replace(Path.DirectorySeparatorChar, '/');
+                string content = File.ReadAllText(full);
+
+                sheetFiles += KiCadSheetReferences.Find(new StringReader(content)).Count();
+
+                if (!KiCadSheetReferences.Check(path, new StringReader(content), out string reason))
+                    refusals.Add($"{path}: {reason}");
+            }
+
+            // The shipped tree has hierarchical projects, so the rule is exercised on real sheets.
+            Assert.True(sheetFiles > 0, "No shipped KiCad schematic names a child sheet.");
+            Assert.Empty(refusals);
+        }
     }
 }

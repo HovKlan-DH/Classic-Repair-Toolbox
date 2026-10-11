@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
@@ -93,8 +94,9 @@ namespace CRT
         // ###########################################################################################
         private void ShowDataSyncDisabledBanner()
         {
-            this.SyncBannerText.Text =
-                "Data synchronization has been disabled because the board Excel data was edited locally. Re-enable it in the \"Configuration\" tab when safe.";
+            NoticeEmphasis.Show(
+                this.SyncBannerText,
+                "Data synchronization has been disabled because the board Excel data was edited locally. Re-enable it in the \"Configuration\" tab when safe.");
             this.SyncBanner.IsVisible = true;
             this._isShowingDataSyncDisabledBanner = true;
         }
@@ -330,7 +332,7 @@ namespace CRT
             }
 
             this.CancelNoticeHide(this.DataCheckBanner);
-            this.DataCheckBannerText.Text = notice.Text;
+            NoticeEmphasis.Show(this.DataCheckBannerText, notice.Text);
             this.DataCheckBannerRefreshButton.IsVisible = notice.OffersRefresh;
             this.DataCheckBanner.IsVisible = true;
 
@@ -347,10 +349,10 @@ namespace CRT
 
             if (this.thisIsDataCheckOnCard)
             {
-                this.DataCheckBannerText.Text = DataSyncStatusTip.Checking(
+                NoticeEmphasis.Show(this.DataCheckBannerText, DataSyncStatusTip.Checking(
                     AppConfig.GetOnlineSourceLabel(),
                     this.thisDataSyncProgress,
-                    this._currentSyncFileRelativePath);
+                    this._currentSyncFileRelativePath));
             }
         }
 

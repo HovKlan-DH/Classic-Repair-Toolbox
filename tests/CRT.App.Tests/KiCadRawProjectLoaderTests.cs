@@ -393,6 +393,78 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
         Assert.Contains(root.Project.Views, view => view.DisplayName == "Power supply");
     }
 
+    // ###########################################################################################
+    // *** A CHILD SHEET IS READ ONLY FROM THE BOARD'S OWN KiCad FILES (security review,
+    // 2026-10-11). *** A sheet names its child by a path written INSIDE the file, and a contributed
+    // file can write any path there. A "Sheetfile" of "//server/share/x.kicad_sch" made every
+    // Windows CRT that showed the board open an SMB connection to that server - handing it the
+    // user's NTLM hash - with no click beyond picking the board. A child is now followed only when
+    // it is one of the files the loader was handed, or a .kicad_sch inside its parent's own folder.
+    //
+    // These name a real LOCAL file outside the folder, never a network path, so a regression fails
+    // here without reaching out to anything.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_child_sheet_named_by_an_absolute_path_is_not_read()
+    {
+        string outside = this.thisWorkspace.WriteFile(
+            Path.Combine("elsewhere", "outside.kicad_sch"), KiCadFixtures.SchematicChildSheet);
+
+        string parent = this.thisWorkspace.WriteFile(
+            Path.Combine("KiCad data", "root.kicad_sch"),
+            KiCadFixtures.SchematicRootWithChildSheet.Replace("child.kicad_sch", outside.Replace('\\', '/')));
+
+        KiCadProjectRoot? root = await this.LoadAsync(parent);
+
+        Assert.Equal("root.kicad_sch", Assert.Single(root!.Schematics).Filename);
+    }
+
+    [Fact]
+    public async Task A_child_sheet_named_by_a_path_leading_out_of_its_folder_is_not_read()
+    {
+        this.thisWorkspace.WriteFile(Path.Combine("elsewhere", "outside.kicad_sch"), KiCadFixtures.SchematicChildSheet);
+
+        string parent = this.thisWorkspace.WriteFile(
+            Path.Combine("KiCad data", "root.kicad_sch"),
+            KiCadFixtures.SchematicRootWithChildSheet.Replace("child.kicad_sch", "../elsewhere/outside.kicad_sch"));
+
+        KiCadProjectRoot? root = await this.LoadAsync(parent);
+
+        Assert.Equal("root.kicad_sch", Assert.Single(root!.Schematics).Filename);
+    }
+
+    // The two ways a real project's child IS reached stay open: a page in a sub-folder that the
+    // loader was not handed, and a page the loader WAS handed, however the parent spells the way to it.
+    [Fact]
+    public async Task A_child_sheet_in_a_sub_folder_of_its_parent_is_still_read()
+    {
+        string parent = this.thisWorkspace.WriteFile(
+            "root.kicad_sch",
+            KiCadFixtures.SchematicRootWithChildSheet.Replace("child.kicad_sch", "Pages/child.kicad_sch"));
+
+        this.thisWorkspace.WriteFile(Path.Combine("Pages", "child.kicad_sch"), KiCadFixtures.SchematicChildSheet);
+
+        KiCadProjectRoot? root = await this.LoadAsync(parent);
+
+        Assert.Equal(2, root!.Schematics.Count);
+        Assert.Contains(root.Project.Views, view => view.DisplayName == "Power supply");
+    }
+
+    [Fact]
+    public async Task A_child_sheet_the_loader_was_handed_is_followed_even_through_dot_dot()
+    {
+        string parent = this.thisWorkspace.WriteFile(
+            Path.Combine("Main", "root.kicad_sch"),
+            KiCadFixtures.SchematicRootWithChildSheet.Replace("child.kicad_sch", "../Pages/child.kicad_sch"));
+
+        string child = this.thisWorkspace.WriteFile(Path.Combine("Pages", "child.kicad_sch"), KiCadFixtures.SchematicChildSheet);
+
+        KiCadProjectRoot? root = await this.LoadAsync(parent, child);
+
+        Assert.Equal(2, root!.Schematics.Count);
+        Assert.Contains(root.Project.Views, view => view.DisplayName == "Power supply");
+    }
+
     [Fact]
     public async Task Sheets_that_only_reference_each_other_are_still_loaded_once_each()
     {

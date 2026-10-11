@@ -73,12 +73,15 @@ help for others):
 
 The `Test IC with MiniPro programmer` button only appears for components that are categorized as an
 `IC` and that have a test in CRT's test catalogue. A component is matched by its "Technical name or
-value" (e.g. `74LS139`; `7406` matches the `74LS06` test), not by its part number.
+value" (e.g. `74LS139`; `7406` matches the `74LS06` test), not by its part number. A few ICs from
+other logic families have the same pins and truth table as a 74LS IC, and use its test: `7402`,
+`7406`, `7407`, `74F32` and `74HCU04`.
 
-The catalogue currently holds 29 of the 74-series logic ICs plus the C64 PLA (`906114-01`). 28 of
-the 74-series ICs can be run; the `74LS193` is a "functional-only" part, so its button opens the
-panel but `Run test` stays greyed out. The catalogue is part of the online-synchronized data, so new
-tests can arrive without a new version of CRT.
+The catalogue currently holds 36 of the 74-series logic ICs, the `4066` bilateral switch, the `556`
+timer and the C64 PLA (`906114-01`), and every one of them can be run. Among them are ICs that
+remember something - the flip-flop `74LS74`, the latch `74LS373` and the counter `74LS193` - which
+are tested as a sequence of steps rather than as a truth table. The catalogue is part of the
+online-synchronized data, so new tests can arrive without a new version of CRT.
 
 ## How to test a logic IC in CRT?
 
@@ -87,7 +90,9 @@ tests can arrive without a new version of CRT.
   popup
   * Click the `Test IC with MiniPro programmer` button
   * The `Test depth` shows how many test vectors are run; there is nothing to choose
-  * Click the `Run test` button - it should finish almost instantly
+  * Click the `Run test` button - most ICs finish almost instantly; the `74LS153` and `74LS133`
+    run thousands of test vectors and take a little longer, with the elapsed time shown beside the
+    buttons
 
 ## How to test a C64 PLA IC in CRT?
 
@@ -105,8 +110,9 @@ programmer reported, which is useful when a test fails. `Close MiniPro Test` ret
 ## Important note for test results
 
 The result reads PASS or FAIL. You can for sure trust the result if the test reports a FAIL - then
-the IC is for sure broken, and CRT names the failing pins when it can - but if the test reports a
-PASS, then you need to pay attention to this fact:
+the IC is for sure broken, and CRT names the failing pins when it can. Before you throw an IC away,
+check that it sits fully in the socket with the lever closed, and run the test again - a badly
+seated IC fails too. If the test reports a PASS, then you need to pay attention to this fact:
 
 * The truth-table is tested OK - no issues in that, so logically the IC is working
 * Timing is **not** tested, so in some cases it could _potentially_ be problematic or fail in the
@@ -115,3 +121,17 @@ PASS, then you need to pay attention to this fact:
 The reason for this is that the MiniPro hardware (TL866/T48/T56) is simply not fast enough for this
 timing test! As a best guess, the IC will most likely work without any issues in the C64 if it tested
 OK in CRT.
+
+For the `4066` bilateral switch, a PASS means that every switch opens and closes when it should, and
+passes both a low and a high level in both directions. It does not measure how well a closed switch
+passes an analog signal, nor a small leak in an open one - and that can still matter where the switch
+carries an analog signal, such as the C64's paddle inputs.
+
+For the `74LS74`, `74LS373` and `74LS193`, the test is a sequence of steps that goes through every
+function in the datasheet - for example clear, preset and clocking for the flip-flop, holding a 0 and
+a 1 for the latch, and counting up and down through all 16 states for the counter. A PASS means every
+one of those functions works; no test can try every possible order of events.
+
+For the `556` timer, a PASS means that each of its two timers sets, resets, holds, and drives its
+output and discharge pins. The test does not measure timing, the exact trigger and threshold levels,
+or how much current the output can deliver.

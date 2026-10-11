@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "id": "74ls74",
+  "match": [
+    "74LS74"
+  ],
+  "description": "Dual D-type flip-flop with preset and clear",
+  "kind": "logic-sequential",
+  "support": "testable",
+  "coverage": "functional",
+  "inputs": 8,
+  "pinCount": 14,
+  "voltage": 5,
+  "deviceName": "74LS74 (CRT)",
+  "vectors": [
+    "0001LHGHL1000V",
+    "1001LHGHL1010V",
+    "1101LHGHL1C10V",
+    "11C1HLGHL1010V",
+    "1101HLGHL1011V",
+    "1001HLGLH0011V",
+    "10C1LHGLH0001V",
+    "1001LHGLH0C01V",
+    "1000HLGLH0001V",
+    "1001HLGLH1001V",
+    "0001LHGHL1C01V",
+    "0000HHGHL1001V",
+    "0001LHGHL1000V",
+    "0101LHGHL1001V",
+    "01C1LHGHL1011V",
+    "0101LHGLH1C11V",
+    "1101LHGLH1011V",
+    "1100HLGLH1001V",
+    "1000HLGHL1C01V",
+    "10C0HLGHL1001V",
+    "1000HLGLH0001V",
+    "1001HLGLH1001V",
+    "10C1LHGHL1000V",
+    "1001LHGHH0000V"
+  ],
+  "note": "Sequential part: tested as a sequence through every row of the function table (clear, preset, both, clocking a 0 and a 1, holding). Not every possible history; no timing."
+}

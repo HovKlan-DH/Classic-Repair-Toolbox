@@ -1079,36 +1079,13 @@ namespace CRT
         internal static void ShowCounts(TextBlock block, IReadOnlyList<ReviewNoteRun> runs) =>
             TabMaintainer.ShowRuns(block, runs.Select(run => (run.Text, run.IsCount)).ToList());
 
-        // ###########################################################################################
-        // Text in pieces, the marked ones bold. With nothing marked it is plain Text, which lays out
-        // cheaper. With a bold piece the words are in Inlines and Text is NULL - read one through
-        // TextOf, never through Text.
-        // ###########################################################################################
-        private static void ShowRuns(TextBlock block, IReadOnlyList<(string Text, bool IsBold)> runs)
-        {
-            block.Inlines?.Clear();
-            block.Text = null;
-
-            if (!runs.Any(run => run.IsBold))
-            {
-                block.Text = string.Concat(runs.Select(run => run.Text));
-                return;
-            }
-
-            block.Inlines ??= new Avalonia.Controls.Documents.InlineCollection();
-
-            foreach ((string text, bool isBold) in runs)
-            {
-                block.Inlines.Add(new Avalonia.Controls.Documents.Run(text)
-                {
-                    FontWeight = isBold ? FontWeight.Bold : block.FontWeight
-                });
-            }
-        }
+        // Text in pieces, the marked ones bold - Handlers/Theme/BoldRuns, which Main's notice cards
+        // write through too. With a bold piece Text is NULL - read one through TextOf.
+        private static void ShowRuns(TextBlock block, IReadOnlyList<(string Text, bool IsBold)> runs) =>
+            Handlers.Theming.BoldRuns.Show(block, runs);
 
         // What a block says, whether it holds plain Text or bold pieces in Inlines - for tests.
-        internal static string TextOf(TextBlock block) =>
-            block.Text ?? string.Concat(block.Inlines?.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text) ?? []);
+        internal static string TextOf(TextBlock block) => Handlers.Theming.BoldRuns.TextOf(block);
 
         // -----------------------------------------------------------------------------------
         // The three decisions (task 5)

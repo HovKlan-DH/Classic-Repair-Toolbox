@@ -2,7 +2,8 @@
   "schema": 1,
   "id": "74ls04",
   "match": [
-    "74LS04"
+    "74LS04",
+    "74HCU04"
   ],
   "description": "Hex inverter",
   "kind": "logic-combinational",

@@ -505,7 +505,11 @@ namespace CRT.Server.Handlers.Submissions
                         "the publish was stopped before any board file was changed.";
                 }
 
-                if (!SubmissionContentRules.Matches(file.RelativePath, blob.Head, out string reason))
+                // The finalise-time rules again - a KiCad schematic's sheets read from the whole
+                // file (KiCadSheetReferences) - so a submission queued before a rule existed cannot
+                // carry past it into BETA.
+                if (!SubmissionContentRules.MatchesWholeFile(
+                        file.RelativePath, blob.Head, () => this.thisBlobs.OpenText(file.Sha256), out string reason))
                 {
                     return $"[{file.RelativePath}] cannot be published: {reason} Nothing was changed.";
                 }

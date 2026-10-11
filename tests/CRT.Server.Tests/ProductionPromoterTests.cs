@@ -112,6 +112,45 @@ namespace CRT.Server.Tests
             Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Data.xlsx")));
         }
 
+        // ###########################################################################################
+        // *** A KiCad SCHEMATIC IN BETA NAMING A SHEET CRT MAY NOT FOLLOW NEVER REACHES STABLE (code
+        // review, 2026-10-11). *** BETA can hold one approved before the server had the rule, and
+        // every CRT already installed follows whatever its sheets name - so the promotion reads
+        // BETA's schematics before it copies anything.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("//attacker.example/share/x.kicad_sch")]
+        [InlineData("board.kicad_pcb")]
+        public async Task A_KiCad_schematic_naming_a_sheet_CRT_may_not_follow_refuses_BEFORE_anything_is_written(string sheetFile)
+        {
+            PromotionFile image = this.PutInBeta("Commodore/C64/250407/a.png", "a");
+            PromotionFile schematic = this.PutInBeta(
+                "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                $"(kicad_sch (sheet (property \"Sheetname\" \"x\") (property \"Sheetfile\" \"{sheetFile}\")))");
+
+            PromotionCopyOutcome outcome = await ProductionPromoter.CopyAsync([image, schematic], this.thisBeta, this.thisProduction);
+
+            Assert.False(outcome.IsDone);
+            Assert.Equal(0, outcome.FilesCopied);
+            Assert.Contains("[Commodore/C64/250407/KiCad data/root.kicad_sch] cannot be published to the stable source", outcome.Error, StringComparison.Ordinal);
+            Assert.Contains(sheetFile, outcome.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/a.png")));
+        }
+
+        // A real project's pages go through.
+        [Fact]
+        public async Task A_KiCad_schematic_naming_its_pages_is_copied()
+        {
+            PromotionFile schematic = this.PutInBeta(
+                "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                "(kicad_sch (sheet (property \"Sheetname\" \"CPU\") (property \"Sheetfile\" \"Pages/cpu.kicad_sch\")))");
+
+            PromotionCopyOutcome outcome = await ProductionPromoter.CopyAsync([schematic], this.thisBeta, this.thisProduction);
+
+            Assert.True(outcome.IsDone, outcome.Error);
+            Assert.True(File.Exists(this.InProduction("Commodore/C64/250407/KiCad data/root.kicad_sch")));
+        }
+
         [Fact]
         public async Task A_file_gone_from_BETA_refuses_BEFORE_anything_is_written()
         {

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "id": "74ls145",
+  "match": [
+    "74LS145"
+  ],
+  "description": "BCD-to-decimal decoder/driver, open-collector",
+  "kind": "logic-combinational",
+  "support": "testable",
+  "coverage": "exhaustive",
+  "inputs": 4,
+  "pinCount": 16,
+  "voltage": 5,
+  "deviceName": "74LS145 (CRT)",
+  "vectors": [
+    "LZZZZZZGZZZ0000V",
+    "ZLZZZZZGZZZ0001V",
+    "ZZLZZZZGZZZ0010V",
+    "ZZZLZZZGZZZ0011V",
+    "ZZZZLZZGZZZ0100V",
+    "ZZZZZLZGZZZ0101V",
+    "ZZZZZZLGZZZ0110V",
+    "ZZZZZZZGLZZ0111V",
+    "ZZZZZZZGZLZ1000V",
+    "ZZZZZZZGZZL1001V",
+    "ZZZZZZZGZZZ1010V",
+    "ZZZZZZZGZZZ1011V",
+    "ZZZZZZZGZZZ1100V",
+    "ZZZZZZZGZZZ1101V",
+    "ZZZZZZZGZZZ1110V",
+    "ZZZZZZZGZZZ1111V"
+  ]
+}

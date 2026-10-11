@@ -1,5 +1,6 @@
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -52,11 +53,11 @@ namespace CRT
                 this.thisSourceSwitchNoticeIds = shown.Select(receipt => receipt.SubmissionId).ToList();
 
                 this.SourceSwitchBanner.IsVisible = shown.Count > 0;
-                this.SourceSwitchBannerText.Text = shown.Count == 0
+                NoticeEmphasis.Show(this.SourceSwitchBannerText, shown.Count == 0
                     ? string.Empty
                     : this.thisSourceNoticeIsBetaTry
                         ? SubmissionReceiptPresenter.DescribeBetaTryNotice(shown, UserSettings.CheckDataOnLaunch)
-                        : SubmissionReceiptPresenter.DescribeSourceSwitchNotice(shown);
+                        : SubmissionReceiptPresenter.DescribeSourceSwitchNotice(shown));
             }
             catch (Exception ex)
             {

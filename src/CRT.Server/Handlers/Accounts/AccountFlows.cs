@@ -20,8 +20,9 @@ namespace CRT.Server.Handlers.Accounts
     //    existed reopens enumeration.
     //
     // 2. A LOGIN THAT FAILS TELLS YOU NOTHING ABOUT WHY. Unknown address, wrong password and
-    //    locked account are one answer. "No such account" would otherwise be a free account
-    //    enumeration oracle on the one endpoint everybody can reach.
+    //    locked account are one answer, given after the same Argon2 work. "No such account" -
+    //    in words or in a quicker reply - would otherwise be a free account enumeration oracle
+    //    on the one endpoint everybody can reach.
     //
     // 3. THE RATE LIMITER RUNS BEFORE THE HASHER. Argon2 allocates ~128 MiB per verification, so
     //    checking the password first and the limit second turns the limiter into decoration and
@@ -105,6 +106,11 @@ namespace CRT.Server.Handlers.Accounts
 
             string normalised = AccountRules.NormaliseEmail(request.Email);
 
+            // Hashed BEFORE the lookup, and thrown away when the address is taken (security
+            // review, 2026-10-11). Hashing only for a new account made a registration hundreds of
+            // milliseconds slower for an address nobody had - the same answer, told by the clock.
+            string passwordHash = await hasher.HashAsync(request.Password, cancellationToken);
+
             AccountRecord? existing = await store.FindByNormalisedEmailAsync(normalised, cancellationToken);
 
             if (existing is not null)
@@ -150,7 +156,7 @@ namespace CRT.Server.Handlers.Accounts
                 new NewAccount(
                     request.Email.Trim(),
                     normalised,
-                    hasher.Hash(request.Password!),
+                    passwordHash,
                     request.DisplayName!.Trim(),
                     now),
                 cancellationToken);
@@ -229,9 +235,10 @@ namespace CRT.Server.Handlers.Accounts
         // THE ORDER OF OPERATIONS IN HERE IS THE SECURITY DESIGN. Read it before changing it:
         //
         //   1. Rate limit FIRST, before any hashing. Argon2 allocates ~128 MiB per verification.
-        //   2. Find the account. If missing, STILL record a failure and answer the generic
-        //      result - otherwise the response time and the failure count both leak which
-        //      addresses exist.
+        //   2. Find the account. If missing or locked, STILL record a failure, STILL run one
+        //      Argon2 verification (Argon2PasswordHasher.VerifyWithoutAccountAsync), and answer the
+        //      generic result - otherwise the failure count and the response time both leak which
+        //      addresses exist. The time did leak, until the security review of 2026-10-11.
         //   3. Verify the password.
         //   4. Every failure answers the same thing.
         //
@@ -282,21 +289,27 @@ namespace CRT.Server.Handlers.Accounts
                 // Record the failure even though there is no account. Without this, an attacker
                 // can probe addresses indefinitely without ever tripping the limiter, and the
                 // difference in behaviour is itself the oracle.
+                //
+                // And spend what checking a password costs: answering before Argon2 ran was
+                // hundreds of milliseconds faster than a wrong password (security review,
+                // 2026-10-11).
+                await hasher.VerifyWithoutAccountAsync(request.Password, cancellationToken);
                 await store.RecordAuthFailureAsync(normalised, request.IpAddress, now, cancellationToken);
                 return LoginOutcome.Failed();
             }
 
             if (account.IsLocked)
             {
+                await hasher.VerifyWithoutAccountAsync(request.Password, cancellationToken);
                 await store.RecordAuthFailureAsync(normalised, request.IpAddress, now, cancellationToken);
 
-                // The SAME answer as a wrong password. A distinct "your account is locked" reply
-                // confirms the address exists.
+                // The SAME answer as a wrong password, in the same time. A distinct "your account
+                // is locked" reply - or a quicker one - confirms the address exists.
                 return LoginOutcome.Failed();
             }
 
             // ---- 3. Verify. ----
-            PasswordVerificationResult verification = hasher.Verify(request.Password, account.PasswordHash);
+            PasswordVerificationResult verification = await hasher.VerifyAsync(request.Password, account.PasswordHash, cancellationToken);
 
             if (!verification.IsValid)
             {
@@ -326,7 +339,7 @@ namespace CRT.Server.Handlers.Accounts
             // The parameters were raised since this password was last hashed, and the plaintext is
             // legitimately in hand for this one instant - so upgrade it now.
             if (verification.NeedsRehash)
-                await store.SetPasswordHashAsync(account.Id, hasher.Hash(request.Password), cancellationToken);
+                await store.SetPasswordHashAsync(account.Id, await hasher.HashAsync(request.Password, cancellationToken), cancellationToken);
 
             // A success clears the count: someone who gets it right on the fourth try is not an
             // attacker and must not be locked out afterwards.
@@ -662,7 +675,7 @@ namespace CRT.Server.Handlers.Accounts
             if (account is null)
                 return TokenRedemptionOutcome.Invalid;
 
-            await store.SetPasswordHashAsync(account.Id, hasher.Hash(newPassword!), cancellationToken);
+            await store.SetPasswordHashAsync(account.Id, await hasher.HashAsync(newPassword!, cancellationToken), cancellationToken);
             await store.ConsumeTokenAsync(record.Id, now, cancellationToken);
 
             // Any OTHER reset link already in flight stops working.

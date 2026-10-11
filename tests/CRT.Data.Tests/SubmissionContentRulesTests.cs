@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Handlers.DataHandling;
@@ -181,6 +182,57 @@ namespace CRT.Data.Tests
 
             byte[] binary = [.. Encoding.UTF8.GetBytes("(kicad_pcb"), 0, 0x4D, 0x5A];
             Assert.False(SubmissionContentRulesTests.Matches("a.kicad_pcb", binary));
+        }
+
+        // ###########################################################################################
+        // *** ONE CONTENT CHECK FOR FINALISE AND THE PUBLISH (code review, 2026-10-11). *** The
+        // opening bytes, then - for a KiCad schematic only - every sheet the whole file names. The
+        // whole file is opened only when that second part applies, and only once the bytes passed.
+        // ###########################################################################################
+        [Fact]
+        public void The_whole_file_check_reads_a_schematics_sheets_after_its_opening_bytes()
+        {
+            const string Schematic = "Commodore/C64/250407/KiCad data/root.kicad_sch";
+            string naming = "(kicad_sch (sheet (property \"Sheetfile\" \"//attacker.example/share/x.kicad_sch\")))";
+
+            byte[] head = Encoding.UTF8.GetBytes(naming);
+            int opened = 0;
+
+            Assert.False(SubmissionContentRules.MatchesWholeFile(
+                Schematic, head, () => { opened++; return new StringReader(naming); }, out string reason));
+
+            Assert.Equal(1, opened);
+            Assert.Contains("//attacker.example/share/x.kicad_sch", reason, StringComparison.Ordinal);
+
+            Assert.True(SubmissionContentRules.MatchesWholeFile(
+                Schematic, head, () => new StringReader("(kicad_sch (sheet (property \"Sheetfile\" \"Pages/cpu.kicad_sch\")))"), out reason));
+            Assert.Empty(reason);
+        }
+
+        [Fact]
+        public void The_whole_file_check_opens_nothing_when_the_bytes_fail_or_no_rule_reads_further()
+        {
+            int opened = 0;
+            Func<TextReader?> open = () => { opened++; return new StringReader(string.Empty); };
+
+            Assert.False(SubmissionContentRules.MatchesWholeFile(
+                "Commodore/C64/250407/KiCad data/root.kicad_sch", SubmissionContentRulesTests.WindowsExecutable, open, out string reason));
+            Assert.Contains("KiCad", reason, StringComparison.Ordinal);
+
+            Assert.True(SubmissionContentRules.MatchesWholeFile(
+                "Commodore/C64/250407/KiCad data/board.kicad_pcb", Encoding.UTF8.GetBytes("(kicad_pcb)"), open, out _));
+            Assert.True(SubmissionContentRules.MatchesWholeFile("a.png", SubmissionContentRulesTests.Png, open, out _));
+
+            Assert.Equal(0, opened);
+        }
+
+        // A blob gone since its caller verified it has no text to read: the sheet part passes - the
+        // publish verifies every blob again before it writes anything.
+        [Fact]
+        public void The_whole_file_check_passes_the_sheet_part_of_a_file_that_has_gone()
+        {
+            Assert.True(SubmissionContentRules.MatchesWholeFile(
+                "Commodore/C64/250407/KiCad data/root.kicad_sch", Encoding.UTF8.GetBytes("(kicad_sch)"), () => null, out _));
         }
 
         // Images need only their signature; text needs the whole sample. Reading 64 KB of every one

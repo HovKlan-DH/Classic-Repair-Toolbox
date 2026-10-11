@@ -153,21 +153,37 @@ namespace CRT
                 var carried = new TextBlock { TextWrapping = TextWrapping.Wrap };
                 TabMaintainer.ShowCounts(carried, ProductionDisplay.CarryingRuns(submission, now));
                 panel.Children.Add(carried);
-
-                // Its contributor discarded their own draft since (owner request, 2026-09-28): said
-                // under their line, with what to do - push it back and ask them.
-                if (submission.DraftDiscardedUtc is not null)
-                {
-                    panel.Children.Add(new TextBlock
-                    {
-                        Text = DraftDiscardWording.BetaWarning(submission),
-                        TextWrapping = TextWrapping.Wrap,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = Brushes.IndianRed,
-                        Margin = new Avalonia.Thickness(0, 0, 0, 4)
-                    });
-                }
             }
+        }
+
+        // ###########################################################################################
+        // What to settle before publishing, in the amber notice panel under the board's name (owner
+        // request, 2026-10-11 - see the markup): a contribution whose contributor discarded the
+        // draft since (owner request, 2026-09-28), with what to do - push it back and ask. One
+        // NoticeText line per such contribution, the panel gone with none, or with no plan.
+        //
+        // Each line says which contribution, and names its contributor in bold (code review,
+        // 2026-10-11; DraftDiscardWording.BetaWarningRuns) - SemiBold on the block as the queue's
+        // panel has it, so the runs keep it.
+        // ###########################################################################################
+        private void ShowBeforePublishing(ProductionPlanView? plan)
+        {
+            if (this.FindControl<StackPanel>("BeforePublishingPanel") is not StackPanel panel)
+                return;
+
+            panel.Children.Clear();
+
+            foreach (CarriedSubmission submission in (plan?.Carrying ?? []).Where(submission => submission.DraftDiscardedUtc is not null))
+            {
+                var line = new TextBlock { FontWeight = FontWeight.SemiBold };
+                line.Classes.Add("NoticeText");
+
+                TabMaintainer.ShowCounts(line, DraftDiscardWording.BetaWarningRuns(submission));
+                panel.Children.Add(line);
+            }
+
+            if (this.FindControl<Border>("BeforePublishingNotice") is Border notice)
+                notice.IsVisible = panel.Children.Count > 0;
         }
 
         // ###########################################################################################
@@ -200,6 +216,7 @@ namespace CRT
             // replaced).
             // ###########################################################################################
             this.ShowFiles(plan, row);
+            this.ShowBeforePublishing(plan);
 
             // Never carried from one board to the next - see the markup.
             check.IsChecked = false;

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using Handlers.DataHandling;
 
 namespace Handlers.MaintainerHandling
@@ -42,19 +44,39 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         // On "Beta > Prod", when the BETA state it would publish carries such a submission - the
         // owner's own advice: push it back to the queue and ask.
+        //
+        // In the amber panel under the board's name, apart from the carried submissions' lines - so
+        // it says WHICH one (code review, 2026-10-11): its number, and the description its carried
+        // line shows. The contributor is in bold, as on that line (PersonRuns); with no address it
+        // is "the contributor", plain.
         // ###########################################################################################
-        public static string BetaWarning(CarriedSubmission submission)
+        public static IReadOnlyList<ReviewNoteRun> BetaWarningRuns(CarriedSubmission submission)
         {
             ArgumentNullException.ThrowIfNull(submission);
 
-            string who = string.IsNullOrWhiteSpace(submission.ContactEmail) ? "The contributor" : submission.ContactEmail.Trim();
+            string which = string.IsNullOrWhiteSpace(submission.Comment)
+                ? $"#{submission.Id.ToString(CultureInfo.InvariantCulture)} - "
+                : $"#{submission.Id.ToString(CultureInfo.InvariantCulture)} ({submission.Comment.Trim()}) - ";
+
             string when = submission.DraftDiscardedUtc is DateTimeOffset at
                 ? $" on {SubmissionReceiptPresenter.FormatDate(at)}"
                 : string.Empty;
 
-            return $"{who} discarded the draft of this board{when}, after it was accepted into BETA. " +
+            string rest =
+                $" discarded the draft of this board{when}, after it was accepted into BETA. " +
                 "Consider pushing it back to the queue and checking with the contributor before publishing it to the stable source.";
+
+            return
+            [
+                PersonRuns.Plain(which),
+                PersonRuns.PersonOr(submission.ContactEmail, "the contributor"),
+                PersonRuns.Plain(rest)
+            ];
         }
+
+        // What BetaWarningRuns says, as one text.
+        public static string BetaWarning(CarriedSubmission submission) =>
+            PersonRuns.Text(DraftDiscardWording.BetaWarningRuns(submission));
 
         // The Boards screen's history line for the event.
         public static string HistoryWhat(string submissionNumber) =>

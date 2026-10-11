@@ -33,51 +33,51 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void A_password_verifies_against_its_own_hash()
+        public async Task A_password_verifies_against_its_own_hash()
         {
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            string stored = hasher.Hash("correct horse battery staple");
+            string stored = await hasher.HashAsync("correct horse battery staple");
 
-            Assert.True(hasher.Verify("correct horse battery staple", stored).IsValid);
+            Assert.True((await hasher.VerifyAsync("correct horse battery staple", stored)).IsValid);
         }
 
         [Fact]
-        public void A_wrong_password_does_not_verify()
+        public async Task A_wrong_password_does_not_verify()
         {
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            string stored = hasher.Hash("correct horse battery staple");
+            string stored = await hasher.HashAsync("correct horse battery staple");
 
-            Assert.False(hasher.Verify("correct horse battery stapler", stored).IsValid);
+            Assert.False((await hasher.VerifyAsync("correct horse battery stapler", stored)).IsValid);
         }
 
         [Fact]
-        public void Verification_is_case_sensitive()
+        public async Task Verification_is_case_sensitive()
         {
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            string stored = hasher.Hash("MyPassphrase123");
+            string stored = await hasher.HashAsync("MyPassphrase123");
 
-            Assert.False(hasher.Verify("mypassphrase123", stored).IsValid);
+            Assert.False((await hasher.VerifyAsync("mypassphrase123", stored)).IsValid);
         }
 
         [Fact]
-        public void The_same_password_hashed_twice_gives_different_stored_values()
+        public async Task The_same_password_hashed_twice_gives_different_stored_values()
         {
             // The salt is per-password and random. Without this, two people choosing the same
             // password produce identical stored hashes, so one cracked hash reveals every account
             // sharing it - and the stored values themselves leak who shares a password.
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            string first = hasher.Hash("the same password");
-            string second = hasher.Hash("the same password");
+            string first = await hasher.HashAsync("the same password");
+            string second = await hasher.HashAsync("the same password");
 
             Assert.NotEqual(first, second);
 
             // Both must still verify - different salts, same password.
-            Assert.True(hasher.Verify("the same password", first).IsValid);
-            Assert.True(hasher.Verify("the same password", second).IsValid);
+            Assert.True((await hasher.VerifyAsync("the same password", first)).IsValid);
+            Assert.True((await hasher.VerifyAsync("the same password", second)).IsValid);
         }
 
         [Theory]
@@ -88,17 +88,51 @@ namespace CRT.Server.Tests
         [InlineData("$argon2i$v=19$m=8192,t=1,p=1$c2FsdA$aGFzaA")]   // wrong variant
         [InlineData("$argon2id$v=16$m=8192,t=1,p=1$c2FsdA$aGFzaA")]  // old Argon2 version
         [InlineData("$argon2id$v=19$m=0,t=1,p=1$c2FsdA$aGFzaA")]     // zero cost
-        public void A_malformed_stored_hash_fails_the_login_rather_than_throwing(string? stored)
+        public async Task A_malformed_stored_hash_fails_the_login_rather_than_throwing(string? stored)
         {
             // The caller is an authentication endpoint. An unparseable stored hash must mean "this
             // login fails", not a 500 - which would tell an attacker that this particular account
             // is interesting.
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            PasswordVerificationResult result = hasher.Verify("any password", stored);
+            PasswordVerificationResult result = await hasher.VerifyAsync("any password", stored);
 
             Assert.False(result.IsValid);
             Assert.False(result.NeedsRehash);
+
+            // ...and costs what a real verification costs (security review, 2026-10-11): failing
+            // at once would single the account out by how quickly the login answered.
+            Assert.Equal(1, hasher.Computations);
+        }
+
+        // ###########################################################################################
+        // *** A VERIFICATION WITH NO ACCOUNT FAILS - AT THE COST OF A REAL ONE (security review,
+        // 2026-10-11). *** LoginAsync calls it for an unknown address and a locked account, so the
+        // time a failed login takes says nothing about which one it was.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_verification_with_no_account_fails_after_one_computation()
+        {
+            var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
+
+            PasswordVerificationResult result = await hasher.VerifyWithoutAccountAsync("correct horse battery staple");
+
+            Assert.False(result.IsValid);
+            Assert.False(result.NeedsRehash);
+            Assert.Equal(1, hasher.Computations);
+        }
+
+        // Exactly as Verify: an empty password is refused before any work, and LoginAsync refuses
+        // one before it looks anybody up, so that answer says nothing about an account.
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        public async Task A_verification_with_no_account_and_no_password_costs_nothing(string? password)
+        {
+            var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
+
+            Assert.False((await hasher.VerifyWithoutAccountAsync(password)).IsValid);
+            Assert.Equal(0, hasher.Computations);
         }
 
         // -----------------------------------------------------------------------------------
@@ -106,12 +140,12 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void The_stored_hash_carries_the_parameters_it_was_made_with()
+        public async Task The_stored_hash_carries_the_parameters_it_was_made_with()
         {
             var options = PasswordHashingTests.FastOptions();
             var hasher = new Argon2PasswordHasher(options);
 
-            string stored = hasher.Hash("a password");
+            string stored = await hasher.HashAsync("a password");
 
             Assert.True(PasswordHashEncoding.TryDecode(stored, out DecodedPasswordHash decoded));
             Assert.Equal(options.Argon2MemoryKib, decoded.MemoryKib);
@@ -120,14 +154,14 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void The_stored_hash_is_a_standard_PHC_string()
+        public async Task The_stored_hash_is_a_standard_PHC_string()
         {
             // Interoperability is deliberate: a hash written here should be readable by any other
             // Argon2 implementation, so a future move off this library does not strand every
             // stored password.
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            string stored = hasher.Hash("a password");
+            string stored = await hasher.HashAsync("a password");
 
             Assert.StartsWith("$argon2id$v=19$m=", stored, StringComparison.Ordinal);
 
@@ -141,16 +175,16 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void Raising_the_cost_does_not_invalidate_existing_passwords()
+        public async Task Raising_the_cost_does_not_invalidate_existing_passwords()
         {
             // THE property the whole format exists for. A hash made with the old parameters must
             // still verify after the configuration is raised - verification reads the parameters
             // from the stored string, never from configuration.
             var weak = new ServerOptions { Argon2MemoryKib = 8192, Argon2Iterations = 1, Argon2Parallelism = 1 };
-            string storedUnderWeak = new Argon2PasswordHasher(weak).Hash("a password");
+            string storedUnderWeak = await new Argon2PasswordHasher(weak).HashAsync("a password");
 
             var strong = new ServerOptions { Argon2MemoryKib = 16384, Argon2Iterations = 2, Argon2Parallelism = 1 };
-            PasswordVerificationResult result = new Argon2PasswordHasher(strong).Verify("a password", storedUnderWeak);
+            PasswordVerificationResult result = await new Argon2PasswordHasher(strong).VerifyAsync("a password", storedUnderWeak);
 
             Assert.True(result.IsValid);
 
@@ -160,25 +194,25 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_hash_at_the_current_cost_is_not_rehashed()
+        public async Task A_hash_at_the_current_cost_is_not_rehashed()
         {
             var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions());
 
-            string stored = hasher.Hash("a password");
+            string stored = await hasher.HashAsync("a password");
 
-            Assert.False(hasher.Verify("a password", stored).NeedsRehash);
+            Assert.False((await hasher.VerifyAsync("a password", stored)).NeedsRehash);
         }
 
         [Fact]
-        public void A_hash_STRONGER_than_the_current_cost_is_not_downgraded()
+        public async Task A_hash_STRONGER_than_the_current_cost_is_not_downgraded()
         {
             // Rehashing on any difference rather than on being BELOW policy would silently weaken
             // a password whenever the configuration was lowered - the opposite of the intent.
             var strong = new ServerOptions { Argon2MemoryKib = 16384, Argon2Iterations = 2, Argon2Parallelism = 1 };
-            string storedUnderStrong = new Argon2PasswordHasher(strong).Hash("a password");
+            string storedUnderStrong = await new Argon2PasswordHasher(strong).HashAsync("a password");
 
             var weak = new ServerOptions { Argon2MemoryKib = 8192, Argon2Iterations = 1, Argon2Parallelism = 1 };
-            PasswordVerificationResult result = new Argon2PasswordHasher(weak).Verify("a password", storedUnderStrong);
+            PasswordVerificationResult result = await new Argon2PasswordHasher(weak).VerifyAsync("a password", storedUnderStrong);
 
             Assert.True(result.IsValid);
             Assert.False(result.NeedsRehash);
@@ -192,6 +226,117 @@ namespace CRT.Server.Tests
             var decoded = new DecodedPasswordHash(65536, 1, 2, [1], [2]);
 
             Assert.True(PasswordHashEncoding.NeedsRehash(decoded, 65536, 3, 2));
+        }
+
+        // -----------------------------------------------------------------------------------
+        // A wrong password costs the configured work, whatever its hash was made with.
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // *** A WRONG PASSWORD ON A CHEAPER HASH IS PADDED TO THE CONFIGURED COST (code review,
+        // 2026-10-11). *** After the cost was raised, an account not yet rehashed answered a wrong
+        // password sooner than an unknown address (VerifyWithoutAccountAsync), and the time said
+        // which addresses have accounts. Counted as work (memory x passes over lanes), not timed.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_wrong_password_on_a_hash_made_at_a_lower_cost_does_the_configured_work()
+        {
+            var weak = new ServerOptions { Argon2MemoryKib = 8192, Argon2Iterations = 1, Argon2Parallelism = 1 };
+            string storedUnderWeak = await new Argon2PasswordHasher(weak).HashAsync("a password");
+
+            var strong = new ServerOptions { Argon2MemoryKib = 16384, Argon2Iterations = 2, Argon2Parallelism = 1 };
+            var verifying = new Argon2PasswordHasher(strong);
+            var noAccount = new Argon2PasswordHasher(strong);
+
+            Assert.False((await verifying.VerifyAsync("not the password", storedUnderWeak)).IsValid);
+            await noAccount.VerifyWithoutAccountAsync("not the password");
+
+            Assert.Equal(Argon2PasswordHasher.Cost(16384, 2, 1), noAccount.Work);
+            Assert.Equal(noAccount.Work, verifying.Work);
+            Assert.Equal(2, verifying.Computations);
+        }
+
+        // The right password is not padded: it is about to be rehashed at the configured cost anyway.
+        [Fact]
+        public async Task The_right_password_on_a_hash_made_at_a_lower_cost_is_not_padded()
+        {
+            var weak = new ServerOptions { Argon2MemoryKib = 8192, Argon2Iterations = 1, Argon2Parallelism = 1 };
+            string storedUnderWeak = await new Argon2PasswordHasher(weak).HashAsync("a password");
+
+            var verifying = new Argon2PasswordHasher(new ServerOptions { Argon2MemoryKib = 16384, Argon2Iterations = 2, Argon2Parallelism = 1 });
+
+            Assert.True((await verifying.VerifyAsync("a password", storedUnderWeak)).IsValid);
+            Assert.Equal(1, verifying.Computations);
+        }
+
+        // A hash at the configured cost, or above it, already costs at least as much: nothing to add.
+        [Fact]
+        public async Task A_wrong_password_on_a_hash_at_or_above_the_configured_cost_is_not_padded()
+        {
+            var weak = new ServerOptions { Argon2MemoryKib = 8192, Argon2Iterations = 1, Argon2Parallelism = 1 };
+            var strong = new ServerOptions { Argon2MemoryKib = 16384, Argon2Iterations = 2, Argon2Parallelism = 1 };
+
+            var atCost = new Argon2PasswordHasher(weak);
+            Assert.False((await atCost.VerifyAsync("not the password", await new Argon2PasswordHasher(weak).HashAsync("a password"))).IsValid);
+            Assert.Equal(1, atCost.Computations);
+
+            var belowStored = new Argon2PasswordHasher(weak);
+            Assert.False((await belowStored.VerifyAsync("not the password", await new Argon2PasswordHasher(strong).HashAsync("a password"))).IsValid);
+            Assert.Equal(1, belowStored.Computations);
+        }
+
+        // ###########################################################################################
+        // The padding is the memory that costs the difference at the configured passes and lanes -
+        // and when only the memory was raised, the two computations together take the configured
+        // memory, as a configured computation does.
+        // ###########################################################################################
+        [Theory]
+        [InlineData(32768, 3, 2, 65536, 3, 2, 32768)]   // memory doubled: the other half
+        [InlineData(65536, 1, 2, 65536, 3, 2, 43691)]   // passes tripled: two thirds more at three passes
+        [InlineData(65536, 3, 1, 65536, 3, 2, 0)]       // one lane at the same memory already costs more
+        [InlineData(65536, 3, 2, 65536, 3, 2, 0)]       // the configured cost itself
+        [InlineData(65532, 3, 2, 65536, 3, 2, 0)]       // less than Argon2's smallest memory short
+        public void The_padding_makes_up_the_cost_at_the_configured_passes_and_lanes(
+            int storedMemoryKib, int storedIterations, int storedParallelism,
+            int memoryKib, int iterations, int parallelism,
+            int expected)
+        {
+            var stored = new DecodedPasswordHash(storedMemoryKib, storedIterations, storedParallelism, [1], [2]);
+
+            Assert.Equal(expected, Argon2PasswordHasher.PaddingMemoryKib(stored, memoryKib, iterations, parallelism));
+        }
+
+        // -----------------------------------------------------------------------------------
+        // No more computations at once than the machine has cores for.
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // *** COMPUTATIONS WAIT FOR A TURN (code review, 2026-10-11). *** Every unknown address
+        // costs a computation of ~128 MiB, and the limiter counts per address and per IP - so
+        // logins from many addresses could run any number at once. More than the cores can run
+        // would finish no sooner, only take more memory.
+        // ###########################################################################################
+        [Fact]
+        public async Task No_more_computations_run_at_once_than_the_hasher_has_turns_for()
+        {
+            var hasher = new Argon2PasswordHasher(PasswordHashingTests.FastOptions(), concurrentComputations: 1);
+
+            await Task.WhenAll(Enumerable.Range(0, 6).Select(index =>
+                Task.Run(() => hasher.VerifyWithoutAccountAsync($"password {index}"))));
+
+            Assert.Equal(6, hasher.Computations);
+            Assert.Equal(1, hasher.MostRunning);
+        }
+
+        [Theory]
+        [InlineData(8, 2, 4)]
+        [InlineData(4, 2, 2)]
+        [InlineData(2, 2, 1)]
+        [InlineData(1, 2, 1)]   // fewer cores than lanes: one at a time, never none
+        [InlineData(6, 1, 6)]
+        public void A_turn_for_every_computations_lanes_and_at_least_one(int processorCount, int parallelism, int expected)
+        {
+            Assert.Equal(expected, Argon2PasswordHasher.ConcurrentComputations(processorCount, parallelism));
         }
 
         // -----------------------------------------------------------------------------------

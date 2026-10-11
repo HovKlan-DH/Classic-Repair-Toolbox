@@ -39,23 +39,33 @@ public sealed class DraftDiscardWordingTests
         Assert.DoesNotContain("()", text, StringComparison.Ordinal);
     }
 
-    // The owner's own advice for BETA: push it back to the queue and ask.
+    // ###########################################################################################
+    // The owner's own advice for BETA: push it back to the queue and ask. In the amber panel, apart
+    // from the carried lines, so it says WHICH contribution (code review, 2026-10-11) - its number
+    // and the description its carried line shows - with the contributor in bold, as on that line.
+    // ###########################################################################################
     [Fact]
-    public void On_beta_it_names_the_contributor_and_suggests_pushing_it_back()
+    public void On_beta_it_says_which_contribution_names_the_contributor_and_suggests_pushing_it_back()
     {
-        string text = DraftDiscardWording.BetaWarning(
-            new CarriedSubmission(41, "dennis@example.com", "Change", Discarded.AddDays(-1), DraftDiscardedUtc: Discarded));
+        var submission = new CarriedSubmission(41, " dennis@example.com ", " Change ", Discarded.AddDays(-1), DraftDiscardedUtc: Discarded);
+        string text = DraftDiscardWording.BetaWarning(submission);
 
-        Assert.StartsWith("dennis@example.com discarded the draft of this board on 2026-September-28", text, StringComparison.Ordinal);
+        Assert.StartsWith("#41 (Change) - dennis@example.com discarded the draft of this board on 2026-September-28", text, StringComparison.Ordinal);
         Assert.Contains("pushing it back to the queue and checking with the contributor", text, StringComparison.Ordinal);
+
+        Assert.Equal(
+            ["dennis@example.com"],
+            DraftDiscardWording.BetaWarningRuns(submission).Where(run => run.IsCount).Select(run => run.Text));
     }
 
+    // Contributing needs no account, and a submission may have no description: the line still reads.
     [Fact]
-    public void On_beta_with_no_address_it_says_the_contributor()
+    public void On_beta_with_no_address_or_description_it_says_the_contributor_in_plain_text()
     {
-        string text = DraftDiscardWording.BetaWarning(new CarriedSubmission(41, "", null, null, DraftDiscardedUtc: Discarded));
+        var submission = new CarriedSubmission(41, "", null, null, DraftDiscardedUtc: Discarded);
 
-        Assert.StartsWith("The contributor discarded", text, StringComparison.Ordinal);
+        Assert.StartsWith("#41 - the contributor discarded", DraftDiscardWording.BetaWarning(submission), StringComparison.Ordinal);
+        Assert.DoesNotContain(DraftDiscardWording.BetaWarningRuns(submission), run => run.IsCount);
     }
 
     [Fact]

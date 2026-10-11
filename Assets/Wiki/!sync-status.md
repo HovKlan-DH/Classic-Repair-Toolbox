@@ -5,7 +5,7 @@
 
 # Wiki pages waiting to be pasted
 
-**12 pages waiting.**
+**13 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
@@ -21,5 +21,6 @@
 | `Getting-started.md` | Home > At the bench > Getting started |
 | `KiCad-folder.md` | Home > Data files > Overview > KiCad folder |
 | `Maintainer-tab.md` | Home > The tabs > Maintainer |
+| `MiniPro-programmer.md` | Home > At the bench > MiniPro programmer |
 
 <!-- crt:waiting-end -->

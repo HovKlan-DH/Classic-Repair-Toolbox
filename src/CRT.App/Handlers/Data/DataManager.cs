@@ -573,7 +573,9 @@ namespace Handlers.DataHandling
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            ReportStatus($"Checking data from the {AppConfig.GetOnlineSourceLabel()} - please wait...");
+            // Not "Checking data from the ... source - please wait...": that is the data-check card's
+            // heading already, and the card said it twice (DataSyncStatusTip.Checking).
+            ReportStatus("Checking board data files...");
             int remainingChangedCount = await OnlineServices.SyncFilesAsync(
                 manifest,
                 _dataRoot,
