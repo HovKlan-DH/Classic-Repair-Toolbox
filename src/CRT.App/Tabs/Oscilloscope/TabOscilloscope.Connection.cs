@@ -34,6 +34,10 @@ namespace CRT
         private Task? thisOscilloscopeAutoConnectTask;
         private bool thisHasLoggedAutomaticConnectPendingMessage;
 
+        // An automatic connect writes a failure only once, and only one with a hint
+        // (ScopeConnectionHint.ShouldWrite); cleared when a session is established.
+        private bool thisHasLoggedAutomaticConnectHint;
+
         private Main? thisMainWindow;
 
         // ###########################################################################################
@@ -202,6 +206,7 @@ namespace CRT
                 this.thisLastOscilloscopeConnectionState = true;
                 this.thisLastOscilloscopeImageSyncSignature = string.Empty;
                 this.thisHasLoggedAutomaticConnectPendingMessage = false;
+                this.thisHasLoggedAutomaticConnectHint = false;
                 this.InvalidateCachedTriggerLevelVolts();
                 this.InvalidateCachedTimeDivSeconds();
                 this.thisLastVoltsDivVolts = null;
@@ -236,9 +241,21 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                if (!isAutomaticReconnect)
+                string? hint = ScopeConnectionHint.ForFailure(
+                    ex,
+                    selectionSnapshot.Host,
+                    OperatingSystem.IsMacOS(),
+                    ScopeConnectionHint.IsInsideAppBundle(Environment.ProcessPath));
+
+                if (ScopeConnectionHint.ShouldWrite(isAutomaticReconnect, hint != null, this.thisHasLoggedAutomaticConnectHint))
                 {
                     this.AppendOutputLine("Critical", $"Oscilloscope communication failed: {ex.Message}");
+
+                    if (hint != null)
+                    {
+                        this.AppendOutputLine("Info", hint);
+                        this.thisHasLoggedAutomaticConnectHint |= isAutomaticReconnect;
+                    }
                 }
             }
             finally

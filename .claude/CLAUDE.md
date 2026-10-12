@@ -1152,5 +1152,31 @@ leaves nothing to clean up. The release body is written by hand and is off-limit
 followed by a step that fails the release unless every `.exe`/`.dll` in the full `.nupkg`, and
 `Setup.exe`, carries a valid signature. Do not go back to separate jsign steps around the pack - they
 could not reach the `Squirrel.exe` and launcher stub Velopack adds inside the package. The template
-must stay sequential (a YubiKey locks after three wrong PINs). macOS and Linux builds are not signed.
+must stay sequential (a YubiKey locks after three wrong PINs). Linux builds are not signed.
 There is no separate maintainer application to release any more.
+
+**macOS builds are signed AD HOC, and the job builds the `.app` itself** (2026-10-12, after a user's
+scope connect failed with "No route to host" although Local Network was switched on for CRT: 3.0.0's
+bundle was unsigned, its executable signed by the .NET SDK as `apphost` with no Info.plist bound, and
+its Mach-O UUID the stock .NET apphost's, shared with every .NET app). The rules, all in the macOS job:
+
+- **CRT writes the Info.plist** (with `NSLocalNetworkUsageDescription`), and "Compare Info.plist with
+  Velopack's" fails when vpk's own plist has a key ours lacks. The bundle ID
+  `com.Classic_Repair_Toolbox.Classic_Repair_Toolbox` is what every released CRT carries - never change
+  it. vpk is PINNED for this job (`MAC_VPK_VERSION`); bump it there and follow the plist.
+- **The data pack is in `Contents/Resources/Data`**, never `Contents/MacOS` (codesign signs every file
+  there as code, a non-code file's signature lives in an extended attribute, and the update `.nupkg` is
+  a zip that keeps none). CRT seeds from either (`BundledDataLocation`).
+- **Each executable gets its own LC_UUID** (`.github/workflows/macos-macho-uuid.py`: uuid5 of bundle
+  ID, version and RID), written BEFORE Velopack signs.
+- **`VPK_SIGN_APP_IDENTITY: "-"`** makes Velopack sign the bundle (deep, hardened runtime) with
+  `Assets/macOS/CRT.entitlements` - Microsoft's .NET set. Do not drop it: without an identity Velopack
+  signs nothing. Keep that file a bare plist (no comments - the kernel parses it).
+- **`macos-verify-bundle.sh` checks the installer's app AND the update's**, and starts the installed one
+  with a Velopack fast-exit hook. Its deep check is required for the installer and only reported for the
+  update: the 224 .NET assemblies still sit in `Contents/MacOS` and lose their extended-attribute
+  signatures in the zip. Whether macOS's Local Network check minds that is NOT known; a single-file
+  publish for macOS would remove them.
+- Ad hoc is not Developer ID: Gatekeeper still asks on first open, and each release is a new program
+  to macOS, so it asks about the local network again after an update. Developer ID signing and
+  notarisation need the paid Apple Developer Program - the project owner's decision, not taken.

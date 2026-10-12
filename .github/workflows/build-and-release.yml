@@ -310,6 +310,24 @@ jobs:
     needs: [test, determine-version]
     name: Build macOS (arm64 + x64 with self-contained .NET10)
     runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.determine-version.outputs.version }}
+      # The bundle ID Velopack derived from PACK_ID for every CRT released so far. macOS files
+      # an app's permissions under it, so it must never change.
+      MAC_BUNDLE_ID: com.Classic_Repair_Toolbox.Classic_Repair_Toolbox
+      # This job builds the .app itself ("Build the app bundles"); Velopack signs and packs it,
+      # renaming the folder to --packTitle.
+      MAC_APP: Classic Repair Toolbox.app
+      # What the hardened runtime allows CRT: Velopack 1.2.161's default set, which is Microsoft's
+      # list for .NET - allow-jit and allow-unsigned-executable-memory for the JIT, library
+      # validation off for the native libraries (Avalonia, SkiaSharp, HarfBuzz, QuestPDF), which
+      # are not signed by the app's team. CRT's own copy, so a Velopack update cannot change it;
+      # the verify step compares the signed app's entitlements with it and starts the app.
+      MAC_ENTITLEMENTS: Assets/macOS/CRT.entitlements
+      # Pinned, as this job writes the Info.plist Velopack would otherwise generate: the vpk 3.0.0
+      # was released with. "Compare Info.plist with Velopack's" fails when a newer vpk's own plist
+      # has a key ours lacks - so bump it here, and follow the plist.
+      MAC_VPK_VERSION: 1.2.161
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -326,8 +344,8 @@ jobs:
             -f ${{ env.TFM_MODERN }} \
             -r osx-arm64 \
             --self-contained \
-            -p:Version=${{ needs.determine-version.outputs.version }} \
-            -o publish/macos-arm64
+            -p:Version=$VERSION \
+            -o "publish/macos-arm64/$MAC_APP/Contents/MacOS"
 
       - name: Publish macOS (x64)
         run: |
@@ -336,42 +354,162 @@ jobs:
             -f ${{ env.TFM_MODERN }} \
             -r osx-x64 \
             --self-contained \
-            -p:Version=${{ needs.determine-version.outputs.version }} \
-            -o publish/macos-x64
-
-      - name: Copy data pack
-        run: |
-          cp -r Assets/Data publish/macos-arm64/
-          cp -r Assets/Data publish/macos-x64/
+            -p:Version=$VERSION \
+            -o "publish/macos-x64/$MAC_APP/Contents/MacOS"
 
       - name: Install vpk
-        run: dotnet tool install -g vpk
+        run: dotnet tool install -g vpk --version "$MAC_VPK_VERSION"
 
+      # CRT's own Info.plist, because Velopack's has no NSLocalNetworkUsageDescription (reported
+      # 2026-10-12: connecting to a scope failed with "No route to host" although "Local Network"
+      # was switched on for CRT). It holds every key Velopack wrote itself (CRT 3.0.0's, read back
+      # from its package) - "Compare Info.plist with Velopack's" keeps it so. The two version keys
+      # are the X.Y.Z Apple asks for, where Velopack wrote the full version ("3.0.1-alpha.1") and
+      # "3.0.0.0"; nothing reads them (Velopack takes the version from its own sq.version).
+      - name: Write Info.plist
+        run: |
+          cat > "$RUNNER_TEMP/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>Classic Repair Toolbox</string>
+            <key>CFBundleIdentifier</key>
+            <string>${MAC_BUNDLE_ID}</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION%%-*}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleSignature</key>
+            <string>????</string>
+            <key>CFBundleExecutable</key>
+            <string>${{ env.EXE_UNIX }}</string>
+            <key>CFBundleIconFile</key>
+            <string>CRT_icon.icns</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION%%-*}</string>
+            <key>NSPrincipalClass</key>
+            <string>NSApplication</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSLocalNetworkUsageDescription</key>
+            <string>CRT connects to your oscilloscope on the local network, to control it and fetch its screen captures.</string>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint "$RUNNER_TEMP/Info.plist"
+          cat "$RUNNER_TEMP/Info.plist"
+
+      # The .app is built here rather than by Velopack, so that the data pack goes in
+      # Contents/Resources: codesign signs every file under Contents/MacOS as code, keeping a
+      # non-code file's signature in extended attributes, which the update .nupkg (a zip) cannot
+      # carry - and the data pack was 11,007 of the 11,255 files there in 3.0.0. CRT seeds a new
+      # data root from either place (BundledDataLocation). The .NET assemblies have to stay
+      # beside the executable.
+      #
+      # Each executable also gets its own LC_UUID (macos-macho-uuid.py says why). That invalidates
+      # the SDK's signature on it, which Velopack's signing below replaces.
+      - name: Build the app bundles
+        run: |
+          set -euo pipefail
+          for arch in arm64 x64; do
+            APP="publish/macos-$arch/$MAC_APP"
+            mkdir -p "$APP/Contents/Resources"
+            cp "$RUNNER_TEMP/Info.plist" "$APP/Contents/Info.plist"
+            cp Assets/CRT_icon.icns "$APP/Contents/Resources/"
+            cp -R Assets/Data "$APP/Contents/Resources/Data"
+            UUID=$(python3 .github/workflows/macos-macho-uuid.py set "$APP/Contents/MacOS/${{ env.EXE_UNIX }}" "$MAC_BUNDLE_ID/$VERSION/osx-$arch")
+            echo "$arch: LC_UUID $UUID"
+            echo "MAC_UUID_$arch=$UUID" >> "$GITHUB_ENV"
+          done
+
+      # Velopack writes nothing into a ready-made bundle's Info.plist, so a key a newer Velopack
+      # starts writing would silently be missing from ours. This has vpk generate its own plist
+      # for the same app (vpk bundle, on the executable alone) and fails on any key ours lacks or
+      # holds differently - the two version keys apart, which ours give as X.Y.Z on purpose.
+      - name: Compare Info.plist with Velopack's
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          rm -rf "$RUNNER_TEMP/vpk-bundle-in" "$RUNNER_TEMP/vpk-bundle-out"
+          mkdir -p "$RUNNER_TEMP/vpk-bundle-in"
+          cp "publish/macos-arm64/$MAC_APP/Contents/MacOS/${{ env.EXE_UNIX }}" "$RUNNER_TEMP/vpk-bundle-in/"
+          vpk bundle \
+            --packId ${{ env.PACK_ID }} \
+            --packTitle "Classic Repair Toolbox" \
+            --packVersion "$VERSION" \
+            --packDir "$RUNNER_TEMP/vpk-bundle-in" \
+            --mainExe ${{ env.EXE_UNIX }} \
+            --icon "Assets/CRT_icon.icns" \
+            --outputDir "$RUNNER_TEMP/vpk-bundle-out"
+          GENERATED=("$RUNNER_TEMP"/vpk-bundle-out/*.app/Contents/Info.plist)
+          if [ ${#GENERATED[@]} -ne 1 ]; then
+            echo "::error::vpk bundle made ${#GENERATED[@]} Info.plist files, expected one"
+            exit 1
+          fi
+          python3 - "${GENERATED[0]}" "$RUNNER_TEMP/Info.plist" <<'PY'
+          import plistlib, sys
+          generated = plistlib.load(open(sys.argv[1], "rb"))
+          ours = plistlib.load(open(sys.argv[2], "rb"))
+          print("Velopack's:", generated)
+          print("Ours:      ", ours)
+          ours_on_purpose = {"CFBundleVersion", "CFBundleShortVersionString"}
+          problems = []
+          for key, value in generated.items():
+              if key not in ours:
+                  problems.append(f"{key}: Velopack writes {value!r}, ours has no such key")
+              elif key not in ours_on_purpose and ours[key] != value:
+                  problems.append(f"{key}: Velopack writes {value!r}, ours has {ours[key]!r}")
+          for problem in problems:
+              print(f"::error::Info.plist: {problem}")
+          sys.exit(1 if problems else 0)
+          PY
+
+      # VPK_SIGN_APP_IDENTITY "-" makes Velopack sign the whole bundle ad hoc (codesign --deep,
+      # hardened runtime, the entitlements in MAC_ENTITLEMENTS). Without an identity it signs
+      # nothing: CRT 3.0.0's executable kept the .NET SDK's ad-hoc signature, named "apphost" with
+      # no Info.plist bound to it, which macOS cannot match to the Local Network switch. It is
+      # passed as Velopack's environment variable so no argument parser can take the "-" for an
+      # option. Ad hoc is not Developer ID: Gatekeeper still asks on first open, and every release
+      # is a new program to macOS (a new signature and LC_UUID), so expect it to ask about the
+      # local network again after an update.
       - name: Pack with Velopack (macOS arm64)
+        env:
+          VPK_SIGN_APP_IDENTITY: "-"
         run: |
           vpk pack \
             --packId ${{ env.PACK_ID }} \
             --packTitle "Classic Repair Toolbox" \
-            --packVersion ${{ needs.determine-version.outputs.version }} \
-            --packDir publish/macos-arm64 \
+            --packVersion "$VERSION" \
+            --packDir "publish/macos-arm64/$MAC_APP" \
             --mainExe ${{ env.EXE_UNIX }} \
             --channel osx-arm64 \
             --noPortable \
-            --icon "Assets/CRT_icon.icns" \
+            --signEntitlements "$MAC_ENTITLEMENTS" \
             --outputDir velopack-output
 
       - name: Pack with Velopack (macOS x64)
+        env:
+          VPK_SIGN_APP_IDENTITY: "-"
         run: |
           vpk pack \
             --packId ${{ env.PACK_ID }} \
             --packTitle "Classic Repair Toolbox" \
-            --packVersion ${{ needs.determine-version.outputs.version }} \
-            --packDir publish/macos-x64 \
+            --packVersion "$VERSION" \
+            --packDir "publish/macos-x64/$MAC_APP" \
             --mainExe ${{ env.EXE_UNIX }} \
             --channel osx-x64 \
             --noPortable \
-            --icon "Assets/CRT_icon.icns" \
+            --signEntitlements "$MAC_ENTITLEMENTS" \
             --outputDir velopack-output
+
+      # Checks the app a fresh install gets AND the one an in-app update installs - see the
+      # script's header for what fails the release and what is only reported.
+      - name: Verify the macOS app bundles
+        run: |
+          EXPECTED_UUID="$MAC_UUID_arm64" bash .github/workflows/macos-verify-bundle.sh arm64 velopack-output
+          EXPECTED_UUID="$MAC_UUID_x64" bash .github/workflows/macos-verify-bundle.sh x64 velopack-output
 
       - name: Upload Velopack artifacts
         uses: actions/upload-artifact@v7

@@ -5,6 +5,11 @@
 
 # Wiki pages waiting to be pasted
 
-**Nothing to paste.** Every page matches what is in the live Wiki.
+**2 pages waiting.**
+
+| File in `Assets/Wiki` | Where it is in the Wiki |
+| --- | --- |
+| `Compiling-yourself-from-source.md` | Home > Project > Build from source |
+| `Oscilloscope-tab.md` | Home > The tabs > Oscilloscope |
 
 <!-- crt:waiting-end -->

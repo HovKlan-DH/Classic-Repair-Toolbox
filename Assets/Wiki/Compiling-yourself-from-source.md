@@ -122,12 +122,15 @@ dotnet build Classic-Repair-Toolbox.slnx -c Release
 ./src/CRT.App/bin/Release/net10.0/Classic-Repair-Toolbox
 ```
 
-Two quirks:
+Three quirks:
 
-- You get a **bare executable, not a `.app` bundle** - the `.app` in official releases is made by
-  Velopack during packaging. Running from Terminal works fine.
+- You get a **bare executable, not a `.app` bundle** - the `.app` in official releases is built by
+  the release workflow and packed by Velopack. Running from Terminal works fine.
 - Local builds are **not signed or notarised**. If macOS refuses to start it:
   `xattr -dr com.apple.quarantine ./src/CRT.App/bin/Release/net10.0/Classic-Repair-Toolbox`
+- To reach a network oscilloscope, CRT started this way uses the **Local Network** permission of
+  the app that started it - Terminal, or your code editor - under System Settings > Privacy &
+  Security > Local Network. CRT itself is not in that list.
 
 Use `osx-arm64` for Apple Silicon and `osx-x64` for Intel when publishing.
 

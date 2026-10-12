@@ -23,6 +23,14 @@ Once a connection has been made, or while **Auto-connect oscilloscope** is ticke
 says `(oscilloscope connected)` or `(oscilloscope disconnected)`, so you can see the state from any
 tab.
 
+> [!NOTE]
+> **macOS** asks whether CRT may use the local network the first time it connects to your scope -
+> and expect it to ask again after CRT has been updated. While it asks, that attempt fails with
+> `No route to host`: allow it and connect again. The switch is under System Settings > Privacy &
+> Security > Local Network; if it is on for Classic Repair Toolbox and CRT still cannot connect,
+> switch it off and on again. The output says all this under the error, also once when
+> **Auto-connect oscilloscope** is ticked.
+
 **Run full test suite** - available once connected - runs every command your scope's entry defines
 in turn: it stops and starts acquisition, sets the trigger level, time base and volts per division,
 and pulls a screen image. Each command and reply is written to the output, which makes it the

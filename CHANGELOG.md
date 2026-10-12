@@ -1,3 +1,11 @@
+# 3.0.1, 2026-October-??
+------------------------
+- **Application**
+  - Fixed macOS "No route to host" when using oscilloscope
+- **Data**
+  - Added `Rigol MHO900` oscilloscope
+
+
 # 3.0.0, 2026-October-11
 ------------------------
 - **Application**

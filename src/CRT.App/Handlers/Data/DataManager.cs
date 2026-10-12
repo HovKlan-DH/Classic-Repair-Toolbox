@@ -289,8 +289,8 @@ namespace Handlers.DataHandling
 
             if (isNewRoot)
             {
-                var bundledData = Path.Combine(AppContext.BaseDirectory, "Data");
-                if (Directory.Exists(bundledData))
+                var bundledData = BundledDataLocation.Find(AppContext.BaseDirectory, Directory.Exists);
+                if (bundledData != null)
                 {
                     Logger.Info("Data root folder created — seeding from install package");
                     RaiseStatus("Seeding data from install package...");
