@@ -3,29 +3,48 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
 using Handlers.Theming;
-using System.Collections.Generic;
+using System;
 using System.Collections.ObjectModel;
-using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT
 {
     // ###########################################################################################
-    // "What changed officially" - shows how one board's drafted rows line up against the official
-    // data as it stands now, and lets the contributor dismiss the warning once they have looked
-    // (NewContributeStrategy.md Phase 2, session 2d).
+    // "What changed in the published data" - one drafted board against the published data as it
+    // is now, and the one action that settles it (NewContributeStrategy.md Phase 2, session 2d;
+    // rebuilt around the draft's base on 2026-10-13).
     //
-    // The report itself is built by DraftDriftDetector in CRT.Data; this window only renders it and
-    // owns the one action. See that class for why a genuine official-versus-official diff is
-    // impossible - the old official workbook is gone once sync has run, so what can honestly be
-    // shown is how each of the contributor's OWN rows stands against the current official data.
+    // The report is built in CRT.Data (DraftChangeReport.For) and the words are DraftDriftWording;
+    // this window renders them and owns the action:
+    //
+    //   - a draft WITH a base: "Bring my draft up to date" - DraftRebaser carries the contributor's
+    //     changes onto the published update. Every change of theirs is kept; rows both changed are
+    //     listed first, before the button is pressed, so nothing is decided blind;
+    //   - a draft WITHOUT one (seeded before 2026-10-13): "I have looked at this" quiets the warning
+    //     and changes nothing else - not even the revision the server is told
+    //     (DraftWorkbookStore.MarkDriftSeen).
+    //
+    // *** IT USED TO SAY "YOUR EDITS ARE STILL APPLIED ON TOP OF IT" (code review, 2026-10-13). ***
+    // That was untrue since drafts became complete copies (Phase 6): a stale draft sent as it was
+    // asked the maintainer to remove everything published since. See DraftRebase.
     // ###########################################################################################
     public partial class DraftDriftWindow : Window
     {
         private string thisExcelDataFile = string.Empty;
         private string thisOfficialRevision = string.Empty;
+        private bool thisCanBringUpToDate;
+
+        // Whether the Drafts tab's table holds unsaved edits of this draft - then nothing may write
+        // the draft (CLAUDE.md: "No other editor writes a draft under a table with unsaved edits").
+        private Func<string, UnsavedTableEditsPrompt?>? thisSavingBlockedFor;
 
         public ObservableCollection<DriftRowItem> AttentionRows { get; } = new();
         public ObservableCollection<DriftRowItem> OtherRows { get; } = new();
+        public ObservableCollection<DriftRowItem> UpdateRows { get; } = new();
+
+        // True once "Bring my draft up to date" changed the draft - the caller reloads the board on
+        // screen and the Drafts list.
+        public bool BroughtUpToDate { get; private set; }
 
         public DraftDriftWindow()
         {
@@ -33,104 +52,138 @@ namespace CRT
 
             this.AttentionItemsControl.ItemsSource = this.AttentionRows;
             this.OtherItemsControl.ItemsSource = this.OtherRows;
+            this.UpdateItemsControl.ItemsSource = this.UpdateRows;
 
             this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
         }
 
-        // ###########################################################################################
-        // Renders one report. Rows that carry a consequence are shown FIRST and separately, because
-        // they are the only ones the contributor may need to act on - the rest are there so the
-        // view is complete rather than because anything is wrong with them.
-        // ###########################################################################################
-        public void Initialize(string displayName, string excelDataFile, DraftChangeReport report)
+        public void Initialize(
+            string displayName,
+            string excelDataFile,
+            DraftChangeReport report,
+            Func<string, UnsavedTableEditsPrompt?>? savingBlockedFor = null)
         {
+            ArgumentNullException.ThrowIfNull(report);
+
             this.thisExcelDataFile = excelDataFile;
             this.thisOfficialRevision = report.OfficialRevision;
+            this.thisCanBringUpToDate = report.CanBringUpToDate;
+            this.thisSavingBlockedFor = savingBlockedFor;
 
             this.HeaderText.Text = displayName;
-
-            this.SummaryText.Text = report.State switch
-            {
-                DraftDriftState.OfficialIsNewer =>
-                    "The official data for this board has been updated since you started your draft. Your edits are still applied on top of it.",
-                DraftDriftState.Changed =>
-                    "The official data for this board has changed since you started your draft. Your edits are still applied on top of it.",
-                DraftDriftState.InSync =>
-                    "The official data for this board has not changed since you started your draft.",
-                _ =>
-                    "CRT does not know which revision this draft was started from, so it cannot tell whether the official data has changed.",
-            };
+            this.SummaryText.Text = DraftDriftWording.Summary(report.State, report.CanBringUpToDate);
+            this.ComparedText.Text = DraftDriftWording.Compared(report.ComparedWithBase);
 
             // "Not recorded" rather than an empty line: a draft written before every save path
             // stamped a base revision genuinely has none, and a blank here would read as a bug.
-            this.BaseRevisionText.Text = string.IsNullOrWhiteSpace(report.BaseRevision)
-                ? "Not recorded"
-                : report.BaseRevision;
-
-            this.OfficialRevisionText.Text = string.IsNullOrWhiteSpace(report.OfficialRevision)
-                ? "Not recorded"
-                : report.OfficialRevision;
+            this.BaseRevisionText.Text = string.IsNullOrWhiteSpace(report.BaseRevision) ? "Not recorded" : report.BaseRevision;
+            this.OfficialRevisionText.Text = string.IsNullOrWhiteSpace(report.OfficialRevision) ? "Not recorded" : report.OfficialRevision;
 
             this.AttentionRows.Clear();
             this.OtherRows.Clear();
+            this.UpdateRows.Clear();
 
-            // ###########################################################################################
-            // *** ONE LIST NOW, NOT TWO (Phase 6, 2026-09-23). ***
-            //
-            // The "needs attention" band held rows whose edit had been silently defeated by the
-            // merge - a change to a row that had since vanished officially, or an addition the
-            // official data had since made too. Neither can happen without a merge, so nothing
-            // would ever populate that band; leaving it in place would leave a heading on screen
-            // that is permanently empty.
-            //
-            // The panel itself is kept (and stays hidden) rather than torn out of the markup, so
-            // the day drift detection grows a sharper answer it has somewhere to go.
-            // ###########################################################################################
-            foreach (BoardRowChange row in report.Rows)
+            foreach (DraftRebaseConflict conflict in report.Conflicts)
             {
-                this.OtherRows.Add(DriftRowItem.From(row));
+                this.AttentionRows.Add(new DriftRowItem { Title = $"{conflict.Section}: {conflict.Row}", Explanation = conflict.What });
             }
 
-            this.AttentionPanel.IsVisible = false;
+            foreach (BoardRowChange row in report.Rows)
+            {
+                this.OtherRows.Add(DriftRowItem.From(row, DraftDriftWording.OwnRow(row, report.ComparedWithBase)));
+            }
+
+            foreach (BoardRowChange row in report.UpdateRows)
+            {
+                this.UpdateRows.Add(DriftRowItem.From(row, DraftDriftWording.UpdateRow(row)));
+            }
+
+            this.AttentionPanel.IsVisible = this.AttentionRows.Count > 0;
+            this.AttentionHeaderText.Text = DraftDriftWording.ConflictHeader(this.AttentionRows.Count);
 
             this.OtherPanel.IsVisible = this.OtherRows.Count > 0;
-            this.OtherHeaderText.Text = this.OtherRows.Count == 1
-                ? "1 change of yours"
-                : $"{this.OtherRows.Count} changes of yours";
+            this.OtherHeaderText.Text = DraftDriftWording.OwnHeader(this.OtherRows.Count, report.ComparedWithBase);
+
+            this.UpdatePanel.IsVisible = this.UpdateRows.Count > 0;
+            this.UpdateHeaderText.Text = DraftDriftWording.UpdateHeader(this.UpdateRows.Count);
 
             this.NoRowsText.IsVisible = report.Rows.Count == 0;
 
-            // Nothing to dismiss when there is no warning to begin with.
-            this.RebaseButton.IsVisible =
-                report.State is DraftDriftState.OfficialIsNewer or DraftDriftState.Changed;
+            // Nothing to act on when there is no warning to begin with.
+            this.RebaseButton.IsVisible = DraftDriftWording.IsWarning(report.State);
+            this.RebaseButton.Content = report.CanBringUpToDate ? DraftDriftWording.BringUpToDateButton : DraftDriftWording.SeenButton;
+            ToolTip.SetTip(this.RebaseButton, report.CanBringUpToDate ? DraftDriftWording.BringUpToDateTip : DraftDriftWording.SeenTip);
         }
 
         // ###########################################################################################
-        // Records that the contributor has seen this, by moving the draft's base revision to the
-        // current official one. It writes ONE STRING and touches no drafted row - see
-        // DraftBaseRevision.Rebase for the full list of what it deliberately does not do.
-        //
-        // No confirmation dialog: nothing is destroyed and it is reversible in effect, since the
-        // next sync that moves the official revision raises the warning again. DiscardDraftWindow
-        // exists because discarding is permanent; this is not.
+        // The one action - see the class header for which it is. No confirmation: bringing a draft
+        // up to date keeps every change of the contributor's (and lists the rows both changed
+        // first), and "I have looked at this" changes nothing in the draft at all.
         // ###########################################################################################
-        private void OnRebaseClick(object? sender, RoutedEventArgs e)
+        private async void OnRebaseClick(object? sender, RoutedEventArgs e)
         {
-            // *** REBASING WRITES THE MARKER, NOT THE BOARD (Phase 6, 2026-09-23). *** It is a
-            // statement about WHICH published revision the draft is measured against, and it
-            // deliberately changes not one row - which is exactly why the status line below can
-            // promise the contributor their work is untouched.
-            if (!DraftWorkbookStore.SetBaseRevision(
-                    DraftManager.DraftsRoot,
-                    this.thisExcelDataFile,
-                    this.thisOfficialRevision))
+            try
             {
-                this.ShowStatus("Could not read this board's draft.", isError: true);
+                await this.RebaseAsync();
+            }
+            catch (Exception ex)
+            {
+                // An async void handler: nothing may leave it (App lets such an exception end CRT).
+                Logger.Critical($"Bringing the draft for [{this.thisExcelDataFile}] up to date failed - [{ex}]");
+                this.ShowStatus("Something unexpected stopped this. Nothing was changed.", isError: true);
+            }
+        }
+
+        internal async Task RebaseAsync()
+        {
+            if (!this.thisCanBringUpToDate)
+            {
+                // With the published content as it is now, which a draft judged by content is quiet
+                // for (code review, 2026-10-13: the revision alone was never read for such a draft).
+                string publishedContent = DraftBaseStore.PublishedContentHash(
+                    DraftBoardSource.PublishedPathOf(DataManager.DataRoot, this.thisExcelDataFile));
+
+                if (!DraftWorkbookStore.MarkDriftSeen(DraftManager.DraftsRoot, this.thisExcelDataFile, this.thisOfficialRevision, publishedContent))
+                {
+                    this.ShowStatus("Could not read this board's draft.", isError: true);
+                    return;
+                }
+
+                this.RebaseButton.IsVisible = false;
+                this.ShowStatus(DraftDriftWording.SeenDone);
                 return;
             }
 
-            this.RebaseButton.IsVisible = false;
-            this.ShowStatus("Noted. Your drafted rows are unchanged.");
+            if (this.thisSavingBlockedFor?.Invoke(this.thisExcelDataFile) is UnsavedTableEditsPrompt blocked)
+            {
+                await (this.ShowSavingBlockedOverrideForTests?.Invoke(blocked) ?? UnsavedTableEditsWindow.ShowSavingBlockedAsync(this, blocked));
+                return;
+            }
+
+            string draftsRoot = DraftManager.DraftsRoot;
+            string dataRoot = DataManager.DataRoot;
+            string excelDataFile = this.thisExcelDataFile;
+
+            DraftRebaseReport report = await BusyOverlay.RunLocalAsync(
+                this,
+                CrtWaitWording.BringingDraftUpToDate,
+                () => Task.Run(() => DraftRebaser.Rebase(draftsRoot, dataRoot, excelDataFile)));
+
+            bool success = DraftDriftWording.IsSuccess(report);
+
+            // The board reader's cache answers only while a workbook is as it was read, so the
+            // rewritten draft is read afresh by whoever asks next - nothing to clear here.
+            // NotNoted wrote the draft too - only its new base could not be kept.
+            this.BroughtUpToDate = report.Outcome is DraftRebaseOutcome.BroughtUpToDate or DraftRebaseOutcome.NotNoted;
+
+            if (success)
+            {
+                this.RebaseButton.IsVisible = false;
+                this.SummaryText.Text = DraftDriftWording.Summary(DraftDriftState.InSync, canBringUpToDate: false);
+                this.UpdatePanel.IsVisible = false;
+            }
+
+            this.ShowStatus(DraftDriftWording.Outcome(report), isError: !success);
         }
 
         private void ShowStatus(string message, bool isError = false)
@@ -139,14 +192,17 @@ namespace CRT
             this.StatusText.Foreground = ThemeResources.ResolveBrush(isError ? "Text_Fail_Fg" : "Text_Success_Fg");
         }
 
+        internal Func<UnsavedTableEditsPrompt, Task>? ShowSavingBlockedOverrideForTests { get; set; }
+
         internal string StatusTextForTests => this.StatusText.Text ?? string.Empty;
 
         internal bool RebaseButtonVisibleForTests => this.RebaseButton.IsVisible;
 
-        // The rebase is a Click handler rather than a Command, and a window never attached to a
-        // visual tree cannot be clicked - so the tests drive the handler directly. It is the same
-        // method the button invokes, so this exercises the shipped path rather than a copy of it.
-        internal void RaiseRebaseForTests() => this.OnRebaseClick(this, new RoutedEventArgs());
+        internal string RebaseButtonTextForTests => this.RebaseButton.Content as string ?? string.Empty;
+
+        // The action is a Click handler, and a window never attached to a visual tree cannot be
+        // clicked - so the tests drive the same method the handler awaits.
+        internal void RaiseRebaseForTests() => this.RebaseAsync().GetAwaiter().GetResult();
 
         private void OnWindowKeyDown(object? sender, KeyEventArgs e)
         {
@@ -161,40 +217,17 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // One drafted row as this window shows it: what it is, and what has happened to it.
+    // One row as this window shows it: what it is, and what happened to it (DraftDriftWording).
     // ###########################################################################################
     public sealed class DriftRowItem
     {
         public string Title { get; init; } = string.Empty;
         public string Explanation { get; init; } = string.Empty;
 
-        public static DriftRowItem From(BoardRowChange row) => new()
+        public static DriftRowItem From(BoardRowChange row, string explanation) => new()
         {
             Title = $"{row.Section}: {row.DisplayLabel}",
-            Explanation = ExplanationFor(row),
-        };
-
-        // ###########################################################################################
-        // Plain statements of what the contributor did, not labels.
-        //
-        // *** THESE NO LONGER DESCRIBE A CONSEQUENCE, and the change is deliberate. *** The old
-        // wordings said what the MERGE had done with each row ("yours is not applied while both
-        // exist"), which was the only way to surface an outcome the contributor could not
-        // otherwise see. There is no merge: the draft workbook is the board, so a change is
-        // simply in effect and saying anything more would be inventing a caveat.
-        //
-        // A Modified row names the fields that differ, because "U8 changed" is far less useful
-        // than "U8: Description, Part number" and the information is free.
-        // ###########################################################################################
-        private static string ExplanationFor(BoardRowChange row) => row.Kind switch
-        {
-            BoardRowChangeKind.Added =>
-                "You added this. It is not in the published data.",
-            BoardRowChangeKind.Deleted =>
-                "You removed this. It is still in the published data, and your submission would remove it.",
-            _ => row.ChangedFields.Count > 0
-                ? "You changed: " + string.Join(", ", row.ChangedFields)
-                : "You changed this.",
+            Explanation = explanation,
         };
     }
 }

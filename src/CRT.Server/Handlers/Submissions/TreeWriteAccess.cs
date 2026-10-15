@@ -140,11 +140,34 @@ namespace CRT.Server.Handlers.Submissions
 
         internal static string ShellQuote(string text) => "'" + text.Replace("'", "'\\''") + "'";
 
-        private static string DisplayName(string root, string folder)
+        // ###########################################################################################
+        // A path in a data tree as a maintainer may read it: relative to the tree's root, never the
+        // server's own absolute path (code review, 2026-10-13 - every refusal naming a folder, a file
+        // or a symbolic link goes through here). One outside the root is named by its last part only.
+        // ###########################################################################################
+        internal static string DisplayName(string root, string folder)
         {
-            string relative = Path.GetRelativePath(root, folder).Replace(Path.DirectorySeparatorChar, '/');
+            string relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(folder))
+                .Replace(Path.DirectorySeparatorChar, '/');
 
-            return relative == "." ? "the top folder" : relative;
+            if (relative == ".")
+                return "the top folder";
+
+            return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative)
+                ? Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, '/'))
+                : relative;
+        }
+
+        // The same for a path that may be under either of two trees (a copy between BETA and stable).
+        internal static string DisplayName(string firstRoot, string secondRoot, string path) =>
+            TreeWriteAccess.IsUnder(firstRoot, path)
+                ? TreeWriteAccess.DisplayName(firstRoot, path)
+                : TreeWriteAccess.DisplayName(secondRoot, path);
+
+        private static bool IsUnder(string root, string path)
+        {
+            string relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+            return !relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative);
         }
 
         // ###########################################################################################

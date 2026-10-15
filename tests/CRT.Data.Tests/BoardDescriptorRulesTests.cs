@@ -162,6 +162,38 @@ public sealed class BoardDescriptorRulesTests
         Assert.False(BoardDescriptorRules.IsValidBoardId(candidate));
     }
 
+    // ###########################################################################################
+    // *** A CONTROL CHARACTER ANYWHERE IN AN ID THAT ARRIVES IS REFUSED (code review, 2026-10-13). ***
+    // The segment rule normalises a TYPED name's whitespace first (a pasted tab becomes a space -
+    // NewBoardIdentityTests pins that), so an id sent as "Commodore/C64<tab>NTSC/250407" passed as
+    // "C64 NTSC" while the key and the folder kept the tab; DEL and the C1 controls were not refused
+    // at all. Linux takes every one of them in a folder name. The ids are built from their three
+    // parts (board ids are "/"-separated by definition, not paths).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("C64\tNTSC")]
+    [InlineData("C64\n")]
+    [InlineData("\rC64")]
+    [InlineData("C64\u0085")]
+    [InlineData("C64\u007F")]
+    [InlineData("C\u009B64")]
+    [InlineData("C64\u0001")]
+    public void An_id_with_a_control_character_in_a_segment_is_refused(string hardware)
+    {
+        Assert.False(BoardDescriptorRules.IsValidBoardId(string.Join('/', "Commodore", hardware, "250407")));
+    }
+
+    // DEL and the C1 controls are refused in a typed name too - they are not whitespace, so nothing
+    // normalises them away, and the U+0001-U+001F set never covered them.
+    [Theory]
+    [InlineData("C64\u007F")]
+    [InlineData("C\u009B64")]
+    public void A_typed_name_with_DEL_or_a_C1_control_is_refused(string hardware)
+    {
+        Assert.False(NewBoardIdentity.IsValidPathSegment(hardware, out string reason));
+        Assert.Contains("cannot contain", reason, StringComparison.Ordinal);
+    }
+
     // The database column is VARCHAR(255). Refusing here rather than letting MariaDB truncate,
     // which would map two different boards onto one key.
     [Fact]

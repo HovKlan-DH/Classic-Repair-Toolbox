@@ -157,6 +157,14 @@ namespace Handlers.DataHandling
                     reason = $"cannot contain [{candidate}]";
                     return false;
                 }
+
+                // DEL and the C1 controls (U+007F-U+009F) too (code review, 2026-10-13) - the loop
+                // above stops at U+001F, and Linux takes every one of them in a folder name.
+                if (char.IsControl(candidate))
+                {
+                    reason = "cannot contain a control character";
+                    return false;
+                }
             }
 
             if (trimmed == "." || trimmed == "..")

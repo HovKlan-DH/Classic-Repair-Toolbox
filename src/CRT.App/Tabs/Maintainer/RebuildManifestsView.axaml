@@ -31,9 +31,10 @@
                    TextWrapping="Wrap"
                    Opacity="0.8"
                    Margin="0,0,0,12"
-                   Text="Every board CRT downloads is checked against dataChecksums.json. The server rebuilds it by itself whenever it publishes, promotes or rolls back - so this is only needed after data files have been changed on the server by hand, which the service never sees. Both the BETA and the stable data are rebuilt." />
+                   Text="Every board CRT downloads is checked against dataChecksums.json. The server rebuilds it by itself whenever it publishes to BETA or to the stable source, or pushes a board back - so this is only needed after data files have been changed on the server by hand, which the service never sees. Both the BETA and the stable data are rebuilt." />
 
         <Button DockPanel.Dock="Top"
+                Classes="Accept"
                 x:Name="RebuildButton"
                 HorizontalAlignment="Left"
                 Content="Rebuild both manifests"

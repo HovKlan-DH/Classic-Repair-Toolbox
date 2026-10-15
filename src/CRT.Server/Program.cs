@@ -268,7 +268,20 @@ namespace CRT.Server
             // boundary, the same as ScopeScpiClient and MiniproProcessRunner in CRT.App.
             // ---------------------------------------------------------------------------------
             services.AddSingleton<Argon2PasswordHasher>();
-            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+
+            // ---------------------------------------------------------------------------------
+            // Mail (code review, 2026-10-13): every flow is handed the OUTBOX sender, which keeps a
+            // mail the mail system refuses (migration 0022); MailOutboxSender sends those again
+            // through the mail system itself every few minutes. See MailOutboxFlow.
+            // ---------------------------------------------------------------------------------
+            services.AddSingleton<SmtpEmailSender>();
+            services.AddSingleton<IMailOutboxStore, MySqlMailOutboxStore>();
+            services.AddSingleton<IEmailSender>(provider => new OutboxEmailSender(
+                provider.GetRequiredService<SmtpEmailSender>(),
+                provider.GetRequiredService<IMailOutboxStore>(),
+                provider.GetRequiredService<ILogger<OutboxEmailSender>>()));
+            services.AddHostedService<MailOutboxSender>();
+
             services.AddSingleton<IAccountStore, MySqlAccountStore>();
 
             // ---------------------------------------------------------------------------------
@@ -276,6 +289,10 @@ namespace CRT.Server
             // "!" here cannot be reached with a null - a misconfigured service never gets this far.
             // ---------------------------------------------------------------------------------
             services.AddSingleton<ISubmissionStore, MySqlSubmissionStore>();
+
+            // Every contributor route's per-address limit (code review, 2026-10-13) - see
+            // SubmissionEndpoints.MapSubmissionEndpoints.
+            services.AddSubmissionRateLimit();
             //
             // The free-space probe and reserve are what stop contributions filling the disk the
             // web site and the database share (security review, 2026-09-25) - see

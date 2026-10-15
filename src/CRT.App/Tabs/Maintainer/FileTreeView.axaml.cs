@@ -221,13 +221,17 @@ namespace CRT
                 this.Toggle(row);
         }
 
+        // Through HandlerGuard, as every async handler of the tab (code review, 2026-10-13).
         private async void OnRowDoubleTapped(object? sender, TappedEventArgs e)
         {
             if (FileTreeView.RowFrom(e.Source) is FileTreeRowView { Node.IsFolder: false } row)
-                await this.OpenAsync(row.Node.File!);
+                await HandlerGuard.RunAsync(() => this.OpenAsync(row.Node.File!), message => this.ShowMessage(message, isError: true));
         }
 
-        private async void OnRowsKeyDown(object? sender, KeyEventArgs e)
+        private async void OnRowsKeyDown(object? sender, KeyEventArgs e) =>
+            await HandlerGuard.RunAsync(() => this.RowsKeyDownAsync(sender, e), message => this.ShowMessage(message, isError: true));
+
+        private async Task RowsKeyDownAsync(object? sender, KeyEventArgs e)
         {
             if ((sender as ListBox)?.SelectedItem is not FileTreeRowView row)
                 return;
@@ -289,13 +293,13 @@ namespace CRT
         private async void OnOpenRowClick(object? sender, RoutedEventArgs e)
         {
             if (this.SelectedRow is FileTreeRowView { Node.IsFolder: false } row)
-                await this.OpenAsync(row.Node.File!);
+                await HandlerGuard.RunAsync(() => this.OpenAsync(row.Node.File!), message => this.ShowMessage(message, isError: true));
         }
 
         private async void OnCopyPathClick(object? sender, RoutedEventArgs e)
         {
             if (this.SelectedRow is FileTreeRowView row && TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
-                await clipboard.SetTextAsync(row.Node.Path);
+                await HandlerGuard.RunAsync(() => clipboard.SetTextAsync(row.Node.Path), message => this.ShowMessage(message, isError: true));
         }
     }
 
@@ -330,7 +334,8 @@ namespace CRT
             this.IsRemoved = !node.IsFolder && change == BoardFileChange.Removed;
             this.PillText = FileTreeWording.ChangeWord(change);
             this.Size = FileTreeWording.Size(node);
-            this.Note = node.IsFolder ? FileTreeWording.FolderNote(node) : string.Empty;
+            // A file says which other boards it reaches, when it is a replaced shared one (2026-10-13).
+            this.Note = node.IsFolder ? FileTreeWording.FolderNote(node) : FileTreeWording.FileNote(node.File);
 
             // A file has its hover card instead - except one with nothing to show yet, whose path
             // and the reason are all there is to say.

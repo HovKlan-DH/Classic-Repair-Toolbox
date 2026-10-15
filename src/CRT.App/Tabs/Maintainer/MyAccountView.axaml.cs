@@ -28,7 +28,7 @@ namespace CRT
     // AccountSelfServiceFlows. An address or password change signs out every OTHER computer.
     //
     // *** EVERY ACCOUNT THE SERVER HANDS BACK IS PASSED ON AT ONCE *** (AccountChanged), so the
-    // tab's "Logged in as" line, the remembered sign-in and - through the tab's SignedInChanged - the
+    // tab's "Signed in as" line, the remembered sign-in and - through the tab's SignedInChanged - the
     // Feedback tab and the Submit dialog follow the change. A change arriving the other way (the
     // name and address read again at launch) comes in through UseAccount.
     //
@@ -81,7 +81,7 @@ namespace CRT
             this.Panel("CodePanel").IsVisible = false;
             this.Box("NameTextBox").Text = session?.DisplayName ?? string.Empty;
 
-            this.ShowLoggedInAs();
+            this.ShowSignedInAs();
             this.RefreshButtons();
         }
 
@@ -103,7 +103,7 @@ namespace CRT
                 name.Text = session.DisplayName;
 
             this.thisSession = session;
-            this.ShowLoggedInAs();
+            this.ShowSignedInAs();
             this.RefreshButtons();
         }
 
@@ -111,7 +111,9 @@ namespace CRT
         // Name
         // -----------------------------------------------------------------------------------
 
-        private async void OnSaveNameClick(object? sender, RoutedEventArgs e) => await this.SaveNameAsync();
+        // Through HandlerGuard, as every async handler of the tab (code review, 2026-10-13).
+        private async void OnSaveNameClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.SaveNameAsync, message => this.ShowMessage("NameMessageText", message));
 
         internal async Task SaveNameAsync()
         {
@@ -151,7 +153,8 @@ namespace CRT
         // Email address
         // -----------------------------------------------------------------------------------
 
-        private async void OnSendCodeClick(object? sender, RoutedEventArgs e) => await this.SendCodeAsync();
+        private async void OnSendCodeClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.SendCodeAsync, message => this.ShowMessage("EmailMessageText", message));
 
         internal async Task SendCodeAsync()
         {
@@ -196,7 +199,8 @@ namespace CRT
 
         private void OnHaveCodeClick(object? sender, RoutedEventArgs e) => this.ShowCodePanel();
 
-        private async void OnConfirmEmailClick(object? sender, RoutedEventArgs e) => await this.ConfirmCodeAsync();
+        private async void OnConfirmEmailClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.ConfirmCodeAsync, message => this.ShowMessage("EmailMessageText", message));
 
         internal async Task ConfirmCodeAsync()
         {
@@ -249,7 +253,8 @@ namespace CRT
         // Password
         // -----------------------------------------------------------------------------------
 
-        private async void OnChangePasswordClick(object? sender, RoutedEventArgs e) => await this.ChangePasswordAsync();
+        private async void OnChangePasswordClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.ChangePasswordAsync, message => this.ShowMessage("PasswordMessageText", message));
 
         internal async Task ChangePasswordAsync()
         {
@@ -299,7 +304,7 @@ namespace CRT
         private async void OnSignOutClick(object? sender, RoutedEventArgs e)
         {
             if (this.SignOutRequested is { } signOut)
-                await signOut();
+                await HandlerGuard.RunAsync(signOut, message => this.ShowMessage("PasswordMessageText", message));
         }
 
         // -----------------------------------------------------------------------------------
@@ -315,7 +320,7 @@ namespace CRT
 
             this.thisSession = session.WithAccount(account);
             this.Box("NameTextBox").Text = this.thisSession.DisplayName;
-            this.ShowLoggedInAs();
+            this.ShowSignedInAs();
             this.RefreshButtons();
 
             this.AccountChanged?.Invoke(account);
@@ -369,10 +374,10 @@ namespace CRT
                 this.ShowMessage("PasswordMessageText", null);
         }
 
-        // "Logged in as Dennis (dh@example.com)", the name bold - the tab's own line, on one line.
-        private void ShowLoggedInAs()
+        // "Signed in as Dennis (dh@example.com)", the name bold - the tab's own line, on one line.
+        private void ShowSignedInAs()
         {
-            if (this.FindControl<TextBlock>("LoggedInAsText") is not TextBlock text)
+            if (this.FindControl<TextBlock>("SignedInLineText") is not TextBlock text)
                 return;
 
             if (this.thisSession is not { } session)
@@ -382,7 +387,7 @@ namespace CRT
                 return;
             }
 
-            TabMaintainer.ShowCounts(text, [new ReviewNoteRun("Logged in as ", false), .. MyAccountRules.LoggedInAs(session.DisplayName, session.Email)]);
+            TabMaintainer.ShowCounts(text, [new ReviewNoteRun("Signed in as ", false), .. MyAccountRules.SignedInAs(session.DisplayName, session.Email)]);
         }
 
         // Red for a refusal, green for a change made - the sign-in screen's two colours.

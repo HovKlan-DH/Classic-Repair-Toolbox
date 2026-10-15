@@ -272,11 +272,17 @@ namespace CRT.Server.Handlers.Accounts
             IReadOnlyList<DateTimeOffset> accountFailures =
                 await store.GetRecentAuthFailuresAsync(normalised, null, accountSince, cancellationToken);
 
+            // This account from THIS address - the tight bucket (code review, 2026-10-13). With no
+            // address known, the account's own failures stand in for it, the strict side.
+            IReadOnlyList<DateTimeOffset> pairFailures = request.IpAddress is null
+                ? accountFailures
+                : await store.GetRecentAuthFailuresAsync(normalised, request.IpAddress, accountSince, cancellationToken);
+
             IReadOnlyList<DateTimeOffset> addressFailures = request.IpAddress is null
                 ? Array.Empty<DateTimeOffset>()
                 : await store.GetRecentAuthFailuresAsync(null, request.IpAddress, addressSince, cancellationToken);
 
-            RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(accountFailures, addressFailures, now);
+            RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(pairFailures, accountFailures, addressFailures, now);
 
             if (!verdict.IsAllowed)
                 return LoginOutcome.RateLimited(verdict.RetryAfter);
@@ -325,7 +331,9 @@ namespace CRT.Server.Handlers.Accounts
                 // address for ever.
                 //
                 // So this row - which exists to name WHICH ACCOUNT was targeted, something the
-                // limiter's own row deliberately does not record - carries its own action.
+                // limiter's own row deliberately does not record - carries its own action. (Since
+                // 2026-10-13 the limiter counts its own table, rate_limit_events, so the coupling is
+                // gone - the separate action is kept so the audit trail reads as before.)
                 await store.WriteAuditAsync(
                     new AuditEntry(account.Id, account.Email, "login.failed.account", $"account:{account.Id}",
                         request.IpAddress, now),

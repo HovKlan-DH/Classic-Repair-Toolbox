@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -25,6 +26,9 @@ namespace CRT
     public partial class TabMaintainer
     {
         private readonly List<ProductionBoardRow> thisBeta = [];
+
+        // The list's items, changed in place (ShowItemsInPlace).
+        private readonly ObservableCollection<ListBoxItem> thisBetaItems = [];
 
         // Whether the list has been read since signing in - the badge says nothing until it has.
         private bool thisBetaKnown;
@@ -73,9 +77,19 @@ namespace CRT
 
                 try
                 {
-                    List<ListBoxItem> items = this.thisBeta.Select(TabMaintainer.BetaItem).ToList();
-                    list.ItemsSource = items;
-                    list.SelectedItem = kept is null ? null : items.FirstOrDefault(item => ReferenceEquals(item.Tag, kept));
+                    // In place, a board kept by its id (TabMaintainer.QueueItems.cs, ShowItemsInPlace).
+                    TabMaintainer.ShowItemsInPlace(
+                        list,
+                        this.thisBetaItems,
+                        this.thisBeta,
+                        row => row.BoardId,
+                        TabMaintainer.BetaContent,
+                        (item, row) => Equals(item.Tag, row));
+
+                    ListBoxItem? wanted = kept is null ? null : this.thisBetaItems.FirstOrDefault(item => ReferenceEquals(item.Tag, kept));
+
+                    if (!ReferenceEquals(list.SelectedItem, wanted))
+                        list.SelectedItem = wanted;
                 }
                 finally
                 {
@@ -112,7 +126,10 @@ namespace CRT
                 await this.BetaDetail.ShowBoardAsync(kept);
         }
 
-        private async void OnBetaSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private async void OnBetaSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.BetaSelectionChangedAsync, this.ShowHandlerFailure);
+
+        private async Task BetaSelectionChangedAsync()
         {
             if (this.thisSuppressBetaSelection)
                 return;
@@ -173,7 +190,8 @@ namespace CRT
             if (this.FindControl<ListBox>("BetaList") is ListBox list)
             {
                 this.thisSuppressBetaSelection = true;
-                list.ItemsSource = null;
+                list.SelectedItem = null;
+                this.thisBetaItems.Clear();
                 this.thisSuppressBetaSelection = false;
             }
 
@@ -186,7 +204,8 @@ namespace CRT
 
         // One board: its name, and one grey line - where BETA and production stand, and when it
         // waits for the other approver rather than this account (then dimmed, the queue's way).
-        private static ListBoxItem BetaItem(ProductionBoardRow row)
+        // The item's content; the item itself is ShowItemsInPlace's.
+        private static Control BetaContent(ProductionBoardRow row)
         {
             var content = new StackPanel { Spacing = 1, Opacity = row.AwaitsYou == false ? 0.55 : 1 };
 
@@ -219,7 +238,7 @@ namespace CRT
                 });
             }
 
-            return new ListBoxItem { Tag = row, Classes = { "ListEntry" }, Content = content };
+            return content;
         }
     }
 }

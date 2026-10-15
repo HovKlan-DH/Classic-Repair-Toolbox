@@ -192,6 +192,34 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** A REFUSAL NAMES A PATH FROM THE DATA'S ROOT, NEVER THE SERVER'S OWN (code review,
+        // 2026-10-13). *** A symbolic link refusal printed the absolute path on the server to every
+        // maintainer it refused. Every such name goes through DisplayName now; a path outside the
+        // root (which no refusal should meet) is named by its last part only.
+        // ###########################################################################################
+        [Fact]
+        public void A_path_is_named_from_the_datas_root_and_never_as_the_servers_own()
+        {
+            string link = Path.Combine(this.thisRoot, "Commodore", "C64", "250407", "Images");
+
+            Assert.Equal("Commodore/C64/250407/Images", TreeWriteAccess.DisplayName(this.thisRoot, link));
+            Assert.Equal("the top folder", TreeWriteAccess.DisplayName(this.thisRoot, this.thisRoot));
+
+            string outside = Path.Combine(Path.GetTempPath(), "elsewhere", "secret");
+            Assert.Equal("secret", TreeWriteAccess.DisplayName(this.thisRoot, outside));
+        }
+
+        [Fact]
+        public void A_path_under_either_of_two_trees_is_named_from_its_own()
+        {
+            string stable = Path.Combine(Path.GetDirectoryName(this.thisRoot)!, "Stable");
+            string inStable = Path.Combine(stable, "Commodore", "Shared files");
+
+            Assert.Equal("Commodore/Shared files", TreeWriteAccess.DisplayName(this.thisRoot, stable, inStable));
+            Assert.Equal("Amstrad", TreeWriteAccess.DisplayName(this.thisRoot, stable, Path.Combine(this.thisRoot, "Amstrad")));
+        }
+
+        // ###########################################################################################
         // The command is INSTALLING.md ("Folders and permissions") for exactly these folders - group, group write, and
         // setgid on every folder so what is written later keeps the group. Every path quoted for the
         // shell: board folders and "Shared files" have spaces, and a quote must not end the string.

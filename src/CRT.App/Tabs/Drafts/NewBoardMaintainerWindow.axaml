@@ -31,6 +31,12 @@
 				   Margin="0,8,0,0"
 				   Text="As its maintainer, you are responsible for reviewing the changes other members of the community submit for this board, and for publishing the ones that are right." />
 
+		<!-- What accepting leads to (owner request, 2026-10-13): the server makes the board's
+		     creator its maintainer when it publishes the board - NewBoardMaintainerFlow. -->
+		<TextBlock TextWrapping="Wrap"
+				   Margin="0,8,0,0"
+				   Text="When the board is accepted, you are registered as its maintainer automatically. If you have no maintainer account yet, an email to the address you submit with tells you how to create one." />
+
 		<TextBlock TextWrapping="Wrap"
 				   Margin="0,8,0,0"
 				   FontWeight="SemiBold"
@@ -39,10 +45,8 @@
 		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button Content="Decline" Click="OnDeclineClick" />
 			<Button x:Name="AcceptButton"
+					Classes="Accept"
 					Content="Accept and create"
-					Foreground="{DynamicResource Button_Ok_Fg}"
-					Background="{DynamicResource Button_Ok_Bg}"
-					BorderBrush="{DynamicResource Button_Ok_Border}"
 					Click="OnAcceptClick" />
 		</StackPanel>
 	</StackPanel>

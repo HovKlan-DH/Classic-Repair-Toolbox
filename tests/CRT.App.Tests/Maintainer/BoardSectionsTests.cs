@@ -151,7 +151,7 @@ public sealed class BoardSectionsTests
 
         Assert.Equal("Publish to BETA", BoardSections.PublishButton);
         Assert.Equal("Reason for the change", BoardSections.ReasonLabel);
-        Assert.Equal("Publish your change to Commodore/C64/250407 in BETA", BoardSections.ReasonHeadline(BoardSectionsTests.BoardId));
+        Assert.Equal("Publish your change to Commodore / C64 / 250407 in BETA", BoardSections.ReasonHeadline(BoardSectionsTests.BoardId));
     }
 
     // Files the publish removes are named before it - none, no heading at all; one and several counted.
@@ -305,6 +305,27 @@ public sealed class BoardSectionsTests
 
         Assert.Equal(expected, BoardSections.CompareUnavailable(board, unsaved));
         Assert.Equal(BoardSections.CompareNeedsBothSources, BoardSections.CompareUnavailable(null, betaHoldsUnsavedChange: false));
+    }
+
+    // ###########################################################################################
+    // *** THE "DATA SOURCE" ROW ONLY FOR A BOARD IN BOTH SOURCES (code review, 2026-10-13). *** A
+    // board in one showed the row with half of it greyed out and "Compare sources" unusable; it now
+    // shows the source it is in without one. Board data and Files only, as before.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, true, BoardSection.BoardData, true)]
+    [InlineData(true, true, BoardSection.Files, true)]
+    [InlineData(true, true, BoardSection.History, false)]
+    [InlineData(true, true, BoardSection.Contributor, false)]
+    [InlineData(true, false, BoardSection.BoardData, false)]
+    [InlineData(true, null, BoardSection.Files, false)]
+    [InlineData(false, true, BoardSection.BoardData, false)]
+    public void The_data_source_row_is_shown_for_a_board_in_both_sources_only(bool inBeta, bool? inStable, BoardSection section, bool shown)
+    {
+        var board = new BoardOverviewEntry(BoardSectionsTests.BoardId, "Commodore", "C64", "250407", inBeta, inStable, false, true, null, null, null, 1);
+
+        Assert.Equal(shown, BoardSections.ShowsSourceSwitch(board, section));
+        Assert.False(BoardSections.ShowsSourceSwitch(null, BoardSection.BoardData));
     }
 
     // Compared, BETA's table no longer says "only what you change is marked" - everything that

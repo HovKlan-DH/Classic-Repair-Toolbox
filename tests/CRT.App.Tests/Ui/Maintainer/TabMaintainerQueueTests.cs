@@ -49,10 +49,6 @@ public sealed class TabMaintainerQueueTests
             canPublish,
             new ReviewChangeSummaryView(isNewBoard, sections ?? []),
             findings ?? [],
-            new ReviewSubmissionAssets([]),
-            [],
-            new Dictionary<string, string>(),
-            new Dictionary<string, string>(),
             submittedFiles ?? [],
             approval);
 
@@ -428,7 +424,7 @@ public sealed class TabMaintainerQueueTests
 
     // ------------------------------------------------------------------ The look (2026-09-26)
 
-    // The account, named under "Logged in as:" (owner request, 2026-10-04) - somebody with two
+    // The account, named under "Signed in as:" (owner request, 2026-10-04) - somebody with two
     // accounts still sees which one is acting.
     [Fact]
     public void The_footer_names_the_account_and_nothing_more()
@@ -965,6 +961,164 @@ public sealed class TabMaintainerQueueTests
             await (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(main, [ReviewDecisionKind.Reject])!;
 
             Assert.Equal("The schematic image is the wrong board revision.", comment.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** AN AMENDED SUBMISSION IS READ AGAIN (code review, 2026-10-13). *** Another maintainer's
+    // amendment changed nothing the queue row carried, so the minute check found the open row
+    // "unchanged" and never read the submission again - and Approve then published an amendment the
+    // maintainer had never seen. The row carries the amendment version now, so it differs, and the
+    // open submission is read again; a row truly unchanged is still left alone.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(0, false)]
+    public async Task An_amended_submission_is_read_again(int versionNow, bool readAgain)
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var created = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero);
+
+            var main = new TabMaintainer();
+            var seen = new ReviewQueueRow(42, "Commodore/C64/250407", "pending", "Corrected U8.", "c@example.com", created, false, false, true, null, AmendmentVersion: 0);
+
+            Queue(main, seen);
+            Select(main, seen);
+            main.ShowDetail(Detail(seen));
+            MaintainerTabHost.AddOverlay(main);
+
+            int detailReads = 0;
+            string row = "{\"id\":42,\"boardId\":\"Commodore/C64/250407\",\"state\":\"pending\",\"summary\":\"Corrected U8.\"," +
+                "\"contactEmail\":\"c@example.com\",\"createdUtc\":\"2026-10-12T08:00:00+00:00\",\"touchesSharedFiles\":false," +
+                "\"isNewBoard\":false,\"awaitsYou\":true,\"amendmentVersion\":" + versionNow + "}";
+
+            var server = new AnsweringHttpHandler(request =>
+            {
+                string path = request.RequestUri!.AbsolutePath;
+
+                if (path.EndsWith("/review/queue", StringComparison.Ordinal))
+                    return AnsweringHttpHandler.Json("{\"canPublish\":true,\"isAdministrator\":true,\"count\":1,\"submissions\":[" + row + "]}");
+
+                if (request.Method == HttpMethod.Get && path.EndsWith("/submissions/42", StringComparison.Ordinal))
+                {
+                    detailReads++;
+                    return AnsweringHttpHandler.Json("{\"canPublish\":true,\"submission\":" + row + ",\"findings\":[]}");
+                }
+
+                return AnsweringHttpHandler.Refused();
+            });
+
+            typeof(TabMaintainer).GetField("thisClient", Any)!
+                .SetValue(main, new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            typeof(TabMaintainer).GetField("thisSession", Any)!
+                .SetValue(main, new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            await (Task)typeof(TabMaintainer).GetMethod("RefreshQueueAsync", Any)!.Invoke(main, [true])!;
+
+            Assert.Equal(readAgain ? 1 : 0, detailReads);
+        });
+    }
+
+    // ###########################################################################################
+    // *** MADE FROM OLDER DATA THAN BETA HAS NOW (code review, 2026-10-13). *** Said in the amber
+    // panel of what to settle before approving, whichever view is open.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_made_from_older_data_says_so_above_its_views()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow row = Row() with { BasedOnOlderRevision = true };
+
+            Queue(main, row);
+            Select(main, row);
+            main.ShowDetail(Detail(row));
+
+            Assert.True(Shown(main, "BeforeApprovingNotice"));
+            Assert.Contains(
+                ApprovalWording.MadeFromOlderData,
+                main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf));
+
+            ReviewQueueRow current = Row(id: 43);
+            Queue(main, row, current);
+            Select(main, current);
+            main.ShowDetail(Detail(current));
+
+            Assert.DoesNotContain(
+                ApprovalWording.MadeFromOlderData,
+                main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf));
+        });
+    }
+
+    // ###########################################################################################
+    // *** A NEWER ONE FROM THE SAME CONTRIBUTOR WAITS BESIDE IT (owner decision, 2026-10-13). ***
+    // Said in the same amber panel, naming the newer one - and Approve stays on: this one may be
+    // the right one to publish.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_with_a_newer_one_from_the_same_contributor_says_so_above_its_views()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            DateTimeOffset sent = new(2026, 10, 13, 9, 30, 0, TimeSpan.Zero);
+            ReviewQueueRow row = Row() with { NewerSubmissionId = 57, NewerSubmissionUtc = sent };
+
+            Queue(main, row);
+            Select(main, row);
+            main.ShowDetail(Detail(row));
+
+            Assert.True(Shown(main, "BeforeApprovingNotice"));
+            Assert.Contains(
+                ApprovalWording.NewerFromSameContributor(57, sent),
+                main.FindControl<StackPanel>("BeforeApprovingPanel")!.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf));
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE VERSION ON SCREEN AND THE COMMENT GO WITH THE DECISION (code review, 2026-10-13). ***
+    // The server refuses a decision on a version this screen never showed; an approval's comment
+    // goes into the contributor's mail - it used to be dropped.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_approval_sends_the_version_on_screen_and_the_comment()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow row = Row() with { AmendmentVersion = 2 };
+            Queue(main, row);
+            Select(main, row);
+            main.ShowDetail(Detail(row));
+            MaintainerTabHost.AddOverlay(main);
+
+            main.FindControl<TextBox>("DecisionCommentTextBox")!.Text = "Thanks - nicely done.";
+
+            string? sent = null;
+
+            var server = new AnsweringHttpHandler(request =>
+            {
+                if (request.RequestUri!.AbsolutePath.EndsWith("/approve", StringComparison.Ordinal))
+                {
+                    sent = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                    return AnsweringHttpHandler.Json("{\"state\":\"merged\",\"revision\":\"2026-October-13\"}");
+                }
+
+                return AnsweringHttpHandler.Refused();
+            });
+
+            typeof(TabMaintainer).GetField("thisClient", Any)!
+                .SetValue(main, new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            typeof(TabMaintainer).GetField("thisSession", Any)!
+                .SetValue(main, new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            await (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(main, [ReviewDecisionKind.Approve])!;
+
+            Assert.NotNull(sent);
+            Assert.Contains("\"expectedVersion\":2", sent, StringComparison.Ordinal);
+            Assert.Contains("\"comment\":\"Thanks - nicely done.\"", sent, StringComparison.Ordinal);
         });
     }
 }

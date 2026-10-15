@@ -26,6 +26,37 @@ namespace ClassicRepairToolbox.Tests;
 public sealed class DraftRetirementTests : IDisposable
 {
     // ###########################################################################################
+    // The folder stamp says whether every write in the folder has settled (StampSettling), so a
+    // cache keyed by it trusts it only then (code review, 2026-10-13) - and it is the same stamp
+    // either way.
+    // ###########################################################################################
+    [Fact]
+    public void A_folder_stamp_is_settled_only_once_every_write_in_it_is_old_enough()
+    {
+        using var workspace = new TempWorkspace();
+        string folder = Path.Combine(workspace.Root, "Draft");
+        Directory.CreateDirectory(Path.Combine(folder, "Images"));
+
+        string old = Path.Combine(folder, "a.txt");
+        string fresh = Path.Combine(folder, "Images", "b.png");
+        File.WriteAllText(old, "a");
+        File.WriteAllText(fresh, "b");
+        File.SetLastWriteTimeUtc(old, DateTime.UtcNow.AddMinutes(-5));
+
+        string first = DraftRetirement.FolderStamp(folder, out bool freshSettled);
+        Assert.False(freshSettled);
+
+        File.SetLastWriteTimeUtc(fresh, DateTime.UtcNow.AddMinutes(-5));
+
+        string second = DraftRetirement.FolderStamp(folder, out bool oldSettled);
+        Assert.True(oldSettled);
+
+        // A write time is part of the stamp.
+        Assert.NotEqual(first, second);
+        Assert.Equal(second, DraftRetirement.FolderStamp(folder));
+    }
+
+    // ###########################################################################################
     // *** "returned" IS NOT PUBLISHED (code review, 2026-09-27). *** It was merged and has been
     // taken back OUT of BETA, so its work is no longer in the published tree - and the draft may
     // be the only copy the contributor has to correct it from. Retiring it would delete exactly
@@ -662,6 +693,152 @@ public sealed class DraftRetirementTests : IDisposable
             this.ResolveStatus);
 
         Assert.Single(retirable);
+    }
+
+    // ###########################################################################################
+    // *** THE LATEST SUBMISSION DECIDES (code review, 2026-10-13). *** A contributor on the BETA
+    // source: S1 is published to stable, the contributor keeps editing and sends S2, which is
+    // approved into BETA. The local copy IS BETA's, so the draft matches it - and S1 being published
+    // was enough to delete the draft. Then a maintainer pushed S2 back, and the contributor had no
+    // draft to correct it from: exactly the case the 2026-09-27 decision ("merged no longer counts")
+    // exists to prevent. Only when the board's LATEST submission is published is its draft finished.
+    // ###########################################################################################
+    [Fact]
+    public void A_later_submission_still_in_BETA_keeps_the_draft_though_an_earlier_one_is_published()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        IReadOnlyList<string> retirable = DraftRetirement.FindRetirableBoards(
+            [
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero) },
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.BoardId, "merged") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) },
+            ],
+            this.ResolveStatus);
+
+        Assert.Empty(retirable);
+
+        // The partner: the same two, the later one published too, retire it.
+        IReadOnlyList<string> both = DraftRetirement.FindRetirableBoards(
+            [
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero) },
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) },
+            ],
+            this.ResolveStatus);
+
+        Assert.Single(both);
+    }
+
+    // ###########################################################################################
+    // *** A LATER SEND THAT NEVER GOT ANYWHERE DOES NOT DECIDE (code review, 2026-10-14). *** S1 is
+    // published to stable; S2 then never finished sending (CRT keeps that receipt), ran out of time
+    // ("abandoned"), or was replaced by the contributor's own newer one ("withdrawn"). None of
+    // those carries work into a data tree, now or later - yet as the LATEST receipt each kept the
+    // draft for ever, identical to stable, with nothing telling the contributor why.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("uploading")]
+    [InlineData("abandoned")]
+    [InlineData("withdrawn")]
+    public void A_later_send_that_never_got_anywhere_does_not_keep_a_draft_whose_earlier_submission_is_published(string state)
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        IReadOnlyList<string> retirable = DraftRetirement.FindRetirableBoards(
+            [
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero) },
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.BoardId, state) with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) },
+            ],
+            this.ResolveStatus);
+
+        Assert.Single(retirable);
+    }
+
+    // ###########################################################################################
+    // A later submission the server no longer knows (a 404 - the data reset, for one) has no work
+    // left to bring anywhere - unless it was last seen in BETA, where its work may still be: then it
+    // decides as before, and the draft stays.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("pending", true)]
+    [InlineData("changes_requested", true)]
+    [InlineData("merged", false)]
+    public void A_later_submission_the_server_no_longer_knows_decides_only_if_it_was_last_seen_in_BETA(string state, bool retired)
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        IReadOnlyList<string> retirable = DraftRetirement.FindRetirableBoards(
+            [
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero) },
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.BoardId, state) with
+                {
+                    SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero),
+                    NotFoundUtc = new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero),
+                },
+            ],
+            this.ResolveStatus);
+
+        Assert.Equal(retired ? 1 : 0, retirable.Count);
+    }
+
+    // ###########################################################################################
+    // The rule's other side: a later submission still WITH the maintainers - or sent back, or
+    // turned down - decides, and keeps the draft: its work may be in the draft alone.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("changes_requested")]
+    [InlineData("approved")]
+    [InlineData("returned")]
+    [InlineData("rejected")]
+    public void A_later_submission_still_in_play_keeps_the_draft(string state)
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        IReadOnlyList<string> retirable = DraftRetirement.FindRetirableBoards(
+            [
+                DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero) },
+                DraftRetirementTests.Receipt(2, DraftRetirementTests.BoardId, state) with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) },
+            ],
+            this.ResolveStatus);
+
+        Assert.Empty(retirable);
+    }
+
+    // ###########################################################################################
+    // *** A DRAFT JUDGED "KEEP" IS NOT JUDGED AGAIN UNTIL SOMETHING MOVED (code review, 2026-10-13). ***
+    // The minute check runs retirement each time, and a published draft that still differs (the
+    // contributor kept working) was compared again every minute - two workbook parses and a byte
+    // compare of every file. The verdict is remembered against the draft folder's and the published
+    // folder's stamps; any change to either is a fresh comparison.
+    // ###########################################################################################
+    [Fact]
+    public void A_kept_draft_is_compared_again_only_when_a_file_moved()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU, corrected"));
+
+        // Written a while ago: a verdict is remembered only for folders whose writes have settled
+        // (StampSettling, code review 2026-10-13) - files written this instant are compared again.
+        foreach (string file in Directory.EnumerateFiles(this.thisWorkspace.Root, "*", SearchOption.AllDirectories))
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-5));
+
+        SubmissionReceipt[] receipts = [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published")];
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        int compared = DraftRetirement.ComparisonsForTests;
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        Assert.Equal(compared, DraftRetirement.ComparisonsForTests);
+
+        // The contributor puts the published value back: compared again, and now retired.
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        Assert.Single(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        Assert.True(DraftRetirement.ComparisonsForTests > compared);
     }
 
     [Fact]

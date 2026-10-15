@@ -95,7 +95,11 @@ namespace CRT
             this.Submissions.Clear();
 
             foreach (SubmissionReceipt receipt in SubmissionReceiptStore.All)
-                this.Submissions.Add(new SubmissionListItem(receipt, this.ForgetAsync, this.MarkRead));
+                this.Submissions.Add(new SubmissionListItem(
+                    receipt,
+                    this.ForgetAsync,
+                    this.MarkRead,
+                    SubmissionReceiptPresenter.NewerForBoard(receipt, SubmissionReceiptStore.All)));
 
             bool hasAny = this.Submissions.Count > 0;
 
@@ -116,7 +120,16 @@ namespace CRT
         // ###########################################################################################
         private async void OnRefreshClick(object? sender, RoutedEventArgs e)
         {
-            await this.RefreshAsync();
+            try
+            {
+                await this.RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnRefreshClick failed - [{ex}]");
+            }
         }
 
         // Drives the real refresh from a headless test. The click handler is `async void` (it must
@@ -237,13 +250,9 @@ namespace CRT
                     continue;
                 }
 
-                SubmissionReceiptStore.UpdateState(
-                    receipt.SubmissionId,
-                    status.State,
-                    status.MaintainerComment,
-                    DateTimeOffset.UtcNow,
-                    status.DecidedUtc,
-                    status.AmendedByMaintainer);
+                // The minute check's own rule for what an answer writes (code review, 2026-10-13) -
+                // it used to save the receipts file once per row here, whatever the answer said.
+                SubmissionStatusRefresh.ApplyAnswer(receipt, status, DateTimeOffset.UtcNow);
 
                 updated++;
             }
@@ -496,7 +505,8 @@ namespace CRT
         public SubmissionListItem(
             SubmissionReceipt receipt,
             Func<SubmissionListItem, Task> forget,
-            Action<SubmissionListItem>? markRead = null)
+            Action<SubmissionListItem>? markRead = null,
+            SubmissionReceipt? newer = null)
         {
             ArgumentNullException.ThrowIfNull(receipt);
 
@@ -508,7 +518,9 @@ namespace CRT
             this.BoardDisplayName = SubmissionListItem.DescribeBoard(receipt.BoardId);
 
             this.Summary = receipt.Summary ?? string.Empty;
-            this.StateText = SubmissionReceiptPresenter.DescribeReceiptState(receipt);
+            // A request the contributor already answered with a newer submission says so, and is
+            // not orange any more (SubmissionReceiptPresenter.NewerForBoard).
+            this.StateText = SubmissionReceiptPresenter.DescribeReceiptState(receipt, newer);
             this.SentText = SubmissionReceiptPresenter.DescribeSent(receipt.SentUtc);
 
             // Through the presenter like every other date on this row, so all three share one
@@ -529,7 +541,7 @@ namespace CRT
             // The colour and the words both come off SubmissionReceiptPresenter, so they cannot
             // disagree about what this row's state means.
             this.StatusAccentBrush = SubmissionListItem.AccentFor(
-                SubmissionReceiptPresenter.ClassifyReceipt(receipt));
+                SubmissionReceiptPresenter.ClassifyReceipt(receipt, newer));
 
             this.CardBackgroundBrush = SubmissionListItem.Theme("Card_Bg", Brushes.WhiteSmoke);
 

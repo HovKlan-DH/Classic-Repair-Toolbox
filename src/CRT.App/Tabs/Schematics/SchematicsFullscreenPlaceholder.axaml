@@ -115,6 +115,15 @@
 										   Stretch="Uniform"
 										   HorizontalAlignment="Stretch"
 										   RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+									<!-- The highlights, over the image; the blink is this layer's
+									     opacity (SchematicThumbnail.HighlightImage). -->
+									<Image Source="{Binding HighlightImage}"
+										   Opacity="{Binding HighlightLayerOpacity}"
+										   Stretch="Uniform"
+										   HorizontalAlignment="Stretch"
+										   IsHitTestVisible="False"
+										   RenderOptions.BitmapInterpolationMode="HighQuality" />
 								</Grid>
 							</Grid>
 						</Grid>

@@ -54,6 +54,37 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
+        // *** THE NEWER ONE BESIDE AN OLDER ONE THAT STAYS (owner decision, 2026-10-13). *** An older
+        // submission a maintainer has touched - amended, or approved once of the two a shared-file
+        // change needs - is not replaced (above), so it waits beside the contributor's newer one,
+        // and completing it would publish the older work. The rule stays; the reviewer is TOLD, on
+        // the older one (ReviewQueueEntry.NewerSubmissionId). This is that newer one: the newest
+        // submission from the same contributor for the same board, sent after `older` and still
+        // waiting - or null when there is none, or `older` is no longer waiting itself.
+        // ###########################################################################################
+        public static SubmissionRecord? NewerFromSameContributor(SubmissionRecord older, IEnumerable<SubmissionRecord> waiting)
+        {
+            ArgumentNullException.ThrowIfNull(older);
+            ArgumentNullException.ThrowIfNull(waiting);
+
+            if (!SubmissionReplacementRules.IsWaiting(older))
+                return null;
+
+            return waiting
+                .Where(newer =>
+                    newer.Id > older.Id &&
+                    SubmissionReplacementRules.IsWaiting(newer) &&
+                    string.Equals(newer.BoardId, older.BoardId, StringComparison.Ordinal) &&
+                    SubmissionReplacementRules.IsSameContributor(older, newer))
+                .OrderByDescending(newer => newer.Id)
+                .FirstOrDefault();
+        }
+
+        // In the queue: waiting for a first approval, or for the second of two.
+        private static bool IsWaiting(SubmissionRecord submission) =>
+            submission.State is SubmissionState.Pending or SubmissionState.Approved;
+
+        // ###########################################################################################
         // The same person: both signed in as the same account, or both anonymous with the same
         // contact email (trimmed, any case - "Dennis@Example.com" is the same mailbox). A signed-in
         // submission and an anonymous one are never the same person here: a signed-in submission

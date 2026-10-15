@@ -127,7 +127,7 @@ namespace Handlers.MaintainerHandling
                 int count => $", and {count} contributors were told"
             };
 
-            return $"{answer.BoardId} is deleted: {BoardDeletionWording.Files(answer.BetaFilesRemoved)} removed from BETA, " +
+            return $"{ReviewQueueDisplay.BoardHeading(answer.BoardId)} is deleted: {BoardDeletionWording.Files(answer.BetaFilesRemoved)} removed from BETA, " +
                 $"{BoardDeletionWording.Files(answer.ProductionFilesRemoved)} from the stable data, " +
                 $"{BoardDeletionWording.Count(answer.SubmissionsDeleted, "submission", "submissions")} deleted{told}.";
         }

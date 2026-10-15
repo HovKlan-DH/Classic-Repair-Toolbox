@@ -30,6 +30,23 @@
   </ItemGroup>
 
   <!--
+  *** PINNED ABOVE WHAT EPPlus ASKS FOR (2026-10-14). *** EPPlus 8.7.1 - the newest - requires
+  these two at 10.0.10 or later, and NuGet takes the lowest it may: 10.0.10, which five .NET
+  denial-of-service advisories of 2026-10-13 cover (CVE-2026-70162, CVE-2026-84008, CVE-2026-96958,
+  CVE-2026-96959, CVE-2026-96960; fixed in 10.0.13). In Release a known vulnerability stops the
+  restore, so the server could not be published. CRT.App and CRT.Server reference this project, so
+  this one place raises both.
+
+  `PinnedOver` names the package whose dependency each line raises. PinnedPackagesTests fails once
+  that package itself requires this version or later, or no longer brings the package in at all -
+  then the line has done its job: remove it. NuGet ignores the extra attribute.
+  -->
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" PinnedOver="EPPlus" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13" PinnedOver="EPPlus" />
+  </ItemGroup>
+
+  <!--
   The grant is by ASSEMBLY NAME, not project name - CRT.App's project file is named
   "CRT.App.csproj" (Phase 0) but its AssemblyName is still "Classic-Repair-Toolbox", kept
   unchanged deliberately so Velopack's update identity for installed users never moves. Granting

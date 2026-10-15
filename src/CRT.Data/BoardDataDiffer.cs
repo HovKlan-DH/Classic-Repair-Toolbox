@@ -388,6 +388,19 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Whether two rows of one type hold the same values - every property, trimmed, ordinal, blank
+        // and null alike: exactly "no differing field" (DifferingFields). DraftRebase decides "the
+        // contributor left this row alone" with it, so the merge and the count agree.
+        // ###########################################################################################
+        internal static bool SameValues(object first, object second)
+        {
+            ArgumentNullException.ThrowIfNull(first);
+            ArgumentNullException.ThrowIfNull(second);
+
+            return first.GetType() == second.GetType() && BoardDataDiffer.DifferingFields(first, second).Count == 0;
+        }
+
+        // ###########################################################################################
         // Keys one side of a section. Case-INSENSITIVE, matching BoardDraftApplier: a board label
         // typed "u8" in Excel is the same row as "U8", and treating them as two rows would report
         // a deletion plus an addition for what is a capitalisation fix at worst.

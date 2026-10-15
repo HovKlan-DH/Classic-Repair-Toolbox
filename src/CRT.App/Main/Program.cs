@@ -22,6 +22,10 @@ namespace Main
             VelopackApp.Build().Run();
             BuildAvaloniaApp()
                 .StartWithClassicDesktopLifetime(args);
+
+            // The log is written in batches (Logger): the last lines of the session go out here,
+            // before the process ends. ProcessExit does it as well, for the ways out that skip this.
+            Logger.Flush();
         }
 
         // Avalonia configuration, don't remove; also used by visual designer.

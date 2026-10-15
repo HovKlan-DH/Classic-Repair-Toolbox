@@ -53,13 +53,20 @@ namespace Handlers.DataHandling
     // (everywhere)") is the size of what opens: BETA's or production's file, or the submission's
     // upload. Null for a file not written yet, and from a server older than 4.4.0 - the tree then
     // shows no size rather than a wrong one.
+    //
+    // `AlsoUsedBy` (code review, 2026-10-13): for a SHARED file the approval REPLACES, the other
+    // boards whose workbooks cite it, as "Manufacturer / Hardware / Board" - every one of them sees
+    // the new bytes, which is why the replacement needs two approvals, and the two approvers used to
+    // decide without being told which boards those were. Null for any other file, and from an older
+    // server.
     public sealed record BoardFileEntry(
         string Path,
         BoardFileChange Change,
         BoardFileSource OpenFrom,
         string? Sha256 = null,
         bool WrittenOnApproval = false,
-        long? SizeBytes = null);
+        long? SizeBytes = null,
+        IReadOnlyList<string>? AlsoUsedBy = null);
 
     // A file the approval generates: where, whether BETA has it now, and whether writing it would
     // change it.

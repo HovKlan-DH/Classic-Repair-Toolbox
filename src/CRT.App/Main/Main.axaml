@@ -402,15 +402,14 @@
 									Padding="10,4"
 									Click="OnWorklogCancelEntryClick" />
 							<Button x:Name="WorklogAddEntryButton"
+									Classes="Accept"
 									Content="Add worklog"
 									IsVisible="False"
-									Foreground="{DynamicResource Button_Ok_Fg}"
-									Background="{DynamicResource Button_Ok_Bg}"
-									BorderBrush="{DynamicResource Button_Ok_Border}"
 									FontSize="11"
 									Padding="10,4"
 									Click="OnWorklogAddEntryClick" />
 							<Button x:Name="WorklogCreateWorkbookButton"
+									Classes="Accept"
 									Content="Create new workbook"
 									FontSize="11"
 									Padding="10,4"
@@ -604,6 +603,30 @@
 							VerticalAlignment="Bottom"
 							Spacing="8">
 
+					<!-- The settings file could not be read, so CRT started on defaults - and where the
+					     unreadable file was kept (Main.SettingsNotice.cs). Stays until closed. -->
+					<Border x:Name="SettingsUnreadableBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="SettingsUnreadableBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="SettingsUnreadableBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnSettingsUnreadableBannerDismiss" />
+						</Grid>
+					</Border>
+
 					<!-- Data that needs a newer CRT, and the server's "update CRT" for submissions - a
 					     paragraph per reason (Main.Updates.cs). -->
 					<Border x:Name="MainExcelRequiresAppUpdateBanner"
@@ -664,12 +687,9 @@
 										Click="OnViewReleaseNotesClick" />
 
 								<Button x:Name="UpdateBannerInstallButton"
-										Classes="BannerInstallButton"
+										Classes="Accept BannerInstallButton"
 										Content="Install"
 										Margin="0,8,0,0"
-										Background="{DynamicResource Button_Highlighted_Bg}"
-										Foreground="{DynamicResource Button_Highlighted_Fg}"
-										BorderBrush="{DynamicResource Button_Highlighted_Border}"
 										FontSize="11"
 										Padding="10,3"
 										Click="OnInstallUpdateClick" />
@@ -707,13 +727,10 @@
 										Orientation="Horizontal"
 										HorizontalAlignment="Right">
 								<Button x:Name="DataCheckBannerRefreshButton"
-										Classes="BannerInstallButton"
+										Classes="Accept BannerInstallButton"
 										Content="Refresh Board"
 										IsVisible="False"
 										Margin="0,8,0,0"
-										Background="{DynamicResource Button_Highlighted_Bg}"
-										Foreground="{DynamicResource Button_Highlighted_Fg}"
-										BorderBrush="{DynamicResource Button_Highlighted_Border}"
 										FontSize="11"
 										Padding="10,3"
 										Click="OnRefreshBoardClick" />
@@ -756,13 +773,10 @@
 								     data check's "Refresh Board" - the two do entirely different things and
 								     are shown by different flows. -->
 								<Button x:Name="SyncBannerDriftButton"
-										Classes="BannerInstallButton"
+										Classes="Accept BannerInstallButton"
 										Content="What changed"
 										IsVisible="False"
 										Margin="0,8,0,0"
-										Background="{DynamicResource Button_Highlighted_Bg}"
-										Foreground="{DynamicResource Button_Highlighted_Fg}"
-										BorderBrush="{DynamicResource Button_Highlighted_Border}"
 										FontSize="11"
 										Padding="10,3"
 										Click="OnSyncBannerDriftClick" />
@@ -798,12 +812,9 @@
 										Orientation="Horizontal"
 										HorizontalAlignment="Right">
 								<Button x:Name="SourceSwitchBannerConfigurationButton"
-										Classes="BannerInstallButton"
+										Classes="Accept BannerInstallButton"
 										Content="Open Configuration"
 										Margin="0,8,0,0"
-										Background="{DynamicResource Button_Highlighted_Bg}"
-										Foreground="{DynamicResource Button_Highlighted_Fg}"
-										BorderBrush="{DynamicResource Button_Highlighted_Border}"
 										FontSize="11"
 										Padding="10,3"
 										Click="OnSourceSwitchBannerConfigurationClick" />

@@ -66,7 +66,7 @@ namespace CRT
                 // Kept only as a complete pair, for the account that asked, and only while the moment
                 // for it is still ahead - the tab shown meanwhile has opened the entry itself.
                 if (detail.Result.IsOk && table.Result.IsOk &&
-                    ReferenceEquals(this.thisSession, session) &&
+                    this.IsSessionInUse(session) &&
                     !this.IsOnScreen &&
                     this.thisSelectedId is null)
                 {

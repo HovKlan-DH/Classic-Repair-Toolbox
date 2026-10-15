@@ -80,6 +80,38 @@ namespace Handlers.MaintainerHandling
         public void Dispose() => this.thisHttp.Dispose();
 
         // ###########################################################################################
+        // *** RAISED WHEN THE SERVER ACCEPTED A SESSION (code review, 2026-10-13). *** Every request
+        // made with a session goes through SendWithSessionAsync; a success answer is the server
+        // saying the session is live - and it slides its expiry then (SessionExtensionRules). The
+        // session sent and the moment it was SENT, so the tab can slide the expiry it remembers the
+        // same way (ReviewSession.AfterUseAt). Raised on whichever thread the answer arrived on.
+        // ###########################################################################################
+        public event Action<ReviewSession, DateTimeOffset>? SessionAccepted;
+
+        // One request, with the session's bearer token when there is one - the one place a request
+        // carrying a session is sent, so SessionAccepted cannot be missed by a new route.
+        private async Task<HttpResponseMessage> SendWithSessionAsync(
+            HttpRequestMessage request,
+            ReviewSession? session,
+            CancellationToken cancellationToken)
+        {
+            if (session is not null)
+            {
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
+            }
+
+            DateTimeOffset sentUtc = DateTimeOffset.UtcNow;
+
+            HttpResponseMessage response = await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+            if (session is not null && response.IsSuccessStatusCode)
+                this.SessionAccepted?.Invoke(session, sentUtc);
+
+            return response;
+        }
+
+        // ###########################################################################################
         // Signs in. A wrong password and an unreachable server are different outcomes.
         // ###########################################################################################
         public async Task<ReviewApiResult<ReviewSession>> LoginAsync(
@@ -322,6 +354,24 @@ namespace Handlers.MaintainerHandling
                 .ConfigureAwait(false);
         }
 
+        // ###########################################################################################
+        // How many mails the server could not send (code review, 2026-10-13) - GET
+        // /api/review/server-status, WITH the session: it is for maintainers, never public. Shown
+        // beside the server's version only when above zero.
+        // ###########################################################################################
+        public async Task<ReviewApiResult<ServerStatusAnswer>> GetServerStatusAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.ServerStatus(this.thisBaseAddress)),
+                    ReviewApiParser.ParseServerStatus,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         public async Task<ReviewApiResult<AccountAnswer>> GetAccountAsync(
             ReviewSession session,
             CancellationToken cancellationToken = default)
@@ -377,11 +427,8 @@ namespace Handlers.MaintainerHandling
                 using var content = new StringContent(ReviewApiClient.Body(change), Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
 
-                request.Headers.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
-
                 using HttpResponseMessage response =
-                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    await this.SendWithSessionAsync(request, session, cancellationToken).ConfigureAwait(false);
 
                 string payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
 
@@ -522,17 +569,24 @@ namespace Handlers.MaintainerHandling
         // `shownRemovals` is the list of files the maintainer was shown the publish would remove
         // (the detail's FileRemovalPreview). The server refuses the approval when that is no longer
         // the list it would remove, so nothing goes that was not on screen.
+        //
+        // `expectedVersion` (2026-10-13) is the amendment version the screen showed - the server
+        // refuses the decision (409) when another maintainer has changed the submission since - and
+        // `comment` goes with the approval into the contributor's mail. Both optional.
         public Task<ReviewApiResult<ReviewDecisionResult>> ApproveAsync(
             ReviewSession session,
             long submissionId,
             IReadOnlyList<string>? shownRemovals = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            int? expectedVersion = null,
+            string? comment = null) =>
             this.DecideAsync(
                 ReviewApiRoutes.Approve(this.thisBaseAddress, submissionId),
-                comment: null,
+                string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(),
                 session,
                 cancellationToken,
-                shownRemovals ?? []);
+                shownRemovals ?? [],
+                expectedVersion);
 
         // ###########################################################################################
         // The maintainer's table (2026-09-25). A change is sent with the amendment version the table
@@ -569,23 +623,27 @@ namespace Handlers.MaintainerHandling
             ReviewSession session,
             long submissionId,
             string comment,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            int? expectedVersion = null) =>
             this.DecideAsync(
                 ReviewApiRoutes.Reject(this.thisBaseAddress, submissionId),
                 comment,
                 session,
-                cancellationToken);
+                cancellationToken,
+                expectedVersion: expectedVersion);
 
         public Task<ReviewApiResult<ReviewDecisionResult>> RequestChangesAsync(
             ReviewSession session,
             long submissionId,
             string comment,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            int? expectedVersion = null) =>
             this.DecideAsync(
                 ReviewApiRoutes.RequestChanges(this.thisBaseAddress, submissionId),
                 comment,
                 session,
-                cancellationToken);
+                cancellationToken,
+                expectedVersion: expectedVersion);
 
         // ###########################################################################################
         // One decision. The three differ only in their route and whether they carry a comment.
@@ -595,23 +653,18 @@ namespace Handlers.MaintainerHandling
             string? comment,
             ReviewSession? session,
             CancellationToken cancellationToken,
-            IReadOnlyList<string>? expectedRemovals = null)
+            IReadOnlyList<string>? expectedRemovals = null,
+            int? expectedVersion = null)
         {
-            string body = ReviewApiClient.Body(new ReviewDecisionRequest(comment, expectedRemovals));
+            string body = ReviewApiClient.Body(new ReviewDecisionRequest(comment, expectedRemovals, expectedVersion));
 
             try
             {
                 using var content = new StringContent(body, Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
 
-                if (session is not null)
-                {
-                    request.Headers.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
-                }
-
                 using HttpResponseMessage response =
-                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    await this.SendWithSessionAsync(request, session, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode == HttpStatusCode.Conflict)
                 {
@@ -767,11 +820,8 @@ namespace Handlers.MaintainerHandling
                 using var content = new StringContent(body, Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
 
-                request.Headers.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
-
                 using HttpResponseMessage response =
-                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    await this.SendWithSessionAsync(request, session, cancellationToken).ConfigureAwait(false);
 
                 // The server's refusals here are SENTENCES written for the administrator - "has
                 // not verified their address", "no such board" - so they are read back rather
@@ -1190,11 +1240,8 @@ namespace Handlers.MaintainerHandling
                 using var content = new StringContent(ReviewApiClient.Body(body), Encoding.UTF8, "application/json");
                 using var request = new HttpRequestMessage(HttpMethod.Post, route) { Content = content };
 
-                request.Headers.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
-
                 using HttpResponseMessage response =
-                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    await this.SendWithSessionAsync(request, session, cancellationToken).ConfigureAwait(false);
 
                 // Every refusal here carries a sentence written for the maintainer.
                 if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound
@@ -1305,14 +1352,8 @@ namespace Handlers.MaintainerHandling
             {
                 using HttpRequestMessage request = buildRequest();
 
-                if (session is not null)
-                {
-                    request.Headers.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
-                }
-
                 using HttpResponseMessage response =
-                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    await this.SendWithSessionAsync(request, session, cancellationToken).ConfigureAwait(false);
 
                 // Shared with the bytes path so the two cannot come to disagree about what a
                 // status code means to the person reading it.
@@ -1377,14 +1418,8 @@ namespace Handlers.MaintainerHandling
             {
                 using HttpRequestMessage request = buildRequest();
 
-                if (session is not null)
-                {
-                    request.Headers.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", session.BearerToken);
-                }
-
                 using HttpResponseMessage response =
-                    await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    await this.SendWithSessionAsync(request, session, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode == HttpStatusCode.NotFound)
                 {

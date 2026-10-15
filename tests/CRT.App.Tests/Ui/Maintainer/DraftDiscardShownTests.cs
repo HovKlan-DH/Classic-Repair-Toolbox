@@ -61,10 +61,6 @@ public sealed class DraftDiscardShownTests
                 true,
                 new ReviewChangeSummaryView(false, []),
                 [],
-                new ReviewSubmissionAssets([]),
-                [],
-                new Dictionary<string, string>(),
-                new Dictionary<string, string>(),
                 [],
                 null));
 

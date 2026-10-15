@@ -105,12 +105,15 @@ namespace Handlers.Online
                 {
                     var info = new FileInfo(absolute);
 
-                    await using FileStream stream = new(
-                        absolute, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+                    // *** REMEMBERED BY LENGTH AND WRITE TIME (code review, 2026-10-13). *** A re-send
+                    // of a large board re-read every published picture to learn hashes that had not
+                    // changed since the last send or sync (the C64: 1,100 files, 76 MB). The draft's
+                    // own fingerprint keeps the same cache, so one read serves both. The server
+                    // verifies every byte it receives against the hash, so a file changed under an
+                    // unchanged stamp is refused there, never published wrong.
+                    string hash = await Task.Run(() => DraftFingerprint.CachedFileHash(absolute), cancellationToken);
 
-                    byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken);
-
-                    hashes[relative] = new SubmissionFileInfo(Convert.ToHexStringLower(hash), info.Length);
+                    hashes[relative] = new SubmissionFileInfo(hash.ToLowerInvariant(), info.Length);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -158,11 +161,43 @@ namespace Handlers.Online
             }
 
             HashNegotiationResponse? negotiation =
-                await response.Content.ReadFromJsonAsync<HashNegotiationResponse>(cancellationToken);
+                await SubmissionClient.TryReadAnswerAsync<HashNegotiationResponse>(response, cancellationToken);
 
             return negotiation
-                ?? throw new SubmissionRejectedException(0, [], "The server's reply could not be read.");
+                ?? throw new SubmissionRejectedException(0, [], SubmissionClient.UnreadableReply);
         }
+
+        // ###########################################################################################
+        // A SUCCESSFUL ANSWER'S BODY, OR NULL WHEN IT IS NOT THE JSON IT SHOULD BE (code review,
+        // 2026-10-13). A network that asks you to sign in first - a hotel's or a cafe's "captive
+        // portal" - answers every request 200 with an HTML page. ReadFromJsonAsync threw a
+        // JsonException out of the Submit dialog, which caught only network failures, and App's
+        // dispatcher handler let that crash CRT. Read as text and parsed with the web defaults
+        // ReadFromJsonAsync used; anything unreadable is null, which every caller turns into
+        // UnreadableReply (create and finalise) or "could not be reached" (the status check).
+        // ###########################################################################################
+        internal static async Task<T?> TryReadAnswerAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken = default)
+            where T : class
+        {
+            ArgumentNullException.ThrowIfNull(response);
+
+            try
+            {
+                string body = await response.Content.ReadAsStringAsync(cancellationToken);
+                return JsonSerializer.Deserialize<T>(body, SubmissionClient.AnswerJson);
+            }
+            catch (Exception ex) when (ex is JsonException or NotSupportedException or InvalidOperationException)
+            {
+                return null;
+            }
+        }
+
+        private static readonly JsonSerializerOptions AnswerJson = new(JsonSerializerDefaults.Web);
+
+        // What the contributor reads when the server's answer is not one CRT can read.
+        internal const string UnreadableReply =
+            "The server's reply could not be read. If your network asks you to sign in first (as in a hotel or " +
+            "a cafe), open a web page, sign in, and send again - nothing has been lost, and your draft is unchanged.";
 
         // ###########################################################################################
         // The create request, apart from sending it so a test can read what goes out. The manifest
@@ -323,10 +358,10 @@ namespace Handlers.Online
             }
 
             SubmissionResult? result =
-                await response.Content.ReadFromJsonAsync<SubmissionResult>(cancellationToken);
+                await SubmissionClient.TryReadAnswerAsync<SubmissionResult>(response, cancellationToken);
 
             return result
-                ?? throw new SubmissionRejectedException(0, [], "The server's reply could not be read.");
+                ?? throw new SubmissionRejectedException(0, [], SubmissionClient.UnreadableReply);
         }
 
         // ###########################################################################################
@@ -433,7 +468,7 @@ namespace Handlers.Online
                     return null;
                 }
 
-                return await response.Content.ReadFromJsonAsync<SubmissionStatus>(cancellationToken);
+                return await SubmissionClient.TryReadAnswerAsync<SubmissionStatus>(response, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

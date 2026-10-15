@@ -11,8 +11,8 @@ namespace ClassicRepairToolbox.Tests.Maintainer;
 // appear on the wire, and the server sends all ten sections every time including empty ones -
 // both facts a guess would have missed.
 //
-// ReviewSummaryPresenterTests goes further and runs a genuine comparison through serialise-then-
-// parse; this file covers the degenerate answers that a real comparison never produces.
+// ReviewWireContractTests runs a genuine answer through serialise-then-parse; this file covers the
+// degenerate answers that a real one never produces.
 public sealed class ReviewSubmissionDetailTests
 {
     private const string DetailJson = """
@@ -237,7 +237,6 @@ public sealed class ReviewSubmissionDetailTests
             """);
 
         Assert.True(detail!.Changes!.IsNewBoard);
-        Assert.Contains("New board", ReviewSummaryPresenter.BuildHeadline(detail.Changes));
     }
 
     [Theory]
@@ -258,264 +257,6 @@ public sealed class ReviewSubmissionDetailTests
         Assert.Null(ReviewApiParser.ParseSubmission("""{"submission":{"boardId":"A/B/C"}}"""));
     }
 
-    // -----------------------------------------------------------------------------------------
-    // The manifest's file list, which drives task 4's visual comparison.
-    //
-    // This JSON was verified by SERIALISING a real SubmissionManifest with camelCase, the same
-    // practice the header describes - the nesting (manifest.files[].sha256) is not something to
-    // guess at, because a wrong key parses to an empty list and the comparison silently shows
-    // nothing rather than failing.
-    // -----------------------------------------------------------------------------------------
-
-    [Fact]
-    public void The_manifests_FILES_are_carried_through_for_fetching()
-    {
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "manifest":{"boardId":"Commodore/C64/250407","files":[
-                {"path":"Images/U8.png","sha256":"aaaa","sizeBytes":2048},
-                {"path":"Files/datasheet.pdf","sha256":"bbbb","sizeBytes":9}]}}
-            """);
-
-        Assert.Equal(2, detail!.Assets.Files.Count);
-        Assert.Equal("Images/U8.png", detail.Assets.Files[0].Path);
-        Assert.Equal("aaaa", detail.Assets.Files[0].Sha256);
-    }
-
-    [Fact]
-    public void A_file_missing_its_PATH_or_HASH_is_skipped_rather_than_defaulted()
-    {
-        // A blank hash builds a fetch URL the server refuses, and the panel would then report a
-        // failure that is really a malformed manifest. Skipping keeps the rest reviewable - the
-        // same rule the queue parser follows for one bad row.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "manifest":{"files":[
-                {"path":"","sha256":"aaaa"},
-                {"path":"b.png"},
-                {"path":"good.png","sha256":"cccc"}]}}
-            """);
-
-        ReviewSubmittedFile file = Assert.Single(detail!.Assets.Files);
-        Assert.Equal("good.png", file.Path);
-    }
-
-    [Fact]
-    public void A_ROWS_ONLY_submission_yields_an_EMPTY_asset_list_rather_than_null()
-    {
-        // The commonest contribution there is - a typo fix uploads nothing. A null here would
-        // make every caller guard against a case that simply means "no files".
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],"manifest":{"files":[]}}
-            """);
-
-        Assert.NotNull(detail!.Assets);
-        Assert.Empty(detail.Assets.Files);
-    }
-
-    [Fact]
-    public void The_PUBLISHED_file_list_is_carried_through()
-    {
-        // *** THIS FIELD EXISTS BECAUSE DERIVING IT CLIENT-SIDE WAS WRONG. *** The first version of
-        // the review window built the published side from the change summary's row keys. Those are
-        // NATURAL keys - for an image, BoardLabel|Region|Pin|Name - not file paths, so nothing
-        // matched: every submitted image read as an addition and a deletion could never appear.
-        // The panel drew perfectly and described the wrong thing, which is why the server now
-        // states the list outright.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedFiles":["Images/U8.png","Images/gone.png"]}
-            """);
-
-        Assert.Equal(["Images/U8.png", "Images/gone.png"], detail!.PublishedFiles);
-    }
-
-    [Fact]
-    public void A_response_with_no_published_file_list_yields_an_EMPTY_one()
-    {
-        // A new board has no published side at all, which correctly makes every image an
-        // addition rather than throwing.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[]}
-            """);
-
-        Assert.Empty(detail!.PublishedFiles);
-    }
-
-    [Fact]
-    public void A_published_list_and_a_submission_PAIR_UP_into_a_real_comparison()
-    {
-        // End to end through the two pieces that have to agree: the parser reads both lists off
-        // one response, and the planner pairs them. This is what would have caught the natural-key
-        // mistake - the pairing only works when both sides speak in FILE PATHS.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedFiles":["Images/U8.png","Images/gone.png"],
-             "manifest":{"files":[
-                {"path":"Images/U8.png","sha256":"aaaa"},
-                {"path":"Images/new.png","sha256":"bbbb"}]}}
-            """);
-
-        IReadOnlyList<ReviewImagePair> pairs =
-            ReviewImageComparison.Plan(detail!.Assets, detail.PublishedFiles);
-
-        Assert.Equal(3, pairs.Count);
-
-        // The removal leads, and each of the three outcomes is represented exactly once.
-        Assert.Equal(ReviewImageChange.Removed, pairs[0].Change);
-        Assert.Equal("Images/gone.png", pairs[0].Path);
-
-        Assert.Contains(pairs, pair =>
-            pair.Path == "Images/U8.png" && pair.Change == ReviewImageChange.Replaced);
-
-        Assert.Contains(pairs, pair =>
-            pair.Path == "Images/new.png" && pair.Change == ReviewImageChange.Added);
-    }
-
-    // ###########################################################################################
-    // *** THE PUBLISHED HASHES, AND THE SCREEN THEY FIX (2026-09-23). ***
-    //
-    // A submission names every file the board references, because the manifest describes the
-    // whole intended state. Paired against the published list without hashes, every one of those
-    // files is "on both sides" and therefore drawn as replaced - so a one-line description edit
-    // on the C64 250407 was shown as "1178 images to compare", all identical. The planner already
-    // dropped a matching pair when handed the published hash; the server simply never sent one.
-    // ###########################################################################################
-    [Fact]
-    public void The_PUBLISHED_HASHES_are_carried_through()
-    {
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedHashes":{"Images/U8.png":"aaaa","Images/U9.png":"bbbb"}}
-            """);
-
-        Assert.Equal("aaaa", detail!.PublishedHashes["Images/U8.png"]);
-        Assert.Equal("bbbb", detail.PublishedHashes["Images/U9.png"]);
-    }
-
-    [Fact]
-    public void A_response_with_no_published_hashes_yields_an_EMPTY_map_not_a_failure()
-    {
-        // An older server that does not send the field must degrade to exactly the behaviour it
-        // had before - every shared path shown as replaced - rather than refusing the response.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[]}
-            """);
-
-        Assert.NotNull(detail);
-        Assert.Empty(detail!.PublishedHashes);
-    }
-
-    [Fact]
-    public void A_malformed_hash_entry_is_skipped_and_the_rest_are_kept()
-    {
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedHashes":{"Images/U8.png":"aaaa","Images/bad.png":42,"Images/blank.png":""}}
-            """);
-
-        Assert.Single(detail!.PublishedHashes);
-        Assert.Equal("aaaa", detail.PublishedHashes["Images/U8.png"]);
-    }
-
-    [Fact]
-    public void Hash_keys_are_matched_ORDINALLY_like_the_file_list_they_pair_against()
-    {
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedHashes":{"Images/U8.png":"aaaa"}}
-            """);
-
-        Assert.False(detail!.PublishedHashes.ContainsKey("images/u8.png"));
-    }
-
-    // ###########################################################################################
-    // *** THE REPORTED CASE, END TO END: a rows-only change yields NO image pairs at all. ***
-    //
-    // The three pieces that have to agree - the parser reads the files, the hashes and the
-    // submission off one response, and the planner pairs them. This is exactly what the maintainer
-    // saw fail: with the hashes absent the same response produces one pair per shared file.
-    // ###########################################################################################
-    [Fact]
-    public void A_submission_whose_files_are_all_byte_identical_produces_NO_pairs()
-    {
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedFiles":["Images/U8.png","Images/U9.png"],
-             "publishedHashes":{"Images/U8.png":"aaaa","Images/U9.png":"bbbb"},
-             "manifest":{"files":[
-                {"path":"Images/U8.png","sha256":"aaaa"},
-                {"path":"Images/U9.png","sha256":"bbbb"}]}}
-            """);
-
-        IReadOnlyList<ReviewImagePair> pairs = ReviewImageComparison.Plan(
-            detail!.Assets, detail.PublishedFiles, detail.PublishedHashes);
-
-        Assert.Empty(pairs);
-    }
-
-    [Fact]
-    public void With_hashes_present_only_the_file_that_REALLY_changed_is_paired()
-    {
-        // The anti-vacuity half: the hashes must not simply switch the comparison off. A file
-        // whose submitted hash differs is still shown, as a replacement, and only that one.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "publishedFiles":["Images/U8.png","Images/U9.png"],
-             "publishedHashes":{"Images/U8.png":"aaaa","Images/U9.png":"bbbb"},
-             "manifest":{"files":[
-                {"path":"Images/U8.png","sha256":"aaaa"},
-                {"path":"Images/U9.png","sha256":"changed"}]}}
-            """);
-
-        IReadOnlyList<ReviewImagePair> pairs = ReviewImageComparison.Plan(
-            detail!.Assets, detail.PublishedFiles, detail.PublishedHashes);
-
-        ReviewImagePair pair = Assert.Single(pairs);
-        Assert.Equal("Images/U9.png", pair.Path);
-        Assert.Equal(ReviewImageChange.Replaced, pair.Change);
-    }
-
-    [Fact]
-    public void The_SCHEMATIC_IMAGE_map_is_carried_through()
-    {
-        // A highlight names a SCHEMATIC, not a file - its row key is SchematicName|BoardLabel. So
-        // without this map the app knows a rectangle moved on "Sheet 1" and cannot find the
-        // picture of Sheet 1 to draw it on.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "schematicImages":{"Sheet 1":"Images/sheet1.png","Sheet 2":"Images/sheet2.png"}}
-            """);
-
-        Assert.Equal("Images/sheet1.png", detail!.SchematicImages["Sheet 1"]);
-        Assert.Equal(2, detail.SchematicImages.Count);
-    }
-
-    [Fact]
-    public void A_response_with_no_schematic_images_yields_an_EMPTY_map()
-    {
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[]}
-            """);
-
-        Assert.Empty(detail!.SchematicImages);
-    }
-
-    [Fact]
-    public void Schematic_names_are_matched_CASE_SENSITIVELY()
-    {
-        // These keys are matched against a row key the SERVER built, on a tree that is
-        // case-sensitive everywhere else. Folding case would pair a highlight with the wrong
-        // board.
-        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission("""
-            {"submission":{"id":1},"findings":[],
-             "schematicImages":{"Sheet 1":"a.png"}}
-            """);
-
-        Assert.True(detail!.SchematicImages.ContainsKey("Sheet 1"));
-        Assert.False(detail.SchematicImages.ContainsKey("sheet 1"));
-    }
-
     [Fact]
     public void A_response_with_NO_manifest_at_all_still_parses()
     {
@@ -526,6 +267,35 @@ public sealed class ReviewSubmissionDetailTests
             """);
 
         Assert.NotNull(detail);
-        Assert.Empty(detail!.Assets.Files);
+        Assert.Empty(detail!.SubmittedFiles);
+    }
+
+    // ###########################################################################################
+    // *** THE FIELDS ONLY THE RETIRED CHANGE SUMMARY READ ARE READ PAST (code review, 2026-10-13). ***
+    // The server still sends manifest, publishedFiles, publishedHashes and schematicImages -
+    // released CRT 3.0.0 reads them - but this CRT reads none of them since the summary that drew
+    // them was deleted. An answer carrying them parses as one without them.
+    // ###########################################################################################
+    [Fact]
+    public void The_fields_only_the_retired_change_summary_read_are_read_past()
+    {
+        const string bare = """{"canPublish":true,"submission":{"id":7,"boardId":"Commodore/C64/250407"},"findings":[]}""";
+
+        const string carrying = """
+            {"canPublish":true,"submission":{"id":7,"boardId":"Commodore/C64/250407"},"findings":[],
+             "manifest":{"files":[{"path":"Images/U8.png","sha256":"aaaa"}]},
+             "publishedFiles":["Images/U8.png"],
+             "publishedHashes":{"Images/U8.png":"bbbb"},
+             "schematicImages":{"Sheet 1":"Images/sheet1.png"}}
+            """;
+
+        ReviewSubmissionDetail? withThem = ReviewApiParser.ParseSubmission(carrying);
+        ReviewSubmissionDetail? without = ReviewApiParser.ParseSubmission(bare);
+
+        Assert.NotNull(withThem);
+        Assert.Equal(7, withThem!.Submission.Id);
+        Assert.True(withThem.CanPublish);
+        Assert.Equal(without!.Submission, withThem.Submission);
+        Assert.Empty(withThem.SubmittedFiles);
     }
 }

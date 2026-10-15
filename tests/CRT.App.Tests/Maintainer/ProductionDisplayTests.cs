@@ -177,19 +177,18 @@ public sealed class ProductionDisplayTests
                 .Select(index => new CarriedSubmission(index + 1, $"c{index}@example.com", "A change.", ProductionDisplayTests.Now))
                 .ToList());
 
-    // The two kinds are different operations and must not read as the same one.
+    // The two kinds are different operations and must not read as the same one - but both are
+    // "push back", the operation's one name (code review, 2026-10-13: it had five).
     [Fact]
     public void The_headline_says_which_of_the_two_operations_this_is()
     {
-        Assert.Contains(
-            "back to what the stable source has",
-            ProductionDisplay.RollBackHeadline(ProductionDisplayTests.RollBack()),
-            StringComparison.Ordinal);
+        Assert.Equal(
+            "Push this board back to the queue? BETA goes back to what the stable source has.",
+            ProductionDisplay.RollBackHeadline(ProductionDisplayTests.RollBack()));
 
-        Assert.Contains(
-            "Remove this board from BETA",
-            ProductionDisplay.RollBackHeadline(ProductionDisplayTests.RollBack(BetaRollbackKind.RemoveFromBeta)),
-            StringComparison.Ordinal);
+        Assert.Equal(
+            "Push this board back to the queue? BETA no longer has this board.",
+            ProductionDisplay.RollBackHeadline(ProductionDisplayTests.RollBack(BetaRollbackKind.RemoveFromBeta)));
     }
 
     // ###########################################################################################
@@ -204,7 +203,7 @@ public sealed class ProductionDisplayTests
         string many = ProductionDisplay.RollBackExplanation(ProductionDisplayTests.RollBack(returning: 3));
 
         Assert.Contains("ALL 3 submissions", many, StringComparison.Ordinal);
-        Assert.Contains("cannot be rolled back one contribution at a time", many, StringComparison.Ordinal);
+        Assert.Contains("cannot be pushed back one contribution at a time", many, StringComparison.Ordinal);
 
         // One reads as one, without the warning that would be noise there.
         string single = ProductionDisplay.RollBackExplanation(ProductionDisplayTests.RollBack(returning: 1));
@@ -310,7 +309,7 @@ public sealed class ProductionDisplayTests
         string text = ProductionDisplay.PushedBackInsteadOfRejected(
             new BetaRollbackResult("Commodore/C64/250407", BetaRollbackKind.RestoreFromProduction, 1, 0, 1));
 
-        Assert.StartsWith("The server is older than this CRT and PUSHED Commodore/C64/250407 BACK instead of rejecting it", text, StringComparison.Ordinal);
+        Assert.StartsWith("The server is older than this CRT and PUSHED Commodore / C64 / 250407 BACK instead of rejecting it", text, StringComparison.Ordinal);
 
         // There is no "CRT Maintainer" any more (2026-09-29) - the Maintainer tab is CRT.
         Assert.DoesNotContain("CRT Maintainer", text, StringComparison.Ordinal);
@@ -318,15 +317,29 @@ public sealed class ProductionDisplayTests
         Assert.Contains("Reject it from \"Queue: Contributor submissions\"", text, StringComparison.Ordinal);
     }
 
-    // The button says which operation it performs rather than a generic verb.
+    // The confirm button says the operation's one name - the BETA screen's own "Push back to queue"
+    // (code review, 2026-10-13: it said "Roll back") - and for a board never promoted, that it
+    // leaves BETA too.
     [Fact]
     public void The_confirm_button_names_the_operation()
     {
-        Assert.Equal("Roll back", ProductionDisplay.RollBackConfirmButton(ProductionDisplayTests.RollBack()));
+        Assert.Equal("Push back to queue", ProductionDisplay.RollBackConfirmButton(ProductionDisplayTests.RollBack()));
 
         Assert.Equal(
-            "Remove from BETA",
+            "Push back and remove from BETA",
             ProductionDisplay.RollBackConfirmButton(ProductionDisplayTests.RollBack(BetaRollbackKind.RemoveFromBeta)));
+    }
+
+    // ###########################################################################################
+    // Every sentence naming a board names it as the lists do - "Commodore / C64 / 250407" - never
+    // as its id with bare slashes (code review, 2026-10-13).
+    // ###########################################################################################
+    [Fact]
+    public void The_waits_name_the_board_as_the_lists_do()
+    {
+        Assert.StartsWith("Pushing Commodore / C64 / 250407 back to the queue.", ProductionDisplay.PushingBackWait("Commodore/C64/250407"), StringComparison.Ordinal);
+        Assert.StartsWith("Publishing Commodore / C64 / 250407 to the stable source.", ProductionDisplay.PublishingWait("Commodore/C64/250407"), StringComparison.Ordinal);
+        Assert.StartsWith("Rejecting Commodore / C64 / 250407.", ProductionDisplay.RejectingWait("Commodore/C64/250407"), StringComparison.Ordinal);
     }
 
     // What a finished rollback says: how much moved, and that the contributors were told.
@@ -390,7 +403,7 @@ public sealed class ProductionDisplayTests
     [Fact]
     public void A_plan_copying_nothing_says_publishing_only_records_it()
     {
-        Assert.StartsWith("Production already has every file", ProductionDisplay.PlanSummary(ProductionDisplayTests.Plan()));
+        Assert.StartsWith("The stable source already has every file", ProductionDisplay.PlanSummary(ProductionDisplayTests.Plan()));
     }
 
     [Fact]

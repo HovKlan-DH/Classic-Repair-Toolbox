@@ -267,158 +267,167 @@ public partial class TabSchematics
     // ###########################################################################################
     private async void ApplyLabelEditorChanges()
     {
-        if (this.SchematicsNewLabelPromptBorder.IsVisible)
+        // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+        // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+        try
         {
-            this.ConfirmNewLabelEditorPrompt();
-
             if (this.SchematicsNewLabelPromptBorder.IsVisible)
             {
-                Logger.Info("Label editor save aborted because the new-label prompt is still visible after confirmation attempt");
+                this.ConfirmNewLabelEditorPrompt();
+
+                if (this.SchematicsNewLabelPromptBorder.IsVisible)
+                {
+                    Logger.Info("Label editor save aborted because the new-label prompt is still visible after confirmation attempt");
+                    return;
+                }
+            }
+
+            if (!this.TryValidateLabelEditorSave(out var validationError))
+            {
+                Logger.Warning($"Label editor validation failed - [{validationError}]");
+                await this.ShowLabelEditorValidationFailedDialogAsync(validationError);
                 return;
             }
-        }
 
-        if (!this.TryValidateLabelEditorSave(out var validationError))
-        {
-            Logger.Warning($"Label editor validation failed - [{validationError}]");
-            await this.ShowLabelEditorValidationFailedDialogAsync(validationError);
-            return;
-        }
+            string schematicName = this.GetCurrentSchematicName();
+            string excelPath = this.MainWindow?.GetCurrentBoardExcelPath() ?? string.Empty;
+            string cacheKey = this.MainWindow?.GetCurrentBoardEntry()?.ExcelDataFile?.Trim() ?? string.Empty;
+            string region = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
 
-        string schematicName = this.GetCurrentSchematicName();
-        string excelPath = this.MainWindow?.GetCurrentBoardExcelPath() ?? string.Empty;
-        string cacheKey = this.MainWindow?.GetCurrentBoardEntry()?.ExcelDataFile?.Trim() ?? string.Empty;
-        string region = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
+            Logger.Debug($"Label editor resolved Excel save path: [{excelPath}]");
+            Logger.Debug($"Label editor resolved cache key: [{cacheKey}]");
+            Logger.Debug($"Label editor resolved schematic name: [{schematicName}]");
+            Logger.Debug($"Label editor resolved region: [{region}]");
 
-        Logger.Debug($"Label editor resolved Excel save path: [{excelPath}]");
-        Logger.Debug($"Label editor resolved cache key: [{cacheKey}]");
-        Logger.Debug($"Label editor resolved schematic name: [{schematicName}]");
-        Logger.Debug($"Label editor resolved region: [{region}]");
-
-        if (string.IsNullOrWhiteSpace(excelPath) || string.IsNullOrWhiteSpace(cacheKey))
-        {
-            Logger.Warning("Label editor save failed - could not resolve current board Excel path");
-            return;
-        }
-
-        // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (2026-09-24). ***
-        // The same rule and the same notice as the Contribute tab's "Save to draft": both would
-        // write the draft under the table, whose own save would then be refused and its edits lost.
-        // Nothing is saved and the editor stays in its mode, ready to save once the table is dealt with.
-        if (this.MainWindow?.TabDrafts.SavingBlockedFor(cacheKey) is UnsavedTableEditsPrompt blocked)
-        {
-            Logger.Info("Label editor save held back - the Drafts tab's table has unsaved edits for this board");
-
-            if (TopLevel.GetTopLevel(this) is Window owner)
+            if (string.IsNullOrWhiteSpace(excelPath) || string.IsNullOrWhiteSpace(cacheKey))
             {
-                await UnsavedTableEditsWindow.ShowSavingBlockedAsync(owner, blocked);
+                Logger.Warning("Label editor save failed - could not resolve current board Excel path");
+                return;
             }
 
-            return;
-        }
-
-        var saveRows = this.BuildLabelEditorSaveRowsForCurrentSchematic();
-
-        Logger.Debug($"Label editor built save rows count: [{saveRows.Count}]");
-
-        // ###########################################################################################
-        // *** SAVES INTO THE DRAFT'S OWN BOARD WORKBOOK (Phase 6, 2026-09-23). ***
-        //
-        // This used to load the PURE official board, compute row deltas against it, and write
-        // draft.json - it needed the official copy to tell "already official" from "already
-        // drafted" and pick Modified vs Added. None of that applies now: a draft IS a board, so
-        // the save simply writes the rows the editor holds.
-        //
-        // DraftWorkbookStore.Edit supplies the board as it is ON DISK at this moment, which is
-        // what makes this safe against the contributor having edited the workbook in Excel while
-        // the application was open.
-        //
-        // *** A BOARD WITH NO DRAFT IS SEEDED FIRST, and that is a real behaviour change. ***
-        // Before, the first label editor save CREATED the draft implicitly. It cannot now: a draft
-        // is a complete copy of the published board, and starting an empty one here would produce
-        // a draft that reads as "every published row deleted".
-        //
-        // *** UNDER THE "PLEASE WAIT" OVERLAY (2026-09-28). *** Seeding and writing a large board
-        // takes a noticeable moment, and neither can be stopped halfway - so past the limit the
-        // overlay lifts and the save carries on to its own end (BusyOverlay.RunLocalAsync).
-        // ###########################################################################################
-        string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingLabels, async () =>
-        {
-            // Copied from the published FILE as it is now, never from the board cache - see
-            // DraftSeeder.SeedFromPublishedFile.
-            if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
+            // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (2026-09-24). ***
+            // The same rule and the same notice as the Contribute tab's "Save to draft": both would
+            // write the draft under the table, whose own save would then be refused and its edits lost.
+            // Nothing is saved and the editor stays in its mode, ready to save once the table is dealt with.
+            if (this.MainWindow?.TabDrafts.SavingBlockedFor(cacheKey) is UnsavedTableEditsPrompt blocked)
             {
-                string draftsRoot = DraftManager.DraftsRoot;
-                string dataRoot = DataManager.DataRoot;
+                Logger.Info("Label editor save held back - the Drafts tab's table has unsaved edits for this board");
 
-                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublishedFile(draftsRoot, dataRoot, cacheKey));
-
-                if (!seeded.Created)
+                if (TopLevel.GetTopLevel(this) is Window owner)
                 {
-                    Logger.Warning($"Label editor save failed - could not seed a draft: [{seeded.Reason}]");
-                    return "Could not create a draft to save into.";
+                    await UnsavedTableEditsWindow.ShowSavingBlockedAsync(owner, blocked);
                 }
+
+                return;
             }
 
-            bool saved = await Task.Run(() =>
+            var saveRows = this.BuildLabelEditorSaveRowsForCurrentSchematic();
+
+            Logger.Debug($"Label editor built save rows count: [{saveRows.Count}]");
+
+            // ###########################################################################################
+            // *** SAVES INTO THE DRAFT'S OWN BOARD WORKBOOK (Phase 6, 2026-09-23). ***
+            //
+            // This used to load the PURE official board, compute row deltas against it, and write
+            // draft.json - it needed the official copy to tell "already official" from "already
+            // drafted" and pick Modified vs Added. None of that applies now: a draft IS a board, so
+            // the save simply writes the rows the editor holds.
+            //
+            // DraftWorkbookStore.Edit supplies the board as it is ON DISK at this moment, which is
+            // what makes this safe against the contributor having edited the workbook in Excel while
+            // the application was open.
+            //
+            // *** A BOARD WITH NO DRAFT IS SEEDED FIRST, and that is a real behaviour change. ***
+            // Before, the first label editor save CREATED the draft implicitly. It cannot now: a draft
+            // is a complete copy of the published board, and starting an empty one here would produce
+            // a draft that reads as "every published row deleted".
+            //
+            // *** UNDER THE "PLEASE WAIT" OVERLAY (2026-09-28). *** Seeding and writing a large board
+            // takes a noticeable moment, and neither can be stopped halfway - so past the limit the
+            // overlay lifts and the save carries on to its own end (BusyOverlay.RunLocalAsync).
+            // ###########################################################################################
+            string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingLabels, async () =>
             {
-                try
+                // Copied from the published FILE as it is now, never from the board cache - see
+                // DraftSeeder.SeedFromPublishedFile.
+                if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
                 {
-                    return DraftWorkbookStore.Edit(
-                        DraftManager.DraftsRoot,
-                        cacheKey,
-                        board => LabelEditorBoardWriter.ApplyLabelEditorSave(
-                            board, schematicName, saveRows, region));
+                    string draftsRoot = DraftManager.DraftsRoot;
+                    string dataRoot = DataManager.DataRoot;
+
+                    DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublishedFile(draftsRoot, dataRoot, cacheKey));
+
+                    if (!seeded.Created)
+                    {
+                        Logger.Warning($"Label editor save failed - could not seed a draft: [{seeded.Reason}]");
+                        return "Could not create a draft to save into.";
+                    }
                 }
-                catch (Exception ex)
+
+                bool saved = await Task.Run(() =>
                 {
-                    Logger.Warning($"Label editor draft save failed - [{ex}]");
-                    return false;
-                }
+                    try
+                    {
+                        return DraftWorkbookStore.Edit(
+                            DraftManager.DraftsRoot,
+                            cacheKey,
+                            board => LabelEditorBoardWriter.ApplyLabelEditorSave(
+                                board, schematicName, saveRows, region));
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning($"Label editor draft save failed - [{ex}]");
+                        return false;
+                    }
+                });
+
+                return saved ? null : "Could not save your draft. See the log for details.";
             });
 
-            return saved ? null : "Could not save your draft. See the log for details.";
-        });
+            if (failure is not null)
+            {
+                await this.ShowLabelEditorSaveFailedDialogAsync(failure);
+                return;
+            }
 
-        if (failure is not null)
-        {
-            await this.ShowLabelEditorSaveFailedDialogAsync(failure);
-            return;
+            Logger.Info($"Label editor draft save succeeded for board: [{cacheKey}]");
+
+            DataManager.ClearBoardCache(cacheKey);
+
+            this.thisIsLabelEditorMode = false;
+            this.thisLastCreatedLabelEditorCategory = string.Empty;
+            this.thisSelectedLabelEditorHighlights.Clear();
+            this.thisSelectedLabelEditorHighlight = null;
+            this.thisPendingNewLabelEditorHighlight = null;
+            this.thisIsDrawingLabelEditorRectangle = false;
+            this.thisLabelEditorDraftRectangle = null;
+            this.thisLabelEditorDragMode = LabelEditorDragMode.None;
+            this.thisLabelEditorOriginalDragRectangles.Clear();
+            this.thisLabelEditorWorkingHighlights.Clear();
+            this.thisLabelEditorUndoStack.Clear();
+            this.thisLabelEditorRedoStack.Clear();
+
+            this.UpdateLabelEditorLockState();
+            this.HideLabelEditorMenu();
+            this.HideNewLabelEditorPrompt();
+            this.RefreshLabelEditorOverlay();
+            this.SchematicsContainer.Focus();
+
+            // No longer calls DisableLaunchDataSyncAfterLocalBoardEditAsync (session 2c): that warning
+            // exists because a save here used to mutate the officially SYNCED Excel file directly, so
+            // the very next launch-time sync could silently overwrite what was just saved. A draft
+            // lives entirely outside the synced tree (Drafts/, never Data/ - see
+            // NewContributeStrategy.md Phase 2's "sync never destroys a draft" guarantee), so that risk
+            // no longer exists for this save path and the warning would now be describing something
+            // that cannot happen.
+            this.MainWindow?.ReloadCurrentBoardFromDisk(schematicName);
+
+            Logger.Info($"Label editor changes saved and reload requested for schematic [{schematicName}]");
         }
-
-        Logger.Info($"Label editor draft save succeeded for board: [{cacheKey}]");
-
-        DataManager.ClearBoardCache(cacheKey);
-
-        this.thisIsLabelEditorMode = false;
-        this.thisLastCreatedLabelEditorCategory = string.Empty;
-        this.thisSelectedLabelEditorHighlights.Clear();
-        this.thisSelectedLabelEditorHighlight = null;
-        this.thisPendingNewLabelEditorHighlight = null;
-        this.thisIsDrawingLabelEditorRectangle = false;
-        this.thisLabelEditorDraftRectangle = null;
-        this.thisLabelEditorDragMode = LabelEditorDragMode.None;
-        this.thisLabelEditorOriginalDragRectangles.Clear();
-        this.thisLabelEditorWorkingHighlights.Clear();
-        this.thisLabelEditorUndoStack.Clear();
-        this.thisLabelEditorRedoStack.Clear();
-
-        this.UpdateLabelEditorLockState();
-        this.HideLabelEditorMenu();
-        this.HideNewLabelEditorPrompt();
-        this.RefreshLabelEditorOverlay();
-        this.SchematicsContainer.Focus();
-
-        // No longer calls DisableLaunchDataSyncAfterLocalBoardEditAsync (session 2c): that warning
-        // exists because a save here used to mutate the officially SYNCED Excel file directly, so
-        // the very next launch-time sync could silently overwrite what was just saved. A draft
-        // lives entirely outside the synced tree (Drafts/, never Data/ - see
-        // NewContributeStrategy.md Phase 2's "sync never destroys a draft" guarantee), so that risk
-        // no longer exists for this save path and the warning would now be describing something
-        // that cannot happen.
-        this.MainWindow?.ReloadCurrentBoardFromDisk(schematicName);
-
-        Logger.Info($"Label editor changes saved and reload requested for schematic [{schematicName}]");
+        catch (Exception ex)
+        {
+            Logger.Critical($"ApplyLabelEditorChanges failed - [{ex}]");
+        }
     }
 
     // ###########################################################################################
@@ -746,6 +755,15 @@ public partial class TabSchematics
             errorMessage: errorMessage,
             fallbackMessage: "The label editor changes could not be saved.",
             hint: "If the Excel workbook is open in another program, close it and try again. Check the logfile for technical details.");
+
+    // The same dialog for a KiCad calibration that could not be saved (code review, 2026-10-13).
+    internal Window BuildKiCadCalibrationSaveFailedDialog(string errorMessage) =>
+        this.BuildLabelEditorErrorDialog(
+            windowTitle: "KiCad calibration not saved",
+            headline: "Unable to save the KiCad calibration",
+            errorMessage: errorMessage,
+            fallbackMessage: "The KiCad calibration could not be saved.",
+            hint: "The calibration is still on screen - press Apply again once the problem is fixed.");
 
     // ###########################################################################################
     // Shows a modal error dialog when the label editor contains invalid data so validation
@@ -1356,7 +1374,7 @@ public partial class TabSchematics
 
         if (this.MainWindow?.CurrentBoardData != null)
         {
-            this.MainWindow.OnComponentSearchTextChanged(null, null!);
+            this.MainWindow.ApplyComponentSearchNow();
         }
 
         bool hasComponentSelection = this.highlightIndexBySchematic.Count > 0;

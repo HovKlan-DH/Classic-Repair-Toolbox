@@ -116,11 +116,11 @@ public sealed class BoardDeletionWordingTests
     public void What_went_is_counted_and_who_was_told_only_when_somebody_was()
     {
         Assert.Equal(
-            "Commodore/C64/999999 is deleted: 12 files removed from BETA, 11 files from the stable data, 5 submissions deleted, and 2 contributors were told.",
+            "Commodore / C64 / 999999 is deleted: 12 files removed from BETA, 11 files from the stable data, 5 submissions deleted, and 2 contributors were told.",
             BoardDeletionWording.Done(new BoardDeleteAnswer("Commodore/C64/999999", 12, 11, 5, 2)));
 
         Assert.Equal(
-            "Commodore/C64/999999 is deleted: 0 files removed from BETA, 0 files from the stable data, 1 submission deleted.",
+            "Commodore / C64 / 999999 is deleted: 0 files removed from BETA, 0 files from the stable data, 1 submission deleted.",
             BoardDeletionWording.Done(new BoardDeleteAnswer("Commodore/C64/999999", 0, 0, 1, 0)));
     }
 

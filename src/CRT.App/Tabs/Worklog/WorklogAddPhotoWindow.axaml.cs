@@ -196,7 +196,16 @@ namespace CRT
 
         private async void OnBrowseClick(object? sender, RoutedEventArgs e)
         {
-            await this.PickImageAsync();
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                await this.PickImageAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnBrowseClick failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################

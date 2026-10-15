@@ -30,21 +30,26 @@ namespace Handlers.DataHandling
     {
         private readonly Func<string, string?> thisHashOf;
         private readonly Func<string, IReadOnlyCollection<string>?> thisListDirectory;
+        private readonly Func<string, long?> thisSizeOf;
 
         // One listing per folder per view. A 1,200-file submission walks the same few folders
         // over and over, and each listing is a real directory read on the server.
         private readonly Dictionary<string, IReadOnlyCollection<string>?> thisListings =
             new(StringComparer.Ordinal);
 
+        // `sizeOf` (code review, 2026-10-13): the published file's length, for a submission's file
+        // pointed at the bytes published now (SubmissionLeftAsPublished) - optional, unknown without.
         public PublishedTreeView(
             Func<string, string?> hashOf,
-            Func<string, IReadOnlyCollection<string>?> listDirectory)
+            Func<string, IReadOnlyCollection<string>?> listDirectory,
+            Func<string, long?>? sizeOf = null)
         {
             ArgumentNullException.ThrowIfNull(hashOf);
             ArgumentNullException.ThrowIfNull(listDirectory);
 
             this.thisHashOf = hashOf;
             this.thisListDirectory = listDirectory;
+            this.thisSizeOf = sizeOf ?? (_ => null);
         }
 
         // A view of an EMPTY tree - nothing published, nothing to collide with. What a brand-new
@@ -61,6 +66,11 @@ namespace Handlers.DataHandling
 
             return this.thisHashOf(relativePath);
         }
+
+        // The length of the file published at this relative path, or null when it is not there or
+        // the view cannot say.
+        public long? SizeOf(string relativePath) =>
+            string.IsNullOrWhiteSpace(relativePath) ? null : this.thisSizeOf(relativePath);
 
         // ###########################################################################################
         // The EXISTING path that differs from this one only by capitalisation, or null when there

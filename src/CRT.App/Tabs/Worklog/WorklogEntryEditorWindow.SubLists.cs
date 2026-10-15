@@ -38,19 +38,28 @@ namespace CRT
 
         private async void OnAddLinkClick(object? sender, RoutedEventArgs e)
         {
-            var dialog = new WorklogAddLinkWindow();
-            var result = await dialog.ShowDialog<(string Headline, string Url)?>(this);
-            if (result == null)
-                return;
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                var dialog = new WorklogAddLinkWindow();
+                var result = await dialog.ShowDialog<(string Headline, string Url)?>(this);
+                if (result == null)
+                    return;
 
-            int nextId = this.thisEntry.Links.Count == 0 ? 1 : this.thisEntry.Links.Max(l => l.Id) + 1;
-            this.thisEntry.Links.Add(new WorklogLinkRecord { Id = nextId, Headline = result.Value.Headline, Url = result.Value.Url });
+                int nextId = this.thisEntry.Links.Count == 0 ? 1 : this.thisEntry.Links.Max(l => l.Id) + 1;
+                this.thisEntry.Links.Add(new WorklogLinkRecord { Id = nextId, Headline = result.Value.Headline, Url = result.Value.Url });
 
-            // A new row landing in a folded list would look like nothing happened, so adding always
-            // opens the section it went into.
-            this.EnsureListSectionExpanded("EditorLinksHeader");
-            this.RefreshLinkRows();
-            this.PersistEntrySilently();
+                // A new row landing in a folded list would look like nothing happened, so adding always
+                // opens the section it went into.
+                this.EnsureListSectionExpanded("EditorLinksHeader");
+                this.RefreshLinkRows();
+                this.PersistEntrySilently();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAddLinkClick failed - [{ex}]");
+            }
         }
 
         private void OnDeleteLinkClick(object? sender, RoutedEventArgs e)
@@ -78,23 +87,32 @@ namespace CRT
 
         private async void OnEditLinkClick(object? sender, RoutedEventArgs e)
         {
-            if (sender is not Button { Tag: int id })
-                return;
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                if (sender is not Button { Tag: int id })
+                    return;
 
-            var link = this.thisEntry.Links.FirstOrDefault(l => l.Id == id);
-            if (link == null)
-                return;
+                var link = this.thisEntry.Links.FirstOrDefault(l => l.Id == id);
+                if (link == null)
+                    return;
 
-            var dialog = new WorklogAddLinkWindow();
-            dialog.InitializeForEdit(link.Headline, link.Url);
-            var result = await dialog.ShowDialog<(string Headline, string Url)?>(this);
-            if (result == null)
-                return;
+                var dialog = new WorklogAddLinkWindow();
+                dialog.InitializeForEdit(link.Headline, link.Url);
+                var result = await dialog.ShowDialog<(string Headline, string Url)?>(this);
+                if (result == null)
+                    return;
 
-            link.Headline = result.Value.Headline;
-            link.Url = result.Value.Url;
-            this.RefreshLinkRows();
-            this.PersistEntrySilently();
+                link.Headline = result.Value.Headline;
+                link.Url = result.Value.Url;
+                this.RefreshLinkRows();
+                this.PersistEntrySilently();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnEditLinkClick failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -147,17 +165,26 @@ namespace CRT
 
         private async void OnAddCommentClick(object? sender, RoutedEventArgs e)
         {
-            var dialog = new WorklogAddCommentWindow();
-            var result = await dialog.ShowDialog<string?>(this);
-            if (string.IsNullOrWhiteSpace(result))
-                return;
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                var dialog = new WorklogAddCommentWindow();
+                var result = await dialog.ShowDialog<string?>(this);
+                if (string.IsNullOrWhiteSpace(result))
+                    return;
 
-            int nextId = this.thisEntry.Comments.Count == 0 ? 1 : this.thisEntry.Comments.Max(c => c.Id) + 1;
-            this.thisEntry.Comments.Add(new WorklogCommentRecord { Id = nextId, Text = result.Trim(), Date = DateTime.Now });
+                int nextId = this.thisEntry.Comments.Count == 0 ? 1 : this.thisEntry.Comments.Max(c => c.Id) + 1;
+                this.thisEntry.Comments.Add(new WorklogCommentRecord { Id = nextId, Text = result.Trim(), Date = DateTime.Now });
 
-            this.EnsureListSectionExpanded("EditorCommentsHeader");
-            this.RefreshCommentRows();
-            this.PersistEntrySilently();
+                this.EnsureListSectionExpanded("EditorCommentsHeader");
+                this.RefreshCommentRows();
+                this.PersistEntrySilently();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAddCommentClick failed - [{ex}]");
+            }
         }
 
         private void OnDeleteCommentClick(object? sender, RoutedEventArgs e)
@@ -176,22 +203,31 @@ namespace CRT
         // ###########################################################################################
         private async void OnCommentRowPointerPressed(object? sender, PointerPressedEventArgs e)
         {
-            if (sender is not Border { Tag: int id })
-                return;
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                if (sender is not Border { Tag: int id })
+                    return;
 
-            var comment = this.thisEntry.Comments.FirstOrDefault(c => c.Id == id);
-            if (comment == null)
-                return;
+                var comment = this.thisEntry.Comments.FirstOrDefault(c => c.Id == id);
+                if (comment == null)
+                    return;
 
-            var dialog = new WorklogAddCommentWindow();
-            dialog.InitializeForEdit(comment.Text);
-            var result = await dialog.ShowDialog<string?>(this);
-            if (string.IsNullOrWhiteSpace(result))
-                return;
+                var dialog = new WorklogAddCommentWindow();
+                dialog.InitializeForEdit(comment.Text);
+                var result = await dialog.ShowDialog<string?>(this);
+                if (string.IsNullOrWhiteSpace(result))
+                    return;
 
-            comment.Text = result.Trim();
-            this.RefreshCommentRows();
-            this.PersistEntrySilently();
+                comment.Text = result.Trim();
+                this.RefreshCommentRows();
+                this.PersistEntrySilently();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnCommentRowPointerPressed failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -273,30 +309,39 @@ namespace CRT
 
         private async void OnAddWorkDoneClick(object? sender, RoutedEventArgs e)
         {
-            var dialog = new WorklogAddWorkDoneWindow();
-            var result = await dialog.ShowDialog<(string Text, double HoursSpent, double Cost)?>(this);
-            if (result == null)
-                return;
-
-            int nextId = this.thisEntry.WorkDoneItems.Count == 0 ? 1 : this.thisEntry.WorkDoneItems.Max(w => w.Id) + 1;
-            this.thisEntry.WorkDoneItems.Add(new WorklogWorkDoneRecord
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                Id = nextId,
-                Text = result.Value.Text,
-                Date = DateTime.Now,
-                HoursSpent = result.Value.HoursSpent,
-                Cost = result.Value.Cost,
+                var dialog = new WorklogAddWorkDoneWindow();
+                var result = await dialog.ShowDialog<(string Text, double HoursSpent, double Cost)?>(this);
+                if (result == null)
+                    return;
 
-                // The currency is recorded ON the row, at the moment the figure is typed - the
-                // dialog labels its Cost field with this same setting, so this is the code the user
-                // was looking at. Reading the setting later instead would relabel every historical
-                // cost the next time the preference changed. See WorklogWorkDoneRecord.CurrencyCode.
-                CurrencyCode = UserSettings.WorklogCurrencyCode
-            });
+                int nextId = this.thisEntry.WorkDoneItems.Count == 0 ? 1 : this.thisEntry.WorkDoneItems.Max(w => w.Id) + 1;
+                this.thisEntry.WorkDoneItems.Add(new WorklogWorkDoneRecord
+                {
+                    Id = nextId,
+                    Text = result.Value.Text,
+                    Date = DateTime.Now,
+                    HoursSpent = result.Value.HoursSpent,
+                    Cost = result.Value.Cost,
 
-            this.EnsureListSectionExpanded("EditorWorkDoneHeader");
-            this.RefreshWorkDoneRows();
-            this.PersistEntrySilently();
+                    // The currency is recorded ON the row, at the moment the figure is typed - the
+                    // dialog labels its Cost field with this same setting, so this is the code the user
+                    // was looking at. Reading the setting later instead would relabel every historical
+                    // cost the next time the preference changed. See WorklogWorkDoneRecord.CurrencyCode.
+                    CurrencyCode = UserSettings.WorklogCurrencyCode
+                });
+
+                this.EnsureListSectionExpanded("EditorWorkDoneHeader");
+                this.RefreshWorkDoneRows();
+                this.PersistEntrySilently();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAddWorkDoneClick failed - [{ex}]");
+            }
         }
 
         private void OnDeleteWorkDoneClick(object? sender, RoutedEventArgs e)
@@ -316,24 +361,33 @@ namespace CRT
         // ###########################################################################################
         private async void OnWorkDoneRowPointerPressed(object? sender, PointerPressedEventArgs e)
         {
-            if (sender is not Border { Tag: int id })
-                return;
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                if (sender is not Border { Tag: int id })
+                    return;
 
-            var work = this.thisEntry.WorkDoneItems.FirstOrDefault(w => w.Id == id);
-            if (work == null)
-                return;
+                var work = this.thisEntry.WorkDoneItems.FirstOrDefault(w => w.Id == id);
+                if (work == null)
+                    return;
 
-            var dialog = new WorklogAddWorkDoneWindow();
-            dialog.InitializeForEdit(work.Text, work.HoursSpent, work.Cost);
-            var result = await dialog.ShowDialog<(string Text, double HoursSpent, double Cost)?>(this);
-            if (result == null)
-                return;
+                var dialog = new WorklogAddWorkDoneWindow();
+                dialog.InitializeForEdit(work.Text, work.HoursSpent, work.Cost);
+                var result = await dialog.ShowDialog<(string Text, double HoursSpent, double Cost)?>(this);
+                if (result == null)
+                    return;
 
-            work.Text = result.Value.Text;
-            work.HoursSpent = result.Value.HoursSpent;
-            work.Cost = result.Value.Cost;
-            this.RefreshWorkDoneRows();
-            this.PersistEntrySilently();
+                work.Text = result.Value.Text;
+                work.HoursSpent = result.Value.HoursSpent;
+                work.Cost = result.Value.Cost;
+                this.RefreshWorkDoneRows();
+                this.PersistEntrySilently();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnWorkDoneRowPointerPressed failed - [{ex}]");
+            }
         }
     }
 }

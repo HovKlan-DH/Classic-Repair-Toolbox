@@ -119,7 +119,12 @@ namespace CRT.Server.Handlers.Submissions
                 "DELETE FROM accounts WHERE is_administrator = 0;",
                 "DELETE FROM audit;",
                 "DELETE FROM crt_board_views;",
-                "DELETE FROM crt_api_calls;"
+                "DELETE FROM crt_api_calls;",
+
+                // Mail still waiting to go to contributors and maintainers, and the rate limiter's
+                // counters (migrations 0022, 0023, 2026-10-13) - both about people the reset removes.
+                "DELETE FROM mail_outbox;",
+                "DELETE FROM rate_limit_events;"
             ];
 
             foreach (string sql in deletes)

@@ -27,7 +27,26 @@ namespace CRT.Server.Handlers.Submissions
 
             return new PublishedTreeView(
                 relativePath => PublishedFileHashes.TryHash(dataTreeRoot, relativePath),
-                relativeFolder => PublishedTreeProbe.List(dataTreeRoot, relativeFolder));
+                relativeFolder => PublishedTreeProbe.List(dataTreeRoot, relativeFolder),
+                relativePath => PublishedTreeProbe.SizeOf(dataTreeRoot, relativePath));
+        }
+
+        // The length of the file at this relative path, through the one containment rule - or null.
+        private static long? SizeOf(string dataTreeRoot, string relativePath)
+        {
+            if (!SubmissionPathRules.TryResolve(dataTreeRoot, relativePath, out string path, out _))
+                return null;
+
+            try
+            {
+                var file = new FileInfo(path);
+
+                return file.Exists ? file.Length : null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
         }
 
         private static IReadOnlyCollection<string>? List(string dataTreeRoot, string relativeFolder)

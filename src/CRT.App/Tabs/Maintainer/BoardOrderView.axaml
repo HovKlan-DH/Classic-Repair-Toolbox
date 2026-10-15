@@ -51,10 +51,8 @@
                     Click="OnUndoClick" />
 
             <Button Grid.Column="2"
+                    Classes="Accept"
                     x:Name="SaveButton"
-                    Foreground="{DynamicResource Button_Ok_Fg}"
-                    Background="{DynamicResource Button_Ok_Bg}"
-                    BorderBrush="{DynamicResource Button_Ok_Border}"
                     IsEnabled="False"
                     Click="OnSaveClick" />
         </Grid>

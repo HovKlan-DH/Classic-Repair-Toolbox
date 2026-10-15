@@ -26,13 +26,10 @@
 			<Setter Property="Background" Value="{DynamicResource Table_RowHover_Bg}" />
 		</Style>
 
-		<!-- The three buttons on the right, ALL in the highlighted colour (owner request, 2026-10-09:
-		     "have all 3 buttons in there with the same IndianRed color") - Button_Highlighted_*, IndianRed
-		     in the light theme. -->
+		<!-- The three buttons on the right, ALL in the same colour (owner request, 2026-10-09) - the
+		     green Accept class since 2026-10-13, when IndianRed was kept for buttons that throw
+		     something away (App.axaml). This style only sizes them. -->
 		<Style Selector="Button.ContributeAction">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
-			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Button_Highlighted_Border}" />
 			<Setter Property="Padding" Value="14,8" />
 		</Style>
 	</UserControl.Styles>
@@ -68,7 +65,7 @@
 			     until a draft exists, so on a fresh install it would be unreachable. -->
 			<StackPanel Grid.Column="2" Spacing="8" VerticalAlignment="Top">
 				<Button x:Name="AddNewComponentButton"
-						Classes="ContributeAction"
+						Classes="Accept ContributeAction"
 						Content="Add new component"
 						IsEnabled="False"
 						HorizontalAlignment="Stretch"
@@ -80,7 +77,7 @@
 				     the board shown - a draft - opened in the Drafts tab's table. A board has one draft
 				     at most; with one already, it is offered instead (Main.EditBoardAsDraft.cs). -->
 				<Button x:Name="EditBoardAsDraftButton"
-						Classes="ContributeAction"
+						Classes="Accept ContributeAction"
 						Content="Edit board as draft"
 						IsEnabled="False"
 						HorizontalAlignment="Stretch"
@@ -89,7 +86,7 @@
 						Click="OnEditBoardAsDraftClick" />
 
 				<Button x:Name="AddNewBoardButton"
-						Classes="ContributeAction"
+						Classes="Accept ContributeAction"
 						Content="Add a new board"
 						HorizontalAlignment="Stretch"
 						HorizontalContentAlignment="Center"

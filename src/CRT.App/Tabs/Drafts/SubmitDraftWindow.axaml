@@ -35,7 +35,7 @@
 		<StackPanel x:Name="ConfirmPanel" Spacing="4">
 
 			<TextBlock TextWrapping="Wrap"
-					   Text="Your changes will be sent for review. Nothing is published until a maintainer approves it, and your local draft stays exactly as it is." />
+					   Text="Your changes will be sent for review. An accepted contribution is published in two steps: first to the BETA source, where it gets a final check, then to the stable source that everyone downloads. You get an email at each step, and your local draft stays exactly as it is." />
 
 			<TextBlock x:Name="BoardNameText"
 					   TextWrapping="Wrap"
@@ -130,9 +130,13 @@
 
 			<Button x:Name="CancelButton" Content="Cancel" Click="OnCancelClick" />
 
+			<!-- IsDefault: Enter sends once the form is filled in (code review, 2026-10-13) - a
+			     disabled default button does nothing, so Enter is harmless before then. -->
 			<Button x:Name="SubmitButton"
+					Classes="Accept"
 					Content="Submit"
 					IsEnabled="False"
+					IsDefault="True"
 					Click="OnSubmitClick" />
 		</StackPanel>
 	</StackPanel>

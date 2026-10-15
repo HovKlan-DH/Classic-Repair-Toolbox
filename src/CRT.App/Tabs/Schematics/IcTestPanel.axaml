@@ -54,10 +54,8 @@
           <ComboBox x:Name="SingleModeCombo" MinWidth="170" IsEnabled="False" />
         </StackPanel>
         <Button x:Name="RunButton"
+                Classes="Accept"
                 Content="Run test"
-                Background="{DynamicResource Button_Highlighted_Bg}"
-                Foreground="{DynamicResource Button_Highlighted_Fg}"
-                BorderBrush="{DynamicResource Button_Highlighted_Border}"
                 Click="OnRun" />
         <Button x:Name="CancelButton" Content="Cancel" IsEnabled="False" Click="OnCancel" />
         <TextBlock x:Name="ElapsedText" VerticalAlignment="Center" FontSize="12"

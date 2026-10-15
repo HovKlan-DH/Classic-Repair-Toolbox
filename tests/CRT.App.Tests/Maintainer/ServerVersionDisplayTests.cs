@@ -65,4 +65,20 @@ public sealed class ServerVersionDisplayTests
             ["Server version: asking the server", "API application version [1]"],
             ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines(null, null, 1, asking: true)));
     }
+
+    // ###########################################################################################
+    // *** MAILS THE SERVER COULD NOT SEND (code review, 2026-10-13). *** A last line when there are
+    // any, nothing when there are none or the server did not say - a postfix that is down is
+    // something to look at, and "0" every day would be read past.
+    // ###########################################################################################
+    [Fact]
+    public void Mails_the_server_could_not_send_are_a_last_line_only_when_there_are_some()
+    {
+        Assert.Equal(
+            ["Server version [1.1.0]", "API server version [1]", "API application version [1]", "Mails the server could not send yet [1,234]"],
+            ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines("1.1.0", 1, 1, unsentMails: 1234)));
+
+        Assert.Equal(3, ServerVersionDisplay.Lines("1.1.0", 1, 1, unsentMails: 0).Count);
+        Assert.Equal(3, ServerVersionDisplay.Lines("1.1.0", 1, 1, unsentMails: null).Count);
+    }
 }

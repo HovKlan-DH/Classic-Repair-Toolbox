@@ -31,6 +31,24 @@ namespace CRT
         internal bool HasUnsavedTableEdits => this.IsTableOpen && this.TableEditor.HasUnsavedChanges;
 
         // ###########################################################################################
+        // The same, with a cell still in its editor committed first (code review, 2026-10-13). The
+        // grid does not commit when focus moves to a control outside it - Submit, "Close table",
+        // quitting CRT - so a value typed and not yet confirmed was neither counted as unsaved nor
+        // saved: quitting asked nothing and the value was gone. For the moments a decision is made;
+        // HasUnsavedTableEdits itself does not commit, since background checks read it and must not
+        // close an editor under the contributor's typing.
+        // ###########################################################################################
+        internal bool CommitCellsAndHasUnsavedTableEdits()
+        {
+            if (this.IsTableOpen)
+            {
+                this.TableEditor.CommitCellEdit();
+            }
+
+            return this.HasUnsavedTableEdits;
+        }
+
+        // ###########################################################################################
         // Whether the table is open on THIS board's draft and holds edits not saved yet - the
         // question the Contribute tab's component editor and the label editor ask before they write
         // the same draft (owner request, 2026-09-24). A save of theirs would make the table's
@@ -188,7 +206,7 @@ namespace CRT
         // ###########################################################################################
         internal async Task<bool> ConfirmLeavingTableAsync(Window? owner = null)
         {
-            if (!this.HasUnsavedTableEdits)
+            if (!this.CommitCellsAndHasUnsavedTableEdits())
             {
                 return true;
             }
@@ -208,7 +226,7 @@ namespace CRT
         // ###########################################################################################
         private async Task<bool> SettleTableEditsAsync(HardwareBoardEntry entry)
         {
-            if (!this.IsTableOpenFor(entry) || !this.TableEditor.HasUnsavedChanges)
+            if (!this.IsTableOpenFor(entry) || !this.CommitCellsAndHasUnsavedTableEdits())
             {
                 return true;
             }

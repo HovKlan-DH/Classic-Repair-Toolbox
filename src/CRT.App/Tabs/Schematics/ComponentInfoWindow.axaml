@@ -283,13 +283,11 @@
 							     ignorable button costs nothing. Hidden entirely when the worklog
 							     feature is switched off - see UpdateAttachCapturedImageButton. -->
 							<Button x:Name="AttachCapturedImageButton"
+									Classes="Accept"
 									Content="Attach image to worklog"
 									HorizontalAlignment="Center"
 									FontSize="12"
 									Padding="8,3"
-									Background="{DynamicResource Button_Highlighted_Bg}"
-									Foreground="{DynamicResource Button_Highlighted_Fg}"
-									BorderBrush="{DynamicResource Button_Highlighted_Border}"
 									IsVisible="False"
 									Click="OnAttachCapturedImageClick" />
 						</StackPanel>

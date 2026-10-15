@@ -160,7 +160,8 @@ namespace CRT.Server.Tests
         // Creates a pending submission with its payload stored, as a real one would be.
         private static async Task<(FakeSubmissionStore Store, long Id)> PendingAsync(
             SubmissionManifest? manifest = null,
-            bool placed = true)
+            bool placed = true,
+            IReadOnlyList<SubmissionFile>? leftAsPublished = null)
         {
             var store = new FakeSubmissionStore();
             manifest ??= ApprovePublishFlowTests.Manifest();
@@ -175,7 +176,8 @@ namespace CRT.Server.Tests
                     manifest.BoardId, manifest.Manufacturer, manifest.Hardware, manifest.Board,
                     null, "someone@example.com", "192.0.2.1", "hash", "2026-August-21",
                     "Corrected U8.", 1, [.. manifest.Files], ApprovePublishFlowTests.Now,
-                    ApprovePublishFlowTests.Now.AddHours(24)),
+                    ApprovePublishFlowTests.Now.AddHours(24),
+                    LeftAsPublished: leftAsPublished),
                 CancellationToken.None);
 
             await store.SavePayloadAsync(id, manifest, CancellationToken.None);
@@ -418,6 +420,80 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** THE PUBLISH THAT CREATES A BOARD SAYS SO (owner request, 2026-10-13) *** - it is what
+        // makes the board's creator its maintainer (NewBoardMaintainerFlow, from ReviewEndpoints).
+        // The board's second publish does not.
+        // ###########################################################################################
+        [Fact]
+        public async Task Only_the_publish_that_creates_the_board_says_it_created_it()
+        {
+            (FakeSubmissionStore store, long first) = await ApprovePublishFlowTests.PendingAsync();
+            ApprovePublishFlow flow = this.Flow(store);
+
+            ApproveOutcome created = await flow.ApproveAsync(
+                first, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            long second = await ApprovePublishFlowTests.AnotherPendingAsync(store);
+
+            ApproveOutcome updated = await flow.ApproveAsync(
+                second, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now.AddDays(1), CancellationToken.None);
+
+            Assert.True(created.IsPublished, created.Error);
+            Assert.True(created.CreatedBoard);
+            Assert.True(updated.IsPublished, updated.Error);
+            Assert.False(updated.CreatedBoard);
+        }
+
+        // ###########################################################################################
+        // *** A BOARD THE STABLE TREE HOLDS IS NOT NEW (code review, 2026-10-14). *** "Created" was
+        // "BETA holds no such board" - so a board placed in stable by hand, or whose BETA copy alone
+        // was deleted, handed whoever sent its next change the maintainer role (or mailed an
+        // invitation to a typed address). It is created only when NEITHER tree holds it.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_first_publish_to_BETA_of_a_board_the_stable_tree_holds_does_not_say_it_created_it()
+        {
+            string stable = Path.Combine(this.thisRoot, "app-data", "Data");
+            string stableBoard = Path.Combine(stable, "Commodore", "C64", "250407");
+            Directory.CreateDirectory(stableBoard);
+            File.WriteAllText(Path.Combine(stableBoard, "Data C64 250407 v2.0.0.xlsx"), "the stable copy");
+
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+
+            var flow = new ApprovePublishFlow(
+                new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance),
+                new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance),
+                store,
+                new FakeAccountStore(),
+                NullLogger<ApprovePublishFlow>.Instance,
+                options: new ServerOptions { ProductionDataTreeRoot = stable });
+
+            ApproveOutcome outcome = await flow.ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.False(outcome.CreatedBoard);
+        }
+
+        // The stable tree named only by the setting that keeps BETA away from it (ProductionTreeRoot)
+        // is read the same way.
+        [Fact]
+        public void The_stable_tree_is_looked_in_under_either_of_its_settings()
+        {
+            string stable = Path.Combine(this.thisRoot, "app-data", "Data");
+            string stableBoard = Path.Combine(stable, "Commodore", "C64", "250407");
+            Directory.CreateDirectory(stableBoard);
+            File.WriteAllText(Path.Combine(stableBoard, "Data C64 250407 v2.0.0.xlsx"), "the stable copy");
+
+            SubmissionManifest manifest = ApprovePublishFlowTests.Manifest();
+
+            Assert.True(ApprovePublishFlow.StableHolds(new ServerOptions { ProductionDataTreeRoot = stable }, manifest));
+            Assert.True(ApprovePublishFlow.StableHolds(new ServerOptions { ProductionTreeRoot = stable }, manifest));
+            Assert.False(ApprovePublishFlow.StableHolds(new ServerOptions(), manifest));
+            Assert.False(ApprovePublishFlow.StableHolds(null, manifest));
+        }
+
+        // ###########################################################################################
         // The next publish is compared with BETA as the first one left it: only what it changed, with
         // the field named - which is what lets the history say more than the contributor's words.
         // ###########################################################################################
@@ -516,6 +592,185 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
             Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // The code review of 2026-10-13: what the maintainer saw, what they wrote, and what happens
+        // after the tree is written.
+        // -----------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // *** AN APPROVAL ON A VERSION THE APPROVER NEVER SAW IS REFUSED. *** Another maintainer's
+        // amendment changes nothing on the queue row, so an Approve used to publish an amendment the
+        // approver had not seen. The version the screen showed travels with the approval now.
+        // ###########################################################################################
+        [Fact]
+        public async Task An_approval_made_on_an_older_amendment_version_is_refused_and_nothing_is_written()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+
+            // Another maintainer saved a change after this one opened the submission at version 0.
+            store.Amendments.Add((id, 1, ApprovePublishFlowTests.Manifest(), "Another Maintainer", ApprovePublishFlowTests.Now));
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
+                new ApproveChecks(null, ExpectedVersion: 0), CancellationToken.None);
+
+            Assert.False(outcome.IsPublished);
+            Assert.True(outcome.IsConflict);
+            Assert.Equal(ReviewDecisionRules.AmendedSinceMessage, outcome.Error);
+            Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore", "C64")));
+            Assert.Equal(SubmissionState.Pending, store.Submissions[id].State);
+        }
+
+        [Fact]
+        public async Task An_approval_made_on_the_version_on_screen_publishes()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+            store.Amendments.Add((id, 1, ApprovePublishFlowTests.Manifest(), "Another Maintainer", ApprovePublishFlowTests.Now));
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
+                new ApproveChecks(null, ExpectedVersion: 1), CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+        }
+
+        // ###########################################################################################
+        // *** THE APPROVER'S COMMENT REACHES THE CONTRIBUTOR. *** The comment box kept its text across
+        // Approve, and the merged mail has a paragraph for it - but the approval recorded no comment,
+        // so it never printed. It is on the row now, which is what the mail reads.
+        // ###########################################################################################
+        [Fact]
+        public async Task An_approvals_comment_is_recorded_on_the_submission_for_the_merged_mail()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
+                new ApproveChecks(null, Comment: "  Thanks - the PLA part number was overdue.  "), CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal("Thanks - the PLA part number was overdue.", store.Decisions[id].Comment);
+            Assert.Equal("Thanks - the PLA part number was overdue.", store.Submissions[id].DecisionComment);
+        }
+
+        [Fact]
+        public async Task An_over_long_approval_comment_is_refused_before_anything_is_written()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
+                new ApproveChecks(null, Comment: new string('x', ReviewDecisionRules.MaximumReasonLength + 1)), CancellationToken.None);
+
+            Assert.False(outcome.IsPublished);
+            Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore", "C64")));
+        }
+
+        // ###########################################################################################
+        // *** A FAILURE AFTER THE TREE IS WRITTEN IS STILL A PUBLISH. *** Recording the approval threw
+        // out of the flow as a 500, so the endpoint's follow-up - the checksum manifest and the
+        // contributor's mail - never ran for a board that was already in BETA.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_database_failure_after_the_tree_is_written_still_answers_published()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+            store.FailAddApproval = true;
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
+                ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal(SubmissionState.Merged, store.Submissions[id].State);
+
+            // The steps after the failing one still ran.
+            Assert.Equal(SubmissionState.Merged, store.Decisions[id].State);
+        }
+
+        // ###########################################################################################
+        // *** A CLIENT GIVING UP AFTER THE FIRST WRITE DOES NOT STOP THE PUBLISH. *** The request's
+        // token was honoured to the end, so a closed laptop or a proxy timeout left the board written
+        // and the submission still pending, or merged with nobody recorded as approving it.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_client_giving_up_after_the_tree_is_written_does_not_stop_the_publish()
+        {
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
+            using var request = new CancellationTokenSource();
+
+            // The workbook and its files are written by now; the client goes away.
+            store.BeforeBoardPublished = request.Cancel;
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
+                ApprovePublishFlowTests.Now, request.Token);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal(SubmissionState.Merged, store.Submissions[id].State);
+            Assert.Equal(7, store.Decisions[id].DecidedByAccountId);
+            Assert.True(store.PublishedBoards.ContainsKey(ApprovePublishFlowTests.BoardId));
+        }
+
+        // ###########################################################################################
+        // *** A FILE THE CONTRIBUTOR LEFT ALONE IS NOT REVERTED. *** S1 cites a shared file exactly as
+        // published; S2 replaces it and is published; S1 is approved later. S1's copy of the OLD
+        // bytes used to go back over S2's - for every board citing the file - because a manifest
+        // carries every file the board cites. What S1 left as published at create is recorded, and
+        // the approval leaves it as it is published now.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_shared_file_a_submission_left_unchanged_keeps_the_bytes_a_later_publish_gave_it()
+        {
+            const string shared = "Commodore/Shared files/Board local files/pinout.txt";
+            string onDisk = DataTreeBuilder.Full(this.thisDataTree, shared);
+
+            // S1 is created while the shared file is as published, and cites it unchanged.
+            byte[] asPublished = Encoding.UTF8.GetBytes("the pinout as published when S1 was made");
+            File.WriteAllBytes(onDisk, asPublished);
+            string oldHash = await this.PutBlobAsync(asPublished);
+
+            var cited = new SubmissionFile { Path = shared, Sha256 = oldHash, SizeBytes = asPublished.Length };
+
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
+                ApprovePublishFlowTests.Manifest(cited),
+                leftAsPublished: [cited]);
+
+            // S2 replaces the shared file and is published.
+            File.WriteAllText(onDisk, "the corrected pinout S2 published");
+
+            // S1 is approved - on ONE approval: nothing of it replaces a shared file any more.
+            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
+                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
+                ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal("the corrected pinout S2 published", File.ReadAllText(onDisk));
+        }
+
+        // A file the contributor CHANGED is no such file: its bytes are published as before.
+        [Fact]
+        public async Task A_file_the_submission_changed_is_still_published_whatever_the_record_says_of_others()
+        {
+            const string shared = "Commodore/Shared files/Board local files/pinout.txt";
+            string onDisk = DataTreeBuilder.Full(this.thisDataTree, shared);
+            File.WriteAllText(onDisk, "the pinout as published");
+
+            byte[] better = Encoding.UTF8.GetBytes("the contributor's better pinout");
+            string hash = await this.PutBlobAsync(better);
+
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
+                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = shared, Sha256 = hash, SizeBytes = better.Length }),
+                leftAsPublished: []);
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
+                ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal("the contributor's better pinout", File.ReadAllText(onDisk));
         }
 
         // -----------------------------------------------------------------------------------

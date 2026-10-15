@@ -1114,6 +1114,207 @@ namespace CRT.Server.Tests
             Assert.Equal(SubmissionState.Pending, again.State);
         }
 
+        // ###########################################################################################
+        // *** ONLY THE FINALISE THAT QUEUED IT SAYS SO (code review, 2026-10-13). *** A repeated
+        // finalise is answered "accepted" too, and the endpoint mailed every maintainer on every
+        // accepted answer - so each retry after a dropped connection mailed them all again.
+        // ###########################################################################################
+        [Fact]
+        public async Task Only_the_finalise_that_queued_a_submission_reports_it_just_queued()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            long id = created.Negotiation!.SubmissionId;
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            FinaliseOutcome first = await SubmissionFlows.FinaliseWithOutcomeAsync(
+                id, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+            FinaliseOutcome again = await SubmissionFlows.FinaliseWithOutcomeAsync(
+                id, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(first.JustQueued);
+            Assert.True(again.Result.IsAccepted);
+            Assert.False(again.JustQueued);
+        }
+
+        // Two finalises racing: the one that finds the row already moved answers with what the other
+        // left, and is not the one that queued it.
+        [Fact]
+        public async Task A_finalise_that_loses_the_race_to_another_does_not_report_queuing_it()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            long id = created.Negotiation!.SubmissionId;
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            // The other finalise queues it between this one's read and its write.
+            store.BeforeConditionalWrite = () =>
+            {
+                store.Submissions[id] = store.Submissions[id] with { State = SubmissionState.Pending };
+                return Task.CompletedTask;
+            };
+
+            FinaliseOutcome outcome = await SubmissionFlows.FinaliseWithOutcomeAsync(
+                id, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+            Assert.False(outcome.JustQueued);
+            Assert.True(outcome.Result.IsAccepted);
+        }
+
+        // ###########################################################################################
+        // *** NOT AFTER THE UPLOAD WINDOW (code review, 2026-10-13). *** The upload step refused a
+        // chunk once the window had closed, but finalise queued it anyway - racing the hourly sweep
+        // that was about to mark it abandoned.
+        // ###########################################################################################
+        [Fact]
+        public async Task Finalising_after_the_upload_window_closed_is_refused_and_queues_nothing()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(), store, blobs, SubmissionFlowTests.Now);
+
+            long id = created.Negotiation!.SubmissionId;
+            await this.UploadAsync(created.Negotiation!, manifest.Files[0], "PNGDATA", store, blobs);
+
+            FinaliseOutcome outcome = await SubmissionFlows.FinaliseWithOutcomeAsync(
+                id, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now + SubmissionFlows.UploadWindow + TimeSpan.FromMinutes(1));
+
+            Assert.False(outcome.Result.IsAccepted);
+            Assert.False(outcome.JustQueued);
+            Assert.Contains(outcome.Result.Findings, finding => finding.Code == "submission.expired");
+            Assert.Equal(SubmissionState.Uploading, store.Submissions[id].State);
+        }
+
+        // ###########################################################################################
+        // *** THE SWEEP ONLY ABANDONS WHAT IS STILL UPLOADING (code review, 2026-10-13). *** A
+        // finalise that won the race has queued it; marking it abandoned then took a queued
+        // submission out of the review queue.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_sweep_leaves_a_submission_a_finalise_queued_in_the_meantime()
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            store.Submissions[9] = new SubmissionRecord(
+                9, "Commodore/C64/250407", null, "someone@example.com", "hash", "r1", SubmissionState.Uploading,
+                "A change.", 1, SubmissionFlowTests.Now.AddDays(-2), SubmissionFlowTests.Now.AddDays(-1), null);
+
+            store.BeforeConditionalWrite = () =>
+            {
+                store.Submissions[9] = store.Submissions[9] with { State = SubmissionState.Pending };
+                return Task.CompletedTask;
+            };
+
+            int collected = await SubmissionFlows.CollectAbandonedAsync(store, blobs, SubmissionFlowTests.Now);
+
+            Assert.Equal(0, collected);
+            Assert.Equal(SubmissionState.Pending, store.Submissions[9].State);
+        }
+
+        // ###########################################################################################
+        // What a contributor reads about a part of an upload or a file is in plain words (code
+        // review, 2026-10-13) - CRT shows the server's sentence as it is.
+        // ###########################################################################################
+        [Fact]
+        public void The_upload_refusals_a_contributor_reads_name_no_chunks_or_hashes()
+        {
+            foreach (string message in new[] { SubmissionFlows.PartRefusedMessage, SubmissionFlows.FileArrivedDifferentMessage })
+            {
+                Assert.DoesNotContain("chunk", message, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain("hash", message, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        // ###########################################################################################
+        // What the create records as left exactly as published (code review, 2026-10-13): a file the
+        // tree holds byte for byte, and nothing else - the record SubmissionLeftAsPublished reads at
+        // approve.
+        // ###########################################################################################
+        [Fact]
+        public void Only_a_file_byte_identical_to_the_published_tree_is_recorded_as_left_as_published()
+        {
+            var same = new SubmissionFile { Path = "Commodore/C64/250407/same.png", Sha256 = new string('a', 64), SizeBytes = 1 };
+            var changed = new SubmissionFile { Path = "Commodore/C64/250407/changed.png", Sha256 = new string('b', 64), SizeBytes = 1 };
+            var added = new SubmissionFile { Path = "Commodore/C64/250407/new.png", Sha256 = new string('c', 64), SizeBytes = 1 };
+
+            var manifest = new SubmissionManifest { Files = [same, changed, added] };
+
+            var tree = new PublishedTreeView(
+                path => path switch
+                {
+                    "Commodore/C64/250407/same.png" => new string('a', 64),
+                    "Commodore/C64/250407/changed.png" => new string('d', 64),
+                    _ => null
+                },
+                _ => null);
+
+            Assert.Equal([same.Path], SubmissionLeftAsPublished.AtCreate(manifest, tree).Select(file => file.Path));
+            Assert.Empty(SubmissionLeftAsPublished.AtCreate(manifest, null));
+        }
+
+        // ###########################################################################################
+        // *** THE STABLE SOURCE'S COPY COUNTS TOO (code review, 2026-10-13). *** A draft is a copy of
+        // the stable source by default: with S2's newer image already in BETA, a draft from stable
+        // cites the OLD image unchanged, which BETA no longer holds - judged against BETA alone it
+        // was "changed", and the approval wrote it back over S2's.
+        // ###########################################################################################
+        [Fact]
+        public void A_file_byte_identical_to_the_stable_source_is_recorded_as_left_as_published_too()
+        {
+            var fromStable = new SubmissionFile { Path = "Commodore/Shared files/pinout.png", Sha256 = new string('a', 64), SizeBytes = 1 };
+            var changed = new SubmissionFile { Path = "Commodore/C64/250407/changed.png", Sha256 = new string('b', 64), SizeBytes = 1 };
+
+            var manifest = new SubmissionManifest { Files = [fromStable, changed] };
+
+            // BETA already holds S2's newer copy; stable still holds the one the draft was copied from.
+            var beta = new PublishedTreeView(path => new string('e', 64), _ => null);
+            var stable = new PublishedTreeView(path => path == fromStable.Path ? new string('a', 64) : new string('f', 64), _ => null);
+
+            Assert.Empty(SubmissionLeftAsPublished.AtCreate(manifest, beta));
+            Assert.Equal([fromStable.Path], SubmissionLeftAsPublished.AtCreate(manifest, beta, stable).Select(file => file.Path));
+            Assert.Equal([fromStable.Path], SubmissionLeftAsPublished.AtCreate(manifest, null, stable).Select(file => file.Path));
+        }
+
+        // A file pointed at the bytes published now carries their SIZE too (code review, 2026-10-13)
+        // - the file tree showed the submitted size beside the new hash.
+        [Fact]
+        public void A_file_kept_as_published_now_carries_the_published_size_as_well_as_the_hash()
+        {
+            var cited = new SubmissionFile { Path = "Commodore/Shared files/pinout.png", Sha256 = new string('a', 64), SizeBytes = 10 };
+            var manifest = new SubmissionManifest { Files = [cited] };
+
+            var now = new PublishedTreeView(_ => new string('e', 64), _ => null, _ => 2048);
+
+            SubmissionManifest kept = SubmissionLeftAsPublished.KeepNewerPublished(
+                manifest, new Dictionary<string, string> { [cited.Path] = cited.Sha256 }, now, out IReadOnlyList<string> paths);
+
+            SubmissionFile file = Assert.Single(kept.Files);
+            Assert.Equal(new string('e', 64), file.Sha256);
+            Assert.Equal(2048, file.SizeBytes);
+            Assert.Equal([cited.Path], paths);
+
+            // A view that cannot say keeps the submitted size.
+            SubmissionManifest unsized = SubmissionLeftAsPublished.KeepNewerPublished(
+                manifest, new Dictionary<string, string> { [cited.Path] = cited.Sha256 }, new PublishedTreeView(_ => new string('e', 64), _ => null), out _);
+
+            Assert.Equal(10, Assert.Single(unsized.Files).SizeBytes);
+        }
+
         // -----------------------------------------------------------------------------------
         // Garbage collection.
         // -----------------------------------------------------------------------------------

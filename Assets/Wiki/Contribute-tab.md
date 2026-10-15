@@ -31,9 +31,9 @@ A small amber **Draft** badge marks where your drafts are: on each board with a 
 **Board** drop-down, on its hardware in the **Hardware** drop-down, and on each changed component in
 the component list.
 
-If the official data for a board is updated while you have a draft on it, the Drafts tab says so
-under that board and offers a **"What changed"** view. Your edits are still applied - see
-[Drafts tab](Drafts-tab#what-changed) for what that view shows.
+If the published data for a board is updated while you have a draft on it, the Drafts tab says so
+under that board and offers a **"What changed"** view, where **"Bring my draft up to date"** adds the
+update to your draft and keeps your own changes - see [Drafts tab](Drafts-tab#what-changed).
 
 **The full walkthrough, step by step:
 [Contribute data via CRT](Contribute-data-via-CRT).**
@@ -66,8 +66,9 @@ board, and CRT takes you to the [Drafts tab](Drafts-tab), where the next steps a
 Creating one asks you to accept the role of **maintainer** for it, in "Becoming the board's
 maintainer": if you submit the board for the community to use, you agree to review the changes others
 submit for it and publish the ones that are right. The board is only created if you choose
-**Accept and create**. Accepting sends nothing by itself - the administrator invites a board's
-maintainers by email, see [Maintainer tab](Maintainer-tab).
+**Accept and create**. Accepting sends nothing by itself - you become the board's maintainer when the
+board is accepted, see
+[If you contributed a whole new board](Contribute-data-via-CRT#if-you-contributed-a-whole-new-board).
 
 Unlike **Add new component**, this button does not need a board loaded first. That is the point: it
 is for the board that is not there.

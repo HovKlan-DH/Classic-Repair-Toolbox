@@ -72,7 +72,7 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         public static string Waiting(ReviewDecisionKind kind, ApprovalStatus? approval, string? boardId)
         {
-            string board = string.IsNullOrWhiteSpace(boardId) ? "this board" : boardId;
+            string board = string.IsNullOrWhiteSpace(boardId) ? "this board" : ReviewQueueDisplay.BoardHeading(boardId);
 
             return kind switch
             {
@@ -117,10 +117,15 @@ namespace Handlers.MaintainerHandling
                 // Saying just "Published" read as done.
                 string published = string.IsNullOrWhiteSpace(result.Revision)
                     ? "Published to BETA."
-                    : $"Published to BETA at revision {result.Revision}.";
+                    : $"Published to BETA, dated {result.Revision}.";
+
+                // A new board's creator made its maintainer, or invited to be (2026-10-13) - the
+                // server's own sentence.
+                string maintainer = string.IsNullOrWhiteSpace(result.MaintainerNote) ? string.Empty : " " + result.MaintainerNote.Trim();
 
                 return published + FileRemovalWording.Done(result.RemovedFiles) +
-                    " Check it in CRT with the BETA data, then publish it from " + MaintainerScreenWording.BetaQueueQuoted + ".";
+                    " Check it in CRT with the BETA data, then publish it from " + MaintainerScreenWording.BetaQueueQuoted + "." +
+                    maintainer;
             }
 
             return kind == ReviewDecisionKind.Reject

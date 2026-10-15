@@ -114,10 +114,71 @@ namespace CRT.Server.Tests.Fakes
 
         public Task SetStateAsync(long submissionId, string state, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
+            // MySqlConnector honours the token - a write asked for with a cancelled one never happens.
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (this.Submissions.TryGetValue(submissionId, out SubmissionRecord? record))
                 this.Submissions[submissionId] = record with { State = state, DecidedUtc = whenUtc };
 
             return Task.CompletedTask;
+        }
+
+        // Runs at the start of TrySetStateAsync and TrySetDecisionAsync, so a test can land another
+        // writer's change in the gap between a flow's own read and its conditional write - the race
+        // the conditional write exists to close.
+        public Func<Task>? BeforeConditionalWrite { get; set; }
+
+        // The real store's `UPDATE ... WHERE id = @id AND state = @from`: moves only a row still in
+        // `fromState`, and says whether it did.
+        public async Task<bool> TrySetStateAsync(long submissionId, string fromState, string state, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            if (this.BeforeConditionalWrite is { } before)
+                await before();
+
+            if (!this.Submissions.TryGetValue(submissionId, out SubmissionRecord? record) ||
+                !string.Equals(record.State, fromState, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            // decided_utc is not stamped for 'uploading', exactly as SetStateAsync's real query.
+            this.Submissions[submissionId] = state == SubmissionState.Uploading
+                ? record with { State = state }
+                : record with { State = state, DecidedUtc = whenUtc };
+
+            return true;
+        }
+
+        public async Task<bool> TrySetDecisionAsync(
+            long submissionId,
+            IReadOnlyCollection<string> fromStates,
+            string state,
+            long decidedByAccountId,
+            string? comment,
+            DateTimeOffset decidedUtc,
+            CancellationToken cancellationToken = default)
+        {
+            if (this.BeforeConditionalWrite is { } before)
+                await before();
+
+            if (!this.Submissions.TryGetValue(submissionId, out SubmissionRecord? row) || !fromStates.Contains(row.State))
+                return false;
+
+            await this.SetDecisionAsync(submissionId, state, decidedByAccountId, comment, decidedUtc, cancellationToken);
+            return true;
+        }
+
+        // submission_left_as_published (migration 0021): what CreateAsync was handed.
+        public Task<IReadOnlyDictionary<string, string>> GetLeftAsPublishedAsync(long submissionId, CancellationToken cancellationToken = default)
+        {
+            IReadOnlyDictionary<string, string> found = this.Created.TryGetValue(submissionId, out NewSubmission? created) &&
+                created.LeftAsPublished is { } files
+                    ? files
+                        .GroupBy(file => file.Path, StringComparer.Ordinal)
+                        .ToDictionary(group => group.Key, group => group.First().Sha256, StringComparer.Ordinal)
+                    : new Dictionary<string, string>(StringComparer.Ordinal);
+
+            return Task.FromResult(found);
         }
 
         // ###########################################################################################
@@ -238,6 +299,24 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(records);
         }
 
+        // The real query with `board_id IN (...)` - the filter BEFORE the limit, as SQL applies it.
+        public Task<IReadOnlyList<SubmissionRecord>> GetQueueForBoardsAsync(
+            IReadOnlyCollection<string> boardIds,
+            int limit,
+            CancellationToken cancellationToken = default)
+        {
+            var boards = new HashSet<string>(boardIds ?? [], StringComparer.Ordinal);
+
+            IReadOnlyList<SubmissionRecord> records = this.Submissions.Values
+                .Where(record => record.State == SubmissionState.Pending || record.State == SubmissionState.Approved)
+                .Where(record => boards.Contains(record.BoardId))
+                .OrderBy(record => record.Id)
+                .Take(Math.Clamp(limit, 1, 200))
+                .ToList();
+
+            return Task.FromResult(records);
+        }
+
         // ###########################################################################################
         // Records a publish. Modelled on the REAL store's behaviour rather than on convenience -
         // see this class's own header on why a permissive fake certifies bugs.
@@ -254,6 +333,12 @@ namespace CRT.Server.Tests.Fakes
             DateTimeOffset publishedUtc,
             CancellationToken cancellationToken = default)
         {
+            // Run first - a test cancels the request here, as a client giving up after the tree is
+            // written would (code review, 2026-10-13).
+            this.BeforeBoardPublished?.Invoke();
+
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!this.Boards.ContainsKey(boardId))
             {
                 throw new InvalidOperationException(
@@ -264,6 +349,8 @@ namespace CRT.Server.Tests.Fakes
 
             return Task.CompletedTask;
         }
+
+        public Action? BeforeBoardPublished { get; set; }
 
         // ###########################################################################################
         // A BETA rollback's bookkeeping (2026-09-27). Like the real store: only a row still MERGED
@@ -352,6 +439,8 @@ namespace CRT.Server.Tests.Fakes
             DateTimeOffset decidedUtc,
             CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!this.Submissions.TryGetValue(submissionId, out SubmissionRecord? row))
             {
                 throw new InvalidOperationException(
@@ -730,13 +819,47 @@ namespace CRT.Server.Tests.Fakes
 
         public Dictionary<(string BoardId, string Hash), List<GivenApproval>> ProductionApprovals { get; } = [];
 
+        public bool FailAddApproval { get; set; }
+
         public Task<IReadOnlyList<GivenApproval>> GetApprovalsAsync(long submissionId, CancellationToken cancellationToken = default)
         {
+            this.ApprovalReads++;
+
             IReadOnlyList<GivenApproval> approvals = this.Approvals.TryGetValue(submissionId, out List<GivenApproval>? list)
                 ? list.ToList()
                 : [];
 
             return Task.FromResult(approvals);
+        }
+
+        // How many approval reads were asked, one submission or many at a time - a test pins the
+        // queue to one however long it is.
+        public int ApprovalReads { get; private set; }
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<GivenApproval>>> GetApprovalsForAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            this.ApprovalReads++;
+
+            IReadOnlyDictionary<long, IReadOnlyList<GivenApproval>> found = submissionIds
+                .Distinct()
+                .Where(this.Approvals.ContainsKey)
+                .ToDictionary(id => id, id => (IReadOnlyList<GivenApproval>)this.Approvals[id].ToList());
+
+            return Task.FromResult(found);
+        }
+
+        public Task<IReadOnlyDictionary<long, int>> GetAmendmentVersionsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyDictionary<long, int> found = submissionIds
+                .Distinct()
+                .Where(id => this.Amendments.Any(amendment => amendment.SubmissionId == id))
+                .ToDictionary(id => id, id => this.Amendments.Where(amendment => amendment.SubmissionId == id).Max(amendment => amendment.Version));
+
+            return Task.FromResult(found);
         }
 
         public Task AddApprovalAsync(
@@ -747,6 +870,12 @@ namespace CRT.Server.Tests.Fakes
             DateTimeOffset approvedUtc,
             CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // The database failing AFTER a publish has written the tree (code review, 2026-10-13).
+            if (this.FailAddApproval)
+                throw new InvalidOperationException("The database is not reachable.");
+
             if (!this.Approvals.TryGetValue(submissionId, out List<GivenApproval>? list))
                 this.Approvals[submissionId] = list = [];
 

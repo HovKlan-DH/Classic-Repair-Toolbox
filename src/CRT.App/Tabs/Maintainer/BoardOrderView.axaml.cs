@@ -173,7 +173,8 @@ namespace CRT
             this.UpdateState();
         }
 
-        private async void OnSaveClick(object? sender, RoutedEventArgs e) => await this.SaveAsync();
+        private async void OnSaveClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.SaveAsync, message => this.ShowMessage(message, isError: true));
 
         // ###########################################################################################
         // Sends the order, says what the server did, and reads the list again - so what is on screen

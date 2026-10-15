@@ -152,6 +152,177 @@ namespace CRT.Server.Tests
             Assert.True(Assert.Single((await this.QueueAsync(ReviewQueueFlowTests.MaintainerOfC64(), store)).Submissions).AwaitsYou);
         }
 
+        // ###########################################################################################
+        // *** THE AMENDMENT VERSION IS ON THE ROW (code review, 2026-10-13). *** Another maintainer's
+        // amendment changed nothing a row carried, so CRT never read the open submission again -
+        // and an Approve published an amendment its approver had never seen.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_row_carries_its_amendment_version_and_0_when_nobody_amended_it()
+        {
+            var store = new FakeSubmissionStore();
+            long untouched = await ReviewQueueFlowTests.AddAsync(store);
+            long amended = await ReviewQueueFlowTests.AddAsync(store);
+
+            store.Amendments.Add((amended, 1, new SubmissionManifest(), "Anna", ReviewQueueFlowTests.Now));
+            store.Amendments.Add((amended, 2, new SubmissionManifest(), "Bo", ReviewQueueFlowTests.Now));
+
+            ReviewQueueAnswer answer = await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store);
+
+            Assert.Equal(0, answer.Submissions.Single(entry => entry.Id == untouched).AmendmentVersion);
+            Assert.Equal(2, answer.Submissions.Single(entry => entry.Id == amended).AmendmentVersion);
+        }
+
+        // ###########################################################################################
+        // *** MADE FROM OLDER DATA THAN BETA HAS NOW (code review, 2026-10-13). *** A draft is a whole
+        // copy of the board; one made before the board's latest publish carries the older rows and
+        // would remove what was published since.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_submission_made_from_an_older_revision_than_BETAs_is_flagged()
+        {
+            var store = new FakeSubmissionStore();
+            long id = await ReviewQueueFlowTests.AddAsync(store);
+
+            store.Submissions[id] = store.Submissions[id] with { BaseRevision = "2026-September-1" };
+            store.PublishedBoards["Commodore/C64/250407"] = new PublishedBoardRow("2026-October-4", "hash", ReviewQueueFlowTests.Now);
+
+            ReviewQueueEntry entry = Assert.Single((await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store)).Submissions);
+
+            Assert.True(entry.BasedOnOlderRevision);
+        }
+
+        // ###########################################################################################
+        // *** THE SAME CONTRIBUTOR'S NEWER ONE BESIDE A HALF-APPROVED ONE (owner decision,
+        // 2026-10-13). *** The older one stays (the replacement rule); its row names the newer one,
+        // and the newer one's row names nothing.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_half_approved_submission_names_the_newer_one_its_contributor_sent()
+        {
+            var store = new FakeSubmissionStore();
+            long older = await ReviewQueueFlowTests.AddAsync(store);
+            store.Submissions[older] = store.Submissions[older] with { State = SubmissionState.Approved };
+            long newer = await ReviewQueueFlowTests.AddAsync(store);
+
+            ReviewQueueAnswer answer = await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store);
+
+            ReviewQueueEntry olderEntry = answer.Submissions.Single(entry => entry.Id == older);
+            ReviewQueueEntry newerEntry = answer.Submissions.Single(entry => entry.Id == newer);
+
+            Assert.Equal(newer, olderEntry.NewerSubmissionId);
+            Assert.Equal(store.Submissions[newer].CreatedUtc, olderEntry.NewerSubmissionUtc);
+            Assert.Null(newerEntry.NewerSubmissionId);
+            Assert.Null(newerEntry.NewerSubmissionUtc);
+        }
+
+        // ###########################################################################################
+        // *** THE ROW AND THE DETAIL JUDGE AGAINST ONE REVISION (code review, 2026-10-14). *** The row
+        // read boards.current_revision alone and the detail BETA's workbook, so a shipped board no
+        // publish has recorded (no current_revision) was flagged in the detail and not on its row.
+        // Both now take BETA's workbook's own date, or the record's without one.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_shipped_board_no_publish_recorded_is_judged_against_BETAs_workbook_on_its_row()
+        {
+            this.PublishWorkbook("Commodore/C64/250407", "2026-October-4");
+
+            var store = new FakeSubmissionStore();
+            long id = await ReviewQueueFlowTests.AddAsync(store);
+            store.Submissions[id] = store.Submissions[id] with { BaseRevision = "2026-September-1" };
+
+            ReviewQueueEntry entry = Assert.Single((await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store)).Submissions);
+
+            Assert.True(entry.BasedOnOlderRevision);
+        }
+
+        [Fact]
+        public void BETAs_own_workbook_outranks_the_record_and_the_record_stands_in_without_one()
+        {
+            this.PublishWorkbook("Commodore/C64/250407", "2026-October-4");
+
+            var lagging = new BoardRecord("Commodore/C64/250407", "Commodore", "C64", "250407", CurrentRevision: "2026-September-1", IsAccepting: true);
+
+            Assert.Equal(
+                "2026-October-4",
+                ReviewQueueFlow.BetaRevisionOf(PublishedBoardLocator.LocateBoard(this.thisTree, "Commodore/C64/250407"), lagging));
+
+            Assert.Equal(
+                "2026-September-1",
+                ReviewQueueFlow.BetaRevisionOf(PublishedBoardLocator.LocateBoard(this.thisTree, "Commodore/C128/310378"), lagging));
+
+            Assert.Null(ReviewQueueFlow.BetaRevisionOf(PublishedBoardLocation.None, board: null));
+        }
+
+        // A real workbook in the BETA tree, carrying a revision date.
+        private void PublishWorkbook(string boardId, string revision)
+        {
+            string[] parts = boardId.Split('/');
+            string path = Path.Combine([this.thisTree, .. parts, $"Data {parts[1]} {parts[2]} v2.0.0.xlsx"]);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+            BoardWorkbookWriter.Write(path, new BoardData
+            {
+                RevisionDate = revision,
+                Components = [new ComponentEntry { BoardLabel = "U8" }],
+            });
+        }
+
+        [Theory]
+        [InlineData("2026-October-4", "2026-October-4", false)]
+        [InlineData("2026-September-1", "2026-October-4", true)]
+        [InlineData("2026-October-4", "2026-September-1", false)]
+        [InlineData("", "2026-October-4", null)]
+        [InlineData("2026-October-4", null, null)]
+        [InlineData("see changelog", "2026-October-4", false)]
+        public void Older_data_is_said_only_when_BETAs_revision_is_known_to_be_later(string baseRevision, string? current, bool? expected)
+        {
+            Assert.Equal(expected, ReviewQueueFlow.IsBasedOnOlderRevision(baseRevision, current));
+        }
+
+        // ###########################################################################################
+        // *** A MAINTAINER'S QUEUE IS FILTERED IN THE QUERY (code review, 2026-10-13). *** It read the
+        // oldest hundred rows of EVERY board and filtered them afterwards, so a quiet board's
+        // submission behind a hundred others was never shown to its maintainer.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_maintainers_submission_behind_a_hundred_others_is_still_in_their_queue()
+        {
+            var store = new FakeSubmissionStore();
+
+            for (int i = 0; i < ReviewEndpoints.DefaultQueueLimit; i++)
+                await ReviewQueueFlowTests.AddAsync(store, "Commodore/C128/310378");
+
+            long mine = await ReviewQueueFlowTests.AddAsync(store);
+
+            ReviewAccess maintainer = ReviewQueueFlowTests.MaintainerOfC64();
+
+            ReviewQueueAnswer answer = await ReviewQueueFlow.BuildAsync(
+                maintainer,
+                await ReviewQueueFlow.ReadAsync(maintainer, store, ReviewEndpoints.DefaultQueueLimit, CancellationToken.None),
+                this.thisTree,
+                store,
+                new FakeAccountStore(),
+                CancellationToken.None);
+
+            Assert.Equal([mine], answer.Submissions.Select(entry => entry.Id));
+        }
+
+        // One approvals read for the whole queue, however long - it was one per row, every minute,
+        // from every open Maintainer tab.
+        [Fact]
+        public async Task The_approvals_of_a_whole_queue_are_read_at_once()
+        {
+            var store = new FakeSubmissionStore();
+
+            for (int i = 0; i < 5; i++)
+                await ReviewQueueFlowTests.AddAsync(store);
+
+            await this.QueueAsync(ReviewQueueFlowTests.Administrator(), store);
+
+            Assert.Equal(1, store.ApprovalReads);
+        }
+
         // *** THE UPLOAD TOKEN HASH IS NEVER IN A ROW. *** It is the contributor's capability for the
         // submission; the answer's type has nowhere to put it.
         [Fact]

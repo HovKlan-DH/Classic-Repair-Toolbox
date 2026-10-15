@@ -79,33 +79,36 @@ namespace CRT
             if (this.thisQueueTimer is null)
             {
                 this.thisQueueTimer = new DispatcherTimer { Interval = QueueRefreshRules.PollInterval };
-                this.thisQueueTimer.Tick += async (_, _) =>
-                {
-                    // Covered since the last tick, however it came: no more checks.
-                    if (this.IsUpdateRequiredShown)
-                    {
-                        this.StopQueueChecks();
-                        return;
-                    }
-
-                    switch (QueueRefreshRules.MinuteCheck(this.IsOnScreenAndInFront, this.thisTabBadgeCanBeSeen?.Invoke() == true))
-                    {
-                        case QueueCheck.Everything:
-                            await this.RefreshQueueInBackgroundAsync();
-                            break;
-
-                        case QueueCheck.BadgesOnly:
-                            await this.RefreshBadgesInBackgroundAsync();
-
-                            // The entry the tab will open on, read again when it changed
-                            // (TabMaintainer.Prefetch.cs).
-                            await this.PrefetchEntryToOpenAsync();
-                            break;
-                    }
-                };
+                this.thisQueueTimer.Tick += async (_, _) => await HandlerGuard.RunAsync(this.MinuteCheckAsync, this.ShowHandlerFailure);
             }
 
             this.thisQueueTimer.Start();
+        }
+
+        // One tick of the minute check (QueueRefreshRules.MinuteCheck).
+        private async System.Threading.Tasks.Task MinuteCheckAsync()
+        {
+            // Covered since the last tick, however it came: no more checks.
+            if (this.IsUpdateRequiredShown)
+            {
+                this.StopQueueChecks();
+                return;
+            }
+
+            switch (QueueRefreshRules.MinuteCheck(this.IsOnScreenAndInFront, this.thisTabBadgeCanBeSeen?.Invoke() == true))
+            {
+                case QueueCheck.Everything:
+                    await this.RefreshQueueInBackgroundAsync();
+                    break;
+
+                case QueueCheck.BadgesOnly:
+                    await this.RefreshBadgesInBackgroundAsync();
+
+                    // The entry the tab will open on, read again when it changed
+                    // (TabMaintainer.Prefetch.cs).
+                    await this.PrefetchEntryToOpenAsync();
+                    break;
+            }
         }
 
         private void StopQueueChecks() => this.thisQueueTimer?.Stop();
@@ -139,19 +142,22 @@ namespace CRT
             // both data trees for, and the entry waited for all of it. With the queue the badge
             // read - and the entry itself read ahead (TabMaintainer.Prefetch.cs) - it opens at
             // once; the check then runs under the rules every check keeps for what is open.
-            Dispatcher.UIThread.Post(async () =>
+            Dispatcher.UIThread.Post(async () => await HandlerGuard.RunAsync(this.ComingBackAsync, this.ShowHandlerFailure));
+        }
+
+        // The tab shown again: its entry, the check, and a stale Files view - see AttachQueueChecks.
+        private async System.Threading.Tasks.Task ComingBackAsync()
+        {
+            if (this.IsOnScreen && this.thisQueueKnown)
+                this.SelectOnEntry();
+
+            await this.CheckQueueIfDueAsync();
+
+            if (this.IsOnScreen)
             {
-                if (this.IsOnScreen && this.thisQueueKnown)
-                    this.SelectOnEntry();
-
-                await this.CheckQueueIfDueAsync();
-
-                if (this.IsOnScreen)
-                {
-                    this.SelectOnEntry();
-                    await this.ShowFilesViewIfStaleAsync();
-                }
-            });
+                this.SelectOnEntry();
+                await this.ShowFilesViewIfStaleAsync();
+            }
         }
 
         private void DetachQueueChecks()
@@ -165,7 +171,8 @@ namespace CRT
             this.EndOpening();
         }
 
-        private async void OnQueueCheckWindowActivated(object? sender, EventArgs e) => await this.CheckQueueIfDueAsync();
+        private async void OnQueueCheckWindowActivated(object? sender, EventArgs e) =>
+            await HandlerGuard.RunAsync(this.CheckQueueIfDueAsync, this.ShowHandlerFailure);
 
         private async System.Threading.Tasks.Task CheckQueueIfDueAsync()
         {
@@ -258,7 +265,23 @@ namespace CRT
             this.ShowDecisionMessage(ReviewDecisionWording.DecidedElsewhere, isError: true);
         }
 
-        // Whether leaving for the sign-in screen now would throw away unsaved table changes.
+        // Whether reading the submission's table again would throw away unsaved changes in it.
         private bool WouldLoseTableChanges => this.IsTableOpen && this.TableEditor.HasUnsavedChanges;
+
+        // Whether leaving for the sign-in screen now would throw away unsaved changes in either
+        // table - the submission's, or a board's on the Boards screen (both go with the session).
+        private bool WouldLoseAnyTableChanges => this.WouldLoseTableChanges || this.BoardDetail.HasUnsavedTableEdits;
+
+        // ###########################################################################################
+        // The session ended - expired here, or refused by the server (`expired` false) - while a table
+        // holds changes not saved: the panel stays for them, the checks stop, and one sentence says
+        // they cannot be saved and what signing in again costs (code review, 2026-09-26 and
+        // 2026-10-13). Signing in again is the maintainer's own decision, from "Sign out".
+        // ###########################################################################################
+        private void KeepTablesAfterSessionEnded(bool expired)
+        {
+            this.StopQueueChecks();
+            this.ShowQueueMessage(ReviewTableWording.SessionEndedUnderUnsavedEdits(expired), isError: true);
+        }
     }
 }

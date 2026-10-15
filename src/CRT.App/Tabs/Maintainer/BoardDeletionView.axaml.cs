@@ -132,11 +132,9 @@ namespace CRT
                 Margin = new Thickness(12, 0, 0, 0)
             };
 
+            delete.Classes.Add("Danger");
             delete.Classes.Add("DeleteBoardButton");
-            delete.Bind(Button.ForegroundProperty, delete.GetResourceObservable("Button_Cancel_Fg"));
-            delete.Bind(Button.BackgroundProperty, delete.GetResourceObservable("Button_Cancel_Bg"));
-            delete.Bind(Button.BorderBrushProperty, delete.GetResourceObservable("Button_Cancel_Border"));
-            delete.Click += async (_, _) => await this.DeleteAsync(board);
+            delete.Click += async (_, _) => await HandlerGuard.RunAsync(() => this.DeleteAsync(board), message => this.ShowMessage(message, isError: true));
 
             var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
             grid.Children.Add(texts);

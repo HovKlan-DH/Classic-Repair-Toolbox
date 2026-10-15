@@ -349,6 +349,15 @@ namespace CRT.Server.Tests.Fakes
             return Task.CompletedTask;
         }
 
+        // The real DELETE ... WHERE at_utc < @before over both kinds of counter - never the audit.
+        public Task<int> DeleteRateLimitEventsBeforeAsync(DateTimeOffset before, CancellationToken cancellationToken = default)
+        {
+            int removed = this.AuthFailures.RemoveAll(failure => failure.When < before) +
+                          this.MailRequests.RemoveAll(request => request.When < before);
+
+            return Task.FromResult(removed);
+        }
+
         // -----------------------------------------------------------------------------------
         // Maintainer pools (Phase 6 roles).
         // -----------------------------------------------------------------------------------

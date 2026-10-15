@@ -135,6 +135,20 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
+        // The writer the administrator's button uses: every file read afresh, nothing remembered
+        // trusted (DataChecksumManifest.Write's `hashEveryFile`, code review 2026-10-14). This button
+        // is for hand copies, and a hand copy can keep its old length AND write time - the stamp the
+        // publishes' rebuilds trust - so a corrected file would otherwise go out under its old
+        // checksum.
+        // ###########################################################################################
+        public static int WriteHashingEveryFile(UnusedFileFlows.DataTree tree)
+        {
+            ArgumentNullException.ThrowIfNull(tree);
+
+            return DataChecksumManifest.Write(tree.Root, tree.PublicBaseUrl, tree.ManifestPath, hashEveryFile: true);
+        }
+
+        // ###########################################################################################
         // Rebuilds every configured tree's manifest and audits what happened. Both trees are in the
         // answer, BETA first; one not configured is Skipped.
         //

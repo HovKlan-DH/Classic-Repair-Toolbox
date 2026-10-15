@@ -342,6 +342,7 @@ you allow it (`setsebool -P httpd_can_network_connect 1`). `Disabled` or `Permis
 
 ```apache
 ProxyPreserveHost On
+ProxyTimeout     300
 ProxyPass        /api/  http://127.0.0.1:5199/api/
 ProxyPassReverse /api/  http://127.0.0.1:5199/api/
 
@@ -359,6 +360,13 @@ RequestHeader set X-Forwarded-Proto "https" "expr=%{HTTPS} == 'on'"
 - **The three old addresses** are where every CRT released before 3.0.0 sends its launch check-in,
   its feedback and its contributions. The service takes the check-ins and the feedback exactly as
   those CRTs send them, and tells an old CRT that tries to contribute to update.
+- **`ProxyTimeout 300`**: how long Apache waits for the service's answer before giving up on it
+  (Apache's own default is the vhost's `Timeout`, often 60 seconds). Publishing a whole board to BETA
+  or the stable source, a push-back or deleting a board can take longer than that on a big board. The
+  service finishes a write it has started whatever Apache does - a publish is never stopped half way
+  because the request was dropped - but a shorter timeout tells the maintainer "the server did not
+  answer" for something that worked, and CRT then has to look again to find out. 300 seconds is above
+  CRT's own two-minute wait.
 - **Keep the `expr=` on the header**: the vhost serves both port 80 and 443, and the service builds
   the links in its mails from that header. (`ProxyPass` cannot go inside an `<If>` - Apache refuses it.)
 - **Place the block before any rewrite rule that catches unknown paths**, or `/api/` answers with the
@@ -555,6 +563,7 @@ to vacuum for this service.
 | The service answers from outside on port 5199 | `ASPNETCORE_URLS` is not loopback | Must be `http://127.0.0.1:5199`, as in the shipped unit |
 | `appsettings.Production.json` downloads over the web | `crt-server/` is inside `public_html` | Move it out, then change the database password - it has been published |
 | Verification, invitation or feedback mail never arrives | postfix, not the service | `journalctl -u postfix -n 30 --no-pager`; `mailq`. The service logs a warning and carries on |
+| Account > "Server version" says mails could not be sent | postfix refused them | Fix postfix (row above). The service tries every refused mail again every few minutes for three days, then gives it up (`mail_outbox` table). A verification, password reset, address-change or invitation mail is never kept with its words (only token hashes are stored) - that person asks for a new one, or the administrator invites again |
 | Feedback is mailed but its files are not saved | The feedback folders are full (`FeedbackMaxStoredBytes`, 20 GB) | Delete old `feedback-*` folders; the service counts again within five minutes |
 
 ## Settings you may change later

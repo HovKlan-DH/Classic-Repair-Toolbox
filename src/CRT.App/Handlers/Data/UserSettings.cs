@@ -246,8 +246,6 @@ namespace Handlers.DataHandling
         [JsonPropertyName("componentInfoKeyboardHandling")] public string ComponentInfoKeyboardHandling { get; set; } = "Control oscilloscope";
         [JsonPropertyName("oscilloscopeImageFolder")] public string OscilloscopeImageFolder { get; set; } = string.Empty;
         [JsonPropertyName("oscilloscopeSyncEnabled")] public bool? ComponentInfoOscilloscopeSyncEnabled { get; set; }
-        [JsonPropertyName("schematicsHoverHighlightsTracesByBoard")] public Dictionary<string, bool> SchematicsHoverHighlightsTracesByBoard { get; set; } = new();
-        [JsonPropertyName("contributorModeByBoard")] public Dictionary<string, bool> ContributorModeByBoard { get; set; } = new();
         [JsonPropertyName("interactiveCadTraceHoverMode")] public string InteractiveCadTraceHoverMode { get; set; } = "Always";
         [JsonPropertyName("schematicsMarkPin1OnSelectedComponentByBoard")] public Dictionary<string, bool> SchematicsMarkPin1OnSelectedComponentByBoard { get; set; } = new();
         [JsonPropertyName("schematicsShowTracesOnSelectedComponent")] public bool SchematicsShowTracesOnSelectedComponent { get; set; } = true;
@@ -293,6 +291,19 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
+    // The settings file a load could not use: where it is, and where it was moved aside to - null
+    // when it was left in place (it could not be read, or not be moved), which also means nothing
+    // is saved this session. See UserSettings.LoadFrom.
+    // ###########################################################################################
+    public sealed record UnreadableSettingsFile(string Path, string? KeptAs)
+    {
+        // The notice card's words (Main.SettingsNotice.cs). A value in brackets is shown in bold.
+        public string NoticeText => this.KeptAs is { } keptAs
+            ? $"Your settings could not be read, so CRT started with default settings. The unreadable file was kept as [{keptAs}]."
+            : $"Your settings could not be read, so CRT started with default settings. The file [{this.Path}] was left as it is, and settings changed now are not saved until CRT is started again.";
+    }
+
+    // ###########################################################################################
     // Loads and saves user preferences to a JSON file in the same folder as the log file.
     // Call Load() once at startup before any settings are read.
     // ###########################################################################################
@@ -322,9 +333,6 @@ namespace Handlers.DataHandling
             { "Button_Cancel_Bg", "IndianRed" },
             { "Button_Cancel_Fg", "White" },
             { "Button_Cancel_Border", "#B85C5C" },
-            { "Button_Highlighted_Bg", "IndianRed" },
-            { "Button_Highlighted_Fg", "White" },
-            { "Button_Highlighted_Border", "White" },
             { "Panel_Border", "Gray" },
             { "Link_Fg", "Blue" },
             { "LinkHover_Fg", "Black" },
@@ -1134,13 +1142,11 @@ namespace Handlers.DataHandling
         internal static void NormalizeCatalogueKeySetsForTests() => NormalizeCatalogueKeySets();
 
         // ###########################################################################################
-        // Which hardware/board/schematic keys are checked (visible) in the Configuration tab's
+        // Which hardware/board/schematic keys are UNchecked (hidden) in the Configuration tab's
         // catalogue tree - see CatalogueVisibility for the key format and the ancestor-AND
-        // visibility rule applied to these. Unlisted keys default to checked.
+        // visibility rule applied to these. Unlisted keys default to checked; the app asks
+        // CatalogueVisibility about CatalogueUncheckedKeysSnapshot, never a key-by-key getter.
         // ###########################################################################################
-        public static bool IsCatalogueKeyChecked(string key) =>
-            !CatalogueVisibility.IsKeyListed(_data.CatalogueUncheckedKeys, key);
-
         public static void SetCatalogueKeyChecked(string key, bool isChecked)
         {
             bool changed = isChecked
@@ -1156,15 +1162,16 @@ namespace Handlers.DataHandling
             Save();
         }
 
-        public static IReadOnlySet<string> CatalogueUncheckedKeysSnapshot => _data.CatalogueUncheckedKeys;
+        // A COPY, taken now (code review, 2026-10-13): the board load reads it on a pool thread
+        // while a click on the Configuration tab can change the live set on the UI thread, and a
+        // HashSet read while it is written can throw or answer wrongly. Same comparer as the set.
+        public static IReadOnlySet<string> CatalogueUncheckedKeysSnapshot =>
+            new HashSet<string>(_data.CatalogueUncheckedKeys, CatalogueVisibility.KeyComparer);
 
         // ###########################################################################################
         // Which hardware/board rows are collapsed in the Configuration tab's catalogue tree.
         // Unlisted keys default to expanded.
         // ###########################################################################################
-        public static bool IsCatalogueKeyCollapsed(string key) =>
-            CatalogueVisibility.IsKeyListed(_data.CatalogueCollapsedKeys, key);
-
         public static void SetCatalogueKeyCollapsed(string key, bool isCollapsed)
         {
             bool changed = isCollapsed
@@ -1180,7 +1187,9 @@ namespace Handlers.DataHandling
             Save();
         }
 
-        public static IReadOnlySet<string> CatalogueCollapsedKeysSnapshot => _data.CatalogueCollapsedKeys;
+        // A copy, like CatalogueUncheckedKeysSnapshot.
+        public static IReadOnlySet<string> CatalogueCollapsedKeysSnapshot =>
+            new HashSet<string>(_data.CatalogueCollapsedKeys, CatalogueVisibility.KeyComparer);
 
         public static string ThemeVariant
         {
@@ -1574,17 +1583,36 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // What the last load found wrong with the settings file - null when it was read, or there
+        // was none. Main says so on a notice card (Main.SettingsNotice.cs).
+        // ###########################################################################################
+        public static UnreadableSettingsFile? UnreadableSettings { get; private set; }
+
+        // How the load reads the file and moves an unreadable one aside. Tests replace them to make
+        // a read or a move fail, which no file can be made to do on every platform; they put them back.
+        internal static Func<string, string> ReadSettingsText { get; set; } = File.ReadAllText;
+        internal static Action<string, string> MoveSettingsFile { get; set; } = (from, to) => File.Move(from, to);
+
+        // ###########################################################################################
         // Loads persisted values from an explicit settings file and makes that file the save target.
         // Load() resolves the real AppData location and calls this; splitting the two keeps the
         // "where do settings live" decision out of the load logic, and lets the test suite point at
         // a temporary file instead of the user's real settings.
-        // Falls back to defaults silently on any failure.
+        //
+        // *** AN UNREADABLE FILE IS KEPT, NEVER WRITTEN OVER (code review, 2026-10-13). *** Any
+        // failure used to mean "defaults", silently - and the first setting changed after that (the
+        // board shown at launch is one) saved the defaults over the file, so one bad byte cost every
+        // preference for good. Now a file that cannot be parsed is moved aside as
+        // "<name>.corrupt-<yyyyMMdd-HHmmss>" and CRT starts on defaults; a file that cannot be READ
+        // (locked, no permission), or cannot be moved aside, is left where it is and nothing is
+        // saved this session. Either way UnreadableSettings says so, for the notice card.
         // ###########################################################################################
         internal static void LoadFrom(string settingsFilePath)
         {
             try
             {
                 _settingsFilePath = settingsFilePath;
+                UnreadableSettings = null;
 
                 // Get and log system information completely independently of the configuration state
                 var os = RuntimeInformation.OSDescription;
@@ -1624,97 +1652,178 @@ namespace Handlers.DataHandling
                     return;
                 }
 
-                var json = File.ReadAllText(_settingsFilePath);
-                var loaded = JsonSerializer.Deserialize<UserSettingsData>(json);
-                if (loaded != null)
+                var loaded = UserSettings.ReadSettingsFileOrSetItAside(_settingsFilePath);
+                if (loaded == null)
                 {
-                    _data = loaded;
+                    UserSettings.StartOnDefaultsAfterUnreadableFile();
+                    return;
+                }
 
-                    NormalizeCatalogueKeySets();
-                    MigrateLegacyContributorModeSettings();
+                _data = loaded;
 
-                    var addedUserThemeDefaults = EnsureUserThemeColors();
-                    SyncContributorModeLinkedSettings();
+                NormalizeCatalogueKeySets();
+                MigrateLegacyContributorModeSettings();
 
-                    Logger.Info("Settings loaded:");
-                    Logger.Info($"    Configuration:");
-                    Logger.Info($"        [Theme] [{ThemeVariant}]");
-                    Logger.Info($"        [OpenMultiplePopups] [{MultipleInstancesForComponentPopup}]");
-                    Logger.Info($"        [DetachSchematicsThumbnails] [{DetachSchematicsThumbnails}]");
-                    Logger.Info($"        [RememberThumbnailWindowSettingsPerBoard] [{RememberThumbnailWindowSettingsPerBoard}]");
-                    Logger.Info($"        [EnableNetworkConnectedOscilloscopeTab] [{EnableNetworkConnectedOscilloscopeTab}]");
-                    Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
-                    Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
-                    Logger.Info($"        [EnableMaintainerTab] [{EnableMaintainerTab}]");
-                    Logger.Info($"        [ShowMaintainerTabOnlyWhenWorkWaiting] [{ShowMaintainerTabOnlyWhenWorkWaiting}]");
-                    Logger.Info($"        [WorkbooksScope] [{WorkbooksScope}]");
-                    Logger.Info($"        [WorklogCurrencyCode] [{WorklogCurrencyCode}]");
-                    Logger.Info($"        [WorklogCommentsSortNewestFirst] [{WorklogCommentsSortNewestFirst}]");
-                    Logger.Info($"        [WorklogWorkDoneSortNewestFirst] [{WorklogWorkDoneSortNewestFirst}]");
-                    Logger.Info($"        [WorklogShowEntriesChecked] [{WorklogShowEntriesChecked}]");
-                    Logger.Info($"        [CheckDataOnLaunch] [{CheckDataOnLaunch}]");
-                    Logger.Info($"        [DownloadDataFromTestSource] [{DownloadDataFromTestSource}]");
-                    Logger.Info($"        [AllowDeletionOfOrphanAndNonUsedFiles] [{AllowDeletionOfOrphanAndNonUsedFiles}]");
-                    Logger.Info($"        [CheckVersionOnLaunch] [{CheckVersionOnLaunch}]");
-                    Logger.Info($"        [AllowBetaNotification] [{ShowDevelopmentVersionNotification}]");
-                    Logger.Info($"        [AllowAlphaVersionNotification] [{AllowAlphaVersionNotification}]");
-                    Logger.Info($"        [ValidateDataOnLaunch] [{ValidateDataOnLaunch}]");
-                    Logger.Info($"        [DebugLogging] [{DebugLogging}]");
-                    Logger.Info($"    Various other settings:");
-                    Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
-                    Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}] [Position: {_data.ComponentInfoWindowX},{_data.ComponentInfoWindowY}]");
-                    Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
-                    Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
-                    Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
-                    Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");
-                    Logger.Info($"        [ContributorMode] [{ContributorMode}]");
-                    Logger.Info($"        [InteractiveCadTraceHoverMode] [{InteractiveCadTraceHoverMode}]");
-                    Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
-                    Logger.Info($"        [WorkbooksLeftPanelWidth] [{_data.WorkbooksLeftPanelWidth:F1}]");
-                    Logger.Info($"        [WorkbooksEntryListWidth] [{_data.WorkbooksEntryListWidth:F1}]");
-                    Logger.Info($"        [WorkbooksSummaryExpanded] [{_data.WorkbooksSummaryExpanded}]");
-                    Logger.Info($"        [Region] [{Region}]");
-                    Logger.Info($"        [SchematicsLabelsPanelExpanded] [{SchematicsLabelsPanelExpanded}]");
-                    Logger.Info($"        [SchematicsBoardSettingsPanelExpanded] [{SchematicsBoardSettingsPanelExpanded}]");
-                    Logger.Info($"        [SchematicsGlobalSettingsPanelExpanded] [{SchematicsGlobalSettingsPanelExpanded}]");
-                    Logger.Info($"        [SchematicsShowTracesOnComponentSelect] [{SchematicsShowTracesOnComponentSelect}]");
-                    Logger.Info($"        [SchematicsNetConnectionsPanelExpanded] [{SchematicsNetConnectionsPanelExpanded}]");
-                    Logger.Info($"        [SchematicsImportantSignalsPanelExpanded] [{SchematicsImportantSignalsPanelExpanded}]");
-                    Logger.Info($"        [SchematicsLabelBoard] [{SchematicsLabelBoard}]");
-                    Logger.Info($"        [SchematicsLabelTechnical] [{SchematicsLabelTechnical}]");
-                    Logger.Info($"        [SchematicsLabelFriendly] [{SchematicsLabelFriendly}]");
-                    Logger.Info($"        [SchematicsLabelSelectedOnly] [{SchematicsLabelSelectedOnly}]");
-                    Logger.Info($"        [SchematicsShowTracesOnSelectedComponent] [{SchematicsShowTracesOnSelectedComponent}]");
-                    Logger.Info($"        [UserThemeColors] [{_data.UserThemeColors.Count} entries]");
-                    Logger.Info($"        [WindowPlacement] [{_data.WindowState}] [{_data.WindowWidth:F0}x{_data.WindowHeight:F0}]");
-                    Logger.Info($"    Various hardware/board specific settings:");
-                    Logger.Info($"        [LastBoardByHardware] [{_data.LastBoardByHardware.Count} entries]");
-                    Logger.Info($"        [LastHardware] [{_data.LastHardware}]");
-                    Logger.Info($"        [LastSchematicByBoard] [{_data.LastSchematicByBoard.Count} entries]");
-                    Logger.Info($"        [SchematicsSplitterRatios] [{_data.SchematicsSplitterRatios.Count} entries]");
-                    Logger.Info($"        [SchematicsHoverHighlightsTracesByBoard] [{_data.SchematicsHoverHighlightsTracesByBoard.Count} entries]");
-                    Logger.Info($"        [ContributorModeByBoard] [{_data.ContributorModeByBoard.Count} entries]");
-                    Logger.Info($"        [SelectedCategoriesByBoard] [{_data.SelectedCategoriesByBoard.Count} entries]");
-                    Logger.Info($"        [ActiveWorkbookIdByBoard] [{_data.ActiveWorkbookIdByBoard.Count} entries]");
-                    Logger.Info($"        [CatalogueUncheckedKeys] [{_data.CatalogueUncheckedKeys.Count} entries]");
-                    Logger.Info($"        [CatalogueCollapsedKeys] [{_data.CatalogueCollapsedKeys.Count} entries]");
-                    Logger.Info($"        [ThumbnailWindowSettingsByBoard] [{_data.ThumbnailWindowSettingsByBoard.Count} entries]");
-                    Logger.Info($"        [OscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
-                    Logger.Info($"        [OscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
-                    Logger.Info($"        [OscilloscopeHost] [{_data.OscilloscopeHost}]");
-                    Logger.Info($"        [OscilloscopePort] [{_data.OscilloscopePort}]");
-                    Logger.Info($"        [OscilloscopeSyncEnabled] [{ComponentInfoOscilloscopeSyncEnabled}]");
+                var addedUserThemeDefaults = EnsureUserThemeColors();
+                SyncContributorModeLinkedSettings();
 
-                    if (addedUserThemeDefaults)
-                    {
-                        Save();
-                        Logger.Info("Missing [UserThemeColors] entries were added to configuration");
-                    }
+                Logger.Info("Settings loaded:");
+                Logger.Info($"    Configuration:");
+                Logger.Info($"        [Theme] [{ThemeVariant}]");
+                Logger.Info($"        [OpenMultiplePopups] [{MultipleInstancesForComponentPopup}]");
+                Logger.Info($"        [DetachSchematicsThumbnails] [{DetachSchematicsThumbnails}]");
+                Logger.Info($"        [RememberThumbnailWindowSettingsPerBoard] [{RememberThumbnailWindowSettingsPerBoard}]");
+                Logger.Info($"        [EnableNetworkConnectedOscilloscopeTab] [{EnableNetworkConnectedOscilloscopeTab}]");
+                Logger.Info($"        [EnableMiniproExperimentalMode] [{EnableMiniproExperimentalMode}]");
+                Logger.Info($"        [EnableWorklog] [{EnableWorklog}]");
+                Logger.Info($"        [EnableMaintainerTab] [{EnableMaintainerTab}]");
+                Logger.Info($"        [ShowMaintainerTabOnlyWhenWorkWaiting] [{ShowMaintainerTabOnlyWhenWorkWaiting}]");
+                Logger.Info($"        [WorkbooksScope] [{WorkbooksScope}]");
+                Logger.Info($"        [WorklogCurrencyCode] [{WorklogCurrencyCode}]");
+                Logger.Info($"        [WorklogCommentsSortNewestFirst] [{WorklogCommentsSortNewestFirst}]");
+                Logger.Info($"        [WorklogWorkDoneSortNewestFirst] [{WorklogWorkDoneSortNewestFirst}]");
+                Logger.Info($"        [WorklogShowEntriesChecked] [{WorklogShowEntriesChecked}]");
+                Logger.Info($"        [CheckDataOnLaunch] [{CheckDataOnLaunch}]");
+                Logger.Info($"        [DownloadDataFromTestSource] [{DownloadDataFromTestSource}]");
+                Logger.Info($"        [AllowDeletionOfOrphanAndNonUsedFiles] [{AllowDeletionOfOrphanAndNonUsedFiles}]");
+                Logger.Info($"        [CheckVersionOnLaunch] [{CheckVersionOnLaunch}]");
+                Logger.Info($"        [AllowBetaNotification] [{ShowDevelopmentVersionNotification}]");
+                Logger.Info($"        [AllowAlphaVersionNotification] [{AllowAlphaVersionNotification}]");
+                Logger.Info($"        [ValidateDataOnLaunch] [{ValidateDataOnLaunch}]");
+                Logger.Info($"        [DebugLogging] [{DebugLogging}]");
+                Logger.Info($"    Various other settings:");
+                Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
+                Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}] [Position: {_data.ComponentInfoWindowX},{_data.ComponentInfoWindowY}]");
+                Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
+                Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
+                Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
+                Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");
+                Logger.Info($"        [ContributorMode] [{ContributorMode}]");
+                Logger.Info($"        [InteractiveCadTraceHoverMode] [{InteractiveCadTraceHoverMode}]");
+                Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
+                Logger.Info($"        [WorkbooksLeftPanelWidth] [{_data.WorkbooksLeftPanelWidth:F1}]");
+                Logger.Info($"        [WorkbooksEntryListWidth] [{_data.WorkbooksEntryListWidth:F1}]");
+                Logger.Info($"        [WorkbooksSummaryExpanded] [{_data.WorkbooksSummaryExpanded}]");
+                Logger.Info($"        [Region] [{Region}]");
+                Logger.Info($"        [SchematicsLabelsPanelExpanded] [{SchematicsLabelsPanelExpanded}]");
+                Logger.Info($"        [SchematicsBoardSettingsPanelExpanded] [{SchematicsBoardSettingsPanelExpanded}]");
+                Logger.Info($"        [SchematicsGlobalSettingsPanelExpanded] [{SchematicsGlobalSettingsPanelExpanded}]");
+                Logger.Info($"        [SchematicsShowTracesOnComponentSelect] [{SchematicsShowTracesOnComponentSelect}]");
+                Logger.Info($"        [SchematicsNetConnectionsPanelExpanded] [{SchematicsNetConnectionsPanelExpanded}]");
+                Logger.Info($"        [SchematicsImportantSignalsPanelExpanded] [{SchematicsImportantSignalsPanelExpanded}]");
+                Logger.Info($"        [SchematicsLabelBoard] [{SchematicsLabelBoard}]");
+                Logger.Info($"        [SchematicsLabelTechnical] [{SchematicsLabelTechnical}]");
+                Logger.Info($"        [SchematicsLabelFriendly] [{SchematicsLabelFriendly}]");
+                Logger.Info($"        [SchematicsLabelSelectedOnly] [{SchematicsLabelSelectedOnly}]");
+                Logger.Info($"        [SchematicsShowTracesOnSelectedComponent] [{SchematicsShowTracesOnSelectedComponent}]");
+                Logger.Info($"        [UserThemeColors] [{_data.UserThemeColors.Count} entries]");
+                Logger.Info($"        [WindowPlacement] [{_data.WindowState}] [{_data.WindowWidth:F0}x{_data.WindowHeight:F0}]");
+                Logger.Info($"    Various hardware/board specific settings:");
+                Logger.Info($"        [LastBoardByHardware] [{_data.LastBoardByHardware.Count} entries]");
+                Logger.Info($"        [LastHardware] [{_data.LastHardware}]");
+                Logger.Info($"        [LastSchematicByBoard] [{_data.LastSchematicByBoard.Count} entries]");
+                Logger.Info($"        [SchematicsSplitterRatios] [{_data.SchematicsSplitterRatios.Count} entries]");
+                Logger.Info($"        [SelectedCategoriesByBoard] [{_data.SelectedCategoriesByBoard.Count} entries]");
+                Logger.Info($"        [ActiveWorkbookIdByBoard] [{_data.ActiveWorkbookIdByBoard.Count} entries]");
+                Logger.Info($"        [CatalogueUncheckedKeys] [{_data.CatalogueUncheckedKeys.Count} entries]");
+                Logger.Info($"        [CatalogueCollapsedKeys] [{_data.CatalogueCollapsedKeys.Count} entries]");
+                Logger.Info($"        [ThumbnailWindowSettingsByBoard] [{_data.ThumbnailWindowSettingsByBoard.Count} entries]");
+                Logger.Info($"        [OscilloscopeSeriesByVendor] [{_data.LastOscilloscopeSeriesByVendor.Count} entries]");
+                Logger.Info($"        [OscilloscopeVendor] [{_data.LastOscilloscopeVendor}]");
+                Logger.Info($"        [OscilloscopeHost] [{_data.OscilloscopeHost}]");
+                Logger.Info($"        [OscilloscopePort] [{_data.OscilloscopePort}]");
+                Logger.Info($"        [OscilloscopeSyncEnabled] [{ComponentInfoOscilloscopeSyncEnabled}]");
+
+                if (addedUserThemeDefaults)
+                {
+                    Save();
+                    Logger.Info("Missing [UserThemeColors] entries were added to configuration");
                 }
             }
             catch (Exception ex)
             {
                 Logger.Warning($"Failed to load settings: [{ex.Message}] - using defaults");
+            }
+        }
+
+        // ###########################################################################################
+        // The settings file parsed - or null, with UnreadableSettings saying why and what was done.
+        // A file that parses to nothing ("null") is as unreadable as broken JSON.
+        // ###########################################################################################
+        private static UserSettingsData? ReadSettingsFileOrSetItAside(string path)
+        {
+            string json;
+
+            try
+            {
+                json = UserSettings.ReadSettingsText(path);
+            }
+            catch (Exception ex)
+            {
+                // The file may well be fine - another program holds it, or it may not be read. It is
+                // neither moved nor written over: nothing is saved until CRT is started again.
+                Logger.Warning($"Settings file could not be read: [{path}] [{ex.Message}] - starting on defaults, and no setting is saved this session");
+                _settingsFilePath = string.Empty;
+                UnreadableSettings = new UnreadableSettingsFile(path, KeptAs: null);
+                return null;
+            }
+
+            string reason;
+
+            try
+            {
+                if (JsonSerializer.Deserialize<UserSettingsData>(json) is { } loaded)
+                {
+                    return loaded;
+                }
+
+                reason = "it holds no settings";
+            }
+            catch (Exception ex)
+            {
+                reason = ex.Message;
+            }
+
+            string? keptAs = UserSettings.SetAsideUnreadableFile(path, DateTime.Now);
+
+            if (keptAs == null)
+            {
+                // Could not be moved aside: then it must not be written over either.
+                Logger.Warning($"Settings file could not be parsed [{reason}] nor moved aside: [{path}] - starting on defaults, and no setting is saved this session");
+                _settingsFilePath = string.Empty;
+            }
+            else
+            {
+                Logger.Warning($"Settings file could not be parsed [{reason}] - kept as [{keptAs}], starting on defaults");
+            }
+
+            UnreadableSettings = new UnreadableSettingsFile(path, keptAs);
+            return null;
+        }
+
+        // ###########################################################################################
+        // Moves `path` to "<path>.corrupt-<yyyyMMdd-HHmmss>" ("-2", "-3", ... when that is taken).
+        // Returns where it went, or null when it could not be moved (CorruptFileSetAside).
+        // ###########################################################################################
+        internal static string? SetAsideUnreadableFile(string path, DateTime now) =>
+            CorruptFileSetAside.SetAside(path, now, UserSettings.MoveSettingsFile);
+
+        // ###########################################################################################
+        // Defaults, after an unreadable file - set up as a missing file's are. The theme colours a
+        // fresh file gets are saved only where nothing is now (the bad file was moved aside); with
+        // the file left in place there is no save target, so nothing is written.
+        // ###########################################################################################
+        private static void StartOnDefaultsAfterUnreadableFile()
+        {
+            _data = new UserSettingsData();
+            NormalizeCatalogueKeySets();
+
+            bool addedUserThemeDefaults = EnsureUserThemeColors();
+            SyncContributorModeLinkedSettings();
+
+            if (addedUserThemeDefaults)
+            {
+                Save();
             }
         }
 
@@ -1994,7 +2103,11 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Persists the selected oscilloscope image folder path.
-        // When no explicit folder has been saved, the effective default becomes the current data root.
+        //
+        // When no folder has been chosen, captures go to "Oscilloscope images" BESIDE the data
+        // folder (code review, 2026-10-13) - beside "Workbooks" and "Drafts". It used to be the data
+        // root itself, which the orphan cleanup empties of every file no manifest lists: captures
+        // included. See OscilloscopeCaptureRelocation.
         // ###########################################################################################
         public static string OscilloscopeImageFolder
         {
@@ -2005,9 +2118,7 @@ namespace Handlers.DataHandling
                     return _data.OscilloscopeImageFolder;
                 }
 
-                return string.IsNullOrWhiteSpace(DataManager.DataRoot)
-                    ? string.Empty
-                    : DataManager.DataRoot;
+                return DefaultOscilloscopeImageFolder;
             }
             set
             {
@@ -2024,32 +2135,13 @@ namespace Handlers.DataHandling
             }
         }
 
-        // ###########################################################################################
-        // Returns whether contributor mode is enabled for the given board.
-        // Falls back to the legacy global setting when a board-specific value is not yet saved.
-        // ###########################################################################################
-        public static bool GetContributorModeForBoard(string boardKey)
-        {
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return _data.ContributorMode ?? false;
-
-            return _data.ContributorModeByBoard.TryGetValue(boardKey, out var enabled)
-                ? enabled
-                : (_data.ContributorMode ?? false);
-        }
-
-        // ###########################################################################################
-        // Persists contributor mode for the given board.
-        // ###########################################################################################
-        public static void SetContributorModeForBoard(string boardKey, bool enabled)
-        {
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return;
-
-            _data.ContributorModeByBoard[boardKey] = enabled;
-            Logger.Info($"Setting changed: [ContributorModeByBoard] [{boardKey}] [{enabled}]");
-            Save();
-        }
+        // Where captures go when no folder has been chosen: "Oscilloscope images" in CRT's own
+        // AppData folder, beside "Data", "Workbooks" and "Drafts".
+        public static string DefaultOscilloscopeImageFolder =>
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                AppConfig.AppFolderName,
+                AppConfig.OscilloscopeImagesFolderName);
 
         // ###########################################################################################
         // Reloads only the user preference theme colors from the settings file while the app runs.

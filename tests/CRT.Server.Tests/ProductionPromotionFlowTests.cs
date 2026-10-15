@@ -460,6 +460,13 @@ namespace CRT.Server.Tests
             Assert.Equal(ProductionPromotionFlowTests.BetaHashOf(store), store.ProductionBoards[ProductionPromotionFlowTests.BoardId].ContentHash);
             Assert.Contains(accounts.Audit, entry =>
                 entry.Action == BoardHistoryEvents.FoundInProduction && entry.Subject == ProductionPromotionFlowTests.BoardId);
+
+            // *** BY THE SERVER, NOT BY WHOEVER'S CRT ASKED (code review, 2026-10-13). *** It is found
+            // while somebody's CRT reads the list - a GET - and the row named that account as its doer.
+            AuditEntry found = accounts.Audit.Single(entry => entry.Action == BoardHistoryEvents.FoundInProduction);
+            Assert.Null(found.ActorAccountId);
+            Assert.Equal(BoardHistoryRules.ServerActorLabel, found.ActorLabel);
+            Assert.DoesNotContain("production", found.Detail, StringComparison.Ordinal);
         }
 
         // The other half, which matters as much: a board production genuinely lacks keeps waiting,

@@ -663,6 +663,7 @@
 										   FontWeight="Bold"
 										   Foreground="{DynamicResource SchematicsPanels_Fg}" />
 								<Button x:Name="ClearTracesButton"
+										Classes="Danger"
 										Content="Clear All"
 										FontSize="9"
 										Padding="6,2"
@@ -918,6 +919,15 @@
 										   HorizontalAlignment="Stretch"
 										   RenderOptions.BitmapInterpolationMode="HighQuality" />
 
+									<!-- The highlights, over the image at its size; the blink is this
+									     layer's opacity (SchematicThumbnail.HighlightImage). -->
+									<Image Source="{Binding HighlightImage}"
+										   Opacity="{Binding HighlightLayerOpacity}"
+										   Stretch="Uniform"
+										   HorizontalAlignment="Stretch"
+										   IsHitTestVisible="False"
+										   RenderOptions.BitmapInterpolationMode="HighQuality" />
+
 									<ts:ThumbnailWorklogPillsOverlay BitmapPixelSize="{Binding OriginalPixelSize}"
 																	  Pills="{Binding WorklogPills}"
 																	  IsHitTestVisible="False" />
@@ -972,6 +982,12 @@
 				</Border>
 
 				<Image x:Name="ThumbnailDragGhostImage"
+					   Grid.Row="1"
+					   Stretch="Uniform"
+					   HorizontalAlignment="Stretch"
+					   RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+				<Image x:Name="ThumbnailDragGhostHighlightImage"
 					   Grid.Row="1"
 					   Stretch="Uniform"
 					   HorizontalAlignment="Stretch"
@@ -1037,40 +1053,32 @@
 						HorizontalAlignment="Stretch" />
 
 				<Button x:Name="ApplyLabelEditorChangesButton"
+					Classes="Accept"
 					Content="Apply all editor changes"
 					IsVisible="False"
-					HorizontalAlignment="Stretch"
-					Foreground="{DynamicResource Button_Ok_Fg}"
-					Background="{DynamicResource Button_Ok_Bg}"
-					BorderBrush="{DynamicResource Button_Ok_Border}" />
+					HorizontalAlignment="Stretch" />
 				
 				<Button x:Name="CancelLabelEditorChangesButton"
+						Classes="Danger"
 						Content="Discard all editor changes"
 						IsVisible="False"
-						HorizontalAlignment="Stretch"
-						Foreground="{DynamicResource Button_Cancel_Fg}"
-						Background="{DynamicResource Button_Cancel_Bg}"
-						BorderBrush="{DynamicResource Button_Cancel_Border}" />
+						HorizontalAlignment="Stretch" />
 
 				<Button x:Name="BeginKiCadTraceCalibrationButton"
 						Content="Calibrate KiCad traces"
 						HorizontalAlignment="Stretch" />
 
 				<Button x:Name="ApplyKiCadTraceCalibrationButton"
+						Classes="Accept"
 						Content="Apply KiCad calibration"
 						IsVisible="False"
-						HorizontalAlignment="Stretch"
-						Foreground="{DynamicResource Button_Ok_Fg}"
-						Background="{DynamicResource Button_Ok_Bg}"
-						BorderBrush="{DynamicResource Button_Ok_Border}" />
+						HorizontalAlignment="Stretch" />
 
 				<Button x:Name="CancelKiCadTraceCalibrationButton"
+						Classes="Danger"
 						Content="Discard KiCad calibration"
 						IsVisible="False"
-						HorizontalAlignment="Stretch"
-						Foreground="{DynamicResource Button_Cancel_Fg}"
-						Background="{DynamicResource Button_Cancel_Bg}"
-						BorderBrush="{DynamicResource Button_Cancel_Border}" />
+						HorizontalAlignment="Stretch" />
 
 				
 			</StackPanel>
@@ -1113,6 +1121,7 @@
 							Content="Cancel"
 							MinWidth="72" />
 					<Button x:Name="ConfirmNewLabelEditorBoardLabelButton"
+							Classes="Accept"
 							Content="OK"
 							MinWidth="72" />
 				</StackPanel>

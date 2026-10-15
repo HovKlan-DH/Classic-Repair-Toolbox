@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -88,7 +89,46 @@ namespace CRT
             tree.Show(files.Files);
 
             this.thisFilesTreeFor = id;
+
+            // The other boards a replaced shared file reaches, on the approval status line too.
+            this.ShowAlsoUsedBy(files.Files);
         }
+
+        // ###########################################################################################
+        // *** THE TWO APPROVERS ARE TOLD WHICH BOARDS (code review, 2026-10-13). *** A submission that
+        // replaces a shared file needs a maintainer and the administrator because every board citing
+        // the file gets it - the file tree names those boards on the file (BoardFileEntry.AlsoUsedBy),
+        // and the approval status line says so in one sentence (ApprovalWording.AlsoUsedByLine).
+        // The tree is read for such a submission as soon as it is opened (ReadFilesForApproval), so
+        // the line is there without the Files view being chosen.
+        // ###########################################################################################
+        private string? thisAlsoUsedByLine;
+
+        private void ShowAlsoUsedBy(IReadOnlyList<BoardFileEntry>? files)
+        {
+            this.thisAlsoUsedByLine = ApprovalWording.AlsoUsedByLine(files);
+
+            if (this.thisShownDetail is not { } detail || this.FindControl<TextBlock>("ApprovalStatusText") is not TextBlock status)
+                return;
+
+            string? line = ApprovalWording.WithAlsoUsedBy(ApprovalWording.StatusLine(detail.Approval, detail.CanPublish), this.thisAlsoUsedByLine);
+            status.Text = line ?? string.Empty;
+            status.IsVisible = line is not null && this.FindControl<StackPanel>("DecisionPanel") is { IsVisible: true };
+        }
+
+        // A submission whose approval needs two people because it replaces a shared file: its tree is
+        // read now, on screen only, so the approval status can name the other boards. Through the
+        // guard like every other posted read (code review, 2026-10-14): a posted async lambda has no
+        // caller, and a fault in it would have ended CRT on the one path that runs by itself.
+        private void ReadFilesForApproval(ReviewSubmissionDetail detail)
+        {
+            if (detail.Approval is { Required.Count: > 0 } && this.thisFilesTreeFor != detail.Submission.Id && this.IsOnScreen)
+                Dispatcher.UIThread.Post(async () => await HandlerGuard.RunAsync(this.LoadFilesViewAsync, this.ShowHandlerFailure));
+        }
+
+        // The status line as drawn - for tests.
+        internal string? ApprovalStatusForTests =>
+            this.FindControl<TextBlock>("ApprovalStatusText") is { IsVisible: true } status ? status.Text : null;
 
         // ###########################################################################################
         // The tree no longer matches the submission (its detail was read again): read anew.
@@ -112,7 +152,7 @@ namespace CRT
             this.thisFilesTreeFor = null;
 
             if (this.IsOnScreen && this.thisSubmissionView == SubmissionView.Files)
-                Dispatcher.UIThread.Post(async () => await this.LoadFilesViewAsync());
+                Dispatcher.UIThread.Post(async () => await HandlerGuard.RunAsync(this.LoadFilesViewAsync, this.ShowHandlerFailure));
         }
 
         // Coming back to the tab on the Files view: a tree marked stale while it was off screen is
@@ -127,6 +167,7 @@ namespace CRT
         private void ClearFilesView()
         {
             this.thisFilesTreeFor = null;
+            this.thisAlsoUsedByLine = null;
 
             FileTreeView tree = this.FilesViewTree;
             tree.Files = null;

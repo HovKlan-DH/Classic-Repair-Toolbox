@@ -54,6 +54,22 @@ namespace Handlers.DataHandling
         public const string DraftMarkerFileName = ".crt-draft.json";
 
         // ###########################################################################################
+        // THE PUBLISHED BOARD AS IT WAS COPIED INTO THE DRAFT (code review, 2026-10-13) - rows,
+        // highlights, calibrations and the hashes of the files copied. What DraftRebase merges
+        // against, so a draft can be brought up to date with work published after it was started.
+        // Bookkeeping like the marker: never submitted, never compared, gone with the draft.
+        // ###########################################################################################
+        public const string DraftBaseFileName = ".crt-base.json";
+
+        // Every file CRT itself keeps in a draft folder starts with this - the marker, the base, and
+        // the temporary files their writes and the workbook's write go through.
+        public const string BookkeepingPrefix = ".crt-";
+
+        // The temporary name a draft workbook used to be written through before it was moved into
+        // place ("<workbook>.writing.tmp"). A crash in between left one behind; it is bookkeeping too.
+        private const string LegacyWritingSuffix = ".writing.tmp";
+
+        // ###########################################################################################
         // The board's folder of oscilloscope screenshots from a known working board, directly
         // inside the board folder exactly as the published tree has it
         // ("Commodore/C128/310378/Scope baseline/"). Assets/Wiki/Scope-baseline-folder.md names it
@@ -262,10 +278,36 @@ namespace Handlers.DataHandling
         {
             string name = Path.GetFileName(fileName?.Trim() ?? string.Empty);
 
-            return string.Equals(
-                name,
-                DraftFolderLayout.DraftMarkerFileName,
-                StringComparison.OrdinalIgnoreCase);
+            // The marker, the base, and the temporary files CRT writes them and the workbook through
+            // (code review, 2026-10-13: a crash between a workbook's write and its move left the
+            // temporary behind, which then counted as the contributor's work and kept the draft
+            // from ever being retired).
+            return name.StartsWith(DraftFolderLayout.BookkeepingPrefix, StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith(DraftFolderLayout.LegacyWritingSuffix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Where a draft keeps its base (see DraftBaseFileName); "" when the board has no folder.
+        public static string GetBasePath(string draftsRoot, string excelDataFile)
+        {
+            string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
+
+            return folder.Length == 0
+                ? string.Empty
+                : Path.Combine(folder, DraftFolderLayout.DraftBaseFileName);
+        }
+
+        // The temporary file a bookkeeping write or a workbook write goes through before it is moved
+        // over `path` - in the same folder (so the move is a rename), and recognised as bookkeeping.
+        public static string TemporaryPathFor(string path)
+        {
+            string folder = Path.GetDirectoryName(path) ?? string.Empty;
+            string name = Path.GetFileName(path);
+
+            return Path.Combine(
+                folder,
+                name.StartsWith(DraftFolderLayout.BookkeepingPrefix, StringComparison.OrdinalIgnoreCase)
+                    ? name + ".tmp"
+                    : DraftFolderLayout.BookkeepingPrefix + "writing-" + name);
         }
 
         private static string FileNameOf(string excelDataFile)

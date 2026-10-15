@@ -78,7 +78,10 @@ more. Housekeeping for a data folder that has been through many updates. Off by 
 part of the launch-time check, and once straight away when you tick it, and it is skipped when CRT
 could not reach the server. Greyed out unless launch-time data checking is on. Note that it removes
 **any** file in the data folder that the data does not use - including a file you put there
-yourself.
+yourself. It never touches oscilloscope captures: nothing inside the
+[Oscilloscope tab's](Oscilloscope-tab) image save folder is removed, wherever that folder is (if
+you made the data folder itself your image save folder, the clean-up does not run at all), and an
+image lying at the top of the data folder that may be a capture is left alone.
 
 **Check for new version at application launch** - tells you when a new CRT release is out. You can
 then update from inside the application. Ticking it also checks straight away.
@@ -130,7 +133,7 @@ already recorded rather than recalculating them.
 
 ## Contributing and maintaining data
 
-**View boards as officially coming from online source (hide my local draft changes)** - hides your
+**View boards as published online (hide my draft changes)** - hides your
 own local, unpublished draft edits, so a board shows exactly what CRT downloaded and everyone else
 sees. That covers everything in a draft: its rows, and also any schematic image or file you
 replaced, KiCad data you imported and KiCad calibration you changed. Untick it again to see your
@@ -155,7 +158,7 @@ to the sign-in screen. Hiding the tab does not sign you out either.
 
 ## Application related files
 
-Three buttons, one per folder:
+One button per folder:
 
 **Open data folder** - the hardware reference data CRT downloads: schematics, component images and
 the board files behind them.
@@ -163,11 +166,24 @@ the board files behind them.
 **Open workbooks folder** - your own workbooks, with the worklogs, photos and attached files in
 them. One folder per workbook.
 
+**Open oscilloscope image folder** - the screen captures taken from your oscilloscope, in the folder
+currently selected for them. Until you choose a folder of your own in the
+[Oscilloscope tab](Oscilloscope-tab), this is the `Oscilloscope images` folder beside CRT's data
+folder; once you have chosen one, the button opens that instead. The button is only there while
+**Enable network connected oscilloscope tab** is ticked.
+
 **Open logs and settings folder** - the log file, the crash log, your settings file and the file
 holding the traces you have drawn yourself. These are the files to attach when reporting a problem.
 
+If your settings file cannot be read when CRT starts, CRT starts with default settings and says so
+in a notice in the bottom-right corner. The unreadable file is kept beside the new one, as
+`Classic-Repair-Toolbox.settings.json.corrupt-<date>-<time>`, so nothing in it is lost; if CRT could
+not even move it aside, it leaves the file as it is and saves no setting until it is started again.
+An unreadable traces file is kept the same way.
+
 Each button opens the folder CRT is **actually** using, so if you have moved the data or workbooks
-folder with a command-line parameter, the button follows it there.
+folder with a command-line parameter, or chosen another folder for oscilloscope captures, the
+button follows it there.
 
 The log is the first place to look when something did not work - it names every problem CRT found
 in the data at startup.

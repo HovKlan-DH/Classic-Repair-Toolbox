@@ -586,4 +586,22 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
     private sealed class HttpRequestExceptionStub : Exception
     {
     }
+
+    // ###########################################################################################
+    // The one rule for what an answer writes - shared by the minute check and "My submissions"'
+    // "Check for updates", which kept its own copy and rewrote every row it asked about (code
+    // review, 2026-10-13). An answer that moves nothing the row shows is not a change.
+    // ###########################################################################################
+    [Fact]
+    public void An_answer_is_a_change_only_when_the_row_would_show_something_else()
+    {
+        Record(7, "pending");
+        SubmissionReceipt receipt = SubmissionReceiptStore.All.Single(r => r.SubmissionId == 7);
+
+        Assert.False(SubmissionStatusRefresh.ApplyAnswer(receipt, new SubmissionStatus { Id = 7, State = "pending" }, Now));
+        Assert.Equal("pending", SubmissionReceiptStore.All.Single(r => r.SubmissionId == 7).LastKnownState);
+
+        Assert.True(SubmissionStatusRefresh.ApplyAnswer(receipt, new SubmissionStatus { Id = 7, State = "merged" }, Now));
+        Assert.Equal("merged", SubmissionReceiptStore.All.Single(r => r.SubmissionId == 7).LastKnownState);
+    }
 }

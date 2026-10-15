@@ -1036,24 +1036,33 @@ namespace CRT
         // ###########################################################################################
         private async void OnEditWorkbookClick(object? sender, RoutedEventArgs e)
         {
-            if (this.thisHeaderWorkbook == null)
-                return;
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                if (this.thisHeaderWorkbook == null)
+                    return;
 
-            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
-                return;
+                if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+                    return;
 
-            var dialog = new CreateWorkbookWindow();
-            dialog.InitializeForEdit(this.thisHeaderWorkbook);
+                var dialog = new CreateWorkbookWindow();
+                dialog.InitializeForEdit(this.thisHeaderWorkbook);
 
-            var updated = await dialog.ShowDialog<WorkbookRecord?>(ownerWindow);
-            if (updated == null)
-                return;
+                var updated = await dialog.ShowDialog<WorkbookRecord?>(ownerWindow);
+                if (updated == null)
+                    return;
 
-            // The edited workbook is already the active one (Edit only ever acts on the workbook
-            // the top-line is showing), so a bare refresh - not ActivateWorkbook - is enough to
-            // pick up the new title/note everywhere it is drawn (this tab's list/top-line, and the
-            // worklog bar via RefreshWorklogBar).
-            this.MainWindow?.RefreshWorklogBar();
+                // The edited workbook is already the active one (Edit only ever acts on the workbook
+                // the top-line is showing), so a bare refresh - not ActivateWorkbook - is enough to
+                // pick up the new title/note everywhere it is drawn (this tab's list/top-line, and the
+                // worklog bar via RefreshWorklogBar).
+                this.MainWindow?.RefreshWorklogBar();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnEditWorkbookClick failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -1066,46 +1075,55 @@ namespace CRT
         // ###########################################################################################
         private async void OnDeleteWorkbookClick(object? sender, RoutedEventArgs e)
         {
-            if (this.thisHeaderWorkbook == null)
-                return;
-
-            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
-                return;
-
-            var workbook = this.thisHeaderWorkbook;
-
-            var dialog = new DeleteWorkbookWindow();
-            dialog.Initialize(workbook);
-
-            bool? confirmed = await dialog.ShowDialog<bool?>(ownerWindow);
-            if (confirmed != true)
-                return;
-
-            // An entry-drawing mode armed by "Add worklog" captured a workbook id when it started
-            // (BeginWorklogEntryMode), and nothing about deleting that workbook cancels it. Without
-            // this the cross cursor stays live on the Schematics tab after the workbook is gone, the
-            // user draws an area, and AddEntry finds no folder - the work is discarded with nothing
-            // but a log line. Main.ActivateWorkbook performs the same teardown, and for the same
-            // reason: this is the other way "which workbook is being written to" can stop being
-            // valid.
-            this.MainWindow?.TabSchematicsControl?.CancelWorklogEntryMode();
-
-            if (!WorklogManager.DeleteWorkbook(workbook.Id))
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                // The folder could not be removed (a photo held open in an external viewer, say).
-                // Say so rather than returning silently: the user confirmed a destructive action and
-                // an unchanged list with no message reads as "the click did not register", which
-                // invites them to try again. Same treatment CreateWorkbookWindow gives a failed
-                // create.
-                await ShowWorkbookActionFailedAsync(
-                    ownerWindow,
-                    "Delete workbook",
-                    $"Could not delete workbook #{workbook.Id} - see the log for details.\n\n" +
-                    "It may be open in another program, for example a photo or file from the workbook.");
-                return;
-            }
+                if (this.thisHeaderWorkbook == null)
+                    return;
 
-            this.MainWindow?.RefreshWorklogBar();
+                if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+                    return;
+
+                var workbook = this.thisHeaderWorkbook;
+
+                var dialog = new DeleteWorkbookWindow();
+                dialog.Initialize(workbook);
+
+                bool? confirmed = await dialog.ShowDialog<bool?>(ownerWindow);
+                if (confirmed != true)
+                    return;
+
+                // An entry-drawing mode armed by "Add worklog" captured a workbook id when it started
+                // (BeginWorklogEntryMode), and nothing about deleting that workbook cancels it. Without
+                // this the cross cursor stays live on the Schematics tab after the workbook is gone, the
+                // user draws an area, and AddEntry finds no folder - the work is discarded with nothing
+                // but a log line. Main.ActivateWorkbook performs the same teardown, and for the same
+                // reason: this is the other way "which workbook is being written to" can stop being
+                // valid.
+                this.MainWindow?.TabSchematicsControl?.CancelWorklogEntryMode();
+
+                if (!WorklogManager.DeleteWorkbook(workbook.Id))
+                {
+                    // The folder could not be removed (a photo held open in an external viewer, say).
+                    // Say so rather than returning silently: the user confirmed a destructive action and
+                    // an unchanged list with no message reads as "the click did not register", which
+                    // invites them to try again. Same treatment CreateWorkbookWindow gives a failed
+                    // create.
+                    await ShowWorkbookActionFailedAsync(
+                        ownerWindow,
+                        "Delete workbook",
+                        $"Could not delete workbook #{workbook.Id} - see the log for details.\n\n" +
+                        "It may be open in another program, for example a photo or file from the workbook.");
+                    return;
+                }
+
+                this.MainWindow?.RefreshWorklogBar();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnDeleteWorkbookClick failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################

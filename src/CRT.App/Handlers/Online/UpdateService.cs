@@ -109,6 +109,9 @@ namespace Handlers.OnlineHandling
             {
                 await _manager.DownloadUpdatesAsync(_pendingUpdate, onProgress, cancellationToken);
                 Logger.Info("Update downloaded - restarting into new version");
+
+                // The restart ends this process without the usual way out - the log's last lines first.
+                Logger.Flush();
                 _manager.ApplyUpdatesAndRestart(_pendingUpdate);
                 return true; // Execution technically halts on the line above if restart succeeds
             }

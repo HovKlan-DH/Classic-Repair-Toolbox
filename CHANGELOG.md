@@ -1,7 +1,16 @@
-# 3.0.1, 2026-October-??
+# 3.1.0, 2026-October-??
 ------------------------
 - **Application**
+  - Added "Bring my draft up to date" button in "Draft" tab, when data from online source changed after a draft was started
+  - Added in "What changed" button in "Draft" tab, that it will show own changes, the published update and rows changed by both
+  - Added "Open oscilloscope image folder" button in "Configuration" tab (only shown when oscilloscope tab is enabled)
+  - Changed oscilloscope captures saved in its own "Oscilloscope images" folder, if not set previously
+  - Changed button colors generally in whole application
+    - `red` only for delete, discard and reject
+    - `green` for save, submit, add and approve
+  - Changed both application launch and board switching are faster
   - Fixed macOS "No route to host" when using oscilloscope
+  - Fixed many minor defects/issues and changed minor UI, especially for the new contribution method
 - **Data**
   - Added `Rigol MHO900` oscilloscope
 

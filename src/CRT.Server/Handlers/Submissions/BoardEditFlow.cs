@@ -258,14 +258,38 @@ namespace CRT.Server.Handlers.Submissions
                 .ToList();
 
             // ---- 8. Approve ---------------------------------------------------------------------
+            //
+            // *** BETA IS CHECKED AGAIN UNDER THE PUBLISH LOCK (code review, 2026-10-13). *** Step 3
+            // compared the table's fingerprint with BETA before the submission existed, outside the
+            // lock - a publish landing between that look and this approval was then silently undone.
+            // The approval runs the same comparison where nothing can publish (ApproveChecks.UnderLock).
             ApproveOutcome approved = await approvals
-                .ApproveAsync(negotiation.SubmissionId, access, prepared.Root, nowUtc, prepared.Removals.Files, cancellationToken)
+                .ApproveAsync(
+                    negotiation.SubmissionId,
+                    access,
+                    prepared.Root,
+                    nowUtc,
+                    new ApproveChecks(
+                        prepared.Removals.Files,
+                        UnderLock: token => BoardEditFlow.WhyBetaMovedAsync(prepared, boards, token)),
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             if (approved.IsPublished)
             {
                 return BoardEditOutcome.Published(
                     negotiation.SubmissionId, approved.Descriptor!.Revision, approved.RemovedFiles, warnings);
+            }
+
+            // Made from a BETA that has moved on: never left waiting in the queue, where an approval
+            // would undo the newer change after all - withdrawn, and the maintainer told to reopen.
+            if (string.Equals(approved.Error, BoardEditFlow.ChangedSinceMessage, StringComparison.Ordinal))
+            {
+                await store
+                    .WithdrawReplacedAsync(negotiation.SubmissionId, BoardEditFlow.ChangedSinceMessage, nowUtc, CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                return BoardEditOutcome.Conflict(BoardEditFlow.ChangedSinceMessage);
             }
 
             string why = approved.IsAwaitingApproval
@@ -277,7 +301,28 @@ namespace CRT.Server.Handlers.Submissions
 
         // What steps 1 to 6 found: where the tree is, the submission the edit becomes, and what its
         // publish would remove.
-        private sealed record Prepared(string Root, PublishedTreeView? Tree, SubmissionManifest Manifest, FileRemovalPreview Removals);
+        private sealed record Prepared(
+            string Root,
+            PublishedTreeView? Tree,
+            SubmissionManifest Manifest,
+            FileRemovalPreview Removals,
+            string BoardId = "",
+            string Fingerprint = "");
+
+        // ###########################################################################################
+        // Null while BETA's board is still the one the table was opened on; ChangedSinceMessage once
+        // anything has published over it - asked under the publish lock (step 8).
+        // ###########################################################################################
+        private static async Task<string?> WhyBetaMovedAsync(Prepared prepared, PublishedBoardReader boards, CancellationToken cancellationToken)
+        {
+            (BoardData Board, SubmissionRows Rows)? beta = await BoardEditFlow
+                .ReadBetaAsync(prepared.Root, prepared.BoardId, boards, cancellationToken)
+                .ConfigureAwait(false);
+
+            return beta is not null && string.Equals(BoardEditFlow.Fingerprint(beta.Value.Rows), prepared.Fingerprint, StringComparison.Ordinal)
+                ? null
+                : BoardEditFlow.ChangedSinceMessage;
+        }
 
         private static async Task<(Prepared? Prepared, BoardEditOutcome? Refusal)> PrepareAsync(
             ReviewAccess? access,
@@ -385,7 +430,7 @@ namespace CRT.Server.Handlers.Submissions
             // submission waits in the queue - see the header).
             FileRemovalPreview removals = ApprovePublishFlow.PreviewRemovals(root, manifest, beta.Value.Board, nowUtc);
 
-            return (new Prepared(root, tree, manifest, removals), null);
+            return (new Prepared(root, tree, manifest, removals, boardId!, current), null);
         }
 
         // ###########################################################################################

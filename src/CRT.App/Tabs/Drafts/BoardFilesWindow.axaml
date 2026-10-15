@@ -71,11 +71,14 @@
 		<!-- One KiCad net name: a click copies it (owner request, 2026-10-10), for pasting into the
 		     "Important signals" sheet. -->
 		<DataTemplate x:Key="NetNameBadgeTemplate" DataType="local:KiCadNetNameBadge">
+			<!-- Focusable, and Enter or Space copies it too (code review, 2026-10-13). -->
 			<Border Classes="ReferenceBadge NetName"
 					Classes.Used="{Binding IsUsed}"
 					Cursor="Hand"
+					Focusable="True"
 					ToolTip.Tip="{Binding ToolTipText}"
-					Tapped="OnNetNameTapped">
+					Tapped="OnNetNameTapped"
+					KeyDown="OnNetNameKeyDown">
 				<TextBlock Text="{Binding Name}" FontSize="12" />
 			</Border>
 		</DataTemplate>
@@ -250,13 +253,11 @@
 											</Grid>
 
 											<Button Grid.Column="1"
+													Classes="Danger"
 													Grid.Row="0"
 													Content="Remove"
 													Margin="10,0,0,0"
 													VerticalAlignment="Center"
-													Foreground="{DynamicResource Button_Cancel_Fg}"
-													Background="{DynamicResource Button_Cancel_Bg}"
-													BorderBrush="{DynamicResource Button_Cancel_Border}"
 													Tag="{Binding}"
 													Click="OnRemoveSchematicClick" />
 
@@ -391,14 +392,12 @@
 												   Margin="12,0,0,0"
 												   VerticalAlignment="Center" />
 										<Button Grid.Column="2"
+												Classes="Danger"
 												Content="Remove"
 												FontSize="11"
 												Padding="8,1"
 												Margin="12,0,0,0"
 												VerticalAlignment="Center"
-												Foreground="{DynamicResource Button_Cancel_Fg}"
-												Background="{DynamicResource Button_Cancel_Bg}"
-												BorderBrush="{DynamicResource Button_Cancel_Border}"
 												Tag="{Binding}"
 												Click="OnRemoveKiCadFileClick" />
 									</Grid>

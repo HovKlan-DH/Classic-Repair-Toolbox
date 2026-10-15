@@ -2,11 +2,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
         x:Class="CRT.DraftDriftWindow"
-        Title="What changed officially"
-        Width="680"
-        Height="600"
+        Title="What changed in the published data"
+        Width="700"
+        Height="640"
         MinWidth="560"
-        MinHeight="420"
+        MinHeight="440"
         CanMinimize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
@@ -34,23 +34,24 @@
 					<TextBlock Grid.Row="0" Grid.Column="0" Text="You started from:" Opacity="0.8" />
 					<TextBlock Grid.Row="0" Grid.Column="2" x:Name="BaseRevisionText" FontWeight="SemiBold" />
 
-					<TextBlock Grid.Row="2" Grid.Column="0" Text="Officially now:" Opacity="0.8" />
+					<TextBlock Grid.Row="2" Grid.Column="0" Text="Published data now:" Opacity="0.8" />
 					<TextBlock Grid.Row="2" Grid.Column="2" x:Name="OfficialRevisionText" FontWeight="SemiBold" />
 				</Grid>
 			</Border>
 
-			<!-- Said once, plainly, and not apologised for twice. -->
-			<TextBlock Margin="0,10,0,0"
+			<!-- What the lists below compare - different for a draft with a base and one without. -->
+			<TextBlock x:Name="ComparedText"
+					   Margin="0,10,0,0"
 					   TextWrapping="Wrap"
 					   FontSize="11"
-					   Opacity="0.75"
-					   Text="This shows how your own edits line up with the official data as it stands now. CRT cannot show you the official data as it was when you started - that copy is replaced when the data syncs." />
+					   Opacity="0.75" />
 		</StackPanel>
 
 		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
 			<StackPanel Spacing="14">
 
-				<!-- The rows that carry a consequence, first and on their own. -->
+				<!-- Rows the update AND the contributor changed - the only ones worth a look before
+				     bringing the draft up to date (code review, 2026-10-13). -->
 				<StackPanel x:Name="AttentionPanel" Spacing="6" IsVisible="False">
 					<TextBlock x:Name="AttentionHeaderText" FontWeight="Bold" />
 					<ItemsControl x:Name="AttentionItemsControl">
@@ -60,7 +61,7 @@
 										BorderThickness="0,0,0,1"
 										Padding="4,6">
 									<StackPanel Spacing="2">
-										<TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+										<TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
 										<TextBlock Text="{Binding Explanation}"
 												   TextWrapping="Wrap"
 												   FontSize="11"
@@ -72,7 +73,7 @@
 					</ItemsControl>
 				</StackPanel>
 
-				<!-- Everything else, for completeness rather than for action. -->
+				<!-- The contributor's own changes. -->
 				<StackPanel x:Name="OtherPanel" Spacing="6" IsVisible="False">
 					<TextBlock x:Name="OtherHeaderText" FontWeight="Bold" />
 					<ItemsControl x:Name="OtherItemsControl">
@@ -82,7 +83,29 @@
 										BorderThickness="0,0,0,1"
 										Padding="4,6">
 									<StackPanel Spacing="2">
-										<TextBlock Text="{Binding Title}" />
+										<TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+										<TextBlock Text="{Binding Explanation}"
+												   TextWrapping="Wrap"
+												   FontSize="11"
+												   Opacity="0.8" />
+									</StackPanel>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+				</StackPanel>
+
+				<!-- What the published update changed since the draft was copied. -->
+				<StackPanel x:Name="UpdatePanel" Spacing="6" IsVisible="False">
+					<TextBlock x:Name="UpdateHeaderText" FontWeight="Bold" />
+					<ItemsControl x:Name="UpdateItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate DataType="local:DriftRowItem">
+								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+										BorderThickness="0,0,0,1"
+										Padding="4,6">
+									<StackPanel Spacing="2">
+										<TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
 										<TextBlock Text="{Binding Explanation}"
 												   TextWrapping="Wrap"
 												   FontSize="11"
@@ -98,7 +121,7 @@
 						   IsVisible="False"
 						   TextWrapping="Wrap"
 						   Opacity="0.8"
-						   Text="You have no drafted rows on this board, so nothing of yours is affected." />
+						   Text="You have not changed any rows of this board in your draft." />
 
 			</StackPanel>
 		</ScrollViewer>
@@ -108,18 +131,23 @@
 					   Grid.Column="0"
 					   VerticalAlignment="Center"
 					   TextWrapping="Wrap"
+					   Margin="0,0,12,0"
 					   FontSize="12" />
 
 			<Button Grid.Column="1"
+					Classes="Accept"
 					x:Name="RebaseButton"
-					Content="I have looked at this"
 					Margin="0,0,8,0"
-					ToolTip.Tip="Stop warning about this change. Your drafted rows are not touched."
 					Click="OnRebaseClick" />
 
 			<Button Grid.Column="2"
 					Content="Close"
 					Click="OnCloseClick" />
 		</Grid>
+
+		<!-- Bringing a draft up to date reads two workbooks and may copy pictures - a wait the
+		     contributor watches (CLAUDE.md: every such wait runs under BusyOverlay). The -18 margin
+		     covers the grid's own margin. -->
+		<local:BusyOverlay Grid.RowSpan="3" Margin="-18" />
 	</Grid>
 </Window>

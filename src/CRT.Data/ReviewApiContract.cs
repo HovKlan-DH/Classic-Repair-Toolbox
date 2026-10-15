@@ -64,7 +64,16 @@ namespace Handlers.DataHandling
 
     // Approve, reject, request changes. ExpectedRemovals (approve only): the files the maintainer was
     // shown the publish would remove - see ApprovePublishFlow step 5b. Null sends nothing.
-    public sealed record ReviewDecisionRequest(string? Comment, IReadOnlyList<string>? ExpectedRemovals = null);
+    //
+    // ExpectedVersion (code review, 2026-10-13): the amendment version the maintainer's screen showed
+    // when they decided (ReviewQueueEntry.AmendmentVersion; 0 for a submission nobody amended). A
+    // decision on a submission another maintainer has changed since is refused (409) - an Approve
+    // used to publish an amendment its approver had never seen. Null, from an older CRT, is not
+    // checked. Comment travels with Approve too since the same review: it is quoted in the mail.
+    public sealed record ReviewDecisionRequest(
+        string? Comment,
+        IReadOnlyList<string>? ExpectedRemovals = null,
+        int? ExpectedVersion = null);
 
     // A maintainer's amendment: the rows as edited, and the amendment version the table opened at.
     public sealed record AmendRequest(int ExpectedVersion, SubmissionRows? Rows);
@@ -134,14 +143,17 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // What a decision did. State is what the submission became ("merged", "approved", "rejected",
     // "changes_requested"). A publish adds its revision, content hash and the files it removed; the
-    // first of two approvals adds who must still approve.
+    // first of two approvals adds who must still approve. The publish that CREATES a board adds what
+    // became of its creator as its maintainer (MaintainerNote, 2026-10-13 - a sentence; null from an
+    // older server and on every other decision).
     // ###########################################################################################
     public sealed record ReviewDecisionAnswer(
         string State,
         string? Revision = null,
         string? ContentHash = null,
         IReadOnlyList<ApproverRole>? WaitingFor = null,
-        IReadOnlyList<string>? RemovedFiles = null);
+        IReadOnlyList<string>? RemovedFiles = null,
+        string? MaintainerNote = null);
 
     // A saved amendment: its version, and any warnings it raised.
     public sealed record AmendAnswer(int Version, IReadOnlyList<ValidationFinding> Findings);
@@ -315,7 +327,33 @@ namespace Handlers.DataHandling
 
         // When the contributor discarded their own draft of this board in CRT after sending it
         // (owner request, 2026-09-28) - see DraftDiscardContract. Null when they have not.
-        DateTimeOffset? DraftDiscardedUtc = null);
+        DateTimeOffset? DraftDiscardedUtc = null,
+
+        // ###########################################################################################
+        // The submission's current AMENDMENT VERSION (code review, 2026-10-13): 0 for one nobody has
+        // changed in the table, otherwise the latest amendment's. A maintainer's amendment changes
+        // nothing else on the row, so without it another maintainer's change left the queue row
+        // equal and the open submission was never read again. CRT sends it back with a decision
+        // (ReviewDecisionRequest.ExpectedVersion). Null from an older server.
+        //
+        // BasedOnOlderRevision: the contributor's draft was taken from an OLDER revision of the
+        // board than BETA holds now (DraftRevisionComparer: the base parses earlier). A draft is a
+        // whole copy of the board, so rows published since would show as removed - and be removed
+        // by an approval. Null when it cannot be said (a new board, a base never recorded) and from
+        // an older server.
+        // ###########################################################################################
+        int? AmendmentVersion = null,
+        bool? BasedOnOlderRevision = null,
+
+        // ###########################################################################################
+        // The SAME CONTRIBUTOR's newer submission for this board, still waiting (owner decision,
+        // 2026-10-13): its number and when it was sent. A submission a maintainer has amended, or
+        // approved once of two, is not replaced by a newer one (SubmissionReplacementRules), so the
+        // two wait side by side - and completing this one publishes the older work. Null when there
+        // is none, and from an older server.
+        // ###########################################################################################
+        long? NewerSubmissionId = null,
+        DateTimeOffset? NewerSubmissionUtc = null);
 
     // ###########################################################################################
     // WHO SENT A SUBMISSION, AND HOW THEIR OTHER SUBMISSIONS WENT (owner request, 2026-09-26: "It
@@ -979,4 +1017,16 @@ namespace Handlers.DataHandling
     // server is behind. Null from an older server.
     // ###########################################################################################
     public sealed record HealthStatus(string Status, string Version, DateTimeOffset Utc, int? ApiRevision = null);
+
+    // ###########################################################################################
+    // GET /api/review/server-status - what Account > "Server version" shows beside the public health
+    // answer, for a signed-in maintainer only (code review, 2026-10-13). NEVER part of HealthStatus:
+    // /api/health is public, and how much mail the server could not send says something about its
+    // state to anybody who asks.
+    //
+    // UnsentMails: the mails waiting in the server's outbox because the mail system refused them
+    // (CRT.Server's MailOutboxFlow) - retried until they go or are given up. Shown only when above
+    // zero. Null from a server that does not say.
+    // ###########################################################################################
+    public sealed record ServerStatusAnswer(int? UnsentMails = null);
 }

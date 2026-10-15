@@ -263,13 +263,18 @@ namespace Handlers.DataHandling
             for (int row = 1; row <= maxRow; row++)
             {
                 var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var repeated = new List<string>();
 
                 for (int col = 1; col <= maxCol; col++)
                 {
                     string text = NormalizeHeader(GetCellText(sheet, row, col));
-                    if (!string.IsNullOrWhiteSpace(text))
+
+                    // *** THE FIRST COLUMN OF A NAME WINS, AND A REPEAT IS SAID (code review,
+                    // 2026-10-13). *** The right-most used to win in silence: a column pasted in
+                    // twice by hand read the later copy, and half the values seemed to vanish.
+                    if (!string.IsNullOrWhiteSpace(text) && !colMap.TryAdd(text, col))
                     {
-                        colMap[text] = col;
+                        repeated.Add(text);
                     }
                 }
 
@@ -277,6 +282,12 @@ namespace Handlers.DataHandling
                 {
                     headerRow = row;
                     headerColMap = colMap;
+
+                    foreach (string header in repeated.Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        CrtLog.Warning($"Column [{header}] appears more than once in sheet [{sheetName}] of [{workbookDisplayPath}] - the first one is read");
+                    }
+
                     break;
                 }
             }
@@ -322,9 +333,10 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Returns the trimmed text value of a worksheet cell, or an empty string if null or blank.
+        // A number reads the same on every machine - see WorkbookCellText.
         // ###########################################################################################
         private static string GetCellText(ExcelWorksheet sheet, int row, int col)
-            => sheet.Cells[row, col].Text?.Trim() ?? string.Empty;
+            => WorkbookCellText.Trimmed(sheet, row, col);
 
         // ###########################################################################################
         // A preamble value from the "Board schematics" sheet - "# Hardware: Commodore 64" yields
@@ -418,6 +430,20 @@ namespace Handlers.DataHandling
                 return string.Empty;
             }
 
+            // *** REMEMBERED WHILE THE FILE IS AS IT WAS READ (code review, 2026-10-13). *** The
+            // Drafts tab asks this for every drafted board that is not on screen, on every refresh -
+            // and a refresh follows every return to CRT's window. Each was a full open of the
+            // published workbook on the UI thread. The stamp is the cache's own rule (StampOf):
+            // length and write time, so a sync or an Excel save is a new read.
+            string stamp = BoardDataReader.FileStamp(excelPath);
+
+            // Trusted only once the write has settled (StampSettling, code review 2026-10-13).
+            if (RevisionOnlyCache.TryGetValue(excelPath, out var remembered) && remembered.Stamp == stamp &&
+                StampSettling.IsSettled(File.GetLastWriteTimeUtc(excelPath)))
+            {
+                return remembered.Revision;
+            }
+
             EpplusLicense.Ensure();
 
             try
@@ -425,7 +451,14 @@ namespace Handlers.DataHandling
                 using var stream = new FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 using var package = EpplusLicense.OpenPackage(stream);
 
-                return ScanRevisionDate(package);
+                string revision = ScanRevisionDate(package);
+
+                if (BoardDataReader.FileStamp(excelPath) == stamp)
+                {
+                    RevisionOnlyCache[excelPath] = (stamp, revision);
+                }
+
+                return revision;
             }
             catch (Exception ex)
             {
@@ -438,6 +471,9 @@ namespace Handlers.DataHandling
         // The revision date of a board that is ALREADY loaded, or null when it is not cached. Lets
         // the drift check skip the disk entirely for the board on screen, which is the common case.
         // ###########################################################################################
+        private static readonly ConcurrentDictionary<string, (string Stamp, string Revision)> RevisionOnlyCache =
+            new(StringComparer.OrdinalIgnoreCase);
+
         public static string? TryGetCachedRevisionDate(string cacheKey) =>
             _cache.TryGetValue(cacheKey, out CachedBoard? cached) &&
             string.Equals(cached.Stamp, BoardDataReader.StampOf(cached.ExcelPath), StringComparison.Ordinal)

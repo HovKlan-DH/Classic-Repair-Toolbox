@@ -109,16 +109,17 @@ namespace Handlers.DataHandling
 
         private static Dictionary<string, object> KeyCalibrations(IEnumerable<KiCadCalibrationEntry>? entries)
         {
-            var rows = new Dictionary<string, object>(StringComparer.Ordinal);
+            var rows = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             foreach (KiCadCalibrationEntry entry in entries ?? [])
             {
                 string key = BoardDraftNaturalKeys.ForRow(entry);
 
-                // Last one wins, matching KeyRows - a duplicate key in contributed data is the
-                // client's problem to report, not a reason to fail the whole summary.
+                // FIRST one wins, matching KeyRows and the differ (code review, 2026-10-13: this
+                // said "matching KeyRows" while keeping the LAST) - a duplicate key in contributed
+                // data is the client's problem to report, not a reason to fail the whole summary.
                 if (!string.IsNullOrEmpty(key))
-                    rows[key] = entry;
+                    rows.TryAdd(key, entry);
             }
 
             return rows;
@@ -166,8 +167,8 @@ namespace Handlers.DataHandling
                 .ToList();
 
             var renamed = new List<ReviewRenamedRow>();
-            var handledBefore = new HashSet<string>(StringComparer.Ordinal);
-            var handledAfter = new HashSet<string>(StringComparer.Ordinal);
+            var handledBefore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var handledAfter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (SubmissionRename rename in sectionRenames)
             {
@@ -237,7 +238,7 @@ namespace Handlers.DataHandling
 
             var added = new List<string>();
             var changed = new List<string>();
-            var fieldChanges = new Dictionary<string, IReadOnlyList<ReviewFieldChange>>(StringComparer.Ordinal);
+            var fieldChanges = new Dictionary<string, IReadOnlyList<ReviewFieldChange>>(StringComparer.OrdinalIgnoreCase);
 
             foreach ((string key, object row) in afterRows)
             {
@@ -281,9 +282,11 @@ namespace Handlers.DataHandling
         // changing "u8" to "U8" is a real edit a maintainer should see, and on the Linux server a
         // file name's case genuinely matters.
         // ###########################################################################################
+        // Values compared TRIMMED, blank and null alike - BoardDataDiffer's rule (code review,
+        // 2026-10-13), so a row the contributor's count calls unchanged is unchanged here too.
         private static bool RowsMatch(object before, object after) =>
-            ReviewSummary.FieldsOf(before).Select(field => field.Value)
-                .SequenceEqual(ReviewSummary.FieldsOf(after).Select(field => field.Value), StringComparer.Ordinal);
+            ReviewSummary.FieldsOf(before).Select(field => (field.Value ?? string.Empty).Trim())
+                .SequenceEqual(ReviewSummary.FieldsOf(after).Select(field => (field.Value ?? string.Empty).Trim()), StringComparer.Ordinal);
 
         // ###########################################################################################
         // The same comparison with the fields that make up the natural key removed - used only for
@@ -326,7 +329,7 @@ namespace Handlers.DataHandling
         //
         // UuidV4 is absent on purpose - see RowsMatch.
         // ###########################################################################################
-        private static IReadOnlyList<ReviewField> FieldsOf(object row) => row switch
+        internal static IReadOnlyList<ReviewField> FieldsOf(object row) => row switch
         {
             BoardSchematicEntry entry =>
             [
@@ -424,6 +427,9 @@ namespace Handlers.DataHandling
             // ###########################################################################################
             KiCadCalibrationEntry entry =>
             [
+                // Its key, listed like every other row type's (code review, 2026-10-13 - the field
+                // count test found it the one property not compared).
+                new("SchematicName", entry.SchematicName),
                 new("CadName", entry.CadName),
                 new("OffsetX", ReviewSummary.Number(entry.OffsetX)),
                 new("OffsetY", ReviewSummary.Number(entry.OffsetY)),
@@ -481,9 +487,14 @@ namespace Handlers.DataHandling
         // error SubmissionValidator already reports, and a maintainer opening a submission to find
         // out what is wrong with it must not be met with a crash instead of the answer.
         // ###########################################################################################
+        // *** CASE-INSENSITIVE, LIKE THE CONTRIBUTOR'S COUNT (code review, 2026-10-13). *** This was
+        // ordinal while BoardDataDiffer keys ignoring case: a Credits row differing from another only
+        // in capitals was "0 rows changed" on the contributor's screen (the same key, the second row
+        // ignored) and "1 added" in the maintainer's summary and the board's history.
+        // BoardDataDifferAgreementTests runs one input through both.
         private static Dictionary<string, object> KeyRows(ReviewSection section, BoardData data)
         {
-            var rows = new Dictionary<string, object>(StringComparer.Ordinal);
+            var rows = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
             foreach (object row in section.RowsOf(data))
             {

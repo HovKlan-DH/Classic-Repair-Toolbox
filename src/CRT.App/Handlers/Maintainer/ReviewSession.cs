@@ -85,6 +85,35 @@ namespace Handlers.MaintainerHandling
         public static readonly TimeSpan ExpiryMargin = TimeSpan.FromMinutes(1);
 
         // ###########################################################################################
+        // *** THE SAME SESSION AFTER A REQUEST THE SERVER ACCEPTED, ITS EXPIRY SLID AS THE SERVER
+        // SLID IT (code review, 2026-10-13). *** The server pushes a session to a full lifetime from
+        // the request once less than half of it is left (SessionExtensionRules), and says nothing of
+        // it; this applies that rule to the expiry CRT holds, so the remembered sign-in dies a
+        // lifetime after it was last USED, as the server's does - not a lifetime after signing in.
+        //
+        // `sentUtc` is when the request was SENT: the server judged it at that moment or later, so
+        // a session this slides was slid there too, never the other way round. An expired session
+        // stays expired - the server never brings one back. Returns this same session when nothing
+        // moves, which is nearly always (once per half lifetime). `lifetime` defaults to CRT.Data's
+        // SessionLifetime, the server's own default.
+        // ###########################################################################################
+        public ReviewSession AfterUseAt(DateTimeOffset sentUtc, TimeSpan? lifetime = null)
+        {
+            TimeSpan window = lifetime ?? Handlers.DataHandling.SessionLifetime.Default;
+
+            if (window <= TimeSpan.Zero || this.ExpiresUtc <= sentUtc)
+                return this;
+
+            // On the difference, never on a DateTimeOffset - IsUsableAt's overflow trap.
+            if (this.ExpiresUtc - sentUtc >= TimeSpan.FromTicks(window.Ticks / 2))
+                return this;
+
+            DateTimeOffset slid = window > DateTimeOffset.MaxValue - sentUtc ? DateTimeOffset.MaxValue : sentUtc + window;
+
+            return slid > this.ExpiresUtc ? this with { ExpiresUtc = slid } : this;
+        }
+
+        // ###########################################################################################
         // The same session - the same token and expiry - carrying the name and address the server
         // now holds (2026-10-03): after a change in the "Your account" window, and when the
         // remembered sign-in is read again at launch. They are what the Feedback tab and the

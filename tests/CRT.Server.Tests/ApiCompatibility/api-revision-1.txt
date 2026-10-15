@@ -214,6 +214,7 @@ answer BoardFilesAnswer | (root) object
 answer BoardFilesAnswer | .betaDataUrl string
 answer BoardFilesAnswer | .boardId string
 answer BoardFilesAnswer | .files array of object
+answer BoardFilesAnswer | .files[].alsoUsedBy array of string
 answer BoardFilesAnswer | .files[].change enum BoardFileChange
 answer BoardFilesAnswer | .files[].openFrom enum BoardFileSource
 answer BoardFilesAnswer | .files[].path string
@@ -494,6 +495,7 @@ answer ProductionPublishAnswer | .state string
 answer ProductionPublishAnswer | .waitingFor array of enum ApproverRole
 answer ReviewDecisionAnswer | (root) object
 answer ReviewDecisionAnswer | .contentHash string
+answer ReviewDecisionAnswer | .maintainerNote string
 answer ReviewDecisionAnswer | .removedFiles array of string
 answer ReviewDecisionAnswer | .revision string
 answer ReviewDecisionAnswer | .state string
@@ -503,8 +505,10 @@ answer ReviewQueueAnswer | .canPublish boolean
 answer ReviewQueueAnswer | .count number
 answer ReviewQueueAnswer | .isAdministrator boolean
 answer ReviewQueueAnswer | .submissions array of object
+answer ReviewQueueAnswer | .submissions[].amendmentVersion number
 answer ReviewQueueAnswer | .submissions[].awaitsYou boolean
 answer ReviewQueueAnswer | .submissions[].baseRevision string
+answer ReviewQueueAnswer | .submissions[].basedOnOlderRevision boolean
 answer ReviewQueueAnswer | .submissions[].boardId string
 answer ReviewQueueAnswer | .submissions[].contactEmail string
 answer ReviewQueueAnswer | .submissions[].createdUtc string
@@ -512,6 +516,8 @@ answer ReviewQueueAnswer | .submissions[].decidedUtc string
 answer ReviewQueueAnswer | .submissions[].draftDiscardedUtc string
 answer ReviewQueueAnswer | .submissions[].id number
 answer ReviewQueueAnswer | .submissions[].isNewBoard boolean
+answer ReviewQueueAnswer | .submissions[].newerSubmissionId number
+answer ReviewQueueAnswer | .submissions[].newerSubmissionUtc string
 answer ReviewQueueAnswer | .submissions[].state string
 answer ReviewQueueAnswer | .submissions[].summary string
 answer ReviewQueueAnswer | .submissions[].touchesSharedFiles boolean
@@ -657,6 +663,8 @@ answer ReviewTableData | .submitted.schematics[].schematicName string
 answer ReviewTableData | .submitted.schematics[].thumbnailHighlightColor string
 answer ReviewTableData | .submitted.schematics[].thumbnailHighlightOpacity string
 answer ReviewTableData | .version number
+answer ServerStatusAnswer | (root) object
+answer ServerStatusAnswer | .unsentMails number
 answer SessionAccountAnswer | (root) object
 answer SessionAccountAnswer | .displayName string
 answer SessionAccountAnswer | .email string
@@ -855,8 +863,10 @@ answer SubmissionDetailAnswer | .removals.files array of string
 answer SubmissionDetailAnswer | .removals.isBlocked boolean
 answer SubmissionDetailAnswer | .schematicImages map of string
 answer SubmissionDetailAnswer | .submission object
+answer SubmissionDetailAnswer | .submission.amendmentVersion number
 answer SubmissionDetailAnswer | .submission.awaitsYou boolean
 answer SubmissionDetailAnswer | .submission.baseRevision string
+answer SubmissionDetailAnswer | .submission.basedOnOlderRevision boolean
 answer SubmissionDetailAnswer | .submission.boardId string
 answer SubmissionDetailAnswer | .submission.contactEmail string
 answer SubmissionDetailAnswer | .submission.createdUtc string
@@ -864,6 +874,8 @@ answer SubmissionDetailAnswer | .submission.decidedUtc string
 answer SubmissionDetailAnswer | .submission.draftDiscardedUtc string
 answer SubmissionDetailAnswer | .submission.id number
 answer SubmissionDetailAnswer | .submission.isNewBoard boolean
+answer SubmissionDetailAnswer | .submission.newerSubmissionId number
+answer SubmissionDetailAnswer | .submission.newerSubmissionUtc string
 answer SubmissionDetailAnswer | .submission.state string
 answer SubmissionDetailAnswer | .submission.summary string
 answer SubmissionDetailAnswer | .submission.touchesSharedFiles boolean
@@ -880,6 +892,7 @@ answer SubmissionFilesAnswer | (root) object
 answer SubmissionFilesAnswer | .betaDataUrl string
 answer SubmissionFilesAnswer | .boardId string
 answer SubmissionFilesAnswer | .files array of object
+answer SubmissionFilesAnswer | .files[].alsoUsedBy array of string
 answer SubmissionFilesAnswer | .files[].change enum BoardFileChange
 answer SubmissionFilesAnswer | .files[].openFrom enum BoardFileSource
 answer SubmissionFilesAnswer | .files[].path string
@@ -1224,12 +1237,15 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[]
 body POST /api/review/submissions/{submissionId:long}/approve | (root) object
 body POST /api/review/submissions/{submissionId:long}/approve | .comment string
 body POST /api/review/submissions/{submissionId:long}/approve | .expectedRemovals array of string
+body POST /api/review/submissions/{submissionId:long}/approve | .expectedVersion number
 body POST /api/review/submissions/{submissionId:long}/reject | (root) object
 body POST /api/review/submissions/{submissionId:long}/reject | .comment string
 body POST /api/review/submissions/{submissionId:long}/reject | .expectedRemovals array of string
+body POST /api/review/submissions/{submissionId:long}/reject | .expectedVersion number
 body POST /api/review/submissions/{submissionId:long}/request-changes | (root) object
 body POST /api/review/submissions/{submissionId:long}/request-changes | .comment string
 body POST /api/review/submissions/{submissionId:long}/request-changes | .expectedRemovals array of string
+body POST /api/review/submissions/{submissionId:long}/request-changes | .expectedVersion number
 body POST /api/submissions | (root) object
 body POST /api/submissions | .applicationVersion string
 body POST /api/submissions | .baseRevision string
@@ -1383,6 +1399,7 @@ route GET /api/review/boards
 route GET /api/review/boards/listing
 route GET /api/review/production
 route GET /api/review/queue
+route GET /api/review/server-status
 route GET /api/review/submissions/{submissionId:long}
 route GET /api/review/submissions/{submissionId:long}/files
 route GET /api/review/submissions/{submissionId:long}/published/{**path}

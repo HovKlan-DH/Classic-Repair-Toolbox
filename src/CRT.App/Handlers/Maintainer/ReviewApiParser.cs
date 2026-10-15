@@ -294,10 +294,6 @@ namespace Handlers.MaintainerHandling
                     ? ReviewApiParser.ParseChangeSummary(changes)
                     : null,
                 ReviewApiParser.ParseFindings(root),
-                ReviewApiParser.ParseAssets(root),
-                ReviewApiParser.ParsePublishedFiles(root),
-                ReviewApiParser.ParsePublishedHashes(root),
-                ReviewApiParser.ParseSchematicImages(root),
                 ReviewApiParser.ParseSubmittedFiles(root),
                 ReviewApiParser.ParseApproval(root),
                 ReviewApiParser.ParseRemovals(root),
@@ -410,114 +406,6 @@ namespace Handlers.MaintainerHandling
         };
 
         // ###########################################################################################
-        // Path -> SHA-256 for the published files the submission also carries (added 2026-09-23).
-        //
-        // *** THIS IS WHAT TURNS "1178 images to compare" INTO THE ONE THAT ACTUALLY CHANGED. ***
-        // ReviewImageComparison.Plan drops a pair only when it is handed the published hash and it
-        // matches the submitted one. Until the server sent this, nothing handed it anything, so
-        // every file present on both sides was drawn as replaced - all of them identical.
-        //
-        // A missing or malformed field yields an EMPTY map, never a failure: the planner then falls
-        // back to treating every shared path as replaced, which shows a maintainer too much rather
-        // than too little. An older server that does not send the field degrades to exactly the
-        // behaviour it had before.
-        //
-        // Ordinal keys: the paths are matched against a file list the server built on a
-        // case-sensitive tree.
-        // ###########################################################################################
-        private static IReadOnlyDictionary<string, string> ParsePublishedHashes(JsonElement root)
-        {
-            var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
-
-            if (!root.TryGetProperty("publishedHashes", out JsonElement raw) ||
-                raw.ValueKind != JsonValueKind.Object)
-            {
-                return hashes;
-            }
-
-            foreach (JsonProperty entry in raw.EnumerateObject())
-            {
-                if (entry.Value.ValueKind != JsonValueKind.String)
-                    continue;
-
-                string? hash = entry.Value.GetString();
-
-                if (!string.IsNullOrWhiteSpace(entry.Name) && !string.IsNullOrWhiteSpace(hash))
-                    hashes[entry.Name] = hash;
-            }
-
-            return hashes;
-        }
-
-        // ###########################################################################################
-        // Which image file each schematic is drawn from (task 4's moved highlight).
-        //
-        // *** A HIGHLIGHT NAMES A SCHEMATIC, NOT A FILE. *** Its row key is
-        // SchematicName|BoardLabel, so without this mapping the app knows a rectangle moved on
-        // "Sheet 1" and cannot find the picture of Sheet 1 to draw it on.
-        //
-        // Ordinal keys: schematic names are matched against a row key the server built, and
-        // folding case here would pair a highlight with the wrong board on a tree that is
-        // case-sensitive everywhere else.
-        // ###########################################################################################
-        private static IReadOnlyDictionary<string, string> ParseSchematicImages(JsonElement root)
-        {
-            var images = new Dictionary<string, string>(StringComparer.Ordinal);
-
-            if (!root.TryGetProperty("schematicImages", out JsonElement raw) ||
-                raw.ValueKind != JsonValueKind.Object)
-            {
-                return images;
-            }
-
-            foreach (JsonProperty entry in raw.EnumerateObject())
-            {
-                if (entry.Value.ValueKind != JsonValueKind.String)
-                    continue;
-
-                string? file = entry.Value.GetString();
-
-                if (!string.IsNullOrWhiteSpace(file))
-                    images[entry.Name] = file;
-            }
-
-            return images;
-        }
-
-        // ###########################################################################################
-        // The files the PUBLISHED board references, which the image comparison pairs against.
-        //
-        // *** THIS COMES FROM THE SERVER AND IS NOT DERIVED FROM `changes`. *** A summary's row
-        // keys are natural keys (for an image, BoardLabel|Region|Pin|Name), not file paths, so
-        // comparing them against the manifest's paths matches nothing - every image would read as
-        // an addition and no deletion would ever appear, with the panel drawing perfectly either
-        // way. The first version of the review window made exactly that mistake.
-        // ###########################################################################################
-        private static IReadOnlyList<string> ParsePublishedFiles(JsonElement root)
-        {
-            if (!root.TryGetProperty("publishedFiles", out JsonElement raw) ||
-                raw.ValueKind != JsonValueKind.Array)
-            {
-                return [];
-            }
-
-            var files = new List<string>();
-
-            foreach (JsonElement file in raw.EnumerateArray())
-            {
-                if (file.ValueKind == JsonValueKind.String)
-                {
-                    string? value = file.GetString();
-
-                    if (!string.IsNullOrWhiteSpace(value))
-                        files.Add(value);
-                }
-            }
-
-            return files;
-        }
-
-        // ###########################################################################################
         // The answer to a DECISION (task 5).
         //
         // The state is what the submission became, which the window uses to say what happened
@@ -542,7 +430,8 @@ namespace Handlers.MaintainerHandling
                 state,
                 ReviewApiParser.String(root, "revision") ?? string.Empty,
                 ReviewApiParser.ParseRoles(root, "waitingFor"),
-                ReviewApiParser.ParseStrings(root, "removedFiles"));
+                ReviewApiParser.ParseStrings(root, "removedFiles"),
+                ReviewApiParser.String(root, "maintainerNote"));
         }
 
         // ###########################################################################################
@@ -708,45 +597,6 @@ namespace Handlers.MaintainerHandling
                     .Where(text => !string.IsNullOrWhiteSpace(text)));
 
             return string.IsNullOrWhiteSpace(joined) ? null : joined;
-        }
-
-        // ###########################################################################################
-        // The files a submission carries, so the Maintainer tab can fetch their bytes (task 4).
-        //
-        // Only the PATH and the HASH are taken. The manifest carries a great deal more, and
-        // lifting all of it into a view type would make every future field on the contract look
-        // like something this screen depends on.
-        //
-        // *** A FILE MISSING EITHER VALUE IS SKIPPED, NOT DEFAULTED. *** A blank hash would build
-        // a fetch URL that the server refuses, and the panel would report a failure that is really
-        // a malformed manifest. Skipping it means the rest of the submission still reviews - the
-        // same "one bad row must not conceal the others" rule the queue parser follows.
-        // ###########################################################################################
-        private static ReviewSubmissionAssets ParseAssets(JsonElement root)
-        {
-            var files = new List<ReviewSubmittedFile>();
-
-            if (root.TryGetProperty("manifest", out JsonElement manifest) &&
-                manifest.ValueKind == JsonValueKind.Object &&
-                manifest.TryGetProperty("files", out JsonElement raw) &&
-                raw.ValueKind == JsonValueKind.Array)
-            {
-                foreach (JsonElement file in raw.EnumerateArray())
-                {
-                    if (file.ValueKind != JsonValueKind.Object)
-                        continue;
-
-                    string path = ReviewApiParser.String(file, "path") ?? string.Empty;
-                    string hash = ReviewApiParser.String(file, "sha256") ?? string.Empty;
-
-                    if (path.Length == 0 || hash.Length == 0)
-                        continue;
-
-                    files.Add(new ReviewSubmittedFile(path, hash));
-                }
-            }
-
-            return new ReviewSubmissionAssets(files);
         }
 
         // ###########################################################################################
@@ -978,7 +828,17 @@ namespace Handlers.MaintainerHandling
                 ReviewApiParser.Bool(element, "awaitsYou"),
 
                 // The contributor discarded their own draft after sending it (2026-09-28).
-                ReviewApiParser.Time(element, "draftDiscardedUtc"));
+                ReviewApiParser.Time(element, "draftDiscardedUtc"),
+
+                // The amendment version, and whether it was made from older data than BETA has
+                // (2026-10-13). Absent from an older server - null, so nothing is checked or said.
+                ReviewApiParser.Long(element, "amendmentVersion") is long version and >= 0 and <= int.MaxValue ? (int)version : null,
+                ReviewApiParser.Bool(element, "basedOnOlderRevision"),
+
+                // The same contributor's newer submission beside it (2026-10-13). Absent from an
+                // older server - null, so nothing is said.
+                ReviewApiParser.Long(element, "newerSubmissionId"),
+                ReviewApiParser.Time(element, "newerSubmissionUtc"));
         }
 
         // -----------------------------------------------------------------------------------

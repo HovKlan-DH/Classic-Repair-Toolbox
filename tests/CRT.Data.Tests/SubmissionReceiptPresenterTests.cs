@@ -1351,4 +1351,59 @@ public sealed class SubmissionReceiptPresenterTests
         Assert.Empty(SubmissionReceiptPresenter.NeedingBetaTryNotice([Gone("merged")], downloadingFromBeta: false));
         Assert.Single(SubmissionReceiptPresenter.NeedingBetaTryNotice([SentAs("v1:sent", "merged")], downloadingFromBeta: false));
     }
+
+    // ###########################################################################################
+    // *** A REQUEST THE CONTRIBUTOR ANSWERED STOPS ASKING (code review, 2026-10-13). *** The old
+    // "Changes requested" row stayed orange beside the newer submission that answered it.
+    // ###########################################################################################
+    [Fact]
+    public void Changes_requested_answered_by_a_newer_submission_is_no_longer_orange()
+    {
+        var asked = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            BoardId = "Commodore/C64/250407",
+            SentUtc = new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero),
+            LastKnownState = "changes_requested",
+        };
+        var answered = asked with { SubmissionId = 2, SentUtc = new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero), LastKnownState = "pending" };
+        var otherBoard = asked with { SubmissionId = 3, BoardId = "Commodore/C128/310378", SentUtc = answered.SentUtc };
+
+        SubmissionReceipt? newer = SubmissionReceiptPresenter.NewerForBoard(asked, [asked, answered, otherBoard]);
+
+        Assert.Same(answered, newer);
+        Assert.Equal(SubmissionOutcomeKind.Waiting, SubmissionReceiptPresenter.ClassifyReceipt(asked, newer));
+        Assert.EndsWith("you sent a newer one on 2026-October-5", SubmissionReceiptPresenter.DescribeReceiptState(asked, newer));
+
+        // Without a newer one it still asks, in orange.
+        Assert.Null(SubmissionReceiptPresenter.NewerForBoard(answered, [asked, answered]));
+        Assert.Equal(SubmissionOutcomeKind.NeedsAction, SubmissionReceiptPresenter.ClassifyReceipt(asked, newer: null));
+
+        // A state that needs nothing of the contributor is not reworded.
+        Assert.Equal(
+            SubmissionReceiptPresenter.DescribeReceiptState(answered),
+            SubmissionReceiptPresenter.DescribeReceiptState(answered, newer: asked));
+    }
+
+    // ###########################################################################################
+    // *** A STATE WORD A NEWER SERVER ADDED IS ASKED ABOUT SLOWLY (code review, 2026-10-13). *** It
+    // is "still open" (the safe answer), but asked every minute for ever by every installed CRT it
+    // would never stop; it now follows "merged"'s schedule: often at first, then weekly.
+    // ###########################################################################################
+    [Fact]
+    public void An_unknown_state_word_is_asked_about_on_the_slow_schedule()
+    {
+        DateTimeOffset now = new(2026, 12, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var fresh = new SubmissionReceipt { SubmissionId = 1, SentUtc = now.AddDays(-1), LastKnownState = "on_hold", LastCheckedUtc = now.AddMinutes(-1) };
+        var old = fresh with { SentUtc = now.AddDays(-60), LastCheckedUtc = now.AddDays(-1) };
+        var oldUnchecked = fresh with { SentUtc = now.AddDays(-60), LastCheckedUtc = now.AddDays(-8) };
+
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(fresh, now));
+        Assert.False(SubmissionReceiptPresenter.IsStillOpen(old, now));
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(oldUnchecked, now));
+
+        // A known open state is still asked about every time, as before.
+        Assert.True(SubmissionReceiptPresenter.IsStillOpen(old with { LastKnownState = "pending" }, now));
+    }
 }

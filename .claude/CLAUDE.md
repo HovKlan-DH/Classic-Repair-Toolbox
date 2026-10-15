@@ -61,8 +61,14 @@ asserting its own half, passes happily while the halves disagree.
 **The website's own pages are not part of this project** (owner decision, 2026-10-05): the old PHP
 pages on classic-repair-toolbox.dk are retired and are not mentioned in code comments or documents.
 The service still answers the old ADDRESSES that CRT 2.x posts to (see "Installed CRTs keep
-working"). `Assets/Webserver/` is a git-ignored local mirror of the site - never delete a file there
-to "retire" it, it has no git copy.
+working"). The site's files are edited where they are served, through the Z: drive -
+`Z:\mydir\http\classic-repair-toolbox.dk`, never the UNC path (owner request, 2026-10-12; the local
+mirror `Assets/Webserver/` was deleted that day). That folder is a git repository of its own with its
+own CLAUDE.md - read it before changing anything there. **One page there reads this project's
+database directly**: the Fun facts page (`public_html/funfacts/`) queries `crt_board_views`,
+`crt_update`, `crt_statistics` and `crt_versions`, so a migration that renames or drops one of their
+columns changes those queries in the same session (0020's `systemId` -> `boardId` ended the page with
+a fatal error until 2026-10-12).
 
 ## Hands off CHANGELOG.md
 
@@ -381,6 +387,15 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 - **No button label has "..."** (owner rule, 2026-10-03). A button says what it does in plain words,
   whether or not it opens a window. Status lines and placeholders are not buttons. **Machine-checked:**
   `ButtonLabelTests`. A Wiki page naming a button uses the same label.
+- **A button's colour says what it does, and only two do** (owner decision, 2026-10-13: "Throw-away
+  and danger equals this IndianRed, while Accept/save/update is a green'ish button"). App.axaml's
+  `Accept` class (green, `Button_Ok_*`) for a button that goes ahead - saves, submits, sends, adds,
+  creates, applies, approves, publishes, installs; `Danger` (IndianRed, `Button_Cancel_*`) for one that
+  throws something away or turns it down - deletes, removes, discards, rejects, withdraws, pushes back,
+  resets. Everything else is plain (Cancel, Close, Browse, Open, Clear a selection, Sign in/out). The
+  colour is the CLASS, never brushes on the button. A card's or a floating button's "stays green under
+  the pointer" style names `.Accept` in its selector. **Machine-checked:** `ButtonColourTests` (markup);
+  a button labelled in code carries the class and its own test checks it.
 - **Everything only the administrator can use carries Font Awesome's padlock** (owner rule,
   2026-10-04): `<TextBlock Classes="AdminLock" Text="&#xf023;" />` right after its name, NO tooltip,
   and the entry hidden from everybody else. Today that is the administrator's entries on the
@@ -399,7 +414,8 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   one card's text between flows), added to `NoticeNames` and to the demo (`--demo-notices`; its test
   fails on a card it never shows). **A card stays when there is something to do or somebody asked,
   and otherwise goes by itself** (`HideNoticeLater`): the data check's "all up to date" goes, its
-  "please refresh board" stays (`DataCheckNotice`). The launch check MUST say something - silence
+  "please refresh board" stays (`DataCheckNotice`). One exception: "your settings could not be read"
+  stays until closed (2026-10-13, `Main.SettingsNotice.cs` says why). The launch check MUST say something - silence
   was reported as a bug. The stack is at most half the tabs' width (`NoticeStackGeometry`), and a
   card that has just appeared lets clicks through for half a second, the tooltip lesson again.
 - **Every wait the user watches runs under `BusyOverlay`** (owner decision, 2026-09-28). One per
@@ -521,6 +537,19 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
 - **"Save to draft" in the component editor lands on the Drafts tab**, only after a successful save.
 - **A NEW DRAFT IS SEEDED FROM THE PUBLISHED FILE AS IT IS ON DISK** (`DraftSeeder.SeedFromPublishedFile`),
   never from `BoardDataReader`'s cache - an Excel edit made while CRT ran would be lost.
+- **A draft keeps its BASE** (code review, 2026-10-13): `.crt-base.json` (`DraftBase`) - the published
+  board as copied, its calibrations, the copied files' hashes - written at seed and by "Bring my draft
+  up to date" (`DraftRebaser` around `DraftRebase`'s three-way merge: rows the contributor left alone
+  follow the update, theirs win where both changed, conflicts listed). Without it a stale draft sent
+  the update's rows back as removals. **"I have looked at this" (`MarkDriftSeen`) never moves
+  `BaseRevision`** - the server is told it. Drift is judged by CONTENT (`DraftDriftCheck`,
+  `DraftMarker.BaseContentHash`), revisions being dates - and "I have looked at this" records the
+  published content it was said to (`DriftSeenContentHash`). **The marker is noted as up to date only
+  once the new base is kept** (`DraftRebaseOutcome.NotNoted` otherwise): a marker ahead of its base
+  made every later run "already up to date". Bringing up to date also removes untouched copies of files
+  the merged board no longer cites, and follows the update's own renames (`FollowUpdateRenames`). Files named `.crt-*` are bookkeeping
+  (`DraftFolderLayout.IsDraftOnlyFile`). Files and calibrations count for Submit (`DraftOtherChanges`,
+  measured against the base); only row ORDER does not.
 - **No other editor writes a draft under a table with unsaved edits**: the Contribute window and the
   label editor ask `TabDrafts.HasUnsavedTableEditsFor(excelDataFile)` and, if so, save NOTHING and show
   the `SavingElsewhere` notice (Cancel alone; the owner rejected "save the table first" from there).
@@ -851,6 +880,13 @@ in CRT.App (Avalonia types, 21 call sites).
   read** (length + write time, `BoardDataReader.StampOf`; owner report 2026-10-11) - a write by
   anything (CRT, Excel, the sync) is a new read. The `ClearBoardCache` calls stay, but nothing may
   depend on one being made: after a draft write only the SELECTED board's cache was cleared.
+- **Every workbook cell is read through `WorkbookCellText`** (code review, 2026-10-13): EPPlus's `.Text`
+  formats a NUMBER with the current culture, and the shipped workbooks hold opacities as numbers - a
+  Danish CRT read "0,3" and wrote it back. Never `sheet.Cells[..].Text` in a reader.
+- **A cache keyed by length + write time trusts the stamp only once SETTLED** (`StampSettling`, 2 s):
+  two same-length writes inside one clock tick share a stamp (git's "racily clean").
+- **A component relabelled alone (`ComponentRelabel`) takes its highlights along** in every draft write
+  and in a maintainer's amendment, by `BoardDataDiffer`'s pairing rule - like a renamed schematic.
 - **How every written workbook looks is read off the shipped references** (C64 250407, C128 310378):
   the title band is BLACK with white text, the header row's height differs per sheet, and every sheet
   has the same preamble - hardware, board, revision date, a blank line, the title band, headers on row
@@ -976,7 +1012,18 @@ Load-bearing, and easy to undo by accident:
   to pass it. KiCad data travels by `SubmissionKiCadFiles`. "Already held" includes the published tree
   at the same path (imported at create).
 - **A newer submission from the same contributor replaces the older one** (`withdrawn`, only if still
-  pending and never amended).
+  pending and never amended). **One that stays - amended, or with the first of two approvals - is
+  named on its queue row and detail** (`ReviewQueueEntry.NewerSubmissionId`/`NewerSubmissionUtc`,
+  `SubmissionReplacementRules.NewerFromSameContributor`; owner decision, 2026-10-13) and said in the
+  Maintainer tab's amber panel - the rule is kept, the reviewer is told.
+- **A new board's creator becomes its first maintainer** (owner request, 2026-10-13;
+  `NewBoardMaintainerFlow`, run by the approve route when `ApproveOutcome.CreatedBoard`): the account
+  the submission was SENT WITH (signed in) goes into the pool; a typed address with no account gets the
+  administrator's own kind of invitation (worded for the creator); **a typed address that HAS an
+  account makes nobody maintainer** (code review, 2026-10-13 - nothing proves the sender owns it, and
+  the invitation that would is refused for it); an unverified or locked account is left alone. The approver is named on the pool row and the audit, and
+  told the outcome (`ReviewDecisionAnswer.MaintainerNote`). It runs after the publish and never fails
+  it. "Create board"'s `NewBoardMaintainerWindow` is the agreement this acts on.
 - **The Boards screen is for every maintainer, every board** (`CanReviewAnything`) - do not narrow
   WHICH boards without asking. **The ADDRESSES in it are narrowed** (`CanSeeAddressesOf`): a new field
   carrying a person must follow `AddressesHidden`; the flow's test serialises the whole answer and fails
@@ -1116,7 +1163,7 @@ nothing had been released to anybody else), the API version back at 1 with it (`
 then holds that day's API). The earlier numberings (development up to `5.1.0`, then `1.0.0` to
 `2.1.0`) are archived at the bottom of VERSION.md without backticks, so `ServerVersionTests` reads
 only the live table. A server version named in an older comment ("server 4.3.0") is one of those
-series; every version since the second restart holds all of it. The next breaking change is `2.0.0`.
+series; every version since the second restart holds all of it. The next breaking change is `4.0.0`.
 
 Two edits per bump: `InformationalVersion` in [CRT.Server.csproj](../src/CRT.Server/CRT.Server.csproj),
 and a row in VERSION.md's history saying what a caller would notice. `GET /api/health` reports it,
@@ -1125,19 +1172,33 @@ without the `+<commit>` metadata (the endpoint is public). **Machine-checked:** 
 from changed while the version stood still - "nothing a caller can observe changed" is sometimes the
 right answer.
 
-**Say the API version whenever the API changed** (owner request, 2026-10-09: "whenever you change
-anything for the API, then do comment what is the API version on SERVER and APPLICATION, so I always
-can track this"). End that turn's summary with one line, `API version: server N, application N`, and
-say whether it moved. Both are `ClientVersionContract.ApiRevision` - what Account > "Server version"
-shows as "API server version" and "API application version". VERSION.md's history carries it per
-server version (its **API** column). **Machine-checked:** the `Stop` hook
-[hooks/api-version-report.sh](hooks/api-version-report.sh) prints the line when a contract, an endpoint,
-CRT's routes or parser, or the recorded API surface changed against the last commit.
+**Say the API version when it MOVES** (owner request, 2026-10-09: "whenever you change anything for
+the API, then do comment what is the API version on SERVER and APPLICATION, so I always can track
+this"; narrowed 2026-10-13: "It should only show when this changes"). End that turn's summary with
+`API changed: Server changed from [N] to [M], Application changed from [N] to [M]`. An API change
+that leaves the version alone (an added optional field or route) gets no line. Both are
+`ClientVersionContract.ApiRevision` - ONE constant, so in the source they always move together; they
+differ only between a deployed server and an installed CRT. Account > "Server version" shows it as
+"API server version" and "API application version"; VERSION.md's history carries it per server
+version (its **API** column). **Machine-checked:** the `Stop` hook
+[hooks/api-version-report.sh](hooks/api-version-report.sh) prints that line once when the number
+differs from the last commit, and nothing otherwise.
 
 ## Release process
 
 Versioning lives in [CRT.App.csproj](../src/CRT.App/CRT.App.csproj) (`AssemblyVersion`/`InformationalVersion`)
 - bump `InformationalVersion` before releasing; it is the only place a release version is entered.
+**A MAJOR or MINOR bump is when the NuGet packages get looked at** (owner request, 2026-10-12): the
+`Stop` hook [hooks/nuget-check-on-version-bump.sh](hooks/nuget-check-on-version-bump.sh) compares
+`InformationalVersion` with the last release (the highest `crt-<version>.txt` below it) and, once per
+MAJOR.MINOR, stops the turn: run `dotnet list Classic-Repair-Toolbox.slnx package --outdated`, advise
+the project owner package by package, and update nothing until they say which.
+**A package reference that only raises what another package brings in carries `PinnedOver="<that
+package>"`** (2026-10-14: EPPlus 8.7.1 asks for System.Security.Cryptography.Pkcs/.Xml 10.0.10, which
+known vulnerabilities cover, and a known vulnerability stops a Release restore - so CRT.Data pins both
+at 10.0.13). `PinnedPackagesTests` fails once that package requires the pinned version itself, no
+longer brings it in, or is no longer referenced - then delete the line. A pin LOWER than something
+else needs is NuGet's NU1605, a build error, so a stale pin can never hold a version down quietly.
 Releases are made by hand from the GitHub Actions tab - run
 [.github/workflows/build-and-release.yml](../.github/workflows/build-and-release.yml) with no inputs -
 **never by pushing a tag** (that trigger was removed). Its first job reads `InformationalVersion` and
@@ -1163,7 +1224,10 @@ its Mach-O UUID the stock .NET apphost's, shared with every .NET app). The rules
 - **CRT writes the Info.plist** (with `NSLocalNetworkUsageDescription`), and "Compare Info.plist with
   Velopack's" fails when vpk's own plist has a key ours lacks. The bundle ID
   `com.Classic_Repair_Toolbox.Classic_Repair_Toolbox` is what every released CRT carries - never change
-  it. vpk is PINNED for this job (`MAC_VPK_VERSION`); bump it there and follow the plist.
+  it. **vpk is the Velopack package's version in CRT.App.csproj, in every build job** (owner request,
+  2026-10-12: `determine-version` reads it and hands it on, installed with `--allow-downgrade` for the
+  self-hosted Windows runner) - updating Velopack through NuGet moves vpk too, and on macOS the plist
+  check may then need our Info.plist to follow. Never install vpk unversioned or pin it apart.
 - **The data pack is in `Contents/Resources/Data`**, never `Contents/MacOS` (codesign signs every file
   there as code, a non-code file's signature lives in an extended attribute, and the update `.nupkg` is
   a zip that keeps none). CRT seeds from either (`BundledDataLocation`).

@@ -89,6 +89,22 @@ namespace CRT.Data.Tests
             Assert.Single(amended.KiCadCalibrations);
         }
 
+        // A component the maintainer relabelled in the table ("U8" -> "U08", nothing else changed)
+        // keeps its highlights under the new label - the rule every draft write follows too
+        // (ComponentRelabel, code review 2026-10-13). They used to be dropped.
+        [Fact]
+        public void Relabelling_a_component_moves_its_highlights_to_the_new_label()
+        {
+            SubmissionRows current = ReviewTableContractTests.Rows();
+            SubmissionRows edited = ReviewTableContractTests.Rows();
+            edited.Components = [new ComponentEntry { BoardLabel = "U08", FriendlyName = "PLA", PartNumber = "" }];
+            edited.ComponentHighlights.Clear();
+
+            SubmissionRows amended = SubmissionRowsBoard.WithTableSections(current, edited);
+
+            Assert.Equal("U08", Assert.Single(amended.ComponentHighlights).BoardLabel);
+        }
+
         // ###########################################################################################
         // *** HIGHLIGHTS AND CALIBRATIONS FOLLOW THE SCHEMATIC THEY ARE DRAWN ON (code review,
         // 2026-09-25). *** Kept as submitted, the ones on a schematic the maintainer deleted named a

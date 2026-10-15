@@ -262,13 +262,19 @@ namespace CRT.Server.Handlers.Submissions
             await this.thisStore.SetBoardInProductionAsync(
                 board.BoardId, board.CurrentRevision, board.ContentHash, nowUtc, cancellationToken);
 
+            // ###########################################################################################
+            // *** THE SERVER FOUND IT - NOBODY DID IT (code review, 2026-10-13). *** This runs from a
+            // READ - whichever maintainer's CRT asked for the BETA > Stable list that minute - and the
+            // row named that maintainer as the one who did it. It is audited with no actor now, and
+            // the board's history names nobody for it (BoardHistoryRules).
+            // ###########################################################################################
             await this.thisAccounts.WriteAuditAsync(
                 new AuditEntry(
-                    access?.Account.Id,
-                    access?.Account.Email ?? string.Empty,
+                    null,
+                    BoardHistoryRules.ServerActorLabel,
                     BoardHistoryEvents.FoundInProduction,
                     board.BoardId,
-                    $"revision {board.CurrentRevision}; production already held every file ({plan.UnchangedCount})",
+                    $"revision {board.CurrentRevision}; the stable source already held every file ({plan.UnchangedCount})",
                     nowUtc),
                 cancellationToken);
 
@@ -459,7 +465,8 @@ namespace CRT.Server.Handlers.Submissions
                 plan.Files,
                 options.DataTreeRoot!,
                 options.ProductionDataTreeRoot!,
-                cancellationToken);
+                cancellationToken,
+                logger: this.thisLogger);
 
             if (!copy.IsDone)
             {
@@ -477,6 +484,10 @@ namespace CRT.Server.Handlers.Submissions
 
                 return PromotionOutcome.Refused(copy.Error ?? "The copy did not complete.");
             }
+
+            // The stable source has been written: what follows records it, and a client giving up
+            // must not leave it unrecorded (code review, 2026-10-13).
+            cancellationToken = CancellationToken.None;
 
             // ---- 7b. The row in production's main Excel data file --------------------------------
             //

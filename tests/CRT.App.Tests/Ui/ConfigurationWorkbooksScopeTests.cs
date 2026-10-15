@@ -161,4 +161,29 @@ public sealed class ConfigurationWorkbooksScopeTests
             UserSettings.WorkbooksScope = saved;
         }
     }
+
+    // ###########################################################################################
+    // The radio buttons' labels WRAP (2026-10-13). The theme's check box wraps its text and its
+    // radio button does not, so "Show only workbooks for selected board" was cut off at the
+    // window's minimum width once the tab's scroll bar showed. The tab's own style sets the wrap on
+    // the template's presenter. Read off the style: the wrap itself needs real fonts, and showing
+    // the tab starts its catalogue build against whatever data another test left behind.
+    // ###########################################################################################
+    [Fact]
+    public void The_scope_labels_are_styled_to_wrap()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var style = Assert.Single(
+                tab.Styles.OfType<Avalonia.Styling.Style>(),
+                style => style.Selector?.ToString() == "RadioButton /template/ ContentPresenter");
+
+            var setter = Assert.Single(style.Setters.OfType<Avalonia.Styling.Setter>());
+
+            Assert.Equal(Avalonia.Controls.Presenters.ContentPresenter.TextWrappingProperty, setter.Property);
+            Assert.Equal(Avalonia.Media.TextWrapping.Wrap, setter.Value);
+        });
+    }
 }

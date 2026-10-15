@@ -42,7 +42,7 @@ namespace CRT
             {
                 if (string.Equals(button.Name, name, StringComparison.Ordinal))
                 {
-                    await this.ShowSubmissionViewAsync(view);
+                    await HandlerGuard.RunAsync(() => this.ShowSubmissionViewAsync(view), this.ShowHandlerFailure);
                     return;
                 }
             }

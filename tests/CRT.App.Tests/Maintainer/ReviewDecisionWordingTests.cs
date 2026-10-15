@@ -57,6 +57,23 @@ public sealed class ReviewDecisionWordingTests
         Assert.Contains("2026-September-22", described);
     }
 
+    // The approval that created a board says what became of its creator as its maintainer - the
+    // server's sentence, last (2026-10-13). Any other approval says nothing of it.
+    [Fact]
+    public void An_approval_that_created_a_board_ends_with_what_became_of_its_maintainer()
+    {
+        const string note = "Anna (anna@example.com), who created this new board, is now its maintainer.";
+
+        string created = ReviewDecisionWording.Describe(
+            ReviewDecisionKind.Approve, new ReviewDecisionResult("merged", "2026-October-13", MaintainerNote: note));
+
+        string updated = ReviewDecisionWording.Describe(
+            ReviewDecisionKind.Approve, new ReviewDecisionResult("merged", "2026-October-13"));
+
+        Assert.EndsWith(" " + note, created, StringComparison.Ordinal);
+        Assert.DoesNotContain("maintainer", updated, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_approval_with_NO_revision_still_reads_sensibly()
     {
@@ -116,7 +133,7 @@ public sealed class ReviewDecisionWordingTests
         {
             string text = ReviewDecisionWording.Waiting(ReviewDecisionKind.Approve, approval, "Commodore/C128/310378");
 
-            Assert.StartsWith("Publishing Commodore/C128/310378 to BETA.", text, StringComparison.Ordinal);
+            Assert.StartsWith("Publishing Commodore / C128 / 310378 to BETA.", text, StringComparison.Ordinal);
             Assert.EndsWith("please wait until it is done.", text, StringComparison.Ordinal);
         }
     }
@@ -131,7 +148,7 @@ public sealed class ReviewDecisionWordingTests
 
         Assert.DoesNotContain("Publishing", text, StringComparison.Ordinal);
         Assert.Contains("Recording your approval", text, StringComparison.Ordinal);
-        Assert.Contains("Commodore/C64/250407", text, StringComparison.Ordinal);
+        Assert.Contains("Commodore / C64 / 250407", text, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -142,7 +159,7 @@ public sealed class ReviewDecisionWordingTests
         string text = ReviewDecisionWording.Waiting(kind, null, "Commodore/C64/250407");
 
         Assert.Contains(expected, text, StringComparison.Ordinal);
-        Assert.Contains("Commodore/C64/250407", text, StringComparison.Ordinal);
+        Assert.Contains("Commodore / C64 / 250407", text, StringComparison.Ordinal);
         Assert.DoesNotContain("BETA", text, StringComparison.Ordinal);
         Assert.EndsWith("please wait until it is done.", text, StringComparison.Ordinal);
     }

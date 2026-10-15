@@ -118,8 +118,10 @@ public sealed class BoardDetailViewStableTests
     }
 
     // ###########################################################################################
-    // A half the board is not in cannot be chosen; a board only the stable source holds shows it
-    // without being asked; and the pick stays for the next board that has it.
+    // *** THE SWITCH ONLY FOR A BOARD IN BOTH SOURCES (code review, 2026-10-13). *** A board one
+    // source holds shows that one with no "Data source" row - it was there with half of it greyed
+    // out, "Compare sources" beside it unusable. A board only the stable source holds shows it
+    // without being asked; and the pick stays for the next board in both.
     // ###########################################################################################
     [Fact]
     public async Task The_switch_offers_only_where_the_board_is_and_the_pick_stays_for_the_next_board()
@@ -130,21 +132,27 @@ public sealed class BoardDetailViewStableTests
             view.ReadStableTableOverrideForTests = _ =>
                 Task.FromResult(ReviewApiResult<BoardTableAnswer>.Ok(BoardDetailViewStableTests.Table("PLA", mayEdit: false)));
 
-            // Not in the stable source: BETA, and Stable cannot be chosen.
+            // Not in the stable source: BETA, and no switch at all - on Board data or Files.
             view.ShowDetailForTests(BoardDetailViewStableTests.Detail(BoardDetailViewStableTests.Board(inStable: false)));
 
             Assert.False(view.ShowsStableForTests);
-            Assert.False(view.FindControl<Button>("StableTreeButton")!.IsEnabled);
-            Assert.True(view.FindControl<Button>("BetaTreeButton")!.IsEnabled);
+            Assert.False(BoardDetailViewStableTests.Shown(view, "TreeSwitchBar"));
+            Assert.True(BoardDetailViewStableTests.Shown(view, "BetaBoardPart"));
 
-            // Only in the stable source: shown at once, and BETA cannot be chosen.
+            await view.ShowSectionAsync(BoardSection.Files);
+            Assert.False(BoardDetailViewStableTests.Shown(view, "TreeSwitchBar"));
+            await view.ShowSectionAsync(BoardSection.BoardData);
+
+            // Only in the stable source: shown at once, and no switch either.
             view.ShowDetailForTests(BoardDetailViewStableTests.Detail(BoardDetailViewStableTests.Board(inBeta: false)));
 
             Assert.True(view.ShowsStableForTests);
-            Assert.False(view.FindControl<Button>("BetaTreeButton")!.IsEnabled);
+            Assert.False(BoardDetailViewStableTests.Shown(view, "TreeSwitchBar"));
+            Assert.True(BoardDetailViewStableTests.Shown(view, "StableBoardPart"));
 
-            // Stable picked on a board in both stays picked for the next one in both.
+            // Stable picked on a board in both - where the switch is - stays picked for the next one in both.
             view.ShowDetailForTests(BoardDetailViewStableTests.Detail(BoardDetailViewStableTests.Board()));
+            Assert.True(BoardDetailViewStableTests.Shown(view, "TreeSwitchBar"));
             await view.ShowTreeAsync(stable: true);
             view.ShowDetailForTests(BoardDetailViewStableTests.Detail(BoardDetailViewStableTests.Board(boardId: "Commodore/C128/310378")));
 

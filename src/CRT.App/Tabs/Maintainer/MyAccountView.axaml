@@ -32,7 +32,7 @@
 
             <StackPanel Spacing="2">
                 <TextBlock Text="My account" FontSize="14" FontWeight="SemiBold" />
-                <TextBlock x:Name="LoggedInAsText" Opacity="0.75" TextWrapping="Wrap" />
+                <TextBlock x:Name="SignedInLineText" Opacity="0.75" TextWrapping="Wrap" />
             </StackPanel>
 
             <!-- ================= Name ================= -->
@@ -46,6 +46,7 @@
                 <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                     <TextBox x:Name="NameTextBox" TextChanged="OnTextChanged" />
                     <Button Grid.Column="1"
+                            Classes="Accept"
                             x:Name="SaveNameButton"
                             Content="Save name"
                             Margin="8,0,0,0"
@@ -70,6 +71,7 @@
 
                     <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
                         <Button x:Name="SendCodeButton"
+                                Classes="Accept"
                                 Content="Send code"
                                 IsEnabled="False"
                                 Click="OnSendCodeClick" />
@@ -92,6 +94,7 @@
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBox x:Name="CodeTextBox" TextChanged="OnTextChanged" />
                             <Button Grid.Column="1"
+                                    Classes="Accept"
                                     x:Name="ConfirmEmailButton"
                                     Content="Change address"
                                     Margin="8,0,0,0"
@@ -120,6 +123,7 @@
                     <TextBox x:Name="RepeatPasswordTextBox" PasswordChar="*" TextChanged="OnTextChanged" />
 
                     <Button x:Name="ChangePasswordButton"
+                            Classes="Accept"
                             Content="Change password"
                             HorizontalAlignment="Left"
                             Margin="0,8,0,0"

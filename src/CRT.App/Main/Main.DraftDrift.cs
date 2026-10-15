@@ -32,9 +32,8 @@ namespace CRT
         // Works out whether the board now on screen has drifted, and shows or hides the banner to
         // match. Called after every board load, and again after a sync settles.
         //
-        // Costs nothing: DataManager published the draft's base revision and the official
-        // RevisionDate as part of the load that just happened, so this reads two values it already
-        // has rather than touching the disk.
+        // Cheap: the draft's marker, and the published workbook's revision and content hash, both
+        // remembered by the file's length and write time (DraftDriftCheck).
         // ###########################################################################################
         private void EvaluateDraftDriftForCurrentBoard()
         {
@@ -71,10 +70,27 @@ namespace CRT
                 return DraftDriftState.Unknown;
             }
 
-            return DraftRevisionComparer.Compare(
-                DataManager.LastLoadedDraftBaseRevision,
-                this._currentBoardData.RevisionDate);
+            var entry = this.GetCurrentBoardEntry();
+
+            if (entry == null)
+            {
+                return DraftDriftState.Unknown;
+            }
+
+            // The one rule the Drafts row and the window use too (code review, 2026-10-13): by
+            // CONTENT for a draft that kept what it was copied from, so a second publish on the same
+            // day is seen; by revision otherwise.
+            return DraftDriftCheck.Resolve(
+                this.CurrentDraftStatus(entry),
+                DraftBoardSource.PublishedPathOf(DataManager.DataRoot, entry.ExcelDataFile));
         }
+
+        private DraftStatus? CurrentDraftStatus(HardwareBoardEntry entry) =>
+            DraftStatusReader.Resolve(
+                DataManager.DataRoot,
+                DraftManager.DraftsRoot,
+                entry.ExcelDataFile,
+                entry.IsPublished);
 
         // ###########################################################################################
         // Shows the drift banner, unless a sync flow already owns the banner - a sync in progress
@@ -87,18 +103,15 @@ namespace CRT
                 return;
             }
 
-            // Worded to match what the data supports: "updated" only when both revisions parsed and
-            // the official one is genuinely later. See DraftRevisionComparer.
-            string what = this._currentBoardDriftState == DraftDriftState.OfficialIsNewer
-                ? "has been updated"
-                : "has changed";
+            // *** NOT "YOUR EDITS ARE STILL APPLIED" ANY MORE (code review, 2026-10-13). *** That was
+            // untrue: a draft is a complete copy and does not get the update by itself. The line
+            // says so, and offers to bring the draft up to date when it can (DraftDriftWording).
+            var entry = this.GetCurrentBoardEntry();
+            bool canBringUpToDate = entry != null && this.CurrentDraftStatus(entry) is { HasBase: true };
 
-            // The second sentence is load-bearing: without it this reads as "your work may be
-            // lost", which is false - Drafts/ and Data/ are separate trees and the overlay still
-            // applies.
             NoticeEmphasis.Show(
                 this.SyncBannerText,
-                $"The official data for this board {what} since you started your draft. Your edits are still applied.");
+                DraftDriftWording.Line(this._currentBoardDriftState, canBringUpToDate));
 
             this.SyncBannerDriftButton.IsVisible = true;
             this.SyncBanner.IsVisible = true;
@@ -129,65 +142,63 @@ namespace CRT
         // ###########################################################################################
         private async void OnSyncBannerDriftClick(object? sender, RoutedEventArgs e)
         {
-            var entry = this.GetCurrentBoardEntry();
-            if (entry == null)
+            try
             {
-                return;
+                var entry = this.GetCurrentBoardEntry();
+                if (entry == null)
+                {
+                    return;
+                }
+
+                DraftStatus? status = DraftStatusReader.Resolve(
+                    DataManager.DataRoot,
+                    DraftManager.DraftsRoot,
+                    entry.ExcelDataFile,
+                    entry.IsPublished);
+
+                if (status == null)
+                {
+                    return;
+                }
+
+                // The same report the Drafts tab's "What changed" opens (DraftChangeReport.For).
+                string publishedPath = DraftBoardSource.PublishedPathOf(
+                    DataManager.DataRoot,
+                    entry.ExcelDataFile);
+
+                string draftsRoot = DraftManager.DraftsRoot;
+
+                DraftChangeReport report = await BusyOverlay.RunLocalAsync(
+                    this,
+                    CrtWaitWording.ComparingWithOfficial,
+                    () => Task.Run(() => DraftChangeReport.For(status, draftsRoot, publishedPath)));
+
+                var window = new DraftDriftWindow();
+                window.Initialize(entry.ToString(), entry.ExcelDataFile, report, this.TabDrafts.SavingBlockedFor);
+                await window.ShowDialog(this);
+
+                // Brought up to date: the board on screen is this draft's, read again.
+                if (window.BroughtUpToDate)
+                {
+                    this.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
+                }
+
+                // Dismissing the warning or bringing the draft up to date changes the drift.
+                this._currentBoardDriftState = this.ResolveCurrentBoardDriftState();
+
+                if (this._currentBoardDriftState is DraftDriftState.InSync or DraftDriftState.Unknown)
+                {
+                    this.HideDraftDriftBanner();
+                }
+
+                this.TabDrafts.RefreshDrafts();
             }
-
-            DraftStatus? status = DraftStatusReader.Resolve(
-                DataManager.DataRoot,
-                DraftManager.DraftsRoot,
-                entry.ExcelDataFile,
-                entry.IsPublished);
-
-            if (status == null)
+            catch (Exception ex)
             {
-                return;
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnSyncBannerDriftClick failed - [{ex}]");
             }
-
-            // Built by COMPARISON since Phase 6 - see DraftChangeReport for what that can and
-            // cannot say, and TabDrafts.ViewDriftAsync for the same construction.
-            string publishedPath = DraftBoardSource.PublishedPathOf(
-                DataManager.DataRoot,
-                entry.ExcelDataFile);
-
-            BoardData? official = await BusyOverlay.RunLocalAsync(
-                this,
-                CrtWaitWording.ComparingWithOfficial,
-                () => BoardDataReader.LoadAsync(publishedPath, publishedPath));
-
-            var report = new DraftChangeReport
-            {
-                State = this._currentBoardDriftState,
-                BaseRevision = status.BaseRevision,
-                OfficialRevision = official?.RevisionDate ?? string.Empty,
-                Rows = DraftStatusReader.DescribeChanges(status),
-            };
-
-            var window = new DraftDriftWindow();
-            window.Initialize(entry.ToString(), entry.ExcelDataFile, report);
-
-            await window.ShowDialog(this);
-
-            // Dismissing the warning inside the window moves the draft's base revision, so the
-            // banner has to be re-evaluated against what is now on disk.
-            DraftStatus? refreshed = DraftStatusReader.Resolve(
-                DataManager.DataRoot,
-                DraftManager.DraftsRoot,
-                entry.ExcelDataFile,
-                entry.IsPublished);
-
-            this._currentBoardDriftState = DraftRevisionComparer.Compare(
-                refreshed?.BaseRevision ?? string.Empty,
-                this._currentBoardData?.RevisionDate ?? string.Empty);
-
-            if (this._currentBoardDriftState is DraftDriftState.InSync or DraftDriftState.Unknown)
-            {
-                this.HideDraftDriftBanner();
-            }
-
-            this.TabDrafts.RefreshDrafts();
         }
     }
 }

@@ -262,16 +262,34 @@ namespace CRT
         // ###########################################################################################
         private async void OnAddPhotoClick(object? sender, RoutedEventArgs e)
         {
-            // async void cannot be awaited, so anything thrown after the first await reaches the
-            // global handler instead of this window. GetEntryAttachmentsFolder calls
-            // Directory.CreateDirectory, which throws on a read-only or disconnected folder - a
-            // reportable condition, not a crash.
-            await this.AddAttachmentGuardedAsync(this.PhotoAttachments);
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                // async void cannot be awaited, so anything thrown after the first await reaches the
+                // global handler instead of this window. GetEntryAttachmentsFolder calls
+                // Directory.CreateDirectory, which throws on a read-only or disconnected folder - a
+                // reportable condition, not a crash.
+                await this.AddAttachmentGuardedAsync(this.PhotoAttachments);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAddPhotoClick failed - [{ex}]");
+            }
         }
 
         private async void OnAddFileClick(object? sender, RoutedEventArgs e)
         {
-            await this.AddAttachmentGuardedAsync(this.FileAttachments);
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                await this.AddAttachmentGuardedAsync(this.FileAttachments);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAddFileClick failed - [{ex}]");
+            }
         }
 
         private async Task AddAttachmentGuardedAsync(AttachmentSection section)
@@ -378,13 +396,31 @@ namespace CRT
         // ###########################################################################################
         private async void OnEditPhotoClick(object? sender, RoutedEventArgs e)
         {
-            // See OnAddPhotoClick for why the body is wrapped.
-            await this.EditAttachmentGuardedAsync(this.PhotoAttachments, sender);
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                // See OnAddPhotoClick for why the body is wrapped.
+                await this.EditAttachmentGuardedAsync(this.PhotoAttachments, sender);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnEditPhotoClick failed - [{ex}]");
+            }
         }
 
         private async void OnEditFileClick(object? sender, RoutedEventArgs e)
         {
-            await this.EditAttachmentGuardedAsync(this.FileAttachments, sender);
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                await this.EditAttachmentGuardedAsync(this.FileAttachments, sender);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnEditFileClick failed - [{ex}]");
+            }
         }
 
         private async Task EditAttachmentGuardedAsync(AttachmentSection section, object? sender)

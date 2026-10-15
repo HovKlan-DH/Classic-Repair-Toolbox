@@ -4,6 +4,7 @@ using Avalonia.Media;
 using Handlers.Geometry;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Tabs.TabSchematics
 {
@@ -16,9 +17,23 @@ namespace Tabs.TabSchematics
         Geometry
     }
 
+    // ###########################################################################################
+    // Which blink phase a primitive belongs to (code review, 2026-10-13). A blinking net's copper
+    // is drawn only while the blink shows (OnPhase); in the hidden phase its zones still show a
+    // faint fill (OffPhase) - exactly what its primitives looked like when the blink factor was
+    // baked into them, 0 for the hidden phase. Everything else is Always drawn.
+    // ###########################################################################################
+    public enum KiCadBlinkPhase
+    {
+        Always,
+        OnPhase,
+        OffPhase
+    }
+
     public sealed class KiCadOverlayPrimitive
     {
         public KiCadOverlayPrimitiveKind Kind { get; init; }
+        public KiCadBlinkPhase BlinkPhase { get; init; } = KiCadBlinkPhase.Always;
         public Point Start { get; init; }
         public Point End { get; init; }
         public Rect Rect { get; init; }
@@ -40,6 +55,70 @@ namespace Tabs.TabSchematics
         internal Geometry? PreparedGeometry { get; set; }
         internal Pen? PreparedPen { get; set; }
         internal Rect? PreparedBounds { get; set; }
+
+        // This primitive in another blink phase - everything else, prepared parts included, kept.
+        internal KiCadOverlayPrimitive WithBlinkPhase(KiCadBlinkPhase phase) => new()
+        {
+            Kind = this.Kind,
+            BlinkPhase = phase,
+            Start = this.Start,
+            End = this.End,
+            Rect = this.Rect,
+            Points = this.Points,
+            Pen = this.Pen,
+            Fill = this.Fill,
+            Geometry = this.Geometry,
+            RotationDegrees = this.RotationDegrees,
+            PreparedGeometry = this.PreparedGeometry,
+            PreparedPen = this.PreparedPen,
+            PreparedBounds = this.PreparedBounds,
+        };
+    }
+
+    // ###########################################################################################
+    // A blinking KiCad net's primitives, split into blink phases (code review, 2026-10-13).
+    //
+    // They are built at full strength, and this says what each phase draws - exactly what the old
+    // primitives drew with the blink factor baked in: at 1 everything, at 0 a zone's fill clamped
+    // to its 0.10 floor and nothing else, except a pin-1 pad, whose brush never carried the blink.
+    //   - a pin-1 pad (its fill is `pinOneBrush`) stays Always;
+    //   - a zone (Geometry with a fill) is OnPhase, plus an OffPhase copy at ZoneFillFloor opacity
+    //     with no outline;
+    //   - everything else is OnPhase.
+    // ###########################################################################################
+    internal static class KiCadBlinkPhases
+    {
+        // The lowest a blinking net's zone fill went at blink factor 0 (Math.Clamp(0, 0.10, 0.38)).
+        internal const double ZoneFillFloor = 0.10;
+
+        internal static List<KiCadOverlayPrimitive> Split(IReadOnlyList<KiCadOverlayPrimitive> netPrimitives, IBrush? pinOneBrush)
+        {
+            var result = new List<KiCadOverlayPrimitive>(netPrimitives.Count + 4);
+
+            foreach (var primitive in netPrimitives)
+            {
+                if (pinOneBrush != null && ReferenceEquals(primitive.Fill, pinOneBrush))
+                {
+                    result.Add(primitive);
+                    continue;
+                }
+
+                result.Add(primitive.WithBlinkPhase(KiCadBlinkPhase.OnPhase));
+
+                if (primitive.Kind == KiCadOverlayPrimitiveKind.Geometry && primitive.Fill is ISolidColorBrush zoneFill)
+                {
+                    result.Add(new KiCadOverlayPrimitive
+                    {
+                        Kind = KiCadOverlayPrimitiveKind.Geometry,
+                        BlinkPhase = KiCadBlinkPhase.OffPhase,
+                        Geometry = primitive.Geometry,
+                        Fill = new SolidColorBrush(zoneFill.Color, ZoneFillFloor),
+                    });
+                }
+            }
+
+            return result;
+        }
     }
 
     public sealed class KiCadOverlayRenderControl : Control
@@ -100,6 +179,46 @@ namespace Tabs.TabSchematics
         private Matrix thisOverlayTransform = Matrix.Identity;
 
         // ###########################################################################################
+        // The blink: true draws the OnPhase primitives, false the OffPhase ones; Always ones are
+        // drawn in both (KiCadBlinkPhase). Setting it redraws what is already prepared - nothing is
+        // built, and the Schematics tab's per-net primitive cache is not touched (code review,
+        // 2026-10-13: the blink rebuilt every blinking net's primitives twice a second).
+        //
+        // One control, not a layer per phase with its own opacity: the primitives are drawn in the
+        // order they were built - a pin-1 pad over its own net's copper, a net over the one before
+        // it - and splitting them into layers would change that wherever copper overlaps.
+        // ###########################################################################################
+        public bool BlinkPhaseVisible
+        {
+            get => this.thisBlinkPhaseVisible;
+            set
+            {
+                if (this.thisBlinkPhaseVisible == value)
+                {
+                    return;
+                }
+
+                this.thisBlinkPhaseVisible = value;
+
+                if (this.thisHasBlinkingPrimitives)
+                {
+                    this.InvalidateVisual();
+                }
+            }
+        }
+
+        private bool thisBlinkPhaseVisible = true;
+        private bool thisHasBlinkingPrimitives;
+
+        // Whether a primitive of `phase` is drawn when the blink is `phaseVisible`.
+        internal static bool IsDrawnInPhase(KiCadBlinkPhase phase, bool phaseVisible) => phase switch
+        {
+            KiCadBlinkPhase.OnPhase => phaseVisible,
+            KiCadBlinkPhase.OffPhase => !phaseVisible,
+            _ => true,
+        };
+
+        // ###########################################################################################
         // Replaces the current render geometry, prepares each primitive's cached path, pen and
         // bounds, and triggers a redraw.
         // ###########################################################################################
@@ -108,6 +227,7 @@ namespace Tabs.TabSchematics
 
             this.thisPrimitives = primitives ?? Array.Empty<KiCadOverlayPrimitive>();
             this.thisPrepared = KiCadOverlayRenderControl.PreparePrimitives(this.thisPrimitives);
+            this.thisHasBlinkingPrimitives = this.thisPrimitives.Any(primitive => primitive.BlinkPhase != KiCadBlinkPhase.Always);
             this.InvalidateVisual();
 
         }
@@ -214,6 +334,7 @@ namespace Tabs.TabSchematics
         {
             this.thisPrimitives = Array.Empty<KiCadOverlayPrimitive>();
             this.thisPrepared = Array.Empty<PreparedPrimitive>();
+            this.thisHasBlinkingPrimitives = false;
             this.InvalidateVisual();
         }
 
@@ -341,7 +462,8 @@ namespace Tabs.TabSchematics
             {
                 var prepared = this.thisPrepared[i];
 
-                if (!OverlayCullGeometry.IsVisible(prepared.Bounds, visibleRect))
+                if (!KiCadOverlayRenderControl.IsDrawnInPhase(prepared.Primitive.BlinkPhase, this.thisBlinkPhaseVisible) ||
+                    !OverlayCullGeometry.IsVisible(prepared.Bounds, visibleRect))
                 {
                     continue;
                 }

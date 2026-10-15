@@ -52,6 +52,8 @@ namespace CRT
         //                               the server turns this version away (API revision, or a 426)
         //   Main.SchematicRenames.cs  - a schematic image renamed (published, or in a draft): this
         //                               machine's worklogs and settings that name it follow
+        //   Main.SettingsNotice.cs    - "your settings could not be read": started on defaults, and
+        //                               where the unreadable file was kept
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -456,6 +458,10 @@ namespace CRT
         {
             try
             {
+                // A settings file that could not be read was kept, and CRT started on defaults - said
+                // before anything else (Main.SettingsNotice.cs).
+                this.ShowSettingsUnreadableNoticeIfNeeded();
+
                 if (DataManager.DataUpdateRequiresAppUpdate)
                 {
                     this.ShowMainExcelRequiresAppUpdateBanner();
@@ -1112,20 +1118,33 @@ namespace CRT
             // The Maintainer tab's table is asked about the same way, straight after the Drafts
             // tab's (2026-09-29) - in ONE posted continuation, so a single settled flag covers both
             // and an answer to the first is not asked again by a second round.
-            if (!this._unsavedTableEditsSettledForExit &&
-                (this.TabDrafts.HasUnsavedTableEdits || this.TabMaintainer.HasUnsavedTableEdits))
+            // Both tables commit a cell still being typed in before they are asked (code review,
+            // 2026-10-13) - each is asked, so neither is skipped by the other's answer.
+            bool draftsUnsaved = this.TabDrafts.CommitCellsAndHasUnsavedTableEdits();
+            bool maintainerUnsaved = this.TabMaintainer.CommitCellsAndHasUnsavedTableEdits();
+
+            if (!this._unsavedTableEditsSettledForExit && (draftsUnsaved || maintainerUnsaved))
             {
                 e.Cancel = true;
 
                 Dispatcher.UIThread.Post(async () =>
                 {
-                    if (!await this.ConfirmLeavingTablesAsync())
+                    // An async lambda posted is "async void": guarded like the handlers (code review,
+                    // 2026-10-13) - a failure here leaves CRT open, which is what the user had anyway.
+                    try
                     {
-                        return;
-                    }
+                        if (!await this.ConfirmLeavingTablesAsync())
+                        {
+                            return;
+                        }
 
-                    this._unsavedTableEditsSettledForExit = true;
-                    this.Close();
+                        this._unsavedTableEditsSettledForExit = true;
+                        this.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Critical($"Asking about unsaved table edits on the way out failed - [{ex}]");
+                    }
                 });
 
                 return;
@@ -1152,6 +1171,7 @@ namespace CRT
             }
 
             this._blinkSelectedTimer?.Stop();
+            this._componentSearchDebounceTimer?.Stop();
             this._windowPlacementSaveTimer?.Stop();
             this.CommitWindowPlacement();
         }
@@ -1167,7 +1187,8 @@ namespace CRT
         // ###########################################################################################
         internal async Task<bool> ConfirmLeavingTablesAsync()
         {
-            if (this.TabDrafts.HasUnsavedTableEdits)
+            // A cell still being typed in counts (code review, 2026-10-13) - committed first.
+            if (this.TabDrafts.CommitCellsAndHasUnsavedTableEdits())
             {
                 if (this.DraftsTabItem != null && this.MainTabControl != null)
                 {

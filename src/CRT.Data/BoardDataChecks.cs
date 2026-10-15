@@ -157,6 +157,11 @@ namespace Handlers.DataHandling
                     schematic.SchematicImageFile,
                     $"schematic [{schematic.SchematicName}]",
                     sheet, i, BoardWorkbookSchema.ColSchematicImageFile);
+
+                BoardDataChecks.CheckOpacity(
+                    context, schematic.SchematicHighlightOpacity, sheet, i, BoardWorkbookSchema.ColSchematicHighlightOpacity);
+                BoardDataChecks.CheckOpacity(
+                    context, schematic.ThumbnailHighlightOpacity, sheet, i, BoardWorkbookSchema.ColThumbnailHighlightOpacity);
             }
 
             if (context.Scope != BoardCheckScope.Everything)
@@ -289,6 +294,44 @@ namespace Handlers.DataHandling
                         sheet, i, BoardWorkbookSchema.ColBoardLabel);
                 }
             }
+        }
+
+        // ###########################################################################################
+        // *** AN OPACITY EVERY MACHINE CAN READ (code review, 2026-10-13). *** CRT reads a highlight
+        // opacity with the invariant culture - "0.3", "30%" - so a value written with a decimal
+        // COMMA ("0,3", which a CRT on a comma-decimal machine wrote into drafts before
+        // WorkbookCellText) reads as nothing and falls back to the default on every machine. A
+        // WARNING, as every new rule of the table's is: it never refuses a submission.
+        // ###########################################################################################
+        private static void CheckOpacity(Context context, string? text, string sheet, int row, string column)
+        {
+            if (BoardDataChecks.IsReadableOpacity(text))
+                return;
+
+            string value = text!.Trim();
+
+            context.Warning(
+                "schematic.opacity",
+                value,
+                $"Opacity [{value}] cannot be read. Write it with a point, like 0.3, or as a percentage, like 30% - " +
+                "until then CRT uses its default.",
+                sheet, row, column);
+        }
+
+        // The opacity rule CRT draws with (RectGeometry.ParseOpacityOrDefault): blank is fine, an
+        // optional "%" suffix, otherwise an invariant-culture number.
+        internal static bool IsReadableOpacity(string? text)
+        {
+            string value = (text ?? string.Empty).Trim();
+
+            if (value.Length == 0)
+                return true;
+
+            if (value.EndsWith('%'))
+                value = value[..^1].Trim();
+
+            return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) &&
+                double.IsFinite(parsed);
         }
 
         // Highlights live in the JSON beside the workbook, in no sheet - so they have no place in

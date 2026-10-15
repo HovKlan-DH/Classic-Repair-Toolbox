@@ -259,5 +259,39 @@ namespace CRT.Server.Tests
 
             Assert.Equal([3], SubmissionReplacementRules.ReplacedBy(arrived, waiting).Select(record => record.Id));
         }
+
+        // ###########################################################################################
+        // *** THE NEWER ONE BESIDE AN OLDER ONE THAT STAYS (owner decision, 2026-10-13). *** A
+        // half-approved (or amended) submission is not replaced, so the reviewer is told of the
+        // newer one instead: the NEWEST later submission of the same board from the same
+        // contributor that is still waiting - each other candidate differs in one thing only.
+        // ###########################################################################################
+        [Fact]
+        public void The_newer_submission_beside_a_half_approved_one_is_the_newest_waiting_one_of_the_same_contributor()
+        {
+            SubmissionRecord halfApproved = Record(10, state: SubmissionState.Approved);
+
+            IReadOnlyList<SubmissionRecord> waiting =
+            [
+                halfApproved,
+                Record(3),
+                Record(11),
+                Record(12),
+                Record(13, email: "someone@example.com"),
+                Record(14, boardId: "Commodore/C64/250407"),
+                Record(15, state: SubmissionState.Merged),
+            ];
+
+            Assert.Equal(12, SubmissionReplacementRules.NewerFromSameContributor(halfApproved, waiting)?.Id);
+        }
+
+        [Fact]
+        public void A_submission_with_no_newer_one_or_no_longer_waiting_has_none()
+        {
+            SubmissionRecord newest = Record(12);
+
+            Assert.Null(SubmissionReplacementRules.NewerFromSameContributor(newest, [Record(10), newest]));
+            Assert.Null(SubmissionReplacementRules.NewerFromSameContributor(Record(10, state: SubmissionState.Merged), [Record(12)]));
+        }
     }
 }

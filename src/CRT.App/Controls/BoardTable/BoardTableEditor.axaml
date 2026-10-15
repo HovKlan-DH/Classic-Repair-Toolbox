@@ -62,6 +62,15 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
 			<Setter Property="VerticalAlignment" Value="Center" />
 			<Setter Property="Cursor" Value="Hand" />
+			<!-- Reachable with Tab, and Enter or Space toggles it like a click (code review,
+			     2026-10-13) - the filter the whole table workflow turns on was mouse-only. -->
+			<Setter Property="Focusable" Value="True" />
+		</Style>
+
+		<!-- Where the keyboard is: a ring outside the pill, so it never changes the pill's own
+		     outline, which says Empty or Selected. -->
+		<Style Selector="Border.LegendPill:focus-visible">
+			<Setter Property="BoxShadow" Value="0 0 0 2 #3B82F6" />
 		</Style>
 
 		<Style Selector="Border.LegendPill.Added">
@@ -353,14 +362,13 @@
 						Content="Reload"
 						ToolTip.Tip="Read the draft again from its file, for example after editing it in Excel"
 						Click="OnReloadClick" />
-				<!-- The same red as the Drafts row's "Discard" button (owner request,
-				     2026-09-24), so the one button that writes the draft stands out. Disabled - and
-				     therefore greyed by the theme - while there is nothing to save. -->
+				<!-- Green, the Accept colour (owner decision, 2026-10-13 - it was the red of the Drafts
+				     row's "Discard" from 2026-09-24, so the one button that writes the draft stood out,
+				     but red now means only "throws away"). Disabled - and therefore greyed by the
+				     theme - while there is nothing to save. -->
 				<Button x:Name="SaveButton"
+						Classes="Accept"
 						Content="Save changes"
-						Foreground="{DynamicResource Button_Cancel_Fg}"
-						Background="{DynamicResource Button_Cancel_Bg}"
-						BorderBrush="{DynamicResource Button_Cancel_Border}"
 						ToolTip.Tip="Write your edits into the draft"
 						Click="OnSaveClick" />
 			</StackPanel>
@@ -371,10 +379,12 @@
 					     the "Insert row" buttons, as that can be moved afterwards"): the new row goes
 					     below the selected one, and its grip moves it anywhere. -->
 					<Button x:Name="InsertRowBelowButton"
+							Classes="Accept"
 							Content="Insert row"
 							ToolTip.Tip="Add an empty row below the selected one. Drag its grip to move it."
 							Click="OnInsertRowBelowClick" />
 					<Button x:Name="DeleteRowButton"
+							Classes="Danger"
 							Content="Delete row"
 							ToolTip.Tip="Remove the selected rows - Shift+click or Ctrl+click to select several. A published row stays visible in red, where it was. Ctrl+Z undoes it."
 							Click="OnDeleteRowClick" />
@@ -392,6 +402,7 @@
 					<Border x:Name="AddedPill"
 							Classes="LegendPill Added"
 							Tapped="OnLegendPillTapped"
+							KeyDown="OnLegendPillKeyDown"
 							ToolTip.Tip="Rows that are not in the published data (marked +). Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<TextBlock x:Name="AddedCountText" Classes="LegendCount" Text="0" />
@@ -401,6 +412,7 @@
 					<Border x:Name="ModifiedPill"
 							Classes="LegendPill Modified"
 							Tapped="OnLegendPillTapped"
+							KeyDown="OnLegendPillKeyDown"
 							ToolTip.Tip="Rows with at least one changed cell (marked ~). Hover an orange cell to see its published value. Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<TextBlock x:Name="ModifiedCountText" Classes="LegendCount" Text="0" />
@@ -410,6 +422,7 @@
 					<Border x:Name="DeletedPill"
 							Classes="LegendPill Deleted"
 							Tapped="OnLegendPillTapped"
+							KeyDown="OnLegendPillKeyDown"
 							ToolTip.Tip="Published rows your draft no longer has (marked -). Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<TextBlock x:Name="DeletedCountText" Classes="LegendCount" Text="0" />
@@ -426,6 +439,7 @@
 					<Border x:Name="ErrorsPill"
 							Classes="LegendPill Errors"
 							Tapped="OnLegendPillTapped"
+							KeyDown="OnLegendPillKeyDown"
 							ToolTip.Tip="Rows with an error (red corner) - something the server would refuse. Every error has to be fixed before the draft can be submitted. Hover the cell to see what is wrong. Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<Path Data="M0,0 L9,0 L0,9 Z"
@@ -438,6 +452,7 @@
 					<Border x:Name="WarningsPill"
 							Classes="LegendPill Warnings"
 							Tapped="OnLegendPillTapped"
+							KeyDown="OnLegendPillKeyDown"
 							ToolTip.Tip="Rows with a warning (amber corner) - worth a look, but nothing stops it being submitted. Hover the cell to see what it is. Click to show only these rows, and again to show every row.">
 						<StackPanel Orientation="Horizontal" Spacing="4">
 							<Path Data="M0,0 L9,0 L0,9 Z"
@@ -519,6 +534,15 @@
 					   TextWrapping="Wrap"
 					   Margin="0,0,0,6"
 					   IsVisible="False" />
+
+			<!-- The problems in the sheets, as text, while the Errors or Warnings pill is picked
+			     (BoardTableProblemWording.InSheets; code review, 2026-10-13) - a cell's corner mark
+			     alone could only be read by hovering it. Selectable, so a message can be copied. -->
+			<SelectableTextBlock x:Name="ProblemListText"
+								 TextWrapping="Wrap"
+								 Margin="0,0,0,6"
+								 FontSize="12"
+								 IsVisible="False" />
 
 			<!-- A search that finds nothing in ANY sheet (owner request, 2026-10-03) - the table
 			     then keeps only the sheet on screen, empty, and this says why

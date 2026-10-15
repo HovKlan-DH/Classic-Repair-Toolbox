@@ -254,7 +254,7 @@
 										<TextBlock x:Name="EditorLinksCountText" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
 									</WrapPanel>
 								</Border>
-								<Button Grid.Column="1" Content="Add link" FontSize="11" Padding="8,3" VerticalAlignment="Top" Click="OnAddLinkClick" />
+								<Button Classes="Accept" Grid.Column="1" Content="Add link" FontSize="11" Padding="8,3" VerticalAlignment="Top" Click="OnAddLinkClick" />
 							</Grid>
 							<ItemsControl x:Name="EditorLinksList">
 								<ItemsControl.ItemTemplate>
@@ -298,7 +298,7 @@
 								<Button Grid.Column="2" Classes="WorklogRowIconButton" Margin="2,0,6,0" Click="OnWorkDoneSortOldestFirstClick" ToolTip.Tip="Oldest first">
 									<TextBlock x:Name="WorkDoneSortOldestFirstIcon" Text="&#xf161;" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="12" />
 								</Button>
-								<Button Grid.Column="3" Content="Add work" FontSize="11" Padding="8,3" Click="OnAddWorkDoneClick" />
+								<Button Classes="Accept" Grid.Column="3" Content="Add work" FontSize="11" Padding="8,3" Click="OnAddWorkDoneClick" />
 							</Grid>
 							<ItemsControl x:Name="EditorWorkDoneList">
 								<ItemsControl.ItemTemplate>
@@ -338,7 +338,7 @@
 								<Button Grid.Column="2" Classes="WorklogRowIconButton" Margin="2,0,6,0" Click="OnCommentsSortOldestFirstClick" ToolTip.Tip="Oldest first">
 									<TextBlock x:Name="CommentsSortOldestFirstIcon" Text="&#xf161;" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="12" />
 								</Button>
-								<Button Grid.Column="3" Content="Add comment" FontSize="11" Padding="8,3" Click="OnAddCommentClick" />
+								<Button Classes="Accept" Grid.Column="3" Content="Add comment" FontSize="11" Padding="8,3" Click="OnAddCommentClick" />
 							</Grid>
 							<ItemsControl x:Name="EditorCommentsList">
 								<ItemsControl.ItemTemplate>
@@ -535,7 +535,7 @@
 									<TextBlock x:Name="EditorPhotosCountText" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
 								</WrapPanel>
 							</Border>
-							<Button Grid.Column="1" Content="Add photo" FontSize="11" Padding="8,3" VerticalAlignment="Top" Click="OnAddPhotoClick" />
+							<Button Classes="Accept" Grid.Column="1" Content="Add photo" FontSize="11" Padding="8,3" VerticalAlignment="Top" Click="OnAddPhotoClick" />
 						</Grid>
 						<ItemsControl x:Name="EditorPhotosList">
 							<ItemsControl.ItemTemplate>
@@ -672,7 +672,7 @@
 									<TextBlock x:Name="EditorFilesCountText" FontSize="11" Opacity="0.7" VerticalAlignment="Center" />
 								</WrapPanel>
 							</Border>
-							<Button Grid.Column="1" Content="Add file" FontSize="11" Padding="8,3" VerticalAlignment="Top" Click="OnAddFileClick" />
+							<Button Classes="Accept" Grid.Column="1" Content="Add file" FontSize="11" Padding="8,3" VerticalAlignment="Top" Click="OnAddFileClick" />
 						</Grid>
 						<ItemsControl x:Name="EditorFilesList">
 							<ItemsControl.ItemTemplate>
@@ -770,12 +770,10 @@
 					   IsVisible="False" />
 			<Button Content="Cancel" Padding="14,6" Click="OnCancelClick" />
 			<Button x:Name="EditorSaveButton"
+					Classes="Accept"
 					Content="Update worklog"
 					Padding="14,6"
 					IsEnabled="False"
-					Foreground="{DynamicResource Button_Ok_Fg}"
-					Background="{DynamicResource Button_Ok_Bg}"
-					BorderBrush="{DynamicResource Button_Ok_Border}"
 					Click="OnSaveClick" />
 		</StackPanel>
 	</Grid>

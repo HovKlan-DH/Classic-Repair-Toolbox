@@ -283,6 +283,99 @@ public sealed class DataChecksumManifestTests : IDisposable
         Assert.Empty(Directory.GetFiles(this.thisWorkspace.Root, "*.tmp_*"));
     }
 
+    // ###########################################################################################
+    // *** A REBUILD HASHES ONLY WHAT CHANGED (code review, 2026-10-13). *** Every publish rebuilt
+    // the manifest by hashing every file in the tree - gigabytes, to change the entries of the few
+    // files it wrote. A file whose length and write time are as they were is not read again; one
+    // that changed is, and its new checksum is what the manifest says.
+    // ###########################################################################################
+    [Fact]
+    public void A_second_rebuild_hashes_only_the_file_that_changed_and_lists_its_new_checksum()
+    {
+        // Written a while ago, so their stamps have settled (StampSettling) and may be trusted.
+        for (int index = 0; index < 5; index++)
+        {
+            string written = this.Write($"Commodore/C64/250407/file{index}.png", $"bytes {index}");
+            File.SetLastWriteTimeUtc(written, DateTime.UtcNow.AddMinutes(-5));
+        }
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+
+        string changed = this.Write("Commodore/C64/250407/file2.png", "these bytes are new and longer");
+        File.SetLastWriteTimeUtc(changed, DateTime.UtcNow.AddMinutes(1));
+
+        int before = DataChecksumManifest.FilesHashed;
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+
+        Assert.Equal(1, DataChecksumManifest.FilesHashed - before);
+
+        string json = File.ReadAllText(this.ManifestPath);
+        Assert.Contains(DataChecksumManifestTests.Sha256Of("these bytes are new and longer"), json, StringComparison.Ordinal);
+        Assert.Contains(DataChecksumManifestTests.Sha256Of("bytes 0"), json, StringComparison.Ordinal);
+        Assert.DoesNotContain(DataChecksumManifestTests.Sha256Of("bytes 2"), json, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // *** A STAMP IS TRUSTED ONLY ONCE SETTLED (code review, 2026-10-13). *** Two same-length writes
+    // inside one clock tick share a stamp: the manifest kept the first file's checksum, and every
+    // client's download of the file then failed to match. A file written moments ago is hashed
+    // afresh, whatever its stamp says.
+    // ###########################################################################################
+    [Fact]
+    public void A_same_length_rewrite_in_the_same_clock_tick_is_hashed_again()
+    {
+        string path = this.Write("Commodore/C64/250407/file.png", "bytes AAAA");
+        DateTime stamp = File.GetLastWriteTimeUtc(path);
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+
+        // Same length, same write time - only the bytes differ.
+        File.WriteAllText(path, "bytes BBBB");
+        File.SetLastWriteTimeUtc(path, stamp);
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+
+        string json = File.ReadAllText(this.ManifestPath);
+        Assert.Contains(DataChecksumManifestTests.Sha256Of("bytes BBBB"), json, StringComparison.Ordinal);
+        Assert.DoesNotContain(DataChecksumManifestTests.Sha256Of("bytes AAAA"), json, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // *** A HAND COPY IS PUBLISHED BY THE ADMINISTRATOR'S REBUILD (code review, 2026-10-14). *** The
+    // project owner copies files into a tree as root, and `cp -p` / `rsync -a` keep the source's
+    // write time - so a corrected file of the same length looks unchanged to the remembered
+    // checksums. The ordinary rebuild trusts them (pinned first, so the difference is the point);
+    // the administrator's rebuild, which exists for hand copies, reads every file again.
+    // ###########################################################################################
+    [Fact]
+    public void A_hand_copy_keeping_its_length_and_write_time_is_hashed_again_by_the_rebuild_that_hashes_every_file()
+    {
+        DateTime settled = DateTime.UtcNow.AddMinutes(-5);
+
+        string path = this.Write("Commodore/C64/250407/scan.png", "bytes AAAA");
+        File.SetLastWriteTimeUtc(path, settled);
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+
+        // Copied over by hand: same length, and the write time carried across.
+        File.WriteAllText(path, "bytes BBBB");
+        File.SetLastWriteTimeUtc(path, settled);
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+        Assert.Contains(DataChecksumManifestTests.Sha256Of("bytes AAAA"), File.ReadAllText(this.ManifestPath), StringComparison.Ordinal);
+
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath, hashEveryFile: true);
+
+        string json = File.ReadAllText(this.ManifestPath);
+        Assert.Contains(DataChecksumManifestTests.Sha256Of("bytes BBBB"), json, StringComparison.Ordinal);
+        Assert.DoesNotContain(DataChecksumManifestTests.Sha256Of("bytes AAAA"), json, StringComparison.Ordinal);
+
+        // What it read is remembered: the next ordinary rebuild says the same.
+        DataChecksumManifest.Write(this.DataRoot, DataChecksumManifestTests.BaseUrl, this.ManifestPath);
+        Assert.Contains(DataChecksumManifestTests.Sha256Of("bytes BBBB"), File.ReadAllText(this.ManifestPath), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_existing_manifest_is_REPLACED_rather_than_appended_to()
     {

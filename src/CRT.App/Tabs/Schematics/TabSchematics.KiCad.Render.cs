@@ -718,8 +718,10 @@ public partial class TabSchematics
             bool isSelectionDerivedNet = this.thisSelectedKiCadNormalizedNetNames.Contains(netInfo.Name);
             bool shouldBlinkThisNet = isLockedNet || isSelectionDerivedNet || isImportantSignalDerivedNet;
 
-            double blinkFactor = shouldBlinkThisNet ? this.thisCurrentHighlightBlinkFactor : 1.0;
-            double effectiveOpacity = Math.Clamp(translatedOpacity * blinkFactor, 0.0, 1.0);
+            // Built at full strength, blinking or not: the blink is the overlay's phase now
+            // (KiCadBlinkPhases below, ApplyBlinkPhase), so a tick builds nothing and the per-net
+            // cache's appearance stays the same from one tick to the next.
+            double effectiveOpacity = Math.Clamp(translatedOpacity, 0.0, 1.0);
 
             // Per-net, not global: hovering a component only changes pin-1 marking on that
             // component's own pads. See KiCadOverlayCacheKeys for why that distinction matters.
@@ -909,6 +911,11 @@ public partial class TabSchematics
                 AddPadPrimitive(netPrimitives, padNode.Pad, padBrush);
             }
 
+            if (shouldBlinkThisNet)
+            {
+                netPrimitives = KiCadBlinkPhases.Split(netPrimitives, firstPinBrush);
+            }
+
             this.thisKiCadNetPrimitiveCache.Store(netInfo.Id, appearance, netPrimitives);
             primitives.AddRange(netPrimitives);
         }
@@ -1014,8 +1021,10 @@ public partial class TabSchematics
             bool isSelectionDerivedNet = this.thisSelectedKiCadNormalizedNetNames.Contains(normalizedNetName);
             bool shouldBlinkThisNet = isLockedNet || isSelectionDerivedNet || isImportantSignalDerivedNet;
 
-            double blinkFactor = shouldBlinkThisNet ? this.thisCurrentHighlightBlinkFactor : 1.0;
-            double effectiveOpacity = Math.Clamp(translatedOpacity * blinkFactor, 0.0, 1.0);
+            // Full strength; a blinking net's wires are drawn in the blink's shown phase only
+            // (KiCadBlinkPhase.OnPhase) - at factor 0 they were drawn at opacity 0.
+            double effectiveOpacity = Math.Clamp(translatedOpacity, 0.0, 1.0);
+            var blinkPhase = shouldBlinkThisNet ? KiCadBlinkPhase.OnPhase : KiCadBlinkPhase.Always;
 
             IBrush strokeBrush = isHoveredNet && !shouldBlinkThisNet
                 ? new SolidColorBrush(overlayColor, 1.0)
@@ -1042,6 +1051,7 @@ public partial class TabSchematics
                 primitives.Add(new KiCadOverlayPrimitive
                 {
                     Kind = KiCadOverlayPrimitiveKind.Polyline,
+                    BlinkPhase = blinkPhase,
                     Points = localPoints,
                     Pen = pen
                 });

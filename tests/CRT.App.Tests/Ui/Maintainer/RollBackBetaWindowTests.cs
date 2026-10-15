@@ -259,11 +259,11 @@ public sealed class RollBackBetaWindowTests
                 RollBackBetaWindowTests.Plan(BetaRollbackKind.RemoveFromBeta));
 
             Assert.Contains(
-                "Remove this board from BETA",
+                "BETA no longer has this board",
                 window.FindControl<TextBlock>("HeadlineText")!.Text ?? string.Empty,
                 StringComparison.Ordinal);
 
-            Assert.Equal("Remove from BETA", window.FindControl<Button>("ConfirmButton")!.Content);
+            Assert.Equal("Push back and remove from BETA", window.FindControl<Button>("ConfirmButton")!.Content);
 
             window.Close();
         });

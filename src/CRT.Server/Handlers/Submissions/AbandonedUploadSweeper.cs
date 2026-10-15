@@ -31,6 +31,7 @@ namespace CRT.Server.Handlers.Submissions
 
         private readonly ISubmissionStore thisStore;
         private readonly BlobStore thisBlobs;
+        private readonly CRT.Server.Handlers.Accounts.IAccountStore? thisAccounts;
         private readonly ILogger<AbandonedUploadSweeper> thisLogger;
         private readonly TimeProvider thisTime;
         private readonly TimeSpan thisInterval;
@@ -38,8 +39,9 @@ namespace CRT.Server.Handlers.Submissions
         public AbandonedUploadSweeper(
             ISubmissionStore store,
             BlobStore blobs,
+            CRT.Server.Handlers.Accounts.IAccountStore accounts,
             ILogger<AbandonedUploadSweeper> logger)
-            : this(store, blobs, logger, TimeProvider.System, AbandonedUploadSweeper.Interval)
+            : this(store, blobs, logger, TimeProvider.System, AbandonedUploadSweeper.Interval, accounts)
         {
         }
 
@@ -50,7 +52,8 @@ namespace CRT.Server.Handlers.Submissions
             BlobStore blobs,
             ILogger<AbandonedUploadSweeper> logger,
             TimeProvider time,
-            TimeSpan interval)
+            TimeSpan interval,
+            CRT.Server.Handlers.Accounts.IAccountStore? accounts = null)
         {
             ArgumentNullException.ThrowIfNull(store);
             ArgumentNullException.ThrowIfNull(blobs);
@@ -62,6 +65,7 @@ namespace CRT.Server.Handlers.Submissions
             this.thisLogger = logger;
             this.thisTime = time;
             this.thisInterval = interval;
+            this.thisAccounts = accounts;
         }
 
         // ###########################################################################################
@@ -81,7 +85,8 @@ namespace CRT.Server.Handlers.Submissions
                         this.thisBlobs,
                         this.thisTime.GetUtcNow(),
                         this.thisLogger,
-                        stoppingToken);
+                        stoppingToken,
+                        this.thisAccounts);
                 }
                 while (await timer.WaitForNextTickAsync(stoppingToken));
             }
@@ -100,7 +105,8 @@ namespace CRT.Server.Handlers.Submissions
             BlobStore blobs,
             DateTimeOffset now,
             ILogger logger,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            CRT.Server.Handlers.Accounts.IAccountStore? accounts = null)
         {
             int collected;
 
@@ -161,8 +167,22 @@ namespace CRT.Server.Handlers.Submissions
                 logger,
                 cancellationToken);
 
+            // The rate limiter's counters a day old (code review, 2026-10-13; migration 0023) - every
+            // window it counts is far shorter, and the audit trail keeps its own record of each.
+            if (accounts is not null)
+            {
+                await AbandonedUploadSweeper.RunGuardedAsync(
+                    "rate-limit counter",
+                    async () => await accounts.DeleteRateLimitEventsBeforeAsync(now - AbandonedUploadSweeper.RateLimitEventsKept, cancellationToken),
+                    logger,
+                    cancellationToken);
+            }
+
             return collected;
         }
+
+        // How long a rate-limit counter is kept - far past every window AuthRateLimitPolicy counts.
+        public static readonly TimeSpan RateLimitEventsKept = TimeSpan.FromDays(1);
 
         private static async Task RunGuardedAsync(
             string what,

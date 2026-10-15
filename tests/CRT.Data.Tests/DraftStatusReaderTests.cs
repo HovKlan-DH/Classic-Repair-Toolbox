@@ -69,7 +69,10 @@ public sealed class DraftStatusReaderTests : IDisposable
         File.WriteAllBytes(workbook, new byte[length]);
         File.SetLastWriteTimeUtc(workbook, written);
 
-        Assert.Equal(0, DraftStatusReader.CountChanges(status));
+        // A read that really parses now finds nothing (DescribeChanges reads uncached, for the
+        // window the contributor opened to look). CountChanges itself shares the stamped parse since
+        // 2026-10-13 (BoardReadsByStamp), so it is no longer the uncached witness here.
+        Assert.Empty(DraftStatusReader.DescribeChanges(status));
         Assert.Equal(2, DraftStatusReader.CountChangesCached(status));
     }
 

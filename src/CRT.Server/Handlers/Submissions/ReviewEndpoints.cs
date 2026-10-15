@@ -82,7 +82,55 @@ namespace CRT.Server.Handlers.Submissions
                 .WithBodyLimit(RequestBodyLimits.ManifestBytes);
             review.MapPost("/submissions/{submissionId:long}/reject", ReviewEndpoints.RejectAsync);
             review.MapPost("/submissions/{submissionId:long}/request-changes", ReviewEndpoints.RequestChangesAsync);
+
+            // What Account > "Server version" shows beside the public health answer - for a signed-in
+            // maintainer only (code review, 2026-10-13). See CRT.Data's ServerStatusAnswer.
+            review.MapGet("/server-status", ReviewEndpoints.GetServerStatusAsync);
         }
+
+        // ###########################################################################################
+        // GET /api/review/server-status - how many mails wait in the outbox (MailOutboxFlow). Any
+        // maintainer may ask: a decision mail that did not go is something every maintainer should
+        // know about, and the count says nothing more. Never on /api/health, which is public.
+        // ###########################################################################################
+        private static async Task<IResult> GetServerStatusAsync(
+            HttpContext context,
+            IAccountStore accounts,
+            IMailOutboxStore outbox,
+            CancellationToken cancellationToken)
+        {
+            (ReviewAccess? _, IResult? refusal) =
+                await ReviewEndpoints.AuthoriseAsync(context, accounts, cancellationToken);
+
+            if (refusal is not null)
+                return refusal;
+
+            int? unsent;
+
+            try
+            {
+                unsent = await outbox.CountAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Not knowing is said as not knowing - the entry then shows nothing about mail.
+                unsent = null;
+            }
+
+            return Results.Ok(new ServerStatusAnswer(unsent));
+        }
+
+        // ###########################################################################################
+        // The one 404 for a submission that is not there, with words (code review, 2026-10-13): CRT
+        // reads a refusal's `error` (ApiRefusal.Read), and a bodiless 404 showed nothing at all.
+        // ###########################################################################################
+        internal static IResult NoSuchSubmission() =>
+            Results.NotFound(new { error = "No such submission." });
+
+        // The 404 for a file a submission view asked for that is not there to give - one for unsafe,
+        // absent and out-of-scope alike, so the tree cannot be probed for what exists.
+        private static IResult NoSuchFile() =>
+            Results.NotFound(new { error = "That file is not available." });
 
         // ###########################################################################################
         // POST /api/review/submissions/{id}/approve
@@ -102,7 +150,9 @@ namespace CRT.Server.Handlers.Submissions
             ISubmissionStore submissions,
             ApprovePublishFlow approvals,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             ServerOptions options,
+            IEmailSender mailer,
             ILogger<ApprovePublishFlow> logger,
             CancellationToken cancellationToken)
         {
@@ -112,12 +162,14 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
+            // The version the maintainer's screen showed and their comment travel with the approval
+            // too (code review, 2026-10-13) - see ApproveChecks.
             ApproveOutcome outcome = await approvals.ApproveAsync(
                 submissionId,
                 access,
                 options.DataTreeRoot,
                 DateTimeOffset.UtcNow,
-                request?.ExpectedRemovals,
+                new ApproveChecks(request?.ExpectedRemovals, request?.ExpectedVersion, request?.Comment),
                 cancellationToken);
 
             if (outcome.IsPublished)
@@ -141,10 +193,12 @@ namespace CRT.Server.Handlers.Submissions
                 // forgetting. The publish is reported as the success it was, and the log says what
                 // went wrong afterwards.
                 // ###########################################################################################
+                // Not cancelled by the maintainer's client going away (code review, 2026-10-13): the
+                // publish has happened, and a manifest or mail skipped for that reason reaches nobody.
                 try
                 {
                     await ReviewEndpoints.AfterPublishAsync(
-                        submissionId, submissions, accounts, notifier, options, logger, cancellationToken);
+                        submissionId, submissions, accounts, notifier, publishLock, options, logger, CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
@@ -156,11 +210,18 @@ namespace CRT.Server.Handlers.Submissions
                         submissionId);
                 }
 
+                // A NEW board's creator becomes its maintainer (owner request, 2026-10-13) - after
+                // the contributor's own mail, and guarded the same way: the board is published.
+                string? maintainerNote = outcome.CreatedBoard
+                    ? await ReviewEndpoints.MakeCreatorMaintainerAsync(submissionId, access!, submissions, accounts, mailer, logger)
+                    : null;
+
                 return Results.Ok(new ReviewDecisionAnswer(
                     SubmissionState.Merged,
                     Revision: outcome.Descriptor!.Revision,
                     ContentHash: outcome.Descriptor.ContentHash,
-                    RemovedFiles: outcome.RemovedFiles));
+                    RemovedFiles: outcome.RemovedFiles,
+                    MaintainerNote: maintainerNote));
             }
 
             // ###########################################################################################
@@ -197,7 +258,7 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             if (outcome.IsNotFound)
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchSubmission();
 
             // 403 for "your account may not", 409 for "somebody else already decided", 400 for
             // everything else. They send a maintainer to completely different places, which is the
@@ -226,6 +287,7 @@ namespace CRT.Server.Handlers.Submissions
             ISubmissionStore submissions,
             IAccountStore accounts,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             ServerOptions options,
             ILogger logger,
             CancellationToken cancellationToken)
@@ -251,7 +313,7 @@ namespace CRT.Server.Handlers.Submissions
             // regeneration leaves the PREVIOUS manifest in place, so clients stay on what they
             // have until it is rebuilt - stale, but never inconsistent.
             // ###########################################################################################
-            ReviewEndpoints.RewriteBetaManifest(submissionId, options, logger);
+            await ReviewEndpoints.RewriteBetaManifestAsync(submissionId, options, publishLock, logger);
 
             // ###########################################################################################
             // *** THE MAIL COMES LAST, AFTER THE ONE IRREVERSIBLE OPERATION IN THE BOARD. ***
@@ -266,8 +328,9 @@ namespace CRT.Server.Handlers.Submissions
             // are nothing to do with whether a publish succeeded. A read here costs one query
             // on the rarest operation the service performs.
             //
-            // An approval usually carries no maintainer comment, which is exactly why the
-            // published template takes one as optional.
+            // An approval's comment is optional, which is exactly why the published template takes
+            // one as optional; when the maintainer wrote one it is on the row (DecisionComment,
+            // since 2026-10-13) and the mail quotes it.
             // ###########################################################################################
             SubmissionRecord? published =
                 await submissions.FindAsync(submissionId, cancellationToken);
@@ -285,16 +348,55 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
+        // NewBoardMaintainerFlow, after a new board's publish: never fails the request, and not
+        // cancelled by the maintainer's client going away - the board is already published. A fault
+        // is logged and the approver is told to add the maintainer by hand.
+        // ###########################################################################################
+        private static async Task<string> MakeCreatorMaintainerAsync(
+            long submissionId,
+            ReviewAccess approver,
+            ISubmissionStore submissions,
+            IAccountStore accounts,
+            IEmailSender mailer,
+            ILogger logger)
+        {
+            try
+            {
+                SubmissionRecord? published = await submissions.FindAsync(submissionId, CancellationToken.None);
+
+                if (published is null)
+                    return NewBoardMaintainerWording.Failed;
+
+                string note = await NewBoardMaintainerFlow.MakeCreatorMaintainerAsync(
+                    published, approver, accounts, submissions, mailer, DateTimeOffset.UtcNow, CancellationToken.None);
+
+                logger.LogInformation("New board of submission {SubmissionId}: {Note}", submissionId, note);
+
+                return note;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Submission {SubmissionId} published a new board, but its creator could not be made its maintainer.", submissionId);
+
+                return NewBoardMaintainerWording.Failed;
+            }
+        }
+
+        // ###########################################################################################
         // BETA's dataChecksums.json, rewritten after a publish into BETA - see AfterPublishAsync for
         // why it must happen and must never fail the publish. Also called after a change published
         // from the Boards screen (BoardEndpoints), which goes into BETA the same way.
+        //
+        // Under the publish lock and off the request thread since the code review of 2026-10-13 -
+        // see ManifestRewrite.
         // ###########################################################################################
-        internal static void RewriteBetaManifest(long submissionId, ServerOptions options, ILogger logger)
+        internal static async Task RewriteBetaManifestAsync(long submissionId, ServerOptions options, PublishLock publishLock, ILogger logger)
         {
-            int written = DataChecksumManifest.Write(
-                options.DataTreeRoot ?? string.Empty,
-                options.PublicDataBaseUrl ?? string.Empty,
-                options.ManifestPath ?? string.Empty);
+            int written = await ManifestRewrite.RewriteAsync(
+                publishLock,
+                options.DataTreeRoot,
+                options.PublicDataBaseUrl,
+                options.ManifestPath);
 
             if (written < 0)
             {
@@ -328,6 +430,7 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             ISubmissionStore submissions,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             CancellationToken cancellationToken)
         {
             return ReviewEndpoints.DecideAsync(
@@ -337,6 +440,7 @@ namespace CRT.Server.Handlers.Submissions
                 accounts,
                 submissions,
                 notifier,
+                publishLock,
                 SubmissionState.Rejected,
                 ReviewDecisionRules.CanReject,
                 cancellationToken);
@@ -356,6 +460,7 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             ISubmissionStore submissions,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             CancellationToken cancellationToken)
         {
             return ReviewEndpoints.DecideAsync(
@@ -365,6 +470,7 @@ namespace CRT.Server.Handlers.Submissions
                 accounts,
                 submissions,
                 notifier,
+                publishLock,
                 SubmissionState.ChangesRequested,
                 ReviewDecisionRules.CanRequestChanges,
                 cancellationToken);
@@ -382,7 +488,8 @@ namespace CRT.Server.Handlers.Submissions
         // button on a submission it believes is still pending, and that belief can be seconds out
         // of date - another maintainer may have decided it in the meantime. The check here is the
         // one that counts, and it is why ReviewDecisionRules takes the state rather than trusting
-        // the caller to have looked.
+        // the caller to have looked. Since the code review of 2026-10-13 it is ReviewDecisionFlow's
+        // - under the publish lock, with the version the maintainer saw and a conditional write.
         // ###########################################################################################
         private static async Task<IResult> DecideAsync(
             long submissionId,
@@ -391,8 +498,9 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             ISubmissionStore submissions,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             string newState,
-            DecisionRule rule,
+            ReviewDecisionFlow.DecisionRule rule,
             CancellationToken cancellationToken)
         {
             (ReviewAccess? access, IResult? refusal) =
@@ -401,35 +509,24 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
-            SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
+            DecisionOutcome decided = await ReviewDecisionFlow.DecideAsync(
+                access, submissionId, request, newState, rule, submissions, publishLock, DateTimeOffset.UtcNow, cancellationToken);
 
-            if (record is null)
-                return Results.NotFound();
+            if (decided.IsNotFound)
+                return ReviewEndpoints.NoSuchSubmission();
 
-            if (!rule(access, record, out string why))
-            {
-                // 409, not 403: the account may well be allowed to review THIS board, and what
-                // is wrong is the SUBMISSION's state - somebody else decided it first. A 403
-                // would send the maintainer looking at their own permissions for a conflict that is
-                // about timing.
-                return ReviewAuthority.CanReview(access, record)
-                    ? Results.Conflict(new { error = why })
-                    : Results.Json(new { error = why }, statusCode: StatusCodes.Status403Forbidden);
-            }
+            // 409, not 403, for a conflict: the account may well be allowed to review THIS board,
+            // and what is wrong is the SUBMISSION's state or version - somebody else got there first.
+            if (decided.IsForbidden)
+                return Results.Json(new { error = decided.Error }, statusCode: StatusCodes.Status403Forbidden);
 
-            // *** THE REASON IS REQUIRED FOR BOTH OF THESE OUTCOMES. *** Contributors have no
-            // account, so the contact email and this message are the entire feedback channel. A
-            // rejection with no reason is indistinguishable from being ignored.
-            if (!ReviewDecisionRules.IsUsableReason(request?.Comment, out string reasonProblem))
-                return Results.BadRequest(new { error = reasonProblem });
+            if (decided.IsConflict)
+                return Results.Conflict(new { error = decided.Error });
 
-            await submissions.SetDecisionAsync(
-                submissionId,
-                newState,
-                access!.Account.Id,
-                request!.Comment!.Trim(),
-                DateTimeOffset.UtcNow,
-                cancellationToken);
+            if (!decided.IsDecided)
+                return Results.BadRequest(new { error = decided.Error });
+
+            SubmissionRecord record = decided.Submission!;
 
             // ###########################################################################################
             // *** AFTER the decision is recorded, and it cannot fail this request. ***
@@ -446,14 +543,11 @@ namespace CRT.Server.Handlers.Submissions
                 record,
                 accounts,
                 newState,
-                request.Comment!.Trim(),
-                cancellationToken: cancellationToken);
+                decided.Comment,
+                cancellationToken: CancellationToken.None);
 
             return Results.Ok(new ReviewDecisionAnswer(newState));
         }
-
-        // The shape of "may this account do this to this submission".
-        private delegate bool DecisionRule(ReviewAccess? access, SubmissionRecord? submission, out string reason);
 
         // What a maintainer sends with a decision, and with an amendment, are CRT.Data's
         // ReviewDecisionRequest and AmendRequest (ReviewApiContract) - built by the review
@@ -481,15 +575,18 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
 
             if (record is null)
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchSubmission();
 
             if (!ReviewAuthority.CanReview(access, record))
                 return ReviewEndpoints.NotMaintainerOf(access, record);
 
             SubmissionManifest? manifest = await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
+            // 409, as the Files view answers the same thing (code review, 2026-10-13: it was 400
+            // here) - the request was fine, the submission's stored contents are not. CRT 3.0.0 reads
+            // both codes alike for this route: a failure carrying the server's own words.
             if (manifest is null)
-                return Results.BadRequest(new { error = "This submission's contents could not be loaded." });
+                return Results.Conflict(new { error = "This submission's contents could not be loaded." });
 
             BoardData? published = await publishedBoards.TryReadAsync(options.DataTreeRoot ?? string.Empty, manifest, cancellationToken);
             SubmissionAmendment? latest = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken);
@@ -538,7 +635,7 @@ namespace CRT.Server.Handlers.Submissions
                 return Results.Ok(new AmendAnswer(outcome.Version, outcome.Findings));
 
             if (outcome.IsNotFound)
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchSubmission();
 
             if (outcome.IsForbidden)
                 return Results.Json(new { error = outcome.Error }, statusCode: StatusCodes.Status403Forbidden);
@@ -587,10 +684,10 @@ namespace CRT.Server.Handlers.Submissions
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
             if (!ReviewAssetLocator.IsSubmittedBlobAllowed(manifest, hash))
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchFile();
 
             if (!blobs.TryGetReadablePath(hash, out string path))
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchFile();
 
             // The NAME is taken from the manifest entry, not from the request, so the content type
             // is decided by what the submission says this file is rather than by anything the
@@ -653,7 +750,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 // One 404 for unsafe, absent and out-of-scope alike. Distinguishing them would let
                 // the tree be probed for what exists.
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchFile();
             }
 
             return ReviewEndpoints.FileResult(resolved, path);
@@ -718,8 +815,9 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return refusal;
 
+            // A maintainer's own boards, filtered in the query (code review, 2026-10-13).
             IReadOnlyList<SubmissionRecord> queued =
-                await submissions.GetQueueAsync(ReviewEndpoints.DefaultQueueLimit, cancellationToken);
+                await ReviewQueueFlow.ReadAsync(access!, submissions, ReviewEndpoints.DefaultQueueLimit, cancellationToken);
 
             return Results.Ok(await ReviewQueueFlow.BuildAsync(
                 access!, queued, options.DataTreeRoot, submissions, accounts, cancellationToken));
@@ -750,13 +848,16 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
 
             if (record is null)
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchSubmission();
 
             if (!ReviewAuthority.CanReview(access, record))
                 return ReviewEndpoints.NotMaintainerOf(access, record);
 
-            SubmissionManifest? manifest =
-                await submissions.LoadPayloadAsync(submissionId, cancellationToken);
+            // As the approval will read it - a file the contributor left as published stays as it is
+            // published now (SubmissionLeftAsPublished, code review 2026-10-13) - so the screen
+            // shows what approving will do.
+            SubmissionManifest? manifest = await SubmissionLeftAsPublished.LoadAsync(
+                submissions, submissionId, options.DataTreeRoot, cancellationToken);
 
             ReviewComparison comparison = await ReviewEndpoints.SummariseAsync(
                 manifest,
@@ -778,6 +879,22 @@ namespace CRT.Server.Handlers.Submissions
             ApprovalStatus approval = await ApprovePublishFlow.ApprovalStatusAsync(
                 access, record, touchesSharedFiles, submissions, accounts, cancellationToken);
 
+            SubmissionAmendment? latestAmendment = await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken);
+
+            // Made from older data than BETA has now? Against the revision the queue row is judged
+            // against too (ReviewQueueFlow.BetaRevisionOf) - so the row and this detail never part.
+            BoardRecord? board = await submissions.FindBoardAsync(record.BoardId, cancellationToken);
+
+            bool? basedOnOlder = ReviewQueueFlow.IsBasedOnOlderRevision(
+                record.BaseRevision,
+                ReviewQueueFlow.BetaRevisionOf(PublishedBoardLocator.LocateBoard(options.DataTreeRoot, record.BoardId), board));
+
+            // The same contributor's newer submission waiting beside this one (owner decision,
+            // 2026-10-13) - from this board's own queue, as the queue list judges it.
+            SubmissionRecord? newer = SubmissionReplacementRules.NewerFromSameContributor(
+                record,
+                await submissions.GetQueueForBoardsAsync([record.BoardId], ReviewEndpoints.DefaultQueueLimit, cancellationToken));
+
             // CRT.Data's SubmissionDetailAnswer (2026-10-04 - an anonymous object with these same
             // fields until then), which ReviewWireContractTests reads back through the real parser.
             return Results.Ok(new SubmissionDetailAnswer(
@@ -793,7 +910,10 @@ namespace CRT.Server.Handlers.Submissions
                     record with { TouchesSharedFiles = touchesSharedFiles },
                     isNewBoard: comparison.Changes?.IsNewBoard,
                     awaitsYou: canPublish && approval.CanApprove,
-                    draftDiscardedUtc: discarded.TryGetValue(record.Id, out DateTimeOffset discardedUtc) ? discardedUtc : null),
+                    draftDiscardedUtc: discarded.TryGetValue(record.Id, out DateTimeOffset discardedUtc) ? discardedUtc : null,
+                    amendmentVersion: latestAmendment?.Version ?? 0,
+                    basedOnOlderRevision: basedOnOlder,
+                    newerFromSameContributor: newer),
                 Manifest: manifest,
 
                 // Who sent it, and how their other submissions went - CRT.Data's
@@ -830,7 +950,7 @@ namespace CRT.Server.Handlers.Submissions
                 Removals: comparison.Removals,
 
                 // Whether a maintainer changed it in the Maintainer tab, and who last did.
-                Amendment: await submissions.GetLatestAmendmentAsync(submissionId, cancellationToken) is SubmissionAmendment latest
+                Amendment: latestAmendment is SubmissionAmendment latest
                     ? new SubmissionAmendmentFact(latest.Version, latest.By, latest.AtUtc)
                     : null));
         }
@@ -862,12 +982,13 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
 
             if (record is null)
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchSubmission();
 
             if (!ReviewAuthority.CanReview(access, record))
                 return ReviewEndpoints.NotMaintainerOf(access, record);
 
-            SubmissionManifest? manifest = await submissions.LoadPayloadAsync(submissionId, cancellationToken);
+            SubmissionManifest? manifest = await SubmissionLeftAsPublished.LoadAsync(
+                submissions, submissionId, options.DataTreeRoot, cancellationToken);
 
             if (manifest is null || string.IsNullOrWhiteSpace(options.DataTreeRoot))
                 return Results.Conflict(new { error = "This submission's contents could not be loaded, so there are no files to show." });
@@ -1211,7 +1332,7 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? record = await submissions.FindAsync(submissionId, cancellationToken);
 
             if (record is null)
-                return Results.NotFound();
+                return ReviewEndpoints.NoSuchSubmission();
 
             return ReviewAuthority.CanReview(access, record)
                 ? null

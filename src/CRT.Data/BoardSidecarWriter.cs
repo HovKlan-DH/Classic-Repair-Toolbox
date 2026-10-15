@@ -175,6 +175,14 @@ namespace Handlers.DataHandling
                 return false;
             }
 
+            // A highlights root that is not an object reads as "no highlights" - and would then
+            // compare equal to a board with none, leaving the broken file in place (code review,
+            // 2026-10-13). Not the same content: written afresh.
+            if (existing[BoardSidecarWriter.HighlightsRoot] is not (null or JsonObject))
+            {
+                return false;
+            }
+
             var existingCalibrations = new List<KiCadCalibrationEntry>();
 
             if (existing[BoardSidecarWriter.CalibrationRoot] is JsonObject calibrationRoot)

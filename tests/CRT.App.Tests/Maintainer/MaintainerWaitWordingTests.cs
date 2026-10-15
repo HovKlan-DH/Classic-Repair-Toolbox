@@ -92,8 +92,8 @@ public sealed class MaintainerWaitWordingTests
 
     // A delete is judged by whether the board is still in the boards list (2026-10-03).
     [Theory]
-    [InlineData(false, "but it did finish: Commodore/C64/999999 is deleted.")]
-    [InlineData(true, "and Commodore/C64/999999 is still there.")]
+    [InlineData(false, "but it did finish: Commodore / C64 / 999999 is deleted.")]
+    [InlineData(true, "and Commodore / C64 / 999999 is still there.")]
     public void A_delete_is_judged_by_whether_the_board_is_still_listed(bool stillListed, string expected)
     {
         Assert.Contains(expected, MaintainerWaitWording.DeleteAfterTimeout("Commodore/C64/999999", stillListed), StringComparison.Ordinal);
@@ -126,11 +126,68 @@ public sealed class MaintainerWaitWordingTests
     [Fact]
     public void The_wait_sentences_name_what_is_happening()
     {
-        Assert.Equal("Opening the submission to Commodore/C64/250407...", MaintainerWaitWording.OpeningSubmission("Commodore/C64/250407"));
+        Assert.Equal("Opening the submission to Commodore / C64 / 250407...", MaintainerWaitWording.OpeningSubmission("Commodore/C64/250407"));
         Assert.Equal("Removing 1 unused file...", MaintainerWaitWording.RemovingUnusedFiles(1));
         Assert.Equal("Removing 12 unused files...", MaintainerWaitWording.RemovingUnusedFiles(12));
-        Assert.Equal("Adding Dennis as a maintainer of Commodore/C64/250407...", MaintainerWaitWording.AddingMaintainer("Dennis", "Commodore/C64/250407"));
+        Assert.Equal("Adding Dennis as a maintainer of Commodore / C64 / 250407...", MaintainerWaitWording.AddingMaintainer("Dennis", "Commodore/C64/250407"));
         Assert.DoesNotContain("Working", MaintainerWaitWording.ReadingQueue, StringComparison.Ordinal);
+    }
+
+    // A click that failed in CRT itself (HandlerGuard) says what failed, points at the log, and
+    // keeps its punctuation whatever the exception's message ends in.
+    [Theory]
+    [InlineData("The list was not where it was expected.", "Something went wrong in CRT: The list was not where it was expected. The details are in CRT's log file.")]
+    [InlineData("  Object reference not set  ", "Something went wrong in CRT: Object reference not set. The details are in CRT's log file.")]
+    [InlineData("", "Something went wrong in CRT: an error with no description. The details are in CRT's log file.")]
+    [InlineData(null, "Something went wrong in CRT: an error with no description. The details are in CRT's log file.")]
+    public void A_failure_in_CRT_itself_says_what_failed_and_where_the_details_are(string? detail, string expected)
+    {
+        Assert.Equal(expected, MaintainerWaitWording.Unexpected(detail));
+    }
+
+    // ###########################################################################################
+    // *** EVERY SENTENCE NAMING A BOARD NAMES IT AS THE LISTS DO (code review, 2026-10-13). *** The
+    // waits said "Commodore/C64/250407" while every list said "Commodore / C64 / 250407" - one board,
+    // two spellings on one screen. Each wait and after-timeout sentence that takes a board, here
+    // and in the decision's wait.
+    // ###########################################################################################
+    [Fact]
+    public void Every_wait_names_the_board_as_the_lists_do()
+    {
+        const string id = "Commodore/C64/250407";
+
+        string[] sentences =
+        [
+            MaintainerWaitWording.OpeningSubmission(id),
+            MaintainerWaitWording.ReadingBoard(id),
+            MaintainerWaitWording.ReadingBoardTable(id),
+            MaintainerWaitWording.ReadingBoardFiles(id),
+            MaintainerWaitWording.ReadingSubmissionFiles(id),
+            MaintainerWaitWording.ReadingProductionPlan(id),
+            MaintainerWaitWording.ReadingRollbackPlan(id),
+            MaintainerWaitWording.SavingPlacement(id),
+            MaintainerWaitWording.AddingMaintainer("Dennis", id),
+            MaintainerWaitWording.RemovingMaintainer("Dennis", id),
+            MaintainerWaitWording.Inviting("new@example.com", id),
+            MaintainerWaitWording.ReadingDeletionPlan(id),
+            MaintainerWaitWording.DeletingBoard(id),
+            MaintainerWaitWording.PublishAfterTimeout(id, stillInBeta: true),
+            MaintainerWaitWording.PushBackAfterTimeout(id, stillInBeta: false),
+            MaintainerWaitWording.RejectAfterTimeout(id, stillInBeta: true),
+            MaintainerWaitWording.DeleteAfterTimeout(id, stillListed: true),
+            MaintainerWaitWording.PlacementAfterTimeout(id, saved: false),
+            ReviewDecisionWording.Waiting(ReviewDecisionKind.Approve, null, id),
+            ReviewDecisionWording.Waiting(ReviewDecisionKind.Reject, null, id),
+            ProductionDisplay.PushingBackWait(id),
+            ProductionDisplay.PublishingWait(id),
+            ProductionDisplay.RejectingWait(id)
+        ];
+
+        Assert.All(sentences, sentence =>
+        {
+            Assert.Contains("Commodore / C64 / 250407", sentence, StringComparison.Ordinal);
+            Assert.DoesNotContain(id, sentence, StringComparison.Ordinal);
+        });
     }
 
     // Nothing to read back: each says what to do next, never to repeat blindly.

@@ -6,11 +6,11 @@
 		<Authors>Dennis Helligsø</Authors>
 		<Copyright>©2025-2026</Copyright>
 		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
-		<AssemblyVersion>3.0.0</AssemblyVersion>
+		<AssemblyVersion>3.1.0</AssemblyVersion>
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-		<InformationalVersion>3.0.1-alpha.1</InformationalVersion>
+		<InformationalVersion>3.1.0-alpha.1</InformationalVersion>
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>
@@ -76,15 +76,15 @@
 </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.3" />
-	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.3" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.4" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
     <PackageReference Include="EPPlus" Version="8.7.1" />
-    <PackageReference Include="ProDataGrid" Version="12.1.0.4" />
-    <PackageReference Include="QuestPDF" Version="2026.9.0" />
+    <PackageReference Include="ProDataGrid" Version="12.1.0.6" />
+    <PackageReference Include="QuestPDF" Version="2026.9.1" />
     <!--
     DPAPI, for the Maintainer tab's remembered sign-in (Handlers/Maintainer/ReviewSessionProtection,
     moved here with the maintainer application on 2026-09-29). Windows-only by nature: the package
@@ -92,9 +92,9 @@
     which is why every call is guarded by OperatingSystem.IsWindows() and CRT simply declines to
     remember a maintainer session on other platforms rather than storing one in the clear.
     -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
-    <PackageReference Include="Velopack" Version="1.2.158" />
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.34.0.3385" PrivateAssets="all" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" PrivateAssets="all" />
   </ItemGroup>
 
   <!--

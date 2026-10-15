@@ -15,6 +15,20 @@ namespace CRT.Data.Tests
     // ###########################################################################################
     public sealed class PublishedTreeViewTests
     {
+        // The published file's length beside its hash (code review, 2026-10-13) - unknown without a
+        // size answer, and for a blank path.
+        [Fact]
+        public void A_view_says_a_files_size_when_it_was_given_one_and_null_otherwise()
+        {
+            var sized = new PublishedTreeView(_ => "abc", _ => null, path => path == "a/b.png" ? 42 : null);
+            var unsized = new PublishedTreeView(_ => "abc", _ => null);
+
+            Assert.Equal(42, sized.SizeOf("a/b.png"));
+            Assert.Null(sized.SizeOf("a/c.png"));
+            Assert.Null(sized.SizeOf(" "));
+            Assert.Null(unsized.SizeOf("a/b.png"));
+        }
+
         // A tree built from relative file paths; folders are implied by them.
         internal static PublishedTreeView TreeOf(params string[] files)
         {

@@ -20,14 +20,17 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
+    // A FILE holding "{}", not a missing one: LoadFrom on a missing file keeps the settings already
+    // loaded, so "Toggling_the_remember_per_board_checkbox_persists_the_setting" (which leaves
+    // detach on) failed whichever test of this class the random order ran next (2026-10-13).
     public TabConfigurationDetachThumbnailsTests()
     {
-        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile(Guid.NewGuid().ToString("N") + ".json", "{}"));
     }
 
     public void Dispose()
     {
-        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile(Guid.NewGuid().ToString("N") + ".json", "{}"));
         this.thisWorkspace.Dispose();
     }
 

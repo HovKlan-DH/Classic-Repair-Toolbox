@@ -47,7 +47,7 @@ namespace CRT
             {
                 if (string.Equals(button.Name, name, StringComparison.Ordinal))
                 {
-                    await this.ShowSectionAsync(section);
+                    await HandlerGuard.RunAsync(() => this.ShowSectionAsync(section), message => this.ShowMessage(message, isError: true));
                     return;
                 }
             }

@@ -164,27 +164,14 @@ namespace Handlers.MaintainerHandling
         ReviewChangeSummaryView? Changes,
         IReadOnlyList<ReviewFindingView> Findings,
 
-        // The files this submission carries, for task 4's visual comparison. Never null - an empty
-        // list is a rows-only change, which is the commonest contribution there is, and a null
-        // here would make every caller guard against a case that simply means "no files".
-        ReviewSubmissionAssets Assets,
-
-        // The files the PUBLISHED board references, which Assets is compared against. Supplied by
-        // the server rather than derived here - see ParsePublishedFiles.
-        IReadOnlyList<string> PublishedFiles,
-
-        // Path -> SHA-256 for the published files the submission also carries, so byte-identical
-        // pairs are dropped from the comparison. Empty when the server did not send it. See
-        // ParsePublishedHashes.
-        IReadOnlyDictionary<string, string> PublishedHashes,
-
-        // Schematic name to the image file it is drawn from, so a moved highlight can be put back
-        // on its own board. See ParseSchematicImages.
-        IReadOnlyDictionary<string, string> SchematicImages,
+        // *** NO assets, publishedFiles, publishedHashes OR schematicImages (code review, 2026-10-13). ***
+        // The server still sends them - released CRT 3.0.0 reads them - but they fed only the change
+        // summary retired on 2026-09-26 (its image pairs, file list and moved highlights), which was
+        // deleted with them; an unknown field is ignored (ReviewApiContract.WireSettings' rule).
 
         // Every submitted file with whose it is, whether a row uses it and what is published at
-        // its path now - what ReviewFileComparison lists. Empty when the server did not send it.
-        // See ParseSubmittedFiles.
+        // its path now - the Files view's count (SubmissionViews.ChangingFiles) and the table's file
+        // cards read it. Empty when the server did not send it. See ParseSubmittedFiles.
         IReadOnlyList<SubmittedFileFact> SubmittedFiles,
 
         // Who must approve, who has, and what this account's approval would do - CRT.Data's
@@ -271,11 +258,14 @@ namespace Handlers.MaintainerHandling
     // WaitingFor is filled when an approval was recorded but did not publish - the first of the
     // two a shared-file change needs (2026-09-25).
     // RemovedFiles: what a publishing approval removed from the BETA data because nothing used it.
+    // MaintainerNote: for the approval that created a board, what became of its creator as its
+    // maintainer - the server's sentence (2026-10-13).
     public sealed record ReviewDecisionResult(
         string State,
         string Revision,
         IReadOnlyList<ApproverRole>? WaitingFor = null,
-        IReadOnlyList<string>? RemovedFiles = null);
+        IReadOnlyList<string>? RemovedFiles = null,
+        string? MaintainerNote = null);
 
     // ###########################################################################################
     // One field that moved, as the maintainer reads it.
@@ -322,5 +312,24 @@ namespace Handlers.MaintainerHandling
         // When the contributor discarded their own draft of this board in CRT after sending it
         // (owner request, 2026-09-28) - CRT.Data's DraftDiscardContract. Null when they have not,
         // or from an older server.
-        DateTimeOffset? DraftDiscardedUtc = null);
+        DateTimeOffset? DraftDiscardedUtc = null,
+
+        // ###########################################################################################
+        // Its amendment version (code review, 2026-10-13) - 0 when nobody changed it in the table.
+        // Part of the row so another maintainer's amendment makes the row DIFFER, which is what reads
+        // the open submission again (TabMaintainer's queue check); and sent back with a decision so
+        // the server refuses one made on a version this screen never showed. Null from an older
+        // server, which then checks nothing.
+        // ###########################################################################################
+        int? AmendmentVersion = null,
+
+        // Made from older data than BETA holds now (2026-10-13) - the submission view says so above
+        // its views. Null when the server could not say.
+        bool? BasedOnOlderRevision = null,
+
+        // The same contributor's newer submission for this board, waiting beside this one (owner
+        // decision, 2026-10-13) - its number and when it was sent. Null when there is none, or from
+        // an older server.
+        long? NewerSubmissionId = null,
+        DateTimeOffset? NewerSubmissionUtc = null);
 }

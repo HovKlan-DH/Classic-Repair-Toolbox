@@ -62,7 +62,21 @@ namespace Handlers.MaintainerHandling
             $"Not saved: {(string.IsNullOrWhiteSpace(reason) ? "the server refused it." : reason)}";
 
         // ###########################################################################################
+        // The queue's line when the session ended under a table's changes not saved: `expired` when
+        // CRT saw the expiry itself, else the server refused the sign-in (signed out elsewhere,
+        // revoked, the account locked). Either way nothing can save the changes now, and the minute
+        // checks have stopped - so the line says what is left to do, once (code review, 2026-10-13).
+        // ###########################################################################################
+        public static string SessionEndedUnderUnsavedEdits(bool expired) =>
+            (expired ? "Your session has expired" : "The server no longer accepts your sign-in") +
+            ", so the changes in the table can no longer be saved. Copy anything you need, then sign out and in again to carry on.";
+
+        // ###########################################################################################
         // The line on the submission view once a maintainer has changed it. Null when nobody has.
+        //
+        // The date is CRT's one way of writing a date ("2026-October-4", SubmissionReceiptPresenter
+        // .FormatDate) - it was the one "2026-10-04 14:12" in the tab (code review, 2026-10-13) - with
+        // the time after it, since two changes on one day are told apart by it.
         // ###########################################################################################
         public static string? AmendedLine(ReviewAmendmentView? amendment)
         {
@@ -70,7 +84,7 @@ namespace Handlers.MaintainerHandling
                 return null;
 
             string when = amendment.AtUtc is DateTimeOffset at
-                ? " on " + at.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)
+                ? " on " + SubmissionReceiptPresenter.FormatDate(at) + " at " + at.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture)
                 : string.Empty;
 
             string by = string.IsNullOrWhiteSpace(amendment.By) ? "a maintainer" : amendment.By;

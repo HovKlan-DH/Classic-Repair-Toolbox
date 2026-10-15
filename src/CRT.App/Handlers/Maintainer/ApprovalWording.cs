@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Handlers.DataHandling;
 
@@ -82,9 +83,69 @@ namespace Handlers.MaintainerHandling
             return $"Waiting for {ApprovalWording.Names(status.WaitingFor)}";
         }
 
+        // ###########################################################################################
+        // *** WHICH OTHER BOARDS SEE A REPLACED SHARED FILE (code review, 2026-10-13). *** The two
+        // approvers of a shared-file replacement decided without being told which boards cite the
+        // file - "other boards may use" and nothing more. The server names them on each replaced
+        // shared file of the submission's file tree (BoardFileEntry.AlsoUsedBy); this is the one line
+        // for the approval status: "Also used by 3 other boards: Commodore / C64 / 250407, ...". Null
+        // when no file names any.
+        // ###########################################################################################
+        public static string? AlsoUsedByLine(IEnumerable<BoardFileEntry>? files)
+        {
+            List<string> boards = (files ?? [])
+                .Where(file => file is not null)
+                .SelectMany(file => file.AlsoUsedBy ?? [])
+                .Where(board => !string.IsNullOrWhiteSpace(board))
+                .Select(board => board.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToList();
+
+            if (boards.Count == 0)
+                return null;
+
+            string count = boards.Count == 1 ? "1 other board" : $"{boards.Count} other boards";
+
+            return $"Also used by {count}: {string.Join(", ", boards)}.";
+        }
+
+        // The status line with the boards line after it - either alone when the other is missing.
+        public static string? WithAlsoUsedBy(string? statusLine, string? alsoUsedByLine) =>
+            statusLine is null ? alsoUsedByLine
+            : alsoUsedByLine is null ? statusLine
+            : $"{statusLine} {alsoUsedByLine}";
+
         public static bool CanApprove(ApprovalStatus? status) => status is null || status.CanApprove;
 
-        public const string NotAMaintainer = "This account is not a maintainer of this board, so it cannot approve this. Ask the administrator.";
+        // Also the reason the submission's table is read-only for such an account (code review,
+        // 2026-10-13) - the server takes no change from it either - so it names both.
+        public const string NotAMaintainer = "This account is not a maintainer of this board, so it cannot approve or change this submission. Ask the administrator.";
+
+        // ###########################################################################################
+        // Above a submission made from an older revision of the board than BETA holds now (code review,
+        // 2026-10-13; ReviewQueueEntry.BasedOnOlderRevision) - in the amber panel of what to settle
+        // before approving. Rows published since the contributor's copy show as removed, and an
+        // approval would remove them.
+        // ###########################################################################################
+        public const string MadeFromOlderData =
+            "This was made from older data than BETA has now - rows published since may show as removed. Compare carefully.";
+
+        // ###########################################################################################
+        // Above a submission the same contributor has sent a NEWER one beside (owner decision,
+        // 2026-10-13; ReviewQueueEntry.NewerSubmissionId) - in the same amber panel. A submission a
+        // maintainer has amended, or approved once of two, is not replaced by the newer one, so both
+        // wait, and approving this one publishes the older work. Names the contributor's role, never
+        // "their" (owner rule).
+        // ###########################################################################################
+        public static string NewerFromSameContributor(long? newerId, DateTimeOffset? sentUtc)
+        {
+            string which = newerId is long id ? string.Create(CultureInfo.InvariantCulture, $" (#{id})") : string.Empty;
+            string when = sentUtc is DateTimeOffset sent ? $" on {SubmissionReceiptPresenter.FormatDate(sent)}" : string.Empty;
+
+            return $"The same contributor sent a newer submission for this board{when}{which}, which is waiting too. " +
+                "Approving this one publishes the older work - look at the newer one first.";
+        }
 
         // ###########################################################################################
         // What the maintainer is told after an approval that did NOT publish.

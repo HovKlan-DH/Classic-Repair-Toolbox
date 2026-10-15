@@ -187,6 +187,48 @@ public sealed class ReviewSessionStoreTests : IDisposable
         Assert.False(File.Exists(this.FilePath));
     }
 
+    // ###########################################################################################
+    // *** A SESSION WHOSE EXPIRY THE SERVER HAS SLID OUTLIVES THE LOGIN'S EXPIRY (code review,
+    // 2026-10-13). *** The file kept the expiry the login answered, so Recall threw a sign-in in daily
+    // use away 30 days after it was made. The tab now remembers it again, slid as the server slid
+    // it (ReviewSession.AfterUseAt) - and the launch after the login's own expiry still finds it.
+    // ###########################################################################################
+    [Fact]
+    public void A_session_whose_expiry_the_server_slid_is_recalled_after_the_logins_expiry()
+    {
+        ReviewSession signedIn = ReviewSessionStoreTests.Session(ReviewSessionStoreTests.Now.AddDays(30));
+        ReviewSessionStore.Remember(signedIn);
+
+        // Used on day 20: less than half the lifetime left, so the server slid it, and CRT with it.
+        ReviewSession slid = signedIn.AfterUseAt(ReviewSessionStoreTests.Now.AddDays(20));
+        Assert.Equal(ReviewSessionStoreTests.Now.AddDays(50), slid.ExpiresUtc);
+        ReviewSessionStore.Remember(slid);
+
+        ReviewSession? recalled = ReviewSessionStore.Recall(ReviewSessionStoreTests.Now.AddDays(40));
+
+        if (!ReviewSessionStore.IsSupported)
+        {
+            // Off Windows nothing is stored, deliberately. See the class header.
+            Assert.Null(recalled);
+            return;
+        }
+
+        Assert.NotNull(recalled);
+        Assert.Equal(ReviewSessionStoreTests.Now.AddDays(50), recalled!.ExpiresUtc);
+        Assert.Equal("a-very-secret-bearer-token", recalled.BearerToken);
+    }
+
+    // The line under "Sign in" where nothing is remembered - and none where a sign-in is (code
+    // review, 2026-10-13: IsSupported had no caller, so Linux and macOS were never told).
+    [Fact]
+    public void Where_a_sign_in_cannot_be_remembered_the_sign_in_screen_says_so()
+    {
+        Assert.Null(ReviewSessionStore.NotRememberedNote(isSupported: true));
+        Assert.Equal(
+            "CRT cannot remember your sign-in on this system, so you sign in each time CRT starts.",
+            ReviewSessionStore.NotRememberedNote(isSupported: false));
+    }
+
     [Fact]
     public void A_session_expiring_WITHIN_THE_MARGIN_is_refused()
     {

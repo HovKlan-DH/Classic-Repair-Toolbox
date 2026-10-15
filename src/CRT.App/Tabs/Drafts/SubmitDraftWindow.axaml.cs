@@ -36,6 +36,10 @@ namespace CRT
     public partial class SubmitDraftWindow : Window
     {
         private SubmissionIdentity? thisIdentity;
+
+        // The submission whose receipt a cancel would forget - set on the pool thread that sends,
+        // read when the contributor cancels (UnfinishedSubmission).
+        private readonly UnfinishedSubmission thisUnfinished = new();
         private BoardData? thisMergedData;
 
         // The signed-in maintainer this submission goes with, or null for the ordinary contributor
@@ -267,10 +271,32 @@ namespace CRT
                 this.Result = result;
                 this.ShowOutcome(result);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 // Cancelling is safe: an unfinalised submission is collected by the server after
-                // its upload window, and the draft is untouched.
+                // its upload window, and the draft is untouched. Only the CONTRIBUTOR'S cancel lands
+                // here (code review, 2026-10-13): a request that timed out is a TaskCanceledException
+                // too, and used to close the dialog without a word - it now reads as "could not be
+                // sent" below, and keeps its receipt.
+                //
+                // *** AND IT LEAVES NO RECEIPT (code review, 2026-10-13). *** The receipt is written
+                // before the first byte goes (so a crash still leaves one), and a cancelled send kept
+                // it: the row's badge read "Never finished sending" in red over the earlier, good
+                // submission, and days later "Expired before it was finished" arrived as news for
+                // something the contributor stopped on purpose. Only a CANCEL forgets it - a send
+                // that failed or was cut off keeps its receipt, which is exactly what it is for.
+                //
+                // *** NOT ONCE THE FINALISE REQUEST HAS GONE (code review, 2026-10-13). *** The server
+                // may queue the submission and mail the maintainers whatever the contributor presses
+                // after that, so its receipt stays - the status check then says what became of it
+                // (UnfinishedSubmission).
+                long unfinished = this.thisUnfinished.TakeForCancel();
+
+                if (unfinished > 0)
+                {
+                    SubmissionReceiptStore.Forget(unfinished);
+                }
+
                 this.Close();
             }
             catch (SubmissionRejectedException ex)
@@ -282,6 +308,20 @@ namespace CRT
                 this.ShowFailure(
                     "The submission could not be sent. Check your internet connection and try again - " +
                     "nothing has been lost, and your draft is unchanged.",
+                    []);
+            }
+            catch (Exception ex)
+            {
+                // *** NOTHING ELSE MAY LEAVE THIS HANDLER (code review, 2026-10-13). *** It is async
+                // void, and App's dispatcher handler lets an exception that escapes one take CRT
+                // down - mid-submit, with the dialog stuck on "Preparing contribution". A file the
+                // hashing cannot read (UnauthorizedAccessException is not an IOException) was the
+                // known way here; anything else is reported the same way and logged in full.
+                Logger.Critical($"Submitting a draft failed unexpectedly - [{ex}]");
+
+                this.ShowFailure(
+                    "Something unexpected stopped the submission. Nothing has been lost, and your draft is unchanged - " +
+                    "try again, and if it keeps happening, tell us through the Feedback tab.",
                     []);
             }
             finally
@@ -356,6 +396,7 @@ namespace CRT
             // Written before any byte is uploaded, so a crash mid-upload still leaves a receipt.
             // ###########################################################################################
             SubmissionReceiptStore.Record(this.NewReceipt(negotiation.SubmissionId, negotiation.UploadToken, DateTimeOffset.UtcNow));
+            this.thisUnfinished.Created(negotiation.SubmissionId);
 
             // Upload only what the server asked for.
             var byHash = manifest.Manifest.Files
@@ -406,11 +447,15 @@ namespace CRT
 
             progress.Report(new SubmissionProgress(SubmissionPhase.Finalising, done, done, totalBytes, totalBytes, null));
 
+            // From here the server may queue it, whatever is pressed: a cancel no longer forgets it.
+            this.thisUnfinished.FinaliseSending();
+
             SubmissionResult result = await client.FinaliseAsync(negotiation.SubmissionId, negotiation.UploadToken, token);
 
             // The receipt learns the state the server just confirmed, so the Drafts tab's badge says
             // it at once instead of "Not checked yet" until the next launch.
             SubmissionReceiptStore.RecordFinalised(result, DateTimeOffset.UtcNow);
+            this.thisUnfinished.Finished();
 
             return result;
         }
@@ -531,10 +576,16 @@ namespace CRT
             {
                 this.HeaderText.Text = "Contribution sent";
 
+                // *** THE TWO STEPS ARE SAID HERE, BEFORE THE FIRST ONE HAPPENS (code review,
+                // 2026-10-13). *** "Published to the BETA source" was otherwise the first the
+                // contributor heard of BETA - a green badge reading like "done" while their board
+                // looked unchanged and the draft stayed.
                 this.OutcomeText.Text =
-                    "Your contribution is queued for review. You will get an email when it has been " +
-                    "looked at.\n\nYour draft is untouched - keep using it as normal. It stays until " +
-                    "your work has been published.";
+                    "Your contribution is queued for review. You will get an email when a maintainer has " +
+                    "looked at it.\n\nIf it is accepted, it goes into the BETA source first, for a final check, " +
+                    "and then into the stable source that everyone downloads - you get an email at each step." +
+                    "\n\nYour draft is untouched - keep using it as normal. It tidies itself away once your work " +
+                    "is in the stable source.";
             }
             else
             {
@@ -703,8 +754,10 @@ namespace CRT
             this.Close();
         }
 
-        // Escape cancels. Enter does NOT submit: this dialog sends work to a public server, and a
-        // reflexive Enter while filling in the summary box should not do that.
+        // Escape cancels. Enter is not handled here: in "What did you change?" it starts a new line
+        // (the box accepts returns and handles it), so a reflexive Enter while writing the summary
+        // sends nothing; anywhere else it presses Submit, the default button, once the form is
+        // filled in (code review, 2026-10-13). SubmitDraftWindowKeyboardTests holds both.
         private void OnWindowPreviewKeyDown(object? sender, KeyEventArgs e)
         {
             if (e.Key == Key.Escape)

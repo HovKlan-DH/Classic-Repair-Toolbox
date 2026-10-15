@@ -11,10 +11,16 @@ namespace CRT.Server.Handlers.Accounts
     // guessed - so the limiter must be applied BEFORE the hasher runs, never after. That ordering
     // is the whole point and is easy to get backwards.
     //
-    // TWO INDEPENDENT BUCKETS, and both are needed:
+    // THREE INDEPENDENT BUCKETS, and all are needed:
     //
-    //   Per ACCOUNT (the normalised email) - stops someone working through a password list
-    //     against one known address, even from a rotating pool of addresses.
+    //   Per ACCOUNT AND ADDRESS (the normalised email, from one IP) - stops someone working through
+    //     a password list against one known address. The tight one: five in fifteen minutes.
+    //   Per ACCOUNT, from anywhere - the same list from a rotating pool of addresses. A clearly
+    //     HIGHER bar (code review, 2026-10-13): it used to be the tight one, so five wrong passwords
+    //     from ANYBODY locked the account for everybody for fifteen minutes - and the
+    //     administrator's address is printed at the foot of every mail the service sends. Now a
+    //     stranger's guesses lock out only the stranger's own address, and it takes many addresses
+    //     guessing at once to slow the real owner down.
     //   Per IP - stops someone spraying one common password across many accounts, which no
     //     per-account limit can see, since each individual account gets only one attempt.
     //
@@ -28,10 +34,20 @@ namespace CRT.Server.Handlers.Accounts
     // ###########################################################################################
     public static class AuthRateLimitPolicy
     {
-        // Five failures before a refusal. Generous enough that a genuinely forgotten password with
-        // three or four guesses does not trip it, small enough that an online guessing attack gets
-        // nowhere - at five per fifteen minutes, a thousand-password list takes over two days.
-        public const int MaxFailuresPerAccount = 5;
+        // Five failures for one account from one address before a refusal. Generous enough that a
+        // genuinely forgotten password with three or four guesses does not trip it, small enough
+        // that an online guessing attack from one address gets nowhere - at five per fifteen
+        // minutes, a thousand-password list takes over two days.
+        public const int MaxFailuresPerAccountAndAddress = 5;
+
+        // ###########################################################################################
+        // The account's own bar, whatever the addresses (code review, 2026-10-13) - five times the
+        // one above, so it takes at least five addresses guessing at once to reach it, and one
+        // stranger never does. At twenty-five per fifteen minutes a thousand-password list still
+        // takes ten hours, however many addresses carry it. Below the per-address bar, which covers
+        // a whole household or CGNAT range.
+        // ###########################################################################################
+        public const int MaxFailuresPerAccount = 25;
 
         // The window over which those failures are counted, and how long a refusal lasts.
         public static readonly TimeSpan AccountWindow = TimeSpan.FromMinutes(15);
@@ -52,19 +68,32 @@ namespace CRT.Server.Handlers.Accounts
         // ###########################################################################################
         // Decides whether a login attempt may proceed.
         //
-        // recentAccountFailures / recentAddressFailures: the times of failures already recorded
-        // inside the relevant window, oldest or newest order irrelevant.
+        // recentAccountAndAddressFailures / recentAccountFailures / recentAddressFailures: the times
+        // of failures already recorded inside the relevant window - for this account from this
+        // address, for this account from anywhere, and from this address for any account - oldest
+        // or newest order irrelevant.
         //
         // The verdict carries a RetryAfter so the endpoint can answer 429 with a meaningful
         // header rather than leaving the caller to guess.
         // ###########################################################################################
         public static RateLimitVerdict CheckLogin(
+            IReadOnlyList<DateTimeOffset> recentAccountAndAddressFailures,
             IReadOnlyList<DateTimeOffset> recentAccountFailures,
             IReadOnlyList<DateTimeOffset> recentAddressFailures,
             DateTimeOffset now)
         {
+            ArgumentNullException.ThrowIfNull(recentAccountAndAddressFailures);
             ArgumentNullException.ThrowIfNull(recentAccountFailures);
             ArgumentNullException.ThrowIfNull(recentAddressFailures);
+
+            RateLimitVerdict pairVerdict = AuthRateLimitPolicy.CheckBucket(
+                recentAccountAndAddressFailures,
+                AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress,
+                AuthRateLimitPolicy.AccountWindow,
+                now);
+
+            if (!pairVerdict.IsAllowed)
+                return pairVerdict;
 
             RateLimitVerdict accountVerdict = AuthRateLimitPolicy.CheckBucket(
                 recentAccountFailures,

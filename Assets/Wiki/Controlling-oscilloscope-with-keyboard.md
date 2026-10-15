@@ -35,8 +35,9 @@ A few things worth knowing:
 * The up/down arrow keys move the trigger level in steps of 0.25 V.
 * `+` and `-` step the time base to the next value in your scope's `TIME/DIV` list, and `1` and `2`
   only work when `1V` and `2V` are in its `VOLTS/DIV` list.
-* Capturing an image requires that you have chosen an **Image save folder** with **Select folder**
-  on the "Oscilloscope" tab first. The capture is shown in the window as a "User image", saved in
+* A capture is saved in the **Image save folder** on the "Oscilloscope" tab - an
+  `Oscilloscope images` folder beside CRT's data folder, unless you choose another with
+  **Select folder**. The capture is shown in the window as a "User image", saved in
   that folder as `<board label>_<pin>_<region>.png`, and - when the Workbooks feature is on and the
   board has a workbook - an **Attach image to worklog** button lets you file it in a repair - see
   [Workbooks: daily use](Workbooks-Daily-use).

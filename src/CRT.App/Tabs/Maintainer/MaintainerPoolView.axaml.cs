@@ -170,7 +170,11 @@ namespace CRT
             }
         }
 
-        private async void OnBoardChanged(object? sender, SelectionChangedEventArgs e)
+        // Through HandlerGuard, as every async handler of the tab (code review, 2026-10-13).
+        private async void OnBoardChanged(object? sender, SelectionChangedEventArgs e) =>
+            await HandlerGuard.RunAsync(() => this.BoardChangedAsync(sender), message => this.ShowMessage(message, isError: true));
+
+        private async Task BoardChangedAsync(object? sender)
         {
             if (this.thisIsFilling || sender is not ComboBox combo)
                 return;
@@ -266,13 +270,13 @@ namespace CRT
                 var line = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
                 TabMaintainer.ShowCounts(line, BoardsDisplay.MaintainerRuns(maintainer));
 
-                section.Children.Add(MaintainerPoolView.WithButton(
+                section.Children.Add(this.WithButton(
                     line,
                     "Remove",
-                    "RemoveMaintainer",
+                    "Danger RemoveMaintainer",
                     async () => await this.ChangePoolAsync(
                         new PoolAction(PoolActionKind.Remove, boardId, AccountId: accountId, Who: name),
-                        $"{name} no longer maintains {boardId}. It takes effect on their next request.")));
+                        $"{name} no longer maintains {ReviewQueueDisplay.BoardHeading(boardId)}. It takes effect on their next request.")));
             }
 
             foreach (MaintainerInvitationEntry invitation in detail.Invitations ?? [])
@@ -286,10 +290,10 @@ namespace CRT
                 lines.Children.Add(invitedLine);
                 lines.Children.Add(new TextBlock { Text = BoardsDisplay.InvitationFooter(invitation), FontSize = 11, Opacity = 0.7, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
 
-                section.Children.Add(MaintainerPoolView.WithButton(
+                section.Children.Add(this.WithButton(
                     lines,
                     "Withdraw",
-                    "WithdrawInvitation",
+                    "Danger WithdrawInvitation",
                     async () => await this.ChangePoolAsync(new PoolAction(PoolActionKind.Withdraw, boardId, InvitationId: invitationId, Who: invited), null)));
             }
 
@@ -321,7 +325,8 @@ namespace CRT
             this.ShowAccountChoices();
         }
 
-        private async void OnAddAccountClick(object? sender, RoutedEventArgs e) => await this.AddChosenAccountAsync();
+        private async void OnAddAccountClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.AddChosenAccountAsync, message => this.ShowPoolMessage(message, isError: true));
 
         internal async Task AddChosenAccountAsync()
         {
@@ -348,10 +353,11 @@ namespace CRT
 
             await this.ChangePoolAsync(
                 new PoolAction(PoolActionKind.Add, this.thisDetail.Board.BoardId, AccountId: account.Id, Who: account.DisplayName),
-                $"{account.DisplayName} now maintains {this.thisDetail.Board.BoardId}.");
+                $"{account.DisplayName} now maintains {ReviewQueueDisplay.BoardHeading(this.thisDetail.Board.BoardId)}.");
         }
 
-        private async void OnInviteClick(object? sender, RoutedEventArgs e) => await this.InviteTypedAddressAsync();
+        private async void OnInviteClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.InviteTypedAddressAsync, message => this.ShowPoolMessage(message, isError: true));
 
         internal async Task InviteTypedAddressAsync()
         {
@@ -463,7 +469,7 @@ namespace CRT
         }
 
         // A line with a small button at its right.
-        private static Grid WithButton(Control content, string label, string buttonClass, Func<Task> onClick)
+        private Grid WithButton(Control content, string label, string buttonClass, Func<Task> onClick)
         {
             var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
 
@@ -472,10 +478,12 @@ namespace CRT
                 Content = label,
                 Margin = new Avalonia.Thickness(8, 0, 0, 0),
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                Classes = { buttonClass }
             };
 
-            button.Click += async (_, _) => await onClick();
+            // "Danger RemoveMaintainer": the colour class, then the one tests find it by.
+            button.Classes.AddRange(buttonClass.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+            button.Click += async (_, _) => await HandlerGuard.RunAsync(onClick, message => this.ShowPoolMessage(message, isError: true));
 
             Grid.SetColumn(button, 1);
             row.Children.Add(content);

@@ -73,6 +73,15 @@ public sealed class BoardSchematicEntryTests
     }
 
     [Fact]
+    public void A_highlight_of_a_relabelled_component_keeps_its_rectangle_and_schematic()
+    {
+        AssertCopiesEverythingBut<ComponentHighlightEntry>(
+            highlight => highlight.WithBoardLabel("U08"),
+            nameof(ComponentHighlightEntry.BoardLabel),
+            "U08");
+    }
+
+    [Fact]
     public void A_calibration_on_a_renamed_schematic_keeps_its_box_and_mirroring()
     {
         AssertCopiesEverythingBut<KiCadCalibrationEntry>(

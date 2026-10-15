@@ -557,6 +557,7 @@ public sealed class MainWindowTests : IDisposable
     // The notices, by name - the shift test below shows each one in turn.
     private static readonly string[] NoticeNames =
     {
+        "SettingsUnreadableBanner",
         "MainExcelRequiresAppUpdateBanner",
         "UpdateBanner",
         "DataCheckBanner",
@@ -1028,6 +1029,129 @@ public sealed class MainWindowTests : IDisposable
                 hide();
             }
         }
+    }
+
+    // ###########################################################################################
+    // A settings file that could not be read is said on a card of its own, with where it was kept
+    // (code review, 2026-10-13: it was reset to defaults in silence, and the first setting changed
+    // saved the defaults over it). The card STAYS until closed, though it has nothing to press - the
+    // one card that does (decided 2026-10-13; Main.SettingsNotice.cs says why).
+    // ###########################################################################################
+    [Fact]
+    public void An_unreadable_settings_file_is_said_on_its_own_card_with_where_it_was_kept_until_closed()
+    {
+        this.RedirectWorklogToTemp();
+        string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, "{ \"region\": ");
+        UserSettings.LoadFrom(path);
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var timers = new NoticeTimers();
+            main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+            var card = main.GetControl<Border>("SettingsUnreadableBanner");
+
+            Assert.False(card.IsVisible);
+
+            main.ShowSettingsUnreadableNoticeIfNeeded();
+
+            Assert.True(card.IsVisible);
+            Assert.Equal(0, timers.HideCount);
+            string text = NoticeEmphasis.TextOf(main.GetControl<TextBlock>("SettingsUnreadableBannerText"));
+            Assert.StartsWith("Your settings could not be read, so CRT started with default settings.", text, StringComparison.Ordinal);
+            Assert.Contains(UserSettings.UnreadableSettings!.KeptAs!, text, StringComparison.Ordinal);
+
+            RaiseClick(main.GetControl<Button>("SettingsUnreadableBannerDismissButton"));
+
+            Assert.False(card.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // The Configuration tab's catalogue tree is built when the tab is first SHOWN, not at launch
+    // (code review, 2026-10-13): building it read every board workbook while CRT started, for a tab
+    // most launches never open.
+    // ###########################################################################################
+    [Fact]
+    public void The_catalogue_tree_is_built_when_the_Configuration_tab_is_first_shown()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            main.Show();
+
+            try
+            {
+                var configuration = main.GetControl<TabConfiguration>("TabConfiguration");
+                main.UpdateLayout();
+
+                Assert.False(configuration.IsCatalogueTreeRequestedForTests);
+
+                main.GetControl<TabControl>("MainTabControl").SelectedItem = main.GetControl<TabItem>("ConfigurationTabItem");
+                main.UpdateLayout();
+
+                Assert.True(configuration.IsCatalogueTreeRequestedForTests);
+            }
+            finally
+            {
+                main.IsApplicationShuttingDownForTests = true;
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // The component filter waits for the typing to stop (code review, 2026-10-13): each keystroke
+    // rebuilt the list, every highlight and the KiCad overlay. A burst of keystrokes is one pending
+    // filter; the label editor's direct call is applied at once and leaves nothing pending.
+    // ###########################################################################################
+    [Fact]
+    public void Typing_in_the_component_filter_waits_for_the_last_keystroke()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var box = main.GetControl<TextBox>("ComponentSearchTextBox");
+
+            box.Text = "U";
+            box.Text = "U1";
+            box.Text = "U12";
+
+            // TextChanged is raised from the dispatcher's queue.
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.True(main.IsComponentSearchPendingForTests);
+
+            main.FlushComponentSearchForTests();
+            Assert.False(main.IsComponentSearchPendingForTests);
+
+            main.OnComponentSearchTextChanged(null, null!);
+            Assert.False(main.IsComponentSearchPendingForTests);
+        });
+    }
+
+    // A settings file read as it should be shows no such card.
+    [Fact]
+    public void A_readable_settings_file_shows_no_settings_card()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+
+            main.ShowSettingsUnreadableNoticeIfNeeded();
+
+            Assert.False(main.GetControl<Border>("SettingsUnreadableBanner").IsVisible);
+        });
     }
 
     // The stack holds exactly the notices above, so the shift test covers every card - a new one

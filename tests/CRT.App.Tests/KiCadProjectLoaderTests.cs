@@ -58,6 +58,22 @@ public sealed class KiCadProjectLoaderTests : IDisposable
         Assert.Same(first, second);
     }
 
+    // The next board switch cancels a load still reading (code review, 2026-10-13). A cancelled
+    // load answers nothing, and remembers nothing: the board shown again later is parsed properly.
+    [Fact]
+    public async Task A_cancelled_load_returns_nothing_and_caches_nothing()
+    {
+        string pcb = this.WritePcb();
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        Assert.Null(await KiCadProjectLoader.LoadRawAsync([pcb], cancellationToken: cancelled.Token));
+
+        KiCadProjectBundle? later = await LoadAsync(pcb);
+        Assert.NotNull(later);
+        Assert.Single(later!.Root.Pcb);
+    }
+
     [Fact]
     public async Task Editing_a_file_invalidates_the_cache()
     {

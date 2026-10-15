@@ -29,6 +29,14 @@ namespace CRT.Server.Handlers.Submissions
     // ###########################################################################################
     public static class BoardDeletionFiles
     {
+        // An exception's own text names the server's paths: it goes to the log, and the refusal the
+        // administrator reads says where to look instead (code review, 2026-10-13).
+        internal static string LoggedOnly(Exception ex)
+        {
+            CrtLog.Warning($"Reading a board's folder for its deletion failed - [{ex}]");
+            return "the server's log says why";
+        }
+
         // ###########################################################################################
         // What `root` holds of the board. Reads every workbook in the tree when the folder holds
         // files (the "another board" question), so it takes seconds on a real tree. Writes nothing.
@@ -65,7 +73,7 @@ namespace CRT.Server.Handlers.Submissions
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableFolderMessage(treeName, ex.Message));
+                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableFolderMessage(treeName, BoardDeletionFiles.LoggedOnly(ex)));
             }
 
             foreach (string master in masters)
@@ -91,18 +99,18 @@ namespace CRT.Server.Handlers.Submissions
 
             // ---- 2. The folder, every file in it, no link anywhere -------------------------------
             if (PublishPathSafety.FindLinkOnPath(fullRoot, folder, link) is string folderLink)
-                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.LinkMessage(treeName, folderLink));
+                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.LinkMessage(treeName, fullRoot, folderLink));
 
             var files = new List<string>();
 
             try
             {
                 if (Directory.Exists(folder) && BoardDeletionFiles.Walk(folder, fullRoot, files, link) is string innerLink)
-                    return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.LinkMessage(treeName, innerLink));
+                    return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.LinkMessage(treeName, fullRoot, innerLink));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableFolderMessage(treeName, ex.Message));
+                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableFolderMessage(treeName, BoardDeletionFiles.LoggedOnly(ex)));
             }
 
             files.Sort(StringComparer.Ordinal);
@@ -280,7 +288,7 @@ namespace CRT.Server.Handlers.Submissions
             }
             catch (Exception ex)
             {
-                return BoardDeletionRules.IncompleteTreeMessage(treeName, [ex.Message]);
+                return BoardDeletionRules.IncompleteTreeMessage(treeName, [BoardDeletionFiles.LoggedOnly(ex)]);
             }
 
             if (!usage.IsComplete)

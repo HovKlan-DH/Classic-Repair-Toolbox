@@ -20,8 +20,7 @@ public sealed class SubmissionPrefetchTests
     private static PrefetchedSubmission Read(ReviewQueueRow row) =>
         new(
             row,
-            new ReviewSubmissionDetail(row, true, new ReviewChangeSummaryView(false, []), [], new ReviewSubmissionAssets([]), [],
-                new Dictionary<string, string>(), new Dictionary<string, string>(), [], null),
+            new ReviewSubmissionDetail(row, true, new ReviewChangeSummaryView(false, []), [], [], null),
             new ReviewTableData(1, null, new SubmissionRows()));
 
     [Fact]

@@ -504,4 +504,225 @@ public sealed class TabMaintainerTableTests
             Assert.True(await main.ConfirmLeavingTableAsync());
         });
     }
+
+    // -----------------------------------------------------------------------------------------
+    // Code review, 2026-10-13
+    // -----------------------------------------------------------------------------------------
+
+    // The tab in a shown window - a cell's editor needs one - with submission 42's table open and
+    // "Pinout" typed over its Name cell, NOT committed: the grid commits only when focus moves
+    // inside it, never when a button outside it takes the click.
+    private static (Window Window, TabMaintainer Tab) TypedIntoACell()
+    {
+        var main = new TabMaintainer { RecallSessionOverrideForTests = _ => null };
+        var window = new Window { Content = main, Width = 1400, Height = 900 };
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // Signed in as far as the screen goes, 42 chosen and its table open - the decision bar's
+        // own test's way (TabMaintainerDecisionClickTests).
+        ReviewQueueRow row = Row(42);
+        typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(main, null);
+        main.ApplyQueueResponse(new ReviewQueueResponse(true, [row], true));
+        typeof(TabMaintainer).GetMethod("ShowSubmission", Any)!.Invoke(main, [row]);
+        main.OpenTableForTests(row, Table());
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        BoardTableEditor editor = main.TableEditorForTests;
+        DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+        BoardTableSheet images = editor.CurrentSheet!;
+
+        editor.SelectCell(images.Rows.First(row => !row.IsDeleted), BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName));
+        grid.Focus();
+        Assert.True(grid.BeginEdit());
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        TextBox typing = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(grid).OfType<TextBox>().Single(box => box.IsFocused);
+        typing.Text = "Pinout (typed)";
+
+        // Typed, not committed: the table holds no change yet.
+        Assert.True(editor.IsEditingCell);
+        Assert.False(main.HasUnsavedTableEdits);
+
+        return (window, main);
+    }
+
+    // ###########################################################################################
+    // *** APPROVE UNDER A CELL BEING TYPED IN SAYS "SAVE FIRST" (code review, 2026-10-13). *** The
+    // grid does not commit when Approve takes the click, so the check saw no change and the
+    // approval went out on the version WITHOUT the typed value - which then vanished. The cell is
+    // committed first now, and nothing is sent.
+    // ###########################################################################################
+    [Fact]
+    public async Task Approve_with_a_cell_still_in_its_editor_says_save_first_and_sends_nothing()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (Window window, TabMaintainer main) = TypedIntoACell();
+
+            int requests = 0;
+            var server = new AnsweringHttpHandler(_ =>
+            {
+                requests++;
+                return AnsweringHttpHandler.Refused();
+            });
+
+            main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+            typeof(TabMaintainer).GetField("thisSelectedId", Any)!.SetValue(main, (long?)42);
+
+            await (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(main, [ReviewDecisionKind.Approve])!;
+
+            Assert.Equal(ReviewTableWording.SaveTableBeforeDeciding, main.FindControl<TextBlock>("DecisionMessageText")!.Text);
+            Assert.Equal(0, requests);
+            Assert.True(main.HasUnsavedTableEdits);
+
+            typeof(TabMaintainer).GetMethod("StopQueueChecks", Any)!.Invoke(main, null);
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** QUITTING CRT UNDER A CELL BEING TYPED IN ASKS (code review, 2026-10-13). *** Main's quit
+    // check (CommitCellsAndHasUnsavedTableEdits) and the question itself (ConfirmLeavingTableAsync)
+    // both commit the cell first; before, CRT closed without a word and the value was gone.
+    // ###########################################################################################
+    [Fact]
+    public async Task Quitting_with_a_cell_still_in_its_editor_counts_it_and_asks()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (Window window, TabMaintainer main) = TypedIntoACell();
+            var asked = new List<UnsavedTableEditsPrompt>();
+            main.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return UnsavedTableEditsChoice.Cancel;
+            };
+
+            Assert.True(main.CommitCellsAndHasUnsavedTableEdits());
+            Assert.False(await main.ConfirmLeavingTableAsync());
+            Assert.Equal([UnsavedTableEditsPrompt.LeavingSubmission], asked);
+
+            typeof(TabMaintainer).GetMethod("StopQueueChecks", Any)!.Invoke(main, null);
+            window.Close();
+        });
+    }
+
+    // The question itself commits too - installing an update reaches it without Main's check.
+    [Fact]
+    public async Task Leaving_the_table_with_a_cell_still_in_its_editor_asks()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (Window window, TabMaintainer main) = TypedIntoACell();
+            var asked = new List<UnsavedTableEditsPrompt>();
+            main.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return UnsavedTableEditsChoice.Cancel;
+            };
+
+            Assert.False(await main.ConfirmLeavingTableAsync());
+            Assert.Equal([UnsavedTableEditsPrompt.LeavingSubmission], asked);
+            Assert.True(main.HasUnsavedTableEdits);
+
+            typeof(TabMaintainer).GetMethod("StopQueueChecks", Any)!.Invoke(main, null);
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE TABLE IS READ-ONLY FOR AN ACCOUNT THAT MAY NOT PUBLISH THE SUBMISSION (code review,
+    // 2026-10-13). *** The server takes a change only from an account that may decide it, so an
+    // editable table let the maintainer type, press Save and only then be refused. Read-only now,
+    // whichever arrives first - the detail or the table - with the reason in the status line.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_table_is_read_only_when_the_account_may_not_publish_the_submission()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow row = Row(42);
+
+            ReviewSubmissionDetail Detail(bool canPublish) =>
+                new(row, canPublish, new ReviewChangeSummaryView(false, []), [], [], null);
+
+            // The table first, then the detail saying no.
+            main.OpenTableForTests(row, Table());
+            Assert.False(main.TableEditorForTests.IsReadOnly);
+
+            main.ShowDetail(Detail(canPublish: false));
+            Assert.True(main.TableEditorForTests.IsReadOnly);
+            Assert.Equal(ApprovalWording.NotAMaintainer, main.FindControl<TextBlock>("ApprovalStatusText")!.Text);
+
+            // The detail read again, saying yes - a pool changed meanwhile.
+            main.ShowDetail(Detail(canPublish: true));
+            Assert.False(main.TableEditorForTests.IsReadOnly);
+
+            // The detail first, then the table: read-only from the start.
+            Assert.True(await main.CloseTableAsync());
+            main.ShowDetail(Detail(canPublish: false));
+            main.OpenTableForTests(row, Table());
+            Assert.True(main.TableEditorForTests.IsReadOnly);
+
+            // Another submission's detail says nothing about this table.
+            Assert.True(await main.CloseTableAsync());
+            main.OpenTableForTests(Row(43), Table());
+            Assert.False(main.TableEditorForTests.IsReadOnly);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A MINUTE CHECK WHILE "LEAVE THE TABLE?" IS UP DOES NOT SPLIT THE LIST FROM THE PANEL (code
+    // review, 2026-10-13). *** The maintainer had clicked 43 with 42's table holding changes; while
+    // the prompt waited, the check put the list's selection back on 42 - and after Discard the panel
+    // opened 43 while the list showed 42. The answer here runs a check before it returns, as a
+    // timer tick under the real dialog would.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_queue_check_while_the_leave_prompt_is_up_keeps_the_clicked_submission()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            MaintainerTabHost.AddOverlay(main);
+
+            ReviewQueueRow first = Row(42);
+            ReviewQueueRow second = Row(43);
+            var queue = new ReviewQueueResponse(true, [first, second], true);
+
+            main.ApplyQueueResponse(queue);
+            ListBox list = main.FindControl<ListBox>("QueueList")!;
+
+            ListBoxItem ItemOf(long id) => main.QueueItemsForTests.Single(item => (item.Tag as ReviewQueueRow)?.Id == id);
+
+            // 42 chosen, its table open with a change in it.
+            list.SelectedItem = ItemOf(42);
+            await Task.Delay(50);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            main.OpenTableForTests(first, Table());
+            BoardTableDocument document = main.TableEditorForTests.CommitAndGetDocument()!;
+            document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!.Rows.First(row => !row.IsDeleted)
+                .Cells[BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName)].Text = "Changed";
+            Assert.True(main.HasUnsavedTableEdits);
+
+            // The prompt: a minute check arrives while it waits, then Discard.
+            main.UnsavedTableEditsAnswerForTests = _ =>
+            {
+                main.ApplyQueueResponse(queue, background: true);
+                return UnsavedTableEditsChoice.Discard;
+            };
+
+            list.SelectedItem = ItemOf(43);
+            await Task.Delay(50);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(43, main.SelectedQueueRowForTests?.Id);
+            Assert.Equal((long?)43, (long?)typeof(TabMaintainer).GetField("thisSelectedId", Any)!.GetValue(main));
+            Assert.False(main.HasUnsavedTableEdits);
+        });
+    }
 }

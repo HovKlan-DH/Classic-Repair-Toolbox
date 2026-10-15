@@ -1597,71 +1597,80 @@ public partial class TabSchematics
     // ###########################################################################################
     private async void OnWorklogEntryPillPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (this.thisIsWorklogEntryMode ||
-            !e.GetCurrentPoint(this.SchematicsContainer).Properties.IsLeftButtonPressed)
-        {
-            return;
-        }
-
-        // Without this, the press bubbles up to OnSchematicsPointerPressed and is picked up as the
-        // start of a manual KiCad-trace drag, which then follows the mouse for the rest of the
-        // click - even once the editor dialog above has already opened and closed.
-        e.Handled = true;
-
-        if (sender is not Border { Tag: int entryId })
-        {
-            return;
-        }
-
-        int workbookId = this.thisWorklogEntriesListWorkbookId;
-
-        var entry = WorklogManager.GetEntries(workbookId).FirstOrDefault(x => x.Id == entryId);
-        if (entry == null)
-        {
-            return;
-        }
-
-        if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
-        {
-            return;
-        }
-
-        var editor = new WorklogEntryEditorWindow();
-
-        // The workbook id is captured up front: the dialog below is modal but the board can still
-        // change underneath it (the thumbnail load path refreshes on its own), and re-reading the
-        // field afterwards would point the editor at a different workbook than the badge came from.
-        editor.Initialize(workbookId, entry, this.currentFullResBitmap);
-
-        // The editor cannot work this out for itself - it has neither the board data nor the
-        // highlight rectangles - so the scope is computed here and handed over. Resolved against
-        // the entry's OWN schematic rather than whichever one is on screen: the "Show worklogs"
-        // list can put a badge for another schematic in view, and using the visible one would
-        // offer components from a different board image entirely.
-        var componentsInScope = this.BuildWorklogEntryComponentScope(entry);
-        if (componentsInScope != null)
-        {
-            editor.InitializeComponentScope(componentsInScope);
-        }
-
-        await editor.ShowDialog(ownerWindow);
-
-        if (!editor.WasSaved)
-        {
-            return;
-        }
-
-        // Anything after the await runs as an async void continuation, where an exception is
-        // unobservable and takes the process down instead of surfacing - so the refresh, which
-        // touches controls a board switch may have torn down meanwhile, is guarded.
+        // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+        // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
         try
         {
-            this.RefreshWorklogEntriesListOverlay();
-            this.MainWindow?.RefreshWorklogBar();
+            if (this.thisIsWorklogEntryMode ||
+                !e.GetCurrentPoint(this.SchematicsContainer).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+
+            // Without this, the press bubbles up to OnSchematicsPointerPressed and is picked up as the
+            // start of a manual KiCad-trace drag, which then follows the mouse for the rest of the
+            // click - even once the editor dialog above has already opened and closed.
+            e.Handled = true;
+
+            if (sender is not Border { Tag: int entryId })
+            {
+                return;
+            }
+
+            int workbookId = this.thisWorklogEntriesListWorkbookId;
+
+            var entry = WorklogManager.GetEntries(workbookId).FirstOrDefault(x => x.Id == entryId);
+            if (entry == null)
+            {
+                return;
+            }
+
+            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+            {
+                return;
+            }
+
+            var editor = new WorklogEntryEditorWindow();
+
+            // The workbook id is captured up front: the dialog below is modal but the board can still
+            // change underneath it (the thumbnail load path refreshes on its own), and re-reading the
+            // field afterwards would point the editor at a different workbook than the badge came from.
+            editor.Initialize(workbookId, entry, this.currentFullResBitmap);
+
+            // The editor cannot work this out for itself - it has neither the board data nor the
+            // highlight rectangles - so the scope is computed here and handed over. Resolved against
+            // the entry's OWN schematic rather than whichever one is on screen: the "Show worklogs"
+            // list can put a badge for another schematic in view, and using the visible one would
+            // offer components from a different board image entirely.
+            var componentsInScope = this.BuildWorklogEntryComponentScope(entry);
+            if (componentsInScope != null)
+            {
+                editor.InitializeComponentScope(componentsInScope);
+            }
+
+            await editor.ShowDialog(ownerWindow);
+
+            if (!editor.WasSaved)
+            {
+                return;
+            }
+
+            // Anything after the await runs as an async void continuation, where an exception is
+            // unobservable and takes the process down instead of surfacing - so the refresh, which
+            // touches controls a board switch may have torn down meanwhile, is guarded.
+            try
+            {
+                this.RefreshWorklogEntriesListOverlay();
+                this.MainWindow?.RefreshWorklogBar();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to refresh worklog overlays after editing entry [#{entryId}]: [{ex.Message}]");
+            }
         }
         catch (Exception ex)
         {
-            Logger.Warning($"Failed to refresh worklog overlays after editing entry [#{entryId}]: [{ex.Message}]");
+            Logger.Critical($"OnWorklogEntryPillPointerPressed failed - [{ex}]");
         }
     }
 }

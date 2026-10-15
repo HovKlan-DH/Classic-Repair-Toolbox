@@ -106,26 +106,35 @@ namespace CRT
         // ###########################################################################################
         private async void OnCancelClick(object? sender, RoutedEventArgs e)
         {
-            if (!await this.ConfirmDiscardIfNeededAsync())
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                return;
+                if (!await this.ConfirmDiscardIfNeededAsync())
+                {
+                    return;
+                }
+
+                this.thisIsClosingConfirmed = true;
+
+                // A draft has written nothing to entries.json, so there is nothing for the caller to
+                // refresh and nothing for Cancel to have failed to undo - whatever
+                // thisHasPersistedChange picked up along the way describes a save that never happened.
+                if (this.thisIsDraftEntry)
+                {
+                    this.DiscardDraftAttachments();
+                    this.WasSaved = false;
+                    this.Close(false);
+                    return;
+                }
+
+                this.WasSaved = this.thisHasPersistedChange;
+                this.Close(this.WasSaved);
             }
-
-            this.thisIsClosingConfirmed = true;
-
-            // A draft has written nothing to entries.json, so there is nothing for the caller to
-            // refresh and nothing for Cancel to have failed to undo - whatever
-            // thisHasPersistedChange picked up along the way describes a save that never happened.
-            if (this.thisIsDraftEntry)
+            catch (Exception ex)
             {
-                this.DiscardDraftAttachments();
-                this.WasSaved = false;
-                this.Close(false);
-                return;
+                Logger.Critical($"OnCancelClick failed - [{ex}]");
             }
-
-            this.WasSaved = this.thisHasPersistedChange;
-            this.Close(this.WasSaved);
         }
 
         // ###########################################################################################

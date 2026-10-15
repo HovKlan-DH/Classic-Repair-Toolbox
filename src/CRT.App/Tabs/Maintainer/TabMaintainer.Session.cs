@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using Handlers.MaintainerHandling;
 
@@ -61,16 +62,83 @@ namespace CRT
             if (Equals(this.thisSession, session))
                 return;
 
+            // The same sign-in with its expiry slid (SlideSession) keeps what was read ahead.
+            bool onlySlid = this.thisSession is { } before && session is not null && before with { ExpiresUtc = session.ExpiresUtc } == session;
+
             this.thisSession = session;
 
             // What was read ahead was read - and judged - for the session before.
-            this.thisPrefetch.Forget();
+            if (!onlySlid)
+                this.thisPrefetch.Forget();
 
             this.SignedInChanged?.Invoke();
         }
 
+        // Whether `asked` is still the sign-in in use - the same token, whatever its expiry has slid
+        // to since (an answer read for it is then still this session's).
+        private bool IsSessionInUse(ReviewSession asked) =>
+            this.thisSession is { } now && string.Equals(now.BearerToken, asked.BearerToken, StringComparison.Ordinal);
+
+        // ###########################################################################################
+        // The tab's client - every request it and its panels make goes through it - with the slide
+        // below listening to it. The one place thisClient is set to a new client.
+        // ###########################################################################################
+        private void UseClient(ReviewApiClient client)
+        {
+            if (this.thisClient is { } previous)
+                previous.SessionAccepted -= this.OnSessionAccepted;
+
+            this.thisClient = client;
+            client.SessionAccepted += this.OnSessionAccepted;
+        }
+
+        // Raised on whichever thread the answer came on - the slide is done on the UI thread.
+        private void OnSessionAccepted(ReviewSession used, DateTimeOffset sentUtc) =>
+            Dispatcher.UIThread.Post(() => this.SlideSession(used.BearerToken, sentUtc));
+
+        // ###########################################################################################
+        // *** THE REMEMBERED SIGN-IN FOLLOWS THE SERVER'S SLIDING EXPIRY (code review, 2026-10-13). ***
+        // The server pushes a session's expiry forward as it is used and never says so, while CRT
+        // kept the login's expiry - so the remembered sign-in was thrown away (ReviewSessionStore
+        // .Recall), and the tab refused locally (RefreshQueueAsync), 30 days after SIGNING IN however
+        // often it was used. After every request the server accepted, the session in use slides as
+        // the server's did (ReviewSession.AfterUseAt) and is remembered again - which writes the file
+        // at most once per half lifetime, since nothing else moves. An answer for a token no longer
+        // in use (signed out, or another account since) changes nothing.
+        // ###########################################################################################
+        internal void SlideSession(string bearerToken, DateTimeOffset sentUtc)
+        {
+            if (this.thisSession is not { } session || !string.Equals(session.BearerToken, bearerToken, StringComparison.Ordinal))
+                return;
+
+            ReviewSession slid = session.AfterUseAt(sentUtc);
+
+            if (Equals(slid, session))
+                return;
+
+            this.UseSession(slid);
+
+            // Declines on its own where it cannot store safely (ReviewSessionStore.Remember).
+            ReviewSessionStore.Remember(slid);
+        }
+
         // Signs in (or out) without the server, for a test of what the rest of CRT does with it.
         internal void UseSessionForTests(ReviewSession? session) => this.UseSession(session);
+
+        // ###########################################################################################
+        // The line under "Sign in" saying a sign-in is not remembered on this system - shown off
+        // Windows only (ReviewSessionStore.NotRememberedNote). From the constructor, with the
+        // platform's answer; internal so a test on any platform can show both.
+        // ###########################################################################################
+        internal void ShowNotRememberedNote(bool isSupported)
+        {
+            if (this.FindControl<TextBlock>("NotRememberedText") is not TextBlock text)
+                return;
+
+            string? note = ReviewSessionStore.NotRememberedNote(isSupported);
+            text.Text = note ?? string.Empty;
+            text.IsVisible = note is not null;
+        }
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -82,7 +150,7 @@ namespace CRT
 
                 // Posted, not run inside the attach: the tab is still being laid out, and the
                 // restore reads the lists under CRT's window's "please wait" overlay.
-                Dispatcher.UIThread.Post(async () => await this.RestoreRememberedSessionAsync());
+                Dispatcher.UIThread.Post(async () => await HandlerGuard.RunAsync(this.RestoreRememberedSessionAsync, this.ShowHandlerFailure));
             }
 
             this.AttachQueueChecks();
@@ -165,7 +233,7 @@ namespace CRT
             if (remembered is null)
                 return false;
 
-            this.thisClient = this.ClientOverrideForTests?.Invoke() ?? new ReviewApiClient(ReviewApiRoutes.DefaultBaseAddress);
+            this.UseClient(this.ClientOverrideForTests?.Invoke() ?? new ReviewApiClient(ReviewApiRoutes.DefaultBaseAddress));
             this.UseSession(remembered);
 
             this.ShowQueuePanel();

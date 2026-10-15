@@ -734,8 +734,13 @@ namespace CRT.Server.Tests
                 isLink: path => string.Equals(path, link, StringComparison.Ordinal));
 
             Assert.Equal(
-                BoardDeletionRules.LinkMessage(BoardDeletionRules.BetaTreeName, link),
+                BoardDeletionRules.LinkMessage(BoardDeletionRules.BetaTreeName, this.thisBeta, link),
                 planned.Plan!.BlockedBecause);
+
+            // Named from the data's root - never the server's own absolute path (code review,
+            // 2026-10-13: the administrator's screen is no place for the server's folders).
+            Assert.Contains("[Commodore/C64/999999/Images]", planned.Plan.BlockedBecause);
+            Assert.DoesNotContain(this.thisBeta, planned.Plan.BlockedBecause);
         }
 
         // ###########################################################################################

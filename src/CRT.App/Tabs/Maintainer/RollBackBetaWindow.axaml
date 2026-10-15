@@ -57,9 +57,7 @@
                     Click="OnCancelClick" />
 
             <Button x:Name="ConfirmButton"
-                    Foreground="{DynamicResource Button_Cancel_Fg}"
-                    Background="{DynamicResource Button_Cancel_Bg}"
-                    BorderBrush="{DynamicResource Button_Cancel_Border}"
+                    Classes="Danger"
                     IsEnabled="False"
                     Click="OnConfirmClick" />
         </StackPanel>

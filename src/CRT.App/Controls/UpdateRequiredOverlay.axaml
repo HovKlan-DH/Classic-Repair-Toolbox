@@ -53,6 +53,7 @@
 
                 <!-- The one way out - there is no close button, on purpose. -->
                 <Button x:Name="ActionButton"
+                        Classes="Accept"
                         HorizontalAlignment="Left"
                         Margin="0,4,0,0"
                         Click="OnActionClick" />

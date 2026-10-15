@@ -113,6 +113,43 @@ public sealed class ReviewTableWordingTests
         Assert.Contains("the contributor is told", line, StringComparison.Ordinal);
     }
 
+    // ###########################################################################################
+    // *** THE DATE IS WRITTEN AS EVERY OTHER DATE IN CRT (code review, 2026-10-13). *** It was the
+    // tab's one "2026-10-04 14:12" among "2026-October-4"s; now SubmissionReceiptPresenter.FormatDate
+    // with the time after it. Noon UTC, so the local day is the 4th in any zone a test runs in.
+    // ###########################################################################################
+    [Fact]
+    public void The_submission_view_writes_when_it_was_changed_as_CRT_writes_dates()
+    {
+        var at = new DateTimeOffset(2026, 10, 4, 12, 12, 0, TimeSpan.Zero);
+        DateTimeOffset local = at.ToLocalTime();
+
+        string? line = ReviewTableWording.AmendedLine(new ReviewAmendmentView(2, "Anna", at));
+
+        Assert.StartsWith(
+            $"Changed in the table by Anna on 2026-October-{local.Day} at {local.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture)}. ",
+            line,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("2026-10-", line, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // The queue's line when the session ends under a table's changes not saved - expired here, or
+    // refused by the server - says the changes cannot be saved and what to do; the checks stop with
+    // it, so it is said once (code review, 2026-10-13).
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, "Your session has expired, ")]
+    [InlineData(false, "The server no longer accepts your sign-in, ")]
+    public void A_session_ended_under_unsaved_edits_says_what_is_left_to_do(bool expired, string opening)
+    {
+        string line = ReviewTableWording.SessionEndedUnderUnsavedEdits(expired);
+
+        Assert.StartsWith(opening, line, StringComparison.Ordinal);
+        Assert.Contains("can no longer be saved", line, StringComparison.Ordinal);
+        Assert.EndsWith("Copy anything you need, then sign out and in again to carry on.", line, StringComparison.Ordinal);
+    }
+
     // A decision with unsaved table changes on screen would decide the saved version - the one the
     // maintainer is NOT looking at. The refusal says so and says what to do.
     [Fact]

@@ -166,6 +166,32 @@ public sealed class BoardComponentHighlightStorageTests : IDisposable
         Assert.Single(BoardComponentHighlightStorage.LoadComponentHighlights(this.ExcelPath));
     }
 
+    // ###########################################################################################
+    // *** A SIDECAR THAT CANNOT BE READ IN FULL IS NOT WRITTEN OVER (code review, 2026-10-13). ***
+    // Both savers rebuild the whole file from readers that answer "nothing" for what they cannot
+    // parse: one hand-edited rectangle ("X": 10.5) and a calibration save wrote every highlight on
+    // the board away. Each such file now refuses the save and is left byte for byte.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("""{ "Component highlights": { "Sheet 1": { "U8": [ { "X": 10.5, "Y": 1, "Width": 5, "Height": 5 } ] } } }""")]
+    [InlineData("""{ "Component highlights": { "Sheet 1": { "U8": [ { "X": 1, "Y": 1, "Width": 5, "Height": 5 } ] } }, "KiCad calibration points": { "Sheet 1": { "OffsetX": "left" } } }""")]
+    [InlineData("""{ "Component highlights": { "Sheet 1": { "U8": [ { "X": 1, "Y": 1, "Width": 5, "Height": 5 } ] } }, "KiCad calibration points": { "Sheet 1": 5 } }""")]
+    [InlineData("""{ "Schematic renames": { "From": "a" } }""")]
+    public void A_sidecar_that_does_not_read_in_full_refuses_both_saves_and_is_left_as_it_was(string sidecar)
+    {
+        string excelPath = this.ExcelPath;
+        string jsonPath = BoardComponentHighlightStorage.GetJsonPath(excelPath);
+        File.WriteAllText(jsonPath, sidecar);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            BoardComponentHighlightStorage.SaveKiCadCalibration(excelPath, "Sheet 2", "pcb", 1, 2, 1, 1, false, false));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            BoardComponentHighlightStorage.SaveComponentHighlights(excelPath, "Sheet 2", []));
+
+        Assert.Equal(sidecar, File.ReadAllText(jsonPath));
+    }
+
     // ---------------------------------------------------------- SaveComponentHighlights
 
     [Fact]
@@ -286,8 +312,16 @@ public sealed class BoardComponentHighlightStorageTests : IDisposable
         Assert.Equal(90, rects[2]!["Y"]!.GetValue<int>());
     }
 
+    // ###########################################################################################
+    // *** THE ORDER IS THE SHARED WRITER'S NOW (code review, 2026-10-13). *** This method wrote its
+    // own file shape - labels in natural order - while every draft write and the server's publish
+    // write through BoardSidecarWriter, which orders labels by plain text. One content had several
+    // byte forms, and the draft's fingerprint (which hashes the bytes) brought Submit back for a
+    // draft that held what was sent. It now writes through BoardSidecarWriter; the shared order is
+    // kept rather than changed, because changing it would re-hash every published sidecar at once.
+    // ###########################################################################################
     [Fact]
-    public void SaveComponentHighlights_writes_board_labels_in_natural_order()
+    public void SaveComponentHighlights_writes_board_labels_in_the_shared_writers_order()
     {
         BoardComponentHighlightStorage.SaveComponentHighlights(
             this.ExcelPath,
@@ -304,7 +338,7 @@ public sealed class BoardComponentHighlightStorageTests : IDisposable
             .Select(p => p.Key)
             .ToList();
 
-        Assert.Equal(new[] { "C2", "C10", "C105" }, labels);
+        Assert.Equal(new[] { "C10", "C105", "C2" }, labels);
     }
 
     [Fact]

@@ -204,6 +204,94 @@ namespace CRT.Server.Handlers.Submissions
             return await MySqlSubmissionStore.ReadApprovalsAsync(command, cancellationToken);
         }
 
+        // See ISubmissionStore.GetApprovalsForAsync - one query for a whole queue, one parameter per id.
+        public async Task<IReadOnlyDictionary<long, IReadOnlyList<GivenApproval>>> GetApprovalsForAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            var found = new Dictionary<long, List<GivenApproval>>();
+
+            if (submissionIds is null || submissionIds.Count == 0)
+                return new Dictionary<long, IReadOnlyList<GivenApproval>>();
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            List<string> names = MySqlSubmissionStore.IdParameters(command, submissionIds);
+
+            command.CommandText =
+                "SELECT submission_id, role, account_label, approved_utc, account_id FROM submission_approvals " +
+                $"WHERE submission_id IN ({string.Join(", ", names)}) ORDER BY approved_utc;";
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                ApproverRole? role = reader.GetString(1) switch
+                {
+                    "administrator" => ApproverRole.Administrator,
+                    "maintainer" => ApproverRole.Maintainer,
+                    _ => null
+                };
+
+                if (role is null)
+                    continue;
+
+                long id = reader.GetInt64(0);
+                long? accountId = reader.IsDBNull(4) ? null : reader.GetInt64(4);
+
+                if (!found.TryGetValue(id, out List<GivenApproval>? list))
+                    found[id] = list = [];
+
+                list.Add(new GivenApproval(role.Value, reader.GetString(2), MySqlSubmissionStore.ReadUtc(reader, 3)!.Value, accountId));
+            }
+
+            return found.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<GivenApproval>)pair.Value);
+        }
+
+        // See ISubmissionStore.GetAmendmentVersionsAsync.
+        public async Task<IReadOnlyDictionary<long, int>> GetAmendmentVersionsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default)
+        {
+            var found = new Dictionary<long, int>();
+
+            if (submissionIds is null || submissionIds.Count == 0)
+                return found;
+
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            List<string> names = MySqlSubmissionStore.IdParameters(command, submissionIds);
+
+            command.CommandText =
+                "SELECT submission_id, MAX(version) FROM submission_amendments " +
+                $"WHERE submission_id IN ({string.Join(", ", names)}) GROUP BY submission_id;";
+
+            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            while (await reader.ReadAsync(cancellationToken))
+                found[reader.GetInt64(0)] = Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture);
+
+            return found;
+        }
+
+        // One parameter per distinct id, named @id0, @id1, ... - never the ids written into the text.
+        private static List<string> IdParameters(MySqlCommand command, IReadOnlyCollection<long> ids)
+        {
+            List<string> names = [];
+            int index = 0;
+
+            foreach (long id in ids.Distinct())
+            {
+                string name = FormattableString.Invariant($"@id{index++}");
+                names.Add(name);
+                command.Parameters.AddWithValue(name, id);
+            }
+
+            return names;
+        }
+
         public Task AddApprovalAsync(
             long submissionId,
             ApproverRole role,

@@ -99,17 +99,17 @@ public partial class TabSchematics
 
         if (isContributorMode)
         {
-            Logger.Info($"Important signals debug: Excel rows loaded [{boardData.KiCadImportantSignals.Count}]");
-            Logger.Info($"Important signals debug: loaded [{knownNetNames.Count}] raw KiCad net names");
-            Logger.Info($"Important signals debug: built [{normalizedNameByAnyKnownName.Count}] KiCad net name mappings");
+            Logger.Debug($"Important signals debug: Excel rows loaded [{boardData.KiCadImportantSignals.Count}]");
+            Logger.Debug($"Important signals debug: loaded [{knownNetNames.Count}] raw KiCad net names");
+            Logger.Debug($"Important signals debug: built [{normalizedNameByAnyKnownName.Count}] KiCad net name mappings");
 
             var normalizedNetNames = KiCadNetNames.NormalizedNames(nets);
 
-            Logger.Info($"Important signals debug: loaded [{normalizedNetNames.Count}] normalized KiCad net names");
+            Logger.Debug($"Important signals debug: loaded [{normalizedNetNames.Count}] normalized KiCad net names");
 
             foreach (string normalizedNetName in normalizedNetNames)
             {
-                Logger.Info($"Important signals debug: normalized KiCad net name [{normalizedNetName}]");
+                Logger.Debug($"Important signals debug: normalized KiCad net name [{normalizedNetName}]");
             }
         }
 
@@ -196,15 +196,15 @@ public partial class TabSchematics
                     ? resolvedNetNames.Count
                     : 0;
 
-                Logger.Info(
+                Logger.Debug(
                     $"Important signals debug: display name [{duplicateDisplayName.Key}] appears in [{duplicateDisplayName.Value}] Excel rows and resolves to [{resolvedNetCount}] unique KiCad nets");
             }
 
-            Logger.Info($"Important signals debug: invalid Excel rows skipped [{invalidRowCount}]");
-            Logger.Info($"Important signals debug: unresolved Excel rows [{unresolvedRowCount}]");
-            Logger.Info($"Important signals debug: resolved Excel rows [{resolvedRowCount}]");
-            Logger.Info($"Important signals debug: duplicate resolved mappings [{duplicateResolvedDisplayNameToNetPairs.Count}]");
-            Logger.Info($"Important signals debug: resolved display groups [{this.thisImportantSignalDisplayNames.Count}]");
+            Logger.Debug($"Important signals debug: invalid Excel rows skipped [{invalidRowCount}]");
+            Logger.Debug($"Important signals debug: unresolved Excel rows [{unresolvedRowCount}]");
+            Logger.Debug($"Important signals debug: resolved Excel rows [{resolvedRowCount}]");
+            Logger.Debug($"Important signals debug: duplicate resolved mappings [{duplicateResolvedDisplayNameToNetPairs.Count}]");
+            Logger.Debug($"Important signals debug: resolved display groups [{this.thisImportantSignalDisplayNames.Count}]");
         }
 
         if (this.thisImportantSignalDisplayNames.Count == 0)
@@ -239,11 +239,11 @@ public partial class TabSchematics
 
         if (isContributorMode)
         {
-            Logger.Info($"Important signals debug: built [{items.Count}] visible important signal groups");
+            Logger.Debug($"Important signals debug: built [{items.Count}] visible important signal groups");
 
             foreach (var item in items)
             {
-                Logger.Info($"Important signals debug: display name [{item.DisplayName}] -> [{item.ToolTipText}]");
+                Logger.Debug($"Important signals debug: display name [{item.DisplayName}] -> [{item.ToolTipText}]");
             }
         }
     }

@@ -1,4 +1,5 @@
 ﻿using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using CRT;
 
@@ -90,10 +91,11 @@ public sealed class ConfigurationHelpIconTests
     }
 
     // ###########################################################################################
-    // "View boards as officially coming from online source" (owner request, 2026-10-02: "have a
+    // "View boards as published online" (owner request, 2026-10-02: "have a
     // Wiki page for this and add a helper icon to it") - the same "?" beside its check box, opening
     // AppConfig.WikiPageViewOnlineSource, which WikiHelpPageNamesTests holds to a real page. The
-    // label is pinned too: it is the new wording, and the Wiki page names it.
+    // label is pinned too: it is the newest wording (owner decision, 2026-10-13), and the Wiki page
+    // names it.
     // ###########################################################################################
     [Fact]
     public void The_online_source_setting_has_a_help_icon_beside_it_and_its_new_name()
@@ -109,7 +111,7 @@ public sealed class ConfigurationHelpIconTests
             Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
             Assert.Same(checkBox.GetVisualParent(), helpButton.GetVisualParent());
             Assert.Equal(
-                "View boards as officially coming from online source (hide my local draft changes)",
+                "View boards as published online (hide my draft changes)",
                 checkBox.Content);
         });
     }
@@ -190,6 +192,43 @@ public sealed class ConfigurationHelpIconTests
             int alphaIndex = siblings.IndexOf((Control)alphaRow!);
 
             Assert.Equal(betaIndex + 1, alphaIndex);
+        });
+    }
+
+    // ###########################################################################################
+    // A check box with a help icon WRAPS in a narrow tab (2026-10-13). Each such row was a
+    // horizontal StackPanel, which gives its children unlimited width - so "View boards as
+    // published online (hide my draft changes)" was cut off at the window's minimum width instead
+    // of wrapping. The row is now a Left-aligned Grid: the check box in a "*" column (the width
+    // left over, so it wraps), the icon in an Auto column after it. The suite's headless fonts
+    // cannot measure the wrap itself, so the SHAPE that makes it possible is what is pinned.
+    // ###########################################################################################
+    [Fact]
+    public void Every_check_box_with_a_help_icon_can_wrap()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+
+            var helpButtons = tab.GetLogicalDescendants()
+                .OfType<Button>()
+                .Where(button => button.Classes.Contains("HelpIconButton"))
+                .ToList();
+
+            Assert.NotEmpty(helpButtons);
+
+            foreach (Button helpButton in helpButtons)
+            {
+                var row = Assert.IsType<Grid>(helpButton.Parent);
+                var checkBox = Assert.Single(row.Children.OfType<CheckBox>());
+
+                Assert.True(row.ColumnDefinitions[0].Width.IsStar, $"{helpButton.Name}: the check box's column must be \"*\"");
+                Assert.Equal(0, Grid.GetColumn(checkBox));
+                Assert.Equal(1, Grid.GetColumn(helpButton));
+
+                // Left, or a wide tab would push the icon to the far edge, away from its label.
+                Assert.Equal(Avalonia.Layout.HorizontalAlignment.Left, row.HorizontalAlignment);
+            }
         });
     }
 }

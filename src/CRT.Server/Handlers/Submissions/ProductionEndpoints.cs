@@ -338,6 +338,7 @@ namespace CRT.Server.Handlers.Submissions
             ISubmissionStore submissions,
             ProductionPromotionFlow flow,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             ServerOptions options,
             ILogger<ProductionPromotionFlow> logger,
             CancellationToken cancellationToken)
@@ -403,8 +404,9 @@ namespace CRT.Server.Handlers.Submissions
             // ###########################################################################################
             try
             {
+                // Not cancelled by the client going away (code review, 2026-10-13): it has happened.
                 await ProductionEndpoints.AfterPublishAsync(
-                    access!, outcome, accounts, submissions, notifier, options, now, logger, cancellationToken);
+                    access!, outcome, accounts, submissions, notifier, publishLock, options, now, logger, CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -438,6 +440,7 @@ namespace CRT.Server.Handlers.Submissions
             IAccountStore accounts,
             ISubmissionStore submissions,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             ServerOptions options,
             DateTimeOffset now,
             ILogger logger,
@@ -445,10 +448,13 @@ namespace CRT.Server.Handlers.Submissions
         {
             BoardRecord board = outcome.Board!;
 
-            int written = DataChecksumManifest.Write(
-                options.ProductionDataTreeRoot ?? string.Empty,
-                options.ProductionPublicDataBaseUrl ?? string.Empty,
-                options.ProductionManifestPath ?? string.Empty);
+            // Under the publish lock and off the request thread (code review, 2026-10-13) - see
+            // ManifestRewrite.
+            int written = await ManifestRewrite.RewriteAsync(
+                publishLock,
+                options.ProductionDataTreeRoot,
+                options.ProductionPublicDataBaseUrl,
+                options.ProductionManifestPath);
 
             if (written < 0)
             {

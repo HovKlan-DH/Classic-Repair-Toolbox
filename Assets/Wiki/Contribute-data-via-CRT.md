@@ -9,8 +9,8 @@ reading that others would benefit from? You can add it directly from the **Contr
 tab - no account, no spreadsheets, no technical knowledge needed.
 
 Your edit is saved into your own local **draft** for this board and takes effect on your own
-machine right away - tick "View boards as officially coming from online source (hide my local draft
-changes)" in the Configuration tab at any point to see the board without your edit
+machine right away - tick "View boards as published online (hide my draft changes)" in the Configuration tab at
+any point to see the board without your edit
 ([View boards from online source](View-boards-from-online-source)). Nothing changes for anyone else
 until you submit your draft from the [Drafts tab](Drafts-tab) and a maintainer has accepted it. It is
 then published to the BETA source first, and after a final check to the stable source that everyone
@@ -118,8 +118,8 @@ exactly the same tools described above.
 Before it is created you are asked to accept the role of **maintainer** for it ("Becoming the
 board's maintainer" - **Accept and create** or **Decline**). If you later submit the board for the
 community to use, you agree to review the changes others submit for it and publish the ones that are
-right. Accepting sends nothing by itself: the administrator invites a board's maintainers by email -
-see [Maintainer tab](Maintainer-tab#getting-a-maintainer-account).
+right. Accepting sends nothing by itself: you become the board's maintainer when the board is
+accepted - see [If you contributed a whole new board](#if-you-contributed-a-whole-new-board).
 
 The full walkthrough, including importing a KiCad project so that clicking a component lights up its
 real copper traces, is on [Add new board with KiCad data](Add-new-board-with-KiCad-data).
@@ -179,32 +179,38 @@ component never moves it.
 working on your own machine for as long as you want it - it is not a staging area you are expected
 to empty.
 
-## When the official data changes underneath your draft
+## When the published data changes underneath your draft
 
-Board data is improved by other people too, so the official version of a board you are working on
-can be updated while your draft sits on top of it. When that happens the "Drafts" tab says so under
-that board, and the board itself shows a one-line notice.
+Board data is improved by other people too, so the published version of a board you are working on
+can be updated while you work on your draft. When that happens the "Drafts" tab says so under that
+board, and the board itself shows a notice.
 
-**Your edits are not lost and nothing is overwritten.** Your draft and the synced data live in
-separate folders; your changes are still applied on top of whatever the official data now says.
+**Your draft does not get the update by itself.** A draft is a complete copy of the board as it was
+when you started. Your edits are safe - your draft and the downloaded data live in separate folders -
+but if you sent the draft as it is, it would also carry the board's OLD rows, and the maintainer would
+see everything published since as changes you made. So bring the draft up to date before you send it.
 
-Click **"What changed"** to open "What changed officially". It shows the revision you started from
-("You started from:") and the one published now ("Officially now:"), and then every change of
-yours compared with the official data as it is now, one per line:
+Click **"What changed"** to open "What changed in the published data". It shows the revision you
+started from ("You started from:") and the one published now ("Published data now:"), and then:
 
-* "You added this. It is not in the published data."
-* "You removed this. It is still in the published data, and your submission would remove it."
-* "You changed:" followed by the columns you changed
+* your own changes ("You added this.", "You removed this - your submission would remove it from the
+  published data.", "You changed:" followed by the columns you changed);
+* what the published update changed since you started ("Added in the update.", "Removed in the
+  update.", "Changed in the update: ...");
+* first, when there are any, the rows both you and the update changed - your version is the one kept,
+  so look at these.
 
-Look through it for anything the official update already does differently, or no longer needs.
+**"Bring my draft up to date"** then adds the update to your draft and keeps every change of yours:
+rows you did not touch take the update's version, rows you added, changed or removed stay as you made
+them, and a picture you did not replace takes the published one. The notice goes away, and your draft
+is now based on the published data as it is.
 
 > [!NOTE]
-> CRT cannot show you the official data *as it was* when you started, because that copy is replaced
-> when the data syncs. What it shows is how your edits stand against the data as it is now.
-
-When you have had a look and are happy, click **"I have looked at this"** and the notice goes away.
-That writes down which version you have seen and **changes none of your edits** - it is not a merge,
-and nothing of yours is discarded. If the official data changes again later, you will be told again.
+> A draft started with a CRT before 3.0.1 cannot be brought up to date: that CRT kept no copy of what
+> the draft was started from, so it cannot tell your changes from the update's. Its window says so and
+> offers **"I have looked at this"**, which only stops the notice until the published data changes
+> again. If you changed only a little, the safe way is to discard such a draft and make your changes
+> again on the newer data.
 
 ## Editing a draft as a table
 
@@ -398,10 +404,11 @@ The rectangles that mark components on the schematics are not part of the table 
 the Excel file either - and saving the table leaves them untouched.
 
 > [!NOTE]
-> Some changes are saved into your draft but do not count as "rows changed": a new ORDER of rows, a
-> KiCad trace calibration, a picture or file replaced under the same file name, and KiCad files. A
-> draft whose only changes are of these kinds reads "0 rows changed" and cannot be submitted on its
-> own. They are sent along with any other change you submit.
+> A KiCad trace calibration, a picture or file replaced under the same file name, and KiCad files are
+> counted on the draft's row beside its rows ("1 row changed, 2 files changed", or just "KiCad
+> calibration changed"), and a draft with only those can be submitted. Only a new ORDER of rows is not
+> counted: a draft whose only change is the order cannot be submitted on its own, and the new order is
+> sent along with any other change you submit.
 
 ## Sending your work in
 
@@ -520,7 +527,8 @@ press it. Opening "My submissions" by itself marks nothing as read.
 
 **When a maintainer asks for changes**, the state reads *Changes requested* and the maintainer's
 words are under "Feedback from maintainer". Change your draft - in the Contribute tab, the label
-editor or the table - and click **"Submit"** again. The new submission is a new entry in the list.
+editor or the table - and click **"Submit"** again. The new submission is a new entry in the list,
+and the earlier one then reads "Changes requested - you sent a newer one on ...", no longer in orange.
 
 **An accepted contribution is published in two steps.** First it is published to the **BETA
 source**, where a maintainer gives the board a final check; "My submissions" then says *Published to
@@ -532,7 +540,7 @@ updates" asks at any time.
 **Checking your work on the BETA source?** Ticking **Download data from the BETA source instead of
 the stable source** on the Configuration tab lets you see your contribution as it will look, before
 everyone else gets it. CRT tells you when there is something to check: as soon as a contribution of
-yours is in the BETA source, a note under its tabs says so and names that box (and, if "Check for new
+yours is in the BETA source, a note in the bottom-right corner of the window says so and names that box (and, if "Check for new
 or updated data at application launch" is off, says to tick that one first), and "My submissions"
 says it under the contribution too. The note goes away when you tick the box, or when you close it.
 When your contribution then reaches the stable source, CRT shows a note saying so, as a reminder to
@@ -547,8 +555,8 @@ differently from how you named it.
 than sending the whole contribution back to you. When that happens, "My submissions" and the email
 both say that a maintainer changed some of the details, so what is published is not exactly what you
 sent. Your own draft is not changed, so it still holds what you sent and is not removed
-automatically - once your data has updated, look at the board, then discard the draft on the
-Drafts tab (or keep working from it).
+automatically. Its row on the Drafts tab says so once your data has updated: look at the board, then
+discard the draft. Sending it again would undo the maintainer's corrections.
 
 A few things worth knowing about that list:
 
@@ -566,13 +574,21 @@ A few things worth knowing about that list:
 
 ### If you contributed a whole new board
 
-For a brand new hardware and board, the administrator may invite you, by email, to be a
-**maintainer** of that board once it is published, so you can look after it from then on -
-reviewing what others send in for it, and publishing what is right, in CRT's
-[Maintainer tab](Maintainer-tab). Accepting the maintainer role when you created the board does not
-do that by itself - the invitation does (see
-[Getting a maintainer account](Maintainer-tab#getting-a-maintainer-account)). It is never something
-you need before contributing.
+You accepted the role of **maintainer** when you created the board, and it becomes real when the
+board is accepted and published to the BETA source: from then on you look after it - reviewing what
+others send in for it, and publishing what is right, in CRT's [Maintainer tab](Maintainer-tab). You
+get an email either way:
+
+* If you sent the board signed in with a maintainer account, you are simply added as the board's
+  maintainer, and the email says so.
+* If you sent it with an email address typed in and that address has no maintainer account, the email
+  is an invitation, with a code to create one (see
+  [Getting a maintainer account](Maintainer-tab#getting-a-maintainer-account)). The board is yours to
+  maintain once you use the code.
+* If you typed in an address that already has a maintainer account, nothing happens by itself - CRT
+  cannot tell that the address is yours - and the administrator adds you by hand.
+
+It is never something you need before contributing.
 
 ## That's it
 

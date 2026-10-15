@@ -40,16 +40,16 @@ namespace Handlers.MaintainerHandling
 
         public string DoneClause => this.Kind switch
         {
-            PoolActionKind.Add => $"{this.Who} now maintains {this.BoardId}",
-            PoolActionKind.Remove => $"{this.Who} no longer maintains {this.BoardId}",
-            PoolActionKind.Invite => $"{this.Who} is invited to maintain {this.BoardId}",
+            PoolActionKind.Add => $"{this.Who} now maintains {ReviewQueueDisplay.BoardHeading(this.BoardId)}",
+            PoolActionKind.Remove => $"{this.Who} no longer maintains {ReviewQueueDisplay.BoardHeading(this.BoardId)}",
+            PoolActionKind.Invite => $"{this.Who} is invited to maintain {ReviewQueueDisplay.BoardHeading(this.BoardId)}",
             _ => $"the invitation to {this.Who} is withdrawn"
         };
 
         public string NotDoneClause => this.Kind switch
         {
-            PoolActionKind.Add => $"{this.Who} does not maintain {this.BoardId} yet",
-            PoolActionKind.Remove => $"{this.Who} still maintains {this.BoardId}",
+            PoolActionKind.Add => $"{this.Who} does not maintain {ReviewQueueDisplay.BoardHeading(this.BoardId)} yet",
+            PoolActionKind.Remove => $"{this.Who} still maintains {ReviewQueueDisplay.BoardHeading(this.BoardId)}",
             PoolActionKind.Invite => $"{this.Who} is not invited yet",
             _ => $"the invitation to {this.Who} is still open"
         };

@@ -33,7 +33,9 @@ namespace Handlers.DataHandling
         // Before the first draft of a run, when nothing has asked yet (Main.UpdateRequired.cs).
         public const string CheckingDraftsWithServer = "Checking with the server that this version of CRT can send drafts...";
 
-        public const string ComparingWithOfficial = "Comparing your draft with the official data...";
+        public const string ComparingWithOfficial = "Comparing your draft with the published data...";
+
+        public const string BringingDraftUpToDate = "Bringing your draft up to date with the published data...";
 
         public const string AddingSchematics = "Adding the schematic images to your draft...";
 

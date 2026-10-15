@@ -53,6 +53,46 @@ namespace Tabs.TabSchematics
             }
         }
 
+        // ###########################################################################################
+        // The selected components' highlights for this thumbnail, as a transparent image drawn OVER
+        // ImageSource - and how strongly it shows (code review, 2026-10-13).
+        //
+        // The highlights used to be baked into ImageSource, so blinking ("Blink selected", twice a
+        // second) rendered every highlighted thumbnail again on every tick. Now the highlights are
+        // rendered once per selection (TabSchematics.ApplyHighlightVisuals) and the blink only sets
+        // HighlightLayerOpacity: 1 shows them, 0 hides them - what the old bitmaps looked like at
+        // each phase. Every thumbnail template stacks this Image on the base one, the same size.
+        //
+        // TabSchematics owns the bitmap: it disposes the one replaced, and Main's board load the
+        // last one. BaseThumbnail belongs to Main's thumbnail cache and is never disposed here.
+        // ###########################################################################################
+        private IImage? highlightImage;
+        private double highlightLayerOpacity = 1.0;
+
+        public IImage? HighlightImage
+        {
+            get => this.highlightImage;
+            set
+            {
+                if (ReferenceEquals(this.highlightImage, value))
+                    return;
+                this.highlightImage = value;
+                this.OnPropertyChanged();
+            }
+        }
+
+        public double HighlightLayerOpacity
+        {
+            get => this.highlightLayerOpacity;
+            set
+            {
+                if (this.highlightLayerOpacity == value)
+                    return;
+                this.highlightLayerOpacity = value;
+                this.OnPropertyChanged();
+            }
+        }
+
         public double VisualOpacity
         {
             get => this.visualOpacity;

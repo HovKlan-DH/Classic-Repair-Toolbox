@@ -62,8 +62,10 @@ downloaded - or straight away, when you ask for one:
 * copying a board folder you already have into the drafts folder yourself - see
   [Bringing in a board you already have work on](Contribute-data-via-CRT#bringing-in-a-board-you-already-have-work-on)
 
-Accepting the maintainer role when you create a board sends nothing by itself. A board's
-maintainers are invited by the administrator, by email - see [Maintainer tab](Maintainer-tab).
+Accepting the maintainer role when you create a board sends nothing by itself. You become the
+board's maintainer when the board is accepted - with an email that says so, or that invites you to
+create a maintainer account if you have none - see
+[If you contributed a whole new board](Contribute-data-via-CRT#if-you-contributed-a-whole-new-board).
 
 ## A draft's row
 
@@ -75,8 +77,9 @@ Each board with a draft has one row, in alphabetical order:
 | A coloured badge | How your last submission from this draft is getting on, in the same words and colour as **My submissions** (see [Submission states](#submission-states)). Point at it to see when you sent it |
 | **N errors** (red) | Problems the server would refuse. Every one has to be fixed before the draft can be submitted |
 | **N warnings** (amber) | Worth a look, but they never stop a submission |
-| **N rows changed** | How many rows differ from the published board. A board you created yourself says "New board, nothing added yet" or "New board, N rows so far" |
-| A line about the official data | Only when the published board has changed since you started: "The official data for this board has been updated since you started. Your edits are still applied." |
+| **N rows changed** | How many rows differ from the published board, and - when there are any - how many files and KiCad calibrations you changed ("1 row changed, 2 files changed", or just "KiCad calibration changed"). A board you created yourself says "New board, nothing added yet" or "New board, N rows so far" |
+| A line about the published data | Only when the published board has changed since you started: "The published data for this board has been updated since you started your draft. Bring your draft up to date before you send it." - see [What changed](#what-changed) |
+| A line saying why you cannot submit | Only while **Submit** is greyed out: the same reason its tooltip gives, so you do not have to point at the button to find it |
 
 The numbers are worked out again whenever you open the tab or come back to CRT's window, so a change
 you saved in Excel shows up.
@@ -97,20 +100,36 @@ At the top of the tab are **My submissions** (with the red number when there is 
 
 ## What changed
 
-When the published board has been updated since you started your draft, its row says so and offers
-**What changed**. CRT also shows a one-line notice while that board is on screen, with its own
-**What changed** button.
+When the published board has been updated since you started your draft - somebody else's
+contribution was published, say - its row says so and offers **What changed**. CRT also shows a
+notice while that board is on screen, with its own **What changed** button.
 
-The window, "What changed officially", shows the revision you started from ("You started from:") and
-the one published now ("Officially now:"), then every change of yours, one per line:
+**Your draft does not get the update by itself.** A draft is a complete copy of the board as it was
+when you started, so sending it as it is would also send the board's OLD rows - and the maintainer
+would see everything published since as changes you made. So bring the draft up to date first.
 
-* "You added this. It is not in the published data."
-* "You removed this. It is still in the published data, and your submission would remove it."
-* "You changed:" followed by the columns you changed
+The window, "What changed in the published data", shows the revision you started from ("You started
+from:") and the one published now ("Published data now:"), then:
 
-Your edits are still applied on top of the new official data - nothing of yours is overwritten.
-**I have looked at this** stops the notice until the official data changes again. It changes none of
-your rows.
+* **N changes of yours** - what you added, removed or changed in your draft ("You added this.", "You
+  removed this - your submission would remove it from the published data.", "You changed:" followed
+  by the columns you changed);
+* **N changes in the published update** - what was published since you started ("Added in the
+  update.", "Removed in the update.", "Changed in the update: ...");
+* **N rows changed by both you and the update**, first, when there are any - for each, what happened.
+  Your version is the one kept, so have a look at these before you send.
+
+**Bring my draft up to date** adds the published update to your draft and keeps every change of
+yours: rows you did not touch take the update's version, rows you added, changed or removed stay as
+you made them, and a picture you did not replace takes the published one. The draft's workbook must
+not be open in Excel while this runs, and changes not yet saved in the table have to be saved or
+discarded first. Afterwards the notice goes away and the row no longer warns.
+
+**A draft started before CRT 3.0.1** cannot be brought up to date, because CRT did not keep a copy of
+what it was started from then. Its window says so, compares your draft with the published data as it
+is now (so the list also shows the update's changes, turned round), and offers **I have looked at
+this** instead, which only stops the notice until the published data changes again. If you changed
+only a little, the safe way is to discard such a draft and make your changes again.
 
 ## Schematic images and KiCad data
 
@@ -120,7 +139,8 @@ never moved. If the table is open with unsaved changes, you are asked about them
 **Schematic images** - drag image files onto the window, or use **Choose image files**. Each image is
 one schematic of the board. Drag the images up or down to change the order they are listed in, and
 **Remove** takes one out, together with the component markings and the KiCad calibration on it. If it
-has any, you are asked first: adding the image again later does not bring them back. The image file
+has any, you are asked first, in a "Remove schematic image" window - **Remove image** or **Cancel** -
+since adding the image again later does not bring them back. The image file
 itself stays in your draft folder. Under each image,
 **Name** is what the view is called - type a new one and press Enter, or click elsewhere, to rename
 it (Escape puts the old name back). A name can be used once. The image's component markings and
@@ -183,7 +203,12 @@ Above the table are **Added**, **Modified**, **Deleted**, **Errors** and **Warni
 count for the whole draft, every sheet together. Click one to see only those rows, and click it again
 to see every row. Click several to see the rows of any of them. Meanwhile the tabs of sheets with none
 of those rows are hidden. A count of 0 is faint and cannot be clicked. No row can be moved while a
-count is clicked, and a row you have just inserted always stays visible.
+count is clicked, and a row you have just inserted always stays visible. With the keyboard, Tab moves
+to a count and Enter or Space clicks it.
+
+While **Errors** or **Warnings** is clicked, every one of them is also listed above the table in
+words - the sheet, the row, the column and what is wrong - so you do not have to point at each red or
+amber corner to read it. The list can be selected and copied.
 
 ### Search
 
@@ -280,16 +305,23 @@ save will not save that board - they ask you to save or discard the table's chan
 
 ## Submit
 
-**Submit** sends the draft in for review. It is greyed out - point at it to see why - when:
+**Submit** sends the draft in for review. It is greyed out when - and a line on the row says why:
 
-* there is nothing to send yet: "There is nothing to send yet. Add some data to this board first."
+* there is nothing to send yet: "There is nothing to send yet - this draft holds no change from the
+  published data." (for a board you created yourself: "Add some data to this board first."). Rows,
+  files - a picture replaced under its own name, KiCad files - and KiCad calibrations all count, so a
+  draft whose only change is a re-calibrated KiCad overlay can be sent;
 * the draft holds exactly what you last sent from it: "You have already sent this draft as it is now,
   on [date]. Change something to send it again." Saving the Excel file without changing a value, or
   changing one and changing it back, does not count. If the earlier send never finished, the same
   draft can be sent again straight away.
 
-**A draft with errors is not sent.** Its table opens showing only the rows with errors, with a line
-above it saying how many there are. Fix them, save the table, and press **Submit** again.
+**A draft with errors is not sent.** Its table opens showing only the rows with errors, with every
+error listed above the table - sheet, row, column and what is wrong. Fix them, save the table, and
+press **Submit** again.
+
+**When the published board has changed since you started**, bring your draft up to date first - see
+[What changed](#what-changed). Otherwise the maintainer sees the update's changes as changes you made.
 
 The "Submit contribution" window first shows what is about to go - how many schematics, components,
 highlights and referenced files, and KiCad files when there are any - and asks for two things, both
@@ -302,10 +334,16 @@ required:
 * **What did you change?** - a sentence is enough; it is the first thing the maintainer reads. This is
   the place to explain your change, and to say which exact board revision you have.
 
-**Submit** then sends it, uploading only the files the server does not have yet, with a progress bar.
-**Cancel** stops it, leaving nothing behind. The window ends with "Contribution sent", "Contribution
-not accepted" (with the reasons) or "Contribution not sent" (for example with no internet connection).
-Your draft is not changed either way, and you can keep using it while the contribution is reviewed.
+**Submit** (or Enter, once both are filled in) then sends it, uploading only the files the server does
+not have yet, with a progress bar. **Cancel** stops it, leaving nothing behind - not even an entry in
+**My submissions**. The window ends with "Contribution sent", "Contribution not accepted" (with the
+reasons) or "Contribution not sent" (for example with no internet connection, or on a network that
+asks you to sign in first, as in a hotel). Your draft is not changed either way, and you can keep using
+it while the contribution is reviewed.
+
+**An accepted contribution is published in two steps:** first to the BETA source, where it gets a
+final check, then to the stable source that everyone downloads. You get an email at each step, and the
+dialog says so before you send.
 
 Sending the same board again replaces your earlier submission, as long as no maintainer has started
 on it yet. More: [Sending your work in](Contribute-data-via-CRT#sending-your-work-in).
@@ -332,7 +370,8 @@ it went.
 | --- | --- | --- |
 | Submitted - awaiting feedback from a maintainer | amber | Waiting for a maintainer |
 | Approved, waiting to be published | green | One of two approvals given. A change that replaces a shared file other boards use needs a maintainer of the board AND the administrator |
-| Published to the BETA source | green | Accepted, and in the BETA data for a final check |
+| Accepted | green | Accepted (said by older servers before the two publishing steps existed) |
+| Published to the BETA source | green | Accepted, and in the BETA data for a final check - the second step, to the stable source, is still to come |
 | Published to the stable source | green | Out to everybody |
 | Changes requested | orange | A maintainer asks you to change something - see below |
 | Taken back out of BETA - waiting for review again | orange | A maintainer took it back out of the BETA data for another look |
@@ -344,7 +383,8 @@ it went.
 | Not checked yet | amber | CRT has not heard from the server about it yet |
 
 **After "Changes requested":** read the feedback in **My submissions**, change your draft - in CRT or
-in the table - and press **Submit** again. The new submission is listed as a new entry.
+in the table - and press **Submit** again. The new submission is listed as a new entry, and the old
+one then reads "Changes requested - you sent a newer one on [date]", no longer in orange.
 
 ## Discard
 
@@ -363,12 +403,20 @@ Once a contribution reaches the stable source, CRT removes its draft by itself -
 downloaded the published board and the draft holds nothing the published board does not. Not before:
 while it is only in the BETA source, a maintainer can still take it back out. A draft you kept working
 on after submitting stays, and so does one whose table has unsaved changes. A whole new board's draft
-goes once CRT's hardware and board lists include the published board.
+goes once CRT's hardware and board lists include the published board. It is the LATEST submission
+from the draft that counts: while a later one is still only in BETA, the draft stays. A later one that
+went nowhere - it never finished sending, ran out of time, or a newer one of yours replaced it - does
+not count, and nor does one the server no longer knows about.
+
+**A contribution a maintainer corrected before publishing** leaves its draft behind, because the draft
+no longer matches the published board. Its row says so: "Your work is published, with some details
+changed by a maintainer, so this draft will not tidy itself away." Look at the board, then **Discard**
+the draft - sending it again would undo the maintainer's corrections.
 
 ## BETA and stable notices
 
 When a contribution of yours is published to the BETA source while you download from the stable
-source, a notice under the tabs says so and names the box to tick on the
+source, a notice in the bottom-right corner of the window says so and names the box to tick on the
 [Configuration tab](Configuration-tab) to try it before everybody else: "Download data from the BETA
 source instead of the stable source". When it later reaches the stable source while you download from
 BETA, a notice reminds you that you can switch back. **Open Configuration** takes you to the setting,
@@ -386,7 +434,7 @@ update. Everything else in CRT works as before.
 
 The button on it is the way out. If CRT has already found a newer version - with **Check for new
 version at application launch** ticked on the [Configuration tab](Configuration-tab) - **Install
-update** downloads and installs it, as the update notice at the top of the window does. Otherwise
+update** downloads and installs it, as the update notice does. Otherwise
 **Open download page** opens the page listing every CRT release in your web browser.
 
 If a draft's table holds edits you have not saved, installing the update asks first, as quitting
@@ -396,9 +444,8 @@ nothing and say why, since their next step is on this tab.
 
 ## Limits
 
-* Changes that are not rows read "0 rows changed", and a draft with only such changes cannot be
-  submitted on its own: a new row order, a KiCad trace calibration, a picture or file replaced under
-  the same file name, or KiCad files only. They are sent along with any other change.
+* A new row ORDER is not counted as a change, so a draft whose only change is the order of its rows
+  cannot be submitted on its own. It is sent along with any other change.
 * Copy and paste work one cell at a time.
 * The counts you clicked in the colour key are forgotten when CRT closes.
 * There is no button that opens the drafts folder - see [What a draft is](#what-a-draft-is) for where

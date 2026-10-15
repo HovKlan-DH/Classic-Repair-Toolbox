@@ -466,13 +466,13 @@ public sealed class MainMaintainerTabTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** UNDER THE LISTS: WHO IS LOGGED IN, AND NOTHING ELSE (owner request, 2026-10-04: "only show
+    // *** UNDER THE LISTS: WHO IS SIGNED IN, AND NOTHING ELSE (owner request, 2026-10-04: "only show
     // "Logged in as:<br /><b>Dennis</b> (dennis@...dk)" in the bottom-left corner"). *** The words on
     // a line of their own, then the name in bold and the address - and no "Account" or "Sign out"
     // button any more: both are under Account > "My account" (MyAccountViewTests).
     // ###########################################################################################
     [Fact]
-    public void Under_the_lists_it_says_who_is_logged_in_and_carries_no_buttons()
+    public void Under_the_lists_it_says_who_is_signed_in_and_carries_no_buttons()
     {
         UiTest.Run(() =>
         {
@@ -484,7 +484,7 @@ public sealed class MainMaintainerTabTests : IDisposable
             TextBlock[] lines = panel.Children.OfType<TextBlock>().ToArray();
 
             Assert.Equal(2, lines.Length);
-            Assert.Equal("Logged in as:", lines[0].Text);
+            Assert.Equal("Signed in as:", lines[0].Text);
             Assert.Same(tab.GetControl<TextBlock>("SignedInAsText"), lines[1]);
             Assert.Equal("Dennis (dh@example.com)", TabMaintainer.TextOf(lines[1]));
 

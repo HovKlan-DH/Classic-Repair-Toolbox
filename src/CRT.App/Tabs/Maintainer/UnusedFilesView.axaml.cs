@@ -61,8 +61,9 @@ namespace CRT
             this.thisSession = session;
         }
 
+        // Through HandlerGuard, as every async handler of the tab (code review, 2026-10-13).
         private async void OnRefreshClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.LoadAsync();
+            await HandlerGuard.RunAsync(this.LoadAsync, message => this.ShowMessage(message, isError: true));
 
         // Signed out: empty, with nothing of the previous account's on screen.
         public void Clear()
@@ -76,7 +77,7 @@ namespace CRT
         private async void OnTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (this.thisHasLoaded)
-                await this.LoadAsync();
+                await HandlerGuard.RunAsync(this.LoadAsync, message => this.ShowMessage(message, isError: true));
         }
 
         private void OnLookedThroughChanged(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
@@ -167,7 +168,10 @@ namespace CRT
                 button.IsEnabled = UnusedFilesDisplay.CanRemove(this.thisListing, check?.IsChecked == true);
         }
 
-        private async void OnRemoveClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        private async void OnRemoveClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.RemoveAsync, message => this.ShowMessage(message, isError: true));
+
+        private async Task RemoveAsync()
         {
             UnusedFileListing? listing = this.thisListing;
             var check = this.FindControl<CheckBox>("LookedThroughCheckBox");

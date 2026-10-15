@@ -59,7 +59,7 @@ namespace CRT
         public const string SettingsFileName = "Classic-Repair-Toolbox.settings.json";
 
         // Name of the JSON file storing custom drawn polyline traces. Stored alongside the log file.
-        // Used by: TraceStorage.LoadFromFile
+        // Used by: TraceStorage.Load
         public const string TracesFileName = "Classic-Repair-Toolbox.traces.json";
 
         // Name of the local folder holding worklog workbooks (repair jobs) and their entries. Stored
@@ -76,6 +76,14 @@ namespace CRT
         // "--data-root="/"--workbooks-root=" for their own folders.
         // Used by: DraftManager.Load
         public const string DraftsFolderName = "Drafts";
+
+        // Name of the folder oscilloscope captures are saved in until the user picks another one on
+        // the Oscilloscope tab. Beside "Workbooks" and "Drafts", NOT inside "Data": until 2026-10-13
+        // the default was the data folder itself, which "Allow deletion of orphan and non-used
+        // files" cleans - so every capture was deleted at the next launch with that box ticked
+        // (OscilloscopeCaptureRelocation moves the ones already there).
+        // Used by: UserSettings.OscilloscopeImageFolder
+        public const string OscilloscopeImagesFolderName = "Oscilloscope images";
 
         // Name of the folder holding a board's raw KiCad files, directly inside the board's own
         // folder ("Commodore/C64/250407/KiCad data/"). The app discovers its contents by name with
@@ -178,9 +186,17 @@ namespace CRT
         // Used by: OnlineServices.FetchManifestAsync
         public static readonly TimeSpan ManifestTimeout = TimeSpan.FromSeconds(30);
 
-        // Timeout per individual file download — files can be large on slow connections.
+        // How long a data file download may go with NOTHING arriving before it gives up. Not a total
+        // budget (code review, 2026-10-13): HttpClient.Timeout is one, and at 30 seconds no file
+        // above ~20 MB ever arrived on a slower line - six shipped files are bigger, two KiCad boards
+        // 44 MB. A download now takes as long as it takes while bytes keep coming (NoProgressWatchdog).
+        // Used by: OnlineServices.DownloadFileAsync
+        public static readonly TimeSpan DownloadNoProgressTimeout = TimeSpan.FromSeconds(30);
+
+        // Name of the file holding the SHA-256 of every local data file with the file's stamp, so a
+        // launch hashes only what changed (LocalChecksumCache). In CRT's AppData folder, beside "Data".
         // Used by: OnlineServices.SyncFilesAsync
-        public static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(30);
+        public const string DataChecksumCacheFileName = "Classic-Repair-Toolbox.data-checksums.json";
 
         // Timeout for feedback upload requests, which may include large attachments - up to 250 MB
         // packed since 2026-10-03, which five minutes cut off below ~7 Mbit/s. An HOUR is the
@@ -236,7 +252,7 @@ namespace CRT
         public const double SchematicsMaxZoom = 20.0;
 
         // Maximum pixel width used when pre-scaling schematic thumbnail images.
-        // Used by: Main.OnBoardSelectionChanged, Main.CreateScaledThumbnail, Main.CreateScaledThumbnailWithHighlights
+        // Used by: SchematicThumbnailSet.Decode (the board load's thumbnails)
         public const int ThumbnailMaxWidth = 800;
 
         // Logical pixel size of the splash screen window, matching Splash.axaml Width/Height.
@@ -479,9 +495,14 @@ namespace CRT
             // unwound it - so it is the place a full stack trace is most reliably available.
             // "RequestCatch" is deliberately left untouched: changing it would alter whether the
             // exception is caught, and this handler only observes.
+            //
+            // Every handler ends with Logger.Flush: the log is written in batches (Logger), and the
+            // lines just before a crash are the ones that explain it. CrashLogger's report is a
+            // Critical line, written at once anyway; the flush is for everything that led up to it.
             Dispatcher.UIThread.UnhandledExceptionFilter += (s, e) =>
             {
                 CrashLogger.Log("Dispatcher (UI thread)", e.Exception, isFatal: true);
+                Logger.Flush();
             };
 
             // Also subscribed, because the filter does not run in every path that ends here - a
@@ -492,6 +513,7 @@ namespace CRT
             Dispatcher.UIThread.UnhandledException += (s, e) =>
             {
                 CrashLogger.Log("Dispatcher (UI thread, unhandled)", e.Exception, isFatal: true);
+                Logger.Flush();
 
                 // Deliberately NOT setting "e.Handled = true" - see the note above.
             };
@@ -513,11 +535,14 @@ namespace CRT
                     // A non-Exception throw. Previously this branch logged nothing whatsoever.
                     Logger.Critical($"Unhandled non-Exception object thrown: [{e.ExceptionObject}]");
                 }
+
+                Logger.Flush();
             };
 
             TaskScheduler.UnobservedTaskException += (s, e) =>
             {
                 CrashLogger.Log("Unobserved Task", e.Exception, isFatal: false);
+                Logger.Flush();
 
                 // Observing it keeps the previous behaviour: an unawaited background failure has
                 // never been allowed to take the application down, and that is still right - the
@@ -555,6 +580,7 @@ namespace CRT
             catch (Exception ex)
             {
                 CrashLogger.Log("Application startup", ex, isFatal: true);
+                Logger.Flush();
 
                 // Rethrowing here would only reach the same "async void" void, so instead the
                 // failure is surfaced the one way that still works this early: shut down with a
@@ -636,6 +662,11 @@ namespace CRT
             // resolve a draft for the very first board load. "--drafts-root=" follows the same
             // parsing convention as "--data-root="/"--workbooks-root=".
             DraftManager.Load(Environment.GetCommandLineArgs().Skip(1).ToArray());
+
+            // The traces drawn on schematics - before the first board load reads them (and before a
+            // schematic rename can move them). It loaded itself the first time it was touched; a
+            // headless test touching it read the user's real file.
+            TraceStorage.Load();
 
             // Submission receipts - what this computer has sent, so the "my submissions" view can
             // ask the server how each one is getting on. Unconditional and cheap (one small JSON

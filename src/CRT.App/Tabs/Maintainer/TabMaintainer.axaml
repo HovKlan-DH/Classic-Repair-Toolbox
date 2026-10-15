@@ -265,6 +265,18 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         Click="OnSignInClick" />
 
                 <!--
+                WHERE A SIGN-IN CANNOT BE REMEMBERED (code review, 2026-10-13): Linux and macOS, which
+                have no DPAPI - CRT stores nothing there rather than a token in plain text
+                (ReviewSessionProtection). Said here, once, so the sign-in each launch is expected rather
+                than read as CRT forgetting. Its words and when it shows are ReviewSessionStore.NotRememberedNote.
+                -->
+                <TextBlock x:Name="NotRememberedText"
+                           FontSize="12"
+                           Opacity="0.6"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+
+                <!--
                 FORGOT PASSWORD. A plain text button rather than a second screen: the whole interaction
                 is one request and one sentence, and a maintainer locked out of the only tool that can
                 publish should not have to go looking for how to get back in.
@@ -352,6 +364,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                              KeyDown="OnNewPasswordKeyDown" />
 
                     <Button x:Name="SetPasswordButton"
+                            Classes="Accept"
                             Content="Set password"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
@@ -420,6 +433,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                             Click="OnCancelInvitationClick" />
 
                     <Button x:Name="AcceptInvitationButton"
+                            Classes="Accept"
                             Content="Create my account"
                             Click="OnAcceptInvitationClick" />
                 </StackPanel>
@@ -513,7 +527,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
 
             <DockPanel Grid.Row="1" Grid.Column="0">
                 <!--
-                WHO IS LOGGED IN, AND NOTHING ELSE (owner request, 2026-10-04: "only show "Logged in
+                WHO IS SIGNED IN, AND NOTHING ELSE (owner request, 2026-10-04: "only show "Logged in
                 as:<br /><b>Dennis</b> (dennis@...dk)" in the bottom-left corner"). The name is bold,
                 on a line of its own under the words, so somebody with both a maintainer and an
                 administrator account sees which one is acting before publishing anything.
@@ -525,7 +539,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                             x:Name="SignedInAsPanel"
                             Opacity="0.6"
                             Margin="0,8,0,0">
-                    <TextBlock Text="Logged in as:" />
+                    <TextBlock Text="Signed in as:" />
                     <TextBlock x:Name="SignedInAsText" TextWrapping="Wrap" />
                 </StackPanel>
 
@@ -589,6 +603,16 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                     alone, until then. Maintainers are set here again since 2026-10-04 (owner
                     request) - they were on the Boards screen from 2026-09-27.
                     -->
+                    <!-- The Account screen's one message line, above its list as the other screens'
+                         are (code review, 2026-10-13: a failure in CRT itself, HandlerGuard). Shown
+                         with the list - the screen switch hides and shows AccountList. -->
+                    <DockPanel IsVisible="{Binding #AccountList.IsVisible}">
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="AccountListMessageText"
+                               TextWrapping="Wrap"
+                               IsVisible="False"
+                               Margin="0,0,0,8" />
+
                     <ListBox x:Name="AccountList"
                              IsVisible="False"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -691,6 +715,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                             </StackPanel>
                         </ListBoxItem>
                     </ListBox>
+                    </DockPanel>
                 </Panel>
             </DockPanel>
 
@@ -770,7 +795,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                  MinHeight="60"
                                  MaxHeight="120"
                                  TextWrapping="Wrap"
-                                 PlaceholderText="Why? This is the only message the contributor receives." />
+                                 PlaceholderText="Optional for Approve - it goes into the decision mail. Required for Reject and Request changes - it is the only message the contributor receives." />
 
                         <!--
                         APPROVE IS LAST AND SEPARATED - at the far RIGHT (owner request, 2026-09-26), the
@@ -793,26 +818,20 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         -->
                         <DockPanel>
                             <Button DockPanel.Dock="Right"
+                                    Classes="Accept"
                                     x:Name="ApproveButton"
                                     Content="Approve and publish to BETA"
-                                    Foreground="{DynamicResource Button_Ok_Fg}"
-                                    Background="{DynamicResource Button_Ok_Bg}"
-                                    BorderBrush="{DynamicResource Button_Ok_Border}"
                                     Click="OnApproveClick" />
 
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button x:Name="RequestChangesButton"
+                                    Classes="Danger"
                                     Content="Request changes"
-                                    Foreground="{DynamicResource Button_Cancel_Fg}"
-                                    Background="{DynamicResource Button_Cancel_Bg}"
-                                    BorderBrush="{DynamicResource Button_Cancel_Border}"
                                     Click="OnRequestChangesClick" />
 
                             <Button x:Name="RejectButton"
+                                    Classes="Danger"
                                     Content="Reject"
-                                    Foreground="{DynamicResource Button_Cancel_Fg}"
-                                    Background="{DynamicResource Button_Cancel_Bg}"
-                                    BorderBrush="{DynamicResource Button_Cancel_Border}"
                                     Click="OnRejectClick" />
                         </StackPanel>
                         </DockPanel>

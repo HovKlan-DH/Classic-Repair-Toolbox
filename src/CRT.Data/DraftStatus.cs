@@ -29,6 +29,20 @@ namespace Handlers.DataHandling
         // which has no published counterpart to be based on.
         public string BaseRevision { get; init; } = string.Empty;
 
+        // The published revision the contributor said "I have looked at this" to, for a draft with
+        // no base (DraftMarker.DriftSeenRevision). Quiets the drift warning; BaseRevision stays true.
+        public string DriftSeenRevision { get; init; } = string.Empty;
+
+        // The published content it was said to (DraftMarker.DriftSeenContentHash).
+        public string DriftSeenContentHash { get; init; } = string.Empty;
+
+        // What the published files held when the draft was copied or last brought up to date
+        // (DraftMarker.BaseContentHash). Empty for a draft from before it was kept.
+        public string BaseContentHash { get; init; } = string.Empty;
+
+        // Whether the draft keeps a base, so it can be brought up to date (DraftRebaser).
+        public bool HasBase { get; init; }
+
         // Set only on a board that exists purely as a draft - "Add a new board".
         public NewBoardRegistration? NewBoard { get; init; }
 
@@ -58,7 +72,7 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // Resolves that status, and the change count when it is actually wanted.
     // ###########################################################################################
-    public static class DraftStatusReader
+    public static partial class DraftStatusReader
     {
         // ###########################################################################################
         // The cheap answer: is there a draft, and what does its marker say?
@@ -88,6 +102,10 @@ namespace Handlers.DataHandling
             {
                 BoardKey = excelDataFile,
                 BaseRevision = marker.BaseRevision,
+                DriftSeenRevision = marker.DriftSeenRevision,
+                DriftSeenContentHash = marker.DriftSeenContentHash,
+                BaseContentHash = marker.BaseContentHash,
+                HasBase = !marker.IsNewBoard && DraftBaseStore.Exists(draftsRoot, excelDataFile),
                 NewBoard = marker.NewBoard,
                 CreatedUtc = DraftStatus.ParseCreated(marker.CreatedUtc),
                 WorkbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile),
@@ -190,14 +208,17 @@ namespace Handlers.DataHandling
                 return 0;
             }
 
-            BoardData? draft = BoardDataReader.ReadWorkbookUncached(status.WorkbookPath);
+            // Read through BoardReadsByStamp (code review, 2026-10-13): fresh whenever a workbook or
+            // its sidecar moved - an Excel save included - and ONE parse shared with the problem
+            // count and the fingerprint, which each parsed the same changed draft again.
+            BoardData? draft = BoardReadsByStamp.Read(status.WorkbookPath);
             if (draft is null)
             {
                 return 0;
             }
 
             BoardData? published = File.Exists(status.PublishedWorkbookPath)
-                ? BoardDataReader.ReadWorkbookUncached(status.PublishedWorkbookPath)
+                ? BoardReadsByStamp.Read(status.PublishedWorkbookPath)
                 : null;
 
             return BoardDataDiffer.CountChanges(published, draft);
@@ -286,7 +307,7 @@ namespace Handlers.DataHandling
                 return cached.Counts;
             }
 
-            BoardData? draft = BoardDataReader.ReadWorkbookUncached(status.WorkbookPath);
+            BoardData? draft = BoardReadsByStamp.Read(status.WorkbookPath);
             var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftBoardFolder));
 
             BoardProblemCounts counts = draft is null

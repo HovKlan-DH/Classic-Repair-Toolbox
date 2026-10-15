@@ -377,9 +377,11 @@ public sealed class TabDraftsTests : IDisposable
             Assert.True(item.HasDrift);
             Assert.Contains("has been updated", item.DriftSummary);
 
-            // The reassurance is load-bearing: without it the warning reads as "your work may be
-            // lost", which is false - Drafts/ and Data/ are separate trees.
-            Assert.Contains("Your edits are still applied", item.DriftSummary);
+            // *** NOT "YOUR EDITS ARE STILL APPLIED" ANY MORE (code review, 2026-10-13). *** That was
+            // untrue: a draft is a complete copy and does not get the update by itself. A draft
+            // without a base (this one has none) is told it lacks the update.
+            Assert.Contains("does not have the update", item.DriftSummary);
+            Assert.DoesNotContain("still applied", item.DriftSummary);
         });
     }
 
@@ -1030,6 +1032,57 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A CELL STILL BEING TYPED IN COUNTS WHEN CRT IS QUIT (code review, 2026-10-13). *** The grid
+    // does not commit when focus moves outside it, so quitting saw no change and closed without a
+    // word - the typed value was gone. The check commits the cell first, and the question is asked.
+    // ###########################################################################################
+    [Fact]
+    public async Task Quitting_with_a_drafts_cell_still_in_its_editor_counts_it_and_asks()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            var window = new Window { Content = tab, Width = 1300, Height = 800 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            await tab.OpenTableAsync(EntryA(tab));
+            Dispatcher.UIThread.RunJobs();
+
+            BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
+            DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+
+            // The Components sheet - the draft's changed rows are there.
+            BoardTableSheet sheet = editor.CommitAndGetDocument()!.Sheets.First(candidate => candidate.Rows.Any(row => !row.IsDeleted));
+            editor.SelectSheet(sheet);
+            Dispatcher.UIThread.RunJobs();
+
+            editor.SelectCell(sheet.Rows.First(row => !row.IsDeleted), 0);
+            grid.Focus();
+            Assert.True(grid.BeginEdit());
+            Dispatcher.UIThread.RunJobs();
+
+            TextBox typing = grid.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsFocused);
+            typing.Text = typing.Text + " (typed)";
+
+            Assert.False(tab.HasUnsavedTableEdits);
+
+            var asked = new List<UnsavedTableEditsPrompt>();
+            tab.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return UnsavedTableEditsChoice.Cancel;
+            };
+
+            Assert.True(tab.CommitCellsAndHasUnsavedTableEdits());
+            Assert.False(await tab.ConfirmLeavingTableAsync());
+            Assert.Single(asked);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public async Task Opening_the_table_shows_ONLY_that_drafts_row_with_the_table_below_it()
     {
@@ -1528,6 +1581,65 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** THE ROW CAN BE A MOMENT BEHIND, SO SUBMIT LOOKS AGAIN (code review, 2026-10-13: the check
+    // was load-bearing and untested). *** The row was built before the receipt existed - Submit is
+    // on - and by the time it is pressed the draft holds exactly what was sent. No dialog opens.
+    // ###########################################################################################
+    [Fact]
+    public async Task Submit_looks_again_and_does_not_send_a_draft_already_sent_as_it_is()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/Data.xlsx";
+            WriteDraftWithChanges(excelDataFile);
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)],
+                ReceiptsOverrideForTests = [],
+            };
+
+            int dialogsOpened = 0;
+            tab.SubmitWindowFactoryForTests = () =>
+            {
+                dialogsOpened++;
+                return new SubmitDraftWindow();
+            };
+
+            tab.RefreshDrafts();
+            DraftListItem row = Assert.Single(tab.Drafts);
+            Assert.True(row.CanSubmit);
+
+            string fingerprint = DraftFingerprint.Compute(
+                DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile),
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, excelDataFile));
+
+            // Sent meanwhile (from the row the contributor had not refreshed).
+            tab.ReceiptsOverrideForTests =
+            [
+                SentReceipt(8, "Commodore/C64/250407", "pending", "2026-10-03T10:00:00Z") with { DraftFingerprint = fingerprint }
+            ];
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            row.SubmitCommand.Execute(null);
+
+            for (int attempt = 0; attempt < 50; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(0, dialogsOpened);
+            Assert.False(Assert.Single(tab.Drafts).CanSubmit);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void A_submitted_draft_shows_its_submissions_state_as_a_badge_beside_its_name()
     {
@@ -1740,6 +1852,58 @@ public sealed class TabDraftsTests : IDisposable
                 Assert.NotNull(told.DraftDiscardedUtc);
                 Assert.True(told.DraftDiscardReported);
                 Assert.Null(SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 8).DraftDiscardedUtc);
+            }
+            finally
+            {
+                SubmissionReceiptStore.LoadFrom(string.Empty);
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** A DISCARD THAT STOPPED PART-WAY TELLS NOBODY (code review, 2026-10-13). *** With the
+    // workbook open in Excel the delete stops and the tab says "press Discard again" - but the
+    // maintainers were already told the draft was discarded, and a second Discard reported nothing
+    // (the receipt was marked). If the contributor then kept the draft, the queue showed a discard
+    // that never happened. Only a discard that finished is reported.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_discard_that_did_not_finish_is_not_reported()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            using var receipts = new TempWorkspace();
+            SubmissionReceiptStore.LoadFrom(System.IO.Path.Combine(receipts.Root, "submissions.json"));
+
+            try
+            {
+                const string excelDataFile = "Commodore/C128/310378/Data.xlsx";
+                WriteDraftWithChanges(excelDataFile);
+
+                SubmissionReceiptStore.Record(new SubmissionReceipt { SubmissionId = 9, UploadToken = "tok9", BoardId = "Commodore/C128/310378", SentUtc = DateTimeOffset.UtcNow, LastKnownState = "merged" });
+
+                HardwareBoardEntry entry = BoardEntry("Commodore 128", "310378", excelDataFile);
+                var sent = new List<long>();
+
+                var tab = new TabDrafts
+                {
+                    HardwareBoardsOverrideForTests = [entry],
+                    DiscardOverrideForTests = _ => false,
+                    DraftDiscardSendOverrideForTests = (id, _, _) =>
+                    {
+                        sent.Add(id);
+                        return Task.FromResult<int?>(204);
+                    }
+                };
+
+                tab.RefreshDrafts();
+
+                tab.DiscardConfirmed(entry, DraftDiscardContract.WhichToReport(SubmissionReceiptStore.All, "Commodore/C128/310378"));
+
+                await Task.Delay(100);
+
+                Assert.Empty(sent);
+                Assert.Null(SubmissionReceiptStore.All.Single(receipt => receipt.SubmissionId == 9).DraftDiscardedUtc);
             }
             finally
             {

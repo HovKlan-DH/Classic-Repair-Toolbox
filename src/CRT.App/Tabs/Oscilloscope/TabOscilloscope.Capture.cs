@@ -30,31 +30,41 @@ namespace CRT
         // ###########################################################################################
         private async void OnRunFullTestSuiteClick(object? sender, RoutedEventArgs e)
         {
-            await this.RunWithEstablishedOscilloscopeSessionAsync(async (scopeClient, selectedOscilloscope, cancellationToken) =>
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                this.thisLastTriggerLevelVolts = null;
-                this.thisLastTimeDivSeconds = null;
-                this.thisLastVoltsDivVolts = null;
-
-                foreach (var palette in ScopeCommandPaletteDefinitions.GetFullCommandPaletteExecutionOrder())
+                await this.RunWithEstablishedOscilloscopeSessionAsync(async (scopeClient, selectedOscilloscope, cancellationToken) =>
                 {
-                    if (palette == ScopeCommandPalette.DumpImage)
+                    this.thisLastTriggerLevelVolts = null;
+                    this.thisLastTimeDivSeconds = null;
+                    this.thisLastVoltsDivVolts = null;
+
+                    foreach (var palette in ScopeCommandPaletteDefinitions.GetFullCommandPaletteExecutionOrder())
                     {
-                        await this.ExecuteDumpImageWorkflowAsync(
+                        if (palette == ScopeCommandPalette.DumpImage)
+                        {
+                            await this.ExecuteDumpImageWorkflowAsync(
+                                scopeClient,
+                                selectedOscilloscope,
+                                cancellationToken);
+                            continue;
+                        }
+
+                        await this.ExecutePaletteAsync(
                             scopeClient,
                             selectedOscilloscope,
+                            palette,
                             cancellationToken);
-                        continue;
                     }
-
-                    await this.ExecutePaletteAsync(
-                        scopeClient,
-                        selectedOscilloscope,
-                        palette,
-                        cancellationToken);
-                }
-            },
-            CancellationToken.None);
+                },
+                CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnRunFullTestSuiteClick failed - [{ex}]");
+                this.AppendOutputLine("Critical", $"Oscilloscope action failed: {ex.Message}");
+            }
         }
 
         // ###########################################################################################
@@ -198,11 +208,8 @@ namespace CRT
         // ###########################################################################################
         private void UpdateOscilloscopeImageFolderUi()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.UpdateOscilloscopeImageFolderUi))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.UpdateOscilloscopeImageFolderUi,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 

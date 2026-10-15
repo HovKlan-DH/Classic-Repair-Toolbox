@@ -211,7 +211,7 @@ namespace Handlers.MaintainerHandling
         // ###########################################################################################
         public const string ReasonTitle = "Publish your change to BETA";
 
-        public static string ReasonHeadline(string boardId) => $"Publish your change to {boardId} in BETA";
+        public static string ReasonHeadline(string boardId) => $"Publish your change to {ReviewQueueDisplay.BoardHeading(boardId)} in BETA";
 
         // The BETA check box named as the Configuration tab names it - one constant, the mails' too.
         public static string ReasonExplanation { get; } =
@@ -373,6 +373,16 @@ namespace Handlers.MaintainerHandling
 
         public static bool CanChooseBeta(BoardOverviewEntry? board) =>
             board is not null && (board.InBeta || board.InProduction != true);
+
+        // ###########################################################################################
+        // *** THE "DATA SOURCE: BETA | STABLE" ROW ONLY FOR A BOARD IN BOTH (code review, 2026-10-13). ***
+        // For a board one source holds, half the switch was greyed out with a tooltip and "Compare
+        // sources" beside it could not be ticked - a choice offered that was no choice. Such a board
+        // shows the source it is in (ShowsStable), with no row; the row - "Compare sources" with it -
+        // is there for Board data and Files of a board in both.
+        // ###########################################################################################
+        public static bool ShowsSourceSwitch(BoardOverviewEntry? board, BoardSection section) =>
+            BoardSections.CanCompareSources(board) && section is BoardSection.BoardData or BoardSection.Files;
 
         // The stable source's table: what it is called beside a changed cell (it never has one), and
         // in "there is no file at this path in ...".

@@ -141,10 +141,21 @@ namespace Handlers.DataHandling
                     out List<string> missing,
                     out List<string> shared);
 
+                // ###########################################################################################
+                // *** AND WHAT IT WAS COPIED FROM (code review, 2026-10-13). *** The base - the
+                // published board as copied, its calibrations and the hashes of the files copied - is
+                // what lets this draft be brought up to date when somebody else's work is published
+                // later (DraftRebase), instead of sending that work back as removals. A base that
+                // cannot be written costs only that: the draft is still a draft, warned about drift
+                // the old way.
+                // ###########################################################################################
+                DraftSeeder.TryWriteBase(draftsRoot, dataRoot, excelDataFile, publishedBoard);
+
                 DraftMarkerStore.Save(markerPath, new DraftMarker
                 {
                     BoardKey = excelDataFile,
                     BaseRevision = publishedBoard.RevisionDate ?? string.Empty,
+                    BaseContentHash = DraftBaseStore.PublishedContentHash(DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile)),
                     CreatedUtc = DateTimeOffset.UtcNow.ToString("o"),
                 });
 
@@ -283,14 +294,29 @@ namespace Handlers.DataHandling
             }
         }
 
+        private static void TryWriteBase(string draftsRoot, string dataRoot, string excelDataFile, BoardData publishedBoard)
+        {
+            try
+            {
+                DraftBaseStore.Save(
+                    draftsRoot,
+                    excelDataFile,
+                    DraftBaseStore.Capture(dataRoot, excelDataFile, publishedBoard, draftsRoot, draftCopiesAreFresh: true));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                CrtLog.Warning($"Could not keep the base of the draft for [{excelDataFile}] - [{ex.Message}]");
+            }
+        }
+
         // ###########################################################################################
         // Copies the published sidecar beside the draft workbook, when there is one.
         //
-        // Byte-copied rather than rewritten, unlike the workbook: the sidecar holds roots this
-        // application does not model (highlights AND "KiCad calibration points", and potentially
-        // others a future version adds). BoardComponentHighlightStorage's own writes are careful to
-        // preserve unknown roots for exactly that reason, and rewriting it here from a partial
-        // model would discard whatever it did not know about.
+        // Byte-copied rather than rewritten, unlike the workbook - but note that the first edit of
+        // the draft rewrites it through BoardSidecarWriter, which writes the three roots CRT knows
+        // (highlights, "KiCad calibration points", "Schematic renames") and nothing else, so a root
+        // a future version adds would not survive a draft edit (code review, 2026-10-13: this comment
+        // used to claim the draft's writes preserved unknown roots; they do not).
         //
         // A missing sidecar is ordinary - plenty of boards have no highlights - so it is silent.
         // ###########################################################################################

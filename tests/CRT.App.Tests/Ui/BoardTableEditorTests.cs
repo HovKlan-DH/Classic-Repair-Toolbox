@@ -1346,18 +1346,23 @@ public sealed class BoardTableEditorTests : IDisposable
 
     // ------------------------------------------------------------------ Save button and message
 
+    // Green, the Accept colour (owner decision, 2026-10-13): it wore the Drafts row's "Discard" red
+    // until then, so the button that KEEPS the work looked like the one that throws it away. And
+    // "Delete row" is the red one now.
     [Fact]
-    public void Save_changes_wears_the_same_red_as_the_Discard_button()
+    public void Save_changes_is_green_and_Delete_row_is_red()
     {
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
             Window window = Show(editor);
             Button save = editor.GetControl<Button>("SaveButton");
+            Button delete = editor.GetControl<Button>("DeleteRowButton");
 
-            Assert.Equal(ThemeColor("Button_Cancel_Bg"), (save.Background as ISolidColorBrush)?.Color);
-            Assert.Equal(ThemeColor("Button_Cancel_Fg"), (save.Foreground as ISolidColorBrush)?.Color);
-            Assert.Equal(ThemeColor("Button_Cancel_Border"), (save.BorderBrush as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("Button_Ok_Bg"), (save.Background as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("Button_Ok_Fg"), (save.Foreground as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("Button_Ok_Border"), (save.BorderBrush as ISolidColorBrush)?.Color);
+            Assert.Equal(ThemeColor("Button_Cancel_Bg"), (delete.Background as ISolidColorBrush)?.Color);
 
             window.Close();
         });

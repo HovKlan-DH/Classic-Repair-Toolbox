@@ -79,7 +79,104 @@ namespace CRT.Server.Handlers.Submissions
                 workbook,
                 sidecar);
 
+            entries = SubmissionFileTreeFlow.WithAlsoUsedBy(root, manifest, entries, ApprovePublishFlow.PreviewReads);
+
             return TreeFileSizes.Attach(entries, root, submitted: TreeFileSizes.OfSubmission(manifest));
+        }
+
+        // ###########################################################################################
+        // *** WHO ELSE SEES A REPLACED SHARED FILE (code review, 2026-10-13). *** Replacing a shared
+        // file needs two approvals because every board citing it gets the new bytes - and the two
+        // approvers were never told WHICH boards. Each shared file this approval replaces carries the
+        // other boards whose workbooks cite it (BoardFileEntry.AlsoUsedBy), "Manufacturer / Hardware /
+        // Board", sorted. Read through `cache`, so the tree's workbooks are parsed once per version,
+        // not once per click - and only when the submission replaces a shared file at all.
+        // ###########################################################################################
+        internal static IReadOnlyList<BoardFileEntry> WithAlsoUsedBy(
+            string root,
+            SubmissionManifest manifest,
+            IReadOnlyList<BoardFileEntry> entries,
+            WorkbookReadCache cache)
+        {
+            var replaced = new HashSet<string>(
+                entries
+                    .Where(entry => entry.Change == BoardFileChange.Changed &&
+                                    SubmissionFileScopes.Classify(manifest, entry.Path) is SubmissionFileScope.ManufacturerShared or SubmissionFileScope.GenericShared)
+                    .Select(entry => entry.Path),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (replaced.Count == 0)
+                return entries;
+
+            IReadOnlyDictionary<string, IReadOnlyList<string>> citers =
+                SubmissionFileTreeFlow.BoardsCiting(root, replaced, manifest.BoardId, cache);
+
+            return entries
+                .Select(entry => replaced.Contains(entry.Path) && citers.TryGetValue(entry.Path, out IReadOnlyList<string>? boards)
+                    ? entry with { AlsoUsedBy = boards }
+                    : entry)
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // For each of `paths` (data-root-relative, compared ignoring case as every client does), the
+        // boards other than `ownBoardId` whose board-folder workbooks - any generation - cite it. A
+        // workbook that cannot be read names nobody; this is shown, never acted on.
+        // ###########################################################################################
+        internal static IReadOnlyDictionary<string, IReadOnlyList<string>> BoardsCiting(
+            string root,
+            IReadOnlyCollection<string> paths,
+            string ownBoardId,
+            WorkbookReadCache cache)
+        {
+            var found = new Dictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string path in paths)
+                found[path] = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (string workbook in SubmissionFileTreeFlow.BoardFolderWorkbooks(root))
+            {
+                string relative = SubmissionFileTreeFlow.Relative(root, workbook);
+                string[] segments = relative.Split('/');
+                string boardId = string.Join('/', segments.Take(3));
+
+                if (string.Equals(boardId, ownBoardId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!cache.TryGetCitations(workbook, out IReadOnlyCollection<string> cites))
+                    continue;
+
+                foreach (string cited in cites)
+                {
+                    string normalised = (cited ?? string.Empty).Trim().Replace('\\', '/').TrimStart('/');
+
+                    if (found.TryGetValue(normalised, out SortedSet<string>? boards))
+                        boards.Add(string.Join(" / ", segments.Take(3)));
+                }
+            }
+
+            return found
+                .Where(pair => pair.Value.Count > 0)
+                .ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value.ToList(), StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Every workbook at the top of a <Manufacturer>/<Hardware>/<Board>/ folder - DataTreeUsage's
+        // own rule for what a board workbook is - found three levels down without walking every file.
+        private static IEnumerable<string> BoardFolderWorkbooks(string root)
+        {
+            if (!Directory.Exists(root))
+                yield break;
+
+            var options = new EnumerationOptions { AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true };
+
+            foreach (string manufacturer in Directory.EnumerateDirectories(root, "*", options))
+            foreach (string hardware in Directory.EnumerateDirectories(manufacturer, "*", options))
+            foreach (string board in Directory.EnumerateDirectories(hardware, "*", options))
+            foreach (string file in Directory.EnumerateFiles(board, "*" + DataGenerationRules.WorkbookExtension, options))
+            {
+                if (DataTreeUsage.IsBoardFolderWorkbook(SubmissionFileTreeFlow.Relative(root, file)))
+                    yield return file;
+            }
         }
 
         // ###########################################################################################

@@ -47,6 +47,7 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
         DraftManager.LoadFrom(string.Empty);
 
         this.thisWorkspace.Dispose();
+        this.thisBesideData.Dispose();
     }
 
     // ------------------------------------------------------------------ fixture helpers
@@ -207,6 +208,141 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
         Assert.False(this.FileExists("Stale/orphan.bin"));
         Assert.False(Directory.Exists(Path.Combine(this.thisWorkspace.Root, "Stale")),
             "the emptied folder should be removed too");
+    }
+
+    // ------------------------------------------------------------ oscilloscope captures
+    //
+    // Code review, 2026-10-13: a capture was saved, by default, straight into the data folder - and
+    // a capture is a file no manifest lists, so the cleanup deleted every one of them.
+
+    private readonly TempWorkspace thisBesideData = new();
+
+    private string CaptureFolderBesideData => this.thisBesideData.Path_("Oscilloscope images");
+
+    private List<DataFileEntry> MinimalManifest() =>
+        new() { ManifestEntry(MainExcelName), ManifestEntry("C64/Data.xlsx") };
+
+    private void WriteMinimalBoard()
+    {
+        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
+        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+    }
+
+    [Fact]
+    public async Task Captures_the_old_default_left_in_the_data_folder_are_moved_out_before_the_cleanup()
+    {
+        this.WriteMinimalBoard();
+        this.thisWorkspace.WriteFile("U1_5.png", "a capture");
+        this.thisWorkspace.WriteFile("U14_Pin 3_PAL.png", "another capture");
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
+            this.MinimalManifest(),
+            new OscilloscopeCaptureRelocation.Plan(this.CaptureFolderBesideData, this.CaptureFolderBesideData));
+
+        Assert.Equal(0, deleted);
+        Assert.False(this.FileExists("U1_5.png"));
+        Assert.Equal("a capture", File.ReadAllText(Path.Combine(this.CaptureFolderBesideData, "U1_5.png")));
+        Assert.Equal("another capture", File.ReadAllText(Path.Combine(this.CaptureFolderBesideData, "U14_Pin 3_PAL.png")));
+    }
+
+    // A capture whose name is already taken in the capture folder is not ours to overwrite - so it
+    // stays in the data folder, and the cleanup leaves it alone.
+    [Fact]
+    public async Task A_capture_that_cannot_be_moved_stays_and_the_cleanup_keeps_away_from_it()
+    {
+        this.WriteMinimalBoard();
+        this.thisWorkspace.WriteFile("U1_5.png", "the older capture");
+        Directory.CreateDirectory(this.CaptureFolderBesideData);
+        File.WriteAllText(Path.Combine(this.CaptureFolderBesideData, "U1_5.png"), "a newer capture");
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
+            this.MinimalManifest(),
+            new OscilloscopeCaptureRelocation.Plan(this.CaptureFolderBesideData, this.CaptureFolderBesideData));
+
+        Assert.Equal(0, deleted);
+        Assert.Equal("the older capture", this.thisWorkspace.ReadFile("U1_5.png"));
+        Assert.Equal("a newer capture", File.ReadAllText(Path.Combine(this.CaptureFolderBesideData, "U1_5.png")));
+    }
+
+    // An image in the data folder's top level that does not look like a capture could still be the
+    // user's: not moved, and not deleted.
+    [Fact]
+    public async Task An_image_in_doubt_in_the_data_folder_is_neither_moved_nor_deleted()
+    {
+        this.WriteMinimalBoard();
+        this.thisWorkspace.WriteFile("my board photo.jpg", "a photo");
+        this.thisWorkspace.WriteFile("Stale/orphan.bin", "a real orphan");
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
+            this.MinimalManifest(),
+            new OscilloscopeCaptureRelocation.Plan(this.CaptureFolderBesideData, this.CaptureFolderBesideData));
+
+        Assert.Equal(1, deleted);
+        Assert.True(this.FileExists("my board photo.jpg"));
+        Assert.False(this.FileExists("Stale/orphan.bin"));
+        Assert.False(File.Exists(Path.Combine(this.CaptureFolderBesideData, "my board photo.jpg")));
+    }
+
+    // A capture folder the user chose INSIDE the data folder: nothing in it is deleted, nor the
+    // folder itself when it is empty - and its captures are not moved anywhere.
+    [Fact]
+    public async Task Nothing_inside_a_capture_folder_within_the_data_folder_is_deleted()
+    {
+        this.WriteMinimalBoard();
+        this.thisWorkspace.WriteFile("Scope shots/U1_5.png", "a capture");
+        this.thisWorkspace.WriteFile("Scope shots/notes.txt", "the user's notes");
+        Directory.CreateDirectory(this.thisWorkspace.Path_("Scope shots", "empty for now"));
+        this.thisWorkspace.WriteFile("Stale/orphan.bin", "a real orphan");
+
+        string captureFolder = this.thisWorkspace.Path_("Scope shots");
+        var plan = new OscilloscopeCaptureRelocation.Plan(captureFolder, MoveTarget: null);
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(this.MinimalManifest(), plan);
+
+        Assert.Equal(1, deleted);
+        Assert.True(this.FileExists("Scope shots/U1_5.png"));
+        Assert.True(this.FileExists("Scope shots/notes.txt"));
+        Assert.True(Directory.Exists(this.thisWorkspace.Path_("Scope shots", "empty for now")));
+        Assert.False(this.FileExists("Stale/orphan.bin"));
+    }
+
+    // The capture folder IS the data folder (picked there by hand): every file in it could be a
+    // capture, so the cleanup deletes nothing at all.
+    [Fact]
+    public async Task A_capture_folder_that_is_the_data_folder_stops_the_cleanup()
+    {
+        this.WriteMinimalBoard();
+        this.thisWorkspace.WriteFile("U1_5.png", "a capture");
+        this.thisWorkspace.WriteFile("Stale/orphan.bin", "would be an orphan");
+
+        var plan = OscilloscopeCaptureRelocation.Plan.ForFolder(this.thisWorkspace.Root, this.thisWorkspace.Root);
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(this.MinimalManifest(), plan);
+
+        Assert.Null(plan.MoveTarget);
+        Assert.Equal(0, deleted);
+        Assert.True(this.FileExists("U1_5.png"));
+        Assert.True(this.FileExists("Stale/orphan.bin"));
+    }
+
+    // A file the manifest lists is data, whatever its name looks like.
+    [Fact]
+    public async Task A_capture_shaped_file_the_manifest_lists_is_not_moved()
+    {
+        this.WriteMinimalBoard();
+        this.thisWorkspace.WriteFile("Logo_small.png", "published data");
+
+        var manifest = this.MinimalManifest();
+        manifest.Add(ManifestEntry("Logo_small.png"));
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
+            manifest,
+            new OscilloscopeCaptureRelocation.Plan(this.CaptureFolderBesideData, this.CaptureFolderBesideData));
+
+        Assert.Equal(0, deleted);
+        Assert.True(this.FileExists("Logo_small.png"));
+        Assert.False(File.Exists(Path.Combine(this.CaptureFolderBesideData, "Logo_small.png")));
     }
 
     [Fact]

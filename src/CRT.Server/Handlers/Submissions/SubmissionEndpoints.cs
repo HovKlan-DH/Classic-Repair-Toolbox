@@ -43,20 +43,71 @@ namespace CRT.Server.Handlers.Submissions
         {
             ArgumentNullException.ThrowIfNull(app);
 
+            // ###########################################################################################
+            // *** EVERY CONTRIBUTOR ROUTE IS LIMITED PER ADDRESS (code review, 2026-10-13). *** They need
+            // no account, and only creating a submission had a limit of its own (the daily allowance
+            // SubmissionRateLimitPolicy counts) - the upload, finalise, status and discard routes
+            // answered any number of requests. Counted in REQUESTS, generously: a 1 GB board of
+            // 1,200 files in 4 MB parts is about 1,500 requests, and CRT asks each open submission's
+            // status once a minute. See RateLimitPerHour.
+            //
+            // *** TWO ALLOWANCES PER ADDRESS: SENDING, AND ASKING (code review, 2026-10-14). *** Every
+            // CRT behind one address - a club, a school, a mobile network's shared address - asks
+            // about each of its open submissions every minute, and in one bucket with the uploads
+            // that steady asking used up the allowance: status checks were refused (the badges
+            // stopped) and a contributor's upload failed part-way. The questions - the status and the
+            // discard notice - now have an allowance of their own (StatusRateLimitPerHour), so asking
+            // can never cost a send, nor a send the asking.
+            // ###########################################################################################
             RouteGroupBuilder submissions = app.MapGroup("/api/submissions");
 
             submissions.MapPost("/", SubmissionEndpoints.CreateAsync)
-                .WithBodyLimit(RequestBodyLimits.ManifestBytes);
+                .WithBodyLimit(RequestBodyLimits.ManifestBytes)
+                .RequireRateLimiting(SubmissionEndpoints.RateLimitPolicy);
             submissions.MapPut("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.UploadAsync)
-                .WithBodyLimit(RequestBodyLimits.BlobChunkBytes);
-            submissions.MapGet("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.GetUploadStateAsync);
-            submissions.MapPost("/{submissionId:long}/finalise", SubmissionEndpoints.FinaliseAsync);
-            submissions.MapGet("/{submissionId:long}", SubmissionEndpoints.GetSubmissionAsync);
+                .WithBodyLimit(RequestBodyLimits.BlobChunkBytes)
+                .RequireRateLimiting(SubmissionEndpoints.RateLimitPolicy);
+            submissions.MapGet("/{submissionId:long}/blobs/{hash}", SubmissionEndpoints.GetUploadStateAsync)
+                .RequireRateLimiting(SubmissionEndpoints.RateLimitPolicy);
+            submissions.MapPost("/{submissionId:long}/finalise", SubmissionEndpoints.FinaliseAsync)
+                .RequireRateLimiting(SubmissionEndpoints.RateLimitPolicy);
+            submissions.MapGet("/{submissionId:long}", SubmissionEndpoints.GetSubmissionAsync)
+                .RequireRateLimiting(SubmissionEndpoints.StatusRateLimitPolicy);
 
             // The contributor discarded their own draft of this board in CRT (owner request,
             // 2026-09-28) - see CRT.Data's DraftDiscardContract. No body.
-            submissions.MapPost("/{submissionId:long}/" + DraftDiscardContract.RouteSegment, SubmissionEndpoints.DraftDiscardedAsync);
+            submissions.MapPost("/{submissionId:long}/" + DraftDiscardContract.RouteSegment, SubmissionEndpoints.DraftDiscardedAsync)
+                .RequireRateLimiting(SubmissionEndpoints.StatusRateLimitPolicy);
         }
+
+        // Sending: creating a submission and uploading it.
+        public const string RateLimitPolicy = "submissions";
+
+        // Asking: a submission's status, and the notice that its draft was discarded.
+        public const string StatusRateLimitPolicy = "submission-status";
+
+        // Requests per address per hour for SENDING - far above one person's real use (see
+        // MapSubmissionEndpoints), far below a flood.
+        public const int RateLimitPerHour = 5000;
+
+        // Requests per address per hour for ASKING - room for a few dozen CRTs behind one address,
+        // each asking about a handful of submissions every minute; still about five a second at
+        // most, far below a flood.
+        public const int StatusRateLimitPerHour = 20000;
+
+        // The limiters the routes above name - registered with the other services.
+        public static void AddSubmissionRateLimit(this IServiceCollection services)
+        {
+            services.AddPerAddressRateLimit(SubmissionEndpoints.RateLimitPolicy, SubmissionEndpoints.RateLimitPerHour);
+            services.AddPerAddressRateLimit(SubmissionEndpoints.StatusRateLimitPolicy, SubmissionEndpoints.StatusRateLimitPerHour);
+        }
+
+        // ###########################################################################################
+        // The one 404 these routes give - for "no such submission" and "not yours" alike, so the two
+        // stay indistinguishable (see the class header) - with words, so CRT has a sentence to show.
+        // ###########################################################################################
+        internal static IResult NoSuchSubmission() =>
+            Results.NotFound(new { error = "No such submission." });
 
         // ###########################################################################################
         // POST /api/submissions/{id}/draft-discarded - the contributor discarded their draft.
@@ -75,7 +126,7 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? submission = await store.FindAsync(submissionId, cancellationToken);
 
             if (!SubmissionEndpoints.HoldsToken(submission, context))
-                return Results.NotFound();
+                return SubmissionEndpoints.NoSuchSubmission();
 
             await DraftDiscardFlow.RecordAsync(submission!, store, accounts, DateTimeOffset.UtcNow, cancellationToken);
 
@@ -121,7 +172,8 @@ namespace CRT.Server.Handlers.Submissions
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 manifest, submitter, containmentRoot, store, blobs, DateTimeOffset.UtcNow, cancellationToken,
-                PublishedTreeProbe.For(options.DataTreeRoot));
+                PublishedTreeProbe.For(options.DataTreeRoot),
+                PublishedTreeProbe.For(options.StableSourceRoot));
 
             // The refusals all carry { errors: [...] } - the one shape CRT reads findings from - so
             // a rate limit or a full disk reaches the contributor as a sentence, not a status code.
@@ -182,7 +234,7 @@ namespace CRT.Server.Handlers.Submissions
                     Results.Ok(new BlobUploadAnswer(outcome.ResumeFrom, false)),
 
                 // 404 for both "no such submission" and "not yours" - see the class header.
-                BlobUploadStatus.NotFound => Results.NotFound(),
+                BlobUploadStatus.NotFound => SubmissionEndpoints.NoSuchSubmission(),
 
                 BlobUploadStatus.Expired or BlobUploadStatus.WrongState =>
                     Results.Json(new { message = outcome.Error }, statusCode: StatusCodes.Status409Conflict),
@@ -228,7 +280,7 @@ namespace CRT.Server.Handlers.Submissions
                 submissionId, hash, SubmissionEndpoints.UploadToken(context), store, blobs, cancellationToken);
 
             if (state is null)
-                return Results.NotFound();
+                return SubmissionEndpoints.NoSuchSubmission();
 
             return Results.Ok(new BlobUploadAnswer(state.Uploaded, state.Complete));
         }
@@ -248,12 +300,14 @@ namespace CRT.Server.Handlers.Submissions
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+            FinaliseOutcome finalised = await SubmissionFlows.FinaliseWithOutcomeAsync(
                 submissionId, SubmissionEndpoints.UploadToken(context), store, blobs,
                 DateTimeOffset.UtcNow, cancellationToken);
 
+            SubmissionResult result = finalised.Result;
+
             if (result.Findings.Any(finding => finding.Code == "submission.not_found"))
-                return Results.NotFound();
+                return SubmissionEndpoints.NoSuchSubmission();
 
             // ###########################################################################################
             // *** THE MAINTAINERS ARE TOLD, AFTER THE SUBMISSION IS DURABLY QUEUED (Phase 6 task 11,
@@ -261,8 +315,12 @@ namespace CRT.Server.Handlers.Submissions
             // complete and recorded, and a mail problem is the server's to log, not theirs to
             // retry. Who is told is SubmissionRouting's decision - the board's maintainers, or the
             // administrators when there are none or the submission changes shared files.
+            //
+            // *** ONLY BY THE FINALISE THAT QUEUED IT (code review, 2026-10-13). *** A repeated
+            // finalise - a retry after a dropped connection - is answered "accepted" too, and every
+            // one of them used to mail every maintainer again.
             // ###########################################################################################
-            if (result.IsAccepted)
+            if (finalised.JustQueued)
             {
                 try
                 {
@@ -316,7 +374,7 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRecord? submission = await store.FindAsync(submissionId, cancellationToken);
 
             if (!SubmissionEndpoints.HoldsToken(submission, context))
-                return Results.NotFound();
+                return SubmissionEndpoints.NoSuchSubmission();
 
             IReadOnlyList<ValidationFinding> findings =
                 await store.GetFindingsAsync(submissionId, cancellationToken);

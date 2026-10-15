@@ -436,14 +436,20 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         // -----------------------------------------------------------------------------------
-        // Rate limiting.
+        // Rate limiting - rate_limit_events (migration 0023, code review 2026-10-13).
         //
-        // Failures are recorded in the audit table rather than in a table of their own: they are
-        // exactly the kind of security event the audit trail is for, and a separate table would
-        // need its own cleanup. The action name is what makes them findable.
+        // The limiter counted rows of the AUDIT table until then, and a successful sign-in UPDATEd
+        // them to 'login.failed.cleared' to take them out of the count; mail-budget rows were
+        // written there too. 0001_initial.sql promises audit is never updated, and a limiter's
+        // counters are working state, not history. They have a table of their own now, which a
+        // successful sign-in may DELETE from and the hourly sweep empties of anything a day old -
+        // while each failure still leaves an append-only 'login.failed' row in the audit trail,
+        // as it always did.
         // -----------------------------------------------------------------------------------
 
         private const string AuthFailureAction = "login.failed";
+
+        private const string MailRequestAction = "mail.requested";
 
         public async Task<IReadOnlyList<DateTimeOffset>> GetRecentAuthFailuresAsync(
             string? normalisedEmail,
@@ -454,34 +460,42 @@ namespace CRT.Server.Handlers.Accounts
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand command = connection.CreateCommand();
 
-            // The subject holds the normalised address and the detail holds the IP, so one table
-            // answers both buckets. Both are compared with a parameter, never interpolated.
+            // Either key may be left out (null); both are compared with a parameter. The indexes
+            // (kind, account_key, at_utc) and (kind, address, at_utc) serve every combination.
             command.CommandText = """
-                SELECT at_utc FROM audit
-                WHERE action = @action AND at_utc > @since
-                  AND (@subject IS NULL OR subject = @subject)
-                  AND (@detail IS NULL OR detail = @detail)
+                SELECT at_utc FROM rate_limit_events
+                WHERE kind = @kind AND at_utc > @since
+                  AND (@account IS NULL OR account_key = @account)
+                  AND (@address IS NULL OR address = @address)
                 LIMIT 500;
                 """;
 
-            command.Parameters.AddWithValue("@action", MySqlAccountStore.AuthFailureAction);
+            command.Parameters.AddWithValue("@kind", MySqlAccountStore.AuthFailureAction);
             command.Parameters.AddWithValue("@since", since.UtcDateTime);
-            command.Parameters.AddWithValue("@subject", (object?)normalisedEmail ?? DBNull.Value);
-            command.Parameters.AddWithValue("@detail", (object?)ipAddress ?? DBNull.Value);
+            command.Parameters.AddWithValue("@account", (object?)normalisedEmail ?? DBNull.Value);
+            command.Parameters.AddWithValue("@address", (object?)ipAddress ?? DBNull.Value);
 
-            var times = new List<DateTimeOffset>();
-
-            await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
-                times.Add(MySqlAccountStore.ReadUtc(reader, 0)!.Value);
-
-            return times;
+            return await MySqlAccountStore.ReadTimesAsync(command, cancellationToken);
         }
 
-        public Task RecordAuthFailureAsync(string? normalisedEmail, string? ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        public async Task RecordAuthFailureAsync(string? normalisedEmail, string? ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
-            return this.WriteAuditAsync(
+            await this.ExecuteAsync(
+                """
+                INSERT INTO rate_limit_events (kind, account_key, address, at_utc)
+                VALUES (@kind, @account, @address, @at);
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("@kind", MySqlAccountStore.AuthFailureAction);
+                    command.Parameters.AddWithValue("@account", normalisedEmail is null ? DBNull.Value : MySqlAccountStore.Cut(normalisedEmail, 255));
+                    command.Parameters.AddWithValue("@address", ipAddress is null ? DBNull.Value : MySqlAccountStore.Cut(ipAddress, 64));
+                    command.Parameters.AddWithValue("@at", whenUtc.UtcDateTime);
+                },
+                cancellationToken);
+
+            // The audit trail's own record that the attempt happened - appended, never changed.
+            await this.WriteAuditAsync(
                 new AuditEntry(
                     null,
                     normalisedEmail ?? "unknown",
@@ -494,34 +508,16 @@ namespace CRT.Server.Handlers.Accounts
 
         public Task ClearAuthFailuresAsync(string normalisedEmail, CancellationToken cancellationToken = default)
         {
-            // The audit trail is APPEND-ONLY, so a successful login does not delete rows - it
-            // renames the action, which keeps the history while taking those rows out of the
-            // limiter's window. Deleting them would destroy the record that the attempts happened,
-            // which is precisely what an attacker would want.
+            // The COUNTERS go; the audit rows recording each failure stay exactly as written.
             return this.ExecuteAsync(
-                """
-                UPDATE audit SET action = 'login.failed.cleared'
-                WHERE action = @action AND subject = @subject;
-                """,
+                "DELETE FROM rate_limit_events WHERE kind = @kind AND account_key = @account;",
                 command =>
                 {
-                    command.Parameters.AddWithValue("@action", MySqlAccountStore.AuthFailureAction);
-                    command.Parameters.AddWithValue("@subject", normalisedEmail);
+                    command.Parameters.AddWithValue("@kind", MySqlAccountStore.AuthFailureAction);
+                    command.Parameters.AddWithValue("@account", normalisedEmail);
                 },
                 cancellationToken);
         }
-
-        // ###########################################################################################
-        // The mail-request bucket. Stored in the same `audit` table as everything else, under its
-        // own action, with the IP in `subject` rather than in `detail`.
-        //
-        // SUBJECT, NOT DETAIL, AND THAT IS DELIBERATE: `subject` is VARCHAR(255) and carries the
-        // ix_audit_subject index, while `detail` is TEXT and is indexed by nothing. This lookup
-        // runs on every registration and every password-reset request, so it has to be an indexed
-        // one - the auth-failure query gets away with its unindexed `detail` comparison only
-        // because it is already narrowed by an indexed action-and-time range.
-        // ###########################################################################################
-        private const string MailRequestAction = "mail.requested";
 
         public async Task<IReadOnlyList<DateTimeOffset>> GetRecentMailRequestsAsync(
             string ipAddress,
@@ -532,15 +528,51 @@ namespace CRT.Server.Handlers.Accounts
             await using MySqlCommand command = connection.CreateCommand();
 
             command.CommandText = """
-                SELECT at_utc FROM audit
-                WHERE action = @action AND subject = @subject AND at_utc > @since
+                SELECT at_utc FROM rate_limit_events
+                WHERE kind = @kind AND address = @address AND at_utc > @since
                 LIMIT 500;
                 """;
 
-            command.Parameters.AddWithValue("@action", MySqlAccountStore.MailRequestAction);
-            command.Parameters.AddWithValue("@subject", ipAddress);
+            command.Parameters.AddWithValue("@kind", MySqlAccountStore.MailRequestAction);
+            command.Parameters.AddWithValue("@address", ipAddress);
             command.Parameters.AddWithValue("@since", since.UtcDateTime);
 
+            return await MySqlAccountStore.ReadTimesAsync(command, cancellationToken);
+        }
+
+        public Task RecordMailRequestAsync(string ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            // The ADDRESS THE MAIL WOULD GO TO IS NOT RECORDED. It is the victim's address in the
+            // abuse case, and writing it here would build a log of which addresses a stranger
+            // probed - the very list an enumeration attack is trying to assemble.
+            return this.ExecuteAsync(
+                """
+                INSERT INTO rate_limit_events (kind, account_key, address, at_utc)
+                VALUES (@kind, NULL, @address, @at);
+                """,
+                command =>
+                {
+                    command.Parameters.AddWithValue("@kind", MySqlAccountStore.MailRequestAction);
+                    command.Parameters.AddWithValue("@address", MySqlAccountStore.Cut(ipAddress, 64));
+                    command.Parameters.AddWithValue("@at", whenUtc.UtcDateTime);
+                },
+                cancellationToken);
+        }
+
+        // Every counter older than `before` - none of the limiter's windows is anywhere near a day.
+        public async Task<int> DeleteRateLimitEventsBeforeAsync(DateTimeOffset before, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText = "DELETE FROM rate_limit_events WHERE at_utc < @before;";
+            command.Parameters.AddWithValue("@before", before.UtcDateTime);
+
+            return await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        private static async Task<IReadOnlyList<DateTimeOffset>> ReadTimesAsync(MySqlCommand command, CancellationToken cancellationToken)
+        {
             var times = new List<DateTimeOffset>();
 
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -551,21 +583,7 @@ namespace CRT.Server.Handlers.Accounts
             return times;
         }
 
-        public Task RecordMailRequestAsync(string ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
-        {
-            // The ADDRESS THE MAIL WOULD GO TO IS NOT RECORDED. It is the victim's address in the
-            // abuse case, and writing it here would build a log of which addresses a stranger
-            // probed - the very list an enumeration attack is trying to assemble.
-            return this.WriteAuditAsync(
-                new AuditEntry(
-                    null,
-                    ipAddress,
-                    MySqlAccountStore.MailRequestAction,
-                    ipAddress,
-                    null,
-                    whenUtc),
-                cancellationToken);
-        }
+        private static string Cut(string value, int length) => value.Length <= length ? value : value[..length];
 
         public Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default)
         {

@@ -73,6 +73,15 @@ namespace CRT
             this.UpdateOscilloscopeImageFolderUi();
 
             this.PopulateVendorDropDown();
+
+            // What the background workers read instead of these controls - published now, and again
+            // whenever one changes (CreateOscilloscopeSelectionSnapshot). After the handlers above,
+            // so it reads what they have settled.
+            this.HostTextBox.TextChanged += (_, _) => this.PublishOscilloscopeSelectionInputs();
+            this.PortTextBox.TextChanged += (_, _) => this.PublishOscilloscopeSelectionInputs();
+            this.VendorComboBox.SelectionChanged += (_, _) => this.PublishOscilloscopeSelectionInputs();
+            this.SeriesOrModelComboBox.SelectionChanged += (_, _) => this.PublishOscilloscopeSelectionInputs();
+            this.PublishOscilloscopeSelectionInputs();
         }
 
         // ###########################################################################################
@@ -366,15 +375,14 @@ namespace CRT
 
         // ###########################################################################################
         // Returns the currently selected oscilloscope definition from the loaded Excel data.
-        // Marshals to the UI thread when called from background code.
+        // Background code gets the one last published from the UI thread rather than waiting for it
+        // (CreateOscilloscopeSelectionSnapshot, code review 2026-10-13).
         // ###########################################################################################
         private OscilloscopeEntry? GetSelectedOscilloscope()
         {
             if (!Dispatcher.UIThread.CheckAccess())
             {
-                return Dispatcher.UIThread.InvokeAsync(
-                    this.GetSelectedOscilloscope,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                return this.thisPublishedSelectionInputs?.SelectedOscilloscope;
             }
 
             var selectedVendor = this.VendorComboBox.SelectedItem as string;
@@ -615,11 +623,8 @@ namespace CRT
         // ###########################################################################################
         private void SetOscilloscopeButtonsEnabled(bool isEnabled)
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(() => this.SetOscilloscopeButtonsEnabled(isEnabled)))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    () => this.SetOscilloscopeButtonsEnabled(isEnabled),
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 

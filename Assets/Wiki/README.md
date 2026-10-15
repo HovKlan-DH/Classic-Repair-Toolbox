@@ -115,7 +115,7 @@ These six Wiki pages are opened by seven "?" buttons in the shipped application:
 | `Controlling-oscilloscope-with-keyboard` | Component popup, "?" beside "Numpad controls oscilloscope" |
 | `Synchronize-oscilloscope` | Component popup, "?" beside "Synchronize oscilloscope" |
 | `Maintainer-tab` | Configuration tab, "?" beside "Enable Maintainer tab" |
-| `View-boards-from-online-source` | Configuration tab, "?" beside "View boards as officially coming from online source (hide my local draft changes)" |
+| `View-boards-from-online-source` | Configuration tab, "?" beside "View boards as published online (hide my draft changes)" |
 
 Renaming or deleting one of those pages breaks a button in a released build, which no update can
 fix for versions already installed.

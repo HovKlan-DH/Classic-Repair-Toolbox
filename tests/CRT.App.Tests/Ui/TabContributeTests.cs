@@ -38,13 +38,13 @@ public sealed class TabContributeTests
     }
 
     // ###########################################################################################
-    // *** ALL THREE IN THE SAME HIGHLIGHTED COLOUR (owner request, 2026-10-09: "have all 3 buttons in
-    // there with the same IndianRed color"). *** Only "Add new component" had it. Read off a SHOWN
-    // window, where the tab's styles are applied, against the theme's own Button_Highlighted_Bg -
-    // IndianRed in the light theme.
+    // *** ALL THREE IN THE SAME COLOUR (owner request, 2026-10-09). *** Only "Add new component" had
+    // it. IndianRed until 2026-10-13, then the green Accept colour, when IndianRed was kept for
+    // buttons that throw something away (owner decision; App.axaml). Read off a SHOWN window, where
+    // the styles are applied, against the theme's own Button_Ok_Bg.
     // ###########################################################################################
     [Fact]
-    public void All_three_buttons_are_in_the_highlighted_IndianRed()
+    public void All_three_buttons_are_in_the_green_Accept_colour()
     {
         UiTest.Run(() =>
         {
@@ -53,19 +53,18 @@ public sealed class TabContributeTests
             window.Show();
 
             Assert.True(Avalonia.Application.Current!.TryGetResource(
-                "Button_Highlighted_Bg", window.ActualThemeVariant, out object? resource));
+                "Button_Ok_Bg", window.ActualThemeVariant, out object? resource));
 
-            Avalonia.Media.Color highlighted = ((Avalonia.Media.ISolidColorBrush)resource!).Color;
-
-            if (window.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light)
-                Assert.Equal(Avalonia.Media.Colors.IndianRed, highlighted);
+            Avalonia.Media.Color accept = ((Avalonia.Media.ISolidColorBrush)resource!).Color;
 
             foreach (string name in new[] { "AddNewComponentButton", "EditBoardAsDraftButton", "AddNewBoardButton" })
             {
                 Button button = tab.GetControl<Button>(name);
 
                 Assert.Contains("ContributeAction", button.Classes);
-                Assert.Equal(highlighted, ((Avalonia.Media.ISolidColorBrush)button.Background!).Color);
+                Assert.Contains("Accept", button.Classes);
+                Assert.Equal(accept, ((Avalonia.Media.ISolidColorBrush)button.Background!).Color);
+                Assert.NotEqual(Avalonia.Media.Colors.IndianRed, ((Avalonia.Media.ISolidColorBrush)button.Background!).Color);
             }
 
             window.Close();

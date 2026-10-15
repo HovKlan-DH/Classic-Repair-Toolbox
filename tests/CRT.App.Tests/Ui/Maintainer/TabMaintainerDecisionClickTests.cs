@@ -32,8 +32,7 @@ public sealed class TabMaintainerDecisionClickTests
         new(42, "Commodore/C64/250407", "pending", "Corrected U8.", "c@example.com", DateTimeOffset.UtcNow.AddHours(-1), false, false, true);
 
     private static ReviewSubmissionDetail Detail(ReviewQueueRow row, bool canPublish = true) =>
-        new(row, canPublish, new ReviewChangeSummaryView(false, []), [], new ReviewSubmissionAssets([]), [],
-            new Dictionary<string, string>(), new Dictionary<string, string>(), [], null);
+        new(row, canPublish, new ReviewChangeSummaryView(false, []), [], [], null);
 
     // The tab filling a window as tall as a screen, with a submission and its decision bar shown.
     private static (Window Window, TabMaintainer Tab) Show(bool canPublish = true)

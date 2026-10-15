@@ -170,6 +170,13 @@ namespace CRT.Server.Handlers.Accounts
 
         Task RecordMailRequestAsync(string ipAddress, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
+        // ###########################################################################################
+        // Deletes every rate-limit counter (failed sign-ins, mail requests) recorded before `before`,
+        // answering how many (code review, 2026-10-13; migration 0023). The hourly sweep calls it
+        // with a day ago - far past every window the limiter counts. Never touches the audit trail.
+        // ###########################################################################################
+        Task<int> DeleteRateLimitEventsBeforeAsync(DateTimeOffset before, CancellationToken cancellationToken = default);
+
         Task WriteAuditAsync(AuditEntry entry, CancellationToken cancellationToken = default);
 
         // The audit rows naming any of `subjects`, newest first - a board's history on the Boards

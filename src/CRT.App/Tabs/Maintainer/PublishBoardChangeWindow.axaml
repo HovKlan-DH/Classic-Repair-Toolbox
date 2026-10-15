@@ -60,9 +60,7 @@
                     Click="OnCancelClick" />
 
             <Button x:Name="PublishButton"
-                    Foreground="{DynamicResource Button_Ok_Fg}"
-                    Background="{DynamicResource Button_Ok_Bg}"
-                    BorderBrush="{DynamicResource Button_Ok_Border}"
+                    Classes="Accept"
                     IsEnabled="False"
                     Click="OnPublishClick" />
         </StackPanel>

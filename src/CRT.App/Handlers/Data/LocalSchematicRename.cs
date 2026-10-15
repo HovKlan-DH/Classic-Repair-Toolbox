@@ -16,7 +16,9 @@ namespace Handlers.DataHandling
     //     order of the board's images (WorkbookRecord.SchematicOrder);
     //   - the user's thumbnail order on the Schematics tab (UserSettings.SchematicsOrderByBoard);
     //   - the image last looked at, opened again with the board (LastSchematicByBoard);
-    //   - the images hidden on the Configuration tab ("hardware|board|schematic" catalogue keys).
+    //   - the images hidden on the Configuration tab ("hardware|board|schematic" catalogue keys);
+    //   - the traces drawn on an image (TraceStorage - code review, 2026-10-13: they were left
+    //     under the old name, and so vanished from the renamed image).
     //
     // *** CAUGHT UP WHEN THE BOARD IS SHOWN (CatchUp, from Main's board load), BY THE IMAGE FILE. ***
     // CRT remembers each board's images - name and file - as it last showed them
@@ -72,8 +74,20 @@ namespace Handlers.DataHandling
             {
                 Func<string, string?> resolve = SchematicRenameLog.Resolver(board, remembered, published);
 
+                // The drawn traces first - one file, one write: when it fails nothing has moved yet.
+                if (!TraceStorage.RenameSchematics(boardKey, resolve, out var tracesBefore))
+                {
+                    Logger.Warning($"The drawn traces of [{boardKey}] could not follow its renamed schematic images - tried again when the board is next shown");
+                    return;
+                }
+
                 if (!LocalSchematicRename.RenameInWorklogs(boardKey, resolve))
                 {
+                    if (tracesBefore is not null)
+                    {
+                        TraceStorage.RestoreBoard(boardKey, tracesBefore);
+                    }
+
                     Logger.Warning($"The worklogs of [{boardKey}] could not follow its renamed schematic images - tried again when the board is next shown");
                     return;
                 }

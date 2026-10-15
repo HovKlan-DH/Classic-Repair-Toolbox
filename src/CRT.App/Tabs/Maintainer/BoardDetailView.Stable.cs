@@ -68,7 +68,9 @@ namespace CRT
             if (sender is not Button button)
                 return;
 
-            await this.ShowTreeAsync(string.Equals(button.Name, "StableTreeButton", StringComparison.Ordinal));
+            await HandlerGuard.RunAsync(
+                () => this.ShowTreeAsync(string.Equals(button.Name, "StableTreeButton", StringComparison.Ordinal)),
+                message => this.ShowMessage(message, isError: true));
         }
 
         // ###########################################################################################
@@ -93,17 +95,15 @@ namespace CRT
 
         // ###########################################################################################
         // The switch and the two halves, from the pick and the board on screen: the switch shows
-        // with Board data and Files only, a half the board is not in cannot be chosen, and the half
-        // shown is the one ShowsStable says.
+        // with Board data and Files of a board in BOTH sources only (BoardSections.ShowsSourceSwitch),
+        // and the half shown is the one ShowsStable says - for a board in one source, that one.
         // ###########################################################################################
         private void ApplyTree()
         {
             BoardOverviewEntry? board = this.ShownBoard;
             bool stable = this.ShowsStable;
 
-            this.SetShown(
-                "TreeSwitchBar",
-                board is not null && this.thisSection is BoardSection.BoardData or BoardSection.Files);
+            this.SetShown("TreeSwitchBar", BoardSections.ShowsSourceSwitch(board, this.thisSection));
 
             if (this.FindControl<Button>("BetaTreeButton") is Button beta)
             {
