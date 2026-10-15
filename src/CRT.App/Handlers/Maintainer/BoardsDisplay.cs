@@ -343,7 +343,7 @@ namespace Handlers.MaintainerHandling
                 BoardHistoryEvents.Amended => Plain($"{number} changed by a maintainer"),
                 BoardHistoryEvents.PublishedToProduction => Plain("Published to the stable source"),
                 BoardHistoryEvents.FoundInProduction => Plain("Found already in the stable source (copied there outside CRT)"),
-                BoardHistoryEvents.PushedBack => Plain("Pushed back from BETA to the queue"),
+                BoardHistoryEvents.PushedBack => Plain("Pushed back to the queue"),
                 BoardHistoryEvents.RejectedFromBeta => Plain("Rejected in BETA and taken out of it"),
                 BoardHistoryEvents.MaintainerAdded => Named("Maintainer added: ", "somebody"),
                 BoardHistoryEvents.MaintainerRemoved => Named("Maintainer removed: ", "somebody"),

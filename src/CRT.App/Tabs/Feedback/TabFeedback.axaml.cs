@@ -92,21 +92,30 @@ namespace CRT
         // ###########################################################################################
         private async void OnAttachFilesClick(object? sender, RoutedEventArgs e)
         {
-            var topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel == null) return;
-
-            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                Title = "Select files to attach",
-                AllowMultiple = true
-            });
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel == null) return;
 
-            foreach (var file in files)
-            {
-                if (!this._customAttachments.Contains(file.Path.LocalPath))
+                var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
                 {
-                    this._customAttachments.Add(file.Path.LocalPath);
+                    Title = "Select files to attach",
+                    AllowMultiple = true
+                });
+
+                foreach (var file in files)
+                {
+                    if (!this._customAttachments.Contains(file.Path.LocalPath))
+                    {
+                        this._customAttachments.Add(file.Path.LocalPath);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAttachFilesClick failed - [{ex}]");
             }
         }
 
@@ -115,22 +124,31 @@ namespace CRT
         // ###########################################################################################
         private async void OnAttachFolderClick(object? sender, RoutedEventArgs e)
         {
-            var topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel == null) return;
-
-            var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                Title = "Select a folder to attach",
-                AllowMultiple = false
-            });
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel == null) return;
 
-            if (folders != null && folders.Count > 0)
-            {
-                string path = folders[0].Path.LocalPath;
-                if (!this._customAttachments.Contains(path))
+                var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
                 {
-                    this._customAttachments.Add(path);
+                    Title = "Select a folder to attach",
+                    AllowMultiple = false
+                });
+
+                if (folders != null && folders.Count > 0)
+                {
+                    string path = folders[0].Path.LocalPath;
+                    if (!this._customAttachments.Contains(path))
+                    {
+                        this._customAttachments.Add(path);
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnAttachFolderClick failed - [{ex}]");
             }
         }
 
@@ -275,6 +293,8 @@ namespace CRT
             // 1. Gather all files to be zipped
             if (attachLogs)
             {
+                // The log is written in batches (Logger) - the latest lines go to the file first.
+                Logger.Flush();
                 targetFiles.Add((Path.Combine(localAppFolder, AppConfig.LogFileName), AppConfig.LogFileName));
 
                 // The crash file rides along with the log, because it is the ONLY record that

@@ -75,6 +75,9 @@ namespace CRT
         // nothing over the network (test rule 6).
         internal Func<long, string, System.Threading.CancellationToken, Task<int?>>? DraftDiscardSendOverrideForTests { get; set; }
 
+        // Stands in for the delete itself - a test can make it stop part-way as a locked workbook does.
+        internal Func<string, bool>? DiscardOverrideForTests { get; set; }
+
         public ObservableCollection<DraftListItem> Drafts { get; } = new();
 
         // The boards behind the rows above, as of the last RefreshDrafts. Main builds the Hardware
@@ -183,7 +186,11 @@ namespace CRT
                     isTableOpen: this.IsTableOpenFor(entry),
                     this.ToggleTableAsync,
                     lastSubmission,
-                    TabDrafts.IsAlreadySent(entry, status, lastSubmission)));
+                    TabDrafts.IsAlreadySent(entry, status, lastSubmission),
+
+                    // What is not a row - files and KiCad calibrations (code review, 2026-10-13): a
+                    // draft whose only work is a calibration or a picture is something to send.
+                    otherChanges: DraftStatusReader.CountOtherChangesCached(status, DraftManager.DraftsRoot)));
             }
 
             TabDrafts.KeepUnchangedRows(this.Drafts, fresh);
@@ -208,7 +215,8 @@ namespace CRT
 
                 this.EmptyStateText.Text = unread > 0
                     ? "A maintainer has replied to something you sent. Open \"My submissions\" above to read it."
-                    : "No local drafts yet. Edits made through the Contribute tab that have not been submitted will appear here.";
+                    : "No local drafts yet. A draft is made the first time you change a board - in the Contribute tab, " +
+                      "in the label editor, by calibrating KiCad traces, or with \"Add a new board\" on the Contribute tab.";
             }
         }
 
@@ -294,7 +302,10 @@ namespace CRT
             // is the draft workbook being open in Excel, which locks it on Windows - part of the
             // folder may already be gone by then, so the list and the drop-downs must still catch
             // up with what is really on disk.
-            if (!DraftManager.DiscardDraft(entry.ExcelDataFile))
+            bool discarded = this.DiscardOverrideForTests?.Invoke(entry.ExcelDataFile)
+                ?? DraftManager.DiscardDraft(entry.ExcelDataFile);
+
+            if (!discarded)
             {
                 this.ShowDiscardFailure(entry.ToString());
             }
@@ -310,7 +321,12 @@ namespace CRT
             // first, so a notice that cannot be sent now (no network) is sent at the next launch;
             // then sent in the background - the discard itself never waits on the server.
             // ###########################################################################################
-            if (unfinished is { Count: > 0 })
+            // *** ONLY A DISCARD THAT FINISHED (code review, 2026-10-13). *** One that stopped
+            // part-way (the workbook open in Excel) leaves the draft on the tab to be discarded again
+            // - or kept - and telling the maintainers now would report a discard that may never happen.
+            // The next Discard that finishes reports it: the list of unfinished submissions is read
+            // afresh each time.
+            if (discarded && unfinished is { Count: > 0 })
             {
                 SubmissionReceiptStore.MarkDraftDiscarded(unfinished.Select(receipt => receipt.SubmissionId), DateTimeOffset.UtcNow);
                 _ = DraftDiscardReporter.ReportPendingAsync(this.DraftDiscardSendOverrideForTests ?? new SubmissionClient().ReportDraftDiscardedAsync);
@@ -369,17 +385,9 @@ namespace CRT
                 DataManager.DataRoot,
                 entry.ExcelDataFile);
 
-            string? officialRevision = BoardDataReader.TryGetCachedRevisionDate(excelPath);
-
-            if (officialRevision == null)
-            {
-                officialRevision = BoardDataReader.ReadRevisionDateOnly(excelPath);
-            }
-
-            // Compared directly rather than through DraftDriftDetector.CompareRevisions, which takes
-            // a BoardDraft - the new-board guard it applies is already handled above, off the
-            // marker, so all that is left is the revision comparison itself.
-            return DraftRevisionComparer.Compare(status.BaseRevision, officialRevision);
+            // The one rule the row, the main window's notice and the window share - by CONTENT for
+            // a draft that kept what it was copied from, by revision otherwise (DraftDriftCheck).
+            return DraftDriftCheck.Resolve(status, excelPath);
         }
 
         // ###########################################################################################
@@ -408,48 +416,35 @@ namespace CRT
             }
 
             // ###########################################################################################
-            // *** THE PER-ROW REPORT IS NOW A COMPARISON, AND IT ANSWERS A NARROWER QUESTION
-            // (Phase 6, 2026-09-23). ***
-            //
-            // It used to classify each DRAFTED row against the official data as it stands now, and
-            // could therefore say two things this cannot: "the row you edited has since
-            // DISAPPEARED officially" and "a row you added now exists officially too". Both were
-            // consequences of the merge - a Modified row whose key vanished was silently dropped,
-            // an Added row whose key collided lost to the official one.
-            //
-            // There is no merge any more, so neither consequence exists and neither can be
-            // reported. What the contributor gets instead is what they actually changed, derived
-            // by comparing their workbook against the published one - and the revision comparison
-            // above still tells them the published board has moved.
-            //
-            // Recovering the sharper warning would mean comparing against the revision the draft
-            // was SEEDED from, which the draft folder does not keep a copy of. That is a real
-            // feature, not a line of code, and is deliberately not attempted here.
+            // *** THE REPORT KNOWS THE DRAFT'S BASE (code review, 2026-10-13). *** A draft seeded since
+            // CRT keeps what it was copied from shows the contributor's changes and the published
+            // update apart, the rows both changed, and offers to bring the draft up to date; an older
+            // draft is compared with the published board as it is now, and the window says so
+            // (DraftChangeReport.For - the same report the main window's notice opens).
             // ###########################################################################################
             string publishedPath = DraftBoardSource.PublishedPathOf(
                 DataManager.DataRoot,
                 entry.ExcelDataFile);
 
-            // Reading the published board of a large board is a noticeable wait (2026-09-28).
-            BoardData? official = await BusyOverlay.RunLocalAsync(
+            string draftsRoot = DraftManager.DraftsRoot;
+
+            // Reading two workbooks of a large board is a noticeable wait (2026-09-28).
+            DraftChangeReport report = await BusyOverlay.RunLocalAsync(
                 this,
                 CrtWaitWording.ComparingWithOfficial,
-                () => BoardDataReader.LoadAsync(publishedPath, publishedPath));
-
-            var report = new DraftChangeReport
-            {
-                State = ResolveDriftState(entry, status),
-                BaseRevision = status.BaseRevision,
-                OfficialRevision = official?.RevisionDate ?? string.Empty,
-                Rows = DraftStatusReader.DescribeChanges(status),
-            };
+                () => Task.Run(() => DraftChangeReport.For(status, draftsRoot, publishedPath)));
 
             var window = new DraftDriftWindow();
-            window.Initialize(entry.ToString(), entry.ExcelDataFile, report);
-
+            window.Initialize(entry.ToString(), entry.ExcelDataFile, report, this.SavingBlockedFor);
             await window.ShowDialog(ownerWindow);
 
-            // A rebase inside the window clears the warning, so the row has to be rebuilt.
+            // Brought up to date: the board on screen is this draft's, read again.
+            if (window.BroughtUpToDate)
+            {
+                this.thisMainWindow?.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
+            }
+
+            // Dismissing the warning or bringing the draft up to date both change the row.
             this.RefreshDrafts();
         }
 
@@ -536,20 +531,16 @@ namespace CRT
         // ###########################################################################################
         // Sends one drafted board for review (Phase 4) - the point of the whole Drafts tab.
         //
-        // WHAT IS SUBMITTED IS THE MERGED BOARD, not the draft. The server diffs the submission
-        // against the base revision itself, so what it needs is the board as it should READ after
-        // publishing - official rows with the drafted ones applied over them. Sending only the
-        // drafted rows would mean the server had to reconstruct that merge from a draft format it
-        // has no reason to know about.
+        // WHAT IS SUBMITTED IS THE DRAFT WORKBOOK AS IT IS ON DISK - the board's complete intended
+        // state (BoardToSendAsync). The server compares it with the board as published NOW, so a
+        // draft started before somebody else's work was published must be brought up to date first
+        // (DraftRebaser) or that work reads as removed; the drift line on the row says so.
         //
-        // NO ACCOUNT IS INVOLVED. The dialog asks for an email address purely so a MAINTAINER can
-        // contact the contributor if they need to; there is no sign-in, and pressing this button
-        // is the whole interaction. A maintainer account is created by the project owner afterwards,
-        // for a NEW board's author, and has nothing to do with sending.
-        //
-        // *** NOTHING EMAILS THE CONTRIBUTOR THE OUTCOME (corrected 2026-09-23). *** That address
-        // is stored and shown to the maintainer, and no submission flow sends to it - the outcome is
-        // reported in "My submissions" and nowhere else. See SubmissionReceipt's header.
+        // NO ACCOUNT IS INVOLVED. The dialog asks for an email address so a maintainer can contact
+        // the contributor and so the DECISION reaches them: SubmissionNotifier mails the address when
+        // a submission is published to BETA, published to stable, sent back for changes or rejected
+        // (corrected 2026-10-13 - this said no outcome mail was sent, which stopped being true when
+        // the notifier was added). "My submissions" shows the same states.
         //
         // THE DRAFT IS LEFT ALONE, deliberately - nothing here discards it. An accepted submission
         // is not published data yet, and a contributor whose draft vanished on submit would lose
@@ -844,35 +835,44 @@ namespace CRT
         // ###########################################################################################
         private async void OnMySubmissionsClick(object? sender, RoutedEventArgs e)
         {
-            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+            try
             {
-                return;
+                if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+                {
+                    return;
+                }
+
+                var window = new MySubmissionsWindow();
+                window.Initialize();
+
+                await window.ShowDialog(ownerWindow);
+
+                // The window can mark comments as read and can refresh state from the server, so the
+                // badge is re-read once it closes rather than left showing what was true before it
+                // opened.
+                //
+                // *** VIA THE VISIBILITY PATH, NOT JUST THE BADGE. *** Unread feedback is what keeps
+                // this tab on screen for somebody with no local drafts, so reading the last comment
+                // must also let the tab go away again - otherwise it lingers empty until restart.
+                //
+                // *** AND THROUGH RETIREMENT FIRST (code review, 2026-09-25). *** The window's Refresh
+                // can move a submission to "published", and nothing retired its draft until the next
+                // launch. RetirePublishedDraftsAsync ends in ApplyDraftsTabVisibility, which calls
+                // RefreshDrafts (and so the badge) on its way through.
+                if (this.thisMainWindow is not null)
+                {
+                    await this.thisMainWindow.RetirePublishedDraftsAsync();
+                }
+                else
+                {
+                    this.RefreshSubmissionBadge();
+                }
             }
-
-            var window = new MySubmissionsWindow();
-            window.Initialize();
-
-            await window.ShowDialog(ownerWindow);
-
-            // The window can mark comments as read and can refresh state from the server, so the
-            // badge is re-read once it closes rather than left showing what was true before it
-            // opened.
-            //
-            // *** VIA THE VISIBILITY PATH, NOT JUST THE BADGE. *** Unread feedback is what keeps
-            // this tab on screen for somebody with no local drafts, so reading the last comment
-            // must also let the tab go away again - otherwise it lingers empty until restart.
-            //
-            // *** AND THROUGH RETIREMENT FIRST (code review, 2026-09-25). *** The window's Refresh
-            // can move a submission to "published", and nothing retired its draft until the next
-            // launch. RetirePublishedDraftsAsync ends in ApplyDraftsTabVisibility, which calls
-            // RefreshDrafts (and so the badge) on its way through.
-            if (this.thisMainWindow is not null)
+            catch (Exception ex)
             {
-                await this.thisMainWindow.RetirePublishedDraftsAsync();
-            }
-            else
-            {
-                this.RefreshSubmissionBadge();
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnMySubmissionsClick failed - [{ex}]");
             }
         }
 
@@ -1002,6 +1002,14 @@ namespace CRT
         // "changed" otherwise. Never promises an ordering that could not be established.
         public string DriftSummary { get; }
 
+        private static string Capitalised(string text) =>
+            text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
+        // A line under the row saying why Submit is greyed out, or that the draft is finished with
+        // (code review, 2026-10-13) - the reason used to live in the button's tooltip alone.
+        public string NoteText { get; } = string.Empty;
+        public bool HasNote => this.NoteText.Length > 0;
+
         public DraftListItem(
             HardwareBoardEntry entry,
             DraftStatus status,
@@ -1015,7 +1023,8 @@ namespace CRT
             bool isTableOpen,
             Func<HardwareBoardEntry, Task> toggleTable,
             SubmissionReceipt? lastSubmission,
-            bool alreadySent = false)
+            bool alreadySent = false,
+            DraftOtherChanges otherChanges = default)
         {
             this.thisEntry = entry;
             this.DisplayName = entry.ToString();
@@ -1062,20 +1071,35 @@ namespace CRT
             // number says nothing about the thing the user actually made.
             string rowText = rowCount == 1 ? "1 row" : $"{rowCount} rows";
 
+            // Files and KiCad calibrations count too (code review, 2026-10-13) - "0 rows changed" on
+            // a draft whose work is a re-calibrated overlay said there was nothing in it.
             this.RowSummary = status.IsNewBoard
                 ? (rowCount == 0 ? "New board, nothing added yet" : $"New board, {rowText} so far")
-                : $"{rowText} changed";
+                : (rowCount, otherChanges.Any) switch
+                {
+                    (0, true) => DraftListItem.Capitalised(otherChanges.Describe()),
+                    (_, true) => $"{rowText} changed, {otherChanges.Describe()}",
+                    _ => $"{rowText} changed",
+                };
 
-            this.HasDrift = driftState is DraftDriftState.OfficialIsNewer or DraftDriftState.Changed;
+            // ###########################################################################################
+            // *** PUBLISHED, CHANGED BY A MAINTAINER, AND NOTHING NEW SINCE (code review, 2026-10-13). ***
+            // Retirement deletes a draft only when it equals the published board, so a submission a
+            // maintainer corrected before publishing left its draft behind for good - and that
+            // draft, sent again, would undo the correction. Said here, where the contributor looks,
+            // instead of in the Wiki alone; the drift line is not shown, since the "update" is the
+            // contributor's own work as published.
+            // ###########################################################################################
+            bool finishedWith =
+                alreadySent &&
+                lastSubmission is { AmendedByMaintainer: true } &&
+                string.Equals(lastSubmission.LastKnownState, "published", StringComparison.OrdinalIgnoreCase);
 
-            this.DriftSummary = driftState switch
-            {
-                DraftDriftState.OfficialIsNewer =>
-                    "The official data for this board has been updated since you started. Your edits are still applied.",
-                DraftDriftState.Changed =>
-                    "The official data for this board has changed since you started. Your edits are still applied.",
-                _ => string.Empty,
-            };
+            this.HasDrift = !finishedWith && DraftDriftWording.IsWarning(driftState);
+
+            this.DriftSummary = this.HasDrift
+                ? DraftDriftWording.Line(driftState, status.HasBase)
+                : string.Empty;
 
             // An EMPTY draft has nothing to review. That is a real state, not a theoretical one: a
             // board created through "Add a new board" exists as a registration before a single
@@ -1089,16 +1113,25 @@ namespace CRT
             // *** BUT NOT WHAT WAS JUST SENT (owner request, 2026-10-03: "It should not be possible
             // to submit the same data again"). *** While the draft holds exactly what its latest
             // submission sent, Submit is greyed out and says so - SubmissionReceiptPresenter.IsAlreadySent.
-            this.CanSubmit = rowCount > 0 && !alreadySent;
+            bool hasSomething = rowCount > 0 || otherChanges.Any;
 
-            this.SubmitTooltip = rowCount == 0
-                ? "There is nothing to send yet. Add some data to this board first."
+            this.CanSubmit = hasSomething && !alreadySent;
+
+            this.SubmitTooltip = !hasSomething
+                ? (status.IsNewBoard
+                    ? "There is nothing to send yet. Add some data to this board first."
+                    : "There is nothing to send yet - this draft holds no change from the published data.")
                 : alreadySent && lastSubmission is not null
                     ? SubmissionReceiptPresenter.DescribeAlreadySent(lastSubmission)
                 : this.HasErrors
                     ? $"This draft has {this.ErrorsText} to fix first - Submit opens its table on them instead of sending."
                     : "Send this board for review. You do not need an account - only an email address, " +
                       "so you can be told whether it was accepted.";
+
+            this.NoteText = finishedWith
+                ? "Your work is published, with some details changed by a maintainer, so this draft will not tidy " +
+                  "itself away. Look at the board, then discard this draft - sending it again would undo the maintainer's changes."
+                : this.CanSubmit ? string.Empty : this.SubmitTooltip;
 
             this.DiscardCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => discard(entry)));
             this.ManageSchematicImagesCommand = new ActionCommand(() =>

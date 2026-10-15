@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -34,52 +35,161 @@ namespace CRT
     // and is what the Approve button follows. So when the detail arrives its answers are put on the
     // list (UpdateQueueEntry) - it cannot show an entry as waiting for you beside an Approve that is
     // off.
+    //
+    // *** THE LISTS ARE CHANGED IN PLACE, NEVER BUILT AGAIN (code review, 2026-10-13). *** Every list
+    // on this tab - the queue, the BETA list, the Boards list - was replaced wholesale on each minute
+    // check (`ItemsSource = new list`). A click whose press landed on a row just replaced was lost
+    // (the Drafts tab's "I need to click it twice" of 2026-10-10), and putting the selection back
+    // scrolled the list to it. Now each list keeps one collection of items: a row still there keeps
+    // its item - the same object, its content brought up to date - a new one is put in where it
+    // belongs, a gone one is taken out (InPlaceList.Sync), and the selected item is never made again.
+    // ShowItemsInPlace below does it for the BETA and Boards lists, ShowQueueItems for the queue,
+    // whose board headings are items too.
     // ###########################################################################################
     public partial class TabMaintainer
     {
-        // The list's parts by submission id and by board - rebuilt with the list.
+        // The list's parts by submission id and by board - kept in step with the list's items.
         private readonly Dictionary<long, QueueEntry> thisQueueEntries = [];
         private readonly Dictionary<string, QueueHeading> thisQueueHeadings = new(StringComparer.Ordinal);
 
-        // The list's items: each board's heading, then its submissions.
-        private List<ListBoxItem> BuildQueueItems(IReadOnlyList<ReviewQueueRow> rows, DateTimeOffset now)
-        {
-            this.thisQueueEntries.Clear();
-            this.thisQueueHeadings.Clear();
+        // The queue list's items: each board's heading, then its submissions - changed in place.
+        private readonly ObservableCollection<ListBoxItem> thisQueueItems = [];
 
-            var items = new List<ListBoxItem>();
+        // ###########################################################################################
+        // Puts `rows` on the queue list, grouped by board, IN PLACE - see the header. An entry is
+        // kept by submission id and a heading by board; each kept one shows its row as it is now
+        // (the wait in its footer moves on with `now`), and the first heading carries no divider.
+        // ###########################################################################################
+        private void ShowQueueItems(ListBox list, IReadOnlyList<ReviewQueueRow> rows, DateTimeOffset now)
+        {
+            if (!ReferenceEquals(list.ItemsSource, this.thisQueueItems))
+                list.ItemsSource = this.thisQueueItems;
+
+            // What each item on the list is now, so one still wanted is kept rather than made again.
+            var parts = new Dictionary<ListBoxItem, object>();
+
+            foreach (QueueEntry entry in this.thisQueueEntries.Values)
+                parts[entry.Item] = entry;
+
+            foreach (QueueHeading heading in this.thisQueueHeadings.Values)
+                parts[heading.Item] = heading;
+
+            List<QueueLine> wanted = [];
 
             foreach (ReviewQueueGroup group in ReviewQueueDisplay.Group(rows))
             {
-                var heading = new QueueHeading(group, isFirst: items.Count == 0);
-                this.thisQueueHeadings[group.BoardId] = heading;
-                items.Add(heading.Item);
+                wanted.Add(new QueueLine(group, null));
 
                 foreach (ReviewQueueRow row in group.Rows)
-                {
-                    var entry = new QueueEntry(row, now);
-                    this.thisQueueEntries[row.Id] = entry;
-                    items.Add(entry.Item);
-                }
+                    wanted.Add(new QueueLine(group, row));
             }
 
-            return items;
+            InPlaceList.Sync(
+                this.thisQueueItems,
+                wanted,
+                (item, line) => parts.TryGetValue(item, out object? part) && line.IsShownBy(part),
+                line =>
+                {
+                    object part = line.Row is { } row ? new QueueEntry(row, now) : new QueueHeading(line.Group, isFirst: false);
+                    ListBoxItem item = part is QueueEntry made ? made.Item : ((QueueHeading)part).Item;
+                    parts[item] = part;
+                    return item;
+                },
+                keep: list.SelectedItem as ListBoxItem);
+
+            this.thisQueueEntries.Clear();
+            this.thisQueueHeadings.Clear();
+
+            for (int index = 0; index < wanted.Count; index++)
+            {
+                QueueLine line = wanted[index];
+
+                switch (parts[this.thisQueueItems[index]])
+                {
+                    case QueueHeading heading:
+                        heading.Show(line.Group, isFirst: index == 0);
+                        this.thisQueueHeadings[line.Group.BoardId] = heading;
+                        break;
+
+                    case QueueEntry entry when line.Row is { } row:
+                        entry.Show(row, now);
+                        entry.Item.Tag = row;
+                        this.thisQueueEntries[row.Id] = entry;
+                        break;
+                }
+            }
+        }
+
+        // One line of the queue list: a board's heading (no Row), or one of its submissions.
+        private sealed record QueueLine(ReviewQueueGroup Group, ReviewQueueRow? Row)
+        {
+            public bool IsShownBy(object part) => part switch
+            {
+                QueueHeading heading => this.Row is null && string.Equals(heading.BoardId, this.Group.BoardId, StringComparison.Ordinal),
+                QueueEntry entry => this.Row is { } row && entry.Row.Id == row.Id,
+                _ => false
+            };
+        }
+
+        // ###########################################################################################
+        // The BETA and Boards lists, in place (see the header): one item per row, kept by `key`; a
+        // kept item whose row reads differently now (`showsTheSame` false) gets its content made
+        // again - the ITEM stays, so a click on it and the scroll position stay too. The selected
+        // item is never made again (InPlaceList.Sync's `keep`).
+        // ###########################################################################################
+        private static void ShowItemsInPlace<T>(
+            ListBox list,
+            ObservableCollection<ListBoxItem> items,
+            IReadOnlyList<T> rows,
+            Func<T, string> key,
+            Func<T, Control> content,
+            Func<ListBoxItem, T, bool> showsTheSame)
+            where T : class
+        {
+            if (!ReferenceEquals(list.ItemsSource, items))
+                list.ItemsSource = items;
+
+            InPlaceList.Sync(
+                items,
+                rows,
+                (item, row) => item.Tag is T held && string.Equals(key(held), key(row), StringComparison.Ordinal),
+                row => new ListBoxItem { Tag = row, Classes = { "ListEntry" }, Content = content(row) },
+                keep: list.SelectedItem as ListBoxItem);
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                ListBoxItem item = items[index];
+
+                if (!showsTheSame(item, rows[index]))
+                    item.Content = content(rows[index]);
+
+                item.Tag = rows[index];
+            }
         }
 
         // The submission selected in the list, or null.
         private ReviewQueueRow? SelectedQueueRow =>
             (this.FindControl<ListBox>("QueueList")?.SelectedItem as ListBoxItem)?.Tag as ReviewQueueRow;
 
-        // Selects a submission's entry - or nothing, for null or a submission not in the list.
+        // ###########################################################################################
+        // Selects a submission's entry - or nothing, for null or a submission not in the list. Only
+        // when that changes anything: setting the selection again scrolls the list to it.
+        // ###########################################################################################
         private void SelectQueueRow(long? id)
         {
             if (this.FindControl<ListBox>("QueueList") is not ListBox list)
                 return;
 
-            list.SelectedItem = id is long value && this.thisQueueEntries.TryGetValue(value, out QueueEntry? entry)
+            ListBoxItem? wanted = id is long value && this.thisQueueEntries.TryGetValue(value, out QueueEntry? entry)
                 ? entry.Item
                 : null;
+
+            if (!ReferenceEquals(list.SelectedItem, wanted))
+                list.SelectedItem = wanted;
         }
+
+        // The queue list's items as they are - for tests, which hold an unchanged row to its object.
+        internal IReadOnlyList<ListBoxItem> QueueItemsForTests => this.thisQueueItems;
 
         // Puts the opened submission's own answers on the list - see the header.
         private void UpdateQueueEntry(ReviewQueueRow row, bool? isNewBoard, bool? awaitsYou)
@@ -138,9 +248,12 @@ namespace CRT
         private sealed class QueueHeading
         {
             private readonly Border thisBadge;
+            private readonly Border thisFrame;
 
             public QueueHeading(ReviewQueueGroup group, bool isFirst)
             {
+                this.BoardId = group.BoardId;
+
                 var line = new WrapPanel { Orientation = Orientation.Horizontal, ItemSpacing = 8, LineSpacing = 4 };
 
                 line.Children.Add(new TextBlock
@@ -158,22 +271,29 @@ namespace CRT
                 };
                 line.Children.Add(this.thisBadge);
 
-                var frame = new Border { Child = line };
-
-                if (!isFirst)
-                    frame.Classes.Add("QueueDivider");
+                this.thisFrame = new Border { Child = line };
 
                 this.Item = new ListBoxItem
                 {
                     IsEnabled = false,
                     Classes = { "QueueHeading" },
-                    Content = frame
+                    Content = this.thisFrame
                 };
 
-                this.ShowBadge(group.IsNewBoard);
+                this.Show(group, isFirst);
             }
 
             public ListBoxItem Item { get; }
+
+            public string BoardId { get; }
+
+            // The heading as its group now reads: the divider above every heading but the first,
+            // and "New board" when nothing of it is published.
+            public void Show(ReviewQueueGroup group, bool isFirst)
+            {
+                this.thisFrame.Classes.Set("QueueDivider", !isFirst);
+                this.ShowBadge(group.IsNewBoard);
+            }
 
             public void ShowBadge(bool? isNewBoard) =>
                 this.thisBadge.IsVisible = ReviewQueueDisplay.BoardBadge(isNewBoard) is not null;
@@ -186,6 +306,7 @@ namespace CRT
         private sealed class QueueEntry
         {
             private readonly StackPanel thisContent;
+            private readonly TextBlock thisComment;
             private readonly TextBlock thisFooter;
 
             // "Contributor discarded their draft on ..." (owner request, 2026-09-28) - in the failure
@@ -196,9 +317,8 @@ namespace CRT
             {
                 this.thisContent = new StackPanel { Spacing = 1 };
 
-                this.thisContent.Children.Add(new TextBlock
+                this.thisComment = new TextBlock
                 {
-                    Text = ReviewQueueDisplay.Comment(row),
                     FontSize = 13,
                     TextWrapping = TextWrapping.Wrap,
 
@@ -206,7 +326,8 @@ namespace CRT
                     // and the rest of it is not what a maintainer picks the next one by.
                     MaxLines = 3,
                     TextTrimming = TextTrimming.CharacterEllipsis
-                });
+                };
+                this.thisContent.Children.Add(this.thisComment);
 
                 this.thisFooter = new TextBlock
                 {
@@ -246,6 +367,10 @@ namespace CRT
             public void Show(ReviewQueueRow row, DateTimeOffset now)
             {
                 this.Row = row;
+
+                // Its words too: an entry is kept across a refresh (ShowQueueItems), and an amended
+                // submission can say something new.
+                this.thisComment.Text = ReviewQueueDisplay.Comment(row);
 
                 string footer = ReviewQueueDisplay.Footer(row, now);
                 this.thisFooter.Text = footer;

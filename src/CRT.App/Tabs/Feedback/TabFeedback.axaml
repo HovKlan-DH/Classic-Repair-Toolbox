@@ -86,7 +86,7 @@
 			<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
 				<Button x:Name="AttachFilesButton" Content="Attach file(s)" Click="OnAttachFilesClick" />
 				<Button x:Name="AttachFolderButton" Content="Attach folder" Click="OnAttachFolderClick" />
-				<Button x:Name="ClearAttachmentsButton" Content="Clear attachments" Click="OnClearAttachmentsClick" IsEnabled="False" />
+				<Button Classes="Danger" x:Name="ClearAttachmentsButton" Content="Clear attachments" Click="OnClearAttachmentsClick" IsEnabled="False" />
 			</StackPanel>
 			<ListBox x:Name="AttachmentsListBox" Height="160"
 			         Background="{DynamicResource Form_Bg}"
@@ -126,10 +126,10 @@
 		</TextBlock>
 
 		<Button Grid.Row="4" x:Name="SubmitButton"
+			Classes="Accept"
 			Content="Send feedback"
 			HorizontalAlignment="Right"
 			Padding="16,8"
-			Background="{DynamicResource Button_Highlighted_Bg}"
 			Foreground="{DynamicResource Feedback_Submit_Fg}"
 			Click="OnSubmitClick" />
 	</Grid>

@@ -105,14 +105,37 @@ namespace CRT.Server.Handlers.Submissions
         // `shownRemovals` is the list of files the maintainer was shown this publish would remove
         // (FileRemovalPreview). The publish is refused when the list it would now remove differs -
         // see step 5b. Null means none were shown, which matches only "nothing to remove".
-        public async Task<ApproveOutcome> ApproveAsync(
+        public Task<ApproveOutcome> ApproveAsync(
             long submissionId,
             ReviewAccess? access,
             string? dataTreeRoot,
             DateTimeOffset nowUtc,
             IReadOnlyCollection<string>? shownRemovals,
+            CancellationToken cancellationToken = default) =>
+            this.ApproveAsync(submissionId, access, dataTreeRoot, nowUtc, new ApproveChecks(shownRemovals), cancellationToken);
+
+        // ###########################################################################################
+        // The same, with everything the maintainer's request carries - see ApproveChecks.
+        // ###########################################################################################
+        public async Task<ApproveOutcome> ApproveAsync(
+            long submissionId,
+            ReviewAccess? access,
+            string? dataTreeRoot,
+            DateTimeOffset nowUtc,
+            ApproveChecks checks,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(checks);
+
+            IReadOnlyCollection<string>? shownRemovals = checks.ShownRemovals;
+
+            // The comment travels with the decision mail (code review, 2026-10-13). Optional for an
+            // approval - but not unbounded: the reason rule's ceiling, which the mail is built for.
+            string? comment = string.IsNullOrWhiteSpace(checks.Comment) ? null : checks.Comment.Trim();
+
+            if (comment is not null && comment.Length > ReviewDecisionRules.MaximumReasonLength)
+                return ApproveOutcome.Refused($"Keep the comment under {ReviewDecisionRules.MaximumReasonLength} characters.");
+
             // ---- 1. Authority, the cheap half ---------------------------------------------------
             //
             // An account that may publish NOTHING is refused before anything is loaded. Which
@@ -160,6 +183,31 @@ namespace CRT.Server.Handlers.Submissions
             if (!ReviewDecisionRules.CanApprove(access, record, out string why))
                 return ApproveOutcome.Refused(why, isConflict: true);
 
+            // ---- 3a. The version the maintainer saw (code review, 2026-10-13) --------------------
+            //
+            // Another maintainer's amendment changes the submission's content and nothing on its
+            // queue row, so a maintainer could approve - and publish - an amendment they had never
+            // seen. Under the lock every amendment takes too (AmendSubmissionFlow), so the version
+            // read here is the one published. Null, from an older CRT, is not checked.
+            if (checks.ExpectedVersion is int expected)
+            {
+                int current = (await this.thisStore.GetLatestAmendmentAsync(submissionId, cancellationToken).ConfigureAwait(false))?.Version ?? 0;
+
+                if (current != expected)
+                    return ApproveOutcome.Refused(ReviewDecisionRules.AmendedSinceMessage, isConflict: true);
+            }
+
+            // ---- 3c. The caller's own check, under the lock (code review, 2026-10-13) -------------
+            //
+            // A maintainer's change from the Boards screen was checked against BETA BEFORE its
+            // submission was made, outside this lock - a publish landing in between was then
+            // silently reverted. BoardEditFlow re-checks BETA here, where nothing can publish.
+            if (checks.UnderLock is { } underLock &&
+                await underLock(cancellationToken).ConfigureAwait(false) is string refusal)
+            {
+                return ApproveOutcome.Refused(refusal, isConflict: true);
+            }
+
             // ---- 3b. One submission in BETA per board (owner decision, 2026-09-27) --------------
             //
             // "It should be possible only to submit ONE contributor submission to Beta per board":
@@ -188,9 +236,11 @@ namespace CRT.Server.Handlers.Submissions
             // ---- 4. The payload ----------------------------------------------------------------
             //
             // See the class header: an unreadable payload means no rows, and publishing no rows
-            // deletes the board.
-            SubmissionManifest? manifest = await this.thisStore
-                .LoadPayloadAsync(submissionId, cancellationToken)
+            // deletes the board. Read through SubmissionLeftAsPublished (code review, 2026-10-13): a
+            // file the contributor left exactly as published, whose published copy somebody else has
+            // changed since, is left as it is published NOW rather than reverted.
+            SubmissionManifest? manifest = await SubmissionLeftAsPublished
+                .LoadAsync(this.thisStore, submissionId, dataTreeRoot, cancellationToken)
                 .ConfigureAwait(false);
 
             if (manifest is null)
@@ -337,51 +387,105 @@ namespace CRT.Server.Handlers.Submissions
                 return ApproveOutcome.Refused(outcome.Failure ?? "The publish did not complete.");
             }
 
+            // ###########################################################################################
+            // *** FROM HERE ON THE TREE IS WRITTEN, AND NOTHING MAY UNDO THE ANSWER (code review,
+            // 2026-10-13). *** The steps below are record-keeping after the one irreversible
+            // operation. They used to run unguarded with the request's token: a database hiccup in
+            // AddApprovalAsync - or the maintainer's client giving up - threw out of here as a 500,
+            // and the endpoint's follow-up (the checksum manifest, the contributor's mail) never ran,
+            // so a publish that had happened reached nobody. Each step is now contained and logged,
+            // and none of them listens to the request's cancellation.
+            // ###########################################################################################
+            CancellationToken afterWrite = CancellationToken.None;
+
             // ---- 8. Remove what the board no longer uses ---------------------------------------
             //
             // Only the files the maintainer was shown, and only those the tree - read again, now
             // that the new workbook is written - still does not use. Never fails the publish: it
             // has already happened.
-            UnusedFileRemoval removal = UnusedFileRemover.Remove(dataTreeRoot, removals.Files, this.thisLogger);
+            IReadOnlyList<string> removed = [];
+
+            await this.AfterTheFactAsync(submissionId, "the files it no longer uses could not be removed", () =>
+            {
+                removed = UnusedFileRemover.Remove(dataTreeRoot, removals.Files, this.thisLogger).Removed;
+                return Task.CompletedTask;
+            }).ConfigureAwait(false);
 
             // The approval that published it, beside any earlier one.
-            await this.thisStore
-                .AddApprovalAsync(submissionId, approval.YourRole!.Value, access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, cancellationToken)
+            await this.AfterTheFactAsync(submissionId, "the approval could not be recorded", () => this.thisStore
+                .AddApprovalAsync(submissionId, approval.YourRole!.Value, access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, afterWrite))
                 .ConfigureAwait(false);
 
-            // The decision row, recording WHO approved it. PublishExecutor already moved the state
-            // to merged; this adds the maintainer and the audit trail, which SetStateAsync cannot.
-            await this.thisStore
+            // The decision row, recording WHO approved it - and the comment, which the merged mail
+            // quotes (code review, 2026-10-13: it used to be dropped here). PublishExecutor already
+            // moved the state to merged; this adds the maintainer and the audit trail, which
+            // SetStateAsync cannot.
+            await this.AfterTheFactAsync(submissionId, "who approved it could not be recorded", () => this.thisStore
                 .SetDecisionAsync(
                     submissionId,
                     SubmissionState.Merged,
                     access!.Account.Id,
-                    comment: null,
+                    comment,
                     nowUtc,
-                    cancellationToken)
+                    afterWrite))
                 .ConfigureAwait(false);
 
             // What it changed, for the board's History view - with the files step 8 removed. A
             // record that cannot be written costs the history one summary, never the publish.
             if (changes is not null)
             {
-                try
-                {
-                    await this.thisStore
-                        .SetChangesAsync(submissionId, SubmissionChangeFacts.WithRemovedFiles(changes, removal.Removed), nowUtc, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    this.thisLogger.LogWarning(ex, "What submission {SubmissionId} changed could not be recorded for its history.", submissionId);
-                }
+                await this.AfterTheFactAsync(submissionId, "what it changed could not be recorded for its history", () => this.thisStore
+                    .SetChangesAsync(submissionId, SubmissionChangeFacts.WithRemovedFiles(changes, removed), nowUtc, afterWrite))
+                    .ConfigureAwait(false);
             }
 
             this.thisLogger.LogInformation(
                 "Submission {SubmissionId} was published to {BoardId} at revision {Revision} by {Account}.",
-                submissionId, manifest.BoardId, outcome.Descriptor!.Revision, access.Account.Email);
+                submissionId, manifest.BoardId, outcome.Descriptor!.Revision, access!.Account.Email);
 
-            return ApproveOutcome.Published(outcome.Descriptor) with { RemovedFiles = removal.Removed };
+            // A board NEITHER tree held is a NEW board: its creator becomes its maintainer
+            // (ReviewEndpoints, after the publish - see NewBoardMaintainerFlow, and StableHolds).
+            return ApproveOutcome.Published(outcome.Descriptor) with
+            {
+                RemovedFiles = removed,
+                CreatedBoard = published is null && !ApprovePublishFlow.StableHolds(this.thisOptions, manifest),
+            };
+        }
+
+        // ###########################################################################################
+        // *** DOES THE STABLE TREE HOLD THIS BOARD? (code review, 2026-10-14) *** A board BETA lacks
+        // is not necessarily new: the project owner may have placed it in stable by hand, or deleted
+        // BETA's copy alone. Calling that "created" handed whoever sent its next change the board's
+        // maintainer role. Looked up by name only (PublishedBoardLocator), in the stable tree under
+        // either setting that names it - ProductionDataTreeRoot, or ProductionTreeRoot, which a
+        // server not publishing to stable may still set. No stable tree configured: no.
+        // ###########################################################################################
+        internal static bool StableHolds(ServerOptions? options, SubmissionManifest manifest)
+        {
+            ArgumentNullException.ThrowIfNull(manifest);
+
+            string? stable = string.IsNullOrWhiteSpace(options?.ProductionDataTreeRoot)
+                ? options?.ProductionTreeRoot
+                : options.ProductionDataTreeRoot;
+
+            return !string.IsNullOrWhiteSpace(stable) && PublishedBoardLocator.Locate(stable, manifest).Exists;
+        }
+
+        // One step after the tree is written: run, and if it throws, log it and go on - see step 8.
+        private async Task AfterTheFactAsync(long submissionId, string whatFailed, Func<Task> step)
+        {
+            try
+            {
+                await step().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                this.thisLogger.LogError(
+                    ex,
+                    "Submission {SubmissionId} WAS published, but {WhatFailed}. The data tree is correct.",
+                    submissionId,
+                    whatFailed);
+            }
         }
 
         // ###########################################################################################
@@ -619,12 +723,23 @@ namespace CRT.Server.Handlers.Submissions
                 .GetApprovalsAsync(record.Id, cancellationToken)
                 .ConfigureAwait(false);
 
-            return ApprovalRules.Status(
-                ApprovalRules.Required(touchesSharedFiles, hasMaintainers),
+            return ApprovePublishFlow.ApprovalStatusOf(access, record, touchesSharedFiles, hasMaintainers, given);
+        }
+
+        // The same from facts already read - the queue reads them for every row at once
+        // (ReviewQueueFlow, code review 2026-10-13). `hasMaintainers` counts only when
+        // `touchesSharedFiles`.
+        internal static ApprovalStatus ApprovalStatusOf(
+            ReviewAccess? access,
+            SubmissionRecord record,
+            bool touchesSharedFiles,
+            bool hasMaintainers,
+            IReadOnlyList<GivenApproval> given) =>
+            ApprovalRules.Status(
+                ApprovalRules.Required(touchesSharedFiles, touchesSharedFiles && hasMaintainers),
                 given,
                 ReviewAuthority.RoleIn(access, record.BoardId),
                 access?.Account.Id);
-        }
 
         // ###########################################################################################
         // *** DOES THIS SUBMISSION CHANGE A SHARED FILE - JUDGED AGAINST THE TREE AS IT IS NOW
@@ -818,6 +933,21 @@ namespace CRT.Server.Handlers.Submissions
         }
     }
 
+    // ###########################################################################################
+    // What a maintainer's approval carries besides the submission (code review, 2026-10-13):
+    //
+    //   ShownRemovals   - the files they were shown the publish would remove (step 6b);
+    //   ExpectedVersion - the amendment version their screen showed (step 3a); null is not checked;
+    //   Comment         - their words, quoted in the contributor's mail; optional;
+    //   UnderLock       - a check of the caller's own, run under the publish lock before anything is
+    //                     read for the publish: null to go on, or the refusal (step 3c).
+    // ###########################################################################################
+    public sealed record ApproveChecks(
+        IReadOnlyCollection<string>? ShownRemovals,
+        int? ExpectedVersion = null,
+        string? Comment = null,
+        Func<CancellationToken, Task<string?>>? UnderLock = null);
+
     // What ListingForPublishAsync decided: go ahead (adding Insert when it is not null), or not.
     // ListedAs is the row the board is, or will be, listed under - the caption for a board that
     // has none (PublishMerge.CaptionedAs); null when the file could not be read.
@@ -865,6 +995,9 @@ namespace CRT.Server.Handlers.Submissions
 
         // The files a publish removed because nothing in the tree used them any more.
         public IReadOnlyList<string> RemovedFiles { get; init; } = [];
+
+        // The publish created the board: BETA held no board of this name before it.
+        public bool CreatedBoard { get; init; }
 
         public bool IsAwaitingApproval => this.WaitingFor.Count > 0;
     }

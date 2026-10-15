@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Handlers.DataHandling
@@ -12,16 +13,32 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     internal static class KiCadProjectLoader
     {
-        private static readonly Dictionary<string, KiCadProjectBundle?> thisRawCache =
-            new(StringComparer.OrdinalIgnoreCase);
+        // How many parsed boards are kept - a parsed board runs to tens of megabytes. Four, like the
+        // Schematics tab's render caches: enough to go back and forth between a few boards.
+        internal const int CachedProjectCount = 4;
+
+        // ###########################################################################################
+        // The parsed projects, by their set of files, at those files' write times (code review,
+        // 2026-10-13). It was a plain static Dictionary keyed by files AND times: written from pool
+        // threads with no lock, never trimmed - one more whole parsed board for every board shown and
+        // every time its files changed. StampedLruCache locks, keeps one parse per set of files, and
+        // at most CachedProjectCount of them.
+        // ###########################################################################################
+        private static readonly StampedLruCache<KiCadProjectBundle?> thisRawCache =
+            new(CachedProjectCount, StringComparer.OrdinalIgnoreCase);
 
         // ###########################################################################################
         // Loads modern raw KiCad files directly from disk and converts them into a normalized project bundle.
+        //
+        // `cancellationToken` is the board load's: the next board switch cancels a load still
+        // reading (TabSchematics.LoadKiCadProjectForCurrentBoardAsync), and a cancelled load
+        // caches nothing and returns null.
         // ###########################################################################################
         public static async Task<KiCadProjectBundle?> LoadRawAsync(
             IReadOnlyList<string> rawPaths,
             string hardwareName = "",
-            string boardName = "")
+            string boardName = "",
+            CancellationToken cancellationToken = default)
         {
             var existingPaths = rawPaths
                 .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -36,26 +53,29 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            string cacheKey = string.Join(
+            string cacheKey = string.Join("\u001E", existingPaths);
+            string cacheStamp = string.Join(
                 "\u001E",
                 existingPaths.Select(path =>
-                    $"{path}|{File.GetLastWriteTimeUtc(path).Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+                    File.GetLastWriteTimeUtc(path).Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
-            if (KiCadProjectLoader.thisRawCache.TryGetValue(cacheKey, out var cached))
+            if (KiCadProjectLoader.thisRawCache.TryGet(cacheKey, cacheStamp, out var cached))
             {
                 return cached;
             }
 
             try
             {
-                var root = await KiCadRawProjectLoader.LoadAsync(existingPaths, hardwareName, boardName).ConfigureAwait(false);
+                var root = await KiCadRawProjectLoader.LoadAsync(existingPaths, hardwareName, boardName, cancellationToken).ConfigureAwait(false);
 
                 if (root == null || (root.Pcb.Count == 0 && root.Schematics.Count == 0))
                 {
                     Logger.Warning($"Raw KiCad files could not be loaded: [{string.Join("], [", existingPaths)}]");
-                    KiCadProjectLoader.thisRawCache[cacheKey] = null;
+                    KiCadProjectLoader.thisRawCache.Store(cacheKey, cacheStamp, null);
                     return null;
                 }
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 var bundle = new KiCadProjectBundle
                 {
@@ -64,14 +84,19 @@ namespace Handlers.DataHandling
                         KiCadProjectLoader.BuildSchematicNetPathIndex(root.Schematics)
                 };
 
-                KiCadProjectLoader.thisRawCache[cacheKey] = bundle;
+                KiCadProjectLoader.thisRawCache.Store(cacheKey, cacheStamp, bundle);
 
                 return bundle;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Logger.Info($"KiCad load stopped - another board was chosen: [{string.Join("], [", existingPaths)}]");
+                return null;
             }
             catch (Exception ex)
             {
                 Logger.Warning($"Failed to load raw KiCad files [{string.Join("], [", existingPaths)}] - [{ex}]");
-                KiCadProjectLoader.thisRawCache[cacheKey] = null;
+                KiCadProjectLoader.thisRawCache.Store(cacheKey, cacheStamp, null);
                 return null;
             }
         }

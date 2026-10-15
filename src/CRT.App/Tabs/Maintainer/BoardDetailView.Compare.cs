@@ -82,7 +82,7 @@ namespace CRT
         }
 
         private async void OnCompareSourcesClick(object? sender, RoutedEventArgs e) =>
-            await this.CompareSourcesAsync(this.CompareBox?.IsChecked == true);
+            await HandlerGuard.RunAsync(() => this.CompareSourcesAsync(this.CompareBox?.IsChecked == true), message => this.ShowMessage(message, isError: true));
 
         // ###########################################################################################
         // The maintainer's tick: remembered, the other source's table read when it is wanted and not

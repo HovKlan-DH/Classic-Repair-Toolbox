@@ -26,16 +26,12 @@ namespace Handlers.DataHandling
     // those words rather than papered over - see the view's own empty state. A reinstall or a
     // second computer starts empty.
     //
-    // *** AND THAT LIMITATION HAS NO BACKSTOP TODAY (corrected 2026-09-23). *** This comment used
-    // to say the contributor "still gets told the outcome by email, which is the channel that does
-    // not depend on this file existing". NO SUCH EMAIL IS SENT. EmailTemplates carries four
-    // account messages (verification, already-registered, password reset, password changed) and
-    // nothing for a submission outcome; no submission flow injects IEmailSender at all. The
-    // contact address is stored so a MAINTAINER can reply by hand, and that is its only use.
-    //
-    // So this file IS the channel. Losing it loses the outcome - which is why the badge rules
-    // below matter more than they look, and why the notification work in Phase 6 (item 11) is
-    // still outstanding. Three user-visible strings promised that email and have been corrected.
+    // *** THE DECISION MAILS ARE THE BACKSTOP (corrected 2026-10-13). *** The server mails the
+    // contact address when a submission is published to BETA, published to stable, sent back for
+    // changes, or rejected (SubmissionNotifier) - nothing for "pending". So a contributor whose
+    // receipts file is gone still hears the outcome; what is lost is this machine's view of it
+    // (the Drafts badge, "My submissions", retirement of the published draft). An earlier version
+    // of this comment said no such mail was sent - true before the notifier existed, not since.
     //
     // THE TOKEN IS A SECRET and this record carries it. It authorises reading a submission, so a
     // receipts file is worth the same care as any other credential store - it lives beside the
@@ -376,6 +372,40 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // *** A REQUEST THE CONTRIBUTOR ALREADY ANSWERED STOPS ASKING (code review, 2026-10-13). ***
+        // "Changes requested" is orange because the contributor has to act - and once they sent a
+        // newer submission for the same board, they did. A newer submission does not always replace
+        // the older one on the server (only one still pending and never amended is withdrawn), so the
+        // old row kept saying "Changes requested" in orange for good, beside the new one. With a
+        // newer submission from this machine, such a row says so and is no longer orange.
+        // ###########################################################################################
+        public static SubmissionReceipt? NewerForBoard(SubmissionReceipt receipt, IEnumerable<SubmissionReceipt>? all)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return (all ?? [])
+                .Where(other => other is not null &&
+                                other.SubmissionId != receipt.SubmissionId &&
+                                string.Equals(other.BoardId, receipt.BoardId, StringComparison.OrdinalIgnoreCase) &&
+                                other.SentUtc > receipt.SentUtc)
+                .OrderByDescending(other => other.SentUtc)
+                .FirstOrDefault();
+        }
+
+        public static string DescribeReceiptState(SubmissionReceipt receipt, SubmissionReceipt? newer) =>
+            SubmissionReceiptPresenter.AnsweredByNewer(receipt, newer)
+                ? $"{SubmissionReceiptPresenter.DescribeReceiptState(receipt)} - you sent a newer one on {SubmissionReceiptPresenter.FormatDate(newer!.SentUtc)}"
+                : SubmissionReceiptPresenter.DescribeReceiptState(receipt);
+
+        public static SubmissionOutcomeKind ClassifyReceipt(SubmissionReceipt receipt, SubmissionReceipt? newer) =>
+            SubmissionReceiptPresenter.AnsweredByNewer(receipt, newer)
+                ? SubmissionOutcomeKind.Waiting
+                : SubmissionReceiptPresenter.ClassifyReceipt(receipt);
+
+        private static bool AnsweredByNewer(SubmissionReceipt receipt, SubmissionReceipt? newer) =>
+            newer is not null && SubmissionReceiptPresenter.ClassifyReceipt(receipt) == SubmissionOutcomeKind.NeedsAction;
+
+        // ###########################################################################################
         // WHAT KIND OF OUTCOME a state represents, for anything that needs to COLOUR it
         // (owner request, 2026-09-22).
         //
@@ -482,6 +512,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static readonly TimeSpan MergedRecheckWindow = TimeSpan.FromDays(30);
 
+        // Every state this CRT knows to be open (IsStillOpen) - "" is a receipt not yet answered.
+        // Anything else that is not final is a word a newer server added; see IsStillOpen(receipt).
+        internal static readonly IReadOnlySet<string> KnownOpenStates =
+            new HashSet<string>(StringComparer.Ordinal) { "", "uploading", "pending", "approved", "merged", "changes_requested", "returned" };
+
         public static readonly TimeSpan MergedLateRecheckInterval = TimeSpan.FromDays(7);
 
         // How often a receipt the server answered "not found" for is asked about again (code review,
@@ -510,7 +545,16 @@ namespace Handlers.DataHandling
                     nowUtc - lastChecked >= SubmissionReceiptPresenter.NotFoundRecheckInterval;
             }
 
-            if (!string.Equals(receipt.LastKnownState?.Trim(), "merged", StringComparison.OrdinalIgnoreCase))
+            // ###########################################################################################
+            // *** A STATE WORD THIS CRT DOES NOT KNOW IS ASKED ABOUT ON THE SLOW SCHEDULE (code review,
+            // 2026-10-13). *** States are plain strings on the wire, so the API surface freeze cannot
+            // see a new one - and an unknown word is "still open" (the safe answer about whether to
+            // ask). Asked every minute for ever by every installed CRT, a server adding a final state
+            // would have been asked about without end. Like "merged": often at first, then weekly.
+            // ###########################################################################################
+            string state = receipt.LastKnownState?.Trim().ToLowerInvariant() ?? string.Empty;
+
+            if (state != "merged" && SubmissionReceiptPresenter.KnownOpenStates.Contains(state))
                 return true;
 
             DateTimeOffset since = receipt.DecidedUtc ?? receipt.SentUtc;

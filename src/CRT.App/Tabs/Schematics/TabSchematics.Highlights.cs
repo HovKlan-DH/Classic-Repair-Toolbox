@@ -48,6 +48,13 @@ public partial class TabSchematics
 
     private double thisCurrentHighlightBlinkFactor = 1.0;
 
+    // The board labels the highlights show now (UpdateHighlightsForComponents), and for each
+    // thumbnail what its highlight layer was drawn from (ThumbnailLayerSignature) - so a new
+    // selection draws again only the thumbnails whose own highlights changed (code review,
+    // 2026-10-13: each keystroke in the component filter drew every highlighted thumbnail again).
+    private HashSet<string> thisEffectiveHighlightBoardLabels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> thisThumbnailLayerSignatures = new(StringComparer.OrdinalIgnoreCase);
+
     private string? thisHoveredComponentBoardLabel;
 
     private readonly HashSet<string> thisSchematicsOnlySelectedBoardLabels = new(StringComparer.OrdinalIgnoreCase);
@@ -331,6 +338,8 @@ public partial class TabSchematics
             "\u001E",
             effectiveBoardLabels.OrderBy(label => label, StringComparer.OrdinalIgnoreCase));
 
+        this.thisEffectiveHighlightBoardLabels = effectiveBoardLabels;
+
         this.highlightIndexBySchematic = new(StringComparer.OrdinalIgnoreCase);
 
         if (effectiveBoardLabels.Count > 0)
@@ -420,14 +429,18 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Applies current highlight visuals (including blink phase) to main schematic and thumbnails.
-    // Thumbnail highlights must be regenerated when the component-selection blink phase changes
-    // because their highlight overlay is baked into the rendered thumbnail bitmap.
+    // Applies the current highlights to the main schematic and the thumbnails, then the blink
+    // phase (ApplyBlinkPhase).
+    //
+    // *** THE BLINK IS AN OPACITY, NOT A REBUILD (code review, 2026-10-13). *** The blink factor
+    // used to be baked into everything: the schematic overlay's colour, a thumbnail bitmap rendered
+    // again for every highlighted thumbnail, and the KiCad overlay's primitives (a per-net cache
+    // miss for every blinking net) - twice a second, while "Blink selected" was on. Now this builds
+    // all of it at full strength when the SELECTION changes, and the blink timer calls only
+    // ApplyBlinkPhase, which sets opacities and the KiCad overlay's phase - nothing is built.
     // ###########################################################################################
     public void ApplyHighlightVisuals(bool hasSelection, double blinkFactor)
     {
-        this.thisCurrentHighlightBlinkFactor = Math.Clamp(blinkFactor, 0.0, 1.0);
-
         var selectedThumb = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
         if (selectedThumb != null &&
             this.highlightIndexBySchematic.TryGetValue(selectedThumb.Name, out var mainIndex) &&
@@ -437,7 +450,7 @@ public partial class TabSchematics
             this.SchematicsHighlightsOverlay.BitmapPixelSize = this.currentFullResBitmap?.PixelSize ?? new PixelSize(0, 0);
             this.SchematicsHighlightsOverlay.HighlightColor = RectGeometry.ParseColorOrDefault(mainSchematic.SchematicHighlightColor, Colors.IndianRed);
             this.SchematicsHighlightsOverlay.HighlightOpacity =
-                RectGeometry.ParseOpacityOrDefault(mainSchematic.SchematicHighlightOpacity, 0.20) * this.thisCurrentHighlightBlinkFactor;
+                RectGeometry.ParseOpacityOrDefault(mainSchematic.SchematicHighlightOpacity, 0.20);
             this.SchematicsHighlightsOverlay.DraftedHighlightColor = ThemeResources.Resolve("Draft_Highlight_Tint", Colors.Orange);
         }
         else
@@ -470,12 +483,8 @@ public partial class TabSchematics
 
                 if (isLabelEditorModeActive)
                 {
-                    if (!ReferenceEquals(thumb.ImageSource, thumb.BaseThumbnail))
-                    {
-                        var old = thumb.ImageSource;
-                        thumb.ImageSource = thumb.BaseThumbnail;
-                        (old as IDisposable)?.Dispose();
-                    }
+                    TabSchematics.SetThumbnailHighlightLayer(thumb, null);
+                    this.thisThumbnailLayerSignatures.Remove(thumb.Name);
 
                     bool isRelevantForEditor = string.Equals(
                         thumb.Name,
@@ -495,29 +504,29 @@ public partial class TabSchematics
                 {
                     hasComponentMatch = true;
 
-                    var highlighted = CreateHighlightedThumbnail(
-                        thumb.BaseThumbnail,
-                        thumb.OriginalPixelSize,
-                        thumbIndex,
-                        thumbSchematic,
-                        opacityMultiplier: this.thisCurrentHighlightBlinkFactor);
+                    // Drawn again only when what it shows changed - the same highlights on the
+                    // same thumbnail keep their layer.
+                    string layerSignature = this.ThumbnailLayerSignature(thumb, thumbSchematic);
 
-                    var old = thumb.ImageSource;
-                    thumb.ImageSource = highlighted;
-
-                    if (!ReferenceEquals(old, thumb.BaseThumbnail))
+                    if (thumb.HighlightImage == null ||
+                        !this.thisThumbnailLayerSignatures.TryGetValue(thumb.Name, out string? drawnFrom) ||
+                        !string.Equals(drawnFrom, layerSignature, StringComparison.Ordinal))
                     {
-                        (old as IDisposable)?.Dispose();
+                        TabSchematics.SetThumbnailHighlightLayer(
+                            thumb,
+                            CreateThumbnailHighlightLayer(
+                                thumb.BaseThumbnail,
+                                thumb.OriginalPixelSize,
+                                thumbIndex,
+                                thumbSchematic));
+
+                        this.thisThumbnailLayerSignatures[thumb.Name] = layerSignature;
                     }
                 }
                 else
                 {
-                    if (!ReferenceEquals(thumb.ImageSource, thumb.BaseThumbnail))
-                    {
-                        var old = thumb.ImageSource;
-                        thumb.ImageSource = thumb.BaseThumbnail;
-                        (old as IDisposable)?.Dispose();
-                    }
+                    TabSchematics.SetThumbnailHighlightLayer(thumb, null);
+                    this.thisThumbnailLayerSignatures.Remove(thumb.Name);
                 }
 
                 if (hasKiCadSelection)
@@ -534,6 +543,69 @@ public partial class TabSchematics
         }
 
         this.RefreshKiCadOverlay(forceImmediate: true);
+        this.ApplyBlinkPhase(blinkFactor);
+    }
+
+    // ###########################################################################################
+    // The blink, and nothing else: 1 shows what blinks, 0 hides it (Main's blink timer, every
+    // 450 ms). The schematic's highlight overlay and every thumbnail's highlight layer take it as
+    // their opacity; the KiCad overlay draws the matching phase of what it already holds
+    // (KiCadOverlayRenderControl.BlinkPhaseVisible). No bitmap is rendered and no KiCad primitive
+    // built - each phase looks exactly as the factor baked into them used to.
+    // ###########################################################################################
+    internal void ApplyBlinkPhase(double blinkFactor)
+    {
+        this.thisCurrentHighlightBlinkFactor = Math.Clamp(blinkFactor, 0.0, 1.0);
+
+        this.SchematicsHighlightsOverlay.Opacity = this.thisCurrentHighlightBlinkFactor;
+
+        foreach (var thumb in this.currentThumbnails)
+        {
+            thumb.HighlightLayerOpacity = this.thisCurrentHighlightBlinkFactor;
+        }
+
+        this.SchematicsKiCadOverlayCanvas.BlinkPhaseVisible = this.thisCurrentHighlightBlinkFactor >= 0.5;
+    }
+
+    // ###########################################################################################
+    // What a thumbnail's highlight layer is drawn from: the highlighted labels that are on THIS
+    // schematic (each marked when it is a draft's), the schematic's thumbnail colour and opacity,
+    // and the image's sizes. Equal signatures draw the same layer.
+    // ###########################################################################################
+    private string ThumbnailLayerSignature(SchematicThumbnail thumb, BoardSchematicEntry schematic)
+    {
+        IEnumerable<string> labelsHere = this.highlightRectsBySchematicAndLabel.TryGetValue(thumb.Name, out var byLabel)
+            ? byLabel.Keys
+                .Where(this.thisEffectiveHighlightBoardLabels.Contains)
+                .Select(label => this.draftedHighlightKeys.Contains(BoardDraftNaturalKeys.ForComponentHighlight(thumb.Name, label))
+                    ? label + "\u0001"
+                    : label)
+                .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
+            : Enumerable.Empty<string>();
+
+        PixelSize baseSize = thumb.BaseThumbnail is Bitmap bitmap ? bitmap.PixelSize : default;
+
+        return string.Join(
+            "\u001F",
+            string.Join("\u001E", labelsHere),
+            schematic.ThumbnailHighlightColor,
+            schematic.ThumbnailHighlightOpacity,
+            thumb.OriginalPixelSize.ToString(),
+            baseSize.ToString());
+    }
+
+    // Puts `layer` on the thumbnail as its highlight layer, disposing the one it replaces.
+    private static void SetThumbnailHighlightLayer(SchematicThumbnail thumb, IImage? layer)
+    {
+        var old = thumb.HighlightImage;
+
+        if (ReferenceEquals(old, layer))
+        {
+            return;
+        }
+
+        thumb.HighlightImage = layer;
+        (old as IDisposable)?.Dispose();
     }
 
     // ###########################################################################################

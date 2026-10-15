@@ -157,6 +157,7 @@ namespace CRT.Server.Handlers.Submissions
             PublishedBoardReader boards,
             ApprovePublishFlow approvals,
             SubmissionNotifier notifier,
+            PublishLock publishLock,
             ServerOptions options,
             ILogger<SubmissionNotifier> logger,
             CancellationToken cancellationToken)
@@ -187,7 +188,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 try
                 {
-                    ReviewEndpoints.RewriteBetaManifest(outcome.SubmissionId, options, logger);
+                    await ReviewEndpoints.RewriteBetaManifestAsync(outcome.SubmissionId, options, publishLock, logger);
                 }
                 catch (Exception ex)
                 {
@@ -325,6 +326,7 @@ namespace CRT.Server.Handlers.Submissions
             HttpContext context,
             IAccountStore accounts,
             BoardListingFlow listing,
+            PublishLock publishLock,
             ServerOptions options,
             ILogger<BoardListingFlow> logger,
             CancellationToken cancellationToken)
@@ -345,10 +347,13 @@ namespace CRT.Server.Handlers.Submissions
                 // there it never fails the request (the file is already written).
                 if (answer.ListedInBeta)
                 {
-                    int written = DataChecksumManifest.Write(
-                        options.DataTreeRoot ?? string.Empty,
-                        options.PublicDataBaseUrl ?? string.Empty,
-                        options.ManifestPath ?? string.Empty);
+                    // Under the publish lock and off the request thread (code review, 2026-10-13) -
+                    // see ManifestRewrite.
+                    int written = await ManifestRewrite.RewriteAsync(
+                        publishLock,
+                        options.DataTreeRoot,
+                        options.PublicDataBaseUrl,
+                        options.ManifestPath);
 
                     if (written < 0)
                     {

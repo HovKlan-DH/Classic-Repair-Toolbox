@@ -100,7 +100,7 @@ namespace Handlers.MaintainerHandling
             string removing = removed == 0 ? string.Empty : $", {ProductionDisplay.Count(removed, "file", "to remove")}";
 
             if (added == 0 && replaced == 0)
-                return $"Production already has every file ({unchanged}){removing}. Publishing only records it.";
+                return $"The stable source already has every file ({unchanged}){removing} - publishing only records it.";
 
             return $"{ProductionDisplay.Count(added, "file", "to add")}, " +
                 $"{ProductionDisplay.Count(replaced, "file", "to replace")}{removing}, {unchanged} already the same";
@@ -216,11 +216,17 @@ namespace Handlers.MaintainerHandling
         // The two kinds say different things because they ARE different operations: a restore puts
         // production's board back, while a board never promoted has nothing to go back to and
         // leaves BETA entirely.
+        //
+        // *** ONE NAME: "PUSH BACK TO QUEUE" (code review, 2026-10-13). *** The button, the window's
+        // title, the headline, the confirm button, the wait and the board's history named it five
+        // ways ("Roll back", "Remove from BETA", "Roll this board back" ...). Every maintainer-facing
+        // word now says push back, and what happens to BETA is said after it. The contributor's own
+        // wording ("taken back out of BETA", SubmissionReceipt) is plain English on purpose.
         // ###########################################################################################
         public static string RollBackHeadline(BetaRollbackPlanView? plan) =>
             plan?.Kind == BetaRollbackKind.RemoveFromBeta
-                ? "Remove this board from BETA and push it back to the queue?"
-                : "Roll this board back to what the stable source has, and push it back to the queue?";
+                ? "Push this board back to the queue? BETA no longer has this board."
+                : "Push this board back to the queue? BETA goes back to what the stable source has.";
 
         public static string RollBackExplanation(BetaRollbackPlanView? plan)
         {
@@ -237,7 +243,7 @@ namespace Handlers.MaintainerHandling
                 : returning == 1
                     ? "The submission below goes back to the queue for review."
                     : $"ALL {returning.ToString(CultureInfo.InvariantCulture)} submissions below go back to the queue - a board cannot be " +
-                        "rolled back one contribution at a time.";
+                        "pushed back one contribution at a time.";
 
             return $"{what} {who}";
         }
@@ -287,7 +293,7 @@ namespace Handlers.MaintainerHandling
                 : "Reject";
 
         public static string RejectingWait(string boardId) =>
-            $"Rejecting {boardId}. BETA's data is being put back as the stable source has it - please wait until it is done.";
+            $"Rejecting {ReviewQueueDisplay.BoardHeading(boardId)}. BETA goes back to what the stable source has - please wait until it is done.";
 
         // What a finished rejection says, as RolledBack does for a push-back.
         public static string Rejected(BetaRollbackResult result)
@@ -308,7 +314,7 @@ namespace Handlers.MaintainerHandling
         {
             ArgumentNullException.ThrowIfNull(result);
 
-            return $"The server is older than this CRT and PUSHED {result.BoardId} BACK instead of rejecting it: " +
+            return $"The server is older than this CRT and PUSHED {ReviewQueueDisplay.BoardHeading(result.BoardId)} BACK instead of rejecting it: " +
                 $"{ProductionDisplay.FilesMoved(result)}, " +
                 $"{ProductionDisplay.Count(result.SubmissionsReturned, "submission", "back in the queue")}. " +
                 "Reject it from " + MaintainerScreenWording.ContributorQueueQuoted + ".";
@@ -339,11 +345,12 @@ namespace Handlers.MaintainerHandling
         public static IReadOnlyList<string> RollBackSharedPaths(BetaRollbackPlanView? plan) =>
             [.. plan?.SharedRestored ?? []];
 
-        // The button's own words, so it says which of the two it does rather than a generic verb.
+        // The button's own words: the operation's one name, and for a board never promoted that it
+        // leaves BETA too - see RollBackHeadline.
         public static string RollBackConfirmButton(BetaRollbackPlanView? plan) =>
             plan?.Kind == BetaRollbackKind.RemoveFromBeta
-                ? "Remove from BETA"
-                : "Roll back";
+                ? "Push back and remove from BETA"
+                : "Push back to queue";
 
         // ###########################################################################################
         // The "please wait" over the whole window while a board is pushed back or published
@@ -351,10 +358,10 @@ namespace Handlers.MaintainerHandling
         // of a whole board, then the lists read again.
         // ###########################################################################################
         public static string PushingBackWait(string boardId) =>
-            $"Pushing {boardId} back to the queue. BETA's data is being put back as the stable source has it - please wait until it is done.";
+            $"Pushing {ReviewQueueDisplay.BoardHeading(boardId)} back to the queue. BETA goes back to what the stable source has - please wait until it is done.";
 
         public static string PublishingWait(string boardId) =>
-            $"Publishing {boardId} to the stable source. Its files are being copied from BETA - please wait until it is done.";
+            $"Publishing {ReviewQueueDisplay.BoardHeading(boardId)} to the stable source. Its files are being copied from BETA - please wait until it is done.";
 
         // ###########################################################################################
         // What a finished rollback says. Named counts rather than "done", because the maintainer

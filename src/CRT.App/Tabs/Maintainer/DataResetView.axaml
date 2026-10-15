@@ -62,9 +62,7 @@
                      IsEnabled="False" />
 
             <Button x:Name="ResetButton"
-                    Foreground="{DynamicResource Button_Cancel_Fg}"
-                    Background="{DynamicResource Button_Cancel_Bg}"
-                    BorderBrush="{DynamicResource Button_Cancel_Border}"
+                    Classes="Danger"
                     IsEnabled="False"
                     Click="OnResetClick" />
         </StackPanel>

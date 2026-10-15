@@ -488,7 +488,7 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<ManifestRebuildFlow.TreeOutcome> outcomes = await ManifestRebuildFlow.RebuildAsync(
                 access!,
                 options,
-                tree => DataChecksumManifest.Write(tree.Root, tree.PublicBaseUrl, tree.ManifestPath),
+                ManifestRebuildFlow.WriteHashingEveryFile,
                 publishLock,
                 accounts,
                 DateTimeOffset.UtcNow,

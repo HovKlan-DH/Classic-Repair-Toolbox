@@ -253,6 +253,45 @@ namespace CRT.Server.Tests
             Assert.Equal("PLA (changed meanwhile)", (await this.BetaBoardAsync()).Components[0].FriendlyName);
         }
 
+        // ###########################################################################################
+        // *** BETA IS CHECKED AGAIN UNDER THE PUBLISH LOCK (code review, 2026-10-13). *** The table's
+        // fingerprint was compared with BETA before the submission was made, outside the lock; a
+        // publish landing between that look and the approval was silently undone. Now the approval
+        // compares again where nothing can publish - and the change made on the old BETA is withdrawn
+        // rather than left in the queue, where approving it would undo the newer change after all.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_publish_landing_between_the_check_and_the_approval_is_not_undone()
+        {
+            var store = new FakeSubmissionStore();
+            BoardEditRequest request = await this.EditedAsync(store);
+
+            // Another publish lands after the edit's own check, while its submission is being queued.
+            bool landed = false;
+
+            store.BeforeConditionalWrite = async () =>
+            {
+                if (landed)
+                    return;
+
+                landed = true;
+
+                BoardData beta = await this.BetaBoardAsync();
+                beta.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA (published meanwhile)", TechnicalNameOrValue = "906114-01" };
+                BoardWorkbookWriter.Write(this.WorkbookPath, beta);
+            };
+
+            BoardEditOutcome sent = await this.PublishAsync(store, request);
+
+            Assert.True(landed);
+            Assert.True(sent.IsConflict);
+            Assert.Equal(BoardEditFlow.ChangedSinceMessage, sent.Error);
+            Assert.Equal("PLA (published meanwhile)", (await this.BetaBoardAsync()).Components[0].FriendlyName);
+
+            // Not left waiting in the queue to be approved over the newer change later.
+            Assert.Equal(SubmissionState.Withdrawn, Assert.Single(store.Submissions.Values).State);
+        }
+
         [Fact]
         public async Task A_table_that_changes_nothing_is_not_published()
         {

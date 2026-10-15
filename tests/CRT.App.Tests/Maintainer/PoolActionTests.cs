@@ -66,9 +66,10 @@ public sealed class PoolActionTests
         var add = new PoolAction(PoolActionKind.Add, Board, AccountId: 7, Who: "Dennis");
         var withdraw = new PoolAction(PoolActionKind.Withdraw, Board, InvitationId: 4, Who: "new@example.com");
 
-        Assert.Equal($"Adding Dennis as a maintainer of {Board}...", add.Waiting);
-        Assert.Equal($"Dennis now maintains {Board}", add.DoneClause);
-        Assert.Equal($"Dennis does not maintain {Board} yet", add.NotDoneClause);
+        // The board as the lists name it, never its id with bare slashes (code review, 2026-10-13).
+        Assert.Equal("Adding Dennis as a maintainer of Commodore / C64 / 250407...", add.Waiting);
+        Assert.Equal("Dennis now maintains Commodore / C64 / 250407", add.DoneClause);
+        Assert.Equal("Dennis does not maintain Commodore / C64 / 250407 yet", add.NotDoneClause);
         Assert.Equal("Withdrawing the invitation to new@example.com...", withdraw.Waiting);
         Assert.Equal("the invitation to new@example.com is still open", withdraw.NotDoneClause);
     }

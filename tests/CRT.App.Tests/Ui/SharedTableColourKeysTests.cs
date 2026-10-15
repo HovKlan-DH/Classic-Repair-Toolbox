@@ -8,7 +8,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // Every colour the shared table (src/CRT.App/Controls/BoardTable) names resolves in THIS application, light and dark.
 //
 // The table borrows some of its colours from whichever application hosts it - Table_Bg and
-// Table_BorderRowLine, the Button_Cancel_* red of "Save changes". A key named by the table and
+// Table_BorderRowLine, the Button_Ok_* green of "Save changes" (through the Accept class). A key named by the table and
 // defined nowhere here compiles, runs and draws nothing: a missing DynamicResource is silently
 // tolerated.
 //
@@ -55,20 +55,19 @@ public sealed class SharedTableColourKeysTests
         });
 
     // ###########################################################################################
-    // *** THE MAINTAINER TAB'S OWN MARKUP (2026-09-29). *** "Approve and publish to BETA" is green
-    // through Button_Ok_*, the mode buttons and their badges have colours of their own - all ten of
-    // which moved from the separate application's MaintainerApp.axaml into CRT's App.axaml. Fails
-    // if one is dropped, or if the tab ever names a colour CRT does not define.
+    // *** THE MAINTAINER TAB'S OWN MARKUP (2026-09-29). *** The mode buttons and their badges have
+    // colours of their own, which moved from the separate application's MaintainerApp.axaml into
+    // CRT's App.axaml. Fails if one is dropped, or if the tab ever names a colour CRT does not
+    // define. (The decision buttons named Button_Ok_*/Button_Cancel_* here until 2026-10-13; they
+    // wear the Accept and Danger classes now - ButtonColourTests.)
     // ###########################################################################################
     [Fact]
     public void Every_colour_the_maintainer_tab_names_resolves_in_both_themes()
     {
         IReadOnlyList<string> keys = KeysTheMaintainerTabNames();
 
-        // A parse that found nothing cannot pass: the decision buttons' colours, and two of the
-        // keys that came over from the separate application.
-        Assert.Contains("Button_Ok_Bg", keys);
-        Assert.Contains("Button_Cancel_Bg", keys);
+        // A parse that found nothing cannot pass: two of the keys that came over from the separate
+        // application.
         Assert.Contains("Badge_Attention_Bg", keys);
         Assert.Contains("Mode_Selected_Bg", keys);
 

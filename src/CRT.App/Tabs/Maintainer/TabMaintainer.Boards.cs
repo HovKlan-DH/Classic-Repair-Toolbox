@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -36,6 +37,9 @@ namespace CRT
     public partial class TabMaintainer
     {
         private readonly List<BoardOverviewEntry> thisBoards = [];
+
+        // The list's items, changed in place (ShowItemsInPlace).
+        private readonly ObservableCollection<ListBoxItem> thisBoardItems = [];
 
         // BETA's drop-down lists and the boards not in them, as last read.
         private BoardListingAnswer? thisListing;
@@ -117,11 +121,25 @@ namespace CRT
 
                 try
                 {
-                    List<ListBoxItem> items = this.thisBoards
-                        .Select(board => TabMaintainer.BoardItem(board, BoardPlacementDisplay.ListMark(this.thisListing, board.BoardId)))
-                        .ToList();
-                    list.ItemsSource = items;
-                    list.SelectedItem = kept is null ? null : items.FirstOrDefault(item => ReferenceEquals(item.Tag, kept));
+                    // In place, a board kept by its id (TabMaintainer.QueueItems.cs, ShowItemsInPlace);
+                    // its content made again when the board or its drop-down mark reads differently.
+                    BoardListingAnswer? marks = this.thisListing;
+
+                    TabMaintainer.ShowItemsInPlace(
+                        list,
+                        this.thisBoardItems,
+                        this.thisBoards,
+                        board => board.BoardId,
+                        board => TabMaintainer.BoardContent(board, BoardPlacementDisplay.ListMark(marks, board.BoardId)),
+                        (item, board) =>
+                            Equals(item.Tag, board) &&
+                            item.Content is Control shown &&
+                            Equals(shown.Tag, BoardPlacementDisplay.ListMark(marks, board.BoardId)));
+
+                    ListBoxItem? wanted = kept is null ? null : this.thisBoardItems.FirstOrDefault(item => ReferenceEquals(item.Tag, kept));
+
+                    if (!ReferenceEquals(list.SelectedItem, wanted))
+                        list.SelectedItem = wanted;
                 }
                 finally
                 {
@@ -155,7 +173,10 @@ namespace CRT
                 await this.BoardDetail.ShowBoardAsync(kept, keepShown: background);
         }
 
-        private async void OnBoardsSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private async void OnBoardsSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.BoardsSelectionChangedAsync, this.ShowHandlerFailure);
+
+        private async Task BoardsSelectionChangedAsync()
         {
             if (this.thisSuppressBoardsSelection)
                 return;
@@ -265,7 +286,8 @@ namespace CRT
             if (this.FindControl<ListBox>("BoardsList") is ListBox list)
             {
                 this.thisSuppressBoardsSelection = true;
-                list.ItemsSource = null;
+                list.SelectedItem = null;
+                this.thisBoardItems.Clear();
                 this.thisSuppressBoardsSelection = false;
             }
 
@@ -279,9 +301,11 @@ namespace CRT
         // One board: its name, and where its data is, how many maintain it, and - when it is so -
         // that it is closed to contributions. A board waiting for a place in the drop-down lists
         // carries `mark` under it, in the queue's new-board colours.
-        private static ListBoxItem BoardItem(BoardOverviewEntry board, string? mark)
+        // The item's content - the item itself is ShowItemsInPlace's. The mark rides on its Tag, so a
+        // kept item can tell whether it still shows the mark wanted.
+        private static Control BoardContent(BoardOverviewEntry board, string? mark)
         {
-            var content = new StackPanel { Spacing = 1 };
+            var content = new StackPanel { Spacing = 1, Tag = mark };
 
             content.Children.Add(new TextBlock
             {
@@ -335,7 +359,7 @@ namespace CRT
                 content.Children.Add(badge);
             }
 
-            return new ListBoxItem { Tag = board, Classes = { "ListEntry" }, Content = content };
+            return content;
         }
     }
 }

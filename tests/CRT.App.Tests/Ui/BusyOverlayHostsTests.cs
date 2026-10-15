@@ -56,6 +56,9 @@ public sealed class BusyOverlayHostsTests : IDisposable
             Assert.NotNull(BusyOverlay.For(new BoardFilesWindow()));
             Assert.NotNull(BusyOverlay.For(new ComponentContributionWindow()));
 
+            // Bringing a draft up to date reads two workbooks and may copy pictures (2026-10-13).
+            Assert.NotNull(BusyOverlay.For(new DraftDriftWindow()));
+
             // (The Maintainer tab's "Your account" window was here from 2026-10-03, with an overlay
             // of its own. Since 2026-10-04 it is "My account", a panel of the tab, whose waits run
             // under Main's like the rest of the tab - MyAccount_waits_under_the_tabs_window_overlay.)

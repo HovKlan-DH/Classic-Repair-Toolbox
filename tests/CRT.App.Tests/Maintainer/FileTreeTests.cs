@@ -288,4 +288,20 @@ public sealed class FileTreeTests
         Assert.Equal("812 bytes", FileTreeWording.Size(folder.Children.Single(node => node.Name == "small.txt")));
         Assert.Equal(string.Empty, FileTreeWording.Size(folder.Children.Single(node => node.Name == "unknown.pdf")));
     }
+
+    // A replaced shared file says beside it which other boards it reaches (code review,
+    // 2026-10-13); every other file says nothing.
+    [Fact]
+    public void A_replaced_shared_file_names_the_other_boards_beside_it()
+    {
+        BoardFileEntry shared = FileTreeTests.E("Commodore/Shared files/a.pdf") with
+        {
+            Change = BoardFileChange.Changed,
+            AlsoUsedBy = ["Commodore / C128 / 310378", "Commodore / VIC-20 / 250403"]
+        };
+
+        Assert.Equal("Also used by: Commodore / C128 / 310378, Commodore / VIC-20 / 250403", FileTreeWording.FileNote(shared));
+        Assert.Equal(string.Empty, FileTreeWording.FileNote(FileTreeTests.E("a/b.png")));
+        Assert.Equal(string.Empty, FileTreeWording.FileNote(null));
+    }
 }

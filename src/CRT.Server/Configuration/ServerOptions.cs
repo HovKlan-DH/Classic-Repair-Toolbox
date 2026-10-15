@@ -197,7 +197,8 @@ namespace CRT.Server.Configuration
         // explains the project owner decided against. An old appsettings file that still carries the
         // key is harmless: an unknown key binds to nothing.
         // -----------------------------------------------------------------------------------
-        public int RefreshTokenDays { get; set; } = 30;
+        // Its default is CRT.Data's SessionLifetime, which CRT slides its remembered sign-in by.
+        public int RefreshTokenDays { get; set; } = global::Handlers.DataHandling.SessionLifetime.DefaultDays;
 
         // -----------------------------------------------------------------------------------
         // The free space the blob store's disk must keep (security review, 2026-09-25).

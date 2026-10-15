@@ -29,6 +29,10 @@ namespace CRT.Server.Handlers.Submissions
         // The audit subject a submission is recorded under (AmendSubmissionFlow writes it so).
         public static string SubmissionSubject(long submissionId) => $"#{submissionId}";
 
+        // The actor label of what the SERVER did by itself, with no account behind it (2026-10-13) -
+        // ProductionPromotionFlow recording a board found already in the stable source.
+        public const string ServerActorLabel = "server";
+
         private static readonly HashSet<string> ShownActions = new(StringComparer.Ordinal)
         {
             BoardHistoryEvents.Amended,
@@ -115,11 +119,18 @@ namespace CRT.Server.Handlers.Submissions
                 if (!ShownActions.Contains(row.Action))
                     continue;
 
+                // *** A BOARD FOUND ALREADY IN THE STABLE SOURCE NAMES NOBODY (code review,
+                // 2026-10-13). *** The server records it by itself while somebody's CRT reads the
+                // BETA > Stable list; rows written before then named that reader as its doer.
+                bool byTheServer = row.Action == BoardHistoryEvents.FoundInProduction;
+
                 entries.Add(new BoardHistoryEntry(
                     row.AtUtc,
                     row.Action,
-                    BoardHistoryRules.ActorName(row, named) ??
-                        (showAddresses ? BoardHistoryRules.Blank(row.ActorLabel) : BoardHistoryRules.ActorWithoutAddress(row)),
+                    byTheServer
+                        ? null
+                        : BoardHistoryRules.ActorName(row, named) ??
+                          (showAddresses ? BoardHistoryRules.Blank(row.ActorLabel) : BoardHistoryRules.ActorWithoutAddress(row)),
                     BoardHistoryRules.SubmissionOf(row.Subject),
                     BoardHistoryRules.NamedPerson(row, named) ??
                         (showAddresses ? BoardHistoryRules.DetailOf(row) : BoardHistoryRules.DetailWithoutAddress(row))));
@@ -168,6 +179,11 @@ namespace CRT.Server.Handlers.Submissions
                 case BoardHistoryEvents.RejectedFromBeta:
                     int semicolon = detail.IndexOf("; ", StringComparison.Ordinal);
                     return semicolon >= 0 ? detail[(semicolon + 2)..] : detail;
+
+                // Rows written before 2026-10-13 say "production" - the stable source, in the words
+                // every maintainer reads.
+                case BoardHistoryEvents.FoundInProduction:
+                    return detail.Replace("; production already held", "; the stable source already held", StringComparison.Ordinal);
 
                 default:
                     return detail;

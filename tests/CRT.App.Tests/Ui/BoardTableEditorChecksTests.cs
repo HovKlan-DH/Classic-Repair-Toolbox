@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -387,6 +388,63 @@ public sealed class BoardTableEditorChecksTests
 
             Assert.True(app.TryGetResource(key, Avalonia.Styling.ThemeVariant.Light, out _), $"{key} is missing from the light theme");
             Assert.True(app.TryGetResource(key, Avalonia.Styling.ThemeVariant.Dark, out _), $"{key} is missing from the dark theme");
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE PROBLEMS, AS TEXT, WHILE THEIR PILL IS PICKED (code review, 2026-10-13). *** A cell's
+    // problem was readable only by hovering its corner mark. Picked, the Errors pill lists each one
+    // above the table - sheet, row, column, message; unpicked, the list goes.
+    // ###########################################################################################
+    [Fact]
+    public void Picking_Errors_lists_every_error_above_the_table()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, BoardTableEditor editor) = Shown(Checked(), Checked());
+            SelectableTextBlock list = editor.GetControl<SelectableTextBlock>("ProblemListText");
+
+            Assert.False(list.IsVisible);
+
+            editor.TogglePill(BoardTableRowKinds.Errors);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(list.IsVisible);
+            Assert.StartsWith($"Error - {BoardWorkbookSchema.SheetComponentLinks}", list.Text);
+            Assert.DoesNotContain("Warning", list.Text);
+
+            editor.TogglePill(BoardTableRowKinds.Errors);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(list.IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // The filter the table turns on is reachable with the keyboard: Enter on a focused pill
+    // toggles it, as a click does (code review, 2026-10-13).
+    [Fact]
+    public void Enter_on_a_focused_pill_picks_it()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, BoardTableEditor editor) = Shown(Checked(), Checked());
+            Border pill = editor.GetControl<Border>("ErrorsPill");
+
+            Assert.True(pill.Focusable);
+            Assert.True(pill.Focus());
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableRowKinds.Errors, editor.FilterWanted);
+
+            window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableRowKinds.None, editor.FilterWanted);
+
+            window.Close();
         });
     }
 }

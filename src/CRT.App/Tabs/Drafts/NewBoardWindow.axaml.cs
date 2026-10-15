@@ -226,7 +226,16 @@ namespace CRT
 
         private async void OnCreateClick(object? sender, RoutedEventArgs e)
         {
-            await this.ConfirmAndCloseAsync();
+            try
+            {
+                await this.ConfirmAndCloseAsync();
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnCreateClick failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################

@@ -90,6 +90,34 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Does this receipt count when finding a board's LATEST submission (FindRetirableDrafts)?
+        //
+        // *** NOT ONE THAT NEVER GOT ANYWHERE (code review, 2026-10-14). *** "The latest decides"
+        // keeps a draft while later work may still be pushed back out of BETA. But a later send
+        // that never finished ("uploading" - CRT keeps that receipt), whose upload window ran out
+        // ("abandoned"), or that the contributor's own newer one replaced ("withdrawn") brings
+        // nothing to any tree, now or later - and as the latest it kept a draft identical to the
+        // stable source for ever, with nothing saying why. Nor does one the server no longer knows
+        // (a 404 - the data reset, a deleted board), unless it was last seen IN BETA ("merged"),
+        // where its work may still sit; a published one counts as published.
+        //
+        // Everything else decides as before: pending, sent back, approved, returned or rejected work
+        // may exist in the draft alone.
+        // ###########################################################################################
+        internal static bool DecidesRetirement(SubmissionReceipt receipt)
+        {
+            string state = receipt.LastKnownState?.Trim().ToLowerInvariant() ?? string.Empty;
+
+            if (state is "uploading" or "abandoned" or "withdrawn")
+                return false;
+
+            if (receipt.NotFoundUtc is not null)
+                return state is "merged" || DraftRetirement.IsPublishedState(state);
+
+            return true;
+        }
+
+        // ###########################################################################################
         // Is this draft now a duplicate of the published board, and therefore safe to delete?
         //
         // Returns false for every uncertainty - no draft, no published workbook, an unreadable
@@ -354,8 +382,22 @@ namespace Handlers.DataHandling
         // before the delete runs. Taken BEFORE the comparison and taken again just before the
         // delete, any write in between shows up as a different stamp and the draft is kept.
         // ###########################################################################################
-        public static string FolderStamp(string? folder)
+        public static string FolderStamp(string? folder) => DraftRetirement.FolderStamp(folder, out _);
+
+        // ###########################################################################################
+        // The same, and whether every file in it has SETTLED (StampSettling) - a cache keyed by the
+        // stamp trusts it only then (code review, 2026-10-13: two same-length writes inside one
+        // clock tick share a stamp).
+        //
+        // *** ONE DIRECTORY LISTING, NOT ONE LOOKUP PER FILE (code review, 2026-10-13). *** The
+        // Drafts tab takes this for every draft each time CRT's window comes to the front, on the UI
+        // thread. DirectoryInfo hands back each file's length and write time from the listing itself;
+        // a FileInfo made per path asked the file system again for every file.
+        // ###########################################################################################
+        public static string FolderStamp(string? folder, out bool settled)
         {
+            settled = true;
+
             if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
             {
                 return string.Empty;
@@ -364,23 +406,31 @@ namespace Handlers.DataHandling
             try
             {
                 var builder = new StringBuilder();
+                DateTime newest = DateTime.MinValue;
 
-                foreach (string file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                             .OrderBy(path => path, StringComparer.Ordinal))
+                foreach (FileInfo info in new DirectoryInfo(folder)
+                             .EnumerateFiles("*", SearchOption.AllDirectories)
+                             .OrderBy(file => file.FullName, StringComparer.Ordinal))
                 {
-                    var info = new FileInfo(file);
+                    DateTime written = info.LastWriteTimeUtc;
+
+                    if (written > newest)
+                        newest = written;
 
                     builder
-                        .Append(Path.GetRelativePath(folder, file)).Append('|')
+                        .Append(Path.GetRelativePath(folder, info.FullName)).Append('|')
                         .Append(info.Length).Append('|')
-                        .Append(info.LastWriteTimeUtc.Ticks).Append('\n');
+                        .Append(written.Ticks).Append('\n');
                 }
+
+                settled = StampSettling.IsSettled(newest);
 
                 return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Never equal to a real stamp, so an unreadable folder is never deleted.
+                settled = false;
                 return Guid.NewGuid().ToString("N");
             }
         }
@@ -408,6 +458,15 @@ namespace Handlers.DataHandling
         // is ordinary: a contributor who submits, gets published, edits again and submits again
         // has two published receipts for one board.
         // ###########################################################################################
+        // Drafts judged "keep", by folder, with the stamps they were judged at (see FindRetirableDrafts).
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> KeptVerdicts =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private static int comparisons;
+
+        // How many full comparisons the search has run - for tests of the remembered verdicts.
+        internal static int ComparisonsForTests => Volatile.Read(ref DraftRetirement.comparisons);
+
         public static IReadOnlyList<string> FindRetirableBoards(
             IEnumerable<SubmissionReceipt>? receipts,
             Func<string, DraftStatus?> resolveStatus) =>
@@ -452,21 +511,27 @@ namespace Handlers.DataHandling
                 return retirable;
             }
 
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // ###########################################################################################
+            // *** THE BOARD'S LATEST SUBMISSION DECIDES (code review, 2026-10-13). *** An earlier
+            // published submission is not enough: with the BETA source selected the local copy IS
+            // BETA's, so a draft whose LATER work was approved into BETA matched it - and was deleted,
+            // leaving nothing to correct from when that work was pushed back. Latest by when it was
+            // sent, then by the server's (sequential) id - among the receipts that can still bring work
+            // to a data tree (DecidesRetirement): a later send that never got anywhere does not hold
+            // a finished draft back.
+            // ###########################################################################################
+            IEnumerable<SubmissionReceipt> latestPerBoard = receipts
+                .Where(receipt => receipt is not null && !string.IsNullOrWhiteSpace(receipt.BoardId))
+                .Where(DraftRetirement.DecidesRetirement)
+                .GroupBy(receipt => receipt.BoardId, StringComparer.OrdinalIgnoreCase)
+                .Select(board => board
+                    .OrderByDescending(receipt => receipt.SentUtc)
+                    .ThenByDescending(receipt => receipt.SubmissionId)
+                    .First());
 
-            foreach (SubmissionReceipt receipt in receipts)
+            foreach (SubmissionReceipt receipt in latestPerBoard)
             {
-                if (receipt is null || string.IsNullOrWhiteSpace(receipt.BoardId))
-                {
-                    continue;
-                }
-
                 if (!DraftRetirement.IsPublishedState(receipt.LastKnownState))
-                {
-                    continue;
-                }
-
-                if (!seen.Add(receipt.BoardId))
                 {
                     continue;
                 }
@@ -475,13 +540,39 @@ namespace Handlers.DataHandling
                 string folder = Path.GetDirectoryName(status?.WorkbookPath ?? string.Empty) ?? string.Empty;
 
                 // BEFORE the comparison, so an edit made while it runs changes the stamp.
-                string stamp = DraftRetirement.FolderStamp(folder);
+                string stamp = DraftRetirement.FolderStamp(folder, out bool draftSettled);
+
+                // ###########################################################################################
+                // *** A "KEEP" IS REMEMBERED UNTIL SOMETHING MOVED (code review, 2026-10-13). *** This
+                // runs after every minute check, and a published draft that still differs (the
+                // contributor kept working) was compared again each time - two workbook parses and a
+                // byte compare of every file. The verdict is kept against the draft folder's stamp and
+                // the published folder's; a change to either - an edit, a sync - compares afresh. A
+                // "retire" is never remembered: it is acted on, after IsUnchangedSince.
+                // ###########################################################################################
+                string verdictStamp = stamp + "|" + DraftRetirement.FolderStamp(Path.GetDirectoryName(status?.PublishedWorkbookPath ?? string.Empty), out bool publishedSettled);
+
+                // A verdict is reused only for folders whose writes have settled (StampSettling).
+                if (draftSettled && publishedSettled &&
+                    folder.Length > 0 &&
+                    DraftRetirement.KeptVerdicts.TryGetValue(folder, out string? kept) &&
+                    string.Equals(kept, verdictStamp, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Interlocked.Increment(ref DraftRetirement.comparisons);
 
                 // Carries the draft's WORKBOOK key, not the receipt's board id: everything that
                 // follows - the unsaved-edits guard, the delete, the cache clear - is keyed by it.
                 if (DraftRetirement.IsRetirable(status))
                 {
+                    DraftRetirement.KeptVerdicts.TryRemove(folder, out _);
                     retirable.Add(new RetirableDraft(status!.BoardKey, folder, stamp));
+                }
+                else if (folder.Length > 0)
+                {
+                    DraftRetirement.KeptVerdicts[folder] = verdictStamp;
                 }
             }
 

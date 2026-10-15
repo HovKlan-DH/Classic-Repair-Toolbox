@@ -38,6 +38,7 @@ namespace CRT.Server.Tests
             Assert.True(AuthRateLimitPolicy.CheckLogin(
                 AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.NoFailures,
+                AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.Now).IsAllowed);
         }
 
@@ -49,6 +50,7 @@ namespace CRT.Server.Tests
             Assert.True(AuthRateLimitPolicy.CheckLogin(
                 AuthRateLimitPolicyTests.Failures(4, TimeSpan.FromMinutes(1)),
                 AuthRateLimitPolicyTests.NoFailures,
+                AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.Now).IsAllowed);
         }
 
@@ -57,6 +59,7 @@ namespace CRT.Server.Tests
         {
             RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(
                 AuthRateLimitPolicyTests.Failures(5, TimeSpan.FromMinutes(1)),
+                AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.Now);
 
@@ -71,6 +74,7 @@ namespace CRT.Server.Tests
             // would eventually lock an account permanently.
             Assert.True(AuthRateLimitPolicy.CheckLogin(
                 AuthRateLimitPolicyTests.Failures(20, TimeSpan.FromHours(2)),
+                AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.Now).IsAllowed);
         }
@@ -92,7 +96,7 @@ namespace CRT.Server.Tests
             };
 
             RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(
-                attempts, AuthRateLimitPolicyTests.NoFailures, AuthRateLimitPolicyTests.Now);
+                attempts, AuthRateLimitPolicyTests.NoFailures, AuthRateLimitPolicyTests.NoFailures, AuthRateLimitPolicyTests.Now);
 
             Assert.False(verdict.IsAllowed);
 
@@ -113,11 +117,51 @@ namespace CRT.Server.Tests
                 .ToList();
 
             RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(
-                attempts, AuthRateLimitPolicyTests.NoFailures, AuthRateLimitPolicyTests.Now);
+                attempts, AuthRateLimitPolicyTests.NoFailures, AuthRateLimitPolicyTests.NoFailures, AuthRateLimitPolicyTests.Now);
 
             Assert.False(verdict.IsAllowed);
             Assert.True(verdict.RetryAfter >= TimeSpan.Zero);
             Assert.True(verdict.RetryAfter <= AuthRateLimitPolicy.AccountWindow);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // The account's own bucket, whatever the addresses (code review, 2026-10-13).
+        // -----------------------------------------------------------------------------------
+
+        // Five wrong passwords from a STRANGER's address used to lock the account for everybody -
+        // and the administrator's address is printed in every mail. They now count against the
+        // stranger's address alone: the owner, signing in from elsewhere, is let through.
+        [Fact]
+        public void Five_failures_from_another_address_do_not_lock_the_account_out_from_here()
+        {
+            Assert.True(AuthRateLimitPolicy.CheckLogin(
+                AuthRateLimitPolicyTests.NoFailures,
+                AuthRateLimitPolicyTests.Failures(AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress, TimeSpan.FromMinutes(1)),
+                AuthRateLimitPolicyTests.NoFailures,
+                AuthRateLimitPolicyTests.Now).IsAllowed);
+        }
+
+        // Distributed guessing - many addresses, a few tries each - is still slowed: the account's
+        // own bar holds whatever the addresses.
+        [Fact]
+        public void Many_addresses_guessing_one_account_are_refused_at_the_accounts_own_bar()
+        {
+            RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(
+                AuthRateLimitPolicyTests.NoFailures,
+                AuthRateLimitPolicyTests.Failures(AuthRateLimitPolicy.MaxFailuresPerAccount, TimeSpan.FromMinutes(2)),
+                AuthRateLimitPolicyTests.NoFailures,
+                AuthRateLimitPolicyTests.Now);
+
+            Assert.False(verdict.IsAllowed);
+            Assert.True(verdict.RetryAfter > TimeSpan.Zero);
+        }
+
+        // The account's bar is CLEARLY above one address's - at least five addresses guessing at once
+        // to reach it - or a single stranger could still lock the owner out.
+        [Fact]
+        public void The_accounts_own_bar_takes_several_addresses_to_reach()
+        {
+            Assert.True(AuthRateLimitPolicy.MaxFailuresPerAccount >= 5 * AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress);
         }
 
         // -----------------------------------------------------------------------------------
@@ -132,6 +176,7 @@ namespace CRT.Server.Tests
             // individual account sees ONE failure, so no per-account limit could ever see it.
             RateLimitVerdict verdict = AuthRateLimitPolicy.CheckLogin(
                 AuthRateLimitPolicyTests.Failures(1, TimeSpan.FromSeconds(30)),
+                AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.Failures(30, TimeSpan.FromMinutes(5)),
                 AuthRateLimitPolicyTests.Now);
 
@@ -153,6 +198,7 @@ namespace CRT.Server.Tests
             // Ten failures from one office over fifteen minutes is plausible and must not lock
             // everybody there out.
             Assert.True(AuthRateLimitPolicy.CheckLogin(
+                AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.NoFailures,
                 AuthRateLimitPolicyTests.Failures(10, TimeSpan.FromMinutes(5)),
                 AuthRateLimitPolicyTests.Now).IsAllowed);

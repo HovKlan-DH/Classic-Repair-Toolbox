@@ -120,8 +120,9 @@ namespace CRT.Server.Handlers.Submissions
             $"The {treeName} data could not be read completely, so whether another board uses a file in this board's " +
             $"folder is not known. Nothing can be deleted until it can: {string.Join(" ", problems ?? [])}".TrimEnd();
 
-        public static string LinkMessage(string treeName, string link) =>
-            $"There is a symbolic link at [{link}] in the {treeName} data, and deleting through it could remove files " +
+        // The link named from the tree's root, never as the server's own path (code review, 2026-10-13).
+        public static string LinkMessage(string treeName, string root, string link) =>
+            $"There is a symbolic link at [{TreeWriteAccess.DisplayName(root, link)}] in the {treeName} data, and deleting through it could remove files " +
             "outside the data. Nothing can be deleted until the link is removed on the server.";
 
         public static string MissingTreeMessage(string treeName) =>

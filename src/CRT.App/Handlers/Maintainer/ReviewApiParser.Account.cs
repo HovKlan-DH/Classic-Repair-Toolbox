@@ -46,6 +46,25 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
+        // GET /api/review/server-status (2026-10-13): CRT.Data's ServerStatusAnswer - how many mails
+        // the server could not send. A count that is no whole number of zero or more reads as not
+        // said (null); an answer that is no object is no answer.
+        // ###########################################################################################
+        public static ServerStatusAnswer? ParseServerStatus(string? json)
+        {
+            JsonElement root = ReviewApiParser.Root(json);
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            int? unsent = ReviewApiParser.Long(root, "unsentMails") is long count and >= 0 and <= int.MaxValue
+                ? (int)count
+                : null;
+
+            return new ServerStatusAnswer(unsent);
+        }
+
+        // ###########################################################################################
         // A change's answer. The message is the server's sentence and is required - it is the
         // whole of what the window shows - while the account is absent on purpose while a new
         // address waits for its code (CodeSent). An account present but unreadable makes the

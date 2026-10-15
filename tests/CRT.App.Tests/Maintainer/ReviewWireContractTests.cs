@@ -136,9 +136,15 @@ public sealed class ReviewWireContractTests
         ReviewDecisionResult? waiting = ReviewApiParser.ParseDecision(ReviewWireContractTests.Answer(
             new ReviewDecisionAnswer("approved", WaitingFor: [ApproverRole.Administrator])));
 
+        // The publish that created a board carries what became of its maintainer (2026-10-13).
+        ReviewDecisionResult? created = ReviewApiParser.ParseDecision(ReviewWireContractTests.Answer(
+            new ReviewDecisionAnswer("merged", Revision: "2026-October-13", MaintainerNote: "Anna is now its maintainer.")));
+
         Assert.Equal("merged", published!.State);
         Assert.Equal("2026-September-25", published.Revision);
         Assert.Equal(["Commodore/C64/250407/old.png"], published.RemovedFiles);
+        Assert.Null(published.MaintainerNote);
+        Assert.Equal("Anna is now its maintainer.", created!.MaintainerNote);
 
         Assert.Equal("approved", waiting!.State);
         Assert.Equal([ApproverRole.Administrator], waiting.WaitingFor);
@@ -1511,7 +1517,10 @@ public sealed class ReviewWireContractTests
     // *** ONE SUBMISSION'S DETAIL, WHOLE (2026-10-04). *** The screen a maintainer decides from was
     // an anonymous object on the server, held to the parser only field by field in the tests above
     // by anonymous objects of their own. Now it is CRT.Data's SubmissionDetailAnswer, and every
-    // field the Maintainer tab reads comes back out of the real parser here.
+    // field the Maintainer tab reads comes back out of the real parser here. The manifest,
+    // publishedFiles, publishedHashes and schematicImages are still SENT (released CRT 3.0.0 reads
+    // them) and read past: only the change summary retired on 2026-09-26 used them (code review,
+    // 2026-10-13).
     // ###########################################################################################
     [Fact]
     public void A_submissions_detail_reads_back_field_for_field()
@@ -1543,13 +1552,9 @@ public sealed class ReviewWireContractTests
         Assert.True(detail.Approval.CanApprove);
         Assert.True(detail.Approval.ApprovalPublishes);
         Assert.Equal(4, detail.Submission.Id);
-        Assert.Equal("Commodore/C64/250407/new.png", Assert.Single(detail.Assets.Files).Path);
         Assert.Equal(answer.Contributor, detail.Contributor);
         Assert.Equal("image.orphan", Assert.Single(detail.Findings).Code);
         Assert.NotNull(detail.Changes);
-        Assert.Equal(["Commodore/C64/250407/old.png"], detail.PublishedFiles);
-        Assert.Equal(new string('b', 64), detail.PublishedHashes["Commodore/C64/250407/old.png"]);
-        Assert.Equal("Commodore/C64/250407/top.png", detail.SchematicImages["Top"]);
         Assert.Equal(answer.SubmittedFiles[0], Assert.Single(detail.SubmittedFiles));
         Assert.Equal(["Commodore/C64/250407/old.png"], detail.Removals!.Files);
         Assert.Equal(new ReviewAmendmentView(2, "m@example.com", ReviewWireContractTests.Decided), detail.Amendment);
@@ -1665,5 +1670,118 @@ public sealed class ReviewWireContractTests
         Assert.Empty(unused.Versions);
 
         Assert.Equal(new ApiUsageInstallations("3.0.0", 42, 305), Assert.Single(usage.Installations));
+    }
+
+    // ###########################################################################################
+    // THE CODE REVIEW OF 2026-10-13 - each new field through the server's settings and the real
+    // parser, and each one's absence (an older server) read as "not said".
+    // ###########################################################################################
+
+    // The amendment version, which makes another maintainer's change show in the queue row, and the
+    // older-data flag - on the queue and on the detail's own row.
+    [Fact]
+    public void A_rows_amendment_version_and_older_data_flag_read_back_in_the_queue_and_the_detail()
+    {
+        ReviewQueueResponse? queue = ReviewApiParser.ParseQueue(ReviewWireContractTests.Answer(
+            new ReviewQueueAnswer(true, false, 2,
+            [
+                new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "U8.", "c@example.com", "2026-September-1", ReviewWireContractTests.Decided, null, false,
+                    AmendmentVersion: 3, BasedOnOlderRevision: true),
+                new ReviewQueueEntry(5, "Commodore/C64/250407", "pending", "U9.", "c@example.com", "", ReviewWireContractTests.Decided, null, false)
+            ])));
+
+        Assert.Equal(3, queue!.Submissions[0].AmendmentVersion);
+        Assert.True(queue.Submissions[0].BasedOnOlderRevision);
+        Assert.Null(queue.Submissions[1].AmendmentVersion);
+        Assert.Null(queue.Submissions[1].BasedOnOlderRevision);
+
+        var detail = new SubmissionDetailAnswer(
+            CanPublish: true,
+            Approval: new ApprovalStatus([], [], [], ApproverRole.Maintainer, CanApprove: true, ApprovalPublishes: true),
+            Submission: new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "U8.", "c@example.com", "", ReviewWireContractTests.Decided, null, false,
+                AmendmentVersion: 0, BasedOnOlderRevision: false),
+            Manifest: new SubmissionManifest { BoardId = "Commodore/C64/250407" },
+            Contributor: new ReviewContributorFacts("c@example.com", null, 0, 0, 0, 0),
+            Findings: [],
+            Changes: new ReviewChangeSummary(false, null, []),
+            PublishedFiles: [],
+            PublishedHashes: new Dictionary<string, string>(),
+            SchematicImages: new Dictionary<string, string>(),
+            SubmittedFiles: [],
+            Removals: FileRemovalPreview.Nothing,
+            Amendment: null);
+
+        ReviewQueueRow row = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(detail))!.Submission;
+
+        Assert.Equal(0, row.AmendmentVersion);
+        Assert.False(row.BasedOnOlderRevision);
+    }
+
+    // The same contributor's newer submission beside this one (owner decision, 2026-10-13) - and
+    // none from a server that does not send it.
+    [Fact]
+    public void A_rows_newer_submission_from_the_same_contributor_reads_back()
+    {
+        DateTimeOffset sent = new(2026, 10, 13, 9, 30, 0, TimeSpan.Zero);
+
+        ReviewQueueResponse? queue = ReviewApiParser.ParseQueue(ReviewWireContractTests.Answer(
+            new ReviewQueueAnswer(true, false, 2,
+            [
+                new ReviewQueueEntry(4, "Commodore/C64/250407", "approved", "U8.", "c@example.com", "", ReviewWireContractTests.Decided, null, true,
+                    NewerSubmissionId: 9, NewerSubmissionUtc: sent),
+                new ReviewQueueEntry(9, "Commodore/C64/250407", "pending", "U8 again.", "c@example.com", "", sent, null, true)
+            ])));
+
+        Assert.Equal(9, queue!.Submissions[0].NewerSubmissionId);
+        Assert.Equal(sent, queue.Submissions[0].NewerSubmissionUtc);
+        Assert.Null(queue.Submissions[1].NewerSubmissionId);
+        Assert.Null(queue.Submissions[1].NewerSubmissionUtc);
+    }
+
+    // The version a decision was made on, as the server binds it - and none at all from an older CRT.
+    [Fact]
+    public void A_decision_arrives_with_the_amendment_version_it_was_made_on()
+    {
+        ReviewDecisionRequest approve = ReviewWireContractTests.Received<ReviewDecisionRequest>(
+            new ReviewDecisionRequest("Thanks.", [], ExpectedVersion: 2));
+
+        ReviewDecisionRequest older = ReviewWireContractTests.Received<ReviewDecisionRequest>(
+            new ReviewDecisionRequest("Wrong board.", null));
+
+        Assert.Equal(2, approve.ExpectedVersion);
+        Assert.Equal("Thanks.", approve.Comment);
+        Assert.Null(older.ExpectedVersion);
+        Assert.Contains("\"expectedVersion\":2", ReviewApiClient.Body(new ReviewDecisionRequest(null, null, 2)), StringComparison.Ordinal);
+    }
+
+    // The other boards a replaced shared file reaches, on its entry in the file tree.
+    [Fact]
+    public void A_replaced_shared_files_other_boards_read_back_on_its_entry()
+    {
+        const string shared = "Commodore/Shared files/Board local files/pinout.pdf";
+
+        SubmissionFilesAnswer? answer = ReviewApiParser.ParseSubmissionFiles(ReviewWireContractTests.Answer(new SubmissionFilesAnswer(
+            "Commodore/C64/250407",
+            [
+                new BoardFileEntry(shared, BoardFileChange.Changed, BoardFileSource.Submission, new string('b', 64),
+                    AlsoUsedBy: ["Commodore / C128 / 310378", "Commodore / VIC-20 / 250403"]),
+                new BoardFileEntry("Commodore/C64/250407/a.png", BoardFileChange.Added, BoardFileSource.Submission, new string('a', 64))
+            ])));
+
+        Assert.Equal(["Commodore / C128 / 310378", "Commodore / VIC-20 / 250403"], answer!.Files.Single(file => file.Path == shared).AlsoUsedBy);
+        Assert.Null(answer.Files.Single(file => file.Path != shared).AlsoUsedBy);
+    }
+
+    // The mails the server could not send - never part of the public health answer.
+    [Fact]
+    public void The_server_status_reads_back_how_many_mails_wait_and_an_older_server_says_nothing()
+    {
+        Assert.Equal(3, ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(3)))!.UnsentMails);
+        Assert.Null(ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer()))!.UnsentMails);
+        Assert.Null(ReviewApiParser.ParseServerStatus("not json"));
+
+        Assert.DoesNotContain(
+            typeof(HealthStatus).GetProperties(),
+            property => property.Name.Contains("Mail", StringComparison.OrdinalIgnoreCase));
     }
 }

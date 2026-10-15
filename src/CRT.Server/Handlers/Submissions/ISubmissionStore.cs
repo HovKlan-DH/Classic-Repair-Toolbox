@@ -35,6 +35,39 @@ namespace CRT.Server.Handlers.Submissions
 
         Task SetStateAsync(long submissionId, string state, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 
+        // ###########################################################################################
+        // *** A STATE CHANGE THAT HAPPENS ONLY FROM THE STATE THE CALLER SAW (code review,
+        // 2026-10-13). *** `UPDATE ... WHERE id = @id AND state = @from`, answering whether a row
+        // moved. Two writers racing on one submission - a finalise and the hourly sweep, two
+        // finalises of the same upload - cannot both win: the one that finds the row already moved
+        // is told so, and reads what the other did instead of writing over it (or mailing twice).
+        // ###########################################################################################
+        Task<bool> TrySetStateAsync(long submissionId, string fromState, string state, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // SetDecisionAsync, but only while the submission is still in one of `fromStates` (code
+        // review, 2026-10-13) - true when this call recorded the decision. A Reject arriving while
+        // an approval published the submission used to overwrite its 'merged' with 'rejected': the
+        // board in BETA, the contributor told it was refused.
+        // ###########################################################################################
+        Task<bool> TrySetDecisionAsync(
+            long submissionId,
+            IReadOnlyCollection<string> fromStates,
+            string state,
+            long decidedByAccountId,
+            string? comment,
+            DateTimeOffset decidedUtc,
+            CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // The files a submission carried EXACTLY AS THEY WERE PUBLISHED when it was created - path to
+        // the hash both had (code review, 2026-10-13; migration 0021). Written by CreateAsync from
+        // NewSubmission.LeftAsPublished. What lets the approval tell a file the contributor CHANGED
+        // from one they merely cited, once the published copy has moved on since - see
+        // SubmissionLeftAsPublished. Empty for a submission created before the table existed.
+        // ###########################################################################################
+        Task<IReadOnlyDictionary<string, string>> GetLeftAsPublishedAsync(long submissionId, CancellationToken cancellationToken = default);
+
         // The manifest's rows, stored whole - see 0002_submission_files.sql for why they are JSON
         // rather than eleven tables.
         Task SavePayloadAsync(long submissionId, SubmissionManifest manifest, CancellationToken cancellationToken = default);
@@ -76,6 +109,17 @@ namespace CRT.Server.Handlers.Submissions
         // a queue big enough to need it.
         // ###########################################################################################
         Task<IReadOnlyList<SubmissionRecord>> GetQueueAsync(int limit, CancellationToken cancellationToken = default);
+
+        // ###########################################################################################
+        // The same queue, only the submissions of `boardIds` (code review, 2026-10-13) - a
+        // maintainer's. The queue used to read the `limit` OLDEST rows of every board and filter
+        // them per maintainer afterwards, so a maintainer of a quiet board behind a hundred waiting
+        // submissions of other boards saw an empty queue. No board, no rows.
+        // ###########################################################################################
+        Task<IReadOnlyList<SubmissionRecord>> GetQueueForBoardsAsync(
+            IReadOnlyCollection<string> boardIds,
+            int limit,
+            CancellationToken cancellationToken = default);
 
         // ###########################################################################################
         // One board's submissions still 'pending', oldest first - the ones a newly queued
@@ -406,6 +450,18 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         Task<IReadOnlyList<GivenApproval>> GetApprovalsAsync(long submissionId, CancellationToken cancellationToken = default);
 
+        // The approvals of each of `submissionIds`, in one query (code review, 2026-10-13) - the
+        // queue asked one query per row. A submission with none is absent.
+        Task<IReadOnlyDictionary<long, IReadOnlyList<GivenApproval>>> GetApprovalsForAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default);
+
+        // The latest amendment version of each of `submissionIds` (code review, 2026-10-13) - one
+        // query for the whole queue. A submission nobody amended is absent.
+        Task<IReadOnlyDictionary<long, int>> GetAmendmentVersionsAsync(
+            IReadOnlyCollection<long> submissionIds,
+            CancellationToken cancellationToken = default);
+
         Task AddApprovalAsync(
             long submissionId,
             ApproverRole role,
@@ -614,7 +670,12 @@ namespace CRT.Server.Handlers.Submissions
 
         // A new board's notes from "Create board" (2026-10-05) - null when it carried none.
         // Stored in submission_notes (migration 0019), apart from the submission's own row.
-        string? HardwareNotes = null);
+        string? HardwareNotes = null,
+
+        // The files the submission carried byte-identical to what was published at the same path
+        // when it was created (code review, 2026-10-13; migration 0021) - decided by the SERVER from
+        // the tree, never sent by the contributor. See ISubmissionStore.GetLeftAsPublishedAsync.
+        IReadOnlyList<SubmissionFile>? LeftAsPublished = null);
 
     // One submission's notes for a new board, with what decides whether they count: its state and
     // when it was sent. See BoardListingRules.SuggestedNotes.

@@ -114,7 +114,9 @@ marking a repair you have made:
 The **Traces visible** panel appears once there are traces on the image: one row per colour, with
 how many lines use it and a tick box to show or hide them. **Clear All** deletes them all, and
 **Undo deletion** brings back the last line deleted. Your traces are saved for each board and image
-in your own settings folder (`Classic-Repair-Toolbox.traces.json`), never in the board data.
+in your own settings folder (`Classic-Repair-Toolbox.traces.json`), never in the board data. When a
+schematic image is renamed - in an update, or in your own draft - its traces follow it to the new
+name.
 
 ## Recording what you find
 

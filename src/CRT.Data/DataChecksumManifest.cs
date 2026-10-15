@@ -85,7 +85,12 @@ namespace Handlers.DataHandling
         // whether that is a failure. Writing an empty manifest is refused in Write below, which is
         // where that judgement belongs.
         // ###########################################################################################
-        public static IReadOnlyList<Entry> Scan(string dataRoot, string publicBaseUrl)
+        public static IReadOnlyList<Entry> Scan(string dataRoot, string publicBaseUrl) =>
+            DataChecksumManifest.Scan(dataRoot, publicBaseUrl, hashEveryFile: false);
+
+        // `hashEveryFile` reads every file afresh rather than trusting a remembered checksum - see
+        // HashOf and the administrator's rebuild (Write below).
+        public static IReadOnlyList<Entry> Scan(string dataRoot, string publicBaseUrl, bool hashEveryFile)
         {
             if (string.IsNullOrWhiteSpace(dataRoot) || !Directory.Exists(dataRoot))
             {
@@ -109,7 +114,7 @@ namespace Handlers.DataHandling
                 entries.Add(new Entry
                 {
                     File = relative,
-                    Checksum = DataChecksumManifest.HashOf(path),
+                    Checksum = DataChecksumManifest.HashOf(path, hashEveryFile),
                     Url = baseUrl + "/" + string.Join(
                         "/",
                         relative.Split('/').Select(Uri.EscapeDataString)),
@@ -202,7 +207,19 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static readonly object WriteGate = new();
 
-        public static int Write(string dataRoot, string publicBaseUrl, string manifestPath)
+        public static int Write(string dataRoot, string publicBaseUrl, string manifestPath) =>
+            DataChecksumManifest.Write(dataRoot, publicBaseUrl, manifestPath, hashEveryFile: false);
+
+        // ###########################################################################################
+        // *** THE ADMINISTRATOR'S REBUILD HASHES EVERY FILE (code review, 2026-10-14). *** It exists
+        // for files the project owner copied into a tree BY HAND (ManifestRebuildFlow), and a hand
+        // copy keeps whatever write time it is given: `cp -p` and `rsync -a` carry the source's
+        // across, so a corrected picture of the same length looked unchanged to the remembered
+        // checksums, and the rebuild meant to publish it advertised the OLD checksum - every CRT
+        // then failed the file's check on every launch. With `hashEveryFile` nothing remembered is
+        // trusted; what it reads is remembered for the publishes that follow.
+        // ###########################################################################################
+        public static int Write(string dataRoot, string publicBaseUrl, string manifestPath, bool hashEveryFile)
         {
             if (string.IsNullOrWhiteSpace(manifestPath))
             {
@@ -211,18 +228,18 @@ namespace Handlers.DataHandling
 
             lock (DataChecksumManifest.WriteGate)
             {
-                return DataChecksumManifest.WriteOnce(dataRoot, publicBaseUrl, manifestPath);
+                return DataChecksumManifest.WriteOnce(dataRoot, publicBaseUrl, manifestPath, hashEveryFile);
             }
         }
 
-        private static int WriteOnce(string dataRoot, string publicBaseUrl, string manifestPath)
+        private static int WriteOnce(string dataRoot, string publicBaseUrl, string manifestPath, bool hashEveryFile)
         {
             // ".tmp_" is what Scan skips as junk, so a temporary file left by a crash is never listed.
             string temporary = manifestPath + ".tmp_" + Guid.NewGuid().ToString("N");
 
             try
             {
-                IReadOnlyList<Entry> entries = DataChecksumManifest.Scan(dataRoot, publicBaseUrl);
+                IReadOnlyList<Entry> entries = DataChecksumManifest.Scan(dataRoot, publicBaseUrl, hashEveryFile);
 
                 if (entries.Count == 0)
                 {
@@ -257,8 +274,45 @@ namespace Handlers.DataHandling
             }
         }
 
-        private static string HashOf(string path)
+        // ###########################################################################################
+        // *** A FILE IS HASHED AGAIN ONLY WHEN ITS LENGTH OR WRITE TIME MOVED (code review,
+        // 2026-10-13). *** Every publish rebuilt the manifest by hashing EVERY file in the tree -
+        // ~11,000 files and gigabytes - to change the entries of the few dozen it wrote. Each
+        // file's hash is now remembered with the length and last-write time it was taken at, and
+        // reused while both are unchanged: the same rule PublishedFileHashes and WorkbookReadCache
+        // use. Every writer to a data tree THROUGH THE SERVICE replaces a file (new write time)
+        // rather than editing it in place, so a file it changed is always hashed again. A file copied
+        // in by hand may keep an old write time - the administrator's rebuild, which exists for hand
+        // copies, therefore trusts nothing remembered (Write's `hashEveryFile`). The first rebuild
+        // after the service starts hashes everything, as before. The manifest's BYTES do not change -
+        // only how the checksums in it are arrived at.
+        //
+        // Keyed by the full path, so the BETA and stable trees never share an entry.
+        // ###########################################################################################
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Length, long WriteTicks, string Sha256)> HashCache =
+            new(StringComparer.Ordinal);
+
+        // How many files were really read to hash - a test seam for the rule above.
+        internal static int FilesHashed;
+
+        private static string HashOf(string path, bool hashEveryFile)
         {
+            var info = new FileInfo(path);
+            long length = info.Length;
+            long writeTicks = info.LastWriteTimeUtc.Ticks;
+
+            // Trusted only once the write has settled (StampSettling, code review 2026-10-13): two
+            // same-length writes inside one clock tick share a stamp, and the manifest would then
+            // advertise the first file's checksum - which every client's download then fails.
+            if (!hashEveryFile &&
+                DataChecksumManifest.HashCache.TryGetValue(path, out (long Length, long WriteTicks, string Sha256) known) &&
+                known.Length == length &&
+                known.WriteTicks == writeTicks &&
+                StampSettling.IsSettled(info.LastWriteTimeUtc))
+            {
+                return known.Sha256;
+            }
+
             using FileStream stream = new(
                 path,
                 FileMode.Open,
@@ -266,7 +320,12 @@ namespace Handlers.DataHandling
                 FileShare.Read,
                 bufferSize: 1 << 16);
 
-            return Convert.ToHexStringLower(SHA256.HashData(stream));
+            string hash = Convert.ToHexStringLower(SHA256.HashData(stream));
+
+            System.Threading.Interlocked.Increment(ref DataChecksumManifest.FilesHashed);
+            DataChecksumManifest.HashCache[path] = (length, writeTicks, hash);
+
+            return hash;
         }
 
         private static void TryDelete(string path)

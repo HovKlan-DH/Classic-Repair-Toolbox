@@ -646,7 +646,7 @@ namespace CRT.Server.Tests
         {
             (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
 
-            for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccount; attempt++)
+            for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
                 await AccountFlows.LoginAsync(
                     new LoginRequest("dennis@example.com", "wrong", null, "192.0.2.1"),
@@ -661,6 +661,32 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsRateLimited);
             Assert.False(outcome.IsSuccess);
             Assert.True(outcome.RetryAfter > TimeSpan.Zero);
+        }
+
+        // A stranger's wrong passwords lock out the stranger's address, never the owner signing in
+        // from their own (code review, 2026-10-13) - the administrator's address is in every mail.
+        [Fact]
+        public async Task Failures_from_another_address_do_not_stop_the_owner_signing_in()
+        {
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+
+            for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
+            {
+                await AccountFlows.LoginAsync(
+                    new LoginRequest("dennis@example.com", "wrong", null, "198.51.100.66"),
+                    store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+            }
+
+            LoginOutcome stranger = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", "wrong again", null, "198.51.100.66"),
+                store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            LoginOutcome owner = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, null, "192.0.2.1"),
+                store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.True(stranger.IsRateLimited);
+            Assert.True(owner.IsSuccess);
         }
 
         [Fact]
@@ -693,7 +719,7 @@ namespace CRT.Server.Tests
             // that would.
             (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
 
-            for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccount; attempt++)
+            for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
                 await AccountFlows.LoginAsync(
                     new LoginRequest("dennis@example.com", "wrong", null, "192.0.2.1"),

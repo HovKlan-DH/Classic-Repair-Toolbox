@@ -452,37 +452,46 @@ namespace CRT
         // ###########################################################################################
         private async void HandlePinDigit(char digit)
         {
-            this._pinBuffer += digit;
-
-            // Reset the debounce timer so the buffer is only cleared after typing pauses
-            this._pinBufferCts?.Cancel();
-            this._pinBufferCts = new CancellationTokenSource();
-            var bufferCts = this._pinBufferCts;
-
-            var items = this.ThumbnailList.ItemsSource as List<ComponentImageItem>;
-            if (items != null && items.Count > 0)
-            {
-                int matchIndex = items.FindIndex(item =>
-                    string.Equals(item.Pin, this._pinBuffer, StringComparison.OrdinalIgnoreCase));
-
-                if (matchIndex >= 0)
-                {
-                    this.ThumbnailList.SelectedIndex = matchIndex;
-                    this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
-                    this.ShowPinFlashAsync($"{this._pinBuffer}");
-                }
-                else
-                {
-                    this.ShowPinFlashAsync("Not found");
-                }
-            }
-
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
             try
             {
-                await Task.Delay(600, bufferCts.Token);
-                this._pinBuffer = string.Empty;
+                this._pinBuffer += digit;
+
+                // Reset the debounce timer so the buffer is only cleared after typing pauses
+                this._pinBufferCts?.Cancel();
+                this._pinBufferCts = new CancellationTokenSource();
+                var bufferCts = this._pinBufferCts;
+
+                var items = this.ThumbnailList.ItemsSource as List<ComponentImageItem>;
+                if (items != null && items.Count > 0)
+                {
+                    int matchIndex = items.FindIndex(item =>
+                        string.Equals(item.Pin, this._pinBuffer, StringComparison.OrdinalIgnoreCase));
+
+                    if (matchIndex >= 0)
+                    {
+                        this.ThumbnailList.SelectedIndex = matchIndex;
+                        this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
+                        this.ShowPinFlashAsync($"{this._pinBuffer}");
+                    }
+                    else
+                    {
+                        this.ShowPinFlashAsync("Not found");
+                    }
+                }
+
+                try
+                {
+                    await Task.Delay(600, bufferCts.Token);
+                    this._pinBuffer = string.Empty;
+                }
+                catch (OperationCanceledException) { }
             }
-            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.Critical($"HandlePinDigit failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -491,19 +500,28 @@ namespace CRT
         // ###########################################################################################
         private async void ShowPinFlashAsync(string text)
         {
-            this._pinFlashCts?.Cancel();
-            this._pinFlashCts = new CancellationTokenSource();
-            var cts = this._pinFlashCts;
-
-            this.PinFlashText.Text = text;
-            this.PinFlashBorder.IsVisible = true;
-
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
             try
             {
-                await Task.Delay(800, cts.Token);
-                this.PinFlashBorder.IsVisible = false;
+                this._pinFlashCts?.Cancel();
+                this._pinFlashCts = new CancellationTokenSource();
+                var cts = this._pinFlashCts;
+
+                this.PinFlashText.Text = text;
+                this.PinFlashBorder.IsVisible = true;
+
+                try
+                {
+                    await Task.Delay(800, cts.Token);
+                    this.PinFlashBorder.IsVisible = false;
+                }
+                catch (OperationCanceledException) { }
             }
-            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.Critical($"ShowPinFlashAsync failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -1009,124 +1027,133 @@ namespace CRT
         // ###########################################################################################
         private async void LoadImagesAsync(List<ComponentImageEntry> entries, string dataRoot, string? preservePin = null)
         {
-            this._loadCts?.Cancel();
-            this._loadCts = new CancellationTokenSource();
-            var cts = this._loadCts;
-            string draftBoardFolder = this._draftBoardFolder;
-
-            var displayableEntries = entries
-                .Where(ComponentImageQueries.HasDisplayableImageFile)
-                .ToList();
-
-            if (displayableEntries.Count == 0)
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                this.DisposeLoadedBitmaps();
-                this.ScheduleSelectedOscilloscopeImageSync(null);
-                return;
-            }
+                this._loadCts?.Cancel();
+                this._loadCts = new CancellationTokenSource();
+                var cts = this._loadCts;
+                string draftBoardFolder = this._draftBoardFolder;
 
-            var loaded = await Task.Run(() =>
-            {
-                var result = new List<(ComponentImageEntry Entry, Bitmap? Bitmap)>();
+                var displayableEntries = entries
+                    .Where(ComponentImageQueries.HasDisplayableImageFile)
+                    .ToList();
 
-                foreach (var entry in displayableEntries)
+                if (displayableEntries.Count == 0)
                 {
-                    if (cts.Token.IsCancellationRequested)
-                        break;
-
-                    Bitmap? bitmap = null;
-
-                    try
-                    {
-                        // An image attached only in a local draft (not yet synced under Data/) is
-                        // resolved via the same official-first/draft-fallback rule every other
-                        // BoardData File value now uses - see DraftFileResolver.
-                        var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File) ??
-                            Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
-                        if (File.Exists(fullPath))
-                        {
-                            bitmap = new Bitmap(fullPath);
-                        }
-                    }
-                    catch
-                    {
-                        // A malformed File value (e.g. from hand-edited or contributed board data)
-                        // should skip this one image, not crash the whole load - this method has
-                        // no caller-side exception handling since it is async void.
-                    }
-
-                    result.Add((entry, bitmap));
+                    this.DisposeLoadedBitmaps();
+                    this.ScheduleSelectedOscilloscopeImageSync(null);
+                    return;
                 }
 
-                return result;
-            });
-
-            if (cts.Token.IsCancellationRequested)
-            {
-                foreach (var (_, bmp) in loaded)
-                    bmp?.Dispose();
-                return;
-            }
-
-            // Stage new bitmaps before touching the UI so old images stay visible until the swap
-            var oldBitmaps = new List<Bitmap>(this._loadedBitmaps);
-            this._loadedBitmaps.Clear();
-
-            foreach (var (_, bmp) in loaded)
-            {
-                if (bmp != null)
-                    this._loadedBitmaps.Add(bmp);
-            }
-
-            var items = loaded
-                .Select(x => new ComponentImageItem
+                var loaded = await Task.Run(() =>
                 {
-                    ImageSource = x.Bitmap,
-                    Label = ComponentImageQueries.BuildImageLabel(x.Entry),
-                    Pin = x.Entry.Pin.Trim(),
-                    Name = x.Entry.Name,
-                    ExpectedOscilloscopeReading = x.Entry.ExpectedOscilloscopeReading,
-                    TimeDiv = x.Entry.TimeDiv,
-                    VoltsDiv = x.Entry.VoltsDiv,
-                    TriggerLevelVolts = x.Entry.TriggerLevelVolts,
-                    Note = x.Entry.Note,
-                    SourceEntry = x.Entry
-                })
-                .ToList();
+                    var result = new List<(ComponentImageEntry Entry, Bitmap? Bitmap)>();
 
-            // Resolve target index: restore same pin if found in the new set, otherwise first item
-            int targetIndex = 0;
-            if (!string.IsNullOrEmpty(preservePin))
-            {
-                int pinIndex = items.FindIndex(item =>
-                    string.Equals(item.Pin, preservePin, StringComparison.OrdinalIgnoreCase));
-                if (pinIndex >= 0)
-                    targetIndex = pinIndex;
+                    foreach (var entry in displayableEntries)
+                    {
+                        if (cts.Token.IsCancellationRequested)
+                            break;
+
+                        Bitmap? bitmap = null;
+
+                        try
+                        {
+                            // An image attached only in a local draft (not yet synced under Data/) is
+                            // resolved via the same official-first/draft-fallback rule every other
+                            // BoardData File value now uses - see DraftFileResolver.
+                            var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File) ??
+                                Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
+                            if (File.Exists(fullPath))
+                            {
+                                bitmap = new Bitmap(fullPath);
+                            }
+                        }
+                        catch
+                        {
+                            // A malformed File value (e.g. from hand-edited or contributed board data)
+                            // should skip this one image, not crash the whole load - this method has
+                            // no caller-side exception handling since it is async void.
+                        }
+
+                        result.Add((entry, bitmap));
+                    }
+
+                    return result;
+                });
+
+                if (cts.Token.IsCancellationRequested)
+                {
+                    foreach (var (_, bmp) in loaded)
+                        bmp?.Dispose();
+                    return;
+                }
+
+                // Stage new bitmaps before touching the UI so old images stay visible until the swap
+                var oldBitmaps = new List<Bitmap>(this._loadedBitmaps);
+                this._loadedBitmaps.Clear();
+
+                foreach (var (_, bmp) in loaded)
+                {
+                    if (bmp != null)
+                        this._loadedBitmaps.Add(bmp);
+                }
+
+                var items = loaded
+                    .Select(x => new ComponentImageItem
+                    {
+                        ImageSource = x.Bitmap,
+                        Label = ComponentImageQueries.BuildImageLabel(x.Entry),
+                        Pin = x.Entry.Pin.Trim(),
+                        Name = x.Entry.Name,
+                        ExpectedOscilloscopeReading = x.Entry.ExpectedOscilloscopeReading,
+                        TimeDiv = x.Entry.TimeDiv,
+                        VoltsDiv = x.Entry.VoltsDiv,
+                        TriggerLevelVolts = x.Entry.TriggerLevelVolts,
+                        Note = x.Entry.Note,
+                        SourceEntry = x.Entry
+                    })
+                    .ToList();
+
+                // Resolve target index: restore same pin if found in the new set, otherwise first item
+                int targetIndex = 0;
+                if (!string.IsNullOrEmpty(preservePin))
+                {
+                    int pinIndex = items.FindIndex(item =>
+                        string.Equals(item.Pin, preservePin, StringComparison.OrdinalIgnoreCase));
+                    if (pinIndex >= 0)
+                        targetIndex = pinIndex;
+                }
+
+                // Suppress selection events during the atomic ItemsSource + SelectedIndex swap.
+                // Without this, the transient null-selection state would blank the main image (blink).
+                this._suppressThumbnailSelection = true;
+                this.ThumbnailList.ItemsSource = items;
+                if (items.Count > 0)
+                {
+                    this.ThumbnailList.SelectedIndex = targetIndex;
+                    this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
+                }
+                this._suppressThumbnailSelection = false;
+
+                // Manually apply what OnThumbnailSelectionChanged would have done
+                var selected = this.ThumbnailList.SelectedItem as ComponentImageItem;
+                this.MainComponentImage.Source = selected?.ImageSource;
+                this.NoImageText.IsVisible = selected?.ImageSource == null;
+                this.UpdateInfoOverlay();
+                this.UpdateImageCounter();
+                this.UpdateImageNote(selected);
+                this.ScheduleSelectedOscilloscopeImageSync(selected);
+
+                // Dispose the previous bitmaps only after the UI has fully transitioned to the new set
+                foreach (var bmp in oldBitmaps)
+                    bmp.Dispose();
             }
-
-            // Suppress selection events during the atomic ItemsSource + SelectedIndex swap.
-            // Without this, the transient null-selection state would blank the main image (blink).
-            this._suppressThumbnailSelection = true;
-            this.ThumbnailList.ItemsSource = items;
-            if (items.Count > 0)
+            catch (Exception ex)
             {
-                this.ThumbnailList.SelectedIndex = targetIndex;
-                this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
+                Logger.Critical($"LoadImagesAsync failed - [{ex}]");
             }
-            this._suppressThumbnailSelection = false;
-
-            // Manually apply what OnThumbnailSelectionChanged would have done
-            var selected = this.ThumbnailList.SelectedItem as ComponentImageItem;
-            this.MainComponentImage.Source = selected?.ImageSource;
-            this.NoImageText.IsVisible = selected?.ImageSource == null;
-            this.UpdateInfoOverlay();
-            this.UpdateImageCounter();
-            this.UpdateImageNote(selected);
-            this.ScheduleSelectedOscilloscopeImageSync(selected);
-
-            // Dispose the previous bitmaps only after the UI has fully transitioned to the new set
-            foreach (var bmp in oldBitmaps)
-                bmp.Dispose();
         }
 
         // ###########################################################################################
@@ -1387,11 +1414,13 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
         // ###########################################################################################
         public void UpdateOscilloscopeSessionTitleState(bool hasSeenOscilloscopeSession, bool hasActiveOscilloscopeSession)
         {
+            // From another thread: queued to the UI thread, never waited for (code review,
+            // 2026-10-13 - it blocked a pool thread on the dispatcher).
             if (!Dispatcher.UIThread.CheckAccess())
             {
-                Dispatcher.UIThread.InvokeAsync(
+                Dispatcher.UIThread.Post(
                     () => this.UpdateOscilloscopeSessionTitleState(hasSeenOscilloscopeSession, hasActiveOscilloscopeSession),
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                    DispatcherPriority.Background);
                 return;
             }
 
@@ -1490,11 +1519,10 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
         // ###########################################################################################
         private void UpdateOscilloscopeControlsAvailability()
         {
+            // From another thread: queued, never waited for (see UpdateOscilloscopeSessionTitleState).
             if (!Dispatcher.UIThread.CheckAccess())
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.UpdateOscilloscopeControlsAvailability,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                Dispatcher.UIThread.Post(this.UpdateOscilloscopeControlsAvailability, DispatcherPriority.Background);
                 return;
             }
 

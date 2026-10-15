@@ -99,6 +99,13 @@
 		<Style Selector="Button.HelpIconButton:pressed /template/ ContentPresenter">
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
+
+		<!-- A radio button's label wraps like a check box's (2026-10-13). The theme's check box
+		     template wraps its text and the radio button's does not, so "Show only workbooks for
+		     selected board" was cut off at the window's minimum width once the scroll bar showed. -->
+		<Style Selector="RadioButton /template/ ContentPresenter">
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
 	</UserControl.Styles>
 
 	<Grid x:Name="RootSplitGrid"
@@ -110,7 +117,9 @@
 		window's own MinWidth="800" leaves this tab about 530 DIP once Main's 200 DIP sidebar,
 		its splitter and this Grid's own 16 DIP margins are taken off. 300 + 4 + 200 fits that
 		with room to spare; 360 + 4 + 260 did not. 300 still clears the widest fixed content on
-		the left (the three 260-wide folder buttons), and every other row wraps.
+		the left - the 260-wide folder buttons plus the 16 DIP of the vertical scroll bar, which
+		never hides - and every other row wraps (a check box with a help icon included, since
+		2026-10-13).
 		-->
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="*" MinWidth="300" />
@@ -182,13 +191,18 @@
 			<CheckBox x:Name="CheckVersionOnLaunchCheckBox"
                       Content="Check for new version at application launch" />
 
-			<StackPanel Orientation="Horizontal"
-						Spacing="4"
-						HorizontalAlignment="Left">
+			<!-- A check box with a help icon is a Grid, not a horizontal StackPanel (2026-10-13): a
+			     StackPanel gave the label unlimited width, so a long one was cut off in a narrow tab
+			     instead of wrapping. The "*" column wraps it; the Grid is Left-aligned, so the icon
+			     still sits right after the text. All six such rows are built this way. -->
+			<Grid ColumnDefinitions="*,Auto"
+				  ColumnSpacing="4"
+				  HorizontalAlignment="Left">
 				<CheckBox x:Name="ShowDevelopmentVersionNotificationCheckBox"
 						  Content="Allow notification for BETA versions"
 						  VerticalAlignment="Center" />
 				<Button x:Name="ShowDevelopmentVersionNotificationHelpButton"
+						Grid.Column="1"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
 						ToolTip.Tip="A BETA version is when development has reached a mature level, and everything should work as intended. However, it is for TEST purposes only, and should only be used in agreement with the developer.">
@@ -201,15 +215,16 @@
 							   HorizontalAlignment="Center"
 							   VerticalAlignment="Center" />
 				</Button>
-			</StackPanel>
+			</Grid>
 
-			<StackPanel Orientation="Horizontal"
-						Spacing="4"
-						HorizontalAlignment="Left">
+			<Grid ColumnDefinitions="*,Auto"
+				  ColumnSpacing="4"
+				  HorizontalAlignment="Left">
 				<CheckBox x:Name="AllowAlphaVersionNotificationCheckBox"
 						  Content="Allow notification for ALPHA versions"
 						  VerticalAlignment="Center" />
 				<Button x:Name="AllowAlphaVersionNotificationHelpButton"
+						Grid.Column="1"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
 						ToolTip.Tip="An ALPHA version is a development version, meaning almost anything could be broken. Do not download it unless agreed with the developer.">
@@ -222,7 +237,7 @@
 							   HorizontalAlignment="Center"
 							   VerticalAlignment="Center" />
 				</Button>
-			</StackPanel>
+			</Grid>
 
 			<Border Classes="SectionHeading">
 				<TextBlock Text="External tooling availability" />
@@ -231,13 +246,14 @@
 			<CheckBox x:Name="EnableNetworkConnectedOscilloscopeTabCheckBox"
                       Content="Enable network connected oscilloscope tab" />
 
-			<StackPanel Orientation="Horizontal"
-						Spacing="4"
-						HorizontalAlignment="Left">
+			<Grid ColumnDefinitions="*,Auto"
+				  ColumnSpacing="4"
+				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableMiniproExperimentalModeCheckBox"
 						  Content="Enable MiniPro programmer functionality"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableMiniproExperimentalModeHelpButton"
+						Grid.Column="1"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
 						ToolTip.Tip="Open help page for MiniPro programmer"
@@ -251,7 +267,7 @@
 							   HorizontalAlignment="Center"
 							   VerticalAlignment="Center" />
 				</Button>
-			</StackPanel>
+			</Grid>
 
 			<CheckBox x:Name="EnableMiniproExperimentalDemoModeCheckBox"
                       Content="Enable MiniPro programmer simulated demo mode (only required for CRT development)" />
@@ -260,13 +276,14 @@
 				<TextBlock Text="Workbooks" />
 			</Border>
 
-			<StackPanel Orientation="Horizontal"
-						Spacing="4"
-						HorizontalAlignment="Left">
+			<Grid ColumnDefinitions="*,Auto"
+				  ColumnSpacing="4"
+				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableWorklogCheckBox"
 						  Content="Enable Workbooks tab"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableWorklogHelpButton"
+						Grid.Column="1"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
 						ToolTip.Tip="Open help page for Workbooks"
@@ -280,7 +297,7 @@
 							   HorizontalAlignment="Center"
 							   VerticalAlignment="Center" />
 				</Button>
-			</StackPanel>
+			</Grid>
 
 			<TextBlock Text="Scope in Workbooks tab:"
                        Margin="0,8,0,0" />
@@ -316,16 +333,20 @@
 				<TextBlock Text="Contributing and maintaining data" />
 			</Border>
 
-			<!-- Renamed, and given its own help page (owner request, 2026-10-02): "officially
-			     published" did not say WHERE the board then comes from. -->
-			<StackPanel Orientation="Horizontal"
-						Spacing="4"
-						HorizontalAlignment="Left">
+			<!-- Given its own help page (owner request, 2026-10-02), and renamed twice: "officially
+			     published" did not say WHERE the board then comes from, and "officially coming from
+			     online source" was the last name left over once everything else said "the published
+			     data" (owner decision, 2026-10-13). The help page keeps its name - an installed CRT
+			     opens it by that name. -->
+			<Grid ColumnDefinitions="*,Auto"
+				  ColumnSpacing="4"
+				  HorizontalAlignment="Left">
 				<CheckBox x:Name="ViewOfficialPublishedOnlyCheckBox"
-						  Content="View boards as officially coming from online source (hide my local draft changes)"
+						  Content="View boards as published online (hide my draft changes)"
 						  VerticalAlignment="Center"
 						  ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a board where you have unpublished local edits" />
 				<Button x:Name="ViewOfficialPublishedOnlyHelpButton"
+						Grid.Column="1"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
 						ToolTip.Tip="Open help page for viewing boards as they come from the online source"
@@ -339,15 +360,16 @@
 							   HorizontalAlignment="Center"
 							   VerticalAlignment="Center" />
 				</Button>
-			</StackPanel>
+			</Grid>
 
-			<StackPanel Orientation="Horizontal"
-						Spacing="4"
-						HorizontalAlignment="Left">
+			<Grid ColumnDefinitions="*,Auto"
+				  ColumnSpacing="4"
+				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableMaintainerTabCheckBox"
 						  Content="Enable Maintainer tab"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableMaintainerTabHelpButton"
+						Grid.Column="1"
 						Classes="HelpIconButton"
 						VerticalAlignment="Center"
 						ToolTip.Tip="Open help page for the Maintainer tab"
@@ -361,7 +383,7 @@
 							   HorizontalAlignment="Center"
 							   VerticalAlignment="Center" />
 				</Button>
-			</StackPanel>
+			</Grid>
 
 			<!-- Hides the tab again while nothing is waiting (owner request, 2026-10-01). Directly
 			     under "Enable Maintainer tab" and ABOVE the explanatory line, and NOT indented
@@ -384,11 +406,12 @@
 				<TextBlock Text="Application related files" />
 			</Border>
 
-			<!-- Three separate buttons rather than one, because these are three different folders
-			     and two of them can be moved elsewhere by the data-root and workbooks-root
-			     command-line switches. Each opens the path the app is ACTUALLY using, so a
-			     relocated folder still opens where it really is. Equal Width so they read as one
-			     group rather than a ragged stack. -->
+			<!-- Four separate buttons rather than one, because these are four different folders
+			     and three of them can be moved elsewhere - by the data-root and workbooks-root
+			     command-line switches, and the capture folder from the Oscilloscope tab. Each opens
+			     the path the app is ACTUALLY using, so a relocated folder still opens where it
+			     really is. Equal Width so they read as one group rather than a ragged stack - wide
+			     enough for the longest label, which the RootSplitGrid's MinWidth then has to fit. -->
 			<Button x:Name="OpenDataFolderButton"
                     Content="Open data folder"
                     Margin="0,0,0,0"
@@ -406,6 +429,20 @@
                     HorizontalContentAlignment="Center"
                     ToolTip.Tip="Your own workbooks - worklogs, photos and attached files"
                     Click="OnOpenWorkbooksFolderClick" />
+
+			<!-- Owner request, 2026-10-13. Opens the folder captures are saved in NOW: the one
+			     chosen in the Oscilloscope tab, else the default "Oscilloscope images" beside the
+			     data folder. No "(default)" in the label (owner, same day): it opens the folder
+			     currently selected, whichever that is. Shown only while "Enable network connected
+			     oscilloscope tab" is ticked (owner, same day) - UpdateOscilloscopeFolderButton. -->
+			<Button x:Name="OpenOscilloscopeImagesFolderButton"
+                    Content="Open oscilloscope image folder"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="Your oscilloscope captures - the folder chosen in the Oscilloscope tab, or Oscilloscope images beside the data folder until one is chosen"
+                    Click="OnOpenOscilloscopeImagesFolderClick" />
 
 			<Button x:Name="OpenLogsFolderButton"
                     Content="Open logs and settings folder"

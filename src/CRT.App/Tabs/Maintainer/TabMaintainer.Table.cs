@@ -68,7 +68,8 @@ namespace CRT
 
         private void WireTable()
         {
-            this.TableEditor.SaveRequested += async (_, _) => await this.SaveTableAsync();
+            this.TableEditor.SaveRequested += async (_, _) =>
+                await HandlerGuard.RunAsync(this.SaveTableAsync, message => this.TableEditor.ShowMessage(message));
         }
 
         // ###########################################################################################
@@ -233,10 +234,34 @@ namespace CRT
                 ? ReviewTableFiles.SideLabels(nothingPublished: true).Published
                 : BoardTableDocument.BetaSourceBaselineLabel;
 
+            // Read-only when the submission's detail already says this account may not publish it.
+            this.ApplyTableReadOnly();
+
             this.TableEditor.Open(
                 BoardTableDocument.Create(published, submitted, baselineLabel),
                 message ?? ReviewTableWording.OpenedMessage(table),
                 preferredSheet: this.thisTableRow is { } row && this.thisSheetBySubmission.TryGetValue(row.Id, out string? sheet) ? sheet : null);
+        }
+
+        // ###########################################################################################
+        // *** READ-ONLY FOR AN ACCOUNT THAT MAY NOT PUBLISH THE SUBMISSION (code review, 2026-10-13). ***
+        // The server takes a change to a submission only from an account that may decide it
+        // (AmendSubmissionFlow: ReviewAuthority.CanReview, the same answer as CanPublish), so an
+        // editable table let the maintainer edit, press Save and only then be refused. It is the
+        // editor's read-only mode instead - the Boards screen's way for a board not theirs - and the
+        // reason is the status line beside Approve (ApprovalWording.StatusLine). Applied when the
+        // table opens and again when the detail arrives, which is usually after.
+        // ###########################################################################################
+        private void ApplyTableReadOnly()
+        {
+            bool readOnly = this.thisTableRow is { } row &&
+                            this.thisShownDetail is { } detail &&
+                            detail.Submission.Id == row.Id &&
+                            !detail.CanPublish;
+
+            // Only when it changes: setting it commits a cell being typed in.
+            if (this.TableEditor.IsReadOnly != readOnly)
+                this.TableEditor.IsReadOnly = readOnly;
         }
 
         // The table opened on `table` without asking the server - the seam the tests use, since
@@ -354,6 +379,10 @@ namespace CRT
         // only be turned away (TabMaintainer.UpdateRequired.cs).
         private async Task<bool> MayLeaveTableAsync(Window? owner = null)
         {
+            // A cell still in its editor is a change too (code review, 2026-10-13): the grid does not
+            // commit it when another submission, Sign out or CRT's own close takes the click.
+            this.TableEditor.CommitCellEdit();
+
             if (!this.IsTableOpen || !this.TableEditor.HasUnsavedChanges)
                 return true;
 
@@ -402,6 +431,7 @@ namespace CRT
 
             this.TableEditor.Clear();
             this.TableEditor.FileSource = null;
+            this.ApplyTableReadOnly();
             this.ShowTableLoadMessage(null);
             this.ShowTablePanel(open: false);
         }
@@ -461,8 +491,32 @@ namespace CRT
         internal bool HasUnsavedTableEdits =>
             (this.IsTableOpen && this.TableEditor.HasUnsavedChanges) || this.BoardDetail.HasUnsavedTableEdits;
 
+        // ###########################################################################################
+        // *** A CELL STILL IN ITS EDITOR IS A CHANGE TOO (code review, 2026-10-13). *** The grid
+        // commits only when focus moves within it - not when CRT's window is closed or an update is
+        // installed - so a value typed and not yet committed was not "unsaved", and quitting went
+        // without asking and threw it away. Committed first at every moment of leaving.
+        //
+        // NOT folded into HasUnsavedTableEdits: Main reads that in the background too (whether the
+        // tab may be hidden), and committing there would close a cell's editor under the typing.
+        // ###########################################################################################
+        internal void CommitCellEdits()
+        {
+            this.TableEditor.CommitCellEdit();
+            this.BoardDetail.CommitCellEdit();
+        }
+
+        // Both tables' cells committed, then whether either holds a change not saved - for quitting.
+        internal bool CommitCellsAndHasUnsavedTableEdits()
+        {
+            this.CommitCellEdits();
+            return this.HasUnsavedTableEdits;
+        }
+
         internal async Task<bool> ConfirmLeavingTableAsync(Window? owner = null)
         {
+            this.CommitCellEdits();
+
             if (!await this.MayLeaveTableAsync(owner))
                 return false;
 

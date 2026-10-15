@@ -90,171 +90,155 @@ public partial class TabSchematics
     // ###########################################################################################
     private async void OnSchematicsThumbnailSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (this.thisSuppressThumbnailSelectionChanged)
-            return;
-
-        this.CancelWorklogEntryMode();
-
-        this.UpdateOverlayLabels();
-
-        this.RebuildImportantSignalsPanel();
-        this.UpdateKiCadNetConnectionsPanel(Array.Empty<string>());
-
-        this.fullResLoadCts?.Cancel();
-        this.fullResLoadCts = new CancellationTokenSource();
-        var cts = this.fullResLoadCts;
-
-        var selected = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
-
-        this.thisHoveredComponentBoardLabel = null;
-
-        this.ResetKiCadHoverHitTestThrottle();
-
-        this.SchematicsImage.Source = null;
-        this.SchematicsMissingImageText.IsVisible = false; // Hide while loading
-        this.schematicsMatrix = Matrix.Identity;
-        ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
-        ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
-        ((MatrixTransform)this.SchematicsHoverHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
-
-        this.SchematicsHighlightsOverlay.HighlightIndex = null;
-        this.SchematicsHighlightsOverlay.BitmapPixelSize = new PixelSize(0, 0);
-        this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
-
-        this.SchematicsHoverHighlightsOverlay.HighlightIndex = null;
-        this.SchematicsHoverHighlightsOverlay.BitmapPixelSize = new PixelSize(0, 0);
-        this.SchematicsHoverHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
-
-        // Save the newly selected schematic for this board
-        var boardKey = this.MainWindow?.GetCurrentBoardKey();
-        if (!string.IsNullOrEmpty(boardKey) && selected != null)
+        // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+        // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+        try
         {
-            UserSettings.SetLastSchematicForBoard(boardKey, selected.Name);
-        }
+            if (this.thisSuppressThumbnailSelectionChanged)
+                return;
 
-        this.RestoreBoardSettings(boardKey ?? string.Empty);
+            this.CancelWorklogEntryMode();
 
-        if (selected == null || string.IsNullOrEmpty(selected.ImageFilePath))
-            return;
+            this.UpdateOverlayLabels();
 
-        var bitmap = await Task.Run(() =>
-        {
-            if (cts.Token.IsCancellationRequested) return null;
+            this.RebuildImportantSignalsPanel();
+            this.UpdateKiCadNetConnectionsPanel(Array.Empty<string>());
 
-            try { return new Bitmap(selected.ImageFilePath); }
-            catch (Exception ex)
+            this.fullResLoadCts?.Cancel();
+            this.fullResLoadCts = new CancellationTokenSource();
+            var cts = this.fullResLoadCts;
+
+            var selected = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
+
+            this.thisHoveredComponentBoardLabel = null;
+
+            this.ResetKiCadHoverHitTestThrottle();
+
+            this.SchematicsImage.Source = null;
+            this.SchematicsMissingImageText.IsVisible = false; // Hide while loading
+            this.schematicsMatrix = Matrix.Identity;
+            ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
+            ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
+            ((MatrixTransform)this.SchematicsHoverHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
+
+            this.SchematicsHighlightsOverlay.HighlightIndex = null;
+            this.SchematicsHighlightsOverlay.BitmapPixelSize = new PixelSize(0, 0);
+            this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
+
+            this.SchematicsHoverHighlightsOverlay.HighlightIndex = null;
+            this.SchematicsHoverHighlightsOverlay.BitmapPixelSize = new PixelSize(0, 0);
+            this.SchematicsHoverHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
+
+            // Save the newly selected schematic for this board
+            var boardKey = this.MainWindow?.GetCurrentBoardKey();
+            if (!string.IsNullOrEmpty(boardKey) && selected != null)
             {
-                Logger.Warning($"Cannot load image file [{selected.ImageFilePath}] - [{ex.Message}]");
-                return null;
+                UserSettings.SetLastSchematicForBoard(boardKey, selected.Name);
             }
-        }, cts.Token);
 
-        if (cts.Token.IsCancellationRequested || !ReferenceEquals(cts, this.fullResLoadCts))
-        {
-            bitmap?.Dispose();
-            return;
-        }
+            this.RestoreBoardSettings(boardKey ?? string.Empty);
 
-        this.currentFullResBitmap?.Dispose();
-        this.currentFullResBitmap = bitmap;
-        this.SchematicsImage.Source = bitmap;
+            if (selected == null || string.IsNullOrEmpty(selected.ImageFilePath))
+                return;
 
-        if (bitmap != null)
-        {
-            this.SchematicsMissingImageText.IsVisible = false;
-
-            // Always set BitmapPixelSize so the overlay can render as soon as a component is selected,
-            // even if no highlight index exists yet at the time this schematic loads.
-            this.SchematicsHighlightsOverlay.BitmapPixelSize = bitmap.PixelSize;
-            this.SchematicsHoverHighlightsOverlay.BitmapPixelSize = bitmap.PixelSize;
-
-            if (this.highlightIndexBySchematic.TryGetValue(selected.Name, out var index) &&
-                this.schematicByName.TryGetValue(selected.Name, out var schematic))
+            var bitmap = await Task.Run(() =>
             {
-                this.SchematicsHighlightsOverlay.HighlightIndex = index;
-                this.SchematicsHighlightsOverlay.HighlightColor = RectGeometry.ParseColorOrDefault(schematic.SchematicHighlightColor, Colors.IndianRed);
-                this.SchematicsHighlightsOverlay.HighlightOpacity = RectGeometry.ParseOpacityOrDefault(schematic.SchematicHighlightOpacity, 0.20);
+                if (cts.Token.IsCancellationRequested) return null;
+
+                try { return new Bitmap(selected.ImageFilePath); }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Cannot load image file [{selected.ImageFilePath}] - [{ex.Message}]");
+                    return null;
+                }
+            }, cts.Token);
+
+            if (cts.Token.IsCancellationRequested || !ReferenceEquals(cts, this.fullResLoadCts))
+            {
+                bitmap?.Dispose();
+                return;
             }
+
+            this.currentFullResBitmap?.Dispose();
+            this.currentFullResBitmap = bitmap;
+            this.SchematicsImage.Source = bitmap;
+
+            if (bitmap != null)
+            {
+                this.SchematicsMissingImageText.IsVisible = false;
+
+                // Always set BitmapPixelSize so the overlay can render as soon as a component is selected,
+                // even if no highlight index exists yet at the time this schematic loads.
+                this.SchematicsHighlightsOverlay.BitmapPixelSize = bitmap.PixelSize;
+                this.SchematicsHoverHighlightsOverlay.BitmapPixelSize = bitmap.PixelSize;
+
+                if (this.highlightIndexBySchematic.TryGetValue(selected.Name, out var index) &&
+                    this.schematicByName.TryGetValue(selected.Name, out var schematic))
+                {
+                    this.SchematicsHighlightsOverlay.HighlightIndex = index;
+                    this.SchematicsHighlightsOverlay.HighlightColor = RectGeometry.ParseColorOrDefault(schematic.SchematicHighlightColor, Colors.IndianRed);
+                    this.SchematicsHighlightsOverlay.HighlightOpacity = RectGeometry.ParseOpacityOrDefault(schematic.SchematicHighlightOpacity, 0.20);
+                }
+            }
+            else
+            {
+                this.SchematicsMissingImageText.IsVisible = true;
+            }
+
+            this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
+            this.SchematicsHighlightsOverlay.InvalidateVisual();
+            this.SchematicsHoverHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
+            this.SchematicsHoverHighlightsOverlay.InvalidateVisual();
+
+            // Populate trace database for this exact board/schematic setup immediately before render logic finishes 
+            if (this.polylineManager != null && !string.IsNullOrEmpty(boardKey))
+            {
+                var loaded = TraceStorage.GetTraces(boardKey, selected.Name);
+                this.polylineManager.ImportTraces(loaded);
+            }
+
+            // Defer a clamp call so the engine can measure and center the new image layout
+            // immediately instead of waiting for a window resize or banner collapse.
+            Dispatcher.UIThread.Post(() =>
+            {
+                this.ClampSchematicsMatrix();
+                this.UpdateComponentLabels();
+                this.RefreshHoveredComponentHighlightOverlay();
+                this.RefreshKiCadOverlay();
+
+                // RefreshWorklogEntriesListOverlay bails out while currentFullResBitmap is still null,
+                // so a "Show worklogs" checkbox that starts checked (at app launch, or after switching
+                // boards) needs re-applying once this schematic's bitmap has actually finished loading -
+                // otherwise the overlay silently never appears until the checkbox is toggled off and on.
+                this.RefreshWorklogEntriesListOverlay();
+            });
         }
-        else
+        catch (Exception ex)
         {
-            this.SchematicsMissingImageText.IsVisible = true;
+            Logger.Critical($"OnSchematicsThumbnailSelectionChanged failed - [{ex}]");
         }
-
-        this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
-        this.SchematicsHighlightsOverlay.InvalidateVisual();
-        this.SchematicsHoverHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
-        this.SchematicsHoverHighlightsOverlay.InvalidateVisual();
-
-        // Populate trace database for this exact board/schematic setup immediately before render logic finishes 
-        if (this.polylineManager != null && !string.IsNullOrEmpty(boardKey))
-        {
-            var loaded = TraceStorage.GetTraces(boardKey, selected.Name);
-            this.polylineManager.ImportTraces(loaded);
-        }
-
-        // Defer a clamp call so the engine can measure and center the new image layout
-        // immediately instead of waiting for a window resize or banner collapse.
-        Dispatcher.UIThread.Post(() =>
-        {
-            this.ClampSchematicsMatrix();
-            this.UpdateComponentLabels();
-            this.RefreshHoveredComponentHighlightOverlay();
-            this.RefreshKiCadOverlay();
-
-            // RefreshWorklogEntriesListOverlay bails out while currentFullResBitmap is still null,
-            // so a "Show worklogs" checkbox that starts checked (at app launch, or after switching
-            // boards) needs re-applying once this schematic's bitmap has actually finished loading -
-            // otherwise the overlay silently never appears until the checkbox is toggled off and on.
-            this.RefreshWorklogEntriesListOverlay();
-        });
     }
 
     // ###########################################################################################
-    // Creates a pre-scaled bitmap from a full-resolution source image.
+    // Renders a thumbnail's highlight rectangles ALONE, on transparent, at the base thumbnail's
+    // pixel size - the layer every thumbnail template draws over the base image
+    // (SchematicThumbnail.HighlightImage). On the UI thread: it lays out a control.
+    //
+    // It used to composite the base image too, with the blink factor baked into the highlight
+    // opacity, so each blink tick rendered every highlighted thumbnail again (code review,
+    // 2026-10-13). Drawn over the same image at the same size, it looks as the composite did; the
+    // blink is the layer's opacity now (ApplyBlinkPhase).
     // ###########################################################################################
-    public static RenderTargetBitmap CreateScaledThumbnail(Bitmap source, int maxWidth)
-    {
-        double scale = Math.Min(1.0, (double)maxWidth / source.PixelSize.Width);
-        int tw = Math.Max(1, (int)(source.PixelSize.Width * scale));
-        int th = Math.Max(1, (int)(source.PixelSize.Height * scale));
-
-        var imageControl = new Image { Source = source, Stretch = Stretch.Uniform };
-        imageControl.Measure(new Size(tw, th));
-        imageControl.Arrange(new Rect(0, 0, tw, th));
-
-        var rtb = new RenderTargetBitmap(new PixelSize(tw, th), new Vector(96, 96));
-        rtb.Render(imageControl);
-        return rtb;
-    }
-
-    // ###########################################################################################
-    // Composites highlight rectangles onto a base thumbnail and returns the new rendered bitmap.
-    // ###########################################################################################
-    public static RenderTargetBitmap CreateHighlightedThumbnail(
+    public static RenderTargetBitmap CreateThumbnailHighlightLayer(
         IImage baseThumbnail, PixelSize originalPixelSize,
-        HighlightSpatialIndex index, BoardSchematicEntry schematic, double opacityMultiplier = 1.0)
+        HighlightSpatialIndex index, BoardSchematicEntry schematic)
     {
         int tw = 1, th = 1;
-        if (baseThumbnail is RenderTargetBitmap rtb)
-        {
-            tw = rtb.PixelSize.Width;
-            th = rtb.PixelSize.Height;
-        }
-        else if (baseThumbnail is Bitmap bmp)
+        if (baseThumbnail is Bitmap bmp)
         {
             tw = bmp.PixelSize.Width;
             th = bmp.PixelSize.Height;
         }
-
-        var root = new Grid();
-        var image = new Image
-        {
-            Source = baseThumbnail,
-            Stretch = Stretch.Uniform,
-            HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left,
-            VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top
-        };
 
         var overlay = new SchematicHighlightsOverlay
         {
@@ -262,11 +246,11 @@ public partial class TabSchematics
             BitmapPixelSize = originalPixelSize,
             ViewMatrix = Matrix.Identity,
             HighlightColor = RectGeometry.ParseColorOrDefault(schematic.ThumbnailHighlightColor, Colors.IndianRed),
-            HighlightOpacity = RectGeometry.ParseOpacityOrDefault(schematic.ThumbnailHighlightOpacity, 0.20) * Math.Clamp(opacityMultiplier, 0.0, 1.0),
+            HighlightOpacity = RectGeometry.ParseOpacityOrDefault(schematic.ThumbnailHighlightOpacity, 0.20),
             IsHitTestVisible = false
         };
 
-        root.Children.Add(image);
+        var root = new Grid();
         root.Children.Add(overlay);
 
         root.Measure(new Size(tw, th));
@@ -398,49 +382,75 @@ public partial class TabSchematics
     // ###########################################################################################
     private async void OnThumbnailPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (!this.thisIsDraggingThumbnail || this.thisDraggedThumbnail == null)
-            return;
-
-        var point = e.GetPosition(this);
-        var diff = this.thisThumbnailDragStartPoint - point;
-
-        // Slightly higher threshold to avoid accidental detaching on tiny pointer jitter.
-        if (Math.Abs(diff.X) <= 6 && Math.Abs(diff.Y) <= 6)
-            return;
-
-        if (sender is not Control control)
-            return;
-
-        this.thisIsDraggingThumbnail = false;
-
-        this.thisDraggedThumbnailOriginalIndex = this.currentThumbnails.IndexOf(this.thisDraggedThumbnail);
-        if (this.thisDraggedThumbnailOriginalIndex < 0)
-            return;
-
-        this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
-        this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
-
-        var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
-        this.thisThumbnailLastPointerYInList = pointerInList.Y;
-
-        var transformToList = control.TransformToVisual(this.SchematicsThumbnailList);
-        if (transformToList.HasValue)
+        // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+        // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+        try
         {
-            var boundsInList = new Rect(control.Bounds.Size).TransformToAABB(transformToList.Value);
-            this.thisThumbnailDragGhostFixedX = Math.Max(0, boundsInList.X);
-        }
-        else
-        {
-            this.thisThumbnailDragGhostFixedX = Math.Max(0, pointerInList.X - this.thisThumbnailDragPointerOffsetInItem.X);
-        }
+            if (!this.thisIsDraggingThumbnail || this.thisDraggedThumbnail == null)
+                return;
 
-        this.currentThumbnails.RemoveAt(this.thisDraggedThumbnailOriginalIndex);
-        this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
-        this.ShowThumbnailDragGhost(this.thisDraggedThumbnail, pointerInList);
+            var point = e.GetPosition(this);
+            var diff = this.thisThumbnailDragStartPoint - point;
 
-        if (this.thisThumbnailDragStartEventArgs == null)
-        {
-            this.RestoreDraggedThumbnail();
+            // Slightly higher threshold to avoid accidental detaching on tiny pointer jitter.
+            if (Math.Abs(diff.X) <= 6 && Math.Abs(diff.Y) <= 6)
+                return;
+
+            if (sender is not Control control)
+                return;
+
+            this.thisIsDraggingThumbnail = false;
+
+            this.thisDraggedThumbnailOriginalIndex = this.currentThumbnails.IndexOf(this.thisDraggedThumbnail);
+            if (this.thisDraggedThumbnailOriginalIndex < 0)
+                return;
+
+            this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
+            this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
+
+            var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
+            this.thisThumbnailLastPointerYInList = pointerInList.Y;
+
+            var transformToList = control.TransformToVisual(this.SchematicsThumbnailList);
+            if (transformToList.HasValue)
+            {
+                var boundsInList = new Rect(control.Bounds.Size).TransformToAABB(transformToList.Value);
+                this.thisThumbnailDragGhostFixedX = Math.Max(0, boundsInList.X);
+            }
+            else
+            {
+                this.thisThumbnailDragGhostFixedX = Math.Max(0, pointerInList.X - this.thisThumbnailDragPointerOffsetInItem.X);
+            }
+
+            this.currentThumbnails.RemoveAt(this.thisDraggedThumbnailOriginalIndex);
+            this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
+            this.ShowThumbnailDragGhost(this.thisDraggedThumbnail, pointerInList);
+
+            if (this.thisThumbnailDragStartEventArgs == null)
+            {
+                this.RestoreDraggedThumbnail();
+                this.HideThumbnailDragGhost();
+                this.ClearThumbnailDropPlaceholder();
+                this.thisDraggedThumbnail = null;
+                this.thisDraggedThumbnailOriginalIndex = -1;
+                this.thisDraggedThumbnailWasSelected = false;
+                this.thisThumbnailLastPointerYInList = double.NaN;
+                this.thisThumbnailDragStartEventArgs = null;
+                return;
+            }
+
+            var dragData = new DataTransfer();
+
+            var effect = await DragDrop.DoDragDropAsync(
+                this.thisThumbnailDragStartEventArgs,
+                dragData,
+                DragDropEffects.Move);
+
+            if (effect != DragDropEffects.Move && this.thisDraggedThumbnail != null)
+            {
+                this.RestoreDraggedThumbnail();
+            }
+
             this.HideThumbnailDragGhost();
             this.ClearThumbnailDropPlaceholder();
             this.thisDraggedThumbnail = null;
@@ -448,30 +458,13 @@ public partial class TabSchematics
             this.thisDraggedThumbnailWasSelected = false;
             this.thisThumbnailLastPointerYInList = double.NaN;
             this.thisThumbnailDragStartEventArgs = null;
-            return;
+
+            e.Handled = true;
         }
-
-        var dragData = new DataTransfer();
-
-        var effect = await DragDrop.DoDragDropAsync(
-            this.thisThumbnailDragStartEventArgs,
-            dragData,
-            DragDropEffects.Move);
-
-        if (effect != DragDropEffects.Move && this.thisDraggedThumbnail != null)
+        catch (Exception ex)
         {
-            this.RestoreDraggedThumbnail();
+            Logger.Critical($"OnThumbnailPointerMoved failed - [{ex}]");
         }
-
-        this.HideThumbnailDragGhost();
-        this.ClearThumbnailDropPlaceholder();
-        this.thisDraggedThumbnail = null;
-        this.thisDraggedThumbnailOriginalIndex = -1;
-        this.thisDraggedThumbnailWasSelected = false;
-        this.thisThumbnailLastPointerYInList = double.NaN;
-        this.thisThumbnailDragStartEventArgs = null;
-
-        e.Handled = true;
     }
 
     // ###########################################################################################
@@ -495,6 +488,8 @@ public partial class TabSchematics
         this.ThumbnailDragGhost.Width = this.thisDraggedThumbnailWidth;
         this.ThumbnailDragGhostName.Text = thumbnail.Name;
         this.ThumbnailDragGhostImage.Source = thumbnail.ImageSource ?? thumbnail.BaseThumbnail;
+        this.ThumbnailDragGhostHighlightImage.Source = thumbnail.HighlightImage;
+        this.ThumbnailDragGhostHighlightImage.Opacity = thumbnail.HighlightLayerOpacity;
         this.ThumbnailDragGhost.IsVisible = true;
         this.UpdateThumbnailDragGhostPosition(pointerInList);
     }
@@ -507,6 +502,7 @@ public partial class TabSchematics
         this.ThumbnailDragGhost.IsVisible = false;
         this.ThumbnailDragGhostName.Text = string.Empty;
         this.ThumbnailDragGhostImage.Source = null;
+        this.ThumbnailDragGhostHighlightImage.Source = null;
         this.thisThumbnailDragGhostFixedX = 0;
 
         if (this.ThumbnailDragGhost.RenderTransform is TranslateTransform transform)
@@ -788,8 +784,8 @@ public partial class TabSchematics
 
     // ###########################################################################################
     // Builds a stable signature for thumbnail highlight state so thumbnails only rebuild when the
-    // actual rendered state changes. Component blink phase is included because thumbnail highlight
-    // overlays are baked into the rendered bitmap.
+    // actual rendered state changes. The blink phase is NOT part of it (code review, 2026-10-13):
+    // it is the highlight layer's opacity (ApplyBlinkPhase), so a blink tick rebuilds nothing.
     // ###########################################################################################
     private string BuildThumbnailHighlightSignature(bool hasComponentSelection, bool hasKiCadSelection)
     {
@@ -797,10 +793,6 @@ public partial class TabSchematics
         // at least one highlight, since two different label sets can highlight the same schematics.
         string componentPart = hasComponentSelection
             ? this.thisHighlightedBoardLabelsSignature
-            : string.Empty;
-
-        string componentBlinkPart = hasComponentSelection
-            ? this.thisCurrentHighlightBlinkFactor.ToString("0.###", CultureInfo.InvariantCulture)
             : string.Empty;
 
         var explicitKiCadNets = this.BuildKiCadThumbnailDimmingNetNames();
@@ -831,7 +823,6 @@ public partial class TabSchematics
         return string.Join(
             "\u001F",
             componentPart,
-            componentBlinkPart,
             explicitKiCadNetPart,
             importantSignalPart,
             lockedNetPart,

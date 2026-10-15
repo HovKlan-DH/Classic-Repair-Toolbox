@@ -138,11 +138,14 @@ namespace Handlers.DataHandling
         //     intermittently. The test was RIGHT and the code was wrong; it only looked flaky
         //     because two publishes inside the same clock second happen to agree.
         //
-        // *** THE FIX IS A FIXED TIMESTAMP ON EVERY ENTRY, NOT A RE-COMPRESSION. *** The entries
-        // are copied across verbatim, so the compressed bytes are untouched and only the archive's
-        // own metadata is normalised. The constant is arbitrary but must never change: moving it
-        // would re-hash every published workbook at once and trigger a download of the entire data
-        // tree for every user.
+        // *** THE FIX IS A FIXED TIMESTAMP ON EVERY ENTRY. *** Each entry is read and written again
+        // through System.IO.Compression (corrected 2026-10-13: this said the compressed bytes were
+        // copied verbatim - they are not; Open() inflates and the copy deflates afresh). So the bytes
+        // are the same for the same content ON ONE .NET RUNTIME; a runtime update that changes its
+        // deflate output (zlib-ng since .NET 9) changes every re-published workbook's bytes once,
+        // and clients download each such board once. The timestamp constant is arbitrary but must
+        // never change: moving it would re-hash every published workbook at once and trigger a
+        // download of the entire data tree for every user.
         //
         // Failure is SOFT. A workbook that could not be normalised is still a perfectly valid
         // workbook - it just hashes differently next time - and losing the board over a tidy-up

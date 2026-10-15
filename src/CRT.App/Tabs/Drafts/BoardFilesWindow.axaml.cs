@@ -504,44 +504,62 @@ namespace CRT
 
         private async void OnAddSchematicsClick(object? sender, RoutedEventArgs e)
         {
-            var topLevel = GetTopLevel(this);
-            if (topLevel == null)
+            try
             {
-                return;
-            }
-
-            var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = "Select schematic images",
-                AllowMultiple = true,
-                FileTypeFilter = new[]
+                var topLevel = GetTopLevel(this);
+                if (topLevel == null)
                 {
-                    new FilePickerFileType("Images")
+                    return;
+                }
+
+                var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "Select schematic images",
+                    AllowMultiple = true,
+                    FileTypeFilter = new[]
                     {
-                        Patterns = ContributionPackaging.DisplayableImageExtensions
-                            .Select(extension => "*" + extension)
-                            .ToArray(),
+                        new FilePickerFileType("Images")
+                        {
+                            Patterns = ContributionPackaging.DisplayableImageExtensions
+                                .Select(extension => "*" + extension)
+                                .ToArray(),
+                        },
                     },
-                },
-            });
+                });
 
-            if (files == null || files.Count == 0)
-            {
-                return;
+                if (files == null || files.Count == 0)
+                {
+                    return;
+                }
+
+                await this.ImportSchematicsAsync(files.Select(file => file.Path.LocalPath));
             }
-
-            await this.ImportSchematicsAsync(files.Select(file => file.Path.LocalPath));
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnAddSchematicsClick failed - [{ex}]");
+            }
         }
 
         private async void OnSchematicsDropped(object? sender, DragEventArgs e)
         {
-            var paths = GetDroppedPaths(e);
-            if (paths.Count == 0)
+            try
             {
-                return;
-            }
+                var paths = GetDroppedPaths(e);
+                if (paths.Count == 0)
+                {
+                    return;
+                }
 
-            await this.ImportSchematicsAsync(paths.Where(File.Exists));
+                await this.ImportSchematicsAsync(paths.Where(File.Exists));
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnSchematicsDropped failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -817,9 +835,18 @@ namespace CRT
         // ###########################################################################################
         private async void OnRemoveSchematicClick(object? sender, RoutedEventArgs e)
         {
-            if (sender is Button { Tag: BoardSchematicRow row })
+            try
             {
-                await this.RemoveSchematicAsync(row);
+                if (sender is Button { Tag: BoardSchematicRow row })
+                {
+                    await this.RemoveSchematicAsync(row);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnRemoveSchematicClick failed - [{ex}]");
             }
         }
 
@@ -910,33 +937,51 @@ namespace CRT
 
         private async void OnImportKiCadClick(object? sender, RoutedEventArgs e)
         {
-            var topLevel = GetTopLevel(this);
-            if (topLevel == null)
+            try
             {
-                return;
+                var topLevel = GetTopLevel(this);
+                if (topLevel == null)
+                {
+                    return;
+                }
+
+                var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+                {
+                    Title = "Select the KiCad project folder",
+                    AllowMultiple = false,
+                });
+
+                if (folders == null || folders.Count == 0)
+                {
+                    return;
+                }
+
+                await this.ImportKiCadFolderAsync(folders[0].Path.LocalPath);
             }
-
-            var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            catch (Exception ex)
             {
-                Title = "Select the KiCad project folder",
-                AllowMultiple = false,
-            });
-
-            if (folders == null || folders.Count == 0)
-            {
-                return;
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnImportKiCadClick failed - [{ex}]");
             }
-
-            await this.ImportKiCadFolderAsync(folders[0].Path.LocalPath);
         }
 
         private async void OnKiCadDropped(object? sender, DragEventArgs e)
         {
-            string? folder = GetDroppedPaths(e).FirstOrDefault(Directory.Exists);
-
-            if (!string.IsNullOrWhiteSpace(folder))
+            try
             {
-                await this.ImportKiCadFolderAsync(folder);
+                string? folder = GetDroppedPaths(e).FirstOrDefault(Directory.Exists);
+
+                if (!string.IsNullOrWhiteSpace(folder))
+                {
+                    await this.ImportKiCadFolderAsync(folder);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnKiCadDropped failed - [{ex}]");
             }
         }
 
@@ -954,9 +999,18 @@ namespace CRT
         // ###########################################################################################
         private async void OnRemoveKiCadFileClick(object? sender, RoutedEventArgs e)
         {
-            if (sender is Button { Tag: BoardKiCadFileRow row })
+            try
             {
-                await this.RemoveKiCadFileAsync(row);
+                if (sender is Button { Tag: BoardKiCadFileRow row })
+                {
+                    await this.RemoveKiCadFileAsync(row);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnRemoveKiCadFileClick failed - [{ex}]");
             }
         }
 

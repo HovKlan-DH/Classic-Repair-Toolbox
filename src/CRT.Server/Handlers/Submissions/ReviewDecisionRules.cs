@@ -47,6 +47,20 @@ namespace CRT.Server.Handlers.Submissions
         public const int MaximumReasonLength = 4000;
 
         // ###########################################################################################
+        // The refusal for a decision on a submission another maintainer changed in the table after
+        // this one opened it (code review, 2026-10-13) - ReviewDecisionRequest.ExpectedVersion. A
+        // 409, so CRT reads the queue and the submission again and the change is on screen.
+        // ###########################################################################################
+        public const string AmendedSinceMessage =
+            "Another maintainer changed this submission in the table after you opened it. " +
+            "Look at the change, then decide again.";
+
+        // The refusal for a decision on a submission somebody else decided meanwhile - its state
+        // moved between the check and the write (TrySetDecisionAsync).
+        public const string DecidedMeanwhileMessage =
+            "Somebody else decided this submission while you were deciding it. Look at what it is now.";
+
+        // ###########################################################################################
         // May this account APPROVE - and therefore publish - this submission?
         // ###########################################################################################
         public static bool CanApprove(ReviewAccess? access, SubmissionRecord? submission, out string reason) =>

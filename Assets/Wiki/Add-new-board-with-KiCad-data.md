@@ -129,7 +129,9 @@ When it is published, the maintainer who accepts it may choose other names for t
 The box at the bottom previews exactly what will be created. Click **Create board** and you are asked
 to accept the role of **maintainer**: if you later submit this board for the community to use, you will
 be registered as its maintainer, and you will review the changes others submit for it and publish the
-ones that are right. A new board can only be created if you accept. **Decline** takes you back to the form with nothing created.
+ones that are right. That happens by itself when the board is accepted - see
+[If you contributed a whole new board](Contribute-data-via-CRT#if-you-contributed-a-whole-new-board).
+A new board can only be created if you accept. **Decline** takes you back to the form with nothing created.
 
 Click **Accept and create** and the board is created, appears in the hardware and board lists straight
 away, and is selected for you.
@@ -319,9 +321,9 @@ Two extra checks worth doing:
 * Re-open **KiCad data** and confirm nothing is left in the "will NOT light up" list.
 * Click **Edit in table format** on the Drafts tab and fix every red corner - a draft with errors cannot
   be submitted. Amber corners are warnings worth a look.
-* Tick **"View boards as officially coming from online source (hide my local draft changes)"** on the
-  Configuration tab, then untick it again. For a brand-new board, ticking it shows an empty board -
-  that is correct, because officially your board does not exist yet.
+* Tick **"View boards as published online (hide my draft changes)"** on the Configuration tab, then untick it
+  again. For a brand-new board, ticking it shows an empty board - that is correct, because your board
+  is not published yet.
 
 The logfile is still worth a glance for anything unexpected; the application is deliberately forgiving
 at runtime, so some mistakes are a warning there rather than a visible failure.
@@ -335,13 +337,13 @@ at runtime, so some mistakes are a warning there rather than a visible failure.
 | No overlay at all on any view | `CAD name` typo, or a non-modern KiCad format. Re-open **KiCad data** and read the report. |
 | Overlay on PCB views but not schematic views | The schematic sheets were not loaded, or their sheet names differ from what you put in `CAD name` - the report lists the real names |
 | A component highlights most of its traces but not all | Hover the missing line: if it lights up, the net exists. On a hierarchical project this used to mean the sheets named that net differently; that is now followed automatically, so a remaining gap is worth reporting |
-| Traces appear but are offset or stretched | Calibration missing or stale for that view |
+| Traces appear but are offset or stretched | Calibration missing or stale for that view. Recalibrate it (step 7) and submit the draft - a draft whose only change is a calibration can be sent on its own |
 | Component highlights, but no copper lights up | Reference designator != board label. **The report names every one of these** - see step 5 |
 | Only some nets ever light up | Those nets are unnamed in KiCad, or the component's pads have no net assignment |
 | Signal missing from the Important signals panel | Net name does not resolve - re-open **KiCad data** and read "important signals will NOT light up" |
 | "Mark first pin on component" is not offered | Only PCB views carry pad data; schematic views cannot mark pin 1 |
 | "KiCad data initializing..." for a long time | Normal on a large `.kicad_pcb`; it loads in the background |
-| Your board shows as empty | "View boards as officially coming from online source" is ticked on the Configuration tab. A draft-only board has nothing published yet, so that view is correctly blank |
+| Your board shows as empty | "View boards as published online" is ticked on the Configuration tab. A draft-only board has nothing published yet, so that view is correctly blank |
 
 ---
 

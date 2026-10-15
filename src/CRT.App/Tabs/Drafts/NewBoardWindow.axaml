@@ -99,6 +99,7 @@
 		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button Content="Cancel" Click="OnCancelClick" />
 			<Button x:Name="CreateButton"
+					Classes="Accept"
 					Content="Create board"
 					IsEnabled="False"
 					Click="OnCreateClick" />

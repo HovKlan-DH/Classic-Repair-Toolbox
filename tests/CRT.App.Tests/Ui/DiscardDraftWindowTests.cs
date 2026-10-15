@@ -113,7 +113,8 @@ public sealed class DiscardDraftWindowTests
             var textBlocks = window.GetVisualDescendants().OfType<TextBlock>().ToList();
 
             Assert.Contains(textBlocks, t => t.Text == "This permanently discards your local, unpublished edits to:");
-            Assert.Contains(textBlocks, t => t.Text != null && t.Text.Contains("officially published data is not affected", StringComparison.Ordinal));
+            // "The published data", the one name CRT uses for it since 2026-10-13 (was "officially published").
+            Assert.Contains(textBlocks, t => t.Text != null && t.Text.Contains("The published data is not affected", StringComparison.Ordinal));
             Assert.Contains(textBlocks, t => t.Text == "This cannot be undone!");
         });
     }

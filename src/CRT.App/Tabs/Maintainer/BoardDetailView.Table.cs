@@ -96,7 +96,8 @@ namespace CRT
 
         private void WireTable()
         {
-            this.BoardTable.SaveRequested += async (_, _) => await this.SendTableAsync();
+            this.BoardTable.SaveRequested += async (_, _) =>
+                await HandlerGuard.RunAsync(this.SendTableAsync, message => this.ShowTableLoadMessage(message));
         }
 
         internal BoardTableEditor BoardTableForTests => this.BoardTable;
@@ -106,6 +107,10 @@ namespace CRT
             this.thisTable is not null && string.Equals(this.thisTable.BoardId, boardId, StringComparison.Ordinal);
 
         internal bool HasUnsavedTableEdits => this.thisTable is not null && this.BoardTable.HasUnsavedChanges;
+
+        // A cell still in BETA's table's editor, committed - only at a moment of leaving (the
+        // background reads HasUnsavedTableEdits too, and must not close an editor under the typing).
+        internal void CommitCellEdit() => this.BoardTable.CommitCellEdit();
 
         // ###########################################################################################
         // Reads BETA's data for the board on screen and opens the table on it. The answer is
@@ -554,6 +559,10 @@ namespace CRT
         // ###########################################################################################
         internal async Task<bool> MayLeaveTableAsync(Window? owner = null, bool canSend = true)
         {
+            // A cell still in its editor is a change too (code review, 2026-10-13) - the grid does not
+            // commit it when another board, Sign out or CRT's own close takes the click.
+            this.CommitCellEdit();
+
             if (!this.HasUnsavedTableEdits)
                 return true;
 

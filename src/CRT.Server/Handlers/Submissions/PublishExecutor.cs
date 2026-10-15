@@ -128,6 +128,16 @@ namespace CRT.Server.Handlers.Submissions
             if (refusal is not null)
                 return PublishOutcome.Failed(refusal);
 
+            // ###########################################################################################
+            // *** CANCELLABLE ONLY UNTIL HERE (code review, 2026-10-13). *** The request's token used
+            // to be honoured between files: a maintainer's client giving up - a closed laptop, a
+            // proxy timeout - stopped the publish at file 600 of 1,200, with half the board
+            // replaced, the workbook untouched and the submission still pending. From the first
+            // write on, it runs to the end whatever the client does - the rule BoardOrderFlow and
+            // BoardDeletionFlow already follow.
+            // ###########################################################################################
+            cancellationToken = CancellationToken.None;
+
             // ---- 1. The files ------------------------------------------------------------------
             //
             // Each copy is hashed as it is written and moved into place only on a match - see
@@ -176,10 +186,12 @@ namespace CRT.Server.Handlers.Submissions
                         plan.BoardId,
                         file.RelativePath);
 
+                    // The exception's own text names the server's paths - it is in the log line
+                    // above, never in what the maintainer is shown (code review, 2026-10-13).
                     return PublishOutcome.Failed(
-                        $"[{file.RelativePath}] could not be written to the published tree " +
-                        $"({ex.Message}). Nothing was changed. This is a server configuration " +
-                        "problem rather than a fault in the submission.");
+                        $"[{file.RelativePath}] could not be written to the BETA data. " +
+                        PublishExecutor.FilesBeforeSentence(plan, file) +
+                        "This is a server configuration problem rather than a fault in the submission - the server's log says more.");
                 }
 
                 if (copied == BlobCopyResult.HashMismatch)
@@ -272,7 +284,7 @@ namespace CRT.Server.Handlers.Submissions
                     plan.WorkbookPath);
 
                 return PublishOutcome.Failed(
-                    $"The board workbook could not be written ({ex.Message}). The board's image and "
+                    "The board workbook could not be written - the server's log says why. The board's image and "
                     + "attachment files were already replaced, so this board is part-published - "
                     + "re-run the publish once the server configuration is fixed.");
             }
@@ -330,7 +342,7 @@ namespace CRT.Server.Handlers.Submissions
                     plan.SidecarPath);
 
                 return PublishOutcome.Failed(
-                    $"The board's highlight file could not be written ({ex.Message}). The board's files and "
+                    "The board's highlight file could not be written - the server's log says why. The board's files and "
                     + "workbook were already replaced, so this board is part-published - approve again once the "
                     + "server configuration is fixed.");
             }
@@ -408,6 +420,12 @@ namespace CRT.Server.Handlers.Submissions
             return PublishOutcome.Published(descriptor, workbookHash, plan.Files.Count);
         }
 
+        // What a refusal at `file` leaves behind - nothing, when it is the first file written.
+        private static string FilesBeforeSentence(PublishPlanDetail plan, PlannedFile file) =>
+            ReferenceEquals(plan.Files.FirstOrDefault(), file)
+                ? "Nothing was changed. "
+                : "Files before it were already replaced; approving again once it is fixed completes the publish. ";
+
         // ###########################################################################################
         // The pre-write check. Null when everything may be written, otherwise the reason it may not.
         //
@@ -452,8 +470,10 @@ namespace CRT.Server.Handlers.Submissions
                         "Publish of {BoardId} refused: [{Link}] is a symbolic link on the way to [{Destination}].",
                         plan.BoardId, link, destination);
 
-                    return $"The published tree contains a symbolic link at [{link}], and publishing through it " +
-                        "could write outside the data tree. Nothing was changed. Remove the link on the server.";
+                    // Named from the data root, never as the server's absolute path (code review,
+                    // 2026-10-13) - the log line above has the whole path for the administrator.
+                    return $"The BETA data contains a symbolic link at [{TreeWriteAccess.DisplayName(plan.DataRoot, link)}], and publishing through it " +
+                        "could write outside the data. Nothing was changed. Remove the link on the server.";
                 }
             }
 

@@ -65,7 +65,8 @@ namespace CRT.Server.Handlers.Submissions
             BlobStore blobs,
             DateTimeOffset now,
             CancellationToken cancellationToken = default,
-            PublishedTreeView? tree = null)
+            PublishedTreeView? tree = null,
+            PublishedTreeView? stableTree = null)
         {
             ArgumentNullException.ThrowIfNull(manifest);
             ArgumentNullException.ThrowIfNull(submitter);
@@ -319,7 +320,13 @@ namespace CRT.Server.Handlers.Submissions
 
                         // A new board's notes (2026-10-05), for the placement to start with.
                         // Their length was held to the notes column's by SubmissionValidator.
-                        HardwareNotes: string.IsNullOrWhiteSpace(manifest.HardwareNotes) ? null : manifest.HardwareNotes.Trim()),
+                        HardwareNotes: string.IsNullOrWhiteSpace(manifest.HardwareNotes) ? null : manifest.HardwareNotes.Trim(),
+
+                        // Which files it carries exactly as published (code review, 2026-10-13) -
+                        // so an approval later leaves them as they are published THEN, should
+                        // somebody else have changed one meanwhile. See SubmissionLeftAsPublished.
+                        // Against the stable tree too: a draft is a copy of stable by default.
+                        LeftAsPublished: SubmissionLeftAsPublished.AtCreate(manifest, tree, stableTree)),
                     cancellationToken);
             }
 
@@ -400,7 +407,7 @@ namespace CRT.Server.Handlers.Submissions
                 return BlobUploadOutcome.NoRoom(result.Error ?? "The server is short of storage space.");
 
             if (!result.IsAccepted)
-                return BlobUploadOutcome.ChunkRejected(result.ResumeFrom, result.Error ?? "The chunk was refused.");
+                return BlobUploadOutcome.ChunkRejected(result.ResumeFrom, result.Error ?? SubmissionFlows.PartRefusedMessage);
 
             // The client says it has sent everything by asking to complete. Verification of the
             // hash happens inside TryCompleteAsync and is what makes the store trustworthy.
@@ -412,11 +419,7 @@ namespace CRT.Server.Handlers.Submissions
                 return BlobUploadOutcome.Partial(result.BytesOnDisk);
 
             if (!await blobs.TryCompleteAsync(submissionId, hash, cancellationToken))
-            {
-                return BlobUploadOutcome.HashMismatch(
-                    "The uploaded bytes do not match the hash the submission declared. " +
-                    "The partial upload has been discarded; send it again.");
-            }
+                return BlobUploadOutcome.HashMismatch(SubmissionFlows.FileArrivedDifferentMessage);
 
             await store.MarkUploadedAsync(submissionId, hash, cancellationToken);
 
@@ -472,6 +475,22 @@ namespace CRT.Server.Handlers.Submissions
             ISubmissionStore store,
             BlobStore blobs,
             DateTimeOffset now,
+            CancellationToken cancellationToken = default) =>
+            (await SubmissionFlows.FinaliseWithOutcomeAsync(submissionId, uploadToken, store, blobs, now, cancellationToken)).Result;
+
+        // ###########################################################################################
+        // The same, saying whether THIS call queued the submission (code review, 2026-10-13). A
+        // finalise repeated after a dropped connection is answered with the state the first one left
+        // - IsAccepted for a pending submission - and the endpoint mailed every maintainer on every
+        // IsAccepted, so each retry mailed them all again. Only the call that moved the row from
+        // 'uploading' to 'pending' (ISubmissionStore.TrySetStateAsync) has JustQueued set.
+        // ###########################################################################################
+        public static async Task<FinaliseOutcome> FinaliseWithOutcomeAsync(
+            long submissionId,
+            string? uploadToken,
+            ISubmissionStore store,
+            BlobStore blobs,
+            DateTimeOffset now,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(store);
@@ -481,7 +500,7 @@ namespace CRT.Server.Handlers.Submissions
 
             if (!SubmissionFlows.OwnsSubmission(submission, uploadToken))
             {
-                return new SubmissionResult
+                return new FinaliseOutcome(new SubmissionResult
                 {
                     SubmissionId = submissionId,
                     IsAccepted = false,
@@ -496,21 +515,36 @@ namespace CRT.Server.Handlers.Submissions
                             Message = "That submission does not exist."
                         }
                     ]
-                };
+                });
             }
 
             if (submission.State != SubmissionState.Uploading)
+                return new FinaliseOutcome(await SubmissionFlows.AsItStandsAsync(submission, store, cancellationToken));
+
+            // ###########################################################################################
+            // *** NOT AFTER THE UPLOAD WINDOW (code review, 2026-10-13). *** The upload step refused
+            // a chunk once ExpiresUtc had passed, but finalise did not - so a submission the hourly
+            // sweep was about to mark abandoned could be queued in the same minute, the two writes
+            // racing for the row. Now both refuse alike, and the sweep's write is conditional too.
+            // ###########################################################################################
+            if (submission.ExpiresUtc is not null && submission.ExpiresUtc <= now)
             {
-                // Already finalised. Answering with the current state rather than an error means a
-                // client that retried after a dropped connection gets a sensible answer instead of
-                // a failure for something that actually worked.
-                return new SubmissionResult
+                return new FinaliseOutcome(new SubmissionResult
                 {
                     SubmissionId = submissionId,
-                    IsAccepted = submission.State == SubmissionState.Pending,
+                    IsAccepted = false,
                     State = submission.State,
-                    Findings = (await store.GetFindingsAsync(submissionId, cancellationToken)).ToList()
-                };
+                    Findings =
+                    [
+                        new ValidationFinding
+                        {
+                            Severity = ValidationSeverity.Error,
+                            Code = "submission.expired",
+                            Subject = string.Empty,
+                            Message = SubmissionFlows.UploadWindowClosedMessage
+                        }
+                    ]
+                });
             }
 
             IReadOnlyList<SubmissionFileRecord> files = await store.GetFilesAsync(submissionId, cancellationToken);
@@ -519,7 +553,7 @@ namespace CRT.Server.Handlers.Submissions
 
             if (missing.Count > 0)
             {
-                return new SubmissionResult
+                return new FinaliseOutcome(new SubmissionResult
                 {
                     SubmissionId = submissionId,
                     IsAccepted = false,
@@ -534,14 +568,14 @@ namespace CRT.Server.Handlers.Submissions
                             Message = $"The file [{file.Path}] has not finished uploading."
                         })
                         .ToList()
-                };
+                });
             }
 
             SubmissionManifest? manifest = await store.LoadPayloadAsync(submissionId, cancellationToken);
 
             if (manifest is null)
             {
-                return new SubmissionResult
+                return new FinaliseOutcome(new SubmissionResult
                 {
                     SubmissionId = submissionId,
                     IsAccepted = false,
@@ -556,7 +590,7 @@ namespace CRT.Server.Handlers.Submissions
                             Message = "The submission's contents could not be read. Submit again."
                         }
                     ]
-                };
+                });
             }
 
             var findings = SubmissionValidator.Validate(
@@ -578,7 +612,17 @@ namespace CRT.Server.Handlers.Submissions
 
             string state = accepted ? SubmissionState.Pending : SubmissionState.Rejected;
 
-            await store.SetStateAsync(submissionId, state, now, cancellationToken);
+            // ONLY FROM 'uploading' (code review, 2026-10-13): a second finalise of the same upload,
+            // or the sweep marking it abandoned, may have moved the row since it was read above. The
+            // call that did not move it answers with what the other left - and mails nobody.
+            if (!await store.TrySetStateAsync(submissionId, SubmissionState.Uploading, state, now, cancellationToken))
+            {
+                SubmissionRecord? moved = await store.FindAsync(submissionId, cancellationToken);
+
+                return new FinaliseOutcome(moved is null
+                    ? new SubmissionResult { SubmissionId = submissionId, IsAccepted = false, State = string.Empty }
+                    : await SubmissionFlows.AsItStandsAsync(moved, store, cancellationToken));
+            }
 
             // Queued: it replaces the same contributor's older, untouched submissions of this
             // board (owner decision, 2026-09-26) - see SubmissionReplacementRules. Only once it is
@@ -590,14 +634,41 @@ namespace CRT.Server.Handlers.Submissions
             // needed, and a queued one's have already been moved into the content-addressed store.
             blobs.ClearPartials(submissionId);
 
-            return new SubmissionResult
-            {
-                SubmissionId = submissionId,
-                IsAccepted = accepted,
-                State = state,
-                Findings = findings.ToList()
-            };
+            return new FinaliseOutcome(
+                new SubmissionResult
+                {
+                    SubmissionId = submissionId,
+                    IsAccepted = accepted,
+                    State = state,
+                    Findings = findings.ToList()
+                },
+                JustQueued: accepted);
         }
+
+        // ###########################################################################################
+        // A submission no longer uploading, answered as it stands - a client that retried after a
+        // dropped connection gets a sensible answer instead of a failure for something that
+        // actually worked.
+        // ###########################################################################################
+        private static async Task<SubmissionResult> AsItStandsAsync(
+            SubmissionRecord submission,
+            ISubmissionStore store,
+            CancellationToken cancellationToken) => new()
+        {
+            SubmissionId = submission.Id,
+            IsAccepted = submission.State == SubmissionState.Pending,
+            State = submission.State,
+            Findings = (await store.GetFindingsAsync(submission.Id, cancellationToken)).ToList()
+        };
+
+        // The words a contributor reads (code review, 2026-10-13: no "chunk" or "hash" in them) -
+        // CRT shows a refusal's message as it is.
+        public const string PartRefusedMessage = "Part of the upload was refused - send it again.";
+
+        public const string FileArrivedDifferentMessage =
+            "A file arrived different from what the submission described - send it again.";
+
+        public const string UploadWindowClosedMessage = "The upload window for this submission has passed. Submit again.";
 
         // ###########################################################################################
         // Withdraws what a newly queued submission replaces, and returns the ids withdrawn. The
@@ -701,14 +772,21 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(blobs);
 
             IReadOnlyList<long> expired = await store.GetExpiredUploadsAsync(now, cancellationToken);
+            int collected = 0;
 
             foreach (long submissionId in expired)
             {
+                // ONLY A ROW STILL 'uploading' (code review, 2026-10-13): a finalise that won the race
+                // has queued it, and its partial uploads are already cleared. Marking it abandoned
+                // then would take a queued submission out of the review queue.
+                if (!await store.TrySetStateAsync(submissionId, SubmissionState.Uploading, SubmissionState.Abandoned, now, cancellationToken))
+                    continue;
+
                 blobs.ClearPartials(submissionId);
-                await store.SetStateAsync(submissionId, SubmissionState.Abandoned, now, cancellationToken);
+                collected++;
             }
 
-            return expired.Count;
+            return collected;
         }
 
         // ###########################################################################################
@@ -1014,7 +1092,7 @@ namespace CRT.Server.Handlers.Submissions
         public static BlobUploadOutcome NotFound() => new(BlobUploadStatus.NotFound, 0, null);
 
         public static BlobUploadOutcome Expired() =>
-            new(BlobUploadStatus.Expired, 0, "The upload window for this submission has passed. Submit again.");
+            new(BlobUploadStatus.Expired, 0, SubmissionFlows.UploadWindowClosedMessage);
 
         public static BlobUploadOutcome WrongState(string state) =>
             new(BlobUploadStatus.WrongState, 0, $"This submission is {state} and is no longer accepting uploads.");
@@ -1031,6 +1109,10 @@ namespace CRT.Server.Handlers.Submissions
         public static BlobUploadOutcome NoRoom(string error) =>
             new(BlobUploadStatus.NoRoom, 0, error);
     }
+
+    // What finalising did: the answer the contributor's CRT reads, and whether THIS call moved the
+    // submission from 'uploading' into the review queue - the one case the maintainers are mailed.
+    public sealed record FinaliseOutcome(SubmissionResult Result, bool JustQueued = false);
 
     // How much of one blob has arrived, and whether the store now holds it complete.
     public sealed record UploadState(long Uploaded, bool Complete);

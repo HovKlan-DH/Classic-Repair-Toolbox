@@ -168,6 +168,10 @@ namespace CRT.Server.Handlers.Submissions
                 this.thisLogger,
                 cancellationToken);
 
+            // The tree may have moved: what follows records it and must not be cut short by the
+            // maintainer's client giving up (code review, 2026-10-13).
+            cancellationToken = CancellationToken.None;
+
             // ###########################################################################################
             // *** THE BETA MANIFEST IS REBUILT THE MOMENT THE TREE HAS MOVED (code review,
             // 2026-09-27). *** Every other writer of the BETA tree does this - a publish, the unused

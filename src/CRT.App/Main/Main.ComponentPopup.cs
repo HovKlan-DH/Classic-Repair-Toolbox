@@ -345,10 +345,11 @@ namespace CRT
                 return;
             }
 
+            // The phase alone - an opacity on what is already drawn, nothing rendered or built again
+            // (code review, 2026-10-13; TabSchematics.ApplyBlinkPhase). It rendered every highlighted
+            // thumbnail and rebuilt the KiCad overlay twice a second.
             this._blinkSelectedPhaseVisible = !this._blinkSelectedPhaseVisible;
-            this.TabSchematicsControl.ApplyHighlightVisuals(
-                hasComponentSelection,
-                this.GetCurrentBlinkFactor(true));
+            this.TabSchematicsControl.ApplyBlinkPhase(this.GetCurrentBlinkFactor(true));
         }
 
         // ###########################################################################################
@@ -522,12 +523,52 @@ namespace CRT
             this.TabOverview.ApplyFilter(searchTerm);
         }
 
+        // How long the component filter waits after the last keystroke before it filters - the
+        // Workbooks tab's search waits the same.
+        internal static readonly TimeSpan ComponentSearchDebounceInterval = TimeSpan.FromMilliseconds(200);
+
+        private DispatcherTimer? _componentSearchDebounceTimer;
+
+        internal bool IsComponentSearchPendingForTests => this._componentSearchDebounceTimer?.IsEnabled == true;
+
+        // Applies a waiting filter at once, as its timer would.
+        internal void FlushComponentSearchForTests() => this.ApplyComponentSearchNow();
+
+        // ###########################################################################################
+        // The search box's TextChanged: the filter runs 200 ms after the LAST keystroke (code review,
+        // 2026-10-13). Each keystroke rebuilt the component list, every highlight, the thumbnails'
+        // highlight layers and the KiCad overlay; typing "U12" did all of it three times. A direct
+        // call with no sender (the label editor's) is applied at once.
+        // ###########################################################################################
+        public void OnComponentSearchTextChanged(object? sender, global::Avalonia.Controls.TextChangedEventArgs e)
+        {
+            if (this._suppressComponentSearchRefresh)
+                return;
+
+            if (sender == null)
+            {
+                this.ApplyComponentSearchNow();
+                return;
+            }
+
+            if (this._componentSearchDebounceTimer == null)
+            {
+                this._componentSearchDebounceTimer = new DispatcherTimer { Interval = Main.ComponentSearchDebounceInterval };
+                this._componentSearchDebounceTimer.Tick += (_, _) => this.ApplyComponentSearchNow();
+            }
+
+            this._componentSearchDebounceTimer.Stop();
+            this._componentSearchDebounceTimer.Start();
+        }
+
         // ###########################################################################################
         // Refreshes the component filter list based on search text, or switches to label-editor
         // search behavior while the component label editor is active.
         // ###########################################################################################
-        public void OnComponentSearchTextChanged(object? sender, global::Avalonia.Controls.TextChangedEventArgs e)
+        internal void ApplyComponentSearchNow()
         {
+            this._componentSearchDebounceTimer?.Stop();
+
             if (this._suppressComponentSearchRefresh || this._currentBoardData == null || this._suppressCategoryFilterSave)
                 return;
 

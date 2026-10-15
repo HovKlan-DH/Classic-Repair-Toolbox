@@ -247,7 +247,7 @@ What that save actually does:
 * Saves into your own local **draft** for this board, not into the board's Excel file or JSON directly -
   nothing you edit here changes what anyone else sees until you submit it, and the [Drafts tab](Drafts-tab) lists
   every board you have local changes on. See [Command-line parameters](Commandline-parameters) for where
-  drafts are stored, and the Configuration tab's "View boards as officially coming from online source" option ([View boards from online source](View-boards-from-online-source)) to check
+  drafts are stored, and the Configuration tab's "View boards as published online" option ([View boards from online source](View-boards-from-online-source)) to check
   what the board looks like without your edit.
 * Replaces the highlights for the **currently selected schematic only** - every other schematic keeps
   whatever your draft already has for it (to begin with, the published highlights).

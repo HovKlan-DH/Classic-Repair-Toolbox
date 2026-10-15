@@ -33,8 +33,10 @@
 									Padding="5,1"
 									VerticalAlignment="Center"
 									ToolTip.Tip="{Binding SubmissionTooltip}">
+								<!-- 11px, not 10 (code review, 2026-10-13): the state - "Changes requested" above
+								     all - is the line a contributor most needs to read. -->
 								<TextBlock Text="{Binding SubmissionStateText}"
-										   FontSize="10"
+										   FontSize="11"
 										   Foreground="{Binding SubmissionAccentBrush}" />
 							</Border>
 
@@ -81,6 +83,15 @@
 								   TextWrapping="Wrap"
 								   Foreground="{DynamicResource Table_Fg}"
 								   Opacity="0.75" />
+						<!-- Why Submit is greyed out, or that the draft is finished with - said ON the
+						     row, not only in the button's tooltip, which a keyboard or touch user never
+						     sees (code review, 2026-10-13). -->
+						<TextBlock Text="{Binding NoteText}"
+								   IsVisible="{Binding HasNote}"
+								   FontSize="11"
+								   TextWrapping="Wrap"
+								   Foreground="{DynamicResource Table_Fg}"
+								   Opacity="0.75" />
 					</StackPanel>
 
 					<Button Grid.Column="1"
@@ -88,7 +99,7 @@
 							IsVisible="{Binding HasDrift}"
 							VerticalAlignment="Center"
 							Margin="0,0,8,0"
-							ToolTip.Tip="See how your edits line up with the official data now"
+							ToolTip.Tip="See your changes and the published update, and bring your draft up to date"
 							Command="{Binding ViewDriftCommand}" />
 
 					<!-- Opens this draft's workbook as editable sheets directly below the
@@ -124,12 +135,13 @@
 					     button that appears only sometimes reads as the app having lost
 					     it. No account is needed to press this; the dialog asks only for
 					     an email address, so a maintainer can contact the contributor if
-					     they need to. The OUTCOME is reported in "My submissions" - no
-					     email is sent, see SubmissionReceipt's header.
+					     they need to. The OUTCOME is mailed to that address and shown in
+					     "My submissions" (SubmissionNotifier sends the decision mails).
 					     Greyed out too while the draft holds exactly what was last sent (2026-10-03).
 					     ShowOnDisabled, because a disabled button shows no tooltip otherwise - and
 					     the reason it is greyed out is what the tooltip is for. -->
 					<Button Grid.Column="5"
+							Classes="Accept"
 							Content="Submit"
 							VerticalAlignment="Center"
 							Margin="0,0,8,0"
@@ -139,10 +151,8 @@
 							Command="{Binding SubmitCommand}" />
 
 					<Button Grid.Column="6"
+							Classes="Danger"
 							Content="Discard"
-							Foreground="{DynamicResource Button_Cancel_Fg}"
-							Background="{DynamicResource Button_Cancel_Bg}"
-							BorderBrush="{DynamicResource Button_Cancel_Border}"
 							VerticalAlignment="Center"
 							Command="{Binding DiscardCommand}" />
 				</Grid>
@@ -240,6 +250,7 @@
 				<!-- The same action as the Contribute tab's button, offered again here because this
 				     is where someone returning to their drafts looks for it. -->
 				<Button x:Name="AddNewBoardButton"
+						Classes="Accept"
 						Content="Add a new board"
 						ToolTip.Tip="Create a whole new hardware and board of your own, as a local draft"
 						Click="OnAddNewBoardClick" />

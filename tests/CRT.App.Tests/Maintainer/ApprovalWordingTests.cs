@@ -192,4 +192,72 @@ public sealed class ApprovalWordingTests
             "Replaces a shared file - one of two approvals given",
             ReviewQueueDisplay.Footer(row, ApprovalWordingTests.Now));
     }
+
+    // ###########################################################################################
+    // *** THE TWO APPROVERS ARE TOLD WHICH BOARDS (code review, 2026-10-13). *** "Other boards may
+    // use" was all a shared-file replacement said. The file tree names them per replaced file; the
+    // status line says it once, each board once, in order.
+    // ###########################################################################################
+    [Fact]
+    public void The_other_boards_a_replaced_shared_file_reaches_are_named_once_each()
+    {
+        BoardFileEntry[] files =
+        [
+            new("Commodore/Shared files/a.pdf", BoardFileChange.Changed, BoardFileSource.Submission,
+                AlsoUsedBy: ["Commodore / VIC-20 / 250403", "Commodore / C128 / 310378"]),
+            new("Commodore/Shared files/b.pdf", BoardFileChange.Changed, BoardFileSource.Submission,
+                AlsoUsedBy: ["Commodore / C128 / 310378"]),
+            new("Commodore/C64/250407/c.png", BoardFileChange.Added, BoardFileSource.Submission)
+        ];
+
+        Assert.Equal(
+            "Also used by 2 other boards: Commodore / C128 / 310378, Commodore / VIC-20 / 250403.",
+            ApprovalWording.AlsoUsedByLine(files));
+
+        Assert.Equal(
+            "Also used by 1 other board: Commodore / C128 / 310378.",
+            ApprovalWording.AlsoUsedByLine([files[1]]));
+
+        Assert.Null(ApprovalWording.AlsoUsedByLine([files[2]]));
+        Assert.Null(ApprovalWording.AlsoUsedByLine(null));
+    }
+
+    [Fact]
+    public void The_boards_line_follows_the_status_line_and_stands_alone_without_one()
+    {
+        Assert.Equal("Needs two. Also used by 1.", ApprovalWording.WithAlsoUsedBy("Needs two.", "Also used by 1."));
+        Assert.Equal("Needs two.", ApprovalWording.WithAlsoUsedBy("Needs two.", null));
+        Assert.Equal("Also used by 1.", ApprovalWording.WithAlsoUsedBy(null, "Also used by 1."));
+        Assert.Null(ApprovalWording.WithAlsoUsedBy(null, null));
+    }
+
+    // Plain ASCII, as every user-visible string (CLAUDE.md), and no contributor pronoun.
+    [Fact]
+    public void The_older_data_warning_is_plain_ascii()
+    {
+        Assert.All(ApprovalWording.MadeFromOlderData, character => Assert.True(character < 128));
+    }
+
+    // The same contributor's newer submission beside this one (owner decision, 2026-10-13): when
+    // it was sent and its number, plain ASCII, and no "their", "them" or "they" for the contributor.
+    [Fact]
+    public void The_newer_submission_warning_names_when_and_which()
+    {
+        string said = ApprovalWording.NewerFromSameContributor(57, new DateTimeOffset(2026, 10, 13, 12, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal(
+            "The same contributor sent a newer submission for this board on 2026-October-13 (#57), which is waiting too. " +
+            "Approving this one publishes the older work - look at the newer one first.",
+            said);
+        Assert.All(said, character => Assert.True(character < 128));
+
+        foreach (string word in said.Split([' ', ',', '.', '-', '(', ')'], StringSplitOptions.RemoveEmptyEntries))
+            Assert.DoesNotContain(word.ToLowerInvariant(), new[] { "their", "them", "they" });
+
+        // Without a number or a date - an answer missing either - it still reads.
+        Assert.StartsWith(
+            "The same contributor sent a newer submission for this board, which is waiting too.",
+            ApprovalWording.NewerFromSameContributor(null, null),
+            StringComparison.Ordinal);
+    }
 }

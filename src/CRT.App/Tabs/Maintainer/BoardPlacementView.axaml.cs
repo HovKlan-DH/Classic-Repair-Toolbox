@@ -249,7 +249,8 @@ namespace CRT
                 BoardPlacementDisplay.AfterAt(listedInOrder, this.Rows.IndexOf(this.thisNewRow)));
         }
 
-        private async void OnSaveClick(object? sender, RoutedEventArgs e) => await this.SaveAsync();
+        private async void OnSaveClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.SaveAsync, message => this.ShowMessage(message, isError: true));
 
         internal async Task SaveAsync()
         {

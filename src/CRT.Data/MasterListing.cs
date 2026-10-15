@@ -541,7 +541,7 @@ namespace Handlers.DataHandling
 
             for (int row = layout.HeaderRow + 1; row <= lastRow; row++)
             {
-                string own = layout.Sheet.Cells[row, layout.HardwareColumn].Text?.Trim() ?? string.Empty;
+                string own = WorkbookCellText.Trimmed(layout.Sheet, row, layout.HardwareColumn);
 
                 if (own.Length > 0)
                 {
@@ -724,14 +724,14 @@ namespace Handlers.DataHandling
             int lastRow = layout.Sheet.Dimension?.End.Row ?? layout.HeaderRow;
 
             string Cell(int row, int column) =>
-                column < 0 ? string.Empty : layout.Sheet.Cells[row, column].Text?.Trim() ?? string.Empty;
+                column < 0 ? string.Empty : WorkbookCellText.Trimmed(layout.Sheet, row, column);
 
             for (int row = layout.HeaderRow + 1; row <= lastRow; row++)
             {
                 string hardware = Cell(row, layout.HardwareColumn);
                 string board = Cell(row, layout.BoardColumn);
                 string excel = DataTreeUsage.Normalise(Cell(row, layout.ExcelDataFileColumn));
-                string notes = layout.NotesColumn < 0 ? string.Empty : layout.Sheet.Cells[row, layout.NotesColumn].Text ?? string.Empty;
+                string notes = layout.NotesColumn < 0 ? string.Empty : WorkbookCellText.Of(layout.Sheet.Cells[row, layout.NotesColumn]);
 
                 if (hardware.Length > 0)
                 {

@@ -46,6 +46,18 @@ something does not behave. Keyboard steps from the
 Where screen captures pulled from the scope are written. Choose it with **Select folder**; **Open
 folder** shows it in your file manager.
 
+Until you choose one, captures go to an `Oscilloscope images` folder beside CRT's data folder:
+
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Oscilloscope images`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Oscilloscope images`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Oscilloscope images`
+
+Older versions of CRT saved captures straight into the data folder, where
+**Delete orphan and non-used files** on the [Configuration tab](Configuration-tab) could remove them.
+CRT moves those captures into the image save folder the next time it starts and checks for new
+data. A capture whose name is already taken there is left where it was, and the clean-up leaves it
+alone.
+
 A capture is taken from the component information window with the `Enter` key - see
 [Controlling oscilloscope with keyboard](Controlling-oscilloscope-with-keyboard). It is saved as a
 PNG named `<board label>_<pin>_<region>.png` (the image's name instead of the pin when it has none,

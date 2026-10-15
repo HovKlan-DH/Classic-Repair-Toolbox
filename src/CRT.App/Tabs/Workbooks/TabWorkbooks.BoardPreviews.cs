@@ -733,7 +733,7 @@ namespace CRT
         // The "Delete worklog" button in an entry detail card's top-right corner.
         //
         // Deliberately the SAME destructive styling "Delete workbook" carries in the header above
-        // (the Button_Cancel_* brushes), at the same FontSize 11 - the two are the same kind of
+        // (the Danger class), at the same FontSize 11 - the two are the same kind of
         // permanent delete, one level apart, and a differently-coloured one here would read as a
         // different kind of action. No fixed Width, unlike the header's four buttons: those share
         // one because they line up in a grid of two rows, whereas this is a lone button and a fixed
@@ -754,9 +754,10 @@ namespace CRT
             Padding = new Thickness(8, 4),
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Foreground = ResolveThemeBrushStatic("Button_Cancel_Fg"),
-            Background = ResolveThemeBrushStatic("Button_Cancel_Bg"),
-            BorderBrush = ResolveThemeBrushStatic("Button_Cancel_Border"),
+            // The colour is the CLASS alone (code review, 2026-10-14): brushes set here as well are
+            // local values, which outrank the class's style - so a change to the Danger look never
+            // reached this button. The style applies once the card is in a window.
+            Classes = { "Danger" },
             Cursor = ArrowCursor
         };
 
@@ -779,39 +780,48 @@ namespace CRT
         // ###########################################################################################
         private async void OnDeleteWorklogClick(WorklogEntryRecord entry)
         {
-            if (this.thisSelectedWorkbookId <= 0)
-                return;
-
-            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
-                return;
-
-            var dialog = new DeleteWorklogWindow();
-            dialog.Initialize(entry);
-
-            bool? confirmed = await dialog.ShowDialog<bool?>(ownerWindow);
-            if (confirmed != true)
-                return;
-
-            if (!WorklogManager.DeleteEntry(this.thisSelectedWorkbookId, entry.Id))
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                // The same treatment a failed workbook delete gets: the user confirmed a
-                // destructive action, and a list that simply does not change reads as "the click
-                // did not register" and invites them to try again.
-                await ShowWorkbookActionFailedAsync(
-                    ownerWindow,
-                    "Delete worklog",
-                    $"Could not delete worklog #{entry.Id} - see the log for details.\n\n" +
-                    "It may be open in another program, for example a photo or file from the worklog.");
-                return;
+                if (this.thisSelectedWorkbookId <= 0)
+                    return;
+
+                if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
+                    return;
+
+                var dialog = new DeleteWorklogWindow();
+                dialog.Initialize(entry);
+
+                bool? confirmed = await dialog.ShowDialog<bool?>(ownerWindow);
+                if (confirmed != true)
+                    return;
+
+                if (!WorklogManager.DeleteEntry(this.thisSelectedWorkbookId, entry.Id))
+                {
+                    // The same treatment a failed workbook delete gets: the user confirmed a
+                    // destructive action, and a list that simply does not change reads as "the click
+                    // did not register" and invites them to try again.
+                    await ShowWorkbookActionFailedAsync(
+                        ownerWindow,
+                        "Delete worklog",
+                        $"Could not delete worklog #{entry.Id} - see the log for details.\n\n" +
+                        "It may be open in another program, for example a photo or file from the worklog.");
+                    return;
+                }
+
+                if (this.MainWindow != null)
+                {
+                    this.MainWindow.RefreshWorklogBar();
+                }
+                else
+                {
+                    this.StartFreshBoardPass();
+                }
             }
-
-            if (this.MainWindow != null)
+            catch (Exception ex)
             {
-                this.MainWindow.RefreshWorklogBar();
-            }
-            else
-            {
-                this.StartFreshBoardPass();
+                Logger.Critical($"OnDeleteWorklogClick failed - [{ex}]");
             }
         }
 

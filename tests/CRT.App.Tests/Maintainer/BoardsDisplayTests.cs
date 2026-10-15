@@ -335,7 +335,7 @@ public sealed class BoardsDisplayTests
     [InlineData(BoardHistoryEvents.Decided, 9L, "merged", "Anna", "#9 - Published to the BETA source", "by Anna")]
     [InlineData(BoardHistoryEvents.Decided, 9L, "changes_requested", null, "#9 - Changes requested", "")]
     [InlineData(BoardHistoryEvents.PublishedToProduction, null, "revision 2026-September-25; 3 file(s) copied", "admin@example.com", "Published to the stable source", "by admin@example.com - revision 2026-September-25; 3 file(s) copied")]
-    [InlineData(BoardHistoryEvents.PushedBack, null, "1 submission(s) returned to the queue; Not ready.", "admin@example.com", "Pushed back from BETA to the queue", "by admin@example.com - 1 submission(s) returned to the queue; Not ready.")]
+    [InlineData(BoardHistoryEvents.PushedBack, null, "1 submission(s) returned to the queue; Not ready.", "admin@example.com", "Pushed back to the queue", "by admin@example.com - 1 submission(s) returned to the queue; Not ready.")]
     [InlineData(BoardHistoryEvents.RejectedFromBeta, null, "1 submission(s) rejected; Not for this board.", "admin@example.com", "Rejected in BETA and taken out of it", "by admin@example.com - 1 submission(s) rejected; Not for this board.")]
     [InlineData(BoardHistoryEvents.MaintainerAdded, null, "anna@example.com", "admin@example.com", "Maintainer added: anna@example.com", "by admin@example.com")]
     [InlineData(BoardHistoryEvents.MaintainerRemoved, null, "anna@example.com", "admin@example.com", "Maintainer removed: anna@example.com", "by admin@example.com")]

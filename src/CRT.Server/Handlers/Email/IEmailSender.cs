@@ -41,7 +41,23 @@ namespace CRT.Server.Handlers.Email
     // FROM the service (a mail claiming to be from the user's own address fails SPF at their
     // provider and lands in spam) but is answered to the user (2026-10-03).
     // ###########################################################################################
-    public sealed record EmailMessage(string ToAddress, string Subject, string Body, string? HtmlBody = null, string? ReplyToAddress = null);
+    //
+    // *** WHAT HAPPENS WHEN THE MAIL SYSTEM REFUSES IT (code review, 2026-10-13). *** The sender keeps
+    // it in the outbox and tries again (OutboxEmailSender, MailOutboxFlow) - except:
+    //
+    //   CarriesCredential - a working link or code (verification, password reset, address change,
+    //                       invitation): only token HASHES are stored, so such a mail is recorded
+    //                       WITHOUT its words, counted, and never retried; the person asks again.
+    //   KeepUntilSent     - false where the caller tells the person it failed and they send again
+    //                       (feedback): a copy going out later as well would arrive twice.
+    public sealed record EmailMessage(
+        string ToAddress,
+        string Subject,
+        string Body,
+        string? HtmlBody = null,
+        string? ReplyToAddress = null,
+        bool CarriesCredential = false,
+        bool KeepUntilSent = true);
 
     // ###########################################################################################
     // Somebody to write to, and the name to greet them by (2026-10-03: "Hi {name}"). The name is

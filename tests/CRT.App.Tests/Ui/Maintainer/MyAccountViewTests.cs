@@ -74,7 +74,7 @@ public sealed class MyAccountViewTests
 
     private static string? Said(MyAccountView view, string name) => view.FindControl<TextBlock>(name)!.Text;
 
-    private static string LoggedIn(MyAccountView view) => TabMaintainer.TextOf(view.FindControl<TextBlock>("LoggedInAsText")!);
+    private static string SignedIn(MyAccountView view) => TabMaintainer.TextOf(view.FindControl<TextBlock>("SignedInLineText")!);
 
     private static Color ColourOf(MyAccountView view, string name) =>
         ((ISolidColorBrush)view.FindControl<TextBlock>(name)!.Foreground!).Color;
@@ -91,10 +91,10 @@ public sealed class MyAccountViewTests
             MyAccountView view = opened.View;
 
             Assert.Equal("Dennis", MyAccountViewTests.Typed(view, "NameTextBox"));
-            Assert.Equal("Logged in as Dennis (dh@example.com)", MyAccountViewTests.LoggedIn(view));
+            Assert.Equal("Signed in as Dennis (dh@example.com)", MyAccountViewTests.SignedIn(view));
 
             // The name bold, as under the lists (owner request, 2026-10-04).
-            Run name = view.FindControl<TextBlock>("LoggedInAsText")!.Inlines!.OfType<Run>().Single(run => run.FontWeight == FontWeight.Bold);
+            Run name = view.FindControl<TextBlock>("SignedInLineText")!.Inlines!.OfType<Run>().Single(run => run.FontWeight == FontWeight.Bold);
             Assert.Equal("Dennis", name.Text);
 
             Assert.False(MyAccountViewTests.IsOn(view, "SaveNameButton"));
@@ -124,7 +124,7 @@ public sealed class MyAccountViewTests
             Assert.Equal("Dennis H", Assert.Single(opened.PassedOn).DisplayName);
             Assert.Equal("Dennis H", view.Session!.DisplayName);
             Assert.Equal("token", view.Session.BearerToken);
-            Assert.Equal("Logged in as Dennis H (dh@example.com)", MyAccountViewTests.LoggedIn(view));
+            Assert.Equal("Signed in as Dennis H (dh@example.com)", MyAccountViewTests.SignedIn(view));
 
             Assert.Equal("Your name is now Dennis H.", MyAccountViewTests.Said(view, "NameMessageText"));
             Assert.Equal(Colors.SeaGreen, MyAccountViewTests.ColourOf(view, "NameMessageText"));
@@ -176,7 +176,7 @@ public sealed class MyAccountViewTests
             Assert.Equal("bench@example.com", view.Session!.Email);
             Assert.False(MyAccountViewTests.Shown(view, "CodePanel"));
             Assert.Equal(string.Empty, MyAccountViewTests.Typed(view, "NewEmailTextBox"));
-            Assert.Equal("Logged in as Dennis (bench@example.com)", MyAccountViewTests.LoggedIn(view));
+            Assert.Equal("Signed in as Dennis (bench@example.com)", MyAccountViewTests.SignedIn(view));
 
             opened.Window.Close();
         });
@@ -340,7 +340,7 @@ public sealed class MyAccountViewTests
 
             Assert.False(MyAccountViewTests.Shown(view, "CodePanel"));
             Assert.False(MyAccountViewTests.Shown(view, "PasswordMessageText"));
-            Assert.Equal(string.Empty, MyAccountViewTests.LoggedIn(view));
+            Assert.Equal(string.Empty, MyAccountViewTests.SignedIn(view));
             Assert.Null(view.Session);
 
             opened.Window.Close();
@@ -349,7 +349,7 @@ public sealed class MyAccountViewTests
 
     // ###########################################################################################
     // A change made ELSEWHERE - the name and address read again at launch - reaches the view: its
-    // "Logged in as" line, and the name box unless something else is being typed into it.
+    // "Signed in as" line, and the name box unless something else is being typed into it.
     // ###########################################################################################
     [Fact]
     public void A_change_made_elsewhere_is_followed_but_a_name_being_typed_is_kept()
@@ -362,13 +362,13 @@ public sealed class MyAccountViewTests
             view.UseAccount(MyAccountViewTests.Session with { DisplayName = "Dennis H", Email = "bench@example.com" });
 
             Assert.Equal("Dennis H", MyAccountViewTests.Typed(view, "NameTextBox"));
-            Assert.Equal("Logged in as Dennis H (bench@example.com)", MyAccountViewTests.LoggedIn(view));
+            Assert.Equal("Signed in as Dennis H (bench@example.com)", MyAccountViewTests.SignedIn(view));
 
             MyAccountViewTests.Type(view, "NameTextBox", "Somebody else");
             view.UseAccount(MyAccountViewTests.Session with { DisplayName = "Dennis HH", Email = "bench@example.com" });
 
             Assert.Equal("Somebody else", MyAccountViewTests.Typed(view, "NameTextBox"));
-            Assert.Equal("Logged in as Dennis HH (bench@example.com)", MyAccountViewTests.LoggedIn(view));
+            Assert.Equal("Signed in as Dennis HH (bench@example.com)", MyAccountViewTests.SignedIn(view));
             Assert.True(MyAccountViewTests.IsOn(view, "SaveNameButton"));
 
             opened.Window.Close();

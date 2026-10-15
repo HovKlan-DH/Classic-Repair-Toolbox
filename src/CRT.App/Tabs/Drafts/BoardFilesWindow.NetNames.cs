@@ -58,10 +58,39 @@ namespace CRT
 
         private async void OnNetNameTapped(object? sender, TappedEventArgs e)
         {
-            if (sender is Control { DataContext: KiCadNetNameBadge badge })
+            try
             {
-                e.Handled = true;
-                await this.CopyNetNameAsync(badge.Name);
+                if (sender is Control { DataContext: KiCadNetNameBadge badge })
+                {
+                    e.Handled = true;
+                    await this.CopyNetNameAsync(badge.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnNetNameTapped failed - [{ex}]");
+            }
+        }
+
+        // The keyboard's way to the same copy (code review, 2026-10-13): a badge reached with Tab,
+        // then Enter or Space. CopyNetNameAsync reports its own failures, so nothing escapes.
+        private async void OnNetNameKeyDown(object? sender, KeyEventArgs e)
+        {
+            try
+            {
+                if (e.Key is (Key.Enter or Key.Space) && sender is Control { DataContext: KiCadNetNameBadge badge })
+                {
+                    e.Handled = true;
+                    await this.CopyNetNameAsync(badge.Name);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnNetNameKeyDown failed - [{ex}]");
             }
         }
 

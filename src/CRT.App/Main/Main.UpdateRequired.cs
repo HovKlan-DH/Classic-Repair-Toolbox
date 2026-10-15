@@ -176,7 +176,22 @@ namespace CRT
         {
             using var client = new ReviewApiClient(ReviewApiRoutes.DefaultBaseAddress);
 
-            ReviewApiResult<HealthStatus> answer = await client.GetServerVersionAsync();
+            // *** A SMALL QUESTION GETS A SMALL WAIT (code review, 2026-10-13). *** The review
+            // client's own timeout is sized for a two-minute publish, and "Edit board as draft" waits
+            // for this answer under the window's "please wait" - on a connection that silently drops
+            // packets the contributor watched it for two minutes. No answer is not a refusal.
+            using var timeout = new System.Threading.CancellationTokenSource(AppConfig.ApiTimeout);
+
+            ReviewApiResult<HealthStatus> answer;
+
+            try
+            {
+                answer = await client.GetServerVersionAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
 
             return answer.IsOk ? answer.Value!.ApiRevision : null;
         }

@@ -106,6 +106,19 @@ namespace Handlers.DataHandling
             if (boardId.Length > MaximumBoardIdLength)
                 return false;
 
+            // ###########################################################################################
+            // *** NO CONTROL CHARACTER ANYWHERE IN THE ID AS GIVEN (code review, 2026-10-13). *** The
+            // segment rule below judges a TYPED name, and normalises its whitespace first - a tab
+            // pasted into the "Add a new board" box becomes a space before the identity is built
+            // (NewBoardIdentity.BuildExcelDataFile), which is right for typing. But an id that
+            // ARRIVES - a manifest, a request - is used exactly as sent: "Commodore/C64<tab>NTSC/250407"
+            // passed as "C64 NTSC" while the database key and the folder kept the tab. Linux takes a
+            // tab, a line break or U+0085 in a folder name, and Path.GetInvalidFileNameChars there is
+            // only "/" and NUL - so this is the check that keeps them out of the tree.
+            // ###########################################################################################
+            if (boardId.Any(char.IsControl))
+                return false;
+
             // Split WITHOUT RemoveEmptyEntries, so "Commodore//250407" is caught as the malformed
             // thing it is rather than quietly collapsing into a valid two-segment id.
             string[] segments = boardId.Split('/');

@@ -166,7 +166,7 @@ namespace CRT.Server.Handlers.Submissions
             ArgumentNullException.ThrowIfNull(content);
 
             if (!BlobStorePaths.TryGetPartialPath(this.thisBlobRoot, submissionId, hash, out string partialPath))
-                return BlobChunkResult.Rejected("The blob hash or submission is not valid.");
+                return BlobChunkResult.Rejected("That file or submission is not valid - send it again.");
 
             if (!this.HasRoomFor(0))
             {

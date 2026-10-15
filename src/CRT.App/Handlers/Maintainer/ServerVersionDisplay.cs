@@ -42,7 +42,30 @@ namespace Handlers.MaintainerHandling
         // The lines, each "Label [value]" with the value bold. `version` null is no answer (yet, while
         // `asking`); the application's revision is known either way, so it is always the last line.
         // ###########################################################################################
-        public static IReadOnlyList<IReadOnlyList<ReviewNoteRun>> Lines(string? version, int? serverApiRevision, int applicationApiRevision, bool asking = false)
+        // ###########################################################################################
+        // *** THE MAILS THE SERVER COULD NOT SEND (code review, 2026-10-13). *** Read from the
+        // signed-in /api/review/server-status (ServerStatusAnswer.UnsentMails), never the public
+        // health answer, and said as a last line only when above zero: "Mails the server could not
+        // send yet [3]" - a mail system that is down is something to look at, not to read past.
+        // ###########################################################################################
+        public const string UnsentMailsLabel = "Mails the server could not send yet";
+
+        public static IReadOnlyList<IReadOnlyList<ReviewNoteRun>> Lines(
+            string? version,
+            int? serverApiRevision,
+            int applicationApiRevision,
+            bool asking = false,
+            int? unsentMails = null)
+        {
+            List<IReadOnlyList<ReviewNoteRun>> lines = ServerVersionDisplay.VersionLines(version, serverApiRevision, applicationApiRevision, asking);
+
+            if (unsentMails is int unsent && unsent > 0)
+                lines.Add(ServerVersionDisplay.Labelled(ServerVersionDisplay.UnsentMailsLabel, unsent.ToString("N0", CultureInfo.InvariantCulture)));
+
+            return lines;
+        }
+
+        private static List<IReadOnlyList<ReviewNoteRun>> VersionLines(string? version, int? serverApiRevision, int applicationApiRevision, bool asking)
         {
             var lines = new List<IReadOnlyList<ReviewNoteRun>>();
 

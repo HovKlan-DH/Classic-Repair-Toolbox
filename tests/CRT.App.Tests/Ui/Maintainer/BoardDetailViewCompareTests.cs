@@ -251,6 +251,9 @@ public sealed class BoardDetailViewCompareTests
 
             CheckBox box = view.CompareBoxForTests;
 
+            // Not even offered (code review, 2026-10-13): the "Data source" row it sits in is shown
+            // for a board in both sources only. Off, with why, should anything show it.
+            Assert.False(view.FindControl<StackPanel>("TreeSwitchBar")!.IsVisible);
             Assert.False(box.IsEnabled);
             Assert.Equal(BoardSections.CompareNeedsBothSources, ToolTip.GetTip(box));
             Assert.Equal(0, stableReads());
@@ -410,6 +413,56 @@ public sealed class BoardDetailViewCompareTests
             Assert.True(view.HasUnsavedTableEdits);
             Assert.False(view.CompareBoxForTests.IsEnabled);
             Assert.Equal("CIA 6526", Row(editor, "U9").Cells[FriendlyColumn].Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** LEAVING A BOARD UNDER A CELL BEING TYPED IN ASKS FIRST (code review, 2026-10-13). *** The
+    // grid does not commit when another board, Sign out or CRT's close takes the click, so the
+    // table looked unchanged and went without a word - the typing with it. Committed first now.
+    // ###########################################################################################
+    [Fact]
+    public async Task Leaving_a_board_under_a_cell_being_typed_in_asks_first()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var (view, _, _, _) = BoardDetailViewCompareTests.View();
+            view.ShowDetailForTests(BoardDetailViewCompareTests.Detail(BoardDetailViewCompareTests.Board()));
+            view.OpenTableForTests(BoardDetailViewCompareTests.Beta);
+
+            var asked = new List<UnsavedTableEditsPrompt>();
+            view.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return UnsavedTableEditsChoice.Cancel;
+            };
+
+            var window = new Window { Content = view, Width = 1400, Height = 900 };
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            BoardTableEditor editor = view.BoardTableForTests;
+            DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+
+            editor.SelectSheet(Components(editor));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            editor.SelectCell(Row(editor, "U9"), FriendlyColumn);
+            grid.Focus();
+            Assert.True(grid.BeginEdit());
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            TextBox typing = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(grid).OfType<TextBox>().Single(box => box.IsFocused);
+            typing.Text = "CIA 6526";
+
+            // Typed, not committed: the table holds no change yet.
+            Assert.False(view.HasUnsavedTableEdits);
+
+            Assert.False(await view.MayLeaveTableAsync());
+            Assert.Equal([UnsavedTableEditsPrompt.LeavingBoard], asked);
+            Assert.True(view.HasUnsavedTableEdits);
 
             window.Close();
         });

@@ -49,6 +49,7 @@ namespace CRT
             this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsChecked = UserSettings.RememberThumbnailWindowSettingsPerBoard;
             this.UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState();
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsChecked = UserSettings.EnableNetworkConnectedOscilloscopeTab;
+            this.UpdateOscilloscopeFolderButton();
             this.EnableMiniproExperimentalModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalMode;
             this.EnableMiniproExperimentalDemoModeCheckBox.IsChecked = UserSettings.EnableMiniproExperimentalDemoMode;
             this.UpdateEnableMiniproExperimentalDemoModeCheckBoxState();
@@ -94,17 +95,58 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Builds the hardware/board/schematic visibility tree. Called from Main's constructor
-        // alongside the other tabs' own Initialize(this) calls - by that point
-        // DataManager.HardwareBoards is already fully populated (App.OnFrameworkInitializationCompleted
-        // awaits DataManager.InitializeAsync before Main is even opened), but each board's own
-        // schematic list is loaded lazily per board and is not yet in memory, so the tree itself is
-        // built asynchronously and dropped in once every board's schematics have loaded.
+        // Hands the tab its Main. Called from Main's constructor alongside the other tabs' own
+        // Initialize(this) calls.
+        //
+        // *** THE CATALOGUE TREE IS BUILT WHEN THE TAB IS FIRST SHOWN, NOT HERE (code review,
+        // 2026-10-13). *** Its schematic rows need every board's workbook, and building it here
+        // parsed EVERY board workbook at launch - for a tab most launches never open. Nothing else
+        // needs the tree: what the catalogue hides is read from the settings
+        // (UserSettings.CatalogueUncheckedKeysSnapshot - Main.ApplyCatalogueVisibility and the
+        // board load), so hidden boards and images stay hidden from the first paint.
         // ###########################################################################################
         internal void Initialize(Main mainWindow)
         {
             this.thisMainWindow = mainWindow;
-            _ = this.BuildCatalogueTreeAsync();
+        }
+
+        // Whether the catalogue tree has been asked for - once per tab.
+        private bool thisCatalogueTreeRequested;
+
+        internal bool IsCatalogueTreeRequestedForTests => this.thisCatalogueTreeRequested;
+
+        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToVisualTree(e);
+            this.EnsureCatalogueTreeBuilt();
+        }
+
+        // ###########################################################################################
+        // Builds the hardware/board/schematic visibility tree the first time it is wanted - the tab
+        // shown. Asynchronous: each board's schematic list is read from its workbook, and the tree
+        // is dropped in once they all are.
+        // ###########################################################################################
+        internal void EnsureCatalogueTreeBuilt()
+        {
+            if (this.thisCatalogueTreeRequested)
+            {
+                return;
+            }
+
+            this.thisCatalogueTreeRequested = true;
+            _ = this.BuildCatalogueTreeGuardedAsync();
+        }
+
+        private async Task BuildCatalogueTreeGuardedAsync()
+        {
+            try
+            {
+                await this.BuildCatalogueTreeAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Building the Configuration tab's catalogue failed: [{ex}]");
+            }
         }
 
         private async Task BuildCatalogueTreeAsync()
@@ -321,17 +363,26 @@ namespace CRT
         // ###########################################################################################
         private async void OnCheckVersionOnLaunchChanged(object? sender, RoutedEventArgs e)
         {
-            bool isEnabled = this.CheckVersionOnLaunchCheckBox.IsChecked == true;
-            UserSettings.CheckVersionOnLaunch = isEnabled;
-
-            if (!isEnabled)
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                return;
+                bool isEnabled = this.CheckVersionOnLaunchCheckBox.IsChecked == true;
+                UserSettings.CheckVersionOnLaunch = isEnabled;
+
+                if (!isEnabled)
+                {
+                    return;
+                }
+
+                if (TopLevel.GetTopLevel(this) is Main mainWindow)
+                {
+                    await mainWindow.CheckForAppUpdateNowAsync();
+                }
             }
-
-            if (TopLevel.GetTopLevel(this) is Main mainWindow)
+            catch (Exception ex)
             {
-                await mainWindow.CheckForAppUpdateNowAsync();
+                Logger.Critical($"OnCheckVersionOnLaunchChanged failed - [{ex}]");
             }
         }
 
@@ -341,28 +392,37 @@ namespace CRT
         // ###########################################################################################
         private async void OnCheckDataOnLaunchChanged(object? sender, RoutedEventArgs e)
         {
-            if (this.thisSuppressCheckDataOnLaunchChanged)
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                return;
+                if (this.thisSuppressCheckDataOnLaunchChanged)
+                {
+                    return;
+                }
+
+                bool isEnabled = this.CheckDataOnLaunchCheckBox.IsChecked == true;
+                UserSettings.CheckDataOnLaunch = isEnabled;
+                this.UpdateAllowDeletionOfOrphanAndNonUsedFilesCheckBoxState();
+                this.UpdateDownloadDataFromTestSourceCheckBoxState();
+
+                // The "try it in BETA" notice names this check box too while it is off (2026-10-03).
+                this.thisMainWindow?.RefreshSourceSwitchNotice();
+
+                if (!isEnabled)
+                {
+                    return;
+                }
+
+                if (TopLevel.GetTopLevel(this) is Main mainWindow)
+                {
+                    await mainWindow.CheckForDataUpdatesNowAsync();
+                    mainWindow.ScheduleOrphanAndUnusedFileCleanupIfEnabled();
+                }
             }
-
-            bool isEnabled = this.CheckDataOnLaunchCheckBox.IsChecked == true;
-            UserSettings.CheckDataOnLaunch = isEnabled;
-            this.UpdateAllowDeletionOfOrphanAndNonUsedFilesCheckBoxState();
-            this.UpdateDownloadDataFromTestSourceCheckBoxState();
-
-            // The "try it in BETA" notice names this check box too while it is off (2026-10-03).
-            this.thisMainWindow?.RefreshSourceSwitchNotice();
-
-            if (!isEnabled)
+            catch (Exception ex)
             {
-                return;
-            }
-
-            if (TopLevel.GetTopLevel(this) is Main mainWindow)
-            {
-                await mainWindow.CheckForDataUpdatesNowAsync();
-                mainWindow.ScheduleOrphanAndUnusedFileCleanupIfEnabled();
+                Logger.Critical($"OnCheckDataOnLaunchChanged failed - [{ex}]");
             }
         }
 
@@ -404,10 +464,22 @@ namespace CRT
             UserSettings.EnableNetworkConnectedOscilloscopeTab =
                 this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsChecked == true;
 
+            this.UpdateOscilloscopeFolderButton();
+
             if (TopLevel.GetTopLevel(this) is Main mainWindow)
             {
                 mainWindow.ApplyOscilloscopeTabVisibility();
             }
+        }
+
+        // ###########################################################################################
+        // Shows "Open oscilloscope image folder" only while the oscilloscope is enabled (owner
+        // request, 2026-10-13) - without it there are no captures to look for.
+        // ###########################################################################################
+        private void UpdateOscilloscopeFolderButton()
+        {
+            this.OpenOscilloscopeImagesFolderButton.IsVisible =
+                this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsChecked == true;
         }
 
         // ###########################################################################################
@@ -536,8 +608,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the help page for "View boards as officially coming from online source" (owner
-        // request, 2026-10-02) - same shape as the Workbooks help above.
+        // Opens the help page for "View boards as published online" (owner request, 2026-10-02) -
+        // same shape as the Workbooks help above.
         // ###########################################################################################
         private void OnViewOfficialPublishedOnlyHelpClick(object? sender, RoutedEventArgs e)
         {
@@ -550,9 +622,10 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists "View boards as officially coming from online source" (named "View boards as
-        // officially published" until 2026-10-02) and re-runs the current board's load so the
-        // change is visible immediately rather than on the next board switch.
+        // Persists "View boards as published online" (named "View boards as officially published"
+        // until 2026-10-02, then "View boards as officially coming from online source" until
+        // 2026-10-13) and re-runs the current board's load so the change is visible immediately
+        // rather than on the next board switch.
         // ###########################################################################################
         private void OnViewOfficialPublishedOnlyChanged(object? sender, RoutedEventArgs e)
         {
@@ -643,11 +716,12 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The three "Open ... folder" buttons.
+        // The four "Open ... folder" buttons.
         //
-        // These are three DIFFERENT folders, which is why they are three buttons rather than the
+        // These are DIFFERENT folders, which is why they are separate buttons rather than the
         // single "data/workbooks/log/settings" one they replaced: that button could only ever open
-        // one of them, and named four things while opening the parent of two of them.
+        // one of them, and named four things while opening the parent of two of them. The
+        // oscilloscope images button joined them on 2026-10-13 (owner request).
         //
         // Each resolves the path the app is ACTUALLY using rather than rebuilding the AppData
         // default, because "--data-root=" and "--workbooks-root=" can move the first two elsewhere.
@@ -664,33 +738,76 @@ namespace CRT
         // ###########################################################################################
         private async void OnOpenDataFolderClick(object? sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(DataManager.DataRoot))
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                Logger.Warning("Open data folder: the data root is not resolved, so there is no folder to open");
-                await this.ShowFolderUnavailableDialogAsync("data");
-                return;
-            }
+                if (string.IsNullOrEmpty(DataManager.DataRoot))
+                {
+                    Logger.Warning("Open data folder: the data root is not resolved, so there is no folder to open");
+                    await this.ShowFolderUnavailableDialogAsync("data");
+                    return;
+                }
 
-            await this.OpenFolderOrExplainAsync(DataManager.DataRoot, "data");
+                await this.OpenFolderOrExplainAsync(DataManager.DataRoot, "data");
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnOpenDataFolderClick failed - [{ex}]");
+            }
         }
 
         private async void OnOpenWorkbooksFolderClick(object? sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(WorklogManager.WorkbookRoot))
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                Logger.Warning("Open workbooks folder: the workbook root is not resolved, so there is no folder to open");
-                await this.ShowFolderUnavailableDialogAsync("workbooks");
-                return;
-            }
+                if (string.IsNullOrEmpty(WorklogManager.WorkbookRoot))
+                {
+                    Logger.Warning("Open workbooks folder: the workbook root is not resolved, so there is no folder to open");
+                    await this.ShowFolderUnavailableDialogAsync("workbooks");
+                    return;
+                }
 
-            await this.OpenFolderOrExplainAsync(WorklogManager.WorkbookRoot, "workbooks");
+                await this.OpenFolderOrExplainAsync(WorklogManager.WorkbookRoot, "workbooks");
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnOpenWorkbooksFolderClick failed - [{ex}]");
+            }
+        }
+
+        // Where oscilloscope captures are saved (owner request, 2026-10-13): the folder chosen in the
+        // Oscilloscope tab, else the default "Oscilloscope images" beside the data folder -
+        // UserSettings.OscilloscopeImageFolder decides, the one rule the capture itself uses.
+        private async void OnOpenOscilloscopeImagesFolderClick(object? sender, RoutedEventArgs e)
+        {
+            // Guarded as a whole, like the buttons above: an "async void" handler has no caller.
+            try
+            {
+                await this.OpenFolderOrExplainAsync(UserSettings.OscilloscopeImageFolder, "oscilloscope images");
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnOpenOscilloscopeImagesFolderClick failed - [{ex}]");
+            }
         }
 
         // The log, the crash log and the settings file all sit directly in the AppData folder, so
         // this one is the folder itself rather than anything below it.
         private async void OnOpenLogsFolderClick(object? sender, RoutedEventArgs e)
         {
-            await this.OpenFolderOrExplainAsync(ResolveAppDataFolder(), "logs and settings");
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                await this.OpenFolderOrExplainAsync(ResolveAppDataFolder(), "logs and settings");
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnOpenLogsFolderClick failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################
@@ -1097,27 +1214,36 @@ namespace CRT
         // ###########################################################################################
         private async void OnDownloadDataFromTestSourceChanged(object? sender, RoutedEventArgs e)
         {
-            bool isEnabled = this.DownloadDataFromTestSourceCheckBox.IsChecked == true;
-            UserSettings.DownloadDataFromTestSource = isEnabled;
-
-            // The "switch back from BETA" notice is only for someone downloading BETA - it goes the
-            // moment they switch back, and comes back if they switch to BETA again undismissed.
-            this.thisMainWindow?.RefreshSourceSwitchNotice();
-
-            if (!UserSettings.CheckDataOnLaunch)
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
             {
-                this.UpdateDownloadDataFromTestSourceCheckBoxState();
-                return;
+                bool isEnabled = this.DownloadDataFromTestSourceCheckBox.IsChecked == true;
+                UserSettings.DownloadDataFromTestSource = isEnabled;
+
+                // The "switch back from BETA" notice is only for someone downloading BETA - it goes the
+                // moment they switch back, and comes back if they switch to BETA again undismissed.
+                this.thisMainWindow?.RefreshSourceSwitchNotice();
+
+                if (!UserSettings.CheckDataOnLaunch)
+                {
+                    this.UpdateDownloadDataFromTestSourceCheckBoxState();
+                    return;
+                }
+
+                if (!isEnabled)
+                {
+                    return;
+                }
+
+                if (TopLevel.GetTopLevel(this) is Main mainWindow)
+                {
+                    await mainWindow.CheckForDataUpdatesNowAsync();
+                }
             }
-
-            if (!isEnabled)
+            catch (Exception ex)
             {
-                return;
-            }
-
-            if (TopLevel.GetTopLevel(this) is Main mainWindow)
-            {
-                await mainWindow.CheckForDataUpdatesNowAsync();
+                Logger.Critical($"OnDownloadDataFromTestSourceChanged failed - [{ex}]");
             }
         }
 

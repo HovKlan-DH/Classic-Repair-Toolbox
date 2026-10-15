@@ -52,6 +52,23 @@ public sealed class DraftDriftWindowTests : IDisposable
             Rows = rows,
         };
 
+    // A draft that kept what it was copied from (code review, 2026-10-13): its own changes, the
+    // update's, and where both met.
+    private static DraftChangeReport ReportWithBase(
+        BoardRowChange[]? own = null,
+        BoardRowChange[]? update = null,
+        DraftRebaseConflict[]? conflicts = null) => new()
+        {
+            State = DraftDriftState.OfficialIsNewer,
+            BaseRevision = "2026-May-12",
+            OfficialRevision = "2026-August-21",
+            Rows = own ?? [],
+            ComparedWithBase = true,
+            UpdateRows = update ?? [],
+            Conflicts = conflicts ?? [],
+            CanBringUpToDate = true,
+        };
+
     private static DraftDriftWindow WindowFor(DraftChangeReport report)
     {
         var window = new DraftDriftWindow();
@@ -123,15 +140,84 @@ public sealed class DraftDriftWindowTests : IDisposable
         });
     }
 
-    // Without this, the warning reads as "your work may be lost", which is false.
+    // ###########################################################################################
+    // *** "YOUR EDITS ARE STILL APPLIED ON TOP OF IT" WAS UNTRUE, AND IS GONE (code review,
+    // 2026-10-13). *** A draft is a complete copy; it does not get the update by itself, and sent as
+    // it was it showed the maintainer the update's rows as removals. A draft without a base (seeded
+    // before CRT kept one) is told so plainly; one with a base is offered to be brought up to date.
+    // ###########################################################################################
     [Fact]
-    public void The_summary_reassures_that_the_edits_are_still_applied()
+    public void A_draft_without_a_base_is_told_it_does_not_have_the_update()
     {
         UiTest.Run(() =>
         {
             var window = WindowFor(Report());
+            string summary = TextOf(window, "SummaryText");
 
-            Assert.Contains("still applied", TextOf(window, "SummaryText"));
+            Assert.Contains("does not have that update", summary);
+            Assert.Contains("changes you made", summary);
+            Assert.DoesNotContain("still applied", summary);
+            Assert.Equal("I have looked at this", window.RebaseButtonTextForTests);
+        });
+    }
+
+    [Fact]
+    public void A_draft_with_a_base_is_offered_to_be_brought_up_to_date()
+    {
+        UiTest.Run(() =>
+        {
+            var window = WindowFor(ReportWithBase());
+
+            Assert.Contains("Bring your draft up to date", TextOf(window, "SummaryText"));
+            Assert.Equal("Bring my draft up to date", window.RebaseButtonTextForTests);
+            Assert.True(window.RebaseButtonVisibleForTests);
+        });
+    }
+
+    [Fact]
+    public void Own_changes_the_update_and_the_rows_both_changed_are_listed_apart()
+    {
+        UiTest.Run(() =>
+        {
+            var window = WindowFor(ReportWithBase(
+                own: [Row("U8", BoardRowChangeKind.Modified, "Description")],
+                update: [Row("C1", BoardRowChangeKind.Added), Row("U9", BoardRowChangeKind.Deleted)],
+                conflicts: [new DraftRebaseConflict("Components", "U8", "The update and your draft both changed this row. Your version is kept.")]));
+
+            Assert.Equal("1 change of yours", TextOf(window, "OtherHeaderText"));
+            Assert.Equal("2 changes in the published update", TextOf(window, "UpdateHeaderText"));
+            Assert.Equal("1 row changed by both you and the update", TextOf(window, "AttentionHeaderText"));
+            Assert.True(window.GetControl<StackPanel>("AttentionPanel").IsVisible);
+            Assert.True(window.GetControl<StackPanel>("UpdatePanel").IsVisible);
+
+            Assert.Equal("Added in the update.", window.UpdateRows[0].Explanation);
+            Assert.Equal("Removed in the update.", window.UpdateRows[1].Explanation);
+            Assert.Contains("Your version is kept", Assert.Single(window.AttentionRows).Explanation);
+        });
+    }
+
+    // Under a table with unsaved edits of this draft nothing may write it (CLAUDE.md) - the
+    // contributor is told what settles it, and the draft is left alone.
+    [Fact]
+    public async Task Bringing_up_to_date_waits_for_the_tables_unsaved_edits()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new DraftDriftWindow();
+            window.Initialize("Commodore 64 - 250407", ExcelDataFile, ReportWithBase(), _ => UnsavedTableEditsPrompt.SavingElsewhere);
+
+            UnsavedTableEditsPrompt? shown = null;
+            window.ShowSavingBlockedOverrideForTests = prompt =>
+            {
+                shown = prompt;
+                return Task.CompletedTask;
+            };
+
+            await window.RebaseAsync();
+
+            Assert.Equal(UnsavedTableEditsPrompt.SavingElsewhere, shown);
+            Assert.False(window.BroughtUpToDate);
+            Assert.True(window.RebaseButtonVisibleForTests);
         });
     }
 
@@ -169,7 +255,7 @@ public sealed class DraftDriftWindowTests : IDisposable
 
             Assert.Equal(3, window.OtherRows.Count);
 
-            // The band that held merge consequences stays hidden - nothing can populate it.
+            // The band for rows both sides changed shows only with such rows (a draft with a base).
             Assert.False(window.GetControl<StackPanel>("AttentionPanel").IsVisible);
         });
     }
@@ -179,10 +265,14 @@ public sealed class DraftDriftWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
+            // Without a base the rows are differences from the published data AS IT IS NOW - which
+            // include the update's, turned round - so they are not called the contributor's.
             var window = WindowFor(Report(rows: new[] { Row("U8") }));
 
             Assert.True(window.GetControl<StackPanel>("OtherPanel").IsVisible);
-            Assert.Equal("1 change of yours", TextOf(window, "OtherHeaderText"));
+            Assert.Equal("1 difference from the published data", TextOf(window, "OtherHeaderText"));
+
+            Assert.Equal("1 change of yours", TextOf(WindowFor(ReportWithBase(own: [Row("U8")])), "OtherHeaderText"));
         });
     }
 
@@ -260,8 +350,13 @@ public sealed class DraftDriftWindowTests : IDisposable
     // marker to prove the revision moved, and the workbook to prove the rows did not. Asserted
     // from disk rather than from an in-memory object, so what is pinned is what was persisted.
     // ###########################################################################################
+    // ###########################################################################################
+    // *** IT NO LONGER MOVES THE BASE REVISION (code review, 2026-10-13). *** The base revision is
+    // what the submission tells the server; moving it made a stale draft claim to be made from the
+    // newest data. "I have looked at this" now records only that the warning was seen.
+    // ###########################################################################################
     [Fact]
-    public void Dismissing_the_warning_moves_the_base_revision_and_leaves_every_row_alone()
+    public void Dismissing_the_warning_keeps_the_base_revision_and_leaves_every_row_alone()
     {
         UiTest.Run(() =>
         {
@@ -286,7 +381,8 @@ public sealed class DraftDriftWindowTests : IDisposable
                 DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile));
 
             Assert.NotNull(marker);
-            Assert.Equal("2026-August-21", marker!.BaseRevision);
+            Assert.Equal("2026-May-12", marker!.BaseRevision);
+            Assert.Equal("2026-August-21", marker.DriftSeenRevision);
 
             // And the contributor's own work is untouched - the promise the status line makes.
             BoardData? reloaded = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, ExcelDataFile);

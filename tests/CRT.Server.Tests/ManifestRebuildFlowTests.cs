@@ -274,6 +274,47 @@ public class ManifestRebuildFlowTests
         Assert.Empty(ManifestRebuildFlow.TreesToRebuild(options));
     }
 
+    // ###########################################################################################
+    // *** THE BUTTON'S WRITER READS EVERY FILE AGAIN (code review, 2026-10-14). *** It exists for
+    // hand copies, and `cp -p` keeps a file's write time: a corrected file of the same length looked
+    // unchanged to the checksums the publishes remember, and the rebuild advertised the old one -
+    // every CRT then failed that file's check at each launch. A real tree, written twice.
+    // ###########################################################################################
+    [Fact]
+    public void The_buttons_writer_lists_a_hand_copy_that_kept_its_length_and_write_time()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "crt-manifest-rebuild", Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            string data = Path.Combine(root, "Data");
+            string file = Path.Combine(data, "Commodore", "C64", "250407", "scan.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+
+            DateTime settled = DateTime.UtcNow.AddMinutes(-5);
+            File.WriteAllText(file, "bytes AAAA");
+            File.SetLastWriteTimeUtc(file, settled);
+
+            var tree = new UnusedFileFlows.DataTree("beta", data, Path.Combine(root, "dataChecksums.json"), "https://example.invalid/app-data-BETA/Data");
+
+            // What a publish writes first: the checksum is remembered against the stamp.
+            Assert.Equal(1, global::Handlers.DataHandling.DataChecksumManifest.Write(tree.Root, tree.PublicBaseUrl, tree.ManifestPath));
+
+            File.WriteAllText(file, "bytes BBBB");
+            File.SetLastWriteTimeUtc(file, settled);
+
+            Assert.Equal(1, ManifestRebuildFlow.WriteHashingEveryFile(tree));
+
+            string expected = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData("bytes BBBB"u8.ToArray()));
+            Assert.Contains(expected, File.ReadAllText(tree.ManifestPath), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static ReviewAccess Administrator() =>
         ReviewAccess.For(new AccountRecord(
             7, "anna@example.com", "anna@example.com", "hash", "Anna",

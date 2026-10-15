@@ -47,9 +47,6 @@
 					<SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
-					<SolidColorBrush x:Key="Button_Highlighted_Bg">IndianRed</SolidColorBrush>
-					<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
-					<SolidColorBrush x:Key="Button_Highlighted_Border">White</SolidColorBrush>
 					<SolidColorBrush x:Key="Panel_Border">Gray</SolidColorBrush>
 					<SolidColorBrush x:Key="Link_Fg">Blue</SolidColorBrush>
 					<SolidColorBrush x:Key="LinkHover_Fg">Black</SolidColorBrush>
@@ -70,7 +67,10 @@
 
 					<!-- "Waiting on somebody else" - neither good nor bad. Amber rather than grey
 					     so a pending row still reads as a STATUS rather than as disabled text. -->
-					<SolidColorBrush x:Key="Text_Waiting_Fg">#B07A1E</SolidColorBrush>
+					<!-- #B07A1E until 2026-10-13: 3.4:1 on Card_Bg, too faint for the 10-11px state
+					     text it colours (WCAG wants 4.5:1). The same colour scaled darker, so its
+					     green-to-red ratio (0.69 - see Text_Warning_Fg below) is unchanged: 5.0:1. -->
+					<SolidColorBrush x:Key="Text_Waiting_Fg">#8D6218</SolidColorBrush>
 
 					<!-- "THIS ONE IS WAITING ON YOU" - a warning, not a failure (owner
 					     request, 2026-09-23). "Changes requested" used to share Text_Fail_Fg with
@@ -93,8 +93,14 @@
 					     RATIO, and both colours sat at 0.45.
 
 					     This one is 200,120,0 - a ratio of 0.60, between IndianRed's 0.45 and the
-					     waiting amber's 0.69, and clear of both. -->
-					<SolidColorBrush x:Key="Text_Warning_Fg">#C87800</SolidColorBrush>
+					     waiting amber's 0.69, and clear of both.
+
+					     *** DARKENED, NOT RE-HUED (code review, 2026-10-13). *** At 200,120,0 it was
+					     3.1:1 on Card_Bg - "Changes requested", the one state a contributor must act
+					     on, was the faintest text on the card. Every channel is scaled by 0.75, so
+					     the 0.60 ratio above - the thing that keeps it apart from IndianRed and the
+					     waiting amber - is exactly what it was: 150,90,0, 5.2:1. -->
+					<SolidColorBrush x:Key="Text_Warning_Fg">#965A00</SolidColorBrush>
 
 					<!-- Light, Main -->
 					<!-- The Drafts tab's title: a draft is temporary, so its tab stands out in the
@@ -291,9 +297,6 @@
 				<SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
-				<SolidColorBrush x:Key="Button_Highlighted_Bg">#B87352</SolidColorBrush>
-				<SolidColorBrush x:Key="Button_Highlighted_Fg">White</SolidColorBrush>
-				<SolidColorBrush x:Key="Button_Highlighted_Border">#B87352</SolidColorBrush>
 				<SolidColorBrush x:Key="Panel_Border">#524842</SolidColorBrush>
 				<SolidColorBrush x:Key="Link_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="LinkHover_Fg">#E8DDCF</SolidColorBrush>
@@ -544,15 +547,13 @@
 			<Setter Property="TextWrapping" Value="Wrap" />
 		</Style>
 
-		<!-- Banner install button: explicit hover/pressed backgrounds -->
-		<Style Selector="Button.BannerInstallButton">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		<!-- A notice card's action button (Install, Refresh Board, ...): green like every Accept
+		     button, and staying green under the pointer and while pressed. -->
+		<Style Selector="Button.Accept.BannerInstallButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
 		</Style>
-		<Style Selector="Button.BannerInstallButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
-		</Style>
-		<Style Selector="Button.BannerInstallButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		<Style Selector="Button.Accept.BannerInstallButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
 		</Style>
 
 		<!-- Banner dismiss button: subtle hover on dark background -->
@@ -678,6 +679,30 @@
 			<Setter Property="Background" Value="{DynamicResource Button_Bg}" />
 			<Setter Property="Foreground" Value="{DynamicResource Button_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
+		</Style>
+
+		<!-- *** A BUTTON'S COLOUR SAYS WHAT IT DOES, AND ONLY TWO DO (owner decision, 2026-10-13:
+		     "Throw-away and danger equals this IndianRed, while Accept/save/update is a green'ish
+		     button"). ***
+		       Accept - green: saves, submits, sends, adds, creates, applies, approves, publishes,
+		                installs or updates - the button that goes ahead;
+		       Danger - IndianRed: deletes, removes, discards, rejects, withdraws, pushes back or
+		                resets - the button that throws something away or turns it down.
+		     Every other button stays plain. Before this, IndianRed also meant "the main action"
+		     ("Save changes", the Contribute tab's three buttons), so red could not be read as a
+		     warning. A button gets its colour from one of these CLASSES, never from brushes set on the
+		     button itself, and ButtonColourTests holds every label to it. Declared after the plain
+		     Button style above so they win over it. -->
+		<Style Selector="Button.Accept">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Ok_Border}" />
+		</Style>
+
+		<Style Selector="Button.Danger">
+			<Setter Property="Background" Value="{DynamicResource Button_Cancel_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Cancel_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Cancel_Border}" />
 		</Style>
 
 		<!-- ### -->

@@ -69,8 +69,9 @@ namespace CRT.Server.Handlers.Submissions
 
                 if (link is not null)
                 {
+                    // Named from its data tree's root, never as the server's path (2026-10-13).
                     return BetaRollbackWriteOutcome.Failed(
-                        $"There is a symbolic link at [{link}], and copying through it could read or write outside " +
+                        $"There is a symbolic link at [{TreeWriteAccess.DisplayName(betaRoot, productionRoot, link)}], and copying through it could read or write outside " +
                         "the data trees. Nothing was changed. Remove the link on the server.");
                 }
 
@@ -90,8 +91,8 @@ namespace CRT.Server.Handlers.Submissions
                 if (PublishPathSafety.FindLinkOnPath(betaRoot, target, PublishPathSafety.IsLink) is string link)
                 {
                     return BetaRollbackWriteOutcome.Failed(
-                        $"There is a symbolic link at [{link}], and deleting through it could remove a file outside " +
-                        "the BETA tree. Nothing was changed. Remove the link on the server.");
+                        $"There is a symbolic link at [{TreeWriteAccess.DisplayName(betaRoot, link)}], and deleting through it could remove a file outside " +
+                        "the BETA data. Nothing was changed. Remove the link on the server.");
                 }
 
                 deletions.Add(target);
@@ -119,6 +120,13 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             // ---- 1. The restores, verified -----------------------------------------------------
+            //
+            // *** NOT CANCELLED ONCE THE FIRST FILE IS RESTORED (code review, 2026-10-13). *** The
+            // request's token used to stop a push-back between files when the maintainer's client
+            // gave up, leaving BETA half restored. Everything above may still be cancelled.
+            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken = CancellationToken.None;
+
             int restored = 0;
 
             foreach ((string path, string source, string destination, string hash) in restores)
@@ -132,8 +140,11 @@ namespace CRT.Server.Handlers.Submissions
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
+                    // The exception's text names the server's paths - the log has it (2026-10-13).
+                    logger.LogError(ex, "Push-back of {BoardId} stopped: [{Path}] could not be restored into BETA.", board.BoardId, path);
+
                     return BetaRollbackWriteOutcome.Failed(
-                        $"[{path}] could not be restored into BETA ({ex.Message}). " + BetaRollbackWriter.PartialSentence(restored),
+                        $"[{path}] could not be restored into BETA - the server's log says why. " + BetaRollbackWriter.PartialSentence(restored),
                         restored);
                 }
 

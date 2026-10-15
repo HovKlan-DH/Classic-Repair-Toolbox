@@ -98,7 +98,7 @@ namespace CRT
         }
 
         private async void OnResetClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.ResetAsync();
+            await HandlerGuard.RunAsync(this.ResetAsync, message => this.ShowMessage(message, isError: true));
 
         // ###########################################################################################
         // Sends the reset with the shown counts' fingerprint. Whatever happens, the counts are read

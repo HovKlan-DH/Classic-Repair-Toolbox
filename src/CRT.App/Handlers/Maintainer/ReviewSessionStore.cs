@@ -30,7 +30,10 @@ namespace Handlers.MaintainerHandling
     //
     // *** SLIDING EXPIRY IS WHAT MAKES THIS WORTH HAVING. *** The server pushes the expiry forward
     // as the app is used (SessionExtensionRules), so a regular user is never asked again, while a
-    // machine that stops being used goes cold on its own. Note the app deliberately never calls
+    // machine that stops being used goes cold on its own. The stored expiry follows it: after every
+    // request the server accepted, the tab slides its copy the same way and remembers it again
+    // (TabMaintainer.SlideSession, ReviewSession.AfterUseAt) - until 2026-10-13 it kept the login's,
+    // and Recall threw a sign-in in daily use away 30 days after it was made. Note the app deliberately never calls
     // /api/accounts/refresh: that ROTATES the token, and a crash between the server poisoning the
     // old value and this file holding the new one would revoke every session for the account.
     //
@@ -134,6 +137,16 @@ namespace Handlers.MaintainerHandling
         // instead of offering a tick box that silently does nothing.
         // ###########################################################################################
         public static bool IsSupported => ReviewSessionProtection.IsSupported;
+
+        // ###########################################################################################
+        // The grey line under "Sign in" where staying signed in is not possible (code review,
+        // 2026-10-13: IsSupported had no caller, so a Linux or macOS maintainer was asked for the
+        // password on every launch with no word why). Null where a sign-in is remembered.
+        // ###########################################################################################
+        public static string? NotRememberedNote(bool isSupported) => isSupported ? null : ReviewSessionStore.NotRememberedLine;
+
+        public const string NotRememberedLine =
+            "CRT cannot remember your sign-in on this system, so you sign in each time CRT starts.";
 
         // ###########################################################################################
         // Remembers a session, or does nothing at all if it cannot be stored SAFELY.

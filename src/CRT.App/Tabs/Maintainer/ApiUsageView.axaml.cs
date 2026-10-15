@@ -90,14 +90,15 @@ namespace CRT
             this.ShowUsage(result.Value!);
         }
 
+        // Through HandlerGuard, as every async handler of the tab (code review, 2026-10-13).
         private async void OnDaysChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (!this.thisFillingDays)
-                await this.LoadAsync();
+                await HandlerGuard.RunAsync(this.LoadAsync, message => this.ShowMessage(message, isError: true));
         }
 
         private async void OnRefreshClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.LoadAsync();
+            await HandlerGuard.RunAsync(this.LoadAsync, message => this.ShowMessage(message, isError: true));
 
         // ###########################################################################################
         // The launches first - who still runs what - then each group of routes: its heading, and per

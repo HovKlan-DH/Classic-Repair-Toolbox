@@ -46,8 +46,8 @@ namespace CRT
     //
     // FILE MAP - this file (sign in, the queue, the decisions), TabMaintainer.Session.cs (the
     // remembered sign-in, restored at launch for the badge or when the tab is first shown, and
-    // sharing it with the rest of CRT), TabMaintainer.QueueItems.cs (the
-    // queue list grouped by board), TabMaintainer.QueueRefresh.cs (the queue checking itself - no
+    // sharing it with the rest of CRT, and sliding its expiry as the server does), TabMaintainer.QueueItems.cs (the
+    // queue list grouped by board, and every list on the tab changed in place), TabMaintainer.QueueRefresh.cs (the queue checking itself - no
     // Refresh button - and the other lists with it, or only the badge's off screen),
     // TabMaintainer.OpenOnEntry.cs (the entry "Contributor Submissions" and "Beta > Prod" open
     // on), TabMaintainer.Prefetch.cs (that entry read ahead while the tab is away, so opening it
@@ -56,7 +56,7 @@ namespace CRT
     // the buttons' badges, handing the panels the session), TabMaintainer.Beta.cs (the BETA list),
     // TabMaintainer.Boards.cs (the Boards list), TabMaintainer.Account.cs (the Account screen:
     // "My account" and "Server version" for every maintainer and the administrator's padlocked
-    // entries, the "Logged in as" line, and the remembered sign-in's name and address read again at
+    // entries, the "Signed in as" line, and the remembered sign-in's name and address read again at
     // launch), TabMaintainer.Invitation.cs ("I have an invitation" on the sign-in screen),
     // TabMaintainer.SubmissionViews.cs (a submission's three views - Board data, Files,
     // Contributor - and which is shown), TabMaintainer.Files.cs (the Files view: the submission's
@@ -70,7 +70,8 @@ namespace CRT
     // UnusedFilesView, RebuildManifestsView, BoardDeletionView (with DeleteBoardWindow, its
     // confirmation), ApiUsageView and DataResetView. A
     // board's table can hold a change not sent, so HasUnsavedTableEdits
-    // and sign-out ask about it too.
+    // and sign-out ask about it too. Every async event handler of the tab and of those panels runs
+    // its work through HandlerGuard.cs, so an exception is logged and said, never the end of CRT.
     //
     // *** THE LOGIC IS IN Handlers/, NOT HERE. *** How a queue row reads is ReviewQueueDisplay's;
     // what the table cannot show is ReviewNotInTable's;
@@ -101,11 +102,16 @@ namespace CRT
         // as a new choice.
         private bool thisSuppressQueueSelection;
 
+        // True while the maintainer is being asked about the table's unsaved changes after choosing
+        // another submission - a refresh then leaves the list's selection alone (ApplyQueue).
+        private bool thisLeavingTable;
+
         public TabMaintainer()
         {
             this.InitializeComponent();
             this.WireTable();
             this.WireAccountScreen();
+            this.ShowNotRememberedNote(ReviewSessionStore.IsSupported);
         }
 
         // ###########################################################################################
@@ -140,8 +146,10 @@ namespace CRT
         // Sign in
         // -----------------------------------------------------------------------------------
 
+        // Every async handler runs through HandlerGuard: what throws is logged and said, never the
+        // end of CRT (code review, 2026-10-13).
         private async void OnSignInClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.SignInAsync();
+            await HandlerGuard.RunAsync(this.SignInAsync, this.ShowHandlerFailure);
 
         // Enter in the password box signs in. Unlike CRT's own destructive dialogs - where Enter
         // deliberately CANCELS - this is a safe, repeatable action, and making someone reach for
@@ -151,7 +159,7 @@ namespace CRT
             if (e.Key == Key.Enter)
             {
                 e.Handled = true;
-                await this.SignInAsync();
+                await HandlerGuard.RunAsync(this.SignInAsync, this.ShowHandlerFailure);
             }
         }
 
@@ -178,9 +186,9 @@ namespace CRT
             try
             {
                 this.thisClient?.Dispose();
-                this.thisClient = new ReviewApiClient(address);
 
-                ReviewApiClient client = this.thisClient;
+                var client = new ReviewApiClient(address);
+                this.UseClient(client);
                 string enteredEmail = email.Text?.Trim() ?? string.Empty;
                 string enteredPassword = password.Text ?? string.Empty;
 
@@ -253,7 +261,10 @@ namespace CRT
         // reset-token screen here would be a second place that flow lives, for an action taken
         // once in a career.
         // ###########################################################################################
-        private async void OnForgotPasswordClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        private async void OnForgotPasswordClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.ForgotPasswordAsync, this.ShowHandlerFailure);
+
+        private async Task ForgotPasswordAsync()
         {
             var email = this.FindControl<TextBox>("EmailTextBox");
             var button = this.FindControl<Button>("ForgotPasswordButton");
@@ -337,12 +348,12 @@ namespace CRT
             if (e.Key == Key.Enter)
             {
                 e.Handled = true;
-                await this.ResetPasswordAsync();
+                await HandlerGuard.RunAsync(this.ResetPasswordAsync, this.ShowHandlerFailure);
             }
         }
 
         private async void OnSetPasswordClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.ResetPasswordAsync();
+            await HandlerGuard.RunAsync(this.ResetPasswordAsync, this.ShowHandlerFailure);
 
         // ###########################################################################################
         // Completes the reset: the code from the mail, plus the chosen password.
@@ -484,15 +495,9 @@ namespace CRT
                 // message says the edits cannot be saved and what signing in again would cost.
                 // Signing in again is the maintainer's own decision, taken from the Sign out button.
                 // ###########################################################################################
-                if (background && this.WouldLoseTableChanges)
+                if (background && this.WouldLoseAnyTableChanges)
                 {
-                    this.StopQueueChecks();
-
-                    this.ShowQueueMessage(
-                        "Your session has expired, so the changes in the table below can no longer be saved. " +
-                        "Copy anything you need, then sign out and in again to carry on.",
-                        isError: true);
-
+                    this.KeepTablesAfterSessionEnded(expired: true);
                     return;
                 }
 
@@ -511,12 +516,25 @@ namespace CRT
 
             if (!result.IsOk)
             {
+                // ###########################################################################################
+                // *** A 401 UNDER UNSAVED EDITS IS THE EXPIRED SESSION'S CASE (code review, 2026-10-13). ***
+                // The server's "no" - signed out elsewhere, revoked, the account locked - kept the
+                // panel for the edits but left the checks running, so the same "Sign in to continue."
+                // came back every minute with no way out said. It now stops them and says what the
+                // local expiry above says.
+                // ###########################################################################################
+                if (result.Failure == ReviewApiFailure.NotSignedIn && background && this.WouldLoseAnyTableChanges)
+                {
+                    this.KeepTablesAfterSessionEnded(expired: false);
+                    return;
+                }
+
                 // *** THE LIST IS LEFT ALONE ON A FAILURE. *** Clearing it would turn "I could not
                 // ask" into "nothing is waiting", which is the one wrong answer a review queue
                 // must never give - a backlog would go unnoticed for as long as nobody checked.
                 this.ShowQueueMessage(result.Message, isError: true);
 
-                if (result.Failure == ReviewApiFailure.NotSignedIn && !(background && this.WouldLoseTableChanges))
+                if (result.Failure == ReviewApiFailure.NotSignedIn)
                     this.ShowSignInPanel();
 
                 return;
@@ -680,9 +698,20 @@ namespace CRT
 
             try
             {
-                // Grouped by board, with a heading per board - see TabMaintainer.QueueItems.cs.
-                list.ItemsSource = this.BuildQueueItems(this.thisQueue, now);
-                this.SelectQueueRow(kept?.Id);
+                // Grouped by board, with a heading per board, changed in place - see
+                // TabMaintainer.QueueItems.cs.
+                this.ShowQueueItems(list, this.thisQueue, now);
+
+                // ###########################################################################################
+                // *** NOT WHILE THE "LEAVE THE TABLE?" PROMPT IS UP (code review, 2026-10-13). *** The
+                // maintainer has clicked another submission and is being asked about the table's
+                // changes; putting the selection back on the table's submission here split the list
+                // from the panel - after Discard the panel opened the clicked one while the list
+                // showed the old. The list is left as the maintainer clicked it, and the prompt's
+                // answer decides (OnQueueSelectionChanged).
+                // ###########################################################################################
+                if (!this.thisLeavingTable)
+                    this.SelectQueueRow(kept?.Id);
             }
             finally
             {
@@ -733,7 +762,10 @@ namespace CRT
             text.Foreground = isError ? Brushes.IndianRed : Brushes.Gray;
         }
 
-        private async void OnQueueSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private async void OnQueueSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.QueueSelectionChangedAsync, this.ShowHandlerFailure);
+
+        private async Task QueueSelectionChangedAsync()
         {
             if (this.thisSuppressQueueSelection)
                 return;
@@ -744,10 +776,33 @@ namespace CRT
 
             // *** LEAVING A TABLE WITH UNSAVED CHANGES ASKS FIRST. *** It sits in this panel, so
             // choosing another submission replaces it. Cancel puts the selection back on it.
-            if (this.IsTableOpen && chosen?.Id != this.thisTableRow!.Id && !await this.CloseTableAsync())
+            if (this.IsTableOpen && chosen?.Id != this.thisTableRow!.Id)
             {
-                this.ReselectTableRow();
-                return;
+                bool mayLeave;
+
+                this.thisLeavingTable = true;
+
+                try
+                {
+                    mayLeave = await this.CloseTableAsync();
+                }
+                finally
+                {
+                    this.thisLeavingTable = false;
+                }
+
+                if (!mayLeave)
+                {
+                    this.ReselectTableRow();
+                    return;
+                }
+
+                // ###########################################################################################
+                // *** THE SUBMISSION SELECTED NOW, NOT THE ONE CLICKED (code review, 2026-10-13). *** A
+                // minute check can run while the prompt waits for an answer, and can take the clicked
+                // submission out of the queue - the list then selects nothing, and so does the panel.
+                // ###########################################################################################
+                chosen = this.SelectedQueueRow;
             }
 
             if (chosen is null)
@@ -887,6 +942,9 @@ namespace CRT
             // The table's file preview reads the submitted files' hashes from it.
             this.thisShownDetail = detail;
 
+            // The table can be changed only by an account that may publish it (TabMaintainer.Table.cs).
+            this.ApplyTableReadOnly();
+
             // A detail shown is a submission that can be decided - see ReapplyApprovalGate.
             this.thisDecisionsClosed = false;
 
@@ -952,7 +1010,26 @@ namespace CRT
                     ReviewNoteKind.Warning));
             }
 
+            // *** MADE FROM OLDER DATA THAN BETA HAS NOW (code review, 2026-10-13). *** The draft is
+            // a whole copy of the board, so what was published since its base shows - and would
+            // be published - as removed. Said, not blocked: the maintainer compares and decides.
+            if (detail.Submission.BasedOnOlderRevision == true)
+                beforeApproving.Add(new ReviewNoteLine(ApprovalWording.MadeFromOlderData, ReviewNoteKind.Warning));
+
+            // *** A NEWER ONE FROM THE SAME CONTRIBUTOR WAITS BESIDE IT (owner decision, 2026-10-13). ***
+            // An amended or half-approved submission is not replaced by the newer one, so the two
+            // wait side by side. Said, not blocked: this one may be the right one to publish.
+            if (detail.Submission.NewerSubmissionId is not null || detail.Submission.NewerSubmissionUtc is not null)
+            {
+                beforeApproving.Add(new ReviewNoteLine(
+                    ApprovalWording.NewerFromSameContributor(detail.Submission.NewerSubmissionId, detail.Submission.NewerSubmissionUtc),
+                    ReviewNoteKind.Warning));
+            }
+
             this.ShowBeforeApproving(beforeApproving);
+
+            // A shared-file replacement's other boards, on the approval status line (2026-10-13).
+            this.ReadFilesForApproval(detail);
         }
 
         // ###########################################################################################
@@ -1092,13 +1169,17 @@ namespace CRT
         // -----------------------------------------------------------------------------------
 
         private async void OnApproveClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.DecideAsync(ReviewDecisionKind.Approve);
+            await HandlerGuard.RunAsync(() => this.DecideAsync(ReviewDecisionKind.Approve), this.ShowDecisionFailure);
 
         private async void OnRejectClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.DecideAsync(ReviewDecisionKind.Reject);
+            await HandlerGuard.RunAsync(() => this.DecideAsync(ReviewDecisionKind.Reject), this.ShowDecisionFailure);
 
         private async void OnRequestChangesClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.DecideAsync(ReviewDecisionKind.RequestChanges);
+            await HandlerGuard.RunAsync(() => this.DecideAsync(ReviewDecisionKind.RequestChanges), this.ShowDecisionFailure);
+
+        // A decision that failed in CRT itself: beside the decision, or in the queue's line when the
+        // submission has left it (ShowDecisionOutcome).
+        private void ShowDecisionFailure(string message) => this.ShowDecisionOutcome(message, isError: true);
 
         // ###########################################################################################
         // Sends one decision and reports what happened.
@@ -1115,6 +1196,9 @@ namespace CRT
         // ###########################################################################################
         private async Task DecideAsync(ReviewDecisionKind kind)
         {
+            // A cell still in its editor is a change too - the grid does not commit when a button takes the click.
+            this.TableEditor.CommitCellEdit();
+
             // A decision is about what the server holds; unsaved table changes would not be in it.
             if (this.IsTableOpen && this.TableEditor.HasUnsavedChanges)
             {
@@ -1127,8 +1211,9 @@ namespace CRT
 
             string comment = this.FindControl<TextBox>("DecisionCommentTextBox")?.Text?.Trim() ?? string.Empty;
 
-            // Approve carries no comment; the published tree and the summary already say what
-            // happened. The other two are the contributor's only feedback.
+            // Optional for Approve - sent when written, and quoted in the contributor's mail (code
+            // review, 2026-10-13: it used to be dropped). The other two are the contributor's only
+            // feedback, so they need one.
             if (kind != ReviewDecisionKind.Approve &&
                 !ReviewDecisionWording.IsUsableComment(comment, out string problem))
             {
@@ -1146,6 +1231,10 @@ namespace CRT
             IReadOnlyList<string> removals = this.thisShownRemovals;
             string? stateBefore = this.thisShownDetail?.Submission.State;
 
+            // The version on screen (2026-10-13): the server refuses a decision on a submission
+            // another maintainer has changed since - and the queue then reads it again.
+            int? expectedVersion = this.thisShownDetail?.Submission.AmendmentVersion;
+
             string waiting = ReviewDecisionWording.Waiting(
                 kind, this.thisShownDetail?.Approval, this.thisShownDetail?.Submission.BoardId);
 
@@ -1161,9 +1250,9 @@ namespace CRT
                 {
                     ReviewApiResult<ReviewDecisionResult> result = await ServerWait.CallAsync(this, waiting, token => kind switch
                     {
-                        ReviewDecisionKind.Approve => client.ApproveAsync(session, id, removals, token),
-                        ReviewDecisionKind.Reject => client.RejectAsync(session, id, comment, token),
-                        _ => client.RequestChangesAsync(session, id, comment, token)
+                        ReviewDecisionKind.Approve => client.ApproveAsync(session, id, removals, token, expectedVersion, comment),
+                        ReviewDecisionKind.Reject => client.RejectAsync(session, id, comment, token, expectedVersion),
+                        _ => client.RequestChangesAsync(session, id, comment, token, expectedVersion)
                     });
 
                     // ###########################################################################################
@@ -1370,7 +1459,9 @@ namespace CRT
 
             if (status is not null)
             {
-                string? line = ApprovalWording.StatusLine(approval, canPublish);
+                // With the other boards a replaced shared file reaches, once the file tree has named
+                // them (2026-10-13; TabMaintainer.Files.cs).
+                string? line = ApprovalWording.WithAlsoUsedBy(ApprovalWording.StatusLine(approval, canPublish), this.thisAlsoUsedByLine);
                 status.Text = line ?? string.Empty;
                 status.IsVisible = visible && line is not null;
             }

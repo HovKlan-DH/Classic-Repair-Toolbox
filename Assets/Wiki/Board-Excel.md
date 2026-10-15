@@ -53,7 +53,7 @@ The `# Revision date:` line says when the board's data was last published - the 
 
 CRT reads it from the first cell starting `# Revision date:` within the first 10 rows and 10 columns of `Board schematics`. It is shown on the Contribute tab and the About tab ("Board Excel data last revisioned").
 
-One thing reads it as a date: the **drift warning**. When you have a draft of a board and the official data is updated underneath it, CRT compares this value against the one your draft was started from, and tells you the official data has been *updated* rather than merely *changed*. If the value cannot be read as a date, nothing breaks - CRT simply says the data "has changed" instead of "has been updated", which is all it can honestly claim.
+One thing reads it as a date: the warning on a draft when the published board has been updated since the draft was started (the Drafts tab's "What changed"). CRT compares this value against the one your draft was started from, and says the published data has been *updated* rather than merely *changed* when it is later. If the value cannot be read as a date, nothing breaks - CRT simply says the data "has changed" instead of "has been updated", which is all it can honestly claim. (Whether the board changed at all is decided by its content, so two updates on the same day are both noticed.)
 
 ### Files
 

@@ -177,11 +177,9 @@
                        IsVisible="False" />
 
             <Button Grid.Column="1"
+                    Classes="Accept"
                     x:Name="SaveButton"
                     Content="Save its place"
-                    Foreground="{DynamicResource Button_Ok_Fg}"
-                    Background="{DynamicResource Button_Ok_Bg}"
-                    BorderBrush="{DynamicResource Button_Ok_Border}"
                     IsEnabled="False"
                     Click="OnSaveClick" />
         </Grid>

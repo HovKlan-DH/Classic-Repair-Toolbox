@@ -169,5 +169,42 @@ namespace CRT.Server.Tests
 
             Assert.Equal(BoardFileChange.Changed, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
         }
+
+        // ###########################################################################################
+        // *** A REPLACED SHARED FILE NAMES THE OTHER BOARDS IT REACHES (code review, 2026-10-13). ***
+        // The replacement needs two approvals because every board citing the file gets the new bytes,
+        // and the approvers were never told which boards. Not the submission's own board, and nothing
+        // on a file that is not a replaced shared one.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_replaced_shared_file_names_the_other_boards_that_cite_it()
+        {
+            const string shared = "Commodore/Shared files/Board local files/pinout.pdf";
+            File.WriteAllText(DataTreeBuilder.Full(this.thisDataTree, shared), "%PDF-1.4 the pinout as published");
+
+            // Two other boards cite it, one does not.
+            foreach ((string board, bool cites) in new[] { ("Commodore/C128/310378", true), ("Commodore/VIC-20/250403", true), ("Commodore/PET/320349", false) })
+            {
+                string[] parts = board.Split('/');
+
+                BoardWorkbookWriter.Write(
+                    DataTreeBuilder.Full(this.thisDataTree, $"{board}/Data {parts[1]} {parts[2]} v2.0.0.xlsx"),
+                    new BoardData
+                    {
+                        BoardLocalFiles = cites ? [new BoardLocalFileEntry { Category = "Service", Name = "Pinout", File = shared }] : []
+                    });
+            }
+
+            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest(
+                "a better pinout",
+                new SubmissionFile { Path = shared, Sha256 = new string('b', 64), SizeBytes = 20 },
+                new SubmissionFile { Path = $"{SubmissionFileTreeFlowTests.Board}/manual.pdf", Sha256 = new string('a', 64), SizeBytes = 10 }));
+
+            BoardFileEntry replaced = Of(entries, shared);
+
+            Assert.Equal(BoardFileChange.Changed, replaced.Change);
+            Assert.Equal(["Commodore / C128 / 310378", "Commodore / VIC-20 / 250403"], replaced.AlsoUsedBy);
+            Assert.Null(Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").AlsoUsedBy);
+        }
     }
 }

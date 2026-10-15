@@ -104,15 +104,7 @@ namespace CRT
 
         private void OnLegendPillTapped(object? sender, TappedEventArgs e)
         {
-            BoardTableRowKinds kind = sender switch
-            {
-                Border border when ReferenceEquals(border, this.AddedPill) => BoardTableRowKinds.Added,
-                Border border when ReferenceEquals(border, this.ModifiedPill) => BoardTableRowKinds.Modified,
-                Border border when ReferenceEquals(border, this.DeletedPill) => BoardTableRowKinds.Deleted,
-                Border border when ReferenceEquals(border, this.ErrorsPill) => BoardTableRowKinds.Errors,
-                Border border when ReferenceEquals(border, this.WarningsPill) => BoardTableRowKinds.Warnings,
-                _ => BoardTableRowKinds.None
-            };
+            BoardTableRowKinds kind = this.PillKindOf(sender);
 
             if (kind == BoardTableRowKinds.None)
             {
@@ -123,6 +115,39 @@ namespace CRT
             this.TogglePill(kind);
             this.FocusGrid();
         }
+
+        // ###########################################################################################
+        // Enter or Space on a pill reached with Tab does what a click does (code review, 2026-10-13).
+        // The focus stays on the pill, so the next pill is one Tab away - a click hands it to the
+        // grid instead, where the mouse user goes next.
+        // ###########################################################################################
+        private void OnLegendPillKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key is not (Key.Enter or Key.Space))
+            {
+                return;
+            }
+
+            BoardTableRowKinds kind = this.PillKindOf(sender);
+
+            if (kind == BoardTableRowKinds.None)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            this.TogglePill(kind);
+        }
+
+        private BoardTableRowKinds PillKindOf(object? sender) => sender switch
+        {
+            Border border when ReferenceEquals(border, this.AddedPill) => BoardTableRowKinds.Added,
+            Border border when ReferenceEquals(border, this.ModifiedPill) => BoardTableRowKinds.Modified,
+            Border border when ReferenceEquals(border, this.DeletedPill) => BoardTableRowKinds.Deleted,
+            Border border when ReferenceEquals(border, this.ErrorsPill) => BoardTableRowKinds.Errors,
+            Border border when ReferenceEquals(border, this.WarningsPill) => BoardTableRowKinds.Warnings,
+            _ => BoardTableRowKinds.None
+        };
 
         // ###########################################################################################
         // Shows `kinds` without touching the user's pick (thisFilterWanted).

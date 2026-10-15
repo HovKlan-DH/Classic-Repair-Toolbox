@@ -331,6 +331,9 @@ namespace Handlers.DataHandling
 
                 if (_syncManifest != null)
                 {
+                    // Before any cleanup can run (OscilloscopeCaptureRelocation).
+                    DataManager.RelocateOscilloscopeCapturesAtLaunch(_syncManifest);
+
                     MainExcelResolution onlineResolution = ResolveMainExcelCandidate(
                         _syncManifest.Select(entry => entry.File),
                         allowSyntheticLegacyFallback: false,
@@ -1236,10 +1239,7 @@ namespace Handlers.DataHandling
             // Keying by the resolved PATH is correct by construction: two different files can never
             // share a cache entry, and the same file re-read is still a hit.
             // ###########################################################################################
-            BoardData? board = await BoardDataReader.LoadAsync(
-                excelPath,
-                excelPath,
-                allowMissingOfficialFile);
+            BoardData? board = await DataManager.ReadBoardWorkbookAsync(excelPath, allowMissingOfficialFile);
 
             // ###########################################################################################
             // WHICH ROWS THE UI MARKS AS DRAFTED, now derived rather than recorded.
@@ -1327,10 +1327,19 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            return await BoardDataReader.LoadAsync(
-                publishedWorkbookPath,
-                publishedWorkbookPath);
+            return await DataManager.ReadBoardWorkbookAsync(publishedWorkbookPath, allowMissingOfficialFile: false);
         }
+
+        // Board workbook reads that overlap share one parse (SharedLoads, code review 2026-10-13) -
+        // keyed by the path read (the key BoardDataReader caches it under), whether a missing file
+        // is allowed, and the files' STAMP as BoardDataReader takes it: a request made after the
+        // workbook or its sidecar was written starts its own read, never joins one of the old file.
+        private static readonly SharedLoads<BoardData?> BoardWorkbookReads = new(StringComparer.OrdinalIgnoreCase);
+
+        private static Task<BoardData?> ReadBoardWorkbookAsync(string excelPath, bool allowMissingOfficialFile) =>
+            DataManager.BoardWorkbookReads.RunAsync(
+                $"{excelPath}\u001F{allowMissingOfficialFile}\u001F{BoardDataReader.StampOf(excelPath)}",
+                () => BoardDataReader.LoadAsync(excelPath, excelPath, allowMissingOfficialFile));
 
         // ###########################################################################################
         // Scans the worksheet for the first row containing all required column header names.
@@ -1389,7 +1398,7 @@ namespace Handlers.DataHandling
         // Returns the trimmed text value of a worksheet cell, or an empty string if null or blank.
         // ###########################################################################################
         private static string GetCellText(ExcelWorksheet sheet, int row, int col)
-            => sheet.Cells[row, col].Text?.Trim() ?? string.Empty;
+            => WorkbookCellText.Trimmed(sheet, row, col);
 
         // ###########################################################################################
         // Fires the StatusChanged event with the given message.
@@ -1542,15 +1551,25 @@ namespace Handlers.DataHandling
                 return 0;
             }
 
-            return await DeleteOrphanAndUnusedFilesAsync(_lastFetchedManifest);
+            return await DeleteOrphanAndUnusedFilesAsync(
+                _lastFetchedManifest,
+                OscilloscopeCaptureRelocation.Plan.ForCurrentSettings(_dataRoot));
         }
 
         // ###########################################################################################
         // The cleanup itself, with the manifest snapshot passed in explicitly. The public overload
         // above applies the user-setting gates and hands over the last fetched manifest; the test
         // suite calls this one directly so it can control the snapshot without touching UserSettings.
+        //
+        // *** NEVER AN OSCILLOSCOPE CAPTURE (code review, 2026-10-13). *** `captures` names the
+        // capture folder - nothing inside it is deleted, and a capture folder that holds the whole
+        // data folder means nothing is deleted at all - and first moves the captures the old default
+        // left in the data root's top level out of it (OscilloscopeCaptureRelocation). What that
+        // move was not sure of stays where it is and is kept away from the cleanup too.
         // ###########################################################################################
-        internal static async Task<int> DeleteOrphanAndUnusedFilesAsync(List<DataFileEntry>? manifestSnapshot)
+        internal static async Task<int> DeleteOrphanAndUnusedFilesAsync(
+            List<DataFileEntry>? manifestSnapshot,
+            OscilloscopeCaptureRelocation.Plan? captures = null)
         {
             if (string.IsNullOrWhiteSpace(_dataRoot) || !Directory.Exists(_dataRoot))
             {
@@ -1574,6 +1593,34 @@ namespace Handlers.DataHandling
                 return await Task.Run(() =>
                 {
                     string dataRootFullPath = thisEnsureTrailingDirectorySeparator(Path.GetFullPath(_dataRoot));
+
+                    // Captures first: kept out of reach, or the cleanup does not run at all.
+                    string? captureFolderInsideDataRoot = null;
+                    var keptAwayFiles = new HashSet<string>(
+                        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                            ? StringComparer.OrdinalIgnoreCase
+                            : StringComparer.Ordinal);
+
+                    if (captures != null && !string.IsNullOrWhiteSpace(captures.CaptureFolder))
+                    {
+                        if (OscilloscopeCaptureRelocation.IsSameOrInside(dataRootFullPath, captures.CaptureFolder))
+                        {
+                            Logger.Warning($"Orphan/non-used file cleanup skipped - the oscilloscope image folder [{captures.CaptureFolder}] holds the data folder, and nothing in it is deleted");
+                            return 0;
+                        }
+
+                        if (OscilloscopeCaptureRelocation.IsSameOrInside(captures.CaptureFolder, dataRootFullPath))
+                        {
+                            captureFolderInsideDataRoot = Path.GetFullPath(captures.CaptureFolder);
+                        }
+
+                        if (captures.MoveTarget != null)
+                        {
+                            var outcome = DataManager.RelocateOscilloscopeCaptures(dataRootFullPath, captures.MoveTarget, manifestSnapshot);
+                            keptAwayFiles.UnionWith(outcome.LeftInPlace.Select(Path.GetFullPath));
+                        }
+                    }
+
                     var mappedFiles = CollectAllReferencedDataFiles(dataRootFullPath, manifestSnapshot);
 
                     // Fail closed: an incomplete map means an unknown set of files would be
@@ -1606,6 +1653,14 @@ namespace Handlers.DataHandling
                             continue;
                         }
 
+                        if (keptAwayFiles.Contains(fullFilePath) ||
+                            (captureFolderInsideDataRoot != null &&
+                             OscilloscopeCaptureRelocation.IsSameOrInside(fullFilePath, captureFolderInsideDataRoot)))
+                        {
+                            Logger.Info($"Kept during orphan cleanup - an oscilloscope capture, or an image that may be one: [{relativePath}]");
+                            continue;
+                        }
+
                         try
                         {
                             File.Delete(fullFilePath);
@@ -1618,7 +1673,7 @@ namespace Handlers.DataHandling
                         }
                     }
 
-                    int deletedDirectoryCount = thisDeleteEmptyDirectoriesInsideDataRoot(dataRootFullPath);
+                    int deletedDirectoryCount = thisDeleteEmptyDirectoriesInsideDataRoot(dataRootFullPath, captureFolderInsideDataRoot);
 
                     Logger.Info(
                         $"Background orphan/non-used file cleanup complete - deleted [{deletedFileCount}] files and [{deletedDirectoryCount}] empty directories");
@@ -1629,6 +1684,60 @@ namespace Handlers.DataHandling
             finally
             {
                 OrphanAndUnusedFileCleanupSemaphore.Release();
+            }
+        }
+
+        // ###########################################################################################
+        // Moves the oscilloscope captures the old default left in the data root's top level to
+        // `moveTarget` (OscilloscopeCaptureRelocation). Needs the manifest: a file it lists is data,
+        // whatever its name - so with no manifest nothing is moved. Never throws.
+        // ###########################################################################################
+        private static OscilloscopeCaptureRelocation.Outcome RelocateOscilloscopeCaptures(
+            string dataRootFullPath,
+            string moveTarget,
+            List<DataFileEntry>? manifest)
+        {
+            if (manifest == null || manifest.Count == 0)
+            {
+                return new OscilloscopeCaptureRelocation.Outcome([], []);
+            }
+
+            var listed = manifest
+                .Select(entry => thisNormalizeRelativePath(entry.File))
+                .ToHashSet(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+                    ? StringComparer.OrdinalIgnoreCase
+                    : StringComparer.Ordinal);
+
+            return OscilloscopeCaptureRelocation.MoveCapturesOutOfDataRoot(
+                dataRootFullPath,
+                moveTarget,
+                name => listed.Contains(thisNormalizeRelativePath(name)));
+        }
+
+        // ###########################################################################################
+        // At launch, once the manifest is in: the captures the old default saved in the data root
+        // move to the capture folder - for everybody, not only those who tick the cleanup - so all
+        // of a user's captures are where the Oscilloscope tab's folder button opens.
+        // ###########################################################################################
+        private static void RelocateOscilloscopeCapturesAtLaunch(List<DataFileEntry>? manifest)
+        {
+            try
+            {
+                var plan = OscilloscopeCaptureRelocation.Plan.ForCurrentSettings(_dataRoot);
+
+                if (plan.MoveTarget != null && !string.IsNullOrWhiteSpace(_dataRoot) && Directory.Exists(_dataRoot))
+                {
+                    var outcome = DataManager.RelocateOscilloscopeCaptures(Path.GetFullPath(_dataRoot), plan.MoveTarget, manifest);
+
+                    if (outcome.Moved.Count > 0)
+                    {
+                        Logger.Info($"Moved [{outcome.Moved.Count}] oscilloscope captures out of the data folder into [{plan.MoveTarget}]");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Oscilloscope captures in the data folder could not be moved - [{ex.Message}]");
             }
         }
 
@@ -1968,13 +2077,15 @@ namespace Handlers.DataHandling
         // Deletes empty directories inside the data root after orphan file cleanup.
         // Traversal is deepest-first so child folders are removed before their parents.
         // ###########################################################################################
-        private static int thisDeleteEmptyDirectoriesInsideDataRoot(string dataRootFullPath)
+        private static int thisDeleteEmptyDirectoriesInsideDataRoot(string dataRootFullPath, string? captureFolderInsideDataRoot)
         {
             int deletedDirectoryCount = 0;
 
             var directories = Directory.EnumerateDirectories(dataRootFullPath, "*", SearchOption.AllDirectories)
                 .Select(Path.GetFullPath)
                 .Where(path => thisIsPathWithinDataRoot(dataRootFullPath, path))
+                .Where(path => captureFolderInsideDataRoot == null ||
+                               !OscilloscopeCaptureRelocation.IsSameOrInside(path, captureFolderInsideDataRoot))
                 .OrderByDescending(path => path.Length)
                 .ToList();
 

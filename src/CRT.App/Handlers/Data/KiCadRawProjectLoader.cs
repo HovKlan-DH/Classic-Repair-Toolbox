@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Handlers.DataHandling
@@ -17,10 +18,13 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Loads all supported modern KiCad raw files and builds a normalized project root.
         // ###########################################################################################
+        // `cancellationToken` stops it between files (OperationCanceledException) - the next board
+        // switch does, so a board left behind does not go on parsing a 44 MB PCB.
         public static async Task<KiCadProjectRoot?> LoadAsync(
             IReadOnlyList<string> rawPaths,
             string hardwareName = "",
-            string boardName = "")
+            string boardName = "",
+            CancellationToken cancellationToken = default)
         {
             var expandedPaths = ExpandRawKiCadPaths(rawPaths);
 
@@ -30,11 +34,13 @@ namespace Handlers.DataHandling
 
             foreach (string path in expandedPaths)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 string extension = Path.GetExtension(path);
 
                 if (string.Equals(extension, ".kicad_pcb", StringComparison.OrdinalIgnoreCase))
                 {
-                    string content = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+                    string content = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
                     var forms = SExpressionParser.Parse(content);
                     var root = forms.FirstOrDefault(node =>
                         string.Equals(Head(node), "kicad_pcb", StringComparison.OrdinalIgnoreCase));
@@ -53,7 +59,7 @@ namespace Handlers.DataHandling
                 }
             }
 
-            await LoadSchematicsAsync(schematicPaths, schematics).ConfigureAwait(false);
+            await LoadSchematicsAsync(schematicPaths, schematics, cancellationToken).ConfigureAwait(false);
 
             if (pcbs.Count == 0 && schematics.Count == 0)
             {
@@ -984,12 +990,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static async Task LoadSchematicsAsync(
             IReadOnlyList<string> schematicPaths,
-            List<KiCadSchematic> schematics)
+            List<KiCadSchematic> schematics,
+            CancellationToken cancellationToken = default)
         {
             var parsedRoots = new Dictionary<string, SExpressionNode>(StringComparer.OrdinalIgnoreCase);
 
             foreach (string path in schematicPaths)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 string fullPath = Path.GetFullPath(path);
 
                 if (parsedRoots.ContainsKey(fullPath))

@@ -859,9 +859,11 @@ namespace CRT
             }
 
             this.ComponentTitleTextBlock.Text = this.thisComponentDisplayText;
+            // A monospace font lines the values up; padded with spaces, not dots, which read as a
+            // typo (code review, 2026-10-13).
             this.HardwareContextTextBlock.Text = $"Hardware: {this.thisHardwareName}";
-            this.BoardContextTextBlock.Text = $"Board...: {this.thisBoardName}";
-            this.RegionContextTextBlock.Text = $"Region..: {this.thisLocalRegion}";
+            this.BoardContextTextBlock.Text = $"Board:    {this.thisBoardName}";
+            this.RegionContextTextBlock.Text = $"Region:   {this.thisLocalRegion}";
             this.ComponentImagesRegionTextBlock.Text = $"Component images relevant for the {this.thisLocalRegion} region";
         }
 
@@ -1314,7 +1316,19 @@ namespace CRT
         // POST it to the contribution server; see ComponentDraftWriter's own header for why the
         // save target changed and the UI otherwise did not).
         // ###########################################################################################
-        private async void OnSubmitClick(object? sender, RoutedEventArgs e) => await this.SubmitAsync();
+        private async void OnSubmitClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await this.SubmitAsync();
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnSubmitClick failed - [{ex}]");
+            }
+        }
 
         // The whole of "Save to draft", awaitable - so a test can wait for a save to finish, which
         // an async void click handler cannot offer.
@@ -2176,11 +2190,20 @@ namespace CRT
         // ###########################################################################################
         private async void OnFileTextBoxPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
-            e.Handled = true;
-
-            if (sender is TextBox { Tag: IContributionFileRow row })
+            try
             {
-                await this.PickFileForRowAsync(row);
+                e.Handled = true;
+
+                if (sender is TextBox { Tag: IContributionFileRow row })
+                {
+                    await this.PickFileForRowAsync(row);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnFileTextBoxPointerReleased failed - [{ex}]");
             }
         }
 
@@ -2189,9 +2212,18 @@ namespace CRT
         // ###########################################################################################
         private async void OnBrowseFileClick(object? sender, RoutedEventArgs e)
         {
-            if (sender is Button { Tag: IContributionFileRow row })
+            try
             {
-                await this.PickFileForRowAsync(row);
+                if (sender is Button { Tag: IContributionFileRow row })
+                {
+                    await this.PickFileForRowAsync(row);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                Logger.Critical($"OnBrowseFileClick failed - [{ex}]");
             }
         }
 

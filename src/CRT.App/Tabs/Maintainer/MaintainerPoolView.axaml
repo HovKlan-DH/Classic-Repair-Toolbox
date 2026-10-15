@@ -60,6 +60,7 @@
                               HorizontalAlignment="Stretch"
                               PlaceholderText="Choose somebody who has an account" />
                     <Button Grid.Column="1"
+                            Classes="Accept"
                             x:Name="AddAccountButton"
                             Content="Add as maintainer"
                             Margin="8,0,0,0"
@@ -71,6 +72,7 @@
                              x:Name="InviteEmailBox"
                              PlaceholderText="Or invite somebody new - their email address" />
                     <Button Grid.Column="1"
+                            Classes="Accept"
                             x:Name="InviteButton"
                             Content="Send invitation"
                             Margin="8,0,0,0"

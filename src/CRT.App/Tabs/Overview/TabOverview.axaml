@@ -44,19 +44,19 @@
 			<Setter Property="FontSize" Value="12" />
 		</Style>
 
+		<!-- Green (Accept, App.axaml) and staying green under the pointer, so the two buttons
+		     floating over the list keep standing out from it. -->
 		<Style Selector="Button.OverviewFloatingPrintButton">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
-			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
 			<Setter Property="Padding" Value="12,7" />
 			<Setter Property="MinHeight" Value="0" />
 			<Setter Property="HorizontalContentAlignment" Value="Center" />
 			<Setter Property="VerticalContentAlignment" Value="Center" />
 		</Style>
-		<Style Selector="Button.OverviewFloatingPrintButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		<Style Selector="Button.Accept.OverviewFloatingPrintButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
 		</Style>
-		<Style Selector="Button.OverviewFloatingPrintButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
+		<Style Selector="Button.Accept.OverviewFloatingPrintButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
 		</Style>
 	</UserControl.Styles>
 
@@ -324,10 +324,10 @@
 		            VerticalAlignment="Bottom"
 		            Margin="0,0,12,12"
 		            Spacing="8">
-			<Button Classes="OverviewFloatingPrintButton"
+			<Button Classes="Accept OverviewFloatingPrintButton"
 			        Content="Print BOM"
 			        Click="OnPrintComponentQuantitiesClick" />
-			<Button Classes="OverviewFloatingPrintButton"
+			<Button Classes="Accept OverviewFloatingPrintButton"
 			        Content="Print component list"
 			        Click="OnPrintComponentListClick" />
 		</StackPanel>

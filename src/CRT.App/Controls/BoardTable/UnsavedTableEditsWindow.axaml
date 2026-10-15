@@ -21,12 +21,10 @@
 		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button x:Name="CancelButton" Content="Cancel" Click="OnCancelClick" />
 			<Button x:Name="DiscardButton"
+					Classes="Danger"
 					Content="Discard edits"
-					Foreground="{DynamicResource Button_Cancel_Fg}"
-					Background="{DynamicResource Button_Cancel_Bg}"
-					BorderBrush="{DynamicResource Button_Cancel_Border}"
 					Click="OnDiscardClick" />
-			<Button x:Name="SaveButton" Content="Save changes" Click="OnSaveClick" />
+			<Button Classes="Accept" x:Name="SaveButton" Content="Save changes" Click="OnSaveClick" />
 		</StackPanel>
 	</StackPanel>
 </Window>

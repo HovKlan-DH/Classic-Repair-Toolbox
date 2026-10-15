@@ -50,10 +50,8 @@
 					Content="Cancel"
 					Click="OnCancelClick" />
 			<Button x:Name="CreateButton"
+					Classes="Accept"
 					Content="Create workbook"
-					Foreground="{DynamicResource Button_Ok_Fg}"
-					Background="{DynamicResource Button_Ok_Bg}"
-					BorderBrush="{DynamicResource Button_Ok_Border}"
 					Click="OnCreateClick" />
 		</StackPanel>
 	</StackPanel>

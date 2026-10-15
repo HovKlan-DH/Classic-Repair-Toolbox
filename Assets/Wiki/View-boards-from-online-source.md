@@ -16,7 +16,7 @@ for.
 ## Turn it on
 
 * Go to the **Configuration** tab
-* Tick **View boards as officially coming from online source (hide my local draft changes)**
+* Tick **View boards as published online (hide my draft changes)**
 
 It takes effect straight away on the board you are looking at, and on every board you open after
 it. Untick it again to see your changes as usual.
@@ -32,7 +32,7 @@ Every board shows exactly what CRT downloaded from its online source, as if you 
   has changed since you started your draft.
 
 A board that exists ONLY as your draft - a new board you created yourself - shows as an empty
-board, because officially it does not exist yet.
+board, because it is not published yet.
 
 "Online source" means whichever source you download board data from: the stable source, or the
 BETA source if you ticked **Download data from the BETA source instead of the stable source** in the

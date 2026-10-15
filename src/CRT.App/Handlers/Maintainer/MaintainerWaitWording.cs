@@ -17,9 +17,16 @@ namespace Handlers.MaintainerHandling
     // The after-timeout sentences are built by WaitWording, which the rest of CRT uses too, so the
     // limit is described the same way on every screen. Each takes what a fresh look at the
     // server found: finished, not (yet), or null when that look failed too.
+    //
+    // *** A BOARD IS NAMED AS THE LISTS NAME IT (code review, 2026-10-13). *** "Commodore / C64 /
+    // 250407" (ReviewQueueDisplay.BoardHeading), never the id with bare slashes - each method takes
+    // the id and words it through Board.
     // ###########################################################################################
     public static class MaintainerWaitWording
     {
+        // A board's id as the lists show it - see the header.
+        private static string Board(string? boardId) => ReviewQueueDisplay.BoardHeading(boardId);
+
         public const string SigningIn = "Signing in...";
 
         public const string SigningOut = "Signing out...";
@@ -54,45 +61,45 @@ namespace Handlers.MaintainerHandling
         // Account > Order of boards (2026-10-04): the new order written into both sources' lists.
         public const string SavingBoardOrder = "Saving the order of the drop-down lists in BETA and the stable source...";
 
-        public static string OpeningSubmission(string boardId) => $"Opening the submission to {boardId}...";
+        public static string OpeningSubmission(string boardId) => $"Opening the submission to {Board(boardId)}...";
 
-        public static string ReadingBoard(string boardId) => $"Reading {boardId}...";
+        public static string ReadingBoard(string boardId) => $"Reading {Board(boardId)}...";
 
         // A board's Board data and Files views (2026-10-03).
-        public static string ReadingBoardTable(string boardId) => $"Reading {boardId}'s board from BETA...";
+        public static string ReadingBoardTable(string boardId) => $"Reading {Board(boardId)} from BETA...";
 
-        public static string ReadingBoardFiles(string boardId) => $"Listing {boardId}'s files in BETA...";
+        public static string ReadingBoardFiles(string boardId) => $"Listing the files of {Board(boardId)} in BETA...";
 
         // The file tree (2026-09-28): working out a submission's, and fetching one file to open.
         public static string ReadingSubmissionFiles(string boardId) =>
-            $"Working out {boardId}'s files after approving - every file in its BETA folder is checked...";
+            $"Working out the files of {Board(boardId)} after approving - every file in its BETA folder is checked...";
 
         public static string OpeningFile(string fileName) => $"Fetching {fileName} to open it...";
 
         public static string ReadingProductionPlan(string boardId) =>
-            $"Working out what publishing {boardId} to the stable source would copy...";
+            $"Working out what publishing {Board(boardId)} to the stable source would copy...";
 
         public static string ReadingRollbackPlan(string boardId) =>
-            $"Working out what pushing {boardId} back to the queue would do...";
+            $"Working out what pushing {Board(boardId)} back to the queue would do...";
 
         public static string RemovingUnusedFiles(int count) =>
             count == 1 ? "Removing 1 unused file..." : string.Create(CultureInfo.InvariantCulture, $"Removing {count} unused files...");
 
         public static string SavingPlacement(string boardId) =>
-            $"Saving where {boardId} goes in CRT's drop-down lists...";
+            $"Saving where {Board(boardId)} goes in CRT's drop-down lists...";
 
-        public static string AddingMaintainer(string who, string boardId) => $"Adding {who} as a maintainer of {boardId}...";
+        public static string AddingMaintainer(string who, string boardId) => $"Adding {who} as a maintainer of {Board(boardId)}...";
 
-        public static string RemovingMaintainer(string who, string boardId) => $"Removing {who} as a maintainer of {boardId}...";
+        public static string RemovingMaintainer(string who, string boardId) => $"Removing {who} as a maintainer of {Board(boardId)}...";
 
-        public static string Inviting(string email, string boardId) => $"Inviting {email} to maintain {boardId}...";
+        public static string Inviting(string email, string boardId) => $"Inviting {email} to maintain {Board(boardId)}...";
 
         public static string WithdrawingInvitation(string email) => $"Withdrawing the invitation to {email}...";
 
         // Deleting a board (2026-10-03): the plan reads every workbook in both trees.
-        public static string ReadingDeletionPlan(string boardId) => $"Working out what deleting {boardId} would remove...";
+        public static string ReadingDeletionPlan(string boardId) => $"Working out what deleting {Board(boardId)} would remove...";
 
-        public static string DeletingBoard(string boardId) => $"Deleting {boardId} from both data sources and the database...";
+        public static string DeletingBoard(string boardId) => $"Deleting {Board(boardId)} from both data sources and the database...";
 
         public const string ReadingBoards = "Reading the boards...";
 
@@ -102,6 +109,21 @@ namespace Handlers.MaintainerHandling
         public const string ResettingData = "Deleting every submission, account, maintainer and the history...";
 
         public const string ReadingApiUsage = "Reading which CRT versions call which route...";
+
+        // ###########################################################################################
+        // What a click or a choice that failed in CRT ITSELF says (code review, 2026-10-13) - an
+        // exception, not a refusal from the server, which is always said in the server's own words.
+        // Where that screen shows its errors (HandlerGuard); the whole exception is in CRT's log.
+        // ###########################################################################################
+        public static string Unexpected(string? detail)
+        {
+            string what = string.IsNullOrWhiteSpace(detail) ? "an error with no description" : detail.Trim();
+
+            if (!what.EndsWith('.') && !what.EndsWith('!') && !what.EndsWith('?'))
+                what += ".";
+
+            return $"Something went wrong in CRT: {what} The details are in CRT's log file.";
+        }
 
         // ---- After the limit: things with nothing to check --------------------------------------
 
@@ -216,20 +238,20 @@ namespace Handlers.MaintainerHandling
         public static string PublishAfterTimeout(string boardId, bool? stillInBeta) =>
             WaitWording.AfterTimeout(
                 stillInBeta is bool waiting ? !waiting : null,
-                $"{boardId} is published to the stable source",
-                $"{boardId} is still waiting in BETA");
+                $"{Board(boardId)} is published to the stable source",
+                $"{Board(boardId)} is still waiting in BETA");
 
         public static string PushBackAfterTimeout(string boardId, bool? stillInBeta) =>
             WaitWording.AfterTimeout(
                 stillInBeta is bool waiting ? !waiting : null,
-                $"{boardId} is pushed back to the queue",
-                $"{boardId} is still in BETA");
+                $"{Board(boardId)} is pushed back to the queue",
+                $"{Board(boardId)} is still in BETA");
 
         public static string RejectAfterTimeout(string boardId, bool? stillInBeta) =>
             WaitWording.AfterTimeout(
                 stillInBeta is bool waiting ? !waiting : null,
-                $"{boardId} is rejected and out of BETA",
-                $"{boardId} is still in BETA");
+                $"{Board(boardId)} is rejected and out of BETA",
+                $"{Board(boardId)} is still in BETA");
 
         public static string RemovalAfterTimeout(int? stillThere) =>
             WaitWording.AfterTimeout(
@@ -242,11 +264,11 @@ namespace Handlers.MaintainerHandling
         public static string DeleteAfterTimeout(string boardId, bool? stillListed) =>
             WaitWording.AfterTimeout(
                 stillListed is bool listed ? !listed : null,
-                $"{boardId} is deleted",
-                $"{boardId} is still there");
+                $"{Board(boardId)} is deleted",
+                $"{Board(boardId)} is still there");
 
         public static string PlacementAfterTimeout(string boardId, bool? saved) =>
-            WaitWording.AfterTimeout(saved, $"{boardId}'s place is saved", $"{boardId}'s place is not saved yet");
+            WaitWording.AfterTimeout(saved, $"the place of {Board(boardId)} is saved", $"the place of {Board(boardId)} is not saved yet");
 
         // ###########################################################################################
         // *** A REBUILD THAT TIMED OUT IS NOT "TRY AGAIN" WITHOUT A WORD (code review, 2026-10-01).

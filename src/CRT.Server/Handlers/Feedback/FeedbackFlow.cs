@@ -166,7 +166,12 @@ namespace CRT.Server.Handlers.Feedback
                 shown,
                 saved.Take(FeedbackFlow.MaxListedFiles).ToList(),
                 Math.Max(0, saved.Count - FeedbackFlow.MaxListedFiles),
-                notes);
+                notes) with
+            {
+                // Not kept in the outbox (2026-10-13): CRT is told it failed and sends it again, so a
+                // copy going out later as well would arrive twice. See EmailMessage.
+                KeepUntilSent = false
+            };
 
             if (!await mailer.SendAsync(message, cancellationToken))
             {

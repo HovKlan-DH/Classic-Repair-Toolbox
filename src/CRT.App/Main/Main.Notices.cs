@@ -10,7 +10,8 @@ namespace CRT
     // ###########################################################################################
     // The NOTICES: the cards floating over the tabs' bottom-right corner (NoticeStack in
     // Main.axaml) - an update, data that needs a newer CRT, a data check, launch sync turned off,
-    // a draft's board moving under it, a source to switch back from, the label editor's lock. Each
+    // a draft's board moving under it, a source to switch back from, the label editor's lock,
+    // settings that could not be read. Each
     // card's own part shows and hides it (Main.Updates.cs, Main.DataSyncStatus.cs, ...); this part
     // owns what all of them share. See Main.axaml.cs for the file map. "--demo-notices" plays them
     // all (Main.NoticeDemo.cs).
@@ -29,6 +30,8 @@ namespace CRT
     //
     // *** A CARD WITH NOTHING TO DO GOES BY ITSELF *** after NoticeGoesAfter (HideNoticeLater) -
     // today the data check's "all up to date". Anything new put on the card first cancels that.
+    // The one exception is "your settings could not be read", which stays until closed - see
+    // Main.SettingsNotice.cs for why.
     //
     // *** A CARD'S WORDS GO THROUGH NoticeEmphasis.Show, never into Text (owner request,
     // 2026-10-11). *** It puts a bracketed value and a data source's name in bold ("[3] files

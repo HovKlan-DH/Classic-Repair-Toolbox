@@ -16,14 +16,14 @@ public sealed class MyAccountRulesTests
     // since it is then what names the account.
     // ###########################################################################################
     [Fact]
-    public void Logged_in_as_puts_the_name_in_bold_and_the_address_after_it()
+    public void Signed_in_as_puts_the_name_in_bold_and_the_address_after_it()
     {
         Assert.Equal(
             [new ReviewNoteRun("Dennis", true), new ReviewNoteRun(" (dh@example.com)", false)],
-            MyAccountRules.LoggedInAs(" Dennis ", "dh@example.com"));
+            MyAccountRules.SignedInAs(" Dennis ", "dh@example.com"));
 
-        Assert.Equal([new ReviewNoteRun("dh@example.com", true)], MyAccountRules.LoggedInAs("  ", "dh@example.com"));
-        Assert.Equal([new ReviewNoteRun("dh@example.com", true)], MyAccountRules.LoggedInAs(null, "dh@example.com"));
+        Assert.Equal([new ReviewNoteRun("dh@example.com", true)], MyAccountRules.SignedInAs("  ", "dh@example.com"));
+        Assert.Equal([new ReviewNoteRun("dh@example.com", true)], MyAccountRules.SignedInAs(null, "dh@example.com"));
     }
 
     [Theory]

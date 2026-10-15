@@ -88,7 +88,8 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph($"The link works for {validHours} hours. If it expires, you can ask for a new one from the app.")
                 .Paragraph("If you did not sign up, you can ignore this message - the address will not be used for anything else.")
                 .WithContactLine()
-                .ToMessage(toAddress, $"Confirm your {EmailTemplates.ProductName} address");
+                .ToMessage(toAddress, $"Confirm your {EmailTemplates.ProductName} address")
+                with { CarriesCredential = true };
         }
 
         // ###########################################################################################
@@ -120,7 +121,8 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph($"The code works for {validHours} hours.")
                 .Paragraph("If it was not you, there is nothing to do. Your account has not changed, and whoever tried was not told whether this address is registered.")
                 .WithContactLine()
-                .ToMessage(toAddress, $"You already have a {EmailTemplates.ProductName} account");
+                .ToMessage(toAddress, $"You already have a {EmailTemplates.ProductName} account")
+                with { CarriesCredential = true };
         }
 
         // ###########################################################################################
@@ -158,7 +160,8 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph($"The code works for {validHours} hours and can only be used once.")
                 .Paragraph("If you did not ask for this, you can ignore it - your password has not changed.")
                 .WithContactLine()
-                .ToMessage(toAddress, $"Set a new {EmailTemplates.ProductName} password");
+                .ToMessage(toAddress, $"Set a new {EmailTemplates.ProductName} password")
+                with { CarriesCredential = true };
         }
 
         // Where CRT is downloaded. A maintainer uses CRT's own Maintainer tab since 2026-09-29; the
@@ -172,24 +175,38 @@ namespace CRT.Server.Handlers.Email
         // CODE rather than a link: accepting needs a password, so it cannot be a click, and a
         // prefetching mail client cannot spend a code by following it.
         // ###########################################################################################
+        // `toItsCreator`: the invitation that follows a NEW board's acceptance, to the contributor
+        // who created it and agreed then to maintain it (owner request, 2026-10-13) - see
+        // NewBoardMaintainerFlow. It says why it came instead of who sent it.
         public static EmailMessage MaintainerInvitation(
             string toAddress,
             string boardDisplayName,
             string invitedBy,
             string invitationCode,
-            int validDays)
+            int validDays,
+            bool toItsCreator = false)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
             ArgumentException.ThrowIfNullOrWhiteSpace(invitationCode);
 
             string inviter = string.IsNullOrWhiteSpace(invitedBy) ? "The administrator" : invitedBy.Trim();
 
-            return EmailTemplates.Greeted(null)
-                .Paragraph(
-                    $"{inviter} has invited you to be a maintainer of ",
-                    MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
-                    $" in {EmailTemplates.ProductName}. A maintainer looks through the changes people send in for that board, " +
-                    "and publishes the good ones for everybody who uses the data.")
+            MailBody body = toItsCreator
+                ? EmailTemplates.Greeted(null)
+                    .Paragraph(
+                        "The new board you created, ",
+                        MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
+                        $", is accepted into {EmailTemplates.ProductName}. As you agreed when you created it, you are invited " +
+                        "to be its maintainer: a maintainer looks through the changes people send in for that board, and " +
+                        "publishes the good ones for everybody who uses the data.")
+                : EmailTemplates.Greeted(null)
+                    .Paragraph(
+                        $"{inviter} has invited you to be a maintainer of ",
+                        MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
+                        $" in {EmailTemplates.ProductName}. A maintainer looks through the changes people send in for that board, " +
+                        "and publishes the good ones for everybody who uses the data.");
+
+            return body
                 .Paragraph("Your invitation code:")
                 .Code(invitationCode)
                 .Paragraph("To accept it:")
@@ -203,7 +220,37 @@ namespace CRT.Server.Handlers.Email
                 .WithContactLine()
                 // The subject in the owner's words (2026-10-04) - it read "You are invited to maintain
                 // Amstrad / CPC 664 / MC0005A".
-                .ToMessage(toAddress, $"For CRT you are invited to maintain the [{boardDisplayName}] board");
+                .ToMessage(toAddress, $"For CRT you are invited to maintain the [{boardDisplayName}] board")
+                with { CarriesCredential = true };
+        }
+
+        // ###########################################################################################
+        // A NEW BOARD'S CREATOR MADE ITS MAINTAINER (owner request, 2026-10-13: "make the
+        // contributor of a NEW board then first/initial board maintainer also"). Sent when the
+        // contributor already has an account, so there is nothing to accept - it says what being the
+        // maintainer means and where the work is done. Without an account, MaintainerInvitation
+        // (toItsCreator) goes instead.
+        // ###########################################################################################
+        public static EmailMessage NewBoardMaintainerAdded(string toAddress, string displayName, string boardDisplayName)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            string board = EmailTemplates.DescribeBoard(boardDisplayName);
+
+            return EmailTemplates.Greeted(displayName)
+                .Paragraph(
+                    "The new board you created, ",
+                    MailText.Named(board),
+                    $", is accepted into {EmailTemplates.ProductName}, and as you agreed when you created it, you are now its maintainer.")
+                .Paragraph(
+                    "A maintainer looks through the changes people send in for that board, and publishes the good ones " +
+                    "for everybody who uses the data. You get an email when somebody sends one.")
+                .Paragraph("To review them:")
+                .Steps(
+                    ["In CRT's \"Configuration\" tab, tick \"Enable Maintainer tab\"."],
+                    ["Open the \"Maintainer\" tab and sign in with this email address and your password."])
+                .WithContactLine()
+                .ToMessage(toAddress, $"For CRT you are now the maintainer of the [{board}] board");
         }
 
         // ###########################################################################################
@@ -257,7 +304,8 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph($"The code works for {validHours} hours and can only be used once.")
                 .Paragraph("If you did not ask for this, you can ignore it - nothing changes unless the code is used.")
                 .WithContactLine()
-                .ToMessage(toAddress, $"Confirm your new {EmailTemplates.ProductName} address");
+                .ToMessage(toAddress, $"Confirm your new {EmailTemplates.ProductName} address")
+                with { CarriesCredential = true };
         }
 
         public static EmailMessage EmailChangeAddressTaken(string toAddress, string displayName)

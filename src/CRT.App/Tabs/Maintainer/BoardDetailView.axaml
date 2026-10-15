@@ -120,8 +120,9 @@
         </StackPanel>
 
         <!-- BETA OR THE STABLE SOURCE, for Board data and Files (owner request, 2026-10-04) - shown
-             with those two views only. A half the board is not in cannot be chosen
-             (BoardSections.CanChooseBeta / CanChooseStable). -->
+             with those two views only, and only for a board in BOTH sources (code review,
+             2026-10-13; BoardSections.ShowsSourceSwitch): a board in one shows that one, with no
+             switch and no "Compare sources" to grey out. -->
         <StackPanel DockPanel.Dock="Top"
                     x:Name="TreeSwitchBar"
                     Orientation="Horizontal"

@@ -305,4 +305,44 @@ public sealed class ReviewApiClientTests
         Assert.Equal("https://review.invalid/api/health", seen.RequestUri!.ToString());
         Assert.Null(seen.Headers.Authorization);
     }
+
+    // ###########################################################################################
+    // *** A REQUEST THE SERVER ACCEPTED SAYS SO, WITH WHEN IT WAS SENT (code review, 2026-10-13). ***
+    // The server slides a session's expiry on every request it accepts; the tab slides its remembered
+    // copy the same way from this event (TabMaintainer.SlideSession). Raised for a success with a
+    // session only - never a refusal (a 401 is the session ending), never a request without one.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_success_with_a_session_raises_SessionAccepted_and_a_refusal_does_not()
+    {
+        System.Net.HttpStatusCode status = System.Net.HttpStatusCode.OK;
+
+        var handler = new AnsweringHttpHandler(_ => new HttpResponseMessage(status)
+        {
+            Content = new StringContent("""{"isAdministrator":false,"submissions":[]}""", System.Text.Encoding.UTF8, "application/json")
+        });
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        var accepted = new List<(ReviewSession Session, DateTimeOffset Sent)>();
+        client.SessionAccepted += (session, sent) => accepted.Add((session, sent));
+
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        ReviewApiResult<ReviewQueueResponse> queue = await client.GetQueueAsync(ReviewApiClientTests.Session);
+
+        Assert.True(queue.IsOk);
+        (ReviewSession seenSession, DateTimeOffset sent) = Assert.Single(accepted);
+        Assert.Same(ReviewApiClientTests.Session, seenSession);
+        Assert.InRange(sent, before, DateTimeOffset.UtcNow);
+
+        // Refused - signed out elsewhere: nothing to slide.
+        status = System.Net.HttpStatusCode.Unauthorized;
+        await client.GetQueueAsync(ReviewApiClientTests.Session);
+
+        // No session at all (the public health check): nothing to slide either.
+        status = System.Net.HttpStatusCode.OK;
+        await client.GetServerVersionAsync();
+
+        Assert.Single(accepted);
+    }
 }

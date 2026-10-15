@@ -37,6 +37,15 @@ public sealed class UserSettingsTests : IDisposable
     private static JsonNode ReadJson(string path) =>
         JsonNode.Parse(File.ReadAllText(path))!;
 
+    // Whether a catalogue key is ticked / collapsed, by the rule the app itself reads the
+    // settings with (CatalogueVisibility over the snapshots) - UserSettings has no key-by-key
+    // getters since nothing in CRT asked one (code review, 2026-10-13).
+    private static bool IsCatalogueKeyChecked(string key) =>
+        !CatalogueVisibility.IsKeyListed(UserSettings.CatalogueUncheckedKeysSnapshot, key);
+
+    private static bool IsCatalogueKeyCollapsed(string key) =>
+        CatalogueVisibility.IsKeyListed(UserSettings.CatalogueCollapsedKeysSnapshot, key);
+
     // ---------------------------------------------------------------------- defaults
 
     [Fact]
@@ -63,6 +72,182 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting);
         Assert.Equal(BoardTableRowKinds.None, UserSettings.MaintainerTableFilter);
         Assert.False(UserSettings.MaintainerCompareSources);
+    }
+
+    // ---------------------------------------------------------------- an unreadable file
+    //
+    // Code review, 2026-10-13: any failure used to mean "defaults", silently, and the first setting
+    // changed afterwards (the board shown at launch is one) saved those defaults over the file - so
+    // one bad byte cost every preference for good, with nothing said.
+
+    private string WriteSettingsFile(string json)
+    {
+        string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json");
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    private static string[] CorruptCopiesOf(string path) =>
+        Directory.GetFiles(Path.GetDirectoryName(path)!, Path.GetFileName(path) + ".corrupt-*");
+
+    [Fact]
+    public void A_settings_file_that_cannot_be_parsed_is_kept_aside_and_CRT_starts_on_defaults()
+    {
+        this.LoadSettings("""{"region": "NTSC"}""");
+        string path = this.WriteSettingsFile("""{"region": "NTSC", "theme": """);
+
+        UserSettings.LoadFrom(path);
+
+        // Defaults - not the settings loaded before, nor anything half-read from the bad file.
+        Assert.Equal("PAL", UserSettings.Region);
+
+        string kept = Assert.Single(CorruptCopiesOf(path));
+        Assert.Equal("""{"region": "NTSC", "theme": """, File.ReadAllText(kept));
+        Assert.Matches(@"\.corrupt-\d{8}-\d{6}$", kept);
+
+        Assert.NotNull(UserSettings.UnreadableSettings);
+        Assert.Equal(path, UserSettings.UnreadableSettings!.Path);
+        Assert.Equal(kept, UserSettings.UnreadableSettings.KeptAs);
+        Assert.Contains($"[{kept}]", UserSettings.UnreadableSettings.NoticeText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_setting_changed_after_an_unreadable_file_never_writes_over_the_kept_copy()
+    {
+        string path = this.WriteSettingsFile("not json at all");
+
+        UserSettings.LoadFrom(path);
+        UserSettings.Region = "NTSC";
+
+        string kept = Assert.Single(CorruptCopiesOf(path));
+        Assert.Equal("not json at all", File.ReadAllText(kept));
+
+        // The new settings live where the old file was, and read back.
+        Assert.Equal("NTSC", ReadJson(path)["region"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_file_that_holds_no_settings_counts_as_unreadable()
+    {
+        string path = this.WriteSettingsFile("null");
+
+        UserSettings.LoadFrom(path);
+
+        Assert.Single(CorruptCopiesOf(path));
+        Assert.NotNull(UserSettings.UnreadableSettings);
+    }
+
+    [Fact]
+    public void A_readable_settings_file_reports_nothing_unreadable()
+    {
+        string path = this.WriteSettingsFile("garbage");
+        UserSettings.LoadFrom(path);
+        Assert.NotNull(UserSettings.UnreadableSettings);
+
+        this.LoadSettings("""{"region": "NTSC"}""");
+
+        Assert.Null(UserSettings.UnreadableSettings);
+        Assert.Equal("NTSC", UserSettings.Region);
+    }
+
+    // A second unreadable file in the same second does not take the first one's name.
+    [Fact]
+    public void Setting_aside_twice_in_the_same_second_keeps_both_files()
+    {
+        var now = new DateTime(2026, 10, 13, 9, 15, 0);
+        string first = this.WriteSettingsFile("first");
+        string second = first + ".corrupt-20261013-091500";
+        File.WriteAllText(second, "earlier copy");
+
+        string? kept = UserSettings.SetAsideUnreadableFile(first, now);
+
+        Assert.Equal(second + "-2", kept);
+        Assert.Equal("first", File.ReadAllText(kept!));
+        Assert.Equal("earlier copy", File.ReadAllText(second));
+    }
+
+    // A file that cannot be moved aside is left where it is - and then NOTHING may be written over
+    // it this session: no setting saved, whatever the user changes.
+    [Fact]
+    public void An_unparsable_file_that_cannot_be_moved_aside_is_never_written_over()
+    {
+        string path = this.WriteSettingsFile("{ broken");
+        Action<string, string> realMove = UserSettings.MoveSettingsFile;
+        UserSettings.MoveSettingsFile = (_, _) => throw new IOException("in use");
+
+        try
+        {
+            UserSettings.LoadFrom(path);
+        }
+        finally
+        {
+            UserSettings.MoveSettingsFile = realMove;
+        }
+
+        UserSettings.Region = "NTSC";
+        UserSettings.SetLastHardware("Commodore 64");
+
+        Assert.Equal("{ broken", File.ReadAllText(path));
+        Assert.Empty(CorruptCopiesOf(path));
+        Assert.Null(UserSettings.UnreadableSettings!.KeptAs);
+        Assert.Contains($"[{path}]", UserSettings.UnreadableSettings.NoticeText, StringComparison.Ordinal);
+        Assert.Contains("not saved", UserSettings.UnreadableSettings.NoticeText, StringComparison.Ordinal);
+    }
+
+    // A file that cannot even be READ (another program holds it) may be perfectly good: it is not
+    // moved, and not written over.
+    [Fact]
+    public void A_settings_file_that_cannot_be_read_is_left_alone_and_never_written_over()
+    {
+        string path = this.WriteSettingsFile("""{"region": "NTSC"}""");
+        Func<string, string> realRead = UserSettings.ReadSettingsText;
+        UserSettings.ReadSettingsText = _ => throw new IOException("locked");
+
+        try
+        {
+            UserSettings.LoadFrom(path);
+        }
+        finally
+        {
+            UserSettings.ReadSettingsText = realRead;
+        }
+
+        Assert.Equal("PAL", UserSettings.Region);
+
+        UserSettings.Region = "NTSC";
+        UserSettings.SetLastHardware("Commodore 64");
+
+        Assert.Equal("""{"region": "NTSC"}""", File.ReadAllText(path));
+        Assert.Empty(CorruptCopiesOf(path));
+        Assert.Null(UserSettings.UnreadableSettings!.KeptAs);
+    }
+
+    // Captures used to default to the data folder itself, which the orphan cleanup empties of
+    // every file no manifest lists (code review, 2026-10-13). The default is beside it now, where
+    // the Workbooks and Drafts folders are.
+    [Fact]
+    public void The_default_oscilloscope_image_folder_is_beside_the_data_folder_not_in_it()
+    {
+        this.LoadSettings("{}");
+
+        string folder = UserSettings.OscilloscopeImageFolder;
+        string dataRoot = DataManager.ResolveDataRoot([]);
+
+        Assert.Equal(UserSettings.DefaultOscilloscopeImageFolder, folder);
+        Assert.Equal("Oscilloscope images", Path.GetFileName(folder));
+        Assert.Equal(Path.GetDirectoryName(dataRoot), Path.GetDirectoryName(folder));
+        Assert.False(OscilloscopeCaptureRelocation.IsSameOrInside(folder, dataRoot));
+    }
+
+    [Fact]
+    public void A_chosen_oscilloscope_image_folder_wins_over_the_default()
+    {
+        string chosen = Path.Combine(Path.GetTempPath(), "scope-shots");
+        this.LoadSettings("{}");
+
+        UserSettings.OscilloscopeImageFolder = chosen;
+
+        Assert.Equal(chosen, UserSettings.OscilloscopeImageFolder);
     }
 
     [Fact]
@@ -686,7 +871,7 @@ public sealed class UserSettingsTests : IDisposable
     {
         this.LoadSettings("{}");
 
-        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64"));
+        Assert.True(IsCatalogueKeyChecked("Commodore 64"));
     }
 
     [Fact]
@@ -697,13 +882,13 @@ public sealed class UserSettingsTests : IDisposable
         UserSettings.SetCatalogueKeyChecked("Commodore 64|250407", false);
         UserSettings.LoadFrom(path);
 
-        Assert.False(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
-        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|KU-14194HB"));
+        Assert.False(IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.True(IsCatalogueKeyChecked("Commodore 64|KU-14194HB"));
 
         UserSettings.SetCatalogueKeyChecked("Commodore 64|250407", true);
         UserSettings.LoadFrom(path);
 
-        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.True(IsCatalogueKeyChecked("Commodore 64|250407"));
     }
 
     // An unlisted catalogue key defaults to expanded - see ConfigurationCatalogueTree.
@@ -712,7 +897,7 @@ public sealed class UserSettingsTests : IDisposable
     {
         this.LoadSettings("{}");
 
-        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
+        Assert.False(IsCatalogueKeyCollapsed("Commodore 64"));
     }
 
     [Fact]
@@ -723,13 +908,13 @@ public sealed class UserSettingsTests : IDisposable
         UserSettings.SetCatalogueKeyCollapsed("Commodore 64", true);
         UserSettings.LoadFrom(path);
 
-        Assert.True(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
-        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 128"));
+        Assert.True(IsCatalogueKeyCollapsed("Commodore 64"));
+        Assert.False(IsCatalogueKeyCollapsed("Commodore 128"));
 
         UserSettings.SetCatalogueKeyCollapsed("Commodore 64", false);
         UserSettings.LoadFrom(path);
 
-        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
+        Assert.False(IsCatalogueKeyCollapsed("Commodore 64"));
     }
 
     // Catalogue keys are compared case-insensitively, like every other hardware/board/schematic
@@ -751,12 +936,12 @@ public sealed class UserSettingsTests : IDisposable
             }
             """);
 
-        Assert.False(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
-        Assert.False(UserSettings.IsCatalogueKeyChecked("COMMODORE 64|250407"));
-        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|KU-14194HB"));
+        Assert.False(IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.False(IsCatalogueKeyChecked("COMMODORE 64|250407"));
+        Assert.True(IsCatalogueKeyChecked("Commodore 64|KU-14194HB"));
 
-        Assert.True(UserSettings.IsCatalogueKeyCollapsed("Commodore 64"));
-        Assert.False(UserSettings.IsCatalogueKeyCollapsed("Commodore 128"));
+        Assert.True(IsCatalogueKeyCollapsed("Commodore 64"));
+        Assert.False(IsCatalogueKeyCollapsed("Commodore 128"));
     }
 
     // Unchecking through the setter and then re-checking with a DIFFERENT casing must clear the
@@ -768,10 +953,10 @@ public sealed class UserSettingsTests : IDisposable
         this.LoadSettings("{}");
 
         UserSettings.SetCatalogueKeyChecked("Commodore 64|250407", false);
-        Assert.False(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.False(IsCatalogueKeyChecked("Commodore 64|250407"));
 
         UserSettings.SetCatalogueKeyChecked("commodore 64|250407", true);
-        Assert.True(UserSettings.IsCatalogueKeyChecked("Commodore 64|250407"));
+        Assert.True(IsCatalogueKeyChecked("Commodore 64|250407"));
     }
 
     // The workbook the Workbooks tab "activated" (Main.ActivateWorkbook) for a board - what
@@ -1014,15 +1199,30 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(Logger.IsDebugEnabled);
     }
 
+    // Two per-board settings were never read by anything ("contributorModeByBoard" and
+    // "schematicsHoverHighlightsTracesByBoard") and were removed (code review, 2026-10-13).
+    // Settings files written before still carry them: a key nothing knows must not cost the user
+    // every other setting, and the next save simply leaves it out.
     [Fact]
-    public void Contributor_mode_round_trips_per_board()
+    public void A_settings_file_with_the_removed_per_board_keys_still_loads()
     {
-        string path = this.LoadSettings("{}");
+        string path = this.LoadSettings(
+            """
+            {
+              "region": "NTSC",
+              "contributorModeByBoard": { "C64/250407": true },
+              "schematicsHoverHighlightsTracesByBoard": { "C64/250407": false }
+            }
+            """);
 
-        UserSettings.SetContributorModeForBoard("C64/250407", true);
-        UserSettings.LoadFrom(path);
+        Assert.Equal("NTSC", UserSettings.Region);
 
-        Assert.True(UserSettings.GetContributorModeForBoard("C64/250407"));
+        UserSettings.Region = "PAL";
+
+        JsonNode saved = ReadJson(path);
+        Assert.Null(saved["contributorModeByBoard"]);
+        Assert.Null(saved["schematicsHoverHighlightsTracesByBoard"]);
+        Assert.Equal("PAL", saved["region"]!.GetValue<string>());
     }
 
     // ------------------------------------------------------------------- events

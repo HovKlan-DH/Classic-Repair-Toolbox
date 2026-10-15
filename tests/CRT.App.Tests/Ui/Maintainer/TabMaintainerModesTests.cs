@@ -981,7 +981,7 @@ public sealed class TabMaintainerModesTests
                 // the tab included (here, the tab itself: MaintainerTabHost).
                 seen = overlay.IsVisible && main.Opacity < 1;
                 Assert.Equal(
-                    "Pushing Commodore/C64/250407 back to the queue. BETA's data is being put back as the stable source has it - please wait until it is done.",
+                    "Pushing Commodore / C64 / 250407 back to the queue. BETA goes back to what the stable source has - please wait until it is done.",
                     overlay.Message);
                 return Task.CompletedTask;
             });

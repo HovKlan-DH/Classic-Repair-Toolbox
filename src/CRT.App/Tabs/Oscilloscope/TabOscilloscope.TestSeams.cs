@@ -27,6 +27,13 @@ namespace CRT
     // ###########################################################################################
     public partial class TabOscilloscope
     {
+        // The selection snapshot the background workers take - from whatever thread calls it.
+        internal (string Host, int Port) TakeSelectionSnapshotForTests()
+        {
+            var snapshot = this.CreateOscilloscopeSelectionSnapshot();
+            return (snapshot.Host, snapshot.Port);
+        }
+
         // ###########################################################################################
         // Runs one command palette against the supplied client - the real ExecutePaletteAsync, with
         // only the client swapped for a fake.

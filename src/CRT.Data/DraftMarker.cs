@@ -32,7 +32,7 @@ namespace Handlers.DataHandling
     // *** NEVER SUBMITTED, NEVER PUBLISHED. *** See DraftFolderLayout.DraftMarkerFileName for the
     // two independent mechanisms that keep it out of a submission.
     // ###########################################################################################
-    public sealed class DraftMarker
+    public sealed record DraftMarker
     {
         // The board's ExcelDataFile identity, carried so a marker found on disk can be checked
         // against the folder it was found in - a folder copied by hand to a new name would
@@ -63,6 +63,34 @@ namespace Handlers.DataHandling
         // round-trip format, for the same reason receipts use it: a file that travels between time
         // zones must not reorder itself.
         public string CreatedUtc { get; init; } = string.Empty;
+
+        // ###########################################################################################
+        // THE REVISION THE CONTRIBUTOR SAID "I HAVE LOOKED AT THIS" TO (code review, 2026-10-13),
+        // for a draft with no base to bring up to date (one started before CRT kept a base). It used
+        // to OVERWRITE BaseRevision - which the submission tells the server, so the maintainer was
+        // told a stale draft was made from the newest data. BaseRevision now always says what the
+        // draft was really copied from; this only quiets the warning.
+        // ###########################################################################################
+        public string DriftSeenRevision { get; init; } = string.Empty;
+
+        // ###########################################################################################
+        // THE PUBLISHED CONTENT "I HAVE LOOKED AT THIS" WAS SAID TO (code review, 2026-10-13) - the
+        // content hash (BaseContentHash's kind) of the published files at that moment. A draft that
+        // keeps a content hash is judged by CONTENT (DraftDriftCheck), which never read
+        // DriftSeenRevision - so for a draft that could not be brought up to date after all (its
+        // base unreadable, the published board unreadable), the warning could not be dismissed.
+        // Empty when nothing was seen; cleared when the draft is brought up to date.
+        // ###########################################################################################
+        public string DriftSeenContentHash { get; init; } = string.Empty;
+
+        // ###########################################################################################
+        // WHAT THE PUBLISHED FILES HELD WHEN THE DRAFT WAS COPIED OR LAST BROUGHT UP TO DATE (code
+        // review, 2026-10-13): one SHA-256 over the published workbook's and sidecar's bytes
+        // (DraftBaseStore.PublishedContentHash). A revision is a DATE, so two publishes on one day
+        // read as no change; the content cannot. Empty for a draft from before it existed - those
+        // fall back to comparing revisions.
+        // ###########################################################################################
+        public string BaseContentHash { get; init; } = string.Empty;
 
         // True when this draft has no published counterpart at all.
         [JsonIgnore]

@@ -135,6 +135,30 @@ namespace CRT.Server.Tests
             Assert.Equal("1 file(s) restored, 0 removed; 1 submission(s) rejected; No.", only.Detail);
         }
 
+        // ###########################################################################################
+        // *** A BOARD FOUND ALREADY IN THE STABLE SOURCE NAMES NOBODY (code review, 2026-10-13). ***
+        // The server records it by itself while somebody's CRT reads the BETA > Stable list; rows
+        // written before then named that reader as its doer - and said "production".
+        // ###########################################################################################
+        [Fact]
+        public void A_board_found_in_the_stable_source_names_nobody_as_its_doer()
+        {
+            AuditEntry[] audit =
+            [
+                new(1, "anna@example.com", BoardHistoryEvents.FoundInProduction, C64,
+                    "revision 2026-October-4; production already held every file (1,180)", Now),
+                new(null, BoardHistoryRules.ServerActorLabel, BoardHistoryEvents.FoundInProduction, C64,
+                    "revision 2026-October-5; the stable source already held every file (1,180)", Now.AddDays(1)),
+            ];
+
+            IReadOnlyList<BoardHistoryEntry> history = BoardHistoryRules.Build(
+                [], new Dictionary<long, AccountRecord> { [1] = new(1, "anna@example.com", "anna@example.com", "h", "Anna", true, false, false, Now, null) }, audit);
+
+            Assert.All(history, entry => Assert.Null(entry.Who));
+            Assert.All(history, entry => Assert.DoesNotContain("production", entry.Detail, StringComparison.Ordinal));
+            Assert.Contains("the stable source already held every file", history[1].Detail, StringComparison.Ordinal);
+        }
+
         // An amendment is recorded under its submission ("#41") - the line names that submission.
         [Fact]
         public void An_amendment_names_its_submission()

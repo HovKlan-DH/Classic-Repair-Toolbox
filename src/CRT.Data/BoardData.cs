@@ -81,6 +81,18 @@ namespace Handlers.DataHandling
             Width = this.Width,
             Height = this.Height,
         };
+
+        // This rectangle on a relabelled component, every other value as it was (ComponentRelabel,
+        // code review 2026-10-13).
+        public ComponentHighlightEntry WithBoardLabel(string boardLabel) => new()
+        {
+            SchematicName = this.SchematicName,
+            BoardLabel = boardLabel,
+            X = this.X,
+            Y = this.Y,
+            Width = this.Width,
+            Height = this.Height,
+        };
     }
 
     public class ComponentLocalFileEntry

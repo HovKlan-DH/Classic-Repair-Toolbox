@@ -49,6 +49,9 @@ public partial class TabSchematics
 
     private int thisKiCadProjectLoadVersion;
 
+    // The load still reading a board's KiCad files, cancelled when the next one starts.
+    private CancellationTokenSource? thisKiCadProjectLoadCts;
+
     // ###########################################################################################
     // Returns true when the requested schematic contains any explicitly selected KiCad net content.
     // Only explicit KiCad trace selections participate here, so component-driven thumbnail matching
@@ -267,14 +270,29 @@ public partial class TabSchematics
 
         KiCadProjectBundle? loadedProject = null;
 
+        // The previous board's load, if still reading, is told to stop (code review, 2026-10-13):
+        // it ran to the end however many boards had been chosen since, each parse tens of megabytes.
+        this.thisKiCadProjectLoadCts?.Cancel();
+        var loadCts = new CancellationTokenSource();
+        this.thisKiCadProjectLoadCts = loadCts;
+
         try
         {
             loadedProject = await Task.Run(async () =>
-                await KiCadProjectLoader.LoadRawAsync(rawPaths, hardwareName, boardName));
+                await KiCadProjectLoader.LoadRawAsync(rawPaths, hardwareName, boardName, loadCts.Token));
         }
         catch (Exception ex)
         {
             Logger.Warning($"Failed to load KiCad project in background - [{ex}]");
+        }
+        finally
+        {
+            if (ReferenceEquals(this.thisKiCadProjectLoadCts, loadCts))
+            {
+                this.thisKiCadProjectLoadCts = null;
+            }
+
+            loadCts.Dispose();
         }
 
         if (loadVersion != this.thisKiCadProjectLoadVersion)

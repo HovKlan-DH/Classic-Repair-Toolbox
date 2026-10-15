@@ -347,28 +347,75 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Assert.Equal(3.5, scaleX);
     }
 
-    // ------------------------------------------------------------------ The marker
-
+    // A label fixed in the table keeps the component's rectangles with it (code review, 2026-10-13).
     [Fact]
-    public void Rebasing_updates_the_base_revision_and_keeps_everything_else()
+    public void Relabelling_a_component_in_a_draft_moves_its_highlights()
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
 
-        Assert.True(DraftWorkbookStore.SetBaseRevision(
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, board =>
+            board.WithComponentHighlights([new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U8", X = "1", Y = "1", Width = "5", Height = "5" }])));
+
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, board => new BoardData
+        {
+            RevisionDate = board.RevisionDate,
+            Schematics = board.Schematics,
+            Components = [DraftWorkbookStoreTests.Component("U08", "CPU")],
+            ComponentHighlights = board.ComponentHighlights,
+        }));
+
+        BoardData? reloaded = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+
+        Assert.Equal("U08", Assert.Single(reloaded!.ComponentHighlights).BoardLabel);
+    }
+
+    // ------------------------------------------------------------------ The marker
+
+    // *** "I HAVE LOOKED AT THIS" NO LONGER MOVES THE BASE (code review, 2026-10-13). *** It used to
+    // overwrite BaseRevision - which the submission tells the server - so a draft copied in
+    // September claimed to be made from October's data. It now quiets the warning and nothing else.
+    [Fact]
+    public void Marking_drift_seen_keeps_the_base_revision_the_server_is_told()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+        string markerPath = DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+        string before = DraftMarkerStore.Load(markerPath)!.BaseRevision;
+
+        Assert.True(DraftWorkbookStore.MarkDriftSeen(
             this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20"));
 
-        DraftMarker? marker = DraftMarkerStore.Load(
-            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
+        DraftMarker? marker = DraftMarkerStore.Load(markerPath);
 
-        Assert.Equal("2026-09-20", marker!.BaseRevision);
+        Assert.Equal(before, marker!.BaseRevision);
+        Assert.Equal("2026-09-20", marker.DriftSeenRevision);
         Assert.Equal(DraftWorkbookStoreTests.BoardKey, marker.BoardKey);
     }
 
     [Fact]
-    public void Rebasing_a_board_with_NO_draft_answers_false()
+    public void Bringing_up_to_date_records_the_new_base_and_clears_the_seen_revision()
     {
-        Assert.False(DraftWorkbookStore.SetBaseRevision(
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+        Assert.True(DraftWorkbookStore.MarkDriftSeen(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20"));
+
+        Assert.True(DraftWorkbookStore.RecordBroughtUpToDate(
+            this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-10-01", "ABC123"));
+
+        DraftMarker? marker = DraftMarkerStore.Load(
+            DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey));
+
+        Assert.Equal("2026-10-01", marker!.BaseRevision);
+        Assert.Equal("ABC123", marker.BaseContentHash);
+        Assert.Equal(string.Empty, marker.DriftSeenRevision);
+        Assert.Equal(DraftWorkbookStoreTests.BoardKey, marker.BoardKey);
+    }
+
+    [Fact]
+    public void Updating_the_marker_of_a_board_with_NO_draft_answers_false()
+    {
+        Assert.False(DraftWorkbookStore.MarkDriftSeen(
             this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20"));
+        Assert.False(DraftWorkbookStore.RecordBroughtUpToDate(
+            this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20", "ABC"));
     }
 
     // ------------------------------------------------------------------ Discarding

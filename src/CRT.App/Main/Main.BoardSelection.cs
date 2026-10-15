@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Tabs.TabSchematics;
 
@@ -21,6 +22,18 @@ namespace CRT
     // ###########################################################################################
     public partial class Main
     {
+        // How many boards' schematic thumbnails are kept (SchematicThumbnailSet): the board shown
+        // and the two before it, so going back and forth decodes nothing. A set is a few megabytes
+        // per image at 800 pixels wide.
+        internal const int ThumbnailSetsKept = 3;
+
+        // The thumbnail sets by board (and viewed draft folder), each at the signature of the
+        // images it was made from. Read on the pool, stored and evicted on the UI thread only.
+        private readonly StampedLruCache<SchematicThumbnailSet> _thumbnailSets =
+            new(ThumbnailSetsKept, StringComparer.OrdinalIgnoreCase);
+
+        // The running board load's cancellation - cancelled by the next one (LoadSelectedBoardAsync).
+        private CancellationTokenSource? _boardLoadCts;
         // ###########################################################################################
         // Populates the hardware drop-down with distinct hardware names from loaded data.
         // ###########################################################################################
@@ -201,6 +214,13 @@ namespace CRT
             this._suppressCategoryFilterSave = true;
             int loadVersion = unchecked(++this._boardSelectionLoadVersion);
 
+            // The load this one supersedes stops decoding thumbnails (code review, 2026-10-13); it
+            // used to run to its end and only then find it had been overtaken.
+            this._boardLoadCts?.Cancel();
+            var loadCts = new CancellationTokenSource();
+            this._boardLoadCts = loadCts;
+            CancellationToken loadToken = loadCts.Token;
+
             if (clearComponentSearch)
             {
                 this._suppressComponentSearchRefresh = true;
@@ -208,6 +228,8 @@ namespace CRT
                 this._suppressComponentSearchRefresh = false;
             }
 
+            // Only the highlight layers are the thumbnails' own; the base thumbnails belong to the
+            // thumbnail cache (_thumbnailSets), which disposes a set when it lets it go.
             foreach (var thumb in this.TabSchematicsControl.currentThumbnails)
             {
                 if (!ReferenceEquals(thumb.ImageSource, thumb.BaseThumbnail))
@@ -215,7 +237,8 @@ namespace CRT
                     (thumb.ImageSource as IDisposable)?.Dispose();
                 }
 
-                (thumb.BaseThumbnail as IDisposable)?.Dispose();
+                (thumb.HighlightImage as IDisposable)?.Dispose();
+                thumb.HighlightImage = null;
             }
 
             this.TabSchematicsControl.currentThumbnails.Clear();
@@ -389,17 +412,28 @@ namespace CRT
             // schematic images follow the workbook the toggle chose rather than the draft's.
             string draftBoardFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
 
+            // ###########################################################################################
+            // *** EVERYTHING THE POOL NEEDS IS READ HERE, ON THE UI THREAD (code review, 2026-10-13). ***
+            // The background half read the hardware and board drop-downs (through
+            // GetCurrentBoardKiCadRawPaths) and the live hidden-images set the Configuration tab
+            // changes on the UI thread - controls and a HashSet read off the UI thread while they could
+            // change. They are snapshots now; the pool touches no control and builds no UI object
+            // (the thumbnails are decoded, not rendered through an Image control).
+            // ###########################################################################################
+            var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
+            string region = UserSettings.Region;
+            string dataRoot = DataManager.DataRoot;
+            List<string> rawPaths = this.GetCurrentBoardKiCadRawPaths();
+            string thumbnailSetKey = $"{boardKey}\u001F{draftBoardFolder}";
+
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var highlightRects = await Task.Run(() =>
-                        HighlightRectBuilder.BuildHighlightRects(boardData, UserSettings.Region));
+                    var highlightRects = HighlightRectBuilder.BuildHighlightRects(boardData, region);
 
-                    var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
                     bool IsSchematicVisible(string schematicName) =>
-                        selectedHardware != null && selectedBoard != null &&
-                        CatalogueVisibility.IsSchematicVisible(uncheckedKeys, selectedHardware, selectedBoard, schematicName);
+                        CatalogueVisibility.IsSchematicVisible(uncheckedKeys, selectedHardware!, selectedBoard!, schematicName);
 
                     var schematicByName = boardData.Schematics
                         .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicName))
@@ -409,93 +443,50 @@ namespace CRT
                             schematic => schematic,
                             StringComparer.OrdinalIgnoreCase);
 
-                    var loaded = await Task.Run(() =>
+                    // Each visible schematic's image file. One attached only in a local draft (not
+                    // yet synced under Data/) is resolved by the same official-first/draft-fallback
+                    // rule every other BoardData File value uses - see DraftFileResolver.
+                    var images = boardData.Schematics
+                        .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicImageFile))
+                        .Where(schematic => IsSchematicVisible(schematic.SchematicName))
+                        .Select(schematic => (
+                            Name: schematic.SchematicName,
+                            FullPath: DraftFileResolver.Resolve(dataRoot, draftBoardFolder, schematic.SchematicImageFile) ??
+                                Path.Combine(dataRoot, schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar))))
+                        .ToList();
+
+                    // The board shown before, unchanged on disk: its thumbnails as they were. Otherwise
+                    // decoded now, straight to thumbnail size, stopping if another board is chosen.
+                    string signature = SchematicThumbnailSet.SignatureOf(images);
+                    bool isNewSet = !this._thumbnailSets.TryGet(thumbnailSetKey, signature, out SchematicThumbnailSet? thumbnailSet);
+
+                    if (isNewSet)
                     {
-                        var result = new List<(string Name, string FullPath, Bitmap? FullBitmap)>();
-
-                        foreach (var schematic in boardData.Schematics)
-                        {
-                            if (string.IsNullOrWhiteSpace(schematic.SchematicImageFile))
-                            {
-                                continue;
-                            }
-
-                            if (!IsSchematicVisible(schematic.SchematicName))
-                            {
-                                continue;
-                            }
-
-                            // A schematic image attached only in a local draft (not yet synced under
-                            // Data/) is resolved via the same official-first/draft-fallback rule every
-                            // other BoardData File value now uses - see DraftFileResolver.
-                            var fullPath = DraftFileResolver.Resolve(
-                                DataManager.DataRoot,
-                                draftBoardFolder,
-                                schematic.SchematicImageFile) ??
-                                Path.Combine(
-                                    DataManager.DataRoot,
-                                    schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar));
-
-                            Bitmap? bitmap = null;
-
-                            if (File.Exists(fullPath))
-                            {
-                                try
-                                {
-                                    bitmap = new Bitmap(fullPath);
-                                }
-                                catch (Exception ex)
-                                {
-                                    Logger.Warning($"Could not load schematic image [{fullPath}] - [{ex.Message}]");
-                                }
-                            }
-
-                            result.Add((schematic.SchematicName, fullPath, bitmap));
-                        }
-
-                        return result;
-                    });
-
-                    var thumbnails = new List<SchematicThumbnail>();
-
-                    foreach (var (name, fullPath, fullBitmap) in loaded)
-                    {
-                        RenderTargetBitmap? baseThumbnail = null;
-                        PixelSize originalPixelSize = default;
-
-                        if (fullBitmap != null)
-                        {
-                            baseThumbnail = TabSchematics.CreateScaledThumbnail(fullBitmap, AppConfig.ThumbnailMaxWidth);
-                            originalPixelSize = fullBitmap.PixelSize;
-                            fullBitmap.Dispose();
-                        }
-
-                        thumbnails.Add(new SchematicThumbnail
-                        {
-                            Name = name,
-                            ImageFilePath = fullPath,
-                            BaseThumbnail = baseThumbnail,
-                            OriginalPixelSize = originalPixelSize,
-                            ImageSource = baseThumbnail,
-                            VisualOpacity = 1.0,
-                            IsMatchForSelection = false
-                        });
+                        thumbnailSet = SchematicThumbnailSet.Decode(images, signature, AppConfig.ThumbnailMaxWidth, loadToken);
                     }
 
-                    List<string> rawPaths = this.GetCurrentBoardKiCadRawPaths();
+                    var thumbnails = thumbnailSet!.Images
+                        .Select(image => new SchematicThumbnail
+                        {
+                            Name = image.Name,
+                            ImageFilePath = image.FullPath,
+                            BaseThumbnail = image.Thumbnail,
+                            OriginalPixelSize = image.OriginalPixelSize,
+                            ImageSource = image.Thumbnail,
+                            VisualOpacity = 1.0,
+                            IsMatchForSelection = false
+                        })
+                        .ToList();
 
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
                         if (loadVersion != this._boardSelectionLoadVersion)
                         {
-                            foreach (var thumbnail in thumbnails)
+                            // Overtaken: a set made for this load is nobody's - one from the cache
+                            // stays there.
+                            if (isNewSet)
                             {
-                                if (!ReferenceEquals(thumbnail.ImageSource, thumbnail.BaseThumbnail))
-                                {
-                                    (thumbnail.ImageSource as IDisposable)?.Dispose();
-                                }
-
-                                (thumbnail.BaseThumbnail as IDisposable)?.Dispose();
+                                thumbnailSet.Dispose();
                             }
 
                             return;
@@ -510,6 +501,19 @@ namespace CRT
                         this.TabSchematicsControl.highlightIndexBySchematic = new(StringComparer.OrdinalIgnoreCase);
 
                         this.TabSchematicsControl.LoadSortedThumbnails(boardKey, thumbnails);
+
+                        // The cache takes the new set only now, with the old board's thumbnails off
+                        // screen (cleared when this load began): a set it lets go can be disposed.
+                        if (isNewSet)
+                        {
+                            foreach (var released in this._thumbnailSets.Store(thumbnailSetKey, signature, thumbnailSet))
+                            {
+                                if (!ReferenceEquals(released, thumbnailSet))
+                                {
+                                    released.Dispose();
+                                }
+                            }
+                        }
 
                         if (this.TabSchematicsControl.currentThumbnails.Count > 0)
                         {
@@ -530,7 +534,7 @@ namespace CRT
                             file.Name,
                             string.IsNullOrWhiteSpace(file.File)
                                 ? string.Empty
-                                : Path.Combine(DataManager.DataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))));
+                                : Path.Combine(dataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))));
 
                         var webLinks = boardData.BoardLinks.Select(link => new ResourceItem(
                             link.Category,
@@ -555,6 +559,10 @@ namespace CRT
                             await this.TabSchematicsControl.LoadKiCadProjectForCurrentBoardAsync();
                         }, DispatcherPriority.Background);
                     }
+                }
+                catch (OperationCanceledException) when (loadToken.IsCancellationRequested)
+                {
+                    // Another board was chosen while this one's thumbnails were decoding.
                 }
                 catch (Exception ex)
                 {

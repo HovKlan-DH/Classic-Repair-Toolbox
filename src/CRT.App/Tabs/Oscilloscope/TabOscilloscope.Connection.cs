@@ -41,18 +41,89 @@ namespace CRT
         private Main? thisMainWindow;
 
         // ###########################################################################################
-        // Captures the current oscilloscope UI state on the UI thread so background workers can use
-        // the values without reading UI controls directly.
+        // What the selection controls said when last read on the UI thread - the scope chosen, host,
+        // port and debounce - for the background workers (code review, 2026-10-13).
+        //
+        // CreateOscilloscopeSelectionSnapshot used to read the controls off the UI thread by
+        // BLOCKING a pool thread on the dispatcher until the UI thread ran it - every second from
+        // the auto-connect loop, and from the keyboard and image-sync workers. Now the UI thread
+        // publishes these whenever a selection control changes (and whenever it builds a snapshot
+        // itself), and a worker reads the last one: an immutable object, swapped whole.
+        // ###########################################################################################
+        private sealed record OscilloscopeSelectionInputs(
+            OscilloscopeEntry? SelectedOscilloscope,
+            string Host,
+            int Port,
+            int DebounceDelayMilliseconds)
+        {
+            internal static readonly OscilloscopeSelectionInputs None = new(null, string.Empty, 0, 250);
+        }
+
+        private volatile OscilloscopeSelectionInputs? thisPublishedSelectionInputs;
+
+        // Reads the selection controls and publishes them for the workers. From another thread it is
+        // queued to the UI thread, never waited for.
+        private void PublishOscilloscopeSelectionInputs()
+        {
+            if (TabOscilloscope.QueuedToUiThread(this.PublishOscilloscopeSelectionInputs))
+            {
+                return;
+            }
+
+            this.thisPublishedSelectionInputs = this.ReadOscilloscopeSelectionInputs();
+        }
+
+        // ###########################################################################################
+        // Runs nothing and answers false on the UI thread - the caller goes on and does its work
+        // there. From any other thread it queues `action` to the UI thread and answers true, WITHOUT
+        // waiting for it (code review, 2026-10-13: these helpers blocked a pool thread on the
+        // dispatcher until the UI thread got round to them).
+        // ###########################################################################################
+        private static bool QueuedToUiThread(Action action)
+        {
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                return false;
+            }
+
+            Dispatcher.UIThread.Post(action, DispatcherPriority.Background);
+            return true;
+        }
+
+        // ###########################################################################################
+        // The oscilloscope selection as a snapshot background workers can use without reading UI
+        // controls: on the UI thread from the controls (and published), elsewhere the last published.
         // ###########################################################################################
         private OscilloscopeSelectionSnapshot CreateOscilloscopeSelectionSnapshot()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            OscilloscopeSelectionInputs inputs;
+
+            if (Dispatcher.UIThread.CheckAccess())
             {
-                return Dispatcher.UIThread.InvokeAsync(
-                    this.CreateOscilloscopeSelectionSnapshot,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
+                inputs = this.ReadOscilloscopeSelectionInputs();
+                this.thisPublishedSelectionInputs = inputs;
+            }
+            else
+            {
+                inputs = this.thisPublishedSelectionInputs ?? OscilloscopeSelectionInputs.None;
             }
 
+            return new OscilloscopeSelectionSnapshot
+            {
+                SelectedOscilloscope = inputs.SelectedOscilloscope,
+                Host = inputs.Host,
+                Port = inputs.Port,
+                DebounceDelayMilliseconds = inputs.DebounceDelayMilliseconds,
+                HasActiveEstablishedSession =
+                    this.thisHasEstablishedOscilloscopeSession &&
+                    this.thisLastOscilloscopeConnectionState == true &&
+                    this.thisConnectedScopeClient != null
+            };
+        }
+
+        // The selection controls, read - on the UI thread only.
+        private OscilloscopeSelectionInputs ReadOscilloscopeSelectionInputs()
+        {
             const int defaultDelayMilliseconds = 250;
 
             var selectedOscilloscope = this.GetSelectedOscilloscope();
@@ -80,17 +151,7 @@ namespace CRT
                 }
             }
 
-            return new OscilloscopeSelectionSnapshot
-            {
-                SelectedOscilloscope = selectedOscilloscope,
-                Host = host,
-                Port = port,
-                DebounceDelayMilliseconds = debounceDelayMilliseconds,
-                HasActiveEstablishedSession =
-                    this.thisHasEstablishedOscilloscopeSession &&
-                    this.thisLastOscilloscopeConnectionState == true &&
-                    this.thisConnectedScopeClient != null
-            };
+            return new OscilloscopeSelectionInputs(selectedOscilloscope, host, port, debounceDelayMilliseconds);
         }
 
         // ###########################################################################################
@@ -391,16 +452,26 @@ namespace CRT
         // ###########################################################################################
         private async void OnConnectToOscilloscopeClick(object? sender, RoutedEventArgs e)
         {
-            // A connect the user pressed for waits under the "please wait" overlay (2026-09-28); the
-            // automatic reconnect in the background does not - nobody is waiting on it. Its token is
-            // the overlay's, so an oscilloscope that never answers is let go after the limit.
-            WaitResult<bool> waited = await BusyOverlay.RunAsync(
-                this,
-                CrtWaitWording.ConnectingOscilloscope,
-                context => this.ConnectSelectedOscilloscopeAsync(context.Token, isAutomaticReconnect: false));
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                // A connect the user pressed for waits under the "please wait" overlay (2026-09-28); the
+                // automatic reconnect in the background does not - nobody is waiting on it. Its token is
+                // the overlay's, so an oscilloscope that never answers is let go after the limit.
+                WaitResult<bool> waited = await BusyOverlay.RunAsync(
+                    this,
+                    CrtWaitWording.ConnectingOscilloscope,
+                    context => this.ConnectSelectedOscilloscopeAsync(context.Token, isAutomaticReconnect: false));
 
-            if (waited.IsTimedOut)
-                this.AppendOutputLine("Warning", CrtWaitWording.OscilloscopeNoAnswer);
+                if (waited.IsTimedOut)
+                    this.AppendOutputLine("Warning", CrtWaitWording.OscilloscopeNoAnswer);
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"OnConnectToOscilloscopeClick failed - [{ex}]");
+                this.AppendOutputLine("Critical", $"Oscilloscope action failed: {ex.Message}");
+            }
         }
 
         // ###########################################################################################
@@ -408,11 +479,8 @@ namespace CRT
         // ###########################################################################################
         private void StartOscilloscopeConnectionMonitoring()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.StartOscilloscopeConnectionMonitoring))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.StartOscilloscopeConnectionMonitoring,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 
@@ -443,11 +511,8 @@ namespace CRT
         // ###########################################################################################
         private void StopOscilloscopeConnectionMonitoring()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.StopOscilloscopeConnectionMonitoring))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.StopOscilloscopeConnectionMonitoring,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 
@@ -531,11 +596,8 @@ namespace CRT
         // ###########################################################################################
         private void UpdateMainWindowOscilloscopeConnectionState(bool isConnected)
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(() => this.UpdateMainWindowOscilloscopeConnectionState(isConnected)))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    () => this.UpdateMainWindowOscilloscopeConnectionState(isConnected),
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 
@@ -579,20 +641,30 @@ namespace CRT
         // ###########################################################################################
         private async void InvalidateEstablishedOscilloscopeSession()
         {
-            this.thisHasEstablishedOscilloscopeSession = false;
-            this.thisHasSeenEstablishedOscilloscopeSession = false;
-            this.thisShouldAutoReconnectEstablishedOscilloscopeSession = false;
-            this.thisLastOscilloscopeImageSyncSignature = string.Empty;
-            this.thisHasLoggedAutomaticConnectPendingMessage = false;
-            this.InvalidateCachedTriggerLevelVolts();
-            this.InvalidateCachedTimeDivSeconds();
-            this.thisLastVoltsDivVolts = null;
-            this.StopTriggerLevelKeyboardWorker();
-            this.StopTimeDivKeyboardWorker();
-            this.StopVoltsDivKeyboardWorker();
-            Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
-            this.StopOscilloscopeConnectionMonitoring();
-            await this.DisposeConnectedScopeClientAsync();
+            // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
+            // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
+            try
+            {
+                this.thisHasEstablishedOscilloscopeSession = false;
+                this.thisHasSeenEstablishedOscilloscopeSession = false;
+                this.thisShouldAutoReconnectEstablishedOscilloscopeSession = false;
+                this.thisLastOscilloscopeImageSyncSignature = string.Empty;
+                this.thisHasLoggedAutomaticConnectPendingMessage = false;
+                this.InvalidateCachedTriggerLevelVolts();
+                this.InvalidateCachedTimeDivSeconds();
+                this.thisLastVoltsDivVolts = null;
+                this.StopTriggerLevelKeyboardWorker();
+                this.StopTimeDivKeyboardWorker();
+                this.StopVoltsDivKeyboardWorker();
+                Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
+                this.StopOscilloscopeConnectionMonitoring();
+                await this.DisposeConnectedScopeClientAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"InvalidateEstablishedOscilloscopeSession failed - [{ex}]");
+                this.AppendOutputLine("Critical", $"Oscilloscope action failed: {ex.Message}");
+            }
         }
 
         // ###########################################################################################
@@ -698,11 +770,8 @@ namespace CRT
         // ###########################################################################################
         private void QueueAutomaticOscilloscopeReconnectIfNeeded()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.QueueAutomaticOscilloscopeReconnectIfNeeded))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.QueueAutomaticOscilloscopeReconnectIfNeeded,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 
@@ -767,11 +836,8 @@ namespace CRT
         // ###########################################################################################
         private void UpdateMainWindowOscilloscopeSessionState()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.UpdateMainWindowOscilloscopeSessionState))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.UpdateMainWindowOscilloscopeSessionState,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 
@@ -835,11 +901,8 @@ namespace CRT
         // ###########################################################################################
         private void NotifyOpenComponentInfoWindowsOfOscilloscopeSessionState()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.NotifyOpenComponentInfoWindowsOfOscilloscopeSessionState))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.NotifyOpenComponentInfoWindowsOfOscilloscopeSessionState,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 
@@ -1018,11 +1081,8 @@ namespace CRT
         // ###########################################################################################
         public void ApplyOscilloscopeTabAvailability()
         {
-            if (!Dispatcher.UIThread.CheckAccess())
+            if (TabOscilloscope.QueuedToUiThread(this.ApplyOscilloscopeTabAvailability))
             {
-                Dispatcher.UIThread.InvokeAsync(
-                    this.ApplyOscilloscopeTabAvailability,
-                    DispatcherPriority.Background).GetAwaiter().GetResult();
                 return;
             }
 

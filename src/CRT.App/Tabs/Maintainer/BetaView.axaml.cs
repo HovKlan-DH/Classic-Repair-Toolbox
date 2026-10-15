@@ -360,7 +360,11 @@ namespace CRT
                 reject.IsEnabled = this.thisPlan is not null;
         }
 
-        private async void OnPublishClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        // Through HandlerGuard, as every async handler of the tab (code review, 2026-10-13).
+        private async void OnPublishClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.PublishAsync, message => this.ShowMessage(message, isError: true));
+
+        private async Task PublishAsync()
         {
             ProductionPlanView? plan = this.thisPlan;
             var check = this.FindControl<CheckBox>("CheckedInBetaCheckBox");
@@ -417,7 +421,7 @@ namespace CRT
                 // The first of two approvals: recorded, nothing copied.
                 outcome = result.Value!.IsAwaitingApproval
                     ? ApprovalWording.Recorded(result.Value.WaitingFor, "the stable source")
-                    : $"{plan.BoardId} is published to the stable source ({result.Value.FilesCopied} file(s) copied)." +
+                    : $"{ReviewQueueDisplay.BoardHeading(plan.BoardId)} is published to the stable source ({result.Value.FilesCopied} file(s) copied)." +
                       FileRemovalWording.Done(result.Value.RemovedFiles) +
                       " Everyone gets it the next time their data updates.";
                 failed = false;
@@ -456,10 +460,10 @@ namespace CRT
         // One path for both, so what a rejection does to BETA cannot drift from a push-back.
         // ###########################################################################################
         private async void OnRollBackClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.TakeOutOfBetaAsync(reject: false);
+            await HandlerGuard.RunAsync(() => this.TakeOutOfBetaAsync(reject: false), message => this.ShowMessage(message, isError: true));
 
         private async void OnRejectClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.TakeOutOfBetaAsync(reject: true);
+            await HandlerGuard.RunAsync(() => this.TakeOutOfBetaAsync(reject: true), message => this.ShowMessage(message, isError: true));
 
         private async Task TakeOutOfBetaAsync(bool reject)
         {

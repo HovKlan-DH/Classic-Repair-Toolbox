@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Handlers.OnlineHandling
@@ -258,7 +259,10 @@ namespace Handlers.OnlineHandling
             Action<string>? onFile = null,
             string? label = null)
         {
-            using var http = new HttpClient { Timeout = AppConfig.DownloadTimeout };
+            // No total budget: each download is watched for NO PROGRESS instead (NoProgressWatchdog,
+            // AppConfig.DownloadNoProgressTimeout) - a total one never let a big file through on a
+            // slower line.
+            using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
             http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", OnlineServices.UserAgent);
 
             var entries = filter == null ? manifest : manifest.FindAll(e => filter(e.File));
@@ -267,41 +271,15 @@ namespace Handlers.OnlineHandling
                 return 0;
 
             // Phase 1: Validate manifest entries and compare local checksums against the manifest —
-            // no file callback here, the splash only shows filenames during actual downloads in Phase 2
-            var validEntries = new List<DataFileEntry>();
-            var toDownload = new List<(DataFileEntry Entry, string LocalPath, Uri DownloadUri, string ExpectedChecksum, bool IsNew)>();
-
-            // The file names behind the counts, kept so the summary in the log can name them
-            var invalidFiles = new List<string>();
-
-            foreach (var entry in entries)
-            {
-                if (!OnlineServices.TryValidateManifestEntry(
-                    entry,
-                    dataRoot,
-                    out string localPath,
-                    out Uri? downloadUri,
-                    out string expectedChecksum,
-                    out string failureReason))
-                {
-                    invalidFiles.Add(entry.File);
-                    Logger.Warning($"[{entry.File}] [Rejected] [{failureReason}]");
-                    continue;
-                }
-
-                validEntries.Add(entry);
-
-                if (!File.Exists(localPath))
-                {
-                    toDownload.Add((entry, localPath, downloadUri!, expectedChecksum, true));
-                }
-                else
-                {
-                    var localChecksum = await OnlineServices.ComputeChecksumAsync(localPath);
-                    if (!string.Equals(localChecksum, expectedChecksum, StringComparison.Ordinal))
-                        toDownload.Add((entry, localPath, downloadUri!, expectedChecksum, false));
-                }
-            }
+            // no file callback here, the splash only shows filenames during actual downloads in Phase 2.
+            //
+            // *** OFF THE UI THREAD, AND ONLY WHAT CHANGED IS HASHED (code review, 2026-10-13). ***
+            // Every launch hashed the whole data tree (1.1 GB), with the continuation of each file's
+            // hash back on the caller's thread - the UI thread. Now the whole phase runs on the pool,
+            // and a file whose stamp is as it was when last hashed answers from LocalChecksumCache.
+            var checksumCache = OnlineServices.ChecksumCacheFor(dataRoot);
+            var (validEntries, toDownload, invalidFiles) = await Task.Run(
+                () => OnlineServices.CompareWithManifest(entries, dataRoot, checksumCache)).ConfigureAwait(true);
 
             // Phase 2: Download files that are new or changed
             if (toDownload.Count == 0)
@@ -346,7 +324,14 @@ namespace Handlers.OnlineHandling
                 onStatus?.Invoke($"Downloading file [{downloadIndex}] of [{toDownload.Count}] from the {AppConfig.GetOnlineSourceLabel()}:");
                 onFile?.Invoke(entry.File);
 
-                if (await OnlineServices.DownloadFileAsync(http, entry, localPath, downloadUri, expectedChecksum, isNew))
+                // The file's own work - the copy, the hash, the move into place - runs on the pool
+                // (ConfigureAwait(false) inside); the callbacks above stay on the caller's thread.
+                bool downloaded = await OnlineServices.DownloadFileAsync(http, entry, localPath, downloadUri, expectedChecksum, isNew);
+
+                // Whatever was remembered for the old file no longer says anything about this one.
+                checksumCache.Forget(OnlineServices.ChecksumCacheKey(entry.File));
+
+                if (downloaded)
                 {
                     if (isNew)
                         newFiles.Add(entry.File);
@@ -358,6 +343,8 @@ namespace Handlers.OnlineHandling
                     failedFiles.Add(entry.File);
                 }
             }
+
+            await Task.Run(checksumCache.Save).ConfigureAwait(true);
 
             int newCount = newFiles.Count, updatedCount = updatedFiles.Count;
             int failedCount = failedFiles.Count, invalidCount = invalidFiles.Count;
@@ -381,6 +368,122 @@ namespace Handlers.OnlineHandling
             onStatus?.Invoke($"Sync complete ({newCount} new, {updatedCount} updated, {failedCount} failed, {invalidCount} invalid)");
             onFile?.Invoke(string.Empty);
             return newCount + updatedCount;
+        }
+
+        // ###########################################################################################
+        // SyncFilesAsync's Phase 1, run on the pool: each entry validated, and each local file's
+        // SHA-256 - from the cache while its stamp is unchanged, hashed otherwise - compared with the
+        // manifest's. Saves the cache when it learned anything.
+        // ###########################################################################################
+        private static (
+            List<DataFileEntry> ValidEntries,
+            List<(DataFileEntry Entry, string LocalPath, Uri DownloadUri, string ExpectedChecksum, bool IsNew)> ToDownload,
+            List<string> InvalidFiles)
+            CompareWithManifest(List<DataFileEntry> entries, string dataRoot, LocalChecksumCache checksumCache)
+        {
+            var validEntries = new List<DataFileEntry>();
+            var toDownload = new List<(DataFileEntry Entry, string LocalPath, Uri DownloadUri, string ExpectedChecksum, bool IsNew)>();
+
+            // The file names behind the counts, kept so the summary in the log can name them
+            var invalidFiles = new List<string>();
+            int hashed = 0;
+
+            foreach (var entry in entries)
+            {
+                if (!OnlineServices.TryValidateManifestEntry(
+                    entry,
+                    dataRoot,
+                    out string localPath,
+                    out Uri? downloadUri,
+                    out string expectedChecksum,
+                    out string failureReason))
+                {
+                    invalidFiles.Add(entry.File);
+                    Logger.Warning($"[{entry.File}] [Rejected] [{failureReason}]");
+                    continue;
+                }
+
+                validEntries.Add(entry);
+
+                if (!File.Exists(localPath))
+                {
+                    toDownload.Add((entry, localPath, downloadUri!, expectedChecksum, true));
+                    continue;
+                }
+
+                string? localChecksum = OnlineServices.LocalChecksumOf(localPath, OnlineServices.ChecksumCacheKey(entry.File), checksumCache, ref hashed);
+
+                if (!string.Equals(localChecksum, expectedChecksum, StringComparison.Ordinal))
+                    toDownload.Add((entry, localPath, downloadUri!, expectedChecksum, false));
+            }
+
+            if (hashed > 0)
+            {
+                Logger.Info($"Hashed [{hashed}] of [{validEntries.Count}] local data files - the others were unchanged since they were last hashed");
+            }
+
+            checksumCache.Save();
+            return (validEntries, toDownload, invalidFiles);
+        }
+
+        // ###########################################################################################
+        // One local file's SHA-256: remembered, while the file's stamp is as it was, else hashed now
+        // and remembered. Null when the file could not be read - which never matches a manifest
+        // checksum, so the file is downloaded again, as an unreadable file always was.
+        // ###########################################################################################
+        private static string? LocalChecksumOf(string localPath, string cacheKey, LocalChecksumCache checksumCache, ref int hashed)
+        {
+            try
+            {
+                var stamp = LocalChecksumCache.FileStamp.Of(new FileInfo(localPath));
+
+                if (checksumCache.TryGet(cacheKey, stamp) is { } remembered)
+                {
+                    return remembered;
+                }
+
+                DateTime hashedAtUtc = DateTime.UtcNow;
+                string checksum = OnlineServices.ComputeChecksum(localPath);
+                hashed++;
+
+                checksumCache.Remember(cacheKey, stamp, checksum, hashedAtUtc);
+                return checksum;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"[{localPath}] [Could not be hashed] [{ex.Message}]");
+                checksumCache.Forget(cacheKey);
+                return null;
+            }
+        }
+
+        // The cache's key for a manifest path: the path as the manifest gives it, separators made one.
+        private static string ChecksumCacheKey(string manifestFile) =>
+            (manifestFile ?? string.Empty).Trim().Replace('\\', '/').TrimStart('/');
+
+        // The one cache, loaded for the data folder in use - again when that changes.
+        private static readonly object ChecksumCacheLock = new();
+        private static LocalChecksumCache? sharedChecksumCache;
+        private static string checksumCacheDataRoot = string.Empty;
+
+        private static LocalChecksumCache ChecksumCacheFor(string dataRoot)
+        {
+            lock (ChecksumCacheLock)
+            {
+                if (OnlineServices.sharedChecksumCache == null ||
+                    !string.Equals(OnlineServices.checksumCacheDataRoot, dataRoot, StringComparison.Ordinal))
+                {
+                    string cachePath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        AppConfig.AppFolderName,
+                        AppConfig.DataChecksumCacheFileName);
+
+                    OnlineServices.sharedChecksumCache = LocalChecksumCache.Load(cachePath, dataRoot);
+                    OnlineServices.checksumCacheDataRoot = dataRoot;
+                }
+
+                return OnlineServices.sharedChecksumCache;
+            }
         }
 
         // ###########################################################################################
@@ -548,22 +651,12 @@ namespace Handlers.OnlineHandling
 
         // ###########################################################################################
         // Computes the SHA-256 checksum of a local file and returns it as a lowercase hex string.
+        // Synchronous: it runs inside Phase 1's Task.Run, on the pool.
         // ###########################################################################################
-        private static async Task<string> ComputeChecksumAsync(string filePath)
+        private static string ComputeChecksum(string filePath)
         {
-            await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var hash = await SHA256.HashDataAsync(stream);
-            return Convert.ToHexStringLower(hash);
-        }
-
-        // ###########################################################################################
-        // Computes the SHA-256 checksum of downloaded bytes and returns it as a lowercase hex string.
-        // ###########################################################################################
-        private static string ComputeChecksum(byte[] data)
-        {
-            using var sha256 = SHA256.Create();
-            var hash = sha256.ComputeHash(data);
-            return Convert.ToHexString(hash).ToLowerInvariant();
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return Convert.ToHexStringLower(SHA256.HashData(stream));
         }
 
         // ###########################################################################################
@@ -612,15 +705,26 @@ namespace Handlers.OnlineHandling
 
             string tempPath = localPath + ".tmp";
 
+            // Gives up only when nothing has arrived for the limit - see NoProgressWatchdog.
+            using var watchdog = new NoProgressWatchdog(AppConfig.DownloadNoProgressTimeout);
+
             try
             {
-                using var response = await http.GetAsync(downloadUri);
+                // Headers only: the body is streamed to the temp file below, a chunk at a time,
+                // rather than read whole into memory first.
+                using var response = await http.GetAsync(downloadUri, HttpCompletionOption.ResponseHeadersRead, watchdog.Token).ConfigureAwait(false);
                 var statusCode = (int)response.StatusCode;
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var data = await response.Content.ReadAsByteArrayAsync();
-                    string actualChecksum = OnlineServices.ComputeChecksum(data);
+                    watchdog.Progress();
+                    string actualChecksum;
+
+                    await using (var body = await response.Content.ReadAsStreamAsync(watchdog.Token).ConfigureAwait(false))
+                    await using (var output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, StreamingDownload.ChunkSize, useAsync: true))
+                    {
+                        actualChecksum = await StreamingDownload.CopyAndHashAsync(body, output, watchdog).ConfigureAwait(false);
+                    }
 
                     if (!string.Equals(actualChecksum, expectedChecksum, StringComparison.Ordinal))
                     {
@@ -632,13 +736,21 @@ namespace Handlers.OnlineHandling
                         return false;
                     }
 
-                    await File.WriteAllBytesAsync(tempPath, data);
                     File.Move(tempPath, localPath, overwrite: true);
                     Logger.Info($"[{entry.File}] [{statusCode}] [{(isNew ? "New" : "Updated")}]");
                     return true;
                 }
 
                 Logger.Warning($"[{entry.File}] [{statusCode}]");
+                return false;
+            }
+            catch (OperationCanceledException) when (watchdog.Stalled)
+            {
+                Logger.Warning($"[{entry.File}] [No data arrived for {AppConfig.DownloadNoProgressTimeout.TotalSeconds:0} seconds - given up]");
+
+                // Best-effort cleanup, as below.
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+
                 return false;
             }
             catch (Exception ex)

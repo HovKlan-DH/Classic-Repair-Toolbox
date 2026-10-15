@@ -19,10 +19,11 @@ namespace Handlers.DataHandling
     //    evidence. So a crash is ALSO written to its own file (AppConfig.CrashFileName), which is
     //    only ever appended to and is never truncated at startup.
     //
-    // 2. "Logger.Write" opens, appends and closes per line, which is what makes it safe here -
-    //    there is no buffered stream that could still be unflushed when the process dies. But it
-    //    silently swallows write failures, and it does nothing at all before "Logger.Initialize"
-    //    has run. A crash during startup - before the log file exists - would therefore vanish.
+    // 2. "Logger" buffers ordinary lines for up to a second (2026-10-13), but writes a Warning or
+    //    Critical line - every crash report - at once, together with everything before it, so
+    //    nothing reported here is left unflushed when the process dies. But it silently swallows
+    //    write failures, and it does nothing at all before "Logger.Initialize" has run. A crash
+    //    during startup - before the log file exists - would therefore vanish.
     //    "WriteCrashReport" resolves its own path and so does not depend on Logger being ready.
     //
     // A crash entry is deliberately VERBOSE where the ordinary log is terse: the full exception

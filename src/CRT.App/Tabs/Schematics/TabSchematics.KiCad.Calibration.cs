@@ -393,16 +393,30 @@ public partial class TabSchematics
             return;
         }
 
-        BoardComponentHighlightStorage.SaveKiCadCalibration(
-            calibrationTarget,
-            schematicName,
-            cadName,
-            offsetX,
-            offsetY,
-            scaleX,
-            scaleY,
-            mirrorX,
-            mirrorY);
+        // *** A SIDECAR THAT CANNOT BE READ IN FULL REFUSES THE SAVE (code review, 2026-10-13). ***
+        // The save rebuilds the whole file, so one unreadable highlight used to cost every
+        // highlight on the board; it now refuses and leaves the file alone (EnsureReadableInFull).
+        // Said in the label editor's own error dialog, and calibration mode stays on, so nothing
+        // the user set up is lost.
+        try
+        {
+            BoardComponentHighlightStorage.SaveKiCadCalibration(
+                calibrationTarget,
+                schematicName,
+                cadName,
+                offsetX,
+                offsetY,
+                scaleX,
+                scaleY,
+                mirrorX,
+                mirrorY);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            Logger.Warning($"KiCad calibration save failed - [{ex.Message}]");
+            _ = this.ShowDialogAsync(this.BuildKiCadCalibrationSaveFailedDialog(ex.Message));
+            return;
+        }
 
         // ###########################################################################################
         // *** THE DRAFTS TAB HAS TO APPEAR HERE TOO (owner report, 2026-09-23). ***

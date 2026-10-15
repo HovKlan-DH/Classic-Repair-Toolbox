@@ -997,8 +997,13 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
     // The same destructive styling "Delete workbook" carries in the header above: these are the
     // same kind of permanent delete one level apart, and a differently-coloured one here would
     // read as a different kind of action.
+    //
+    // *** THE COLOUR IS THE CLASS, NEVER BRUSHES ON THE BUTTON (code review, 2026-10-14). *** The
+    // button wore the Danger class AND three brushes resolved once in code - local values, which
+    // outrank the class's style - so a change to the Danger look never reached this one button.
+    // Shown in a window, where the class's style applies, it draws exactly as "Delete workbook".
     [Fact]
-    public void The_delete_worklog_button_uses_the_same_destructive_brushes_as_delete_workbook()
+    public void The_delete_worklog_button_takes_its_colours_from_the_Danger_class_alone()
     {
         this.LoadWorklog();
         var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Button styling", "");
@@ -1013,22 +1018,28 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         {
             var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
 
-            var card = (Control)EntriesPanel(tab).Children[0];
-            var button = DeleteWorklogButton(card);
+            // Built, in no window yet - so no style has reached it, and anything set is the code's own.
+            var built = DeleteWorklogButton((Control)EntriesPanel(tab).Children[0]);
 
-            // Asserted against the Button_Cancel_* THEME KEYS, which is what "the same as Delete
-            // workbook" actually means - that button names those same three keys in the markup.
-            //
-            // Deliberately NOT compared against the header button's resolved brushes: its values
-            // come from DynamicResource bindings, which have not resolved on a tab that is built
-            // but never attached to a window, so it reads Black here and the comparison would be
-            // testing Avalonia's binding state rather than this styling. Resolving the keys the
-            // same way the code under test does keeps the assertion correct in both themes without
-            // hardcoding a colour.
-            Assert.Equal(ThemeResources.Resolve<IBrush?>("Button_Cancel_Fg", null), button.Foreground);
-            Assert.Equal(ThemeResources.Resolve<IBrush?>("Button_Cancel_Bg", null), button.Background);
-            Assert.Equal(ThemeResources.Resolve<IBrush?>("Button_Cancel_Border", null), button.BorderBrush);
-            Assert.NotNull(button.Foreground);
+            Assert.Contains("Danger", built.Classes);
+            Assert.False(built.IsSet(Avalonia.Controls.Primitives.TemplatedControl.ForegroundProperty));
+            Assert.False(built.IsSet(Avalonia.Controls.Primitives.TemplatedControl.BackgroundProperty));
+            Assert.False(built.IsSet(Avalonia.Controls.Primitives.TemplatedControl.BorderBrushProperty));
+
+            // Shown, the class gives it Delete workbook's look.
+            var window = new Window { Width = 800, Height = 600, Content = tab };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            var button = DeleteWorklogButton((Control)EntriesPanel(tab).Children[0]);
+            var header = tab.FindControl<Button>("DeleteWorkbookButton")!;
+
+            Assert.NotNull(button.Background);
+            Assert.Equal(header.Foreground, button.Foreground);
+            Assert.Equal(header.Background, button.Background);
+            Assert.Equal(header.BorderBrush, button.BorderBrush);
+
+            window.Close();
         });
     }
 

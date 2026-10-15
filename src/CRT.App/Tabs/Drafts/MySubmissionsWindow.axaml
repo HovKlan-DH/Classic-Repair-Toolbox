@@ -121,7 +121,7 @@
 												VerticalAlignment="Center">
 											<TextBlock Text="New"
 													   Foreground="White"
-													   FontSize="9"
+													   FontSize="10"
 													   FontWeight="SemiBold" />
 										</Border>
 
@@ -208,7 +208,7 @@
 														VerticalAlignment="Center">
 													<TextBlock Text="New"
 															   Foreground="White"
-															   FontSize="9"
+															   FontSize="10"
 															   FontWeight="SemiBold" />
 												</Border>
 											</StackPanel>
@@ -261,6 +261,7 @@
 								     receipt, which is the only copy of the token; it does NOT
 								     withdraw the contribution, and the confirmation says so. -->
 								<Button Grid.Column="1"
+										Classes="Danger"
 										Content="Remove"
 										VerticalAlignment="Top"
 										ToolTip.Tip="Remove this from the list on this computer. It does not withdraw the contribution."

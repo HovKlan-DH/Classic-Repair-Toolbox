@@ -28,7 +28,7 @@ namespace CRT
         // Waits between the demo's steps. Tests run it without waiting.
         internal Func<TimeSpan, Task>? NoticeDemoDelayOverrideForTests { get; set; }
 
-        private const int NoticeDemoSteps = 8;
+        private const int NoticeDemoSteps = 9;
 
         internal async Task PlayNoticeDemoAsync()
         {
@@ -107,6 +107,17 @@ namespace CRT
                 }
 
                 this.NarrateNoticeDemo(8,
+                    "The settings file could not be read, so CRT started with default settings - and kept the file. " +
+                    "This card stays until you close it.");
+                if (!this.SettingsUnreadableBanner.IsVisible)
+                {
+                    this.ShowSettingsUnreadableNotice(new UnreadableSettingsFile(
+                        "Classic-Repair-Toolbox.settings.json",
+                        "Classic-Repair-Toolbox.settings.json.corrupt-20261013-091500").NoticeText);
+                }
+                await wait(TimeSpan.FromSeconds(5));
+
+                this.NarrateNoticeDemo(9,
                     "That is all of them. A card that has just appeared lets clicks through for half a second, " +
                     "so a click meant for what was under it is not lost. In a small window the cards keep to the " +
                     "right half. Close the rest with their X.");

@@ -440,12 +440,9 @@
 									FontSize="11"
 									Click="OnEditWorkbookClick" />
 							<Button x:Name="DeleteWorkbookButton"
-									Classes="WorkbookHeaderAction"
+									Classes="Danger WorkbookHeaderAction"
 									Content="Delete workbook"
 									FontSize="11"
-									Foreground="{DynamicResource Button_Cancel_Fg}"
-									Background="{DynamicResource Button_Cancel_Bg}"
-									BorderBrush="{DynamicResource Button_Cancel_Border}"
 									Click="OnDeleteWorkbookClick" />
 						</StackPanel>
 

@@ -84,6 +84,51 @@ namespace CRT.Server.Handlers.Submissions
                 boardId!, identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board,
                 BoardDescriptorRules.BoardOrigin.Shipped, now, cancellationToken);
 
+            await MaintainerInvitationFlows.IssueAsync(
+                boardId!,
+                MaintainerInvitationRules.BoardDisplayName(identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board),
+                address,
+                actor!,
+                toItsCreator: false,
+                accounts,
+                mailer,
+                now,
+                cancellationToken);
+
+            return MaintainerInvitationOutcome.Done(
+                $"An invitation is on its way to {address}. Its code works for {(int)MaintainerInvitationFlows.InvitationLifetime.TotalDays} days.");
+        }
+
+        // ###########################################################################################
+        // *** ISSUING ONE INVITATION - THE ONE COPY (code review, 2026-10-14). *** The administrator's
+        // "Send invitation" above and a new board's creator (NewBoardMaintainerFlow) both come here,
+        // so how an invitation is issued is decided once: an earlier open invitation of the same
+        // address to the same board stops working, the code is kept only as its hash, it works for
+        // InvitationLifetime, the address is mailed (`toItsCreator` words it for a board's creator),
+        // and the audit names who invited whom. A new board's creator was invited by a copy of these
+        // steps until then.
+        //
+        // The caller has decided the address may be invited (a plausible address with no account),
+        // and the board's row must exist - the administrator's path ensures it; a submission's board
+        // always has one (ISubmissionStore.CreateAsync inserts it).
+        // ###########################################################################################
+        internal static async Task IssueAsync(
+            string boardId,
+            string boardDisplayName,
+            string address,
+            ReviewAccess inviter,
+            bool toItsCreator,
+            IAccountStore accounts,
+            IEmailSender mailer,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(inviter);
+            ArgumentNullException.ThrowIfNull(accounts);
+            ArgumentNullException.ThrowIfNull(mailer);
+
+            string normalised = AccountRules.NormaliseEmail(address);
+
             // Asked again: the earlier code stops working, so only the newest mail is good.
             foreach (MaintainerInvitationRecord earlier in (await accounts.ListOpenInvitationsAsync(now, cancellationToken))
                 .Where(open => string.Equals(open.BoardId, boardId, StringComparison.Ordinal) && open.NormalisedEmail == normalised))
@@ -95,25 +140,23 @@ namespace CRT.Server.Handlers.Submissions
 
             await accounts.CreateInvitationAsync(
                 new NewMaintainerInvitation(
-                    boardId!, address, normalised, SecureToken.Hash(code), actor!.Account.Id,
+                    boardId, address, normalised, SecureToken.Hash(code), inviter.Account.Id,
                     now, now + MaintainerInvitationFlows.InvitationLifetime),
                 cancellationToken);
 
             await mailer.SendAsync(
                 EmailTemplates.MaintainerInvitation(
                     address,
-                    MaintainerInvitationRules.BoardDisplayName(identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board),
-                    actor.Account.DisplayName,
+                    boardDisplayName,
+                    inviter.Account.DisplayName,
                     code,
-                    (int)MaintainerInvitationFlows.InvitationLifetime.TotalDays),
+                    (int)MaintainerInvitationFlows.InvitationLifetime.TotalDays,
+                    toItsCreator),
                 cancellationToken);
 
             await accounts.WriteAuditAsync(
-                new AuditEntry(actor.Account.Id, actor.Account.Email, MaintainerInvitationFlows.InvitedAction, boardId, address, now),
+                new AuditEntry(inviter.Account.Id, inviter.Account.Email, MaintainerInvitationFlows.InvitedAction, boardId, address, now),
                 cancellationToken);
-
-            return MaintainerInvitationOutcome.Done(
-                $"An invitation is on its way to {address}. Its code works for {(int)MaintainerInvitationFlows.InvitationLifetime.TotalDays} days.");
         }
 
         // ###########################################################################################

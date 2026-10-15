@@ -182,5 +182,19 @@ namespace CRT.Server.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 SessionExtensionRules.NewExpiry(SessionExtensionRulesTests.Now, TimeSpan.Zero));
         }
+
+        // ###########################################################################################
+        // *** CRT SLIDES ITS REMEMBERED SIGN-IN BY THE SAME LIFETIME (code review, 2026-10-13). *** The
+        // Maintainer tab cannot read this server's setting, so it slides by CRT.Data's SessionLifetime
+        // (ReviewSession.AfterUseAt) - the default here must be that one constant, never a number of
+        // its own that could drift from it.
+        // ###########################################################################################
+        [Fact]
+        public void The_default_lifetime_is_the_one_CRT_slides_its_remembered_sign_in_by()
+        {
+            Assert.Equal(
+                global::Handlers.DataHandling.SessionLifetime.DefaultDays,
+                new CRT.Server.Configuration.ServerOptions().RefreshTokenDays);
+        }
     }
 }

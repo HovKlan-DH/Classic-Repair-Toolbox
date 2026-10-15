@@ -146,6 +146,27 @@ namespace CRT.Server.Tests
             }
         }
 
+        // ###########################################################################################
+        // The rate limiter's counters live in a table of their own since 2026-10-13 (migration 0023)
+        // - and a table nothing empties grows for ever. One pass deletes those a day old and keeps
+        // the recent ones the limiter still counts.
+        // ###########################################################################################
+        [Fact]
+        public async Task One_pass_deletes_rate_limit_counters_a_day_old_and_keeps_the_recent_ones()
+        {
+            var accounts = new FakeAccountStore();
+
+            accounts.AuthFailures.Add(("old@example.com", "192.0.2.1", AbandonedUploadSweeperTests.Now - TimeSpan.FromDays(2)));
+            accounts.AuthFailures.Add(("new@example.com", "192.0.2.1", AbandonedUploadSweeperTests.Now - TimeSpan.FromMinutes(5)));
+            accounts.MailRequests.Add(("192.0.2.1", AbandonedUploadSweeperTests.Now - TimeSpan.FromDays(3)));
+
+            await AbandonedUploadSweeper.SweepOnceAsync(
+                new FakeSubmissionStore(), this.Blobs(), AbandonedUploadSweeperTests.Now, NullLogger.Instance, CancellationToken.None, accounts);
+
+            Assert.Equal("new@example.com", Assert.Single(accounts.AuthFailures).Email);
+            Assert.Empty(accounts.MailRequests);
+        }
+
         [Fact]
         public void The_sweeper_is_registered_as_a_HOSTED_service()
         {

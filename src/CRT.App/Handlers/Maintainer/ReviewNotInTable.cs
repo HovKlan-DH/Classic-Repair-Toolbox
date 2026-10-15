@@ -103,8 +103,8 @@ namespace Handlers.MaintainerHandling
         //       Removed component [hest] from schematic "Board layout"
         //
         // and the KiCad calibration points the same way, being the one other thing the table cannot
-        // show. Removals first, as the summary has always put them (ReviewSummaryPresenter.BuildLines
-        // says why); at most MaximumNamedRows lines, the rest counted.
+        // show. Removals first, as the retired change summary always put them - a removal is the
+        // least recoverable change; at most MaximumNamedRows lines, the rest counted.
         // ###########################################################################################
         private static IEnumerable<ReviewNoteLine> DescribeSection(ReviewSectionView section)
         {
@@ -300,4 +300,14 @@ namespace Handlers.MaintainerHandling
     }
 
     public sealed record ReviewNoteRun(string Text, bool IsCount);
+
+    // What kind of change a row of a section is - here since the retired change summary's presenter,
+    // which held it, was deleted (code review, 2026-10-13).
+    public enum ReviewChangeKind
+    {
+        Removed,
+        Changed,
+        Added,
+        Renamed
+    }
 }

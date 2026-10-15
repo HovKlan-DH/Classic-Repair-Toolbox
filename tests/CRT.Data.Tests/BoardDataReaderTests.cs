@@ -608,4 +608,88 @@ public sealed class BoardDataReaderTests : IDisposable
 
         Assert.NotEmpty(second!.Components);
     }
+
+    // ------------------------------------- Numbers stored as NUMBERS (code review, 2026-10-13)
+
+    // *** THE BUG THIS EXISTS FOR. *** The hand-made board workbooks store a highlight opacity as an
+    // Excel NUMBER (13 of the 14 shipped v3 workbooks: <v>0.3</v>). EPPlus formats a number's Text
+    // with the CURRENT culture, so on a comma-decimal machine the reader returned "0,3" - which a
+    // draft then wrote back as TEXT, the server (invariant culture) reported as a change on every
+    // schematic row, and an approval published as a value no machine could parse. The reader must
+    // give every machine the text the server reads.
+    [Theory]
+    [InlineData("da-DK")]
+    [InlineData("de-DE")]
+    [InlineData("en-US")]
+    public void A_number_cell_reads_the_same_in_every_culture(string cultureName)
+    {
+        string path = this.CompleteBoard();
+        BoardDataReaderTests.SetNumber(path, "Board schematics", row: 3, column: 6, 0.3);
+        BoardDataReaderTests.SetNumber(path, "Board schematics", row: 3, column: 9, 0.65);
+
+        System.Globalization.CultureInfo original = System.Globalization.CultureInfo.CurrentCulture;
+
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(cultureName);
+
+            BoardData? read = BoardDataReader.ReadWorkbookUncached(path);
+
+            Assert.Equal("0.3", read!.Schematics[0].SchematicHighlightOpacity);
+            Assert.Equal("0.65", read.Schematics[0].ThumbnailHighlightOpacity);
+
+            // And the reader leaves the caller's culture as it found it.
+            Assert.Equal(cultureName, System.Globalization.CultureInfo.CurrentCulture.Name);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public async Task A_number_cell_reads_the_same_through_the_cached_loader()
+    {
+        string path = this.CompleteBoard();
+        BoardDataReaderTests.SetNumber(path, "Board schematics", row: 3, column: 6, 0.3);
+
+        System.Globalization.CultureInfo original = System.Globalization.CultureInfo.CurrentCulture;
+
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("da-DK");
+
+            BoardData? read = await this.LoadAsync(path);
+
+            Assert.Equal("0.3", read!.Schematics[0].SchematicHighlightOpacity);
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    // Rewrites one cell of a saved workbook as a NUMBER, the way Excel stores a typed 0.3.
+    private static void SetNumber(string path, string sheetName, int row, int column, double value)
+    {
+        using var package = EpplusLicense.OpenPackage(new FileInfo(path));
+        package.Workbook.Worksheets[sheetName].Cells[row, column].Value = value;
+        package.Save();
+    }
+
+    // A column pasted in twice by hand: the FIRST is read, not the right-most (code review, 2026-10-13).
+    [Fact]
+    public void A_repeated_column_header_reads_the_first_column()
+    {
+        string path = new BoardWorkbookBuilder()
+            .Sheet("Board schematics",
+                [.. BoardWorkbookBuilder.SchematicsHeaders, "Schematic name"],
+                [.. new[] { "uuid-1", "Sheet 1", "", "sheet1.png", "", "", "", "", "" }, "Pasted copy"])
+            .Sheet("Components", BoardWorkbookBuilder.ComponentsHeaders)
+            .SaveTo(this.thisWorkspace.Path_("repeated.xlsx"));
+
+        BoardData? read = BoardDataReader.ReadWorkbookUncached(path);
+
+        Assert.Equal("Sheet 1", Assert.Single(read!.Schematics).SchematicName);
+    }
 }

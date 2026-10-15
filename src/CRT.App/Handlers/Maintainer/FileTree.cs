@@ -369,6 +369,21 @@ namespace Handlers.MaintainerHandling
                 : string.Empty;
 
         // ###########################################################################################
+        // Beside a file: the other boards that cite it, when the server named them - a shared file
+        // the approval REPLACES (code review, 2026-10-13; BoardFileEntry.AlsoUsedBy): "Also used by:
+        // Commodore / C64 / 250407, Commodore / C128 / 310378". Empty for every other file.
+        // ###########################################################################################
+        public static string FileNote(BoardFileEntry? file)
+        {
+            List<string> boards = (file?.AlsoUsedBy ?? [])
+                .Where(board => !string.IsNullOrWhiteSpace(board))
+                .Select(board => board.Trim())
+                .ToList();
+
+            return boards.Count == 0 ? string.Empty : "Also used by: " + string.Join(", ", boards);
+        }
+
+        // ###########################################################################################
         // *** THE ONE THING A FILE'S HOVER CARD SAYS BESIDE ITS PATH - and only when what opens is
         // not the file as it will be. *** The card says nothing about the change (owner request,
         // 2026-09-28: "It should not show any text, if it has changed or whatever"); the row does.

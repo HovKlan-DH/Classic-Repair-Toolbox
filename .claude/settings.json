@@ -32,6 +32,12 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/wiki-sync-status.sh\"",
             "timeout": 30,
             "statusMessage": "Refreshing the Wiki sync status..."
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/nuget-check-on-version-bump.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking whether CRT's MAJOR or MINOR version moved..."
           }
         ]
       }

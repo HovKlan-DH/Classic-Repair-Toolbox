@@ -216,7 +216,8 @@ namespace CRT
         // ###########################################################################################
         private async Task<bool> ConfirmLeavingMaintainerTableAsync()
         {
-            if (!this.TabMaintainer.HasUnsavedTableEdits)
+            // A cell still being typed in counts (code review, 2026-10-13) - see CommitCellEdits.
+            if (!this.TabMaintainer.CommitCellsAndHasUnsavedTableEdits())
                 return true;
 
             if (this.MaintainerTabItem != null && this.MainTabControl != null)

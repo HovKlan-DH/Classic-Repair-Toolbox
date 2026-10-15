@@ -34,8 +34,7 @@ public sealed class TabMaintainerScreenTabsTests
         new(42, "Commodore/C64/250407", "pending", "Corrected U8.", "c@example.com", DateTimeOffset.UtcNow.AddHours(-1), false, false, true);
 
     private static ReviewSubmissionDetail Detail(ReviewQueueRow row) =>
-        new(row, true, new ReviewChangeSummaryView(false, []), [], new ReviewSubmissionAssets([]), [],
-            new Dictionary<string, string>(), new Dictionary<string, string>(), [], null);
+        new(row, true, new ReviewChangeSummaryView(false, []), [], [], null);
 
     // The tab in a window, signed in as an administrator, a submission open. 1700
     // wide so the four fit on one line in the suite's stub font, which is far wider than the real one

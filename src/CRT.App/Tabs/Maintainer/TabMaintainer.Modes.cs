@@ -57,11 +57,47 @@ namespace CRT
             {
                 if (string.Equals(button.Name, name, StringComparison.Ordinal))
                 {
-                    await this.ShowModeAsync(mode);
+                    await HandlerGuard.RunAsync(() => this.ShowModeAsync(mode), this.ShowHandlerFailure);
                     return;
                 }
             }
         }
+
+        // ###########################################################################################
+        // A click or choice that failed in CRT itself (HandlerGuard), said where the screen on show
+        // says its errors: the sign-in form's line before signing in, else the line above the
+        // screen's list - the queue's, BETA's, the boards', or Account's (code review, 2026-10-13).
+        // ###########################################################################################
+        private void ShowHandlerFailure(string message)
+        {
+            if (this.FindControl<StackPanel>("SignInPanel") is { IsVisible: true })
+            {
+                this.ShowSignInMessage(message);
+                return;
+            }
+
+            switch (this.thisMode)
+            {
+                case MaintainerMode.Beta:
+                    this.ShowBetaListMessage(message, isError: true);
+                    break;
+
+                case MaintainerMode.Boards:
+                    this.ShowBoardsListMessage(message, isError: true);
+                    break;
+
+                case MaintainerMode.Account:
+                    WindowMessage.Show(this.FindControl<TextBlock>("AccountListMessageText"), message, isError: true);
+                    break;
+
+                default:
+                    this.ShowQueueMessage(message, isError: true);
+                    break;
+            }
+        }
+
+        // What ShowHandlerFailure said, wherever it said it - for tests.
+        internal void ShowHandlerFailureForTests(string message) => this.ShowHandlerFailure(message);
 
         // ###########################################################################################
         // Shows one screen, and reads its list again - also when it is the screen already shown, so

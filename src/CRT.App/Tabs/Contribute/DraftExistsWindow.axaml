@@ -30,11 +30,9 @@
 			<!-- The default button: Enter opens the draft - unless another button has the focus,
 			     which then answers Enter itself (code review, 2026-10-09). -->
 			<Button x:Name="OpenDraftButton"
+					Classes="Accept"
 					IsDefault="True"
 					Content="Open the draft"
-					Foreground="{DynamicResource Button_Ok_Fg}"
-					Background="{DynamicResource Button_Ok_Bg}"
-					BorderBrush="{DynamicResource Button_Ok_Border}"
 					Click="OnOpenDraftClick" />
 		</StackPanel>
 	</StackPanel>

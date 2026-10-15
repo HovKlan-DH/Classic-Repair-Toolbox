@@ -1409,7 +1409,7 @@ namespace Handlers.DataHandling
         // Null when the file is not one of those formats or its header is malformed - the caller
         // then draws the picture with no overlay rather than failing the export.
         // ###########################################################################################
-        private static (int Width, int Height)? TryReadImageSize(string path)
+        internal static (int Width, int Height)? TryReadImageSize(string path)
         {
             try
             {

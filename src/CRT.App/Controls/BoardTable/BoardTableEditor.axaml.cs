@@ -935,25 +935,43 @@ namespace CRT
 
         private async void OnSaveClick(object? sender, RoutedEventArgs e)
         {
-            // Document mode: the host saves - see Open.
-            if (this.thisSession is null && this.thisDocument is not null)
+            try
             {
-                this.TableGrid.CommitEdit();
-                this.SaveRequested?.Invoke(this, EventArgs.Empty);
-                return;
-            }
+                // Document mode: the host saves - see Open.
+                if (this.thisSession is null && this.thisDocument is not null)
+                {
+                    this.TableGrid.CommitEdit();
+                    this.SaveRequested?.Invoke(this, EventArgs.Empty);
+                    return;
+                }
 
-            await this.SaveAsync();
+                await this.SaveAsync();
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                CrtLog.Critical($"OnSaveClick failed - [{ex}]");
+            }
         }
 
         private async void OnReloadClick(object? sender, RoutedEventArgs e)
         {
-            if (this.HasUnsavedChanges && !await this.ConfirmDiscardAsync())
+            try
             {
-                return;
-            }
+                if (this.HasUnsavedChanges && !await this.ConfirmDiscardAsync())
+                {
+                    return;
+                }
 
-            this.Reload();
+                this.Reload();
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT
+                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
+                CrtLog.Critical($"OnReloadClick failed - [{ex}]");
+            }
         }
 
         // Reload throws away what is on screen, so it asks first - with no "Save" choice, since the
@@ -1352,6 +1370,15 @@ namespace CRT
             this.OutsideProblemsText.Text = outsideText ?? string.Empty;
             this.OutsideProblemsText.IsVisible = outsideText is not null;
             this.OutsideProblemsText.Foreground = BoardTableEditor.MarkBrushFor(BoardDataChecks.Worst(outside));
+
+            // The problems in the sheets, as text, while their pill is picked (code review, 2026-10-13).
+            string? problemList = BoardTableProblemWording.InSheets(
+                this.thisDocument?.Problems ?? [],
+                errors: this.thisFilter.HasFlag(BoardTableRowKinds.Errors),
+                warnings: this.thisFilter.HasFlag(BoardTableRowKinds.Warnings));
+
+            this.ProblemListText.Text = problemList ?? string.Empty;
+            this.ProblemListText.IsVisible = problemList is not null;
 
             // A search finding nothing in any sheet: why the one sheet left is empty (2026-10-03).
             string? nothingFound = this.thisDocument is null ? null : this.thisSearch.NothingFoundLine(this.thisDocument, this.thisFilter);

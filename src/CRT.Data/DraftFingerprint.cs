@@ -67,12 +67,12 @@ namespace Handlers.DataHandling
                 DraftFingerprint.Add(hash, "workbook");
                 DraftFingerprint.Add(hash, values);
                 DraftFingerprint.Add(hash, "sidecar");
-                DraftFingerprint.Add(hash, File.Exists(sidecar) ? DraftFingerprint.FileHash(sidecar) : string.Empty);
+                DraftFingerprint.Add(hash, File.Exists(sidecar) ? DraftFingerprint.CachedFileHash(sidecar) : string.Empty);
 
                 foreach ((string relative, string full) in DraftFingerprint.OwnFiles(draftBoardFolder, workbookPath, sidecar))
                 {
                     DraftFingerprint.Add(hash, relative);
-                    DraftFingerprint.Add(hash, DraftFingerprint.FileHash(full));
+                    DraftFingerprint.Add(hash, DraftFingerprint.CachedFileHash(full));
                 }
 
                 return $"{DraftFingerprint.Version}:{Convert.ToHexString(hash.GetHashAndReset())}";
@@ -120,7 +120,7 @@ namespace Handlers.DataHandling
             if (DraftFingerprint.WorkbookHashes.TryGetValue(info.FullName, out CachedHash cached) && cached.Matches(info))
                 return cached.Hash;
 
-            BoardData? board = BoardDataReader.ReadWorkbookUncached(workbookPath);
+            BoardData? board = BoardReadsByStamp.Read(workbookPath);
             if (board is null)
                 return null;
 
@@ -151,7 +151,14 @@ namespace Handlers.DataHandling
             return result;
         }
 
-        private static string FileHash(string path)
+        // A file's SHA-256 as upper-case hex, remembered by its length and write time. Internal for
+        // DraftBaseStore and DraftRebaser, which compare a draft's files with the base by the same hash.
+        // How many files were really read to hash - a test seam.
+        private static int filesHashed;
+
+        internal static int FilesHashedForTests => System.Threading.Volatile.Read(ref DraftFingerprint.filesHashed);
+
+        internal static string CachedFileHash(string path)
         {
             var info = new FileInfo(path);
 
@@ -164,6 +171,7 @@ namespace Handlers.DataHandling
                 result = Convert.ToHexString(SHA256.HashData(stream));
             }
 
+            System.Threading.Interlocked.Increment(ref DraftFingerprint.filesHashed);
             DraftFingerprint.FileHashes[info.FullName] = new CachedHash(info.Length, info.LastWriteTimeUtc, result);
 
             return result;
@@ -179,7 +187,10 @@ namespace Handlers.DataHandling
 
         private readonly record struct CachedHash(long Length, DateTime WriteUtc, string Hash)
         {
-            public bool Matches(FileInfo info) => this.Length == info.Length && this.WriteUtc == info.LastWriteTimeUtc;
+            public bool Matches(FileInfo info) =>
+                this.Length == info.Length &&
+                this.WriteUtc == info.LastWriteTimeUtc &&
+                StampSettling.IsSettled(info.LastWriteTimeUtc);
         }
     }
 }

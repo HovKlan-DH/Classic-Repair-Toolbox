@@ -31,7 +31,8 @@ namespace CRT.Server.Handlers.Submissions
             string betaRoot,
             string productionRoot,
             CancellationToken cancellationToken = default,
-            Func<string, bool>? canWriteFolder = null)
+            Func<string, bool>? canWriteFolder = null,
+            ILogger? logger = null)
         {
             ArgumentNullException.ThrowIfNull(files);
             ArgumentException.ThrowIfNullOrWhiteSpace(betaRoot);
@@ -54,8 +55,9 @@ namespace CRT.Server.Handlers.Submissions
 
                 if (link is not null)
                 {
+                    // Named from its data tree's root, never as the server's path (2026-10-13).
                     return PromotionCopyOutcome.Failed(
-                        $"There is a symbolic link at [{link}], and copying through it could read or write outside " +
+                        $"There is a symbolic link at [{TreeWriteAccess.DisplayName(betaRoot, productionRoot, link)}], and copying through it could read or write outside " +
                         "the data trees. Nothing was copied. Remove the link on the server.");
                 }
 
@@ -85,15 +87,20 @@ namespace CRT.Server.Handlers.Submissions
                 productionRoot, resolved.Select(entry => entry.Destination), canWriteFolder);
 
             if (refusing.Count > 0)
-                return PromotionCopyOutcome.Refused(TreeWriteAccess.RefusalMessage("production", productionRoot, refusing), refusing);
+                return PromotionCopyOutcome.Refused(TreeWriteAccess.RefusalMessage("stable", productionRoot, refusing), refusing);
 
             // ---- 1. The copies, in the plan's order ------------------------------------------
+            //
+            // *** NOT CANCELLED ONCE THE FIRST FILE IS COPIED (code review, 2026-10-13). *** The
+            // request's token stopped a promotion between files when the maintainer's client gave
+            // up, leaving the stable source half promoted. Everything above may still be cancelled.
+            cancellationToken.ThrowIfCancellationRequested();
+            cancellationToken = CancellationToken.None;
+
             int copied = 0;
 
             foreach ((PromotionFile file, string source, string destination) in resolved)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 VerifiedCopyResult result;
 
                 try
@@ -104,8 +111,12 @@ namespace CRT.Server.Handlers.Submissions
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
+                    // The exception's text names the server's paths: the log has it, the
+                    // maintainer is not shown it (2026-10-13).
+                    logger?.LogError(ex, "Promotion stopped: [{Path}] could not be written to the stable source.", file.Path);
+
                     return PromotionCopyOutcome.Failed(
-                        $"[{file.Path}] could not be written to the stable source ({ex.Message}). " +
+                        $"[{file.Path}] could not be written to the stable source - the server's log says why. " +
                         ProductionPromoter.PartialSentence(copied),
                         copied);
                 }

@@ -76,12 +76,12 @@ namespace CRT
             if (e.Key == Key.Enter)
             {
                 e.Handled = true;
-                await this.AcceptInvitationAsync();
+                await HandlerGuard.RunAsync(this.AcceptInvitationAsync, this.ShowInvitationMessage);
             }
         }
 
         private async void OnAcceptInvitationClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.AcceptInvitationAsync();
+            await HandlerGuard.RunAsync(this.AcceptInvitationAsync, this.ShowInvitationMessage);
 
         internal async Task AcceptInvitationAsync()
         {

@@ -100,30 +100,24 @@
             <Grid ColumnDefinitions="Auto,Auto,*,Auto">
 
                 <Button Grid.Column="0"
+                        Classes="Danger"
                         x:Name="RollBackButton"
                         Content="Push back to queue"
-                        Foreground="{DynamicResource Button_Cancel_Fg}"
-                        Background="{DynamicResource Button_Cancel_Bg}"
-                        BorderBrush="{DynamicResource Button_Cancel_Border}"
                         IsEnabled="False"
                         Click="OnRollBackClick" />
 
                 <Button Grid.Column="1"
+                        Classes="Danger"
                         x:Name="RejectButton"
                         Content="Reject"
                         Margin="8,0,0,0"
-                        Foreground="{DynamicResource Button_Cancel_Fg}"
-                        Background="{DynamicResource Button_Cancel_Bg}"
-                        BorderBrush="{DynamicResource Button_Cancel_Border}"
                         IsEnabled="False"
                         Click="OnRejectClick" />
 
                 <Button Grid.Column="3"
+                        Classes="Accept"
                         x:Name="PublishButton"
                         Content="Publish to stable"
-                        Foreground="{DynamicResource Button_Ok_Fg}"
-                        Background="{DynamicResource Button_Ok_Bg}"
-                        BorderBrush="{DynamicResource Button_Ok_Border}"
                         IsEnabled="False"
                         Click="OnPublishClick" />
             </Grid>

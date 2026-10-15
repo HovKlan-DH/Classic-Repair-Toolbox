@@ -62,6 +62,7 @@
             </CheckBox>
 
             <Button x:Name="RemoveButton"
+                    Classes="Danger"
                     HorizontalAlignment="Right"
                     Content="Remove unused files"
                     IsEnabled="False"

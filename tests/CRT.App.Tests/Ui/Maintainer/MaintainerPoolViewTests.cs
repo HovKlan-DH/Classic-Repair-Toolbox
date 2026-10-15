@@ -119,6 +119,10 @@ public sealed class MaintainerPoolViewTests
             Assert.Single(MaintainerPoolViewTests.Buttons(view, "RemoveMaintainer"));
             Assert.Single(MaintainerPoolViewTests.Buttons(view, "WithdrawInvitation"));
             Assert.Equal(2, view.FindControl<ComboBox>("AddAccountCombo")!.ItemCount);
+
+            // Both throw something away, so both are IndianRed (owner decision, 2026-10-13).
+            Assert.Contains("Danger", MaintainerPoolViewTests.Buttons(view, "RemoveMaintainer")[0].Classes);
+            Assert.Contains("Danger", MaintainerPoolViewTests.Buttons(view, "WithdrawInvitation")[0].Classes);
         });
     }
 
@@ -135,7 +139,7 @@ public sealed class MaintainerPoolViewTests
             await view.AddChosenAccountAsync();
 
             Assert.Equal([new PoolAction(PoolActionKind.Add, C64, AccountId: 8, Who: "Bo")], sent);
-            Assert.Equal("Bo now maintains Commodore/C64/250407.", MaintainerPoolViewTests.PoolMessage(view));
+            Assert.Equal("Bo now maintains Commodore / C64 / 250407.", MaintainerPoolViewTests.PoolMessage(view));
         });
     }
 

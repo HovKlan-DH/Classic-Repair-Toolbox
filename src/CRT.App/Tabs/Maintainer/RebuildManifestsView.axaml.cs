@@ -45,7 +45,7 @@ namespace CRT
         }
 
         private async void OnRebuildClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await this.RebuildAsync();
+            await HandlerGuard.RunAsync(this.RebuildAsync, message => this.ShowMessage(message, isError: true));
 
         // ###########################################################################################
         // Asks the server to rebuild both trees. Under the overlay (CRT's own, up the tree - this

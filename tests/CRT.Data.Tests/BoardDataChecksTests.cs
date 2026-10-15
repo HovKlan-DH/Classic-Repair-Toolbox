@@ -230,6 +230,43 @@ public sealed class BoardDataChecksTests
 
     // ------------------------------------------------------------------ The warnings DataValidator logged
 
+    // A comma-decimal opacity ("0,3") is what a CRT on a Danish or German machine wrote into drafts
+    // before WorkbookCellText read numbers invariantly; CRT draws such a value with its default
+    // opacity on EVERY machine, so the table says so (code review, 2026-10-13).
+    [Theory]
+    [InlineData("", "", null)]
+    [InlineData("0.3", "0.65", null)]
+    [InlineData("40%", " 25 % ", null)]
+    [InlineData("1", "0", null)]
+    [InlineData("0,3", "", "schematic.opacity")]
+    [InlineData("", "0,65", "schematic.opacity")]
+    [InlineData("half", "", "schematic.opacity")]
+    public void An_opacity_CRT_cannot_read_is_a_warning(string schematicOpacity, string thumbnailOpacity, string? code)
+    {
+        var schematic = new BoardSchematicEntry
+        {
+            SchematicName = MainSchematic.SchematicName,
+            SchematicImageFile = MainSchematic.SchematicImageFile,
+            SchematicHighlightOpacity = schematicOpacity,
+            ThumbnailHighlightOpacity = thumbnailOpacity,
+        };
+
+        IReadOnlyList<BoardDataProblem> problems = Everything(Rows(schematics: [schematic]));
+
+        if (code is null)
+        {
+            Assert.Empty(problems);
+            return;
+        }
+
+        BoardDataProblem problem = Assert.Single(problems);
+        Assert.Equal(code, problem.Code);
+        Assert.Equal(BoardProblemLevel.Warning, problem.Level);
+        Assert.Equal(
+            schematicOpacity.Length > 0 ? BoardWorkbookSchema.ColSchematicHighlightOpacity : BoardWorkbookSchema.ColThumbnailHighlightOpacity,
+            problem.Column);
+    }
+
     [Theory]
     [InlineData("500uS", "", "", null)]
     [InlineData("5 ms", "", "", "image.time_div")]

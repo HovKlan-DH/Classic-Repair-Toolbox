@@ -23,10 +23,14 @@ public sealed class LocalSchematicRenameTests : IDisposable
     private const string Board = "310378 Open128";
     private const string BoardKey = "Commodore 128|310378 Open128";
 
+    private readonly string thisTracesFile;
+
     public LocalSchematicRenameTests()
     {
         this.LoadSettings();
         this.LoadWorklogs();
+        this.thisTracesFile = this.thisWorkspace.Path_("traces.json");
+        TraceStorage.LoadFrom(this.thisTracesFile);
     }
 
     public void Dispose()
@@ -34,8 +38,12 @@ public sealed class LocalSchematicRenameTests : IDisposable
         // Detach from the temp folder so nothing written later can reach the real files.
         this.LoadSettings();
         this.LoadWorklogs();
+        TraceStorage.LoadFrom(string.Empty);
         this.thisWorkspace.Dispose();
     }
+
+    private static List<TraceModel> OneTrace(string color) =>
+        [new TraceModel { Color = color, Nodes = [new PointModel { X = 0.1, Y = 0.2 }, new PointModel { X = 0.3, Y = 0.4 }] }];
 
     private void LoadSettings()
     {
@@ -48,6 +56,10 @@ public sealed class LocalSchematicRenameTests : IDisposable
         WorklogManager.LoadFrom(this.thisWorkspace.Path_("Workbooks-" + Guid.NewGuid().ToString("N")));
 
     private static string HiddenKey(string schematic) => CatalogueVisibility.BuildKey(Hardware, Board, schematic);
+
+    // Whether the key is ticked, by the rule the app itself reads the settings with.
+    private static bool IsCatalogueKeyChecked(string key) =>
+        !CatalogueVisibility.IsKeyListed(UserSettings.CatalogueUncheckedKeysSnapshot, key);
 
     private static SchematicImage Image(string name, string file) => new(name, $"Commodore/C128/310378 Open128/{file}");
 
@@ -86,7 +98,7 @@ public sealed class LocalSchematicRenameTests : IDisposable
         Assert.Equal(["Bottom", name], WorklogManager.GetWorkbooksForBoard(BoardKey).Single(item => item.Id == workbook.Id).SchematicOrder);
         Assert.Equal(["Bottom", name, "Clock"], UserSettings.GetSchematicsOrder(BoardKey));
         Assert.Equal(name, UserSettings.GetLastSchematicForBoard(BoardKey));
-        Assert.False(UserSettings.IsCatalogueKeyChecked(HiddenKey(name)));
+        Assert.False(IsCatalogueKeyChecked(HiddenKey(name)));
     }
 
     // ------------------------------------------------------------------ following the IMAGE FILE
@@ -105,13 +117,49 @@ public sealed class LocalSchematicRenameTests : IDisposable
         Show(TopRenamed);
 
         AssertEverythingIsUnder("PCB top side", workbook, entry.Id);
-        Assert.True(UserSettings.IsCatalogueKeyChecked(HiddenKey("Top")));
+        Assert.True(IsCatalogueKeyChecked(HiddenKey("Top")));
 
         WorklogEntryRecord moved = WorklogManager.GetEntries(workbook.Id).Single();
         Assert.Equal("Bad cap", moved.Title);
         Assert.Equal("C12 bulging", moved.Description);
         Assert.Equal(new Rect(1, 2, 3, 4), new Rect(moved.AreaX, moved.AreaY, moved.AreaWidth, moved.AreaHeight));
         Assert.Equal(["C12"], moved.ComponentLabels);
+    }
+
+    // ###########################################################################################
+    // The traces drawn on an image follow it to its new name (code review, 2026-10-13: they stayed
+    // filed under the old name, so the renamed image showed none) - and the move is on disk.
+    // ###########################################################################################
+    [Fact]
+    public void A_renamed_image_takes_its_drawn_traces_along()
+    {
+        Show(AsPublished);
+        TraceStorage.SaveTraces(BoardKey, "Top", OneTrace("#FF0000"));
+        TraceStorage.SaveTraces(BoardKey, "Clock", OneTrace("#00FF00"));
+
+        Show(TopRenamed);
+
+        Assert.Equal("#FF0000", Assert.Single(TraceStorage.GetTraces(BoardKey, "PCB top side")).Color);
+        Assert.Empty(TraceStorage.GetTraces(BoardKey, "Top"));
+        Assert.Equal("#00FF00", Assert.Single(TraceStorage.GetTraces(BoardKey, "Clock")).Color);
+
+        TraceStorage.LoadFrom(this.thisTracesFile);
+
+        Assert.Equal("#FF0000", Assert.Single(TraceStorage.GetTraces(BoardKey, "PCB top side")).Color);
+    }
+
+    // Two images swapping names swap their traces - moved all at once, not one after the other.
+    [Fact]
+    public void Two_images_swapping_names_swap_their_drawn_traces()
+    {
+        Show(AsPublished);
+        TraceStorage.SaveTraces(BoardKey, "Top", OneTrace("#FF0000"));
+        TraceStorage.SaveTraces(BoardKey, "Bottom", OneTrace("#0000FF"));
+
+        Show(Image("Bottom", "top.png"), Image("Top", "bottom.png"), Image("Clock", "clock.png"));
+
+        Assert.Equal("#0000FF", Assert.Single(TraceStorage.GetTraces(BoardKey, "Top")).Color);
+        Assert.Equal("#FF0000", Assert.Single(TraceStorage.GetTraces(BoardKey, "Bottom")).Color);
     }
 
     // ###########################################################################################
@@ -169,8 +217,8 @@ public sealed class LocalSchematicRenameTests : IDisposable
         List<WorklogEntryRecord> entries = WorklogManager.GetEntries(workbook.Id);
         Assert.Equal("Bottom", entries.Single(entry => entry.Id == onTop.Id).SchematicName);
         Assert.Equal("Top", entries.Single(entry => entry.Id == onBottom.Id).SchematicName);
-        Assert.False(UserSettings.IsCatalogueKeyChecked(HiddenKey("Top")));
-        Assert.False(UserSettings.IsCatalogueKeyChecked(HiddenKey("Bottom")));
+        Assert.False(IsCatalogueKeyChecked(HiddenKey("Top")));
+        Assert.False(IsCatalogueKeyChecked(HiddenKey("Bottom")));
     }
 
     // Only this board: another board may well have an image of the same name.

@@ -90,8 +90,9 @@ public sealed class NewBoardMaintainerWindowTests
         });
     }
 
-    // What is being agreed to has to be on the screen: the role, what it involves, and that the
-    // board is not created without it.
+    // What is being agreed to has to be on the screen: the role, what it involves, that it happens
+    // by itself once the board is accepted (2026-10-13 - NewBoardMaintainerFlow on the server), and
+    // that the board is not created without it.
     [Fact]
     public void The_text_states_the_role_what_it_involves_and_that_it_is_required()
     {
@@ -105,6 +106,7 @@ public sealed class NewBoardMaintainerWindowTests
 
             Assert.Contains("registered as its maintainer", all, StringComparison.Ordinal);
             Assert.Contains("reviewing the changes other members of the community submit", all, StringComparison.Ordinal);
+            Assert.Contains("When the board is accepted, you are registered as its maintainer automatically.", all, StringComparison.Ordinal);
             Assert.Contains("can only be created if you accept this", all, StringComparison.Ordinal);
         });
     }

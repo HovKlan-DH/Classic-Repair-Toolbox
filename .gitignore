@@ -68,14 +68,12 @@ nunit-*.xml
 # Stop-hook marker: fingerprint of the last verified-green test run
 .claude/.tests-green
 
-# Webserver content
-Assets/Webserver/
-
 # Stop-hook state stamps (local, per-clone)
 .claude/.tests-green
 .claude/.wiki-reminded
 .claude/.server-version-reminded
 .claude/.api-version-reported
+.claude/.nuget-check-reminded
 
 # Server configuration that can hold credentials.
 #

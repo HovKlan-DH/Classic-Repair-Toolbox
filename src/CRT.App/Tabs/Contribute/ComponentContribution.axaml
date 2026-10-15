@@ -32,19 +32,13 @@
 			<Setter Property="Background" Value="{DynamicResource Bg}" />
 		</Style>
 
+		<!-- Sizes only: the "Add new ..." buttons are green (Accept) and "Delete this component"
+		     IndianRed (Danger) - App.axaml's two button colours (owner decision, 2026-10-13). -->
 		<Style Selector="Button.HighlightAddRowButton">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
-			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
 			<Setter Property="Padding" Value="14,8" />
 		</Style>
 
-		<!-- The same highlight the "Send contribution update" button wears, so the two controls
-		     that act on the whole contribution look like each other rather than like the green
-		     "add row" buttons. Button_Highlighted_* is the theme's red, in both light and dark. -->
 		<Style Selector="Button.DeleteComponentButton">
-			<Setter Property="Background" Value="{DynamicResource Button_Highlighted_Bg}" />
-			<Setter Property="Foreground" Value="{DynamicResource Button_Highlighted_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Button_Highlighted_Border}" />
 			<Setter Property="Padding" Value="14,8" />
 		</Style>
 
@@ -210,7 +204,7 @@
 							     disables that container, and a disabled parent disables every child -
 							     a button inside it could not be clicked again to leave the mode. -->
 							<Button x:Name="DeleteComponentButton"
-							        Classes="DeleteComponentButton"
+							        Classes="Danger DeleteComponentButton"
 							        Content="Delete this component"
 							        HorizontalAlignment="Right"
 							        IsVisible="False"
@@ -334,7 +328,7 @@
 									   VerticalAlignment="Center"
 									   Foreground="{DynamicResource Fg}" />
 								<Button Grid.Column="1"
-								        Classes="HighlightAddRowButton"
+								        Classes="Accept HighlightAddRowButton"
 								        Content="Add new component image"
 								        Click="OnAddComponentImageRowClick" />
 							</Grid>
@@ -443,6 +437,7 @@
 															Margin="0,8,0,0" />
 
 													<Button Grid.Column="2"
+															Classes="Danger"
 															Grid.Row="8"
 															Grid.ColumnSpan="5"
 															Content="Remove image"
@@ -491,7 +486,7 @@
 											   Foreground="{DynamicResource Fg}" />
 								</StackPanel>
 								<Button Grid.Column="1"
-										Classes="HighlightAddRowButton"
+										Classes="Accept HighlightAddRowButton"
 										Content="Add new component file"
 										Click="OnAddComponentLocalFileRowClick" />
 							</Grid>
@@ -538,6 +533,7 @@
 													        Click="OnBrowseFileClick" />
 												</Grid>
 												<Button Grid.Column="8"
+														Classes="Danger"
 														Content="Remove"
 														Tag="{Binding}"
 														Click="OnRemoveComponentLocalFileRowClick" />
@@ -581,7 +577,7 @@
 											   Foreground="{DynamicResource Fg}" />
 								</StackPanel>
 								<Button Grid.Column="1"
-										Classes="HighlightAddRowButton"
+										Classes="Accept HighlightAddRowButton"
 										Content="Add new component link"
 										Click="OnAddComponentLinkRowClick" />
 							</Grid>
@@ -606,6 +602,7 @@
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
 												<TextBox Grid.Column="4" Text="{Binding Url}" />
 												<Button Grid.Column="6"
+												        Classes="Danger"
 												        Content="Remove"
 												        Tag="{Binding}"
 												        Click="OnRemoveComponentLinkRowClick" />
@@ -649,7 +646,7 @@
 											   Foreground="{DynamicResource Fg}" />
 								</StackPanel>
 								<Button Grid.Column="1"
-										Classes="HighlightAddRowButton"
+										Classes="Accept HighlightAddRowButton"
 										Content="Add new board file"
 										Click="OnAddBoardLocalFileRowClick" />
 							</Grid>
@@ -696,6 +693,7 @@
 													        Click="OnBrowseFileClick" />
 												</Grid>
 												<Button Grid.Column="8"
+														Classes="Danger"
 														Content="Remove"
 														Tag="{Binding}"
 														Click="OnRemoveBoardLocalFileRowClick" />
@@ -739,7 +737,7 @@
 											   Foreground="{DynamicResource Fg}" />
 								</StackPanel>
 								<Button Grid.Column="1"
-										Classes="HighlightAddRowButton"
+										Classes="Accept HighlightAddRowButton"
 										Content="Add new board link"
 										Click="OnAddBoardLinkRowClick" />
 							</Grid>
@@ -764,6 +762,7 @@
 												<TextBox Grid.Column="2" Text="{Binding Name}" />
 												<TextBox Grid.Column="4" Text="{Binding Url}" />
 												<Button Grid.Column="6"
+												        Classes="Danger"
 												        Content="Remove"
 												        Tag="{Binding}"
 												        Click="OnRemoveBoardLinkRowClick" />
@@ -825,10 +824,8 @@
 				<Button Content="Cancel"
 						Click="OnCancelClick" />
 				<Button x:Name="SubmitButton"
+						Classes="Accept"
 						Content="Save to draft"
-						Background="{DynamicResource Button_Highlighted_Bg}"
-						Foreground="{DynamicResource Button_Highlighted_Fg}"
-						BorderBrush="{DynamicResource Button_Highlighted_Border}"
 						Click="OnSubmitClick" />
 			</StackPanel>
 		</Grid>

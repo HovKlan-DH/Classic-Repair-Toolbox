@@ -31,12 +31,18 @@ jobs:
   # Reads the release version straight out of the project instead of asking for it by
   # hand - see the comment at the top of this file. Every other job reads it from here
   # rather than re-deriving it, so there is exactly one place this happens.
+  #
+  # The same goes for vpk, the Velopack tool every build job packs with: its version is the
+  # Velopack package's in CRT.App.csproj (owner request, 2026-10-12), so the tool that packs
+  # a release always matches the library inside it - an update through NuGet moves both. Until
+  # then only the macOS job was pinned, and Windows and Linux installed whatever vpk was newest.
   determine-version:
     name: Determine version
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
       is_prerelease: ${{ steps.ver.outputs.is_prerelease }}
+      vpk_version: ${{ steps.vpk.outputs.vpk_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -57,6 +63,18 @@ jobs:
           else
             echo "is_prerelease=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Read Velopack version from project
+        id: vpk
+        run: |
+          VPK_VERSION=$(dotnet msbuild ${{ env.PROJECT }} -getItem:PackageReference -nologo \
+            | jq -r '.Items.PackageReference[] | select(.Identity == "Velopack") | .Version')
+          if [ -z "$VPK_VERSION" ] || [ "$VPK_VERSION" = "null" ]; then
+            echo "::error::No Velopack PackageReference with a Version in ${{ env.PROJECT }}"
+            exit 1
+          fi
+          echo "Read Velopack version: $VPK_VERSION"
+          echo "vpk_version=$VPK_VERSION" >> $GITHUB_OUTPUT
 
   ###############################################################
   # BUILD AND UNIT TEST GATE
@@ -152,9 +170,12 @@ jobs:
         run: |
           Copy-Item -Path "Assets/Data" -Destination "publish/windows-x64" -Recurse
 
+      # The Velopack package's version (see determine-version). --allow-downgrade because this
+      # runner is self-hosted and keeps its global tools between runs: without it, a vpk already
+      # installed at a NEWER version makes the install fail.
       - name: Install vpk
         shell: powershell
-        run: dotnet tool install -g vpk
+        run: dotnet tool install -g vpk --version "${{ needs.determine-version.outputs.vpk_version }}" --allow-downgrade
 
       # ###########################################################################################
       # *** VELOPACK DOES ALL THE SIGNING, not separate jsign steps. ***
@@ -279,8 +300,9 @@ jobs:
         run: |
           cp -r Assets/Data publish/linux-x64/
 
+      # The Velopack package's version (see determine-version)
       - name: Install vpk
-        run: dotnet tool install -g vpk
+        run: dotnet tool install -g vpk --version "${{ needs.determine-version.outputs.vpk_version }}" --allow-downgrade
 
       # "--runtime linux-x64" only silences vpk's "No architecture specified" warning: on Linux it
       # already defaulted to the x64 updater, and the channel stays "linux" either way. macOS is
@@ -324,10 +346,11 @@ jobs:
       # are not signed by the app's team. CRT's own copy, so a Velopack update cannot change it;
       # the verify step compares the signed app's entitlements with it and starts the app.
       MAC_ENTITLEMENTS: Assets/macOS/CRT.entitlements
-      # Pinned, as this job writes the Info.plist Velopack would otherwise generate: the vpk 3.0.0
-      # was released with. "Compare Info.plist with Velopack's" fails when a newer vpk's own plist
-      # has a key ours lacks - so bump it here, and follow the plist.
-      MAC_VPK_VERSION: 1.2.161
+      # vpk is the Velopack package's version in CRT.App.csproj, as in every build job (see
+      # determine-version). This job writes the Info.plist Velopack would otherwise generate, so an
+      # update of the package matters here most: "Compare Info.plist with Velopack's" fails when
+      # the new vpk's own plist has a key ours lacks - then follow the plist.
+      VPK_VERSION: ${{ needs.determine-version.outputs.vpk_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -358,7 +381,7 @@ jobs:
             -o "publish/macos-x64/$MAC_APP/Contents/MacOS"
 
       - name: Install vpk
-        run: dotnet tool install -g vpk --version "$MAC_VPK_VERSION"
+        run: dotnet tool install -g vpk --version "$VPK_VERSION" --allow-downgrade
 
       # CRT's own Info.plist, because Velopack's has no NSLocalNetworkUsageDescription (reported
       # 2026-10-12: connecting to a scope failed with "No route to host" although "Local Network"

@@ -216,23 +216,51 @@ namespace Handlers.DataHandling
                 updated = updated.WithComponentHighlights(SchematicRename.FollowHighlights(updated.ComponentHighlights, follow));
             }
 
-            string temporary = workbook + ".writing.tmp";
+            // *** AND WHAT HANGS ON A COMPONENT'S LABEL FOLLOWS IT (code review, 2026-10-13). *** A
+            // label fixed in the table ("U8" -> "U08", nothing else changed) left its rectangles on
+            // the old label. The rule is the count's (ComponentRelabel - BoardDataDiffer's pairing),
+            // and the server's amendment follows it the same way.
+            IReadOnlyDictionary<string, string> relabels = ComponentRelabel.Between(current.Components, updated.Components);
+
+            if (relabels.Count > 0)
+            {
+                updated = updated.WithComponentHighlights(ComponentRelabel.FollowHighlights(updated.ComponentHighlights, relabels));
+            }
+
+            // Read BEFORE the workbook is replaced: the sidecar still files the calibrations under
+            // the names the board had.
+            List<KiCadCalibrationEntry> calibrations = DraftWorkbookStore.CalibrationsAfter(workbook, current, updated, follow);
+
+            // The board's published renames, as the draft's copy has them - passed on as they
+            // are. A draft does not add to them: the server records a rename when it publishes
+            // one (SchematicRenameLog.ForPublish), and CRT follows a draft's own renames by the
+            // image files it remembers instead (LocalSchematicRename).
+            List<SchematicRenameRecord> renameLog = BoardComponentHighlightStorage.LoadSchematicRenames(workbook);
+
+            return DraftWorkbookStore.WriteDraft(workbook, updated, calibrations, renameLog);
+        }
+
+        // ###########################################################################################
+        // Writes a draft's board: the workbook, then its sidecar (highlights, calibrations, renames),
+        // as ONE change - the workbook through a temporary file moved into place, and the workbook as
+        // it was put back when the sidecar cannot be written. Shared by every edit (EditCore) and by
+        // bringing a draft up to date (ReplaceIfUnchanged), so there is one way a draft is written.
+        // ###########################################################################################
+        private static DraftWorkbookEditOutcome WriteDraft(
+            string workbook,
+            BoardData updated,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord> renameLog)
+        {
+            // A name CRT's bookkeeping check knows (code review, 2026-10-13): "<workbook>.writing.tmp"
+            // stranded by a crash between the write and the move counted as the contributor's work.
+            string temporary = DraftFolderLayout.TemporaryPathFor(workbook);
 
             // The workbook as it was, while the sidecar is written - see the catch below.
             byte[]? previousWorkbook = null;
 
             try
             {
-                // Read BEFORE the workbook is replaced: the sidecar still files the calibrations under
-                // the names the board had.
-                List<KiCadCalibrationEntry> calibrations = DraftWorkbookStore.CalibrationsAfter(workbook, current, updated, follow);
-
-                // The board's published renames, as the draft's copy has them - passed on as they
-                // are. A draft does not add to them: the server records a rename when it publishes
-                // one (SchematicRenameLog.ForPublish), and CRT follows a draft's own renames by the
-                // image files it remembers instead (LocalSchematicRename).
-                List<SchematicRenameRecord> renameLog = BoardComponentHighlightStorage.LoadSchematicRenames(workbook);
-
                 BoardWorkbookWriter.Write(temporary, updated);
 
                 byte[] before = DraftWorkbookStore.ReadAllBytesShared(workbook);
@@ -441,13 +469,75 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Updates the draft's marker - used to rebase a draft onto a newer published revision after
-        // the contributor has been shown the drift.
-        //
-        // Separate from Edit because it touches no board rows: rebasing is a statement about WHICH
-        // published revision the draft is measured against, not about the board's contents.
+        // Replaces the draft's whole board - rows, highlights, calibrations, renames - but ONLY if the
+        // workbook is still exactly what the caller read (`expectedFingerprint`, Fingerprint's value).
+        // For bringing a draft up to date (DraftRebaser), which computes a new board from the one it
+        // read and must not write over an edit made meanwhile in Excel. Written by WriteDraft, the
+        // one way a draft is written.
         // ###########################################################################################
-        public static bool SetBaseRevision(string draftsRoot, string excelDataFile, string baseRevision)
+        internal static DraftWorkbookEditOutcome ReplaceIfUnchanged(
+            string draftsRoot,
+            string excelDataFile,
+            string expectedFingerprint,
+            BoardData board,
+            IReadOnlyList<KiCadCalibrationEntry> calibrations,
+            IReadOnlyList<SchematicRenameRecord> renames)
+        {
+            ArgumentNullException.ThrowIfNull(expectedFingerprint);
+            ArgumentNullException.ThrowIfNull(board);
+
+            string workbook = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
+
+            if (workbook.Length == 0 || !File.Exists(workbook))
+                return DraftWorkbookEditOutcome.NoDraft;
+
+            string actual = DraftWorkbookStore.Fingerprint(draftsRoot, excelDataFile);
+
+            if (actual.Length == 0)
+                return DraftWorkbookEditOutcome.WriteFailed;
+
+            if (!string.Equals(actual, expectedFingerprint, StringComparison.Ordinal))
+            {
+                CrtLog.Info($"Not bringing the draft for [{excelDataFile}] up to date - its workbook changed since it was read");
+                return DraftWorkbookEditOutcome.ChangedOnDisk;
+            }
+
+            return DraftWorkbookStore.WriteDraft(workbook, board, calibrations ?? [], renames ?? []);
+        }
+
+        // ###########################################################################################
+        // The marker after the draft was brought up to date with the published board: what it is now
+        // based on (the revision the server is told, and the content the drift check compares), and
+        // no "seen" warning left over. DraftRebaser calls this last, after the board and its base.
+        // ###########################################################################################
+        public static bool RecordBroughtUpToDate(string draftsRoot, string excelDataFile, string revision, string contentHash) =>
+            DraftWorkbookStore.UpdateMarker(draftsRoot, excelDataFile, marker => marker with
+            {
+                BaseRevision = revision?.Trim() ?? string.Empty,
+                BaseContentHash = contentHash ?? string.Empty,
+                DriftSeenRevision = string.Empty,
+                DriftSeenContentHash = string.Empty,
+            });
+
+        // ###########################################################################################
+        // "I have looked at this" for a draft that cannot be brought up to date (no base - started
+        // before CRT kept one). Quiets the warning for this published revision and NOTHING else
+        // (code review, 2026-10-13): it used to overwrite BaseRevision, which the submission tells the
+        // server, so a stale draft claimed to be made from the newest data.
+        // ###########################################################################################
+        //
+        // `publishedContentHash` is the published files' content at that moment (DraftBaseStore
+        // .PublishedContentHash): a draft judged by content is quiet while the published board
+        // still holds exactly that (DraftMarker.DriftSeenContentHash).
+        public static bool MarkDriftSeen(string draftsRoot, string excelDataFile, string publishedRevision, string publishedContentHash = "") =>
+            DraftWorkbookStore.UpdateMarker(draftsRoot, excelDataFile, marker => marker with
+            {
+                DriftSeenRevision = publishedRevision?.Trim() ?? string.Empty,
+                DriftSeenContentHash = publishedContentHash?.Trim() ?? string.Empty,
+            });
+
+        // Reads, changes and writes the draft's marker; false when there is none or it cannot be written.
+        private static bool UpdateMarker(string draftsRoot, string excelDataFile, Func<DraftMarker, DraftMarker> change)
         {
             string markerPath = DraftFolderLayout.GetMarkerPath(draftsRoot, excelDataFile);
 
@@ -459,13 +549,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                DraftMarkerStore.Save(markerPath, new DraftMarker
-                {
-                    BoardKey = marker.BoardKey,
-                    BaseRevision = baseRevision?.Trim() ?? string.Empty,
-                    NewBoard = marker.NewBoard,
-                    CreatedUtc = marker.CreatedUtc,
-                });
+                DraftMarkerStore.Save(markerPath, change(marker));
 
                 return true;
             }

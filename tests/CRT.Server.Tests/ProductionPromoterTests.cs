@@ -68,6 +68,28 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** CANCELLABLE ONLY BEFORE THE FIRST COPY (code review, 2026-10-13). *** A client giving up
+        // while the paths are still being checked stops it with nothing copied; once copying starts
+        // it is no longer listened to (the stable source half promoted was the alternative).
+        // ###########################################################################################
+        [Fact]
+        public async Task A_client_giving_up_before_the_first_copy_stops_it_with_nothing_copied()
+        {
+            PromotionFile image = this.PutInBeta("Commodore/C64/250407/Images/a.png", "image");
+            using var request = new CancellationTokenSource();
+
+            // The client goes away while the folders are being checked - before any copy.
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ProductionPromoter.CopyAsync(
+                [image], this.thisBeta, this.thisProduction, request.Token, canWriteFolder: _ =>
+                {
+                    request.Cancel();
+                    return true;
+                }));
+
+            Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Images/a.png")));
+        }
+
+        // ###########################################################################################
         // *** A PRODUCTION FOLDER THE SERVICE MAY NOT WRITE STOPS THE PROMOTION BEFORE THE FIRST
         // COPY (owner report, 2026-09-28). *** A folder copied into production by hand as root
         // refuses every write, and meeting it at file 600 leaves production half-promoted. The
@@ -90,7 +112,7 @@ namespace CRT.Server.Tests
             Assert.False(outcome.IsDone);
             Assert.Equal(0, outcome.FilesCopied);
             Assert.Equal([board], outcome.FoldersRefusing);
-            Assert.Contains("[Commodore/C64/250407] in the production data, so nothing was changed", outcome.Error, StringComparison.Ordinal);
+            Assert.Contains("[Commodore/C64/250407] in the stable data, so nothing was changed", outcome.Error, StringComparison.Ordinal);
             Assert.Empty(Directory.GetFileSystemEntries(board));
         }
 

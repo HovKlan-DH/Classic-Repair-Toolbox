@@ -94,6 +94,10 @@ namespace Handlers.DataHandling
 
             IReadOnlyDictionary<string, string?> follow = SubmissionRowsBoard.FollowSchematics(current.Schematics, edited.Schematics);
 
+            // A component relabelled in the maintainer's table keeps its highlights under the new
+            // label - the rule every draft write follows too (ComponentRelabel, 2026-10-13).
+            IReadOnlyDictionary<string, string> relabels = ComponentRelabel.Between(current.Components, edited.Components);
+
             var editedLabels = new HashSet<string>(
                 edited.Components.Select(component => (component.BoardLabel ?? string.Empty).Trim()),
                 StringComparer.OrdinalIgnoreCase);
@@ -109,9 +113,12 @@ namespace Handlers.DataHandling
                 // Moved or dropped by the one rule a draft write follows them by too (SchematicRename;
                 // code review, 2026-10-11 - this was a second, field-by-field copy of it).
                 ComponentHighlights = SchematicRename.FollowHighlights(
-                    current.ComponentHighlights.Where(highlight =>
-                        editedLabels.Contains((highlight.BoardLabel ?? string.Empty).Trim()) ||
-                        editedHighlights.Contains(SubmissionRowsBoard.HighlightKey(highlight))),
+                    ComponentRelabel.FollowHighlights(
+                        current.ComponentHighlights.Where(highlight =>
+                            editedLabels.Contains((highlight.BoardLabel ?? string.Empty).Trim()) ||
+                            relabels.ContainsKey((highlight.BoardLabel ?? string.Empty).Trim()) ||
+                            editedHighlights.Contains(SubmissionRowsBoard.HighlightKey(highlight))),
+                        relabels),
                     follow),
 
                 KiCadCalibrations = SchematicRename.FollowCalibrations(current.KiCadCalibrations, follow),

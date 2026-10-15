@@ -98,7 +98,10 @@ namespace CRT
             this.ShowAdministratorEntries(false);
         }
 
-        private async void OnAccountSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private async void OnAccountSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.AccountSelectionChangedAsync, this.ShowHandlerFailure);
+
+        private async Task AccountSelectionChangedAsync()
         {
             this.ApplyModeVisibility();
 
@@ -207,20 +210,21 @@ namespace CRT
 
             ReviewApiResult<AccountAnswer> read = await client.GetAccountAsync(session);
 
-            // Only onto the session it was asked for - a sign-out or another sign-in meanwhile wins.
-            if (read.IsOk && ReferenceEquals(this.thisSession, session))
+            // Only onto the session it was asked for - a sign-out or another sign-in meanwhile wins
+            // (its expiry slid meanwhile is still that session).
+            if (read.IsOk && this.IsSessionInUse(session))
                 this.ApplyAccount(read.Value!);
         }
 
         // ###########################################################################################
-        // "Logged in as:" and, under it, the name in bold and the address (owner request,
+        // "Signed in as:" and, under it, the name in bold and the address (owner request,
         // 2026-10-04). Named, because somebody with both a maintainer and an administrator account
         // needs to know which one they are acting as before they publish anything.
         // ###########################################################################################
         private void ShowSignedInAs()
         {
             if (this.thisSession is { } session && this.FindControl<TextBlock>("SignedInAsText") is TextBlock text)
-                TabMaintainer.ShowCounts(text, MyAccountRules.LoggedInAs(session.DisplayName, session.Email));
+                TabMaintainer.ShowCounts(text, MyAccountRules.SignedInAs(session.DisplayName, session.Email));
         }
 
         // -----------------------------------------------------------------------------------
@@ -238,10 +242,21 @@ namespace CRT
 
             ReviewApiResult<HealthStatus> answer = await client.GetServerVersionAsync();
 
+            // The mails it could not send (2026-10-13) - asked with the session, from a server that
+            // answered at all; an older server's 404 simply says nothing about mail.
+            int? unsentMails = null;
+
+            if (answer.IsOk && this.thisSession is ReviewSession session)
+            {
+                ReviewApiResult<ServerStatusAnswer> status = await client.GetServerStatusAsync(session);
+                unsentMails = status.IsOk ? status.Value?.UnsentMails : null;
+            }
+
             this.ShowServerVersionLines(ServerVersionDisplay.Lines(
                 answer.IsOk ? answer.Value?.Version : null,
                 answer.IsOk ? answer.Value?.ApiRevision : null,
-                ClientVersionContract.ApiRevision));
+                ClientVersionContract.ApiRevision,
+                unsentMails: unsentMails));
         }
 
         // One TextBlock a line, its value bold; none clears the panel.
@@ -268,7 +283,7 @@ namespace CRT
                 : null;
 
         // A client for a test, as signing in would give the tab - never the real server.
-        internal void UseClientForTests(ReviewApiClient client) => this.thisClient = client;
+        internal void UseClientForTests(ReviewApiClient client) => this.UseClient(client);
 
         // -----------------------------------------------------------------------------------
         // The administrator's entries

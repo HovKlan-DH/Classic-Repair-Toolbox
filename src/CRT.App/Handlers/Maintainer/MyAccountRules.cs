@@ -21,13 +21,14 @@ namespace Handlers.MaintainerHandling
         public const string PasswordsDiffer = "The two new passwords are not the same.";
 
         // ###########################################################################################
-        // Who is logged in, as the Maintainer tab says it under its lists and "My account" at its top
+        // Who is signed in, as the Maintainer tab says it under its lists and "My account" at its top
         // (owner request, 2026-10-04: "Logged in as:<br /><b>Dennis</b> (dennis@...dk)"): the name
         // BOLD, then the address in brackets. A blank name gives the address alone, bold - it is
-        // then what names the account. Runs, so the view can bold the name; the words "Logged in
-        // as" are the caller's, since the tab puts them on a line of their own.
+        // then what names the account. Runs, so the view can bold the name; the words "Signed in
+        // as" are the caller's, since the tab puts them on a line of their own. "Signed", not the
+        // request's "Logged", beside "Sign in" and "Sign out" (code review, 2026-10-13).
         // ###########################################################################################
-        public static IReadOnlyList<ReviewNoteRun> LoggedInAs(string? displayName, string email)
+        public static IReadOnlyList<ReviewNoteRun> SignedInAs(string? displayName, string email)
         {
             string name = displayName?.Trim() ?? string.Empty;
 

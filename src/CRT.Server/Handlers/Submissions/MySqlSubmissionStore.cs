@@ -22,7 +22,9 @@ namespace CRT.Server.Handlers.Submissions
     //
     // FILE MAP (split 2026-09-27, past ~1,500 lines): this file - submissions, their files,
     // payloads, findings and the queue; MySqlSubmissionStore.Boards.cs - the `boards` rows;
-    // MySqlSubmissionStore.Approvals.cs - amendments and approvals.
+    // MySqlSubmissionStore.Approvals.cs - amendments and approvals; MySqlSubmissionStore.Conditional.cs
+    // - the writes that happen only from the state the caller saw, a maintainer's own queue, and what a
+    // submission left as published (code review, 2026-10-13).
     // ###########################################################################################
     public sealed partial class MySqlSubmissionStore : ISubmissionStore
     {
@@ -148,6 +150,25 @@ namespace CRT.Server.Handlers.Submissions
                 command.Parameters.AddWithValue("@path", file.Path);
                 command.Parameters.AddWithValue("@hash", file.Sha256);
                 command.Parameters.AddWithValue("@size", file.SizeBytes);
+
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // What it left exactly as published (code review, 2026-10-13, migration 0021) - in the
+            // same transaction, so the approval never sees a submission without the record of it.
+            foreach (SubmissionFile file in (submission.LeftAsPublished ?? []).DistinctBy(file => file.Path, StringComparer.Ordinal))
+            {
+                await using MySqlCommand command = connection.CreateCommand();
+
+                command.Transaction = transaction;
+                command.CommandText = """
+                    INSERT INTO submission_left_as_published (submission_id, path, sha256)
+                    VALUES (@submissionId, @path, @hash);
+                    """;
+
+                command.Parameters.AddWithValue("@submissionId", submissionId);
+                command.Parameters.AddWithValue("@path", file.Path);
+                command.Parameters.AddWithValue("@hash", file.Sha256);
 
                 await command.ExecuteNonQueryAsync(cancellationToken);
             }

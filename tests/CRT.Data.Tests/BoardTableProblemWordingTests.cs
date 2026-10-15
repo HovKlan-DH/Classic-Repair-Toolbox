@@ -53,4 +53,40 @@ public sealed class BoardTableProblemWordingTests
 
         Assert.All(all, character => Assert.True(character < 128, $"[{character}] is not plain ASCII"));
     }
+
+    // ###########################################################################################
+    // The problems in the sheets, as text, for the picked pill (code review, 2026-10-13): errors
+    // first, in sheet order, each naming its sheet, row and column; capped, with "and N more".
+    // ###########################################################################################
+    [Fact]
+    public void The_problems_in_the_sheets_are_listed_errors_first_with_where_they_are()
+    {
+        BoardDataProblem warning = new(BoardProblemLevel.Warning, "image.orphan", "U9", "Not shown anywhere.", BoardWorkbookSchema.SheetComponentImages, 3, BoardWorkbookSchema.ColBoardLabel);
+        BoardDataProblem error = new(BoardProblemLevel.Error, "link.url", "U1", "Not a web address.", BoardWorkbookSchema.SheetComponentLinks, 1, BoardWorkbookSchema.ColUrl);
+        BoardDataProblem outside = new(BoardProblemLevel.Error, "highlight.orphan", "U7", "On no schematic.", null, -1, null);
+
+        string? both = BoardTableProblemWording.InSheets([warning, error, outside], errors: true, warnings: true);
+        string[] lines = both!.Split(Environment.NewLine);
+
+        Assert.Equal(2, lines.Length);
+        Assert.Equal($"Error - {BoardWorkbookSchema.SheetComponentLinks}, U1, {BoardWorkbookSchema.ColUrl}: Not a web address.", lines[0]);
+        Assert.StartsWith($"Warning - {BoardWorkbookSchema.SheetComponentImages}, U9", lines[1]);
+
+        Assert.DoesNotContain("Warning", BoardTableProblemWording.InSheets([warning, error], errors: true, warnings: false));
+        Assert.Null(BoardTableProblemWording.InSheets([warning, error], errors: false, warnings: false));
+        Assert.Null(BoardTableProblemWording.InSheets([outside], errors: true, warnings: true));
+    }
+
+    [Fact]
+    public void A_long_list_of_problems_is_capped()
+    {
+        List<BoardDataProblem> many = Enumerable.Range(0, BoardTableProblemWording.InSheetsShown + 5)
+            .Select(i => new BoardDataProblem(BoardProblemLevel.Warning, "x", $"U{i}", "msg", BoardWorkbookSchema.SheetComponents, i, null))
+            .ToList();
+
+        string[] lines = BoardTableProblemWording.InSheets(many, errors: false, warnings: true)!.Split(Environment.NewLine);
+
+        Assert.Equal(BoardTableProblemWording.InSheetsShown + 1, lines.Length);
+        Assert.Equal("... and 5 more.", lines[^1]);
+    }
 }

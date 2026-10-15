@@ -207,4 +207,34 @@ public sealed class DraftFolderLayoutTests
         Assert.False(DraftFolderLayout.IsDraftOnlyFile("Sheet1.png"));
         Assert.False(DraftFolderLayout.IsDraftOnlyFile(string.Empty));
     }
+
+    // ###########################################################################################
+    // *** THE BASE AND EVERY TEMPORARY FILE CRT WRITES THROUGH ARE BOOKKEEPING TOO (code review,
+    // 2026-10-13). *** A crash between a workbook's write and its move left "<workbook>.writing.tmp"
+    // behind; it counted as the contributor's work and kept the draft from ever being retired.
+    // ###########################################################################################
+    [Fact]
+    public void The_base_and_crts_temporary_files_are_draft_only()
+    {
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile(DraftFolderLayout.DraftBaseFileName));
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile(".crt-draft.json.tmp"));
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile(".crt-writing-Data C64 250407.xlsx"));
+
+        // Left behind by a CRT from before the temporary got its ".crt-" name.
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile("Data C64 250407.xlsx.writing.tmp"));
+    }
+
+    [Fact]
+    public void A_temporary_path_is_beside_its_file_and_is_bookkeeping()
+    {
+        string workbook = Path.Combine(Path.GetTempPath(), "Drafts", "Commodore", "C64", "250407", "Data C64 250407.xlsx");
+        string temporary = DraftFolderLayout.TemporaryPathFor(workbook);
+
+        Assert.Equal(Path.GetDirectoryName(workbook), Path.GetDirectoryName(temporary));
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile(temporary));
+        Assert.NotEqual(workbook, temporary);
+
+        string marker = Path.Combine(Path.GetTempPath(), ".crt-draft.json");
+        Assert.True(DraftFolderLayout.IsDraftOnlyFile(DraftFolderLayout.TemporaryPathFor(marker)));
+    }
 }

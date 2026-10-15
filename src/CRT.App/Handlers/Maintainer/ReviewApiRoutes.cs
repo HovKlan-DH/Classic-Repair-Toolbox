@@ -34,6 +34,11 @@ namespace Handlers.MaintainerHandling
         public static string Health(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/health";
 
+        // What the server says about itself to a signed-in maintainer only (2026-10-13) - the mails
+        // it could not send. Asked WITH the session (ReviewApiClient.GetServerStatusAsync).
+        public static string ServerStatus(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/review/server-status";
+
         // ###########################################################################################
         // The DEFAULT server, and the only one anybody uses.
         //

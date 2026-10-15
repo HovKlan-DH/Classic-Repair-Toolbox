@@ -149,54 +149,69 @@ namespace Handlers.Online
                     continue;
                 }
 
-                // *** COMPARED BEFORE WRITING, so the return value means something. *** UpdateState
-                // rewrites the row and saves the file unconditionally, so counting calls rather
-                // than actual changes would report "something happened" on every launch and make
-                // the caller rebuild the UI for nothing.
-                bool stateMoved = !string.Equals(
-                    status.State ?? string.Empty,
-                    receipt.LastKnownState ?? string.Empty,
-                    StringComparison.Ordinal);
-
-                bool commentMoved = !string.Equals(
-                    (status.MaintainerComment ?? string.Empty).Trim(),
-                    (receipt.MaintainerComment ?? string.Empty).Trim(),
-                    StringComparison.Ordinal);
-
-                // *** AN UNCHANGED ANSWER WRITES NOTHING, OR NEARLY (code review, 2026-10-04). ***
-                // The minute check saved the whole receipts file once per open receipt, only to move
-                // its "last checked" date. Everything the row shows moved, or a "not found" to clear,
-                // is written at once; otherwise only a stale date is (NoteChecked).
-                bool knownAgain = receipt.NotFoundUtc is not null;
-
-                bool rowMoved = stateMoved || commentMoved ||
-                    (status.DecidedUtc is not null && status.DecidedUtc != receipt.DecidedUtc) ||
-                    status.AmendedByMaintainer != receipt.AmendedByMaintainer ||
-                    knownAgain;
-
-                if (rowMoved)
-                {
-                    SubmissionReceiptStore.UpdateState(
-                        receipt.SubmissionId,
-                        status.State ?? string.Empty,
-                        status.MaintainerComment ?? string.Empty,
-                        now,
-                        status.DecidedUtc,
-                        status.AmendedByMaintainer);
-                }
-                else
-                {
-                    SubmissionReceiptStore.NoteChecked(receipt.SubmissionId, now);
-                }
-
-                // Known again after "not found" is a change too: the row stops saying so.
-                if (stateMoved || commentMoved || knownAgain)
+                if (SubmissionStatusRefresh.ApplyAnswer(receipt, status, now))
                 {
                     changed++;
                 }
             }
 
             return changed;
+        }
+
+        // ###########################################################################################
+        // Writes what one answer says onto its receipt, and says whether anything the row SHOWS
+        // moved. The one rule for it - the minute check and "My submissions"' "Check for updates"
+        // both use it (code review, 2026-10-13: the button kept its own copy, which saved the whole
+        // receipts file once per row whatever the answer said).
+        //
+        // *** COMPARED BEFORE WRITING, so the return value means something. *** UpdateState
+        // rewrites the row and saves the file unconditionally, so counting calls rather than actual
+        // changes would report "something happened" on every launch and make the caller rebuild the
+        // UI for nothing.
+        //
+        // *** AN UNCHANGED ANSWER WRITES NOTHING, OR NEARLY (code review, 2026-10-04). *** Everything
+        // the row shows moved, or a "not found" to clear, is written at once; otherwise only a stale
+        // "last checked" date is (NoteChecked).
+        // ###########################################################################################
+        internal static bool ApplyAnswer(SubmissionReceipt receipt, SubmissionStatus status, DateTimeOffset now)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+            ArgumentNullException.ThrowIfNull(status);
+
+            bool stateMoved = !string.Equals(
+                status.State ?? string.Empty,
+                receipt.LastKnownState ?? string.Empty,
+                StringComparison.Ordinal);
+
+            bool commentMoved = !string.Equals(
+                (status.MaintainerComment ?? string.Empty).Trim(),
+                (receipt.MaintainerComment ?? string.Empty).Trim(),
+                StringComparison.Ordinal);
+
+            bool knownAgain = receipt.NotFoundUtc is not null;
+
+            bool rowMoved = stateMoved || commentMoved ||
+                (status.DecidedUtc is not null && status.DecidedUtc != receipt.DecidedUtc) ||
+                status.AmendedByMaintainer != receipt.AmendedByMaintainer ||
+                knownAgain;
+
+            if (rowMoved)
+            {
+                SubmissionReceiptStore.UpdateState(
+                    receipt.SubmissionId,
+                    status.State ?? string.Empty,
+                    status.MaintainerComment ?? string.Empty,
+                    now,
+                    status.DecidedUtc,
+                    status.AmendedByMaintainer);
+            }
+            else
+            {
+                SubmissionReceiptStore.NoteChecked(receipt.SubmissionId, now);
+            }
+
+            // Known again after "not found" is a change too: the row stops saying so.
+            return stateMoved || commentMoved || knownAgain;
         }
 
         // The sentence CRT shows when the server answered "update CRT": the server's own words, said
