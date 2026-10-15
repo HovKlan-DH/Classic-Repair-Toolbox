@@ -38,7 +38,7 @@ namespace Tabs.TabSchematics
         private Stack<TraceModel> GetCurrentUndoStack()
         {
             var boardKey = this._parent.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
-            var schematicName = (this._parent.SchematicsThumbnailList.SelectedItem as SchematicThumbnail)?.Name ?? string.Empty;
+            var schematicName = this._parent.SelectedThumbnail?.Name ?? string.Empty;
             string key = $"{boardKey}|{schematicName}";
 
             if (!_globalUndoStacks.TryGetValue(key, out var stack))

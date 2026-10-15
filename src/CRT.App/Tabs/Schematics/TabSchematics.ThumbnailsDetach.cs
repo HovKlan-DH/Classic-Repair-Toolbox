@@ -22,9 +22,9 @@ namespace CRT;
 // one that restores it. One shared set would be overwritten with collapsed values by the second
 // entry, losing that position for good.
 //
-// The detached window itself and its own 2D-aware gallery/drag-reorder live in
-// SchematicsThumbnailGallery, SchematicsThumbnailsWindow and ThumbnailGalleryPanel. This file
-// owns only the inline-column side of the toggle.
+// The detached window is SchematicsThumbnailsWindow, showing the same SchematicsThumbnailGallery
+// the inline column does (InlineThumbnailGallery). This file owns only the inline-column side of
+// the toggle.
 //
 // This file also owns the small right-click menu over the inline thumbnail panel itself
 // (SchematicsThumbnailsContextMenuBorder) - a quicker way to detach than going to Configuration,
@@ -42,7 +42,7 @@ public partial class TabSchematics
     // Exposed so Main can skip re-applying the per-board schematics/thumbnail splitter ratio
     // (OnBoardSelectionChanged) while thumbnails are detached - that code runs on every board
     // change and would otherwise silently re-expand column 2 straight back out from under this
-    // mode, leaving an empty widened column since the inline list stays hidden.
+    // mode, leaving an empty widened column since the tab's own thumbnail panel stays hidden.
     internal bool IsThumbnailsDetached => this.thisIsThumbnailsDetached;
 
     private GridLength thisDetachRestoreLeftColumnWidth = new(1, GridUnitType.Star);
@@ -95,10 +95,7 @@ public partial class TabSchematics
         this.thisDetachRestoreRightColumnWidth = this.SchematicsInnerGrid.ColumnDefinitions[2].Width;
         this.thisDetachRestoreRightColumnMinWidth = this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth;
 
-        this.thisIsDraggingThumbnail = false;
-        this.thisThumbnailDragStartEventArgs = null;
-        this.ClearThumbnailDropPlaceholder();
-        this.HideThumbnailDragGhost();
+        this.InlineThumbnailGallery.CancelTileDrag();
 
         this.SchematicsInnerGrid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
         this.SchematicsInnerGrid.ColumnDefinitions[1].Width = new GridLength(0, GridUnitType.Pixel);
@@ -106,7 +103,7 @@ public partial class TabSchematics
         this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth = 0;
 
         this.SchematicsSplitter.IsVisible = false;
-        this.SchematicsThumbnailList.IsVisible = false;
+        this.InlineThumbnailGallery.IsVisible = false;
 
         this.RefreshAfterHostChanged();
     }
@@ -142,7 +139,7 @@ public partial class TabSchematics
         this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth = this.thisDetachRestoreRightColumnMinWidth;
 
         this.SchematicsSplitter.IsVisible = true;
-        this.SchematicsThumbnailList.IsVisible = true;
+        this.InlineThumbnailGallery.IsVisible = true;
 
         this.RefreshAfterHostChanged();
     }
@@ -150,14 +147,14 @@ public partial class TabSchematics
     // ###########################################################################################
     // Wires the thumbnail panel's right-click menu. Called once from Initialize.
     //
-    // Attached to SchematicsThumbnailList rather than to individual tiles: a tile's own
-    // PointerPressed only reacts to the left button (drag-reorder/select), so a right-click over
-    // a tile still reaches the list underneath it. That covers the whole panel - "somewhere in the
-    // thumbnails panel", not just the gaps between images.
+    // Attached to the thumbnail panel (InlineThumbnailGallery) rather than to individual tiles: a
+    // tile's own PointerPressed only reacts to the left button (drag-reorder/select), so a
+    // right-click over a tile still reaches the panel underneath it. That covers the whole panel -
+    // "somewhere in the thumbnails panel", not just the gaps between images.
     // ###########################################################################################
     private void InitializeThumbnailsContextMenu()
     {
-        this.SchematicsThumbnailList.AddHandler(
+        this.InlineThumbnailGallery.AddHandler(
             InputElement.PointerPressedEvent,
             this.OnThumbnailsPanelPointerPressedForContextMenu,
             handledEventsToo: true);
@@ -194,7 +191,7 @@ public partial class TabSchematics
     // ###########################################################################################
     private void OnThumbnailsPanelPointerPressedForContextMenu(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(this.SchematicsThumbnailList).Properties.IsRightButtonPressed)
+        if (!e.GetCurrentPoint(this.InlineThumbnailGallery).Properties.IsRightButtonPressed)
             return;
 
         if (this.thisIsThumbnailsDetached || this.thisIsWorklogEntryMode)

@@ -101,7 +101,7 @@ public partial class TabSchematics
     // ###########################################################################################
     public void UpdateOverlayLabels()
     {
-        var selected = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
+        var selected = this.SelectedThumbnail;
 
         string schematicName = selected?.Name ?? string.Empty;
         this.SchematicsNameLabel.Text = schematicName;
@@ -204,7 +204,7 @@ public partial class TabSchematics
             return;
         }
 
-        var selectedThumb = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
+        var selectedThumb = this.SelectedThumbnail;
         if (selectedThumb == null)
         {
             this.SchematicsLabelsCanvas.Children.Clear();
@@ -441,7 +441,7 @@ public partial class TabSchematics
     // ###########################################################################################
     public void ApplyHighlightVisuals(bool hasSelection, double blinkFactor)
     {
-        var selectedThumb = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
+        var selectedThumb = this.SelectedThumbnail;
         if (selectedThumb != null &&
             this.highlightIndexBySchematic.TryGetValue(selectedThumb.Name, out var mainIndex) &&
             this.schematicByName.TryGetValue(selectedThumb.Name, out var mainSchematic))
@@ -844,7 +844,7 @@ public partial class TabSchematics
             return false;
         }
 
-        var selectedThumb = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
+        var selectedThumb = this.SelectedThumbnail;
         if (selectedThumb == null)
         {
             return false;

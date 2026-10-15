@@ -84,28 +84,19 @@ already has uncommitted edits in it (those are the project owner's, in progress)
 write it. "Update the changelog" from the project owner is the only permission - and it covers that
 one request, not the rest of the session.
 
-## Code reviews: every finding carries a severity
+## Code reviews: what each severity means here
 
-**Every finding in a code review starts with its severity**, so the project owner can see at a
-glance whether a review is still finding serious problems or only tidying (owner request,
-2026-09-29). This covers `/code-review` at every effort level and any review asked for in words.
-`/security-review` keeps its own exploitability grading, and `/simplify` is not a review (it applies
-its fixes) and carries no severities.
-
-- **The prefix.** The first thing in EVERY summary field the report has is the level in brackets:
-  `[Critical]`, `[High]`, `[Medium]` or `[Low]`, for example `[High] A rejected submission's mail
-  is never sent`. When findings go through `ReportFindings`, that is both `short_summary` and
-  `summary`; its `short_summary` is capped at 60 characters INCLUDING the prefix (`[Critical] ` is
-  11), so keep the claim short rather than truncating it. When findings are returned as a JSON
-  array, it is each `summary`.
-- **The tally.** After the findings - in the reply text below the JSON block, or after the
-  `ReportFindings` call, never inside either - one line counts the findings that survived
-  verification: `Severity: 0 Critical, 3 High, 4 Medium, 4 Low`. With no findings it reads
-  `Severity: none found`.
-- **The stop signal**, on its own line under the tally. When the worst finding is Medium or Low, or
-  there is none: `Worst finding is Medium - another full review of this change is unlikely to pay
-  off.` (with the real level, or `No findings - ...`). When there is a Critical or High finding: `Worst
-  finding is High - review again once it is fixed.`
+**The review format is the global one in `~/.claude/CLAUDE.md`, the same in every project** (owner
+request, 2026-10-15): every finding rated with a **Severity** and a **Criticality** (Must fix,
+Should fix, Nice to have), the findings as a table `# | Finding | Severity | Criticality | Fix`
+worst first, then a tally and a one-line verdict on whether another run is worthwhile; in
+`ReportFindings`, `summary` starts with `[Severity: High | Criticality: Must fix]` and
+`short_summary` with `[High/Must fix]`. It replaced this project's own `[High]` prefix, `Severity:
+0 Critical, ...` tally and stop signal (2026-09-29) - a global hook refuses findings without both
+ratings, so the old prefix alone would now be sent back. Every code review is a security review
+too, its findings in the same table marked "Security:", and `/security-review` uses the same format.
+This section only says what the levels MEAN in this project. `/simplify` is not a review (it
+applies its fixes) and carries no ratings.
 
 | Severity | Means, in this project |
 | --- | --- |
@@ -118,7 +109,7 @@ its fixes) and carries no severities.
 defect nobody can reach is Low, and a one-line wording error on a refusal the maintainer depends on
 can be High. **When unsure between two levels, pick the LOWER one** unless the failure scenario
 shows concretely how the higher one happens - rounding up on doubt would make every review look
-serious and the stop signal would never fire. Rank findings most severe first.
+serious and the verdict would never say stop. Rank findings most severe first.
 
 ## Documentation: the Wiki, mirrored in `Assets/Wiki/`
 
@@ -749,7 +740,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 | `TabSchematics.Types.cs` | Private data types shared by the parts |
 | `TabSchematics.Viewport.cs` | Zoom, pan, the transform matrix |
 | `TabSchematics.Input.cs` | Pointer, wheel, gesture and keyboard handlers - these only dispatch |
-| `TabSchematics.Thumbnails.cs` / `.ThumbnailsDetach.cs` | Thumbnail list and the detached thumbnails window mode |
+| `TabSchematics.Thumbnails.cs` / `.ThumbnailsDetach.cs` | Thumbnail loading, order and selection, and the detached window mode. The panel itself - in the tab, the detached window and beside fullscreen - is ONE control, `SchematicsThumbnailGallery` (auto-fit, never scrolled; owner request 2026-10-15). **The selection and the label editor's lock are the TAB's** (`SelectedThumbnail` - a field, never a list bound to the tiles, which a drag's lift emptied - `SelectThumbnailFromGallery`, `IsThumbnailNavigationLocked`, `CancelThumbnailDrags` before the tiles are replaced): a gallery shows them, listens only while in the visual tree, handles EVERY press and release on a tile (the ListBoxItem selected on a press, on a right press, and on another finger's release), selects on its own pointer's left release, and never passes on what its own ListBox does by itself - each "nothing selected" from a lifted tile or a Ctrl+click once blanked the view |
 | `TabSchematics.Highlights.cs` | Component highlight overlays, blink, hover UI, labels |
 | `TabSchematics.LabelEditor*.cs` | Label editor lifecycle, interaction, snap context, test seams |
 | `TabSchematics.Worklog.cs` / `.Worklog.TestSeams.cs` | Worklog overlay, area drawing and moving |

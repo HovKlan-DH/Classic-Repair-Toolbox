@@ -1,76 +1,30 @@
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
-using System.Collections.ObjectModel;
-using Tabs.TabSchematics;
 
 namespace CRT
 {
+    // ###########################################################################################
+    // What the Schematics tab shows while the schematic itself is in its fullscreen window: a note
+    // on the left, and on the right the same auto-fit thumbnail gallery the tab's own column shows,
+    // so another schematic can be picked (or the thumbnails reordered) without leaving fullscreen.
+    // ###########################################################################################
     public partial class SchematicsFullscreenPlaceholder : UserControl
     {
-        private ListBox? thisHostedThumbnailList;
-        private bool thisSuppressSelectionSync;
-
         public SchematicsFullscreenPlaceholder()
         {
             this.InitializeComponent();
         }
 
         // ###########################################################################################
-        // Initializes the placeholder with the shared thumbnails source and selection synchronization.
+        // Sizes the two columns as the tab had them, and wires the gallery to the tab. The gallery
+        // listens to the tab only while this stand-in is on screen - one made by F11 from another
+        // tab may never be.
         // ###########################################################################################
-        public void Initialize(ObservableCollection<SchematicThumbnail> thumbnails, ListBox? hostedThumbnailList, double ratio)
+        public void Initialize(TabSchematics owner, double ratio)
         {
-            this.thisHostedThumbnailList = hostedThumbnailList;
-
             this.RootGrid.ColumnDefinitions[0].Width = new GridLength(ratio * 100.0, GridUnitType.Star);
             this.RootGrid.ColumnDefinitions[2].Width = new GridLength((1.0 - ratio) * 100.0, GridUnitType.Star);
 
-            this.SchematicsThumbnailListPlaceholder.ItemsSource = thumbnails;
-
-            if (this.thisHostedThumbnailList != null)
-            {
-                this.SchematicsThumbnailListPlaceholder.SelectedItem = this.thisHostedThumbnailList.SelectedItem;
-                this.SchematicsThumbnailListPlaceholder.SelectionChanged += this.OnPlaceholderSelectionChanged;
-                this.thisHostedThumbnailList.SelectionChanged += this.OnHostedThumbnailSelectionChanged;
-            }
-        }
-
-        // ###########################################################################################
-        // Pushes placeholder thumbnail selection changes over to the hosted fullscreen list.
-        // ###########################################################################################
-        private void OnPlaceholderSelectionChanged(object? sender, SelectionChangedEventArgs e)
-        {
-            if (this.thisSuppressSelectionSync || this.thisHostedThumbnailList == null)
-                return;
-
-            this.thisSuppressSelectionSync = true;
-            this.thisHostedThumbnailList.SelectedItem = this.SchematicsThumbnailListPlaceholder.SelectedItem;
-
-            if (this.SchematicsThumbnailListPlaceholder.SelectedItem != null)
-            {
-                this.thisHostedThumbnailList.ScrollIntoView(this.SchematicsThumbnailListPlaceholder.SelectedItem);
-            }
-
-            this.thisSuppressSelectionSync = false;
-        }
-
-        // ###########################################################################################
-        // Mirrors hosted fullscreen thumbnail selection changes back into the placeholder list.
-        // ###########################################################################################
-        private void OnHostedThumbnailSelectionChanged(object? sender, SelectionChangedEventArgs e)
-        {
-            if (this.thisSuppressSelectionSync || this.thisHostedThumbnailList == null)
-                return;
-
-            this.thisSuppressSelectionSync = true;
-            this.SchematicsThumbnailListPlaceholder.SelectedItem = this.thisHostedThumbnailList.SelectedItem;
-
-            if (this.thisHostedThumbnailList.SelectedItem != null)
-            {
-                this.SchematicsThumbnailListPlaceholder.ScrollIntoView(this.thisHostedThumbnailList.SelectedItem);
-            }
-
-            this.thisSuppressSelectionSync = false;
+            this.ThumbnailGalleryPlaceholder.Initialize(owner);
         }
     }
 }

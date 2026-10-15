@@ -11,13 +11,15 @@
 //   TabSchematics.Types.cs                    Private data types shared by the parts below
 //   TabSchematics.Viewport.cs                 Zoom, pan and the schematic transform matrix
 //   TabSchematics.Input.cs                    Pointer, wheel, gesture and keyboard event handlers
-//   TabSchematics.Thumbnails.cs               The schematic thumbnail list and drag-to-reorder
+//   TabSchematics.Thumbnails.cs               The schematic thumbnails: loading, order, selection
+//                                             changes. The panel itself (in this tab, the
+//                                             detached window and the fullscreen stand-in) and
+//                                             its drag-to-reorder is SchematicsThumbnailGallery/
+//                                             ThumbnailGalleryPanel
 //   TabSchematics.ThumbnailsDetach.cs         Detach-to-window mode: collapses/restores the
 //                                             inline thumbnail column, mirroring
-//                                             EnterFullscreenMode/ExitFullscreenMode. The
-//                                             detached window and its own 2D gallery/drag logic
-//                                             live in SchematicsThumbnailGallery/
-//                                             SchematicsThumbnailsWindow/ThumbnailGalleryPanel
+//                                             EnterFullscreenMode/ExitFullscreenMode; the
+//                                             window is SchematicsThumbnailsWindow
 //   TabSchematics.Highlights.cs               Component highlight overlays and on-schematic labels
 //   TabSchematics.LabelEditor.cs              Label editor mode: lifecycle, save/validate, undo
 //   TabSchematics.LabelEditor.TestSeams.cs    ...ForTests seams letting headless tests drive the
@@ -145,6 +147,12 @@ public partial class TabSchematics : UserControl
             }
         };
 
+        // The selection stays among the thumbnails (see OnCurrentThumbnailsChanged).
+        this.currentThumbnails.CollectionChanged += this.OnCurrentThumbnailsChanged;
+
+        // The thumbnail column is the same gallery the detached window shows.
+        this.InlineThumbnailGallery.Initialize(this);
+
         this.InitializeThumbnailsContextMenu();
     }
 
@@ -196,11 +204,6 @@ public partial class TabSchematics : UserControl
         this.thisSuppressBoardSettingsChanged = false;
 
         this.UpdateGlobalSettingsControls();
-
-        DragDrop.SetAllowDrop(this.SchematicsThumbnailList, true);
-        this.SchematicsThumbnailList.AddHandler(DragDrop.DragOverEvent, this.OnThumbnailDragOver);
-        this.SchematicsThumbnailList.AddHandler(DragDrop.DropEvent, this.OnThumbnailDrop);
-        this.SchematicsThumbnailList.AddHandler(DragDrop.DragLeaveEvent, this.OnThumbnailDragLeave);
 
         this.AddHandler(
             InputElement.KeyDownEvent,
@@ -398,7 +401,7 @@ public partial class TabSchematics : UserControl
         this.polylineManager.TracesModified += () =>
         {
             var boardKey = this.MainWindow?.GetCurrentBoardKey();
-            var schematicName = (this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail)?.Name;
+            var schematicName = this.SelectedThumbnail?.Name;
 
             if (!string.IsNullOrEmpty(boardKey) && !string.IsNullOrEmpty(schematicName))
             {
@@ -481,7 +484,7 @@ public partial class TabSchematics : UserControl
             }
         };
 
-        this.SchematicsThumbnailList.SelectionChanged += this.OnSchematicsThumbnailSelectionChanged;
+        this.SelectedThumbnailChanged += this.OnSchematicsThumbnailSelectionChanged;
         this.SchematicsContainer.PointerExited += this.OnSchematicsPointerExited;
 
         this.UpdateInteractiveCadTraceHoverModeUi();
@@ -706,7 +709,7 @@ public partial class TabSchematics : UserControl
         Dispatcher.UIThread.Post(() =>
         {
             var leftWidth = this.SchematicsContainer.Bounds.Width;
-            var rightWidth = this.SchematicsThumbnailList.Bounds.Width;
+            var rightWidth = this.InlineThumbnailGallery.Bounds.Width;
             var total = leftWidth + rightWidth;
             if (total <= 0)
             {
@@ -775,14 +778,7 @@ public partial class TabSchematics : UserControl
         this.thisKiCadCalibrationStartImageRight = 0.0;
         this.thisKiCadCalibrationStartImageBottom = 0.0;
 
-        this.thisIsDraggingThumbnail = false;
-        this.thisDraggedThumbnail = null;
-        this.thisDraggedThumbnailOriginalIndex = -1;
-        this.thisDraggedThumbnailWasSelected = false;
-        this.thisThumbnailLastPointerYInList = double.NaN;
-        this.thisThumbnailDragStartEventArgs = null;
-        this.ClearThumbnailDropPlaceholder();
-        this.HideThumbnailDragGhost();
+        this.CancelThumbnailDrags();
 
         this.polylineManager?.Reset();
         this.SchematicsLabelsCanvas.Children.Clear();
@@ -878,10 +874,7 @@ public partial class TabSchematics : UserControl
         this.thisRestoreRightColumnWidth = this.SchematicsInnerGrid.ColumnDefinitions[2].Width;
         this.thisRestoreRightColumnMinWidth = this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth;
 
-        this.thisIsDraggingThumbnail = false;
-        this.thisThumbnailDragStartEventArgs = null;
-        this.ClearThumbnailDropPlaceholder();
-        this.HideThumbnailDragGhost();
+        this.InlineThumbnailGallery.CancelTileDrag();
 
         this.SchematicsInnerGrid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
         this.SchematicsInnerGrid.ColumnDefinitions[1].Width = new GridLength(0, GridUnitType.Pixel);
@@ -889,7 +882,7 @@ public partial class TabSchematics : UserControl
         this.SchematicsInnerGrid.ColumnDefinitions[2].MinWidth = 0;
 
         this.SchematicsSplitter.IsVisible = false;
-        this.SchematicsThumbnailList.IsVisible = false;
+        this.InlineThumbnailGallery.IsVisible = false;
 
         this.RefreshAfterHostChanged();
     }
@@ -916,7 +909,7 @@ public partial class TabSchematics : UserControl
         if (!this.thisIsThumbnailsDetached)
         {
             this.SchematicsSplitter.IsVisible = true;
-            this.SchematicsThumbnailList.IsVisible = true;
+            this.InlineThumbnailGallery.IsVisible = true;
         }
 
         this.RefreshAfterHostChanged();
@@ -973,7 +966,7 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     internal string GetCurrentSchematicName()
     {
-        return (this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail)?.Name?.Trim() ?? string.Empty;
+        return this.SelectedThumbnail?.Name?.Trim() ?? string.Empty;
     }
 
     // ###########################################################################################

@@ -65,7 +65,7 @@
 
 			<TextBlock Margin="0,16,0,0"
                        VerticalAlignment="Center">
-				<Run Text="Orchestrator for this (primarily) vibe-coded application is" />
+				<Run Text="Orchestrator for this vibe-coded application is" />
 				<Run x:Name="AuthorNameRun" Text="Dennis Helligsø" FontWeight="SemiBold" />
 			</TextBlock>
 

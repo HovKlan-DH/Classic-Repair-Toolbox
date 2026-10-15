@@ -13,6 +13,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
@@ -24,8 +25,10 @@ using Handlers.Geometry;
 namespace CRT;
 
 // ###########################################################################################
-// The schematic thumbnail list: loading and sorting, selection changes, thumbnail bitmap
-// generation, and the drag-and-drop reordering interaction.
+// The schematic thumbnails: loading and sorting, the selection and the label editor's lock every
+// thumbnail panel follows, selection changes, thumbnail bitmap generation, and saving the order a
+// drag leaves. The panel the user sees - in this tab, in the detached window and beside the
+// fullscreen view - and its drag-to-reorder are SchematicsThumbnailGallery.
 //
 // Part of the TabSchematics partial class - see TabSchematics.axaml.cs for the tab overview.
 // ###########################################################################################
@@ -34,41 +37,114 @@ public partial class TabSchematics
     // Thumbnails
     internal ObservableCollection<SchematicThumbnail> currentThumbnails = new();
 
-    // Thumbnail drag/drop reordering
-    private Point thisThumbnailDragStartPoint;
+    // ###########################################################################################
+    // The selected schematic, as every thumbnail gallery shows it - in this tab, the detached
+    // window and beside the fullscreen view (code review, 2026-10-15). Setting it raises
+    // SelectedThumbnailChanged, which OnSchematicsThumbnailSelectionChanged (from Initialize) and
+    // every gallery on screen follow. A gallery asks for another one through
+    // SelectThumbnailFromGallery, and never passes on what its own ListBox does by itself: each
+    // gallery once copied its ListBox's selection here and back, and every "nothing selected" its
+    // ListBox produced by itself (a tile lifted out for a drag, a Ctrl+click) blanked the view.
+    //
+    // A field, not a list: it was held in a never-shown ListBox bound to the thumbnails, so lifting
+    // the selected tile out for a drag emptied it - for the whole drag the tab had no schematic
+    // (its name and component labels were cleared by anything that redrew them) and the drop had
+    // to select it again. What that list did on purpose, OnCurrentThumbnailsChanged does.
+    // ###########################################################################################
+    private SchematicThumbnail? thisSelectedThumbnail;
 
-    private bool thisIsDraggingThumbnail;
-
-    private SchematicThumbnail? thisDraggedThumbnail;
-
-    private int thisDraggedThumbnailOriginalIndex = -1;
-
-    private bool thisDraggedThumbnailWasSelected;
-
-    private double thisDraggedThumbnailHeight = 120.0;
-
-    private SchematicThumbnail? thisThumbnailDropPlaceholder;
-
-    private double thisDraggedThumbnailWidth = 160.0;
-
-    private Point thisThumbnailDragPointerOffsetInItem;
-
-    private double thisThumbnailLastPointerYInList = double.NaN;
-
-    private double thisThumbnailDragGhostFixedX;
-
-    private bool thisSuppressThumbnailSelectionChanged;
-
-    // The shared "a reorder is in progress, refuse to change schematic" guard. Set by this tab's
-    // own inline drag handlers, and by the DETACHED gallery's drag
-    // (SchematicsThumbnailGallery.BeginTileDrag/EndTileDrag) - the two reorder surfaces share one
-    // flag rather than each carrying their own, so SelectSchematicByName has a single thing to
-    // check whichever surface the drag is happening on.
-    internal bool SuppressThumbnailSelectionChanged
+    internal SchematicThumbnail? SelectedThumbnail
     {
-        get => this.thisSuppressThumbnailSelectionChanged;
-        set => this.thisSuppressThumbnailSelectionChanged = value;
+        get => this.thisSelectedThumbnail;
+        set
+        {
+            if (ReferenceEquals(this.thisSelectedThumbnail, value))
+                return;
+
+            this.thisSelectedThumbnail = value;
+            this.SelectedThumbnailChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
+
+    internal event EventHandler? SelectedThumbnailChanged;
+
+    // ###########################################################################################
+    // Keeps the selection among the thumbnails: emptying them for a board load, or removing the
+    // selected one, leaves nothing selected - which clears the schematic view. A drag is the
+    // exception: it lifts its tile out and puts it back, and the schematic on screen stays.
+    // ###########################################################################################
+    private void OnCurrentThumbnailsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (this.thisSelectedThumbnail == null || this.currentThumbnails.Contains(this.thisSelectedThumbnail))
+            return;
+
+        if (this.SuppressThumbnailSelectionChanged && e.Action != NotifyCollectionChangedAction.Reset)
+            return;
+
+        this.SelectedThumbnail = null;
+    }
+
+    // The label editor's lock on picking another schematic from the thumbnails, wherever they are
+    // shown. Set by UpdateLabelEditorLockState; every gallery follows it, and drops a drag on it.
+    internal bool IsThumbnailNavigationLocked { get; private set; }
+
+    internal event EventHandler? ThumbnailNavigationLockChanged;
+
+    private void SetThumbnailNavigationLocked(bool isLocked)
+    {
+        if (this.IsThumbnailNavigationLocked == isLocked)
+            return;
+
+        this.IsThumbnailNavigationLocked = isLocked;
+        this.ThumbnailNavigationLockChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Test-only, like SuppressThumbnailSelectionChangedForTests below: the lock without a whole
+    // label editor session behind it.
+    internal bool ThumbnailNavigationLockedForTests
+    {
+        get => this.IsThumbnailNavigationLocked;
+        set => this.SetThumbnailNavigationLocked(value);
+    }
+
+    // ###########################################################################################
+    // A thumbnail picked in a gallery - clicked, tapped, or reached with the arrow keys. Refused
+    // while the label editor holds the lock, while a reorder holds the guard (the view would stay
+    // on the old schematic - see SelectSchematicByName), for the drop placeholder, which names no
+    // schematic, and for a thumbnail no longer on the board: a press held over a board load ends
+    // on one, and picking it left the new board with nothing selected.
+    // ###########################################################################################
+    internal void SelectThumbnailFromGallery(SchematicThumbnail thumbnail)
+    {
+        if (this.IsThumbnailNavigationLocked || this.SuppressThumbnailSelectionChanged || thumbnail.IsDropPlaceholder)
+            return;
+
+        if (!this.currentThumbnails.Contains(thumbnail))
+            return;
+
+        this.SelectedThumbnail = thumbnail;
+    }
+
+    // ###########################################################################################
+    // Ends a drag, or a press that may become one, in every gallery - this tab's, the detached
+    // window's and the fullscreen stand-in's - without saving an order. Called before the
+    // thumbnails are emptied for a board load (code review, 2026-10-15): only this tab's own
+    // column's drag used to be ended, and a drag in the fullscreen stand-in kept the guard over the
+    // load, so the new board's schematic never loaded.
+    // ###########################################################################################
+    internal event EventHandler? ThumbnailDragsCancelRequested;
+
+    internal void CancelThumbnailDrags()
+    {
+        this.ThumbnailDragsCancelRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    // The shared "a reorder is in progress, refuse to change schematic" guard. Set by whichever
+    // gallery is dragging (SchematicsThumbnailGallery.BeginTileDrag/EndTileDrag) - this tab's own,
+    // the detached window's or the fullscreen stand-in's share one flag rather than each carrying
+    // their own, so SelectSchematicByName has a single thing to check whichever surface the drag
+    // is happening on.
+    internal bool SuppressThumbnailSelectionChanged { get; set; }
 
     // Test-only alias, so a headless test can put the tab into that mid-drag state without driving
     // a whole pointer drag-reorder through the list. Kept SEPARATE from the property above rather
@@ -81,20 +157,18 @@ public partial class TabSchematics
         set => this.SuppressThumbnailSelectionChanged = value;
     }
 
-    private PointerPressedEventArgs? thisThumbnailDragStartEventArgs;
-
     private string thisLastThumbnailHighlightSignature = string.Empty;
 
     // ###########################################################################################
     // Loads the full-resolution image for the selected thumbnail and sets up the highlight overlay.
     // ###########################################################################################
-    private async void OnSchematicsThumbnailSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    private async void OnSchematicsThumbnailSelectionChanged(object? sender, EventArgs e)
     {
         // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
         // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
         try
         {
-            if (this.thisSuppressThumbnailSelectionChanged)
+            if (this.SuppressThumbnailSelectionChanged)
                 return;
 
             this.CancelWorklogEntryMode();
@@ -108,7 +182,7 @@ public partial class TabSchematics
             this.fullResLoadCts = new CancellationTokenSource();
             var cts = this.fullResLoadCts;
 
-            var selected = this.SchematicsThumbnailList.SelectedItem as SchematicThumbnail;
+            var selected = this.SelectedThumbnail;
 
             this.thisHoveredComponentBoardLabel = null;
 
@@ -303,22 +377,23 @@ public partial class TabSchematics
             orderedList = rawList;
         }
 
+        // No drag may run on across the old tiles being replaced (see CancelThumbnailDrags).
+        this.CancelThumbnailDrags();
+
         this.currentThumbnails.Clear();
         foreach (var thumbnail in orderedList)
         {
             this.currentThumbnails.Add(thumbnail);
         }
-
-        this.SchematicsThumbnailList.ItemsSource = this.currentThumbnails;
     }
 
     // ###########################################################################################
-    // Selects a schematic by name in the thumbnail list, if one by that name is currently loaded -
+    // Selects a schematic by name among the thumbnails, if one by that name is currently loaded -
     // called from TabWorkbooks (SelectWorkbook/SelectSchematic) so that picking a workbook or a
     // schematic on the Workbooks tab makes the matching schematic image the one waiting on the
-    // Schematics tab, without switching tabs to show it. Setting SelectedItem runs the exact same
-    // OnSchematicsThumbnailSelectionChanged path a click on the thumbnail would, so the full-res
-    // image, overlays and saved "last schematic for this board" all follow normally.
+    // Schematics tab, without switching tabs to show it. Setting SelectedThumbnail runs the exact
+    // same OnSchematicsThumbnailSelectionChanged path a click on the thumbnail would, so the
+    // full-res image, overlays and saved "last schematic for this board" all follow normally.
     //
     // A no-op when the name is not found (board not loaded yet, or the workbook references a
     // schematic that was renamed/removed) or already selected - same "nothing to do" guard
@@ -329,17 +404,16 @@ public partial class TabSchematics
         if (string.IsNullOrWhiteSpace(schematicName))
             return;
 
-        // A thumbnail drag-reorder is in progress (the flag is set on drag start and cleared only
-        // on release), during which OnSchematicsThumbnailSelectionChanged early-returns. Assigning
-        // SelectedItem here would move the list's highlight while the image, overlays and
-        // currentFullResBitmap stayed on the OLD schematic - and the drag's own release handler
-        // reassigns SelectedItem to the dragged thumbnail anyway, so the assignment would be lost.
-        // Dropping the request is right: the user is reordering thumbnails, not asking for a
-        // different one, and the caller is a cross-tab convenience rather than a command.
-        if (this.thisSuppressThumbnailSelectionChanged)
+        // A thumbnail drag-reorder is in progress (the flag is set on drag start and cleared when
+        // the drag ends), during which OnSchematicsThumbnailSelectionChanged early-returns.
+        // Selecting here would move every gallery's highlight while the image, overlays and
+        // currentFullResBitmap stayed on the OLD schematic. Dropping the request is right: the user
+        // is reordering thumbnails, not asking for a different one, and the caller is a cross-tab
+        // convenience rather than a command.
+        if (this.SuppressThumbnailSelectionChanged)
             return;
 
-        if (this.SchematicsThumbnailList.SelectedItem is SchematicThumbnail current &&
+        if (this.SelectedThumbnail is SchematicThumbnail current &&
             string.Equals(current.Name, schematicName, StringComparison.OrdinalIgnoreCase))
             return;
 
@@ -348,274 +422,16 @@ public partial class TabSchematics
 
         if (match != null)
         {
-            this.SchematicsThumbnailList.SelectedItem = match;
+            this.SelectedThumbnail = match;
         }
-    }
-
-    // ###########################################################################################
-    // Starts tracking a thumbnail for possible drag reorder.
-    // Suppresses immediate ListBox selection so dragging does not replace the large schematic.
-    // ###########################################################################################
-    private void OnThumbnailPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-            return;
-
-        if (sender is not Control control || control.DataContext is not SchematicThumbnail thumbnail || thumbnail.IsDropPlaceholder)
-            return;
-
-        this.thisThumbnailDragStartEventArgs = e;
-        this.thisThumbnailDragStartPoint = e.GetPosition(this);
-        this.thisThumbnailDragPointerOffsetInItem = e.GetPosition(control);
-        this.thisIsDraggingThumbnail = true;
-        this.thisDraggedThumbnail = thumbnail;
-        this.thisDraggedThumbnailWasSelected = ReferenceEquals(this.SchematicsThumbnailList.SelectedItem, thumbnail);
-        this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
-        this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
-        this.thisSuppressThumbnailSelectionChanged = true;
-
-        e.Handled = true;
-    }
-
-    // ###########################################################################################
-    // Begins drag/drop reordering once the pointer has moved far enough.
-    // ###########################################################################################
-    private async void OnThumbnailPointerMoved(object? sender, PointerEventArgs e)
-    {
-        // Guarded as a whole (code review, 2026-10-13): an "async void" handler has no caller,
-        // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
-        try
-        {
-            if (!this.thisIsDraggingThumbnail || this.thisDraggedThumbnail == null)
-                return;
-
-            var point = e.GetPosition(this);
-            var diff = this.thisThumbnailDragStartPoint - point;
-
-            // Slightly higher threshold to avoid accidental detaching on tiny pointer jitter.
-            if (Math.Abs(diff.X) <= 6 && Math.Abs(diff.Y) <= 6)
-                return;
-
-            if (sender is not Control control)
-                return;
-
-            this.thisIsDraggingThumbnail = false;
-
-            this.thisDraggedThumbnailOriginalIndex = this.currentThumbnails.IndexOf(this.thisDraggedThumbnail);
-            if (this.thisDraggedThumbnailOriginalIndex < 0)
-                return;
-
-            this.thisDraggedThumbnailHeight = Math.Max(control.Bounds.Height, 80.0);
-            this.thisDraggedThumbnailWidth = Math.Max(control.Bounds.Width, 120.0);
-
-            var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
-            this.thisThumbnailLastPointerYInList = pointerInList.Y;
-
-            var transformToList = control.TransformToVisual(this.SchematicsThumbnailList);
-            if (transformToList.HasValue)
-            {
-                var boundsInList = new Rect(control.Bounds.Size).TransformToAABB(transformToList.Value);
-                this.thisThumbnailDragGhostFixedX = Math.Max(0, boundsInList.X);
-            }
-            else
-            {
-                this.thisThumbnailDragGhostFixedX = Math.Max(0, pointerInList.X - this.thisThumbnailDragPointerOffsetInItem.X);
-            }
-
-            this.currentThumbnails.RemoveAt(this.thisDraggedThumbnailOriginalIndex);
-            this.ShowThumbnailDropPlaceholder(this.thisDraggedThumbnailOriginalIndex);
-            this.ShowThumbnailDragGhost(this.thisDraggedThumbnail, pointerInList);
-
-            if (this.thisThumbnailDragStartEventArgs == null)
-            {
-                this.RestoreDraggedThumbnail();
-                this.HideThumbnailDragGhost();
-                this.ClearThumbnailDropPlaceholder();
-                this.thisDraggedThumbnail = null;
-                this.thisDraggedThumbnailOriginalIndex = -1;
-                this.thisDraggedThumbnailWasSelected = false;
-                this.thisThumbnailLastPointerYInList = double.NaN;
-                this.thisThumbnailDragStartEventArgs = null;
-                return;
-            }
-
-            var dragData = new DataTransfer();
-
-            var effect = await DragDrop.DoDragDropAsync(
-                this.thisThumbnailDragStartEventArgs,
-                dragData,
-                DragDropEffects.Move);
-
-            if (effect != DragDropEffects.Move && this.thisDraggedThumbnail != null)
-            {
-                this.RestoreDraggedThumbnail();
-            }
-
-            this.HideThumbnailDragGhost();
-            this.ClearThumbnailDropPlaceholder();
-            this.thisDraggedThumbnail = null;
-            this.thisDraggedThumbnailOriginalIndex = -1;
-            this.thisDraggedThumbnailWasSelected = false;
-            this.thisThumbnailLastPointerYInList = double.NaN;
-            this.thisThumbnailDragStartEventArgs = null;
-
-            e.Handled = true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Critical($"OnThumbnailPointerMoved failed - [{ex}]");
-        }
-    }
-
-    // ###########################################################################################
-    // Updates the floating drag ghost to follow the mouse while preserving the original grab point.
-    // Horizontal movement is locked so the detached thumbnail only moves vertically.
-    // ###########################################################################################
-    private void UpdateThumbnailDragGhostPosition(Point pointerInList)
-    {
-        if (!this.ThumbnailDragGhost.IsVisible || this.ThumbnailDragGhost.RenderTransform is not TranslateTransform transform)
-            return;
-
-        transform.X = this.thisThumbnailDragGhostFixedX;
-        transform.Y = Math.Max(0, pointerInList.Y - this.thisThumbnailDragPointerOffsetInItem.Y);
-    }
-
-    // ###########################################################################################
-    // Shows a detached visual thumbnail that follows the mouse during drag.
-    // ###########################################################################################
-    private void ShowThumbnailDragGhost(SchematicThumbnail thumbnail, Point pointerInList)
-    {
-        this.ThumbnailDragGhost.Width = this.thisDraggedThumbnailWidth;
-        this.ThumbnailDragGhostName.Text = thumbnail.Name;
-        this.ThumbnailDragGhostImage.Source = thumbnail.ImageSource ?? thumbnail.BaseThumbnail;
-        this.ThumbnailDragGhostHighlightImage.Source = thumbnail.HighlightImage;
-        this.ThumbnailDragGhostHighlightImage.Opacity = thumbnail.HighlightLayerOpacity;
-        this.ThumbnailDragGhost.IsVisible = true;
-        this.UpdateThumbnailDragGhostPosition(pointerInList);
-    }
-
-    // ###########################################################################################
-    // Hides the floating drag ghost after drop or cancel.
-    // ###########################################################################################
-    private void HideThumbnailDragGhost()
-    {
-        this.ThumbnailDragGhost.IsVisible = false;
-        this.ThumbnailDragGhostName.Text = string.Empty;
-        this.ThumbnailDragGhostImage.Source = null;
-        this.ThumbnailDragGhostHighlightImage.Source = null;
-        this.thisThumbnailDragGhostFixedX = 0;
-
-        if (this.ThumbnailDragGhost.RenderTransform is TranslateTransform transform)
-        {
-            transform.X = 0;
-            transform.Y = 0;
-        }
-    }
-
-    // ###########################################################################################
-    // Stops local drag tracking when the pointer is released.
-    // If no drag started, treat the interaction as a normal selection click.
-    // ###########################################################################################
-    private void OnThumbnailPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        if (this.thisIsDraggingThumbnail &&
-            sender is Control control &&
-            control.DataContext is SchematicThumbnail thumbnail &&
-            !thumbnail.IsDropPlaceholder)
-        {
-            this.thisSuppressThumbnailSelectionChanged = false;
-            this.SchematicsThumbnailList.SelectedItem = thumbnail;
-            e.Handled = true;
-        }
-
-        this.thisIsDraggingThumbnail = false;
-        this.thisThumbnailDragStartEventArgs = null;
-    }
-
-    // ###########################################################################################
-    // Creates or moves the temporary placeholder item to the requested insert index.
-    // The provided insert index is already in current collection coordinates, so no extra
-    // reindex adjustment is applied after removing the existing placeholder.
-    // ###########################################################################################
-    private void ShowThumbnailDropPlaceholder(int insertIndex)
-    {
-        if (this.thisThumbnailDropPlaceholder == null)
-        {
-            this.thisThumbnailDropPlaceholder = new SchematicThumbnail
-            {
-                IsDropPlaceholder = true
-            };
-        }
-
-        this.thisThumbnailDropPlaceholder.PlaceholderHeight = this.thisDraggedThumbnailHeight;
-        this.thisThumbnailDropPlaceholder.PlaceholderWidth = this.thisDraggedThumbnailWidth;
-
-        int existingIndex = this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder);
-
-        if (existingIndex == insertIndex)
-        {
-            return;
-        }
-
-        if (existingIndex >= 0)
-        {
-            this.currentThumbnails.RemoveAt(existingIndex);
-        }
-
-        insertIndex = Math.Clamp(insertIndex, 0, this.currentThumbnails.Count);
-        this.currentThumbnails.Insert(insertIndex, this.thisThumbnailDropPlaceholder);
-    }
-
-    // ###########################################################################################
-    // Removes the temporary placeholder item from the thumbnails list.
-    // ###########################################################################################
-    private void ClearThumbnailDropPlaceholder()
-    {
-        if (this.thisThumbnailDropPlaceholder == null)
-            return;
-
-        int index = this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder);
-        if (index >= 0)
-        {
-            this.currentThumbnails.RemoveAt(index);
-        }
-    }
-
-    // ###########################################################################################
-    // Restores the dragged thumbnail to its original position when no drop occurs.
-    // ###########################################################################################
-    private void RestoreDraggedThumbnail()
-    {
-        if (this.thisDraggedThumbnail == null)
-            return;
-
-        this.ClearThumbnailDropPlaceholder();
-
-        int restoreIndex = this.thisDraggedThumbnailOriginalIndex;
-        if (restoreIndex < 0 || restoreIndex > this.currentThumbnails.Count)
-        {
-            restoreIndex = this.currentThumbnails.Count;
-        }
-
-        this.currentThumbnails.Insert(restoreIndex, this.thisDraggedThumbnail);
-        this.thisThumbnailLastPointerYInList = double.NaN;
-
-        if (this.thisDraggedThumbnailWasSelected)
-        {
-            this.SchematicsThumbnailList.SelectedItem = this.thisDraggedThumbnail;
-        }
-
-        this.thisSuppressThumbnailSelectionChanged = false;
-        this.thisThumbnailDragStartEventArgs = null;
     }
 
     // ###########################################################################################
     // Saves the current thumbnail order for the active board, excluding the placeholder item.
     //
-    // internal rather than private so the detached-window gallery (SchematicsThumbnailGallery,
-    // same assembly) can persist its own 2D reordering through the exact same
-    // UserSettings.SetSchematicsOrder path the inline list uses - order stays consistent whether
-    // thumbnails are inline or detached.
+    // internal rather than private so SchematicsThumbnailGallery (same assembly) persists every
+    // gallery's reordering through this one UserSettings.SetSchematicsOrder path - the order is the
+    // same whether thumbnails are in the tab, detached or beside the fullscreen view.
     // ###########################################################################################
     // The board key normally comes from the main window's hardware/board selection, which no test
     // constructs. This is the seam that lets a headless test prove the ORDER this method persists -
@@ -636,150 +452,6 @@ public partial class TabSchematics
             .ToList();
 
         UserSettings.SetSchematicsOrder(boardKey, orderedNames);
-    }
-
-    // ###########################################################################################
-    // Updates the placeholder position while dragging over the thumbnail list.
-    // Uses actual ListBoxItem row bounds and only moves in the current drag direction.
-    // ###########################################################################################
-    private void OnThumbnailDragOver(object? sender, DragEventArgs e)
-    {
-        if (this.thisDraggedThumbnail == null)
-        {
-            e.DragEffects = DragDropEffects.None;
-            e.Handled = true;
-            return;
-        }
-
-        e.DragEffects = DragDropEffects.Move;
-
-        var pointerInList = e.GetPosition(this.SchematicsThumbnailList);
-        this.UpdateThumbnailDragGhostPosition(pointerInList);
-
-        int placeholderIndex = this.thisThumbnailDropPlaceholder != null
-            ? this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder)
-            : -1;
-
-        if (placeholderIndex < 0)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        if (double.IsNaN(this.thisThumbnailLastPointerYInList))
-        {
-            this.thisThumbnailLastPointerYInList = pointerInList.Y;
-            e.Handled = true;
-            return;
-        }
-
-        double deltaY = pointerInList.Y - this.thisThumbnailLastPointerYInList;
-        if (Math.Abs(deltaY) < 0.1)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        bool isMovingUp = deltaY < 0;
-        bool isMovingDown = deltaY > 0;
-
-        double ghostTopY = pointerInList.Y - this.thisThumbnailDragPointerOffsetInItem.Y;
-        double ghostBottomY = ghostTopY + this.thisDraggedThumbnailHeight;
-
-        if (isMovingUp && placeholderIndex > 0)
-        {
-            var itemAbove = this.SchematicsThumbnailList.ContainerFromIndex(placeholderIndex - 1) as ListBoxItem;
-            if (itemAbove != null)
-            {
-                var transform = itemAbove.TransformToVisual(this.SchematicsThumbnailList);
-                if (transform.HasValue)
-                {
-                    var boundsAbove = new Rect(itemAbove.Bounds.Size).TransformToAABB(transform.Value);
-
-                    if (ghostTopY <= boundsAbove.Bottom)
-                    {
-                        this.ShowThumbnailDropPlaceholder(placeholderIndex - 1);
-                        this.thisThumbnailLastPointerYInList = pointerInList.Y;
-                        e.Handled = true;
-                        return;
-                    }
-                }
-            }
-        }
-
-        if (isMovingDown && placeholderIndex < this.currentThumbnails.Count - 1)
-        {
-            var itemBelow = this.SchematicsThumbnailList.ContainerFromIndex(placeholderIndex + 1) as ListBoxItem;
-            if (itemBelow != null)
-            {
-                var transform = itemBelow.TransformToVisual(this.SchematicsThumbnailList);
-                if (transform.HasValue)
-                {
-                    var boundsBelow = new Rect(itemBelow.Bounds.Size).TransformToAABB(transform.Value);
-
-                    if (ghostBottomY >= boundsBelow.Top)
-                    {
-                        this.ShowThumbnailDropPlaceholder(placeholderIndex + 1);
-                        this.thisThumbnailLastPointerYInList = pointerInList.Y;
-                        e.Handled = true;
-                        return;
-                    }
-                }
-            }
-        }
-
-        this.thisThumbnailLastPointerYInList = pointerInList.Y;
-        e.Handled = true;
-    }
-
-    // ###########################################################################################
-    // Keeps the placeholder visible even if the drag briefly leaves the list bounds.
-    // ###########################################################################################
-    private void OnThumbnailDragLeave(object? sender, RoutedEventArgs e)
-    {
-        e.Handled = true;
-    }
-
-    // ###########################################################################################
-    // Finalizes thumbnail reordering by replacing the placeholder with the dragged item.
-    // ###########################################################################################
-    private void OnThumbnailDrop(object? sender, DragEventArgs e)
-    {
-        if (this.thisDraggedThumbnail == null)
-        {
-            e.Handled = true;
-            return;
-        }
-
-        int insertIndex = this.thisThumbnailDropPlaceholder != null
-            ? this.currentThumbnails.IndexOf(this.thisThumbnailDropPlaceholder)
-            : this.currentThumbnails.Count;
-
-        this.ClearThumbnailDropPlaceholder();
-
-        if (insertIndex < 0 || insertIndex > this.currentThumbnails.Count)
-        {
-            insertIndex = this.currentThumbnails.Count;
-        }
-
-        this.currentThumbnails.Insert(insertIndex, this.thisDraggedThumbnail);
-
-        if (this.thisDraggedThumbnailWasSelected)
-        {
-            this.SchematicsThumbnailList.SelectedItem = this.thisDraggedThumbnail;
-        }
-
-        this.HideThumbnailDragGhost();
-        this.SaveCurrentThumbnailOrder();
-
-        this.thisDraggedThumbnail = null;
-        this.thisDraggedThumbnailOriginalIndex = -1;
-        this.thisDraggedThumbnailWasSelected = false;
-        this.thisThumbnailLastPointerYInList = double.NaN;
-        this.thisSuppressThumbnailSelectionChanged = false;
-        this.thisThumbnailDragStartEventArgs = null;
-
-        e.Handled = true;
     }
 
     // ###########################################################################################

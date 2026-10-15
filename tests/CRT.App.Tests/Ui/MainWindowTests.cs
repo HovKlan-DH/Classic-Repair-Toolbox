@@ -1381,7 +1381,7 @@ public sealed class MainWindowTests : IDisposable
                 try
                 {
                     var schematics = main.GetControl<TabSchematics>("TabSchematicsControl");
-                    var thumbnailList = schematics.GetControl<ListBox>("SchematicsThumbnailList");
+                    var thumbnailPanel = schematics.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
                     var checkBox = main.GetControl<TabConfiguration>("TabConfiguration")
                         .GetControl<CheckBox>("DetachSchematicsThumbnailsCheckBox");
 
@@ -1389,13 +1389,13 @@ public sealed class MainWindowTests : IDisposable
                     main.ApplyThumbnailsDetachedState();
 
                     Assert.True(main.IsThumbnailsWindowOpenForTests);
-                    Assert.False(thumbnailList.IsVisible);
+                    Assert.False(thumbnailPanel.IsVisible);
 
                     // Not shutting down - the user pressed the window's own close button.
                     main.CloseThumbnailsWindowAsUserForTests();
 
                     // The thumbnails are back in the tab...
-                    Assert.True(thumbnailList.IsVisible);
+                    Assert.True(thumbnailPanel.IsVisible);
                     Assert.False(schematics.IsThumbnailsDetached);
 
                     // ...the window is gone, and both the setting and its checkbox are off.

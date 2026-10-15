@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Input;
+using Avalonia.Threading;
 using CRT;
 using Handlers.DataHandling;
 using System.Collections.ObjectModel;
@@ -12,13 +13,13 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // The "Detach thumbnails into their own window" feature: collapsing/restoring the Schematics tab's
 // inline thumbnail column (TabSchematics.ThumbnailsDetach.cs), the detached window and gallery's
-// construction, and the two-way selection sync between the gallery and the (now-hidden) inline
-// SchematicsThumbnailList - the same pattern SchematicsFullscreenPlaceholder already uses to keep
-// two ListBoxes in sync against one shared collection.
+// construction, and the gallery showing the tab's selection and asking the tab for another. The
+// inline column is the same gallery (InlineThumbnailGallery) - SchematicsThumbnailGalleryTests
+// covers it there, with real pointer input.
 //
 // WHAT THESE COVER. Everything drivable with no display and no real window resize: mode toggling,
-// the single-shared-collection constraint Main.axaml.cs depends on, and selection forwarding both
-// ways.
+// the single-shared-collection constraint Main.axaml.cs depends on, and the selection in both
+// directions.
 //
 // WHAT THEY DO NOT. Actually driving a live .Show() plus a real OS resize to visually prove the
 // auto-fit grid reflows - that is "rendering/layout in Tabs/", already excluded by CLAUDE.md's
@@ -57,10 +58,9 @@ public sealed class SchematicsThumbnailsDetachTests
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab);
+            window.Initialize(tab);
             window.Show();
 
             Assert.Null(tab.MainWindow);
@@ -76,10 +76,9 @@ public sealed class SchematicsThumbnailsDetachTests
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab);
+            window.Initialize(tab);
             window.Show();
 
             bool bubbledToWindow = false;
@@ -96,17 +95,17 @@ public sealed class SchematicsThumbnailsDetachTests
     }
 
     [Fact]
-    public void Entering_detached_mode_hides_the_inline_list_and_collapses_the_columns()
+    public void Entering_detached_mode_hides_the_inline_panel_and_collapses_the_columns()
     {
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
             var grid = tab.GetControl<Grid>("SchematicsInnerGrid");
-            var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+            var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
 
             tab.EnterThumbnailsDetachedMode();
 
-            Assert.False(list.IsVisible);
+            Assert.False(panel.IsVisible);
             Assert.Equal(0.0, grid.ColumnDefinitions[1].Width.Value);
             Assert.Equal(0.0, grid.ColumnDefinitions[2].Width.Value);
             Assert.Equal(0.0, grid.ColumnDefinitions[2].MinWidth);
@@ -120,7 +119,7 @@ public sealed class SchematicsThumbnailsDetachTests
         {
             var tab = new TabSchematics();
             var grid = tab.GetControl<Grid>("SchematicsInnerGrid");
-            var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+            var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
 
             var originalRightWidth = grid.ColumnDefinitions[2].Width;
             var originalRightMinWidth = grid.ColumnDefinitions[2].MinWidth;
@@ -128,7 +127,7 @@ public sealed class SchematicsThumbnailsDetachTests
             tab.EnterThumbnailsDetachedMode();
             tab.ExitThumbnailsDetachedMode();
 
-            Assert.True(list.IsVisible);
+            Assert.True(panel.IsVisible);
             Assert.Equal(originalRightWidth, grid.ColumnDefinitions[2].Width);
             Assert.Equal(originalRightMinWidth, grid.ColumnDefinitions[2].MinWidth);
         });
@@ -170,7 +169,7 @@ public sealed class SchematicsThumbnailsDetachTests
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+            var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
             var splitter = tab.GetControl<GridSplitter>("SchematicsSplitter");
 
             tab.EnterThumbnailsDetachedMode();
@@ -179,7 +178,7 @@ public sealed class SchematicsThumbnailsDetachTests
 
             Assert.True(tab.IsThumbnailsDetached);
             Assert.False(tab.IsFullscreenModeActive);
-            Assert.False(list.IsVisible);
+            Assert.False(panel.IsVisible);
             Assert.False(splitter.IsVisible);
         });
     }
@@ -192,13 +191,13 @@ public sealed class SchematicsThumbnailsDetachTests
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+            var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
             var splitter = tab.GetControl<GridSplitter>("SchematicsSplitter");
 
             tab.EnterFullscreenMode();
             tab.ExitFullscreenMode();
 
-            Assert.True(list.IsVisible);
+            Assert.True(panel.IsVisible);
             Assert.True(splitter.IsVisible);
         });
     }
@@ -211,7 +210,7 @@ public sealed class SchematicsThumbnailsDetachTests
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+            var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
 
             tab.EnterThumbnailsDetachedMode();
             tab.EnterFullscreenMode();
@@ -219,11 +218,11 @@ public sealed class SchematicsThumbnailsDetachTests
             tab.ExitThumbnailsDetachedMode();
 
             Assert.False(tab.IsThumbnailsDetached);
-            Assert.False(list.IsVisible);
+            Assert.False(panel.IsVisible);
 
             // Leaving fullscreen now lands on the ordinary attached layout.
             tab.ExitFullscreenMode();
-            Assert.True(list.IsVisible);
+            Assert.True(panel.IsVisible);
         });
     }
 
@@ -320,7 +319,7 @@ public sealed class SchematicsThumbnailsDetachTests
         {
             var tab = new TabSchematics();
             var grid = tab.GetControl<Grid>("SchematicsInnerGrid");
-            var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+            var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
 
             grid.ColumnDefinitions[2].Width = new GridLength(450, GridUnitType.Pixel);
 
@@ -329,7 +328,7 @@ public sealed class SchematicsThumbnailsDetachTests
             tab.ExitFullscreenMode();
 
             Assert.True(tab.IsThumbnailsDetached);
-            Assert.False(list.IsVisible);
+            Assert.False(panel.IsVisible);
             Assert.Equal(0, grid.ColumnDefinitions[2].Width.Value);
         });
     }
@@ -346,10 +345,9 @@ public sealed class SchematicsThumbnailsDetachTests
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var gallery = new SchematicsThumbnailGallery();
-            gallery.Initialize(tab.currentThumbnails, hostedList, tab);
+            gallery.Initialize(tab);
 
             // The gallery's ItemsSource must BE that collection, not a copy of it. Against a
             // `new ObservableCollection<SchematicThumbnail>(thumbnails)` in Initialize this fails,
@@ -367,78 +365,75 @@ public sealed class SchematicsThumbnailsDetachTests
         });
     }
 
+    // The gallery's own list moving its highlight - as the arrow keys do - asks the tab for that
+    // schematic. (A click is the pointer path, pressed for real in SchematicsThumbnailGalleryTests.)
     [Fact]
-    public void Selecting_a_thumbnail_in_the_gallery_updates_the_hosted_list()
+    public void Selecting_a_thumbnail_in_the_gallery_selects_it_on_the_tab()
     {
         UiTest.Run(() =>
         {
-            var thumbnails = new ObservableCollection<SchematicThumbnail>
+            var (gallery, thumbnails, tab) = BuildGallery();
+
+            var window = new Window { Content = gallery };
+            window.Show();
+
+            try
             {
-                new() { Name = "Schematic A" },
-                new() { Name = "Schematic B" }
-            };
+                gallery.GetControl<ListBox>("GalleryListBox").SelectedItem = thumbnails[1];
 
-            var hostedList = new ListBox { ItemsSource = thumbnails };
-            var gallery = new SchematicsThumbnailGallery();
-            var tab = new TabSchematics();
-
-            gallery.Initialize(thumbnails, hostedList, tab);
-
-            gallery.SelectedThumbnail = thumbnails[1];
-
-            Assert.Same(thumbnails[1], hostedList.SelectedItem);
+                Assert.Same(thumbnails[1], tab.SelectedThumbnail);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
-    // The leak: the hosted SchematicsThumbnailList lives for the application's lifetime inside
-    // TabSchematics, while a new gallery is created on every detach. A subscription left on that
-    // list keeps the whole dead gallery - and every decoded thumbnail bitmap its containers hold -
-    // reachable forever, and each one still runs its handler on every schematic change.
+    // The leak: TabSchematics lives for the application's lifetime, while a new gallery is created
+    // on every detach. A subscription left on the tab keeps the whole dead gallery - and every
+    // decoded thumbnail bitmap its containers hold - reachable forever, and each one still runs its
+    // handler on every schematic change.
     //
     // Asserted by behaviour rather than by counting handlers: after Teardown the gallery must stop
-    // tracking the hosted list. Against the un-torn-down version the gallery follows it and fails.
+    // tracking the selection. Against the un-torn-down version the gallery follows it and fails.
     [Fact]
-    public void Tearing_the_gallery_down_stops_it_following_the_hosted_list()
+    public void Tearing_the_gallery_down_stops_it_following_the_selection()
     {
         UiTest.Run(() =>
         {
-            var thumbnails = new ObservableCollection<SchematicThumbnail>
+            var (gallery, thumbnails, tab) = BuildGallery();
+
+            var window = new Window { Content = gallery };
+            window.Show();
+
+            try
             {
-                new() { Name = "Schematic A" },
-                new() { Name = "Schematic B" }
-            };
+                // Still wired: the gallery shows the selection.
+                tab.SelectedThumbnail = thumbnails[1];
+                Assert.Same(thumbnails[1], gallery.SelectedThumbnail);
 
-            var hostedList = new ListBox { ItemsSource = thumbnails };
-            var gallery = new SchematicsThumbnailGallery();
-            var tab = new TabSchematics();
+                gallery.Teardown();
 
-            gallery.Initialize(thumbnails, hostedList, tab);
-
-            // Still wired: the gallery mirrors the hosted list.
-            hostedList.SelectedItem = thumbnails[1];
-            Assert.Same(thumbnails[1], gallery.SelectedThumbnail);
-
-            gallery.Teardown();
-
-            hostedList.SelectedItem = thumbnails[0];
-            Assert.Same(thumbnails[1], gallery.SelectedThumbnail);
+                tab.SelectedThumbnail = thumbnails[0];
+                Assert.Same(thumbnails[1], gallery.SelectedThumbnail);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
-    // Teardown runs from BOTH OnDetachedFromVisualTree and the window's Closed handler, so it has
-    // to survive being called twice - a window that was shown and then closed does both.
+    // Teardown runs from the window's Closed handler, after the gallery already stopped listening
+    // on leaving the visual tree - so it has to survive finding nothing left to do, and being called
+    // twice.
     [Fact]
     public void Tearing_the_gallery_down_twice_is_harmless()
     {
         UiTest.Run(() =>
         {
-            var thumbnails = new ObservableCollection<SchematicThumbnail> { new() { Name = "Schematic A" } };
-
-            var hostedList = new ListBox { ItemsSource = thumbnails };
-            var gallery = new SchematicsThumbnailGallery();
-            var tab = new TabSchematics();
-
-            gallery.Initialize(thumbnails, hostedList, tab);
+            var (gallery, _, _) = BuildGallery();
 
             gallery.Teardown();
             gallery.Teardown();
@@ -446,25 +441,25 @@ public sealed class SchematicsThumbnailsDetachTests
     }
 
     [Fact]
-    public void Selecting_a_thumbnail_in_the_hosted_list_updates_the_gallery()
+    public void Selecting_a_thumbnail_on_the_tab_updates_the_gallery()
     {
         UiTest.Run(() =>
         {
-            var thumbnails = new ObservableCollection<SchematicThumbnail>
+            var (gallery, thumbnails, tab) = BuildGallery();
+
+            var window = new Window { Content = gallery };
+            window.Show();
+
+            try
             {
-                new() { Name = "Schematic A" },
-                new() { Name = "Schematic B" }
-            };
+                tab.SelectedThumbnail = thumbnails[1];
 
-            var hostedList = new ListBox { ItemsSource = thumbnails };
-            var gallery = new SchematicsThumbnailGallery();
-            var tab = new TabSchematics();
-
-            gallery.Initialize(thumbnails, hostedList, tab);
-
-            hostedList.SelectedItem = thumbnails[1];
-
-            Assert.Same(thumbnails[1], gallery.SelectedThumbnail);
+                Assert.Same(thumbnails[1], gallery.SelectedThumbnail);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
@@ -472,15 +467,15 @@ public sealed class SchematicsThumbnailsDetachTests
     // Drag-reorder in the detached gallery
     // -----------------------------------------------------------------------------------------
 
-    // Reported: dragging a thumbnail in the detached window showed no gap, unlike the inline list.
-    // The first version moved the dragged item around live, so there was never a hole to see. It
-    // now lifts the item out and puts a placeholder in its slot, exactly as the inline list does.
+    // Reported: dragging a thumbnail in the detached window showed no gap, unlike the tab's own
+    // thumbnail list of the time. The first version moved the dragged item around live, so there
+    // was never a hole to see. It now lifts the item out and puts a placeholder in its slot.
     [Fact]
     public void Dragging_lifts_the_thumbnail_out_and_leaves_a_visible_placeholder()
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, _, _) = BuildGallery();
+            var (gallery, thumbnails, _) = BuildGallery();
             var dragged = thumbnails[2];
 
             gallery.BeginTileDragForTests(dragged);
@@ -510,7 +505,7 @@ public sealed class SchematicsThumbnailsDetachTests
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, _, _) = BuildGallery();
+            var (gallery, thumbnails, _) = BuildGallery();
 
             var window = new Window { Content = gallery, Width = 400, Height = 400 };
             window.Show();
@@ -533,7 +528,7 @@ public sealed class SchematicsThumbnailsDetachTests
 
                 // And the reorder still works end to end from that point.
                 gallery.DragPlaceholderToPointForTests(new Point(10, 10));
-                gallery.EndTileDragForTests(commitOrder: false);
+                gallery.EndTileDragForTests(commitOrder: true);
 
                 Assert.Same(dragged, thumbnails[0]);
             }
@@ -549,12 +544,12 @@ public sealed class SchematicsThumbnailsDetachTests
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, _, _) = BuildGallery();
+            var (gallery, thumbnails, _) = BuildGallery();
             var dragged = thumbnails[2];
 
             gallery.BeginTileDragForTests(dragged);
             gallery.MoveDragPlaceholderForTests(0);
-            gallery.EndTileDragForTests(commitOrder: false);
+            gallery.EndTileDragForTests(commitOrder: true);
 
             Assert.Equal(3, thumbnails.Count);
             Assert.Same(dragged, thumbnails[0]);
@@ -571,7 +566,7 @@ public sealed class SchematicsThumbnailsDetachTests
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, _, tab) = BuildGallery();
+            var (gallery, thumbnails, tab) = BuildGallery();
 
             gallery.BeginTileDragForTests(thumbnails[1]);
             Assert.True(tab.SuppressThumbnailSelectionChangedForTests);
@@ -590,7 +585,7 @@ public sealed class SchematicsThumbnailsDetachTests
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, _, tab) = BuildGallery();
+            var (gallery, thumbnails, tab) = BuildGallery();
 
             var window = new Window { Content = gallery };
             window.Show();
@@ -606,66 +601,98 @@ public sealed class SchematicsThumbnailsDetachTests
     }
 
     // After a reorder the moved thumbnail must still be the selected one, or the schematic view
-    // silently stops matching the highlighted tile.
-    [Fact]
-    public void A_reorder_keeps_the_dragged_thumbnail_selected()
+    // silently stops matching the highlighted tile - after a drop and after a cancel alike.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_reorder_keeps_the_dragged_thumbnail_selected(bool commitOrder)
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, hostedList, _) = BuildGallery();
+            var (gallery, thumbnails, tab) = BuildGallery();
             var dragged = thumbnails[2];
 
-            gallery.SelectedThumbnail = dragged;
+            var window = new Window { Content = gallery };
+            window.Show();
 
-            gallery.BeginTileDragForTests(dragged);
-            gallery.MoveDragPlaceholderForTests(0);
-            gallery.EndTileDragForTests(commitOrder: false);
+            try
+            {
+                tab.SelectedThumbnail = dragged;
 
-            Assert.Same(dragged, gallery.SelectedThumbnail);
-            Assert.Same(dragged, hostedList.SelectedItem);
+                gallery.BeginTileDragForTests(dragged);
+                gallery.MoveDragPlaceholderForTests(0);
+
+                // The tab's selection never left it, even while the tile was lifted out.
+                Assert.Same(dragged, tab.SelectedThumbnail);
+
+                gallery.EndTileDragForTests(commitOrder);
+
+                // The gallery highlights the dropped tile again once its list has caught up.
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Same(dragged, gallery.SelectedThumbnail);
+                Assert.Same(dragged, tab.SelectedThumbnail);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
-    // The placeholder is a real row in the shared collection while a drag runs, so it can be landed
-    // on by a click or the arrow keys. It names no schematic, so forwarding it would blank the view.
+    // The placeholder is a real row in the shared collection while a drag runs, so the arrow keys
+    // can land on it. It names no schematic, so passing it on would blank the view - and the
+    // gallery goes back to showing the real selection.
     [Fact]
-    public void Selecting_the_placeholder_is_never_forwarded_to_the_hosted_list()
+    public void Selecting_the_placeholder_is_never_passed_on_to_the_tab()
     {
         UiTest.Run(() =>
         {
-            var (gallery, thumbnails, hostedList, _) = BuildGallery();
+            var (gallery, thumbnails, tab) = BuildGallery();
             var realSelection = thumbnails[0];
 
-            gallery.SelectedThumbnail = realSelection;
-            gallery.BeginTileDragForTests(thumbnails[2]);
+            var window = new Window { Content = gallery };
+            window.Show();
 
-            var placeholder = thumbnails.Single(t => t.IsDropPlaceholder);
-            gallery.SelectedThumbnail = placeholder;
+            try
+            {
+                tab.SelectedThumbnail = realSelection;
+                gallery.BeginTileDragForTests(thumbnails[2]);
 
-            // The hosted list still points at a REAL schematic.
-            Assert.Same(realSelection, hostedList.SelectedItem);
+                var placeholder = thumbnails.Single(t => t.IsDropPlaceholder);
+                gallery.GetControl<ListBox>("GalleryListBox").SelectedItem = placeholder;
+                Dispatcher.UIThread.RunJobs();
+
+                // The tab still holds a REAL schematic, and the gallery shows it again.
+                Assert.Same(realSelection, tab.SelectedThumbnail);
+                Assert.Same(realSelection, gallery.SelectedThumbnail);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
-    private static (SchematicsThumbnailGallery Gallery, ObservableCollection<SchematicThumbnail> Thumbnails, ListBox HostedList, TabSchematics Tab) BuildGallery()
+    // A gallery of its own on a tab holding three thumbnails, as the detached window's is. Not
+    // shown: a test that needs it listening to the tab puts it in a window.
+    private static (SchematicsThumbnailGallery Gallery, ObservableCollection<SchematicThumbnail> Thumbnails, TabSchematics Tab) BuildGallery()
     {
-        var thumbnails = new ObservableCollection<SchematicThumbnail>
-        {
-            new() { Name = "Schematic A" },
-            new() { Name = "Schematic B" },
-            new() { Name = "Schematic C" }
-        };
-
-        var hostedList = new ListBox { ItemsSource = thumbnails };
         var tab = new TabSchematics();
-        var gallery = new SchematicsThumbnailGallery();
-        gallery.Initialize(thumbnails, hostedList, tab);
 
-        return (gallery, thumbnails, hostedList, tab);
+        foreach (string name in new[] { "Schematic A", "Schematic B", "Schematic C" })
+        {
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = name });
+        }
+
+        var gallery = new SchematicsThumbnailGallery();
+        gallery.Initialize(tab);
+
+        return (gallery, tab.currentThumbnails, tab);
     }
 
-    // Reordering must persist through the exact same UserSettings.SetSchematicsOrder path the
-    // inline list uses, whether thumbnails are inline or detached - driven directly here since
+    // Reordering must persist through the exact same UserSettings.SetSchematicsOrder path wherever
+    // the gallery is shown - in the tab, detached or beside the fullscreen view - driven directly here since
     // simulating a full pointer drag headlessly (with no real board/MainWindow to resolve a board
     // key from) is impractical; SaveCurrentThumbnailOrder itself is what the gallery calls after a
     // drop, so this pins that it is reachable and internal rather than private.
@@ -702,6 +729,33 @@ public sealed class SchematicsThumbnailsDetachTests
             // Order preserved, placeholder and blank gone.
             Assert.Equal(
                 new[] { "Top", "Bottom" },
+                UserSettings.GetSchematicsOrder("Commodore 64|250407"));
+        });
+    }
+
+    // A drop that lands after the thumbnails were emptied (a board load clears them, then reads
+    // the board) has no tile to put back. Saving then wrote the empty list as the board's order,
+    // and the next load fell back to the workbook's own order - the user's order was gone.
+    [Fact]
+    public void A_drop_after_the_thumbnails_were_emptied_keeps_the_saved_order()
+    {
+        using var workspace = new TempWorkspace();
+        UserSettings.LoadFrom(workspace.Path_("settings.json"));
+
+        UiTest.Run(() =>
+        {
+            var (gallery, thumbnails, tab) = BuildGallery();
+            tab.BoardKeyOverrideForTests = "Commodore 64|250407";
+            UserSettings.SetSchematicsOrder("Commodore 64|250407", new[] { "Schematic C", "Schematic A", "Schematic B" }.ToList());
+
+            gallery.BeginTileDragForTests(thumbnails[2]);
+            gallery.MoveDragPlaceholderForTests(0);
+
+            thumbnails.Clear();
+            gallery.EndTileDragForTests(commitOrder: true);
+
+            Assert.Equal(
+                new[] { "Schematic C", "Schematic A", "Schematic B" },
                 UserSettings.GetSchematicsOrder("Commodore 64|250407"));
         });
     }
