@@ -354,8 +354,7 @@ public class WorklogAreaMarkingTests : IDisposable
         }
 
         var thumbnail = new SchematicThumbnail { Name = Schematic };
-        tab.SchematicsThumbnailList.ItemsSource = new List<SchematicThumbnail> { thumbnail };
-        tab.SchematicsThumbnailList.SelectedItem = thumbnail;
+        tab.SelectedThumbnail = thumbnail;
 
         return tab;
     }

@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Input;
 using System;
 using System.Collections.Generic;
 
@@ -184,6 +185,75 @@ namespace Handlers.Geometry
             }
 
             return nearestIndex;
+        }
+
+        // ###########################################################################################
+        // The cell the keyboard moves to from cell index, in a grid of itemCount cells and columns
+        // columns filled as ArrangeGrid fills it - for the arrow keys, Home/End and Page Up/Down in
+        // the gallery (code review, 2026-10-15: the grid said nothing about it, so the keys did
+        // nothing). Left and Right follow reading order across rows, as a file manager does; Up and
+        // Down move a whole row, and Down from a cell with nothing straight below it in a short last
+        // row goes to the last cell. Every cell is on one page (the gallery never scrolls), so Page
+        // Up/Down go to the first/last cell. Next/Previous wrap round only when asked to.
+        //
+        // -1 when there is nowhere to go. From no cell at all (index outside the grid) every
+        // direction but Last/End/Page Down starts at the first cell.
+        // ###########################################################################################
+        public static int NeighbourIndex(int index, int itemCount, int columns, NavigationDirection direction, bool wrap)
+        {
+            if (itemCount <= 0)
+            {
+                return -1;
+            }
+
+            int last = itemCount - 1;
+
+            switch (direction)
+            {
+                case NavigationDirection.First:
+                case NavigationDirection.PageUp:
+                    return 0;
+
+                case NavigationDirection.Last:
+                case NavigationDirection.PageDown:
+                    return last;
+            }
+
+            if (index < 0 || index > last)
+            {
+                return 0;
+            }
+
+            columns = Math.Max(1, columns);
+
+            switch (direction)
+            {
+                case NavigationDirection.Left:
+                    return index > 0 ? index - 1 : -1;
+
+                case NavigationDirection.Right:
+                    return index < last ? index + 1 : -1;
+
+                case NavigationDirection.Previous:
+                    return index > 0 ? index - 1 : (wrap ? last : -1);
+
+                case NavigationDirection.Next:
+                    return index < last ? index + 1 : (wrap ? 0 : -1);
+
+                case NavigationDirection.Up:
+                    return index >= columns ? index - columns : -1;
+
+                case NavigationDirection.Down:
+                    if (index + columns <= last)
+                    {
+                        return index + columns;
+                    }
+
+                    return (index / columns) < (last / columns) ? last : -1;
+
+                default:
+                    return -1;
+            }
         }
     }
 }

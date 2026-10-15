@@ -5,7 +5,7 @@
 
 # Wiki pages waiting to be pasted
 
-**13 pages waiting.**
+**14 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
@@ -17,6 +17,7 @@
 | `Contribute-data-via-CRT.md` | Home > Contributing > Via CRT |
 | `Contribute-tab.md` | Home > The tabs > Contribute |
 | `Controlling-oscilloscope-with-keyboard.md` | Home > At the bench > Oscilloscope from keyboard |
+| `Development-tools-used.md` | Home > Project > Tools used |
 | `Drafts-tab.md` | Home > The tabs > Drafts |
 | `Maintainer-tab.md` | Home > The tabs > Maintainer |
 | `Oscilloscope-tab.md` | Home > The tabs > Oscilloscope |

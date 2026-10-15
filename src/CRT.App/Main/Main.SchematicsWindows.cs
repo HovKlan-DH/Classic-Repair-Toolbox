@@ -234,8 +234,8 @@ namespace CRT
         // Skipped while thumbnails are detached or the schematic is fullscreen: both modes collapse
         // columns 0/2 down to their own layout (see TabSchematics.ThumbnailsDetach.cs and
         // EnterFullscreenMode) - applying it while either is active would silently re-expand column 2
-        // right back out from under it, leaving an empty widened column since the inline list itself
-        // stays hidden either way.
+        // right back out from under it, leaving an empty widened column since the inline thumbnail
+        // panel itself stays hidden either way.
         // ###########################################################################################
         private void ApplySchematicsSplitterRatioForCurrentBoard(string boardKey)
         {
@@ -261,16 +261,12 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the detached thumbnails window, bound to the same currentThumbnails collection and
-        // hosted (now-hidden) SchematicsThumbnailList the inline gallery uses. A no-op if already open.
+        // Opens the detached thumbnails window, showing the same thumbnails and selection the tab's
+        // own gallery does. A no-op if already open.
         // ###########################################################################################
         private void OpenSchematicsThumbnailsWindow()
         {
             if (this._schematicsThumbnailsWindow != null)
-                return;
-
-            var hostedThumbnailList = this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList");
-            if (hostedThumbnailList == null)
                 return;
 
             // null (the app-wide layout tier) both when per-board mode is off AND when no board is
@@ -286,11 +282,7 @@ namespace CRT
 
             var thumbnailsWindow = new SchematicsThumbnailsWindow();
             this._schematicsThumbnailsWindow = thumbnailsWindow;
-            thumbnailsWindow.Initialize(
-                this.TabSchematicsControl.currentThumbnails,
-                hostedThumbnailList,
-                this.TabSchematicsControl,
-                perBoardKey);
+            thumbnailsWindow.Initialize(this.TabSchematicsControl, perBoardKey);
 
             thumbnailsWindow.Closed += (_, _) =>
             {
@@ -363,7 +355,7 @@ namespace CRT
 
         // ###########################################################################################
         // Creates placeholder content for the Schematics tab while fullscreen mode is active.
-        // Keeps the thumbnail list available so another schematic can be selected without closing
+        // Keeps the thumbnail gallery available so another schematic can be selected without closing
         // the fullscreen window first.
         // ###########################################################################################
         private SchematicsFullscreenPlaceholder CreateSchematicsFullscreenPlaceholder()
@@ -375,10 +367,8 @@ namespace CRT
                 ratio = Math.Clamp(UserSettings.GetSchematicsSplitterRatio(boardKey), 0.1, 0.9);
             }
 
-            var hostedThumbnailList = this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList");
-
             var placeholder = new SchematicsFullscreenPlaceholder();
-            placeholder.Initialize(this.TabSchematicsControl.currentThumbnails, hostedThumbnailList, ratio);
+            placeholder.Initialize(this.TabSchematicsControl, ratio);
             return placeholder;
         }
 

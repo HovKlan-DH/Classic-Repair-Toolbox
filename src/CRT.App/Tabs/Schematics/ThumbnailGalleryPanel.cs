@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.VisualTree;
 using Handlers.Geometry;
 using System;
 
@@ -15,7 +17,7 @@ namespace Tabs.TabSchematics
     // each child by its own desired size or a fixed ItemWidth/ItemHeight, not by "all N children
     // share one size that fills the available area".
     // ###########################################################################################
-    internal sealed class ThumbnailGalleryPanel : Panel
+    internal sealed class ThumbnailGalleryPanel : Panel, INavigableContainer
     {
         public static readonly StyledProperty<double> SpacingProperty =
             AvaloniaProperty.Register<ThumbnailGalleryPanel, double>(nameof(Spacing), 8.0);
@@ -84,6 +86,33 @@ namespace Tabs.TabSchematics
             }
 
             return finalSize;
+        }
+
+        // ###########################################################################################
+        // Where the arrow keys, Home/End and Page Up/Down go: the gallery's ListBox moves its
+        // selection to whichever child this returns. A plain Panel answers nothing, so the keys did
+        // nothing in the gallery, where the tab's old one-column list (a StackPanel) had them (code
+        // review, 2026-10-15). The grid maths is ThumbnailGalleryGeometry.NeighbourIndex, on the
+        // columns of the last layout.
+        // ###########################################################################################
+        IInputElement? INavigableContainer.GetControl(NavigationDirection direction, IInputElement? from, bool wrap)
+        {
+            int fromIndex = -1;
+
+            // The focused element may be inside a child rather than the child itself.
+            for (Visual? visual = from as Visual; visual != null; visual = visual.GetVisualParent())
+            {
+                if (ReferenceEquals(visual.GetVisualParent(), this) && visual is Control child)
+                {
+                    fromIndex = this.Children.IndexOf(child);
+                    break;
+                }
+            }
+
+            int target = ThumbnailGalleryGeometry.NeighbourIndex(
+                fromIndex, this.Children.Count, this.CurrentLayout.Shape.Columns, direction, wrap);
+
+            return target >= 0 && target < this.Children.Count ? this.Children[target] : null;
         }
     }
 }

@@ -14,7 +14,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // checkbox controls, not a second implementation of it.
 //
 // Driven through REAL headless input (window.MouseDown/MouseUp/KeyPress), not RaiseEvent on the
-// handler directly: this class's own right-click routing (SchematicsThumbnailList -> the tunnelled
+// handler directly: this class's own right-click routing (InlineThumbnailGallery -> the tunnelled
 // dismiss handler on the tab) is exactly the kind of wiring bug a seam-driven test cannot see - see
 // SchematicsThumbnailsDetachTests' own note on the placeholder-drag regression for why.
 //
@@ -64,12 +64,12 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
 
             try
             {
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
                 var menu = tab.GetControl<Border>("SchematicsThumbnailsContextMenuBorder");
                 Assert.False(menu.IsVisible);
 
-                window.MouseDown(CenterOf(list, window), MouseButton.Right);
-                window.MouseUp(CenterOf(list, window), MouseButton.Right);
+                window.MouseDown(CenterOf(panel, window), MouseButton.Right);
+                window.MouseUp(CenterOf(panel, window), MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.True(menu.IsVisible);
@@ -104,11 +104,11 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
 
             try
             {
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
                 var grid = tab.GetControl<Grid>("SchematicsInnerGrid");
                 var menu = tab.GetControl<Border>("SchematicsThumbnailsContextMenuBorder");
 
-                Point clickPoint = CenterOf(list, window);
+                Point clickPoint = CenterOf(panel, window);
                 window.MouseDown(clickPoint, MouseButton.Right);
                 window.MouseUp(clickPoint, MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
@@ -152,11 +152,11 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
 
             try
             {
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
                 var menu = tab.GetControl<Border>("SchematicsThumbnailsContextMenuBorder");
 
-                window.MouseDown(CenterOf(list, window), MouseButton.Right);
-                window.MouseUp(CenterOf(list, window), MouseButton.Right);
+                window.MouseDown(CenterOf(panel, window), MouseButton.Right);
+                window.MouseUp(CenterOf(panel, window), MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
                 window.Measure(new Size(420, 600));
                 window.Arrange(new Rect(0, 0, 420, 600));
@@ -196,9 +196,9 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
 
             try
             {
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
-                window.MouseDown(CenterOf(list, window), MouseButton.Right);
-                window.MouseUp(CenterOf(list, window), MouseButton.Right);
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
+                window.MouseDown(CenterOf(panel, window), MouseButton.Right);
+                window.MouseUp(CenterOf(panel, window), MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
 
                 var button = tab.GetControl<Button>("DetachThumbnailsContextMenuButton");
@@ -227,9 +227,9 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
             {
                 Assert.False(UserSettings.DetachSchematicsThumbnails);
 
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
-                window.MouseDown(CenterOf(list, window), MouseButton.Right);
-                window.MouseUp(CenterOf(list, window), MouseButton.Right);
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
+                window.MouseDown(CenterOf(panel, window), MouseButton.Right);
+                window.MouseUp(CenterOf(panel, window), MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
 
                 var button = tab.GetControl<Button>("DetachThumbnailsContextMenuButton");
@@ -263,11 +263,11 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
 
             try
             {
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
                 var menu = tab.GetControl<Border>("SchematicsThumbnailsContextMenuBorder");
 
-                window.MouseDown(CenterOf(list, window), MouseButton.Right);
-                window.MouseUp(CenterOf(list, window), MouseButton.Right);
+                window.MouseDown(CenterOf(panel, window), MouseButton.Right);
+                window.MouseUp(CenterOf(panel, window), MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
                 Assert.True(menu.IsVisible);
 
@@ -293,11 +293,11 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
 
             try
             {
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
                 var menu = tab.GetControl<Border>("SchematicsThumbnailsContextMenuBorder");
 
-                window.MouseDown(CenterOf(list, window), MouseButton.Right);
-                window.MouseUp(CenterOf(list, window), MouseButton.Right);
+                window.MouseDown(CenterOf(panel, window), MouseButton.Right);
+                window.MouseUp(CenterOf(panel, window), MouseButton.Right);
                 Dispatcher.UIThread.RunJobs();
                 Assert.True(menu.IsVisible);
 
@@ -333,8 +333,8 @@ public sealed class SchematicsThumbnailsContextMenuTests : IDisposable
             {
                 tab.EnterThumbnailsDetachedMode();
 
-                var list = tab.GetControl<ListBox>("SchematicsThumbnailList");
-                Assert.False(list.IsVisible);
+                var panel = tab.GetControl<SchematicsThumbnailGallery>("InlineThumbnailGallery");
+                Assert.False(panel.IsVisible);
             }
             finally
             {

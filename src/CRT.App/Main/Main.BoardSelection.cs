@@ -228,6 +228,9 @@ namespace CRT
                 this._suppressComponentSearchRefresh = false;
             }
 
+            // No thumbnail drag or held press may outlive the tiles it is on, in any gallery.
+            this.TabSchematicsControl.CancelThumbnailDrags();
+
             // Only the highlight layers are the thumbnails' own; the base thumbnails belong to the
             // thumbnail cache (_thumbnailSets), which disposes a set when it lets it go.
             foreach (var thumb in this.TabSchematicsControl.currentThumbnails)
@@ -241,8 +244,8 @@ namespace CRT
                 thumb.HighlightImage = null;
             }
 
+            // Emptying the thumbnails leaves no schematic selected (TabSchematics.OnCurrentThumbnailsChanged).
             this.TabSchematicsControl.currentThumbnails.Clear();
-            this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList")!.ItemsSource = null;
             this.CategoryFilterListBox.ItemsSource = null;
             this.ComponentFilterListBox.ItemsSource = null;
 
@@ -525,8 +528,8 @@ namespace CRT
                                 : orderedThumbnails.FindIndex(thumbnail =>
                                     string.Equals(thumbnail.Name, savedSchematic, StringComparison.OrdinalIgnoreCase));
 
-                            this.TabSchematicsControl.FindControl<ListBox>("SchematicsThumbnailList")!.SelectedIndex =
-                                savedIndex >= 0 ? savedIndex : 0;
+                            this.TabSchematicsControl.SelectedThumbnail =
+                                orderedThumbnails[savedIndex >= 0 ? savedIndex : 0];
                         }
 
                         var localFiles = boardData.BoardLocalFiles.Select(file => new ResourceItem(

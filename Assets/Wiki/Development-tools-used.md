@@ -6,7 +6,7 @@ What CRT is built with.
 
 CRT is written in C# with .NET 10, using [Avalonia](https://avaloniaui.net/) for the user interface, and is developed in _Visual Studio Community 2026_ and with _Visual Studio Code_ for the agentic approach.
 
-Where the old _Commodore_ project was primarily self-developed, this _Classic_ codebase has been developed primarily with AI assistance, which is why I see myself more as a _conductor_ for this project rather than the pure developer of this application - all credits to the people behind these LLM models 😁
+Where the old _Commodore_ project was primarily self-developed, this _Classic_ codebase is fully vibe-coded - developed entirely with AI assistance - which is why I see myself more as a _conductor_ for this project rather than the pure developer of this application - all credits to the people behind these LLM models 😁
 
 I started out with GitHub Copilot, and now (2026-September) use Claude Code.
 

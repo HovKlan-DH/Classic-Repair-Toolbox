@@ -7,7 +7,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // TabSchematics.SelectSchematicByName - lets another tab (the Workbooks tab, specifically: see
 // TabWorkbooks.PropagateSelectedSchematicToSchematicsTab) make a named schematic the one waiting
 // on the Schematics tab, without the user ever clicking its thumbnail. It has to go through the
-// SAME path a real click does (setting SchematicsThumbnailList.SelectedItem) rather than a
+// SAME path a real click does (setting TabSchematics.SelectedThumbnail) rather than a
 // side-channel, so the full-res image, overlays and "last schematic for this board" all follow
 // exactly as they would from a click - this file only pins the selection outcome itself, since
 // OnSchematicsThumbnailSelectionChanged's own image-loading behaviour is covered elsewhere
@@ -26,7 +26,6 @@ public class SchematicSelectionByNameTests
             tab.currentThumbnails.Add(thumbnail);
         }
 
-        tab.SchematicsThumbnailList.ItemsSource = tab.currentThumbnails;
         return tab;
     }
 
@@ -39,7 +38,7 @@ public class SchematicSelectionByNameTests
 
             tab.SelectSchematicByName("Sheet 2");
 
-            var selected = Assert.IsType<SchematicThumbnail>(tab.SchematicsThumbnailList.SelectedItem);
+            var selected = Assert.IsType<SchematicThumbnail>(tab.SelectedThumbnail);
             Assert.Equal("Sheet 2", selected.Name);
         });
     }
@@ -57,7 +56,7 @@ public class SchematicSelectionByNameTests
 
             tab.SelectSchematicByName("sheet 2");
 
-            var selected = Assert.IsType<SchematicThumbnail>(tab.SchematicsThumbnailList.SelectedItem);
+            var selected = Assert.IsType<SchematicThumbnail>(tab.SelectedThumbnail);
             Assert.Equal("Sheet 2", selected.Name);
         });
     }
@@ -71,11 +70,11 @@ public class SchematicSelectionByNameTests
         UiTest.Run(() =>
         {
             var tab = CreateTabWithThumbnails("Sheet 1", "Sheet 2");
-            tab.SchematicsThumbnailList.SelectedItem = tab.currentThumbnails[0];
+            tab.SelectedThumbnail = tab.currentThumbnails[0];
 
             tab.SelectSchematicByName("Sheet that no longer exists");
 
-            var selected = Assert.IsType<SchematicThumbnail>(tab.SchematicsThumbnailList.SelectedItem);
+            var selected = Assert.IsType<SchematicThumbnail>(tab.SelectedThumbnail);
             Assert.Equal("Sheet 1", selected.Name);
         });
     }
@@ -89,11 +88,11 @@ public class SchematicSelectionByNameTests
         UiTest.Run(() =>
         {
             var tab = CreateTabWithThumbnails("Sheet 1");
-            tab.SchematicsThumbnailList.SelectedItem = tab.currentThumbnails[0];
+            tab.SelectedThumbnail = tab.currentThumbnails[0];
 
             tab.SelectSchematicByName(blankName!);
 
-            var selected = Assert.IsType<SchematicThumbnail>(tab.SchematicsThumbnailList.SelectedItem);
+            var selected = Assert.IsType<SchematicThumbnail>(tab.SelectedThumbnail);
             Assert.Equal("Sheet 1", selected.Name);
         });
     }
@@ -108,11 +107,11 @@ public class SchematicSelectionByNameTests
         UiTest.Run(() =>
         {
             var tab = CreateTabWithThumbnails("Sheet 1", "Sheet 2");
-            tab.SchematicsThumbnailList.SelectedItem = tab.currentThumbnails[0];
+            tab.SelectedThumbnail = tab.currentThumbnails[0];
 
             tab.SelectSchematicByName("Sheet 1");
 
-            Assert.Same(tab.currentThumbnails[0], tab.SchematicsThumbnailList.SelectedItem);
+            Assert.Same(tab.currentThumbnails[0], tab.SelectedThumbnail);
         });
     }
 
@@ -134,18 +133,18 @@ public class SchematicSelectionByNameTests
         UiTest.Run(() =>
         {
             var tab = CreateTabWithThumbnails("Sheet 1", "Sheet 2");
-            tab.SchematicsThumbnailList.SelectedItem = tab.currentThumbnails[0];
+            tab.SelectedThumbnail = tab.currentThumbnails[0];
 
             tab.SuppressThumbnailSelectionChangedForTests = true;
             tab.SelectSchematicByName("Sheet 2");
 
-            Assert.Same(tab.currentThumbnails[0], tab.SchematicsThumbnailList.SelectedItem);
+            Assert.Same(tab.currentThumbnails[0], tab.SelectedThumbnail);
 
             // And it works again once the drag is over.
             tab.SuppressThumbnailSelectionChangedForTests = false;
             tab.SelectSchematicByName("Sheet 2");
 
-            Assert.Same(tab.currentThumbnails[1], tab.SchematicsThumbnailList.SelectedItem);
+            Assert.Same(tab.currentThumbnails[1], tab.SelectedThumbnail);
         });
     }
 }

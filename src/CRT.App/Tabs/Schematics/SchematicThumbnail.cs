@@ -16,7 +16,6 @@ namespace Tabs.TabSchematics
         private double visualOpacity = 1.0;
         private bool isMatchForSelection;
         private bool isDropPlaceholder;
-        private double placeholderHeight = 120.0;
         private IReadOnlyList<ThumbnailWorklogPillsOverlay.Pill> worklogPills = Array.Empty<ThumbnailWorklogPillsOverlay.Pill>();
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -125,32 +124,6 @@ namespace Tabs.TabSchematics
                 if (this.isDropPlaceholder == value)
                     return;
                 this.isDropPlaceholder = value;
-                this.OnPropertyChanged();
-            }
-        }
-
-        public double PlaceholderHeight
-        {
-            get => this.placeholderHeight;
-            set
-            {
-                if (Math.Abs(this.placeholderHeight - value) < 0.01)
-                    return;
-                this.placeholderHeight = value;
-                this.OnPropertyChanged();
-            }
-        }
-
-        private double placeholderWidth = 160.0;
-
-        public double PlaceholderWidth
-        {
-            get => this.placeholderWidth;
-            set
-            {
-                if (Math.Abs(this.placeholderWidth - value) < 0.01)
-                    return;
-                this.placeholderWidth = value;
                 this.OnPropertyChanged();
             }
         }

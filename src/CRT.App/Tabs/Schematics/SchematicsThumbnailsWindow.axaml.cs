@@ -3,8 +3,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
 using System;
-using System.Collections.ObjectModel;
-using Tabs.TabSchematics;
 
 namespace CRT;
 
@@ -42,16 +40,14 @@ public partial class SchematicsThumbnailsWindow : Window
         // handler is wired.
         this.AddHandler(KeyDownEvent, this.OnWindowKeyDownToggleSchematicsFullscreen, RoutingStrategies.Tunnel);
 
-        // Belt and braces alongside the gallery's own OnDetachedFromVisualTree: a window that was
-        // never shown - or closed before it laid out - never detaches, and the gallery's
-        // subscription to the tab's application-lifetime thumbnail ListBox would then keep this
-        // whole window alive for the rest of the session. Teardown is idempotent.
+        // The gallery stops listening to the tab when it leaves the visual tree; once the window is
+        // closed it lets go of the tab for good. Teardown is idempotent.
         this.Closed += (_, _) => this.Gallery.Teardown();
     }
 
     // ###########################################################################################
-    // Wires the gallery to the Schematics tab's shared thumbnails collection and hosted (hidden)
-    // ListBox, so selection and reorder stay in sync with the rest of the app. Also keeps the
+    // Wires the gallery to the Schematics tab - its shared thumbnails, its selection and its
+    // order saving - so selection and reorder stay in sync with the rest of the app. Also keeps the
     // owning tab for OnWindowKeyDownToggleSchematicsFullscreen, which needs its MainWindow, and
     // applies (and arms saving of) this window's remembered layout.
     //
@@ -60,15 +56,11 @@ public partial class SchematicsThumbnailsWindow : Window
     // board's key instead when UserSettings.RememberThumbnailWindowSettingsPerBoard is on, which
     // switches both the initial restore AND the Closing-time save below to the per-board tier.
     // ###########################################################################################
-    public void Initialize(
-        ObservableCollection<SchematicThumbnail> thumbnails,
-        ListBox hostedThumbnailList,
-        TabSchematics owner,
-        string? boardKey = null)
+    public void Initialize(TabSchematics owner, string? boardKey = null)
     {
         this.thisOwner = owner;
         this.thisPerBoardKey = boardKey;
-        this.Gallery.Initialize(thumbnails, hostedThumbnailList, owner);
+        this.Gallery.Initialize(owner);
 
         bool hasLayout;
         string savedState;

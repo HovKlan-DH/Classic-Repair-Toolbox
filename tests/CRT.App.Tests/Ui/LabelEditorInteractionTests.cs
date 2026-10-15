@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Input;
 using CRT;
 using Handlers.DataHandling;
@@ -90,6 +91,39 @@ public class LabelEditorInteractionTests
 
             Assert.False(tab.IsLabelEditorModeForTests);
             Assert.Empty(tab.LabelEditorWorkingRowsForTests);
+        });
+    }
+
+    // The editor works on ONE schematic, so the thumbnail panel must not switch to another while
+    // it is open. The panel is the gallery (InlineThumbnailGallery) since 2026-10-15; the lock is
+    // the tab's, which every gallery on screen follows.
+    [Fact]
+    public void The_editor_locks_the_thumbnail_panel_until_it_is_left()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = CreateTab();
+            var galleryList = tab.InlineThumbnailGallery.GetControl<ListBox>("GalleryListBox");
+
+            var window = new Window { Content = tab, Width = 800, Height = 600 };
+            window.Show();
+
+            try
+            {
+                Assert.True(galleryList.IsEnabled);
+
+                tab.BeginLabelEditorModeForTests();
+                Assert.True(tab.IsThumbnailNavigationLocked);
+                Assert.False(galleryList.IsEnabled);
+
+                tab.CancelLabelEditorChangesForTests();
+                Assert.False(tab.IsThumbnailNavigationLocked);
+                Assert.True(galleryList.IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
         });
     }
 
@@ -614,8 +648,7 @@ public class LabelEditorInteractionTests
         };
 
         var thumbnail = new SchematicThumbnail { Name = Schematic };
-        tab.SchematicsThumbnailList.ItemsSource = new List<SchematicThumbnail> { thumbnail };
-        tab.SchematicsThumbnailList.SelectedItem = thumbnail;
+        tab.SelectedThumbnail = thumbnail;
 
         return tab;
     }

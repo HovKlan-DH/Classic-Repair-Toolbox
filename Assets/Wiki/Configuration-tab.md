@@ -23,13 +23,13 @@ Edit the file, then click **Reload user preference colors** to see the result wi
 **Open multiple component info windows** - off, each component you click reuses the same popup
 window. On, every component opens its own, so you can put two chips side by side and compare.
 
-**Detach thumbnails into their own window** - moves the [Schematics](Schematics-tab) tab's thumbnail
-strip out of the tab and into its own resizable window, freeing up the space it used for the main
-image. The window fits every thumbnail to whatever size you give it, so a small window shows them
-smaller and a maximized one shows them bigger - never scrolled. Selecting or dragging a thumbnail
-to reorder it there works the same as in the tab, and you can now also drag sideways. Turning this
-off puts the thumbnail strip back in the tab exactly as before; closing the window directly does
-the same. You can also turn it on with a right-click directly on the thumbnail strip, without
+**Detach thumbnails into their own window** - moves the [Schematics](Schematics-tab) tab's
+thumbnails out of the tab and into their own resizable window, freeing up the space they used for
+the main image. They behave there exactly as in the tab: every thumbnail is fitted to the space you
+give it, so a small window shows them smaller and a maximized one shows them bigger, in several
+columns once there is room - never scrolled. Selecting or dragging a thumbnail to reorder it works
+the same too. Turning this off puts the thumbnails back in the tab; closing the window directly
+does the same. You can also turn it on with a right-click directly on the thumbnails, without
 coming here.
 
 **Remember thumbnail window settings per board** - only available while the above is ticked. Off

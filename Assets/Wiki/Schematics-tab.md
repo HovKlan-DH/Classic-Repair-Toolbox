@@ -10,8 +10,10 @@ The board, its components and its traces. This is where you will spend your time
   pan. On a trackpad, pinch to zoom and drag with two fingers to pan.
 * A drag with the **left** mouse button on an empty spot draws a trace line of your own - see
   "Drawing your own traces" below
-* The **thumbnails** down the side switch between schematic images and PCB photos. Drag a thumbnail
-  to reorder it; the order is remembered for that board.
+* The **thumbnails** at the side switch between schematic images and PCB photos. Every thumbnail is
+  shown at once, as large as the panel allows - widen the panel with the divider and they grow, and
+  once there is room they spread into several columns. Drag a thumbnail to reorder it, up, down or
+  sideways; the order is remembered for that board.
 * **Click a component** on the image to highlight it and open its popup - part number, datasheet
   links, local files, and any [oscilloscope baseline](Scope-baseline-folder) images. **Right-click** a
   component to highlight it, or take its highlight away, without opening the popup.
@@ -26,11 +28,10 @@ In the left-hand panel:
 * **Blink selected** makes the highlighted components blink, so they are easier to spot on a busy
   board.
 
-**Detach thumbnails into their own window** in [Configuration](Configuration-tab) moves this
-thumbnail strip out of the tab into its own resizable window, giving the main image more room.
-Selecting and reordering thumbnails there works the same as here, and since the window lays them
-out in a grid rather than a single column, you can drag sideways too. **Right-click anywhere in
-the thumbnail strip** for the same option without leaving this tab.
+**Detach thumbnails into their own window** in [Configuration](Configuration-tab) moves the
+thumbnails out of the tab into their own resizable window, giving the main image more room. They
+behave there exactly as they do here, fitted to whatever size you give the window. **Right-click
+anywhere in the thumbnails** for the same option without leaving this tab.
 
 ## The component popup
 

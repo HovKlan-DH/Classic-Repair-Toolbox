@@ -1359,15 +1359,9 @@ public partial class TabSchematics
     {
         bool isNavigationEnabled = !this.thisIsLabelEditorMode;
 
-        if (!isNavigationEnabled)
-        {
-            this.thisIsDraggingThumbnail = false;
-            this.thisThumbnailDragStartEventArgs = null;
-            this.ClearThumbnailDropPlaceholder();
-            this.HideThumbnailDragGhost();
-        }
-
-        this.SchematicsThumbnailList.IsEnabled = isNavigationEnabled;
+        // Locks every thumbnail gallery at once - in this tab, the detached window and beside the
+        // fullscreen view - since each follows the tab's lock and drops a drag on locking.
+        this.SetThumbnailNavigationLocked(!isNavigationEnabled);
         this.MainWindow?.SetSchematicsEditorNavigationEnabled(isNavigationEnabled);
         this.MainWindow?.SetSchematicsLabelEditorModeBannerVisible(this.thisIsLabelEditorMode);
         this.MainWindow?.UpdateComponentSearchTextBoxMode();

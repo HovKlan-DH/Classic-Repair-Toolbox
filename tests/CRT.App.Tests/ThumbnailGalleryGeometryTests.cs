@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Input;
 using Handlers.Geometry;
 
 namespace ClassicRepairToolbox.Tests;
@@ -266,5 +267,63 @@ public class ThumbnailGalleryGeometryTests
 
         Assert.Equal(3, shape.Columns);
         Assert.Equal(3, shape.Rows);
+    }
+
+    // The keyboard in a 7-cell, 3-column grid with a short last row:
+    //     0 1 2
+    //     3 4 5
+    //     6
+    // Left/Right read across rows, Up/Down move a whole row, Down with nothing straight below
+    // goes to the last cell, and the whole grid is one page.
+    [Theory]
+    [InlineData(2, NavigationDirection.Right, false, 3)]
+    [InlineData(3, NavigationDirection.Left, false, 2)]
+    [InlineData(0, NavigationDirection.Left, false, -1)]
+    [InlineData(6, NavigationDirection.Right, false, -1)]
+    [InlineData(4, NavigationDirection.Up, false, 1)]
+    [InlineData(1, NavigationDirection.Up, false, -1)]
+    [InlineData(1, NavigationDirection.Down, false, 4)]
+    [InlineData(4, NavigationDirection.Down, false, 6)]
+    [InlineData(5, NavigationDirection.Down, false, 6)]
+    [InlineData(3, NavigationDirection.Down, false, 6)]
+    [InlineData(6, NavigationDirection.Down, false, -1)]
+    [InlineData(4, NavigationDirection.First, false, 0)]
+    [InlineData(1, NavigationDirection.Last, false, 6)]
+    [InlineData(5, NavigationDirection.PageUp, false, 0)]
+    [InlineData(1, NavigationDirection.PageDown, false, 6)]
+    [InlineData(6, NavigationDirection.Next, false, -1)]
+    [InlineData(6, NavigationDirection.Next, true, 0)]
+    [InlineData(0, NavigationDirection.Previous, false, -1)]
+    [InlineData(0, NavigationDirection.Previous, true, 6)]
+    [InlineData(2, NavigationDirection.Next, false, 3)]
+    public void The_keyboard_moves_through_the_grid_as_it_is_laid_out(int from, NavigationDirection direction, bool wrap, int expected)
+    {
+        Assert.Equal(expected, ThumbnailGalleryGeometry.NeighbourIndex(from, 7, 3, direction, wrap));
+    }
+
+    // With nothing focused yet, a key starts at the first cell - End and Page Down at the last.
+    [Theory]
+    [InlineData(NavigationDirection.Down, 0)]
+    [InlineData(NavigationDirection.Right, 0)]
+    [InlineData(NavigationDirection.Last, 6)]
+    [InlineData(NavigationDirection.PageDown, 6)]
+    public void From_no_cell_the_keyboard_starts_at_an_end(NavigationDirection direction, int expected)
+    {
+        Assert.Equal(expected, ThumbnailGalleryGeometry.NeighbourIndex(-1, 7, 3, direction, wrap: false));
+    }
+
+    [Fact]
+    public void An_empty_grid_has_nowhere_for_the_keyboard_to_go()
+    {
+        Assert.Equal(-1, ThumbnailGalleryGeometry.NeighbourIndex(0, 0, 3, NavigationDirection.Down, wrap: false));
+        Assert.Equal(-1, ThumbnailGalleryGeometry.NeighbourIndex(-1, 0, 3, NavigationDirection.First, wrap: false));
+    }
+
+    // Before the first layout the grid has no columns yet; it is read as one column, a list.
+    [Fact]
+    public void A_grid_not_laid_out_yet_moves_as_one_column()
+    {
+        Assert.Equal(1, ThumbnailGalleryGeometry.NeighbourIndex(0, 3, 0, NavigationDirection.Down, wrap: false));
+        Assert.Equal(0, ThumbnailGalleryGeometry.NeighbourIndex(1, 3, 0, NavigationDirection.Up, wrap: false));
     }
 }

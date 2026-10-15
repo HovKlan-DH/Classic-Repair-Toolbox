@@ -4,6 +4,8 @@
   - Added "Bring my draft up to date" button in "Draft" tab, when data from online source changed after a draft was started
   - Added in "What changed" button in "Draft" tab, that it will show own changes, the published update and rows changed by both
   - Added "Open oscilloscope image folder" button in "Configuration" tab (only shown when oscilloscope tab is enabled)
+  - Changed thumbnail panel in "Schematics" tab will resize all thumbnails to fit as many as possible within the panel
+    - Exact same functionality as when detaching the thumbnail panel to its own window
   - Changed oscilloscope captures saved in its own "Oscilloscope images" folder, if not set previously
   - Changed button colors generally in whole application
     - `red` only for delete, discard and reject

@@ -54,10 +54,9 @@ public sealed class SchematicsThumbnailsWindowPerBoardTests : IDisposable
             UserSettings.SaveSchematicsThumbnailsWindowLayout("Maximized", 500, 700, 60, 40);
 
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab);
+            window.Initialize(tab);
 
             Assert.Equal(WindowState.Maximized, window.WindowState);
         });
@@ -75,10 +74,9 @@ public sealed class SchematicsThumbnailsWindowPerBoardTests : IDisposable
             UserSettings.SaveThumbnailWindowLayoutForBoard("C64/250407", "Normal", 350, 450, 15, 25);
 
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab, "C64/250407");
+            window.Initialize(tab, "C64/250407");
 
             Assert.Equal(WindowState.Normal, window.WindowState);
             Assert.Equal(350, window.Width);
@@ -96,10 +94,9 @@ public sealed class SchematicsThumbnailsWindowPerBoardTests : IDisposable
             UserSettings.SaveSchematicsThumbnailsWindowLayout("Maximized", 999, 999, 999, 999);
 
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab, "Plus4/310163");
+            window.Initialize(tab, "Plus4/310163");
 
             Assert.Equal(WindowState.Normal, window.WindowState);
             Assert.Equal(420.0, window.Width);
@@ -115,10 +112,9 @@ public sealed class SchematicsThumbnailsWindowPerBoardTests : IDisposable
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab, "C64/250407");
+            window.Initialize(tab, "C64/250407");
             window.Show();
 
             window.Close();
@@ -139,10 +135,9 @@ public sealed class SchematicsThumbnailsWindowPerBoardTests : IDisposable
         UiTest.Run(() =>
         {
             var tab = new TabSchematics();
-            var hostedList = tab.GetControl<ListBox>("SchematicsThumbnailList");
 
             var window = new SchematicsThumbnailsWindow();
-            window.Initialize(tab.currentThumbnails, hostedList, tab);
+            window.Initialize(tab);
             window.Show();
 
             window.Close();
