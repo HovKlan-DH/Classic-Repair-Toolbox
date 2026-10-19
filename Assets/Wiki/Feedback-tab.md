@@ -7,6 +7,24 @@ Send an issue, a suggestion or a question straight to the developer.
 Type your message under **Your feedback** and click **Send feedback**. That is the whole tab. The
 message is required; everything else is optional.
 
+**Pictures go straight into the text.** Paste a screenshot with Ctrl+V (Cmd+V on a Mac) or with
+right-click and **Paste**, or drop an image file onto the text, and it appears where the cursor is;
+the text carries on under it. Text you have selected is replaced by the picture, as by any paste.
+When what you copied is text as well as a picture - cells from a spreadsheet, say - the text is
+pasted. To take a picture out again, point at it and click its bin, or press Backspace at the start
+of the line under it. A file dropped onto the text that is not a picture is added to the
+attachments list below.
+
+Each picture is shown at the size it will have in the mail - its own size, but at most 980 pixels
+wide (or as wide as the box, when that is narrower). To make one smaller, point at it and drag one
+of the small squares on its corners; its size is written on it while you drag.
+
+The developer's mail shows each picture inside your text, where it sat. A mail can be up to about
+20 MB; a picture that no longer fits comes along as a file instead.
+
+If a dropped picture's file has been moved or deleted by the time you click **Send feedback**, CRT
+names the picture and sends nothing - remove it from the text, or drop it in again.
+
 **Email address** is optional - but without it there is no way to reply to you, so include it if you
 want an answer. If you are a maintainer signed in on the [Maintainer tab](Maintainer-tab), it is
 your account's address and cannot be changed here - also while that tab is turned off or hidden; sign

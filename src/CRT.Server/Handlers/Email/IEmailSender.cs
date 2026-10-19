@@ -50,6 +50,10 @@ namespace CRT.Server.Handlers.Email
     //                       WITHOUT its words, counted, and never retried; the person asks again.
     //   KeepUntilSent     - false where the caller tells the person it failed and they send again
     //                       (feedback): a copy going out later as well would arrive twice.
+    //   LinkedImages      - pictures the HTML shows from inside the mail ("cid:" + ContentId), sent
+    //                       as linked resources beside it (a feedback's pasted screenshots,
+    //                       2026-10-15). Never in the outbox: only a feedback mail carries any, and
+    //                       a feedback mail is never kept, so the outbox stores bodies alone.
     public sealed record EmailMessage(
         string ToAddress,
         string Subject,
@@ -57,7 +61,13 @@ namespace CRT.Server.Handlers.Email
         string? HtmlBody = null,
         string? ReplyToAddress = null,
         bool CarriesCredential = false,
-        bool KeepUntilSent = true);
+        bool KeepUntilSent = true,
+        IReadOnlyList<MailLinkedImage>? LinkedImages = null);
+
+    // A picture embedded in a mail's HTML: the id the HTML refers to it by, the file name it came
+    // under (its marker in the text), its media type and bytes, and the width to show it at - the
+    // one its sender gave it in CRT's field (2026-10-15); null shows it at its own width.
+    public sealed record MailLinkedImage(string ContentId, string FileName, string ContentType, byte[] Bytes, int? Width = null);
 
     // ###########################################################################################
     // Somebody to write to, and the name to greet them by (2026-10-03: "Hi {name}"). The name is

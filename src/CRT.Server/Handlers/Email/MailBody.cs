@@ -19,8 +19,10 @@ namespace CRT.Server.Handlers.Email
     // HTML-encoded on its way out. A template that wants bold says so with a style, never with "<b>".
     //
     // Inline styles only: several mail clients drop a <style> block, and none drops a style
-    // attribute. No images, no remote resources - a mail that loads nothing cannot be tracked and
-    // is not held back by a client that blocks remote content.
+    // attribute. No remote resources - a mail that loads nothing cannot be tracked and is not held
+    // back by a client that blocks remote content. The one kind of picture (a quote's, since
+    // 2026-10-15: a feedback's pasted screenshots) travels INSIDE the mail as a linked resource
+    // the HTML refers to by "cid:", which such a client shows.
     // ###########################################################################################
     public sealed class MailBody
     {
@@ -28,11 +30,49 @@ namespace CRT.Server.Handlers.Email
 
         private const string MonospaceStack = "Consolas, Menlo, 'Courier New', monospace";
 
-        // A mail's width, as a reading column. The feedback mail is wider: it carries log files.
+        // A mail's width, as a reading column. The feedback mail is wider: it carries log files, and
+        // pictures up to CRT's widest beside the quotation's panel (1020 since 2026-10-16, when the
+        // panel got its right padding).
         public const int StandardWidth = 640;
-        public const int WideWidth = 1000;
+        public const int WideWidth = 1020;
+
+        // ###########################################################################################
+        // *** A QUOTATION IS A PANEL THE MAIL DRAWS ITSELF (owner report, 2026-10-16). *** The
+        // "blue'ish panel" the owner saw behind the sender's words was Fastmail's own, painted behind
+        // a <blockquote> with words in it - and not behind one holding only a picture, so a feedback
+        // of pictures alone showed them bare. A quotation is therefore a plain <div> carrying the
+        // panel itself: Fastmail's colour (#E8ECF2, measured off the owner's screen), the grey bar on
+        // its left, padding all round - the same in every mail program, with words, pictures or both.
+        // A <div> also keeps a client from folding it away as "quoted text", which a feedback's own
+        // words never are.
+        // ###########################################################################################
+        public const int QuotePaddingLeft = 14;
+        public const int QuotePaddingRight = 12;
+        public const int QuoteBarWidth = 3;
+        public const string QuoteBackground = "#e8ecf2";
+
+        public static readonly string QuotePanelStart =
+            $"<div style=\"margin:0 0 14px 0; padding:6px {MailBody.QuotePaddingRight}px 6px {MailBody.QuotePaddingLeft}px; " +
+            $"border-left:{MailBody.QuoteBarWidth}px solid #c8c8c8; background-color:{MailBody.QuoteBackground}; border-radius:4px; color:#444444;\">";
+
+        public const string QuotePanelEnd = "</div>";
+
+        // ###########################################################################################
+        // The widest a picture in a wide mail's quotation is shown without being squeezed: the
+        // column, less the panel's padding and bar and the picture's own 1px border each side. CRT's
+        // Feedback tab offers no wider (CRT.Data's FeedbackComposition.MaxPictureWidth - a test
+        // holds the two together).
+        // ###########################################################################################
+        public const int WidestQuotedPicture =
+            MailBody.WideWidth - MailBody.QuotePaddingLeft - MailBody.QuotePaddingRight - MailBody.QuoteBarWidth - 2;
 
         private readonly List<Block> thisBlocks = [];
+
+        // The pictures the quotes show, handed to the message as its linked images - each ONCE,
+        // however often a quote shows it (code review, 2026-10-16): the HTML can refer to one
+        // "cid:" as often as it likes, but every linked image is a base64 copy in the mail.
+        private readonly List<MailLinkedImage> thisImages = [];
+        private readonly HashSet<string> thisImageIds = new(StringComparer.Ordinal);
 
         private readonly int thisMaxWidth;
 
@@ -51,10 +91,41 @@ namespace CRT.Server.Handlers.Email
         // Somebody's own words - a contributor's description, a maintainer's comment - set apart
         // and in italics, so they read as a quotation and not as the service speaking. `whenBlank`
         // stands in for nothing at all.
-        public MailBody Quote(string? text, string whenBlank)
+        public MailBody Quote(string? text, string whenBlank) =>
+            this.Quote([MailQuotePart.Words(text)], whenBlank);
+
+        // ###########################################################################################
+        // Somebody's own words with their pictures between them, as ONE quotation (owner report,
+        // 2026-10-15: a feedback's words and its pasted screenshots were a box each - the pictures
+        // belong inside the sender's text). Each run of words is trimmed and a blank one dropped;
+        // `whenBlank` stands in when nothing is left. The plain text names each picture in brackets
+        // - the marker CRT wrote for it - on a line of the quotation.
+        // ###########################################################################################
+        public MailBody Quote(IReadOnlyList<MailQuotePart> parts, string whenBlank)
         {
-            string trimmed = text?.Trim() ?? string.Empty;
-            this.thisBlocks.Add(new Block(BlockKind.Quote, [], trimmed.Length == 0 ? whenBlank : trimmed, []));
+            ArgumentNullException.ThrowIfNull(parts);
+
+            var kept = new List<MailQuotePart>();
+
+            foreach (MailQuotePart part in parts)
+            {
+                if (part.Image is { } image)
+                {
+                    kept.Add(part);
+
+                    if (this.thisImageIds.Add(image.ContentId))
+                        this.thisImages.Add(image);
+                }
+                else if (part.Text?.Trim() is { Length: > 0 } words)
+                {
+                    kept.Add(MailQuotePart.Words(words));
+                }
+            }
+
+            if (kept.Count == 0)
+                kept.Add(MailQuotePart.Words(whenBlank));
+
+            this.thisBlocks.Add(new Block(BlockKind.Quote, [], string.Empty, [], [.. kept]));
             return this;
         }
 
@@ -84,9 +155,11 @@ namespace CRT.Server.Handlers.Email
             return this;
         }
 
-        // The mail itself: the plain text (CRLF line ends, as SMTP wants) and the HTML.
+        // The mail itself: the plain text (CRLF line ends, as SMTP wants), the HTML, and the
+        // pictures the HTML shows.
         public EmailMessage ToMessage(string toAddress, string subject, string? replyToAddress = null) =>
-            new(toAddress, subject, this.ToText(), this.ToHtml(subject), replyToAddress);
+            new(toAddress, subject, this.ToText(), this.ToHtml(subject), replyToAddress,
+                LinkedImages: this.thisImages.Count == 0 ? null : this.thisImages.ToList());
 
         public string ToText()
         {
@@ -104,6 +177,11 @@ namespace CRT.Server.Handlers.Email
                         break;
 
                     case BlockKind.Quote:
+                        text.Append(string.Join("\r\n", block.Quote!
+                            .SelectMany(part => part.Image is { } image ? [$"[{image.FileName}]"] : MailBody.Lines(part.Text!))
+                            .Select(line => "    " + line)));
+                        break;
+
                     case BlockKind.Code:
                         text.Append(string.Join("\r\n", MailBody.Lines(block.Text).Select(line => "    " + line)));
                         break;
@@ -142,9 +220,38 @@ namespace CRT.Server.Handlers.Email
                         break;
 
                     case BlockKind.Quote:
-                        html.Append("<blockquote style=\"margin:0 0 14px 0; padding:6px 0 6px 14px; border-left:3px solid #c8c8c8; color:#444444;\"><i>")
-                            .Append(MailBody.LinesAsHtml(block.Text))
-                            .Append("</i></blockquote>\r\n");
+                        html.Append(MailBody.QuotePanelStart);
+
+                        foreach (MailQuotePart part in block.Quote!)
+                        {
+                            // A picture on a line of its own, at the width given it - as an attribute
+                            // too, which a client ignoring styles still reads - and never wider than
+                            // the quotation; its name is the alt text, for a client that does not show it.
+                            if (part.Image is { } image)
+                            {
+                                html.Append("<img src=\"cid:")
+                                    .Append(WebUtility.HtmlEncode(image.ContentId))
+                                    .Append("\" alt=\"")
+                                    .Append(WebUtility.HtmlEncode(image.FileName))
+                                    .Append('"');
+
+                                if (image.Width is int width)
+                                    html.Append(" width=\"").Append(width).Append('"');
+
+                                html.Append(" style=\"display:block; ");
+
+                                if (image.Width is int styled)
+                                    html.Append("width:").Append(styled).Append("px; ");
+
+                                html.Append("max-width:100%; height:auto; margin:8px 0; border:1px solid #dddddd;\">");
+                            }
+                            else
+                            {
+                                html.Append("<i>").Append(MailBody.LinesAsHtml(part.Text!)).Append("</i>");
+                            }
+                        }
+
+                        html.Append(MailBody.QuotePanelEnd).Append("\r\n");
                         break;
 
                     case BlockKind.Code:
@@ -206,7 +313,16 @@ namespace CRT.Server.Handlers.Email
             Preformatted
         }
 
-        private sealed record Block(BlockKind Kind, MailText[] Parts, string Text, MailText[][] Steps);
+        private sealed record Block(BlockKind Kind, MailText[] Parts, string Text, MailText[][] Steps, MailQuotePart[]? Quote = null);
+    }
+
+    // One piece of a quotation: a run of somebody's words, or a picture shown between them.
+    public sealed record MailQuotePart(string? Text, MailLinkedImage? Image)
+    {
+        public static MailQuotePart Words(string? text) => new(text ?? string.Empty, null);
+
+        public static MailQuotePart Picture(MailLinkedImage image) =>
+            new(null, image ?? throw new ArgumentNullException(nameof(image)));
     }
 
     public enum MailTextStyle

@@ -675,12 +675,14 @@ namespace CRT.Server.Handlers.Email
             string? senderAddress,
             string feedback,
             string? reference,
+            IReadOnlyList<MailLinkedImage> pictures,
             IReadOnlyList<FeedbackShownFile> shownFiles,
             IReadOnlyList<string> savedFiles,
             int savedFilesNotListed,
             IReadOnlyList<string> notes)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+            ArgumentNullException.ThrowIfNull(pictures);
             ArgumentNullException.ThrowIfNull(shownFiles);
             ArgumentNullException.ThrowIfNull(savedFiles);
             ArgumentNullException.ThrowIfNull(notes);
@@ -695,8 +697,8 @@ namespace CRT.Server.Handlers.Email
             if (!string.IsNullOrWhiteSpace(reference))
                 body.Paragraph("Internal reference: ", MailText.Bold(reference));
 
-            body.Paragraph(MailText.Bold("Feedback from user:"))
-                .Quote(feedback, "(no text given)");
+            body.Paragraph(MailText.Bold("Feedback from user:"));
+            EmailTemplates.FeedbackWords(body, feedback, pictures);
 
             foreach (FeedbackShownFile shown in shownFiles)
             {
@@ -725,6 +727,54 @@ namespace CRT.Server.Handlers.Email
             string subjectVersion = string.IsNullOrWhiteSpace(version) ? "Unknown" : version.Trim();
 
             return body.ToMessage(toAddress, $"Feedback from CRT {subjectVersion}", string.IsNullOrWhiteSpace(senderAddress) ? null : senderAddress);
+        }
+
+        // ###########################################################################################
+        // *** THE SENDER'S WORDS, WITH THEIR PICTURES WHERE THEY SAT (owner request, 2026-10-15). ***
+        // CRT's Feedback tab writes a marker line "[pasted-image-1.png]" where a picture was pasted
+        // or dropped into the text (CRT.Data's FeedbackComposition, the one rule), and the flow
+        // reads the picture of that name out of the zip. Such a line becomes the picture, INSIDE
+        // the one quotation of the sender's words (owner report, the same day: a box per run of
+        // words, the pictures between the boxes, read as separate pieces); a marker naming no
+        // picture the mail carries (too large, not in the zip, not an image) stays as written - the
+        // plain text keeps every marker either way.
+        //
+        // *** EACH PICTURE AT ITS FIRST LINE ONLY (code review, 2026-10-16). *** A line naming a
+        // picture already shown stays as written: the sender's text, not CRT's, can repeat a marker
+        // line, and every repeat put the picture into the mail again - 12,000 copies of one 14 MB
+        // picture from one anonymous feedback, far past the 20 MB the pictures' room keeps to.
+        // ###########################################################################################
+        private static void FeedbackWords(MailBody body, string feedback, IReadOnlyList<MailLinkedImage> pictures)
+        {
+            var parts = new List<MailQuotePart>();
+            var words = new List<string>();
+            var unshown = new Dictionary<string, MailLinkedImage>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (MailLinkedImage picture in pictures)
+                unshown.TryAdd(picture.FileName, picture);
+
+            void EndWords()
+            {
+                if (words.Count > 0)
+                    parts.Add(MailQuotePart.Words(string.Join("\n", words)));
+
+                words.Clear();
+            }
+
+            foreach (global::Handlers.DataHandling.FeedbackLine line in global::Handlers.DataHandling.FeedbackComposition.ReadLines(feedback))
+            {
+                if (line.PictureName is { } name && unshown.Remove(name, out MailLinkedImage? shown))
+                {
+                    EndWords();
+                    parts.Add(MailQuotePart.Picture(shown));
+                    continue;
+                }
+
+                words.Add(line.Text);
+            }
+
+            EndWords();
+            body.Quote(parts, "(no text given)");
         }
 
         // ###########################################################################################

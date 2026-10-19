@@ -4,6 +4,7 @@ using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using CRT.Server.Handlers.Email;
+using CRT.Server.Handlers.Submissions;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Feedback
@@ -15,6 +16,8 @@ namespace CRT.Server.Handlers.Feedback
     //
     //   - CRT's own text files in the zip (FeedbackContract.InlineFiles - the log above all) are
     //     SHOWN in the mail rather than saved;
+    //   - so are the pictures pasted or dropped into the text (2026-10-15, TryReadPicture), inside
+    //     the sender's quoted words where each sat - one the mail cannot show is saved instead;
     //   - every other file is saved under "<FeedbackRoot>/feedback-<16 random characters>", the
     //     folder name feedback has always been saved under, which the mail gives as its "Internal
     //     reference" - the project owner opens it from the network share, as before ("just keep
@@ -61,8 +64,37 @@ namespace CRT.Server.Handlers.Feedback
         // empty records would make (code review, 2026-10-04).
         public const int MaxZipEntries = 2 * FeedbackFlow.MaxSavedFiles;
 
-        // How many saved files the mail lists by name (200, as it always has).
+        // How many saved files the mail lists by name (200, as it always has) - as many of them as
+        // fit ListRoomBytes.
         public const int MaxListedFiles = 200;
+
+        // ###########################################################################################
+        // *** A FEEDBACK MAIL MAY BE UP TO 20 MB (owner decision, 2026-10-15: "Please allow for a
+        // total up to 20MB in the mail - I have received many mails with this size, and if my local
+        // Postfix should change something, then I can do that"). *** The text goes in first; the
+        // pictures CRT put into the text share what is left (PictureRoom), and one that no longer
+        // fits stays a marker line and is saved with the files. Postfix's own default is 10 MB, so
+        // its message_size_limit is raised to match (INSTALLING.md, "Mail") - a mail it refuses
+        // reaches nobody, and CRT says the server could not pass it on.
+        // ###########################################################################################
+        public const long MaxMailBytes = 20L * 1024 * 1024;
+
+        // What a mail carries besides its two text bodies and its pictures - headers, the HTML's
+        // frame, the notes, the list of saved files - kept free of both. The notes and the list
+        // take ListRoomBytes each in each body (ListWithin), transfer-encoded: 171 KB of it.
+        public const long MailOverheadBytes = 256L * 1024;
+
+        // What the notes, and the list of saved files, may each take in ONE body (MailBytes, with a
+        // line's markup). Both come after the pictures' room is fixed, from a zip the sender made:
+        // thousands of refused entries made megabytes of notes (code review, 2026-10-16).
+        public const long ListRoomBytes = 32L * 1024;
+
+        // What a picture takes in the mail besides its bytes, in the pictures' room's own units: its
+        // <img> in the HTML and its own part's headers - generously (code review, 2026-10-16).
+        public const long PictureOverheadBytes = 1024;
+
+        // A listed line's markup in the HTML: its paragraph's <p style="..."> and </p>.
+        private const long ListLineBytes = 40;
 
         public const string ReferencePrefix = "feedback-";
 
@@ -81,6 +113,21 @@ namespace CRT.Server.Handlers.Feedback
 
         public static string NewReference() =>
             FeedbackFlow.ReferencePrefix + RandomNumberGenerator.GetString(FeedbackFlow.ReferenceAlphabet, 16);
+
+        // ###########################################################################################
+        // How many bytes of pictures fit in a mail of `maxMailBytes` whose text takes
+        // `textBytesPerBody` in EACH of its two bodies (MailBytes). Everything travels transfer-
+        // encoded: the text counted as base64 (a third larger, the most the mail system makes of
+        // it), the pictures as base64 in lines of 76 (4/3, and 78/76 for the line ends). So the
+        // pictures, the text and MailOverheadBytes together come to no more than `maxMailBytes`.
+        // ###########################################################################################
+        public static long PictureRoom(long maxMailBytes, long textBytesPerBody)
+        {
+            long text = 2 * Math.Max(0, textBytesPerBody) * 4 / 3;
+            long left = maxMailBytes - FeedbackFlow.MailOverheadBytes - text;
+
+            return left <= 0 ? 0 : left * 3 / 4 * 76 / 78;
+        }
 
         // ###########################################################################################
         // What the saved feedback under `root` takes: every file in its "feedback-..." folders (not
@@ -122,6 +169,7 @@ namespace CRT.Server.Handlers.Feedback
             string version = FeedbackFlow.CleanVersion(form.Version);
 
             var shown = new List<FeedbackShownFile>();
+            var pictures = new List<MailLinkedImage>();
             var saved = new List<string>();
             var notes = new List<string>();
             string? reference = null;
@@ -136,8 +184,10 @@ namespace CRT.Server.Handlers.Feedback
 
                 try
                 {
+                    IReadOnlyDictionary<string, int> widths = FeedbackComposition.ReadPictureWidths(form.PictureWidths);
+
                     (reference, bytesSaved) = await Task.Run(
-                        () => FeedbackFlow.Unpack(form.AttachmentPath, destination, shown, saved, notes),
+                        () => FeedbackFlow.Unpack(form.AttachmentPath, destination, feedback, widths, shown, pictures, saved, notes),
                         CancellationToken.None);
 
                     // *** COUNTED BEFORE THE GATE OPENS (code review, 2026-10-04). *** Counted after
@@ -154,8 +204,14 @@ namespace CRT.Server.Handlers.Feedback
                 }
             }
 
-            if (feedback.Length == 0 && shown.Count == 0 && saved.Count == 0 && notes.Count == 0)
+            if (feedback.Length == 0 && shown.Count == 0 && pictures.Count == 0 && saved.Count == 0 && notes.Count == 0)
                 return new FeedbackOutcome(StatusCodes.Status400BadRequest, "There is nothing to send.", null, 0);
+
+            (List<string> listedFiles, int filesNotListed) = FeedbackFlow.ListWithin(saved, FeedbackFlow.MaxListedFiles, FeedbackFlow.ListRoomBytes);
+            (List<string> listedNotes, int notesNotListed) = FeedbackFlow.ListWithin(notes, int.MaxValue, FeedbackFlow.ListRoomBytes);
+
+            if (notesNotListed > 0)
+                listedNotes.Add($"... and {notesNotListed} more note(s) not listed.");
 
             EmailMessage message = EmailTemplates.Feedback(
                 destination.ToAddress,
@@ -163,10 +219,11 @@ namespace CRT.Server.Handlers.Feedback
                 sender,
                 feedback,
                 reference,
+                pictures,
                 shown,
-                saved.Take(FeedbackFlow.MaxListedFiles).ToList(),
-                Math.Max(0, saved.Count - FeedbackFlow.MaxListedFiles),
-                notes) with
+                listedFiles,
+                filesNotListed,
+                listedNotes) with
             {
                 // Not kept in the outbox (2026-10-13): CRT is told it failed and sends it again, so a
                 // copy going out later as well would arrive twice. See EmailMessage.
@@ -198,13 +255,17 @@ namespace CRT.Server.Handlers.Feedback
         }
 
         // ###########################################################################################
-        // Opens the zip, shows CRT's own files and saves the rest. Returns the reference (the folder's
-        // name) when anything was saved, with the bytes saved, and fills in what the mail says.
+        // Opens the zip, shows CRT's own files, reads the pictures the text names into the mail, and
+        // saves the rest. Returns the reference (the folder's name) when anything was saved, with
+        // the bytes saved, and fills in what the mail says.
         // ###########################################################################################
         private static (string? Reference, long BytesSaved) Unpack(
             string zipPath,
             FeedbackDestination destination,
+            string feedback,
+            IReadOnlyDictionary<string, int> widths,
             List<FeedbackShownFile> shown,
+            List<MailLinkedImage> pictures,
             List<string> saved,
             List<string> notes)
         {
@@ -233,6 +294,12 @@ namespace CRT.Server.Handlers.Feedback
             {
                 var toSave = new List<ZipArchiveEntry>();
                 long shownBytes = 0;
+
+                // The pictures the text names (marker lines), in the order it names them, and the
+                // zip's entry for each - read once the text's share of the mail is known.
+                IReadOnlyList<string> named = FeedbackComposition.MarkedNames(feedback);
+                var wanted = new HashSet<string>(named, StringComparer.OrdinalIgnoreCase);
+                var candidates = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
 
                 // The central directory is read here, not by OpenRead - so a damaged one throws
                 // here, and is the same note rather than a 500 (code review, 2026-10-04).
@@ -305,8 +372,38 @@ namespace CRT.Server.Handlers.Feedback
 
                         notes.Add($"{inline.Title} ({size}) was too large to show here - it is saved with the files instead.");
                     }
+                    else if (FeedbackFlow.IsPictureOfTheText(entry, wanted) && candidates.TryAdd(entry.Name, entry))
+                    {
+                        continue;
+                    }
 
                     toSave.Add(entry);
+                }
+
+                // ###################################################################################
+                // The pictures, in the order the text names them, share what the text leaves of the
+                // mail (PictureRoom) - so a picture early in the text is never pushed out by one
+                // further down. One shown is NOT saved as well (owner report, 2026-10-15: "they are
+                // inline so they should not be uploaded to server"), so a feedback of words and
+                // pictures alone leaves nothing behind - no folder, no reference. One not shown is
+                // saved, and the mail says why.
+                // ###################################################################################
+                long pictureRoom = FeedbackFlow.PictureRoom(destination.MaxMailBytes, FeedbackFlow.QuotedMailBytes(feedback) + shownBytes);
+
+                foreach (string name in named)
+                {
+                    if (!candidates.Remove(name, out ZipArchiveEntry? entry))
+                        continue;
+
+                    if (FeedbackFlow.TryReadPicture(entry, pictureRoom - FeedbackFlow.PictureOverheadBytes, pictures.Count, widths, notes) is { } picture)
+                    {
+                        pictures.Add(picture);
+                        pictureRoom -= picture.Bytes.Length + FeedbackFlow.PictureOverheadBytes;
+                    }
+                    else
+                    {
+                        toSave.Add(entry);
+                    }
                 }
 
                 if (toSave.Count == 0)
@@ -464,12 +561,82 @@ namespace CRT.Server.Handlers.Feedback
             }
         }
 
+        // ###########################################################################################
+        // *** A PICTURE IN THE TEXT IS SHOWN IN THE MAIL (owner request, 2026-10-15). *** CRT's
+        // Feedback tab puts a marker line "[pasted-image-1.png]" where a picture was pasted or
+        // dropped into the text, and the picture itself at the zip's root under that name
+        // (CRT.Data's FeedbackComposition, the one rule). Such an entry goes into the mail as a
+        // linked image, shown where its line sits at the width its sender gave it - when its
+        // contents are the image its name says (the submission rule, by signature - a zip is what
+        // the sender made it), and it fits what is left of the mail's room for pictures. One shown
+        // is not saved; one not shown is saved with the files and the mail says why, so it reaches
+        // somebody either way. Only an image's name comes here (IsPictureOfTheText).
+        // ###########################################################################################
+        private static MailLinkedImage? TryReadPicture(ZipArchiveEntry entry, long room, int index, IReadOnlyDictionary<string, int> widths, List<string> notes)
+        {
+            string name = entry.Name;
+
+            if (entry.Length > room)
+            {
+                notes.Add($"{name} ({FeedbackFlow.Megabytes(entry.Length)}) is too large to show in the mail - it is saved with the files instead.");
+                return null;
+            }
+
+            byte[]? bytes;
+
+            try
+            {
+                using Stream source = entry.Open();
+                using var target = new MemoryStream();
+                bytes = FeedbackFlow.CopyCapped(source, target, room) is null ? null : target.ToArray();
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException)
+            {
+                notes.Add($"{name} could not be read from the zip file ({ex.Message}) - it is not shown in the mail.");
+                return null;
+            }
+
+            if (bytes is null)
+            {
+                notes.Add($"{name} is too large to show in the mail - it is saved with the files instead.");
+                return null;
+            }
+
+            if (!SubmissionContentRules.Matches(name, bytes, out _))
+            {
+                notes.Add($"{name} is not the image its name says - it is saved with the files, not shown in the mail.");
+                return null;
+            }
+
+            // The type served for the same file from the review routes - the server's one allowlist.
+            return new MailLinkedImage(
+                $"picture-{index + 1}@crt-feedback", name, ReviewAssetLocator.ContentTypeFor(name), bytes,
+                widths.TryGetValue(name, out int width) ? width : null);
+        }
+
+        // ###########################################################################################
+        // An IMAGE at the zip's ROOT that the text names - a marker names a file name, never a path.
+        // Any other file a marker names is the sender's own attachment, saved as ever and never
+        // called a picture the mail could not show (code review, 2026-10-16: "[notes.txt]" on a
+        // line of its own did).
+        // ###########################################################################################
+        private static bool IsPictureOfTheText(ZipArchiveEntry entry, HashSet<string> wanted) =>
+            !entry.FullName.Contains('/') && !entry.FullName.Contains('\\') &&
+            wanted.Contains(entry.Name) && ImageFileTypes.IsDisplayable(entry.Name);
+
         // An entry's bytes into a NEW file, at most `limit` of them; null when there were more.
         private static long? CopyCapped(ZipArchiveEntry entry, string target, long limit)
         {
             using Stream source = entry.Open();
             using var file = new FileStream(target, FileMode.CreateNew, FileAccess.Write);
 
+            return FeedbackFlow.CopyCapped(source, file, limit);
+        }
+
+        // At most `limit` bytes of a stream into `target`, whatever the zip claims - how many, or
+        // null when there were more.
+        private static long? CopyCapped(Stream source, Stream target, long limit)
+        {
             var buffer = new byte[81920];
             long total = 0;
             int read;
@@ -481,7 +648,7 @@ namespace CRT.Server.Handlers.Feedback
                 if (total > limit)
                     return null;
 
-                file.Write(buffer, 0, read);
+                target.Write(buffer, 0, read);
             }
 
             return total;
@@ -543,6 +710,49 @@ namespace CRT.Server.Handlers.Feedback
             return Math.Max(plain, html);
         }
 
+        // ###########################################################################################
+        // What the sender's words take in EACH of the mail's bodies as its quotation draws them (code
+        // review, 2026-10-16): four spaces before every line of the plain text and "<br>" between the
+        // HTML's make a text of short lines far larger than typed, and the pictures were given the
+        // difference. Measured by drawing it, so the count is the renderer's own; a marker line is
+        // counted as words, a shown picture's own markup by PictureOverheadBytes.
+        // ###########################################################################################
+        internal static long QuotedMailBytes(string text)
+        {
+            ArgumentNullException.ThrowIfNull(text);
+
+            MailBody quoted = new MailBody(MailBody.WideWidth).Quote(text, string.Empty);
+
+            return Math.Max(Encoding.UTF8.GetByteCount(quoted.ToText()), Encoding.UTF8.GetByteCount(quoted.ToHtml(string.Empty)));
+        }
+
+        // ###########################################################################################
+        // The first of `items` the mail lists - at most `maxItems`, taking no more than `room` bytes
+        // in each body (MailBytes, with a line's markup) - and how many are left unlisted. The notes
+        // and the saved files' names come after the pictures' room is fixed, so they are held to a
+        // room of their own inside MailOverheadBytes (code review, 2026-10-16).
+        // ###########################################################################################
+        internal static (List<string> Listed, int NotListed) ListWithin(IReadOnlyList<string> items, int maxItems, long room)
+        {
+            ArgumentNullException.ThrowIfNull(items);
+
+            var listed = new List<string>();
+            long used = 0;
+
+            foreach (string item in items)
+            {
+                long bytes = FeedbackFlow.MailBytes(item) + FeedbackFlow.ListLineBytes;
+
+                if (listed.Count >= maxItems || used + bytes > room)
+                    break;
+
+                listed.Add(item);
+                used += bytes;
+            }
+
+            return (listed, items.Count - listed.Count);
+        }
+
         // The sender's address when it is one, else empty - it becomes the mail's Reply-To.
         internal static string CleanAddress(string? email)
         {
@@ -590,7 +800,8 @@ namespace CRT.Server.Handlers.Feedback
     // know the folder's name. MaxEntries is the most central directory records a zip may hold
     // (lowered by a test). UnpackGate lets one unpack run at a time, Saved hears how many bytes an
     // unpack kept (before the gate opens) and Removed the same bytes again when no mail names them
-    // and they are deleted - all FeedbackStorage's, the service's one copy.
+    // and they are deleted - all FeedbackStorage's, the service's one copy. MaxMailBytes is how
+    // large the mail may be (lowered by a test).
     // ###########################################################################################
     public sealed record FeedbackDestination(
         string Root,
@@ -603,7 +814,8 @@ namespace CRT.Server.Handlers.Feedback
         int MaxEntries = FeedbackFlow.MaxZipEntries,
         SemaphoreSlim? UnpackGate = null,
         Action<long>? Saved = null,
-        Action<long>? Removed = null);
+        Action<long>? Removed = null,
+        long MaxMailBytes = FeedbackFlow.MaxMailBytes);
 
     // What became of one feedback: the status and text CRT is answered with, and what was saved.
     public sealed record FeedbackOutcome(int StatusCode, string Answer, string? Reference, int FilesSaved)

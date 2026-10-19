@@ -21,6 +21,9 @@ namespace CRT.Server.Handlers.Feedback
         private const int MaximumEmailCharacters = 320;
         private const int MaximumVersionCharacters = 200;
 
+        // The pictures' widths - a few dozen characters a picture; read no further than this.
+        private const int MaximumPictureWidthsCharacters = 64_000;
+
         public static async Task<FeedbackFormRead> ReadAsync(
             string? contentType,
             Stream body,
@@ -46,6 +49,7 @@ namespace CRT.Server.Handlers.Feedback
             string email = string.Empty;
             string feedback = string.Empty;
             string version = string.Empty;
+            string pictureWidths = string.Empty;
             bool hasAttachment = false;
 
             try
@@ -85,6 +89,10 @@ namespace CRT.Server.Handlers.Feedback
                             version = await FeedbackFormReader.ReadTextAsync(section.Body, FeedbackFormReader.MaximumVersionCharacters, cancellationToken);
                             break;
 
+                        case FeedbackContract.PictureWidthsField:
+                            pictureWidths = await FeedbackFormReader.ReadTextAsync(section.Body, FeedbackFormReader.MaximumPictureWidthsCharacters, cancellationToken);
+                            break;
+
                         // Anything else is read past (the next section skips it).
                     }
                 }
@@ -96,7 +104,7 @@ namespace CRT.Server.Handlers.Feedback
                 return FeedbackFormRead.Refused(StatusCodes.Status400BadRequest, "The form could not be read.");
             }
 
-            return new FeedbackFormRead(new FeedbackForm(email, feedback, version, hasAttachment ? attachmentPath : null), 0, string.Empty);
+            return new FeedbackFormRead(new FeedbackForm(email, feedback, version, hasAttachment ? attachmentPath : null, pictureWidths), 0, string.Empty);
         }
 
         // Copies at most `limit` bytes; false when there was more.
@@ -142,8 +150,9 @@ namespace CRT.Server.Handlers.Feedback
         }
     }
 
-    // The form as read: the four values, the zip's path when one came - or why it was refused.
-    public sealed record FeedbackForm(string Email, string Feedback, string Version, string? AttachmentPath);
+    // The form as read: the four values, the zip's path when one came, and the pictures' widths as
+    // sent (FeedbackComposition reads them; empty from a CRT without pictures) - or why it was refused.
+    public sealed record FeedbackForm(string Email, string Feedback, string Version, string? AttachmentPath, string PictureWidths = "");
 
     public sealed record FeedbackFormRead(FeedbackForm? Form, int RefusalStatus, string RefusalReason)
     {

@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.FeedbackComposer">
+
+	<UserControl.Styles>
+		<!-- The composer's border IS the text box: the same brushes and thickness as a TextBox in
+		     this theme, the focused ones while any part has the focus (the Focused class). -->
+		<Style Selector="Border.Composer">
+			<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrush}" />
+			<Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThickness}" />
+		</Style>
+		<Style Selector="Border.Composer.Focused">
+			<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
+			<Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
+		</Style>
+
+		<!-- A part is a plain TextBox with no box of its own - no border, no background, no focus
+		     frame (Fluent gives a focused TextBox a thicker accent border; the composer's border
+		     shows the focus instead). The padding is Fluent's, so the text sits where it did. -->
+		<Style Selector="TextBox.Part">
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="CornerRadius" Value="0" />
+			<Setter Property="MinHeight" Value="0" />
+			<Setter Property="Padding" Value="10,5,6,5" />
+		</Style>
+		<Style Selector="TextBox.Part:pointerover /template/ Border#PART_BorderElement">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+		</Style>
+		<Style Selector="TextBox.Part:focus /template/ Border#PART_BorderElement">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+		</Style>
+		<Style Selector="TextBox.Part:pointerover">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="TextBox.Part:focus">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<!-- The bin on a picture, the attachments list's bin: shown while the pointer is over the
+		     picture. Never a tab stop - Tab goes from part to part. -->
+		<Style Selector="Button.RemovePicture">
+			<Setter Property="Foreground" Value="{DynamicResource Feedback_TrashIcon_Fg}" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Opacity" Value="0" />
+		</Style>
+		<Style Selector="Grid.Picture:pointerover Button.RemovePicture">
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+
+		<!-- A resize handle on each corner of a picture (2026-10-15): the focused text box's colour,
+		     shown while the pointer is over the picture or a corner is being dragged. -->
+		<Style Selector="Border.ResizeHandle">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
+			<Setter Property="BorderThickness" Value="1.5" />
+			<Setter Property="Opacity" Value="0" />
+		</Style>
+		<Style Selector="Grid.Picture:pointerover Border.ResizeHandle">
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+		<Style Selector="Grid.Picture.Resizing Border.ResizeHandle">
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+
+		<!-- The picture's size in the mail, written on it while a corner is dragged. -->
+		<Style Selector="Border.PictureSize">
+			<Setter Property="Background" Value="#CC000000" />
+		</Style>
+		<Style Selector="Border.PictureSize > TextBlock">
+			<Setter Property="Foreground" Value="White" />
+		</Style>
+	</UserControl.Styles>
+
+	<Border x:Name="Frame"
+	        Classes="Composer"
+	        Background="{DynamicResource Form_Bg}"
+	        CornerRadius="3">
+		<ScrollViewer x:Name="Scroller"
+		              HorizontalScrollBarVisibility="Disabled"
+		              VerticalScrollBarVisibility="Auto">
+			<!-- part, picture, part, picture, ..., part - FeedbackComposer keeps the two lists. -->
+			<StackPanel x:Name="Parts" />
+		</ScrollViewer>
+	</Border>
+</UserControl>

@@ -27,6 +27,18 @@ public sealed class FeedbackContractTests
         Assert.Equal("application/zip", zip.Headers.ContentType!.MediaType);
     }
 
+    // The pictures' widths (2026-10-15) are a part of their own only when there are any - a
+    // feedback without pictures is the form every CRT has always sent, part for part.
+    [Fact]
+    public void The_pictures_widths_are_a_part_only_when_there_are_any()
+    {
+        using MultipartFormDataContent none = FeedbackContract.BuildForm("a@example.com", "Text", "2.6.0", attachmentZip: null, pictureWidths: "  ");
+        using MultipartFormDataContent with = FeedbackContract.BuildForm("a@example.com", "Text", "2.6.0", attachmentZip: null, pictureWidths: "{\"a.png\":640}");
+
+        Assert.Equal(["email", "feedback", "version"], none.Select(part => part.Headers.ContentDisposition!.Name!.Trim('"')));
+        Assert.Equal(["email", "feedback", "version", "pictureWidths"], with.Select(part => part.Headers.ContentDisposition!.Name!.Trim('"')));
+    }
+
     // The old feedback address could answer 200 with a warning in the body, so the body is read as
     // well.
     [Theory]

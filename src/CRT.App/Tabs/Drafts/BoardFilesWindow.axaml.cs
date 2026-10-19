@@ -1264,15 +1264,7 @@ namespace CRT
         {
             e.Handled = true;
 
-            var items = e.DataTransfer.TryGetFiles();
-
-            return items == null
-                ? new List<string>()
-                : items
-                    .Select(item => item.TryGetLocalPath())
-                    .Where(path => !string.IsNullOrWhiteSpace(path))
-                    .Select(path => path!)
-                    .ToList();
+            return StorageItemPaths.LocalPaths(e.DataTransfer.TryGetFiles());
         }
 
         internal void ShowStatus(string message, bool isError = false)

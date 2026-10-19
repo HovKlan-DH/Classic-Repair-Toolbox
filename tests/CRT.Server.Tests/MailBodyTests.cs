@@ -1,4 +1,5 @@
 using CRT.Server.Handlers.Email;
+using Handlers.DataHandling;
 using Xunit;
 
 namespace CRT.Server.Tests
@@ -41,6 +42,135 @@ namespace CRT.Server.Tests
         public void A_blank_quote_says_what_stands_in_for_it()
         {
             Assert.Equal("    (no description given)", new MailBody().Quote("   ", "(no description given)").ToText());
+        }
+
+        // A quotation with a picture in it (a feedback's pasted screenshot, 2026-10-15, owner report
+        // the same day: inside the sender's words, not a box apart): ONE panel holding the
+        // words, the picture by its content id, and the words after it; the plain text names the
+        // picture in brackets - the marker CRT wrote - on a line of the quotation; the message
+        // carries the bytes as a linked image. The name is the sender's (a dropped file's), so it is
+        // encoded like every other run.
+        [Fact]
+        public void A_quote_holds_its_pictures_between_its_words()
+        {
+            var image = new MailLinkedImage("picture-1@crt-feedback", "shot <1>.png", "image/png", [1, 2, 3]);
+            MailBody body = new MailBody().Quote([MailQuotePart.Words("Above"), MailQuotePart.Picture(image), MailQuotePart.Words("Below")], "(none)");
+
+            Assert.Equal("    Above\r\n    [shot <1>.png]\r\n    Below", body.ToText());
+
+            string html = body.ToHtml("S");
+            Assert.Contains(
+                MailBody.QuotePanelStart + "<i>Above</i><img src=\"cid:picture-1@crt-feedback\" alt=\"shot &lt;1&gt;.png\"",
+                html,
+                StringComparison.Ordinal);
+            Assert.Contains("><i>Below</i>" + MailBody.QuotePanelEnd, html, StringComparison.Ordinal);
+            Assert.DoesNotContain("shot <1>.png", html, StringComparison.Ordinal);
+
+            EmailMessage message = body.ToMessage("to@example.com", "S");
+            Assert.Same(image, Assert.Single(message.LinkedImages!));
+        }
+
+        // Blank words around a picture are dropped, and a quotation left with nothing says what
+        // stands in for it - as the one-text quotation always has.
+        [Fact]
+        public void A_quote_drops_blank_words_and_says_what_stands_in_for_nothing()
+        {
+            var image = new MailLinkedImage("p@x", "a.png", "image/png", [1]);
+
+            Assert.Equal("    [a.png]", new MailBody().Quote([MailQuotePart.Words(" \n "), MailQuotePart.Picture(image), MailQuotePart.Words("")], "(none)").ToText());
+            Assert.Equal("    (none)", new MailBody().Quote([MailQuotePart.Words("  ")], "(none)").ToText());
+        }
+
+        // A picture given a width (its sender's, in CRT's field) is shown at it - as an attribute too,
+        // which a client ignoring styles still reads - and one without keeps its own.
+        [Fact]
+        public void A_picture_given_a_width_is_shown_at_it()
+        {
+            var sized = new MailLinkedImage("a@x", "a.png", "image/png", [1], Width: 480);
+            var natural = new MailLinkedImage("b@x", "b.png", "image/png", [1]);
+
+            string html = new MailBody().Quote([MailQuotePart.Picture(sized), MailQuotePart.Picture(natural)], "(none)").ToHtml("S");
+
+            Assert.Contains("<img src=\"cid:a@x\" alt=\"a.png\" width=\"480\" style=\"display:block; width:480px; max-width:100%;", html, StringComparison.Ordinal);
+            Assert.Contains("<img src=\"cid:b@x\" alt=\"b.png\" style=\"display:block; max-width:100%;", html, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // CRT's Feedback tab shows a picture no wider than FeedbackComposition.MaxPictureWidth, as
+        // the size it will have in the mail (2026-10-15): the mail's quotation must have room for
+        // that, or the field would promise a size the mail squeezes. One side moving alone fails here.
+        // ###########################################################################################
+        [Fact]
+        public void The_widest_picture_CRT_offers_fits_the_feedback_mails_quotation()
+        {
+            Assert.True(
+                MailBody.WidestQuotedPicture >= FeedbackComposition.MaxPictureWidth,
+                $"The quotation has room for {MailBody.WidestQuotedPicture} px; CRT offers {FeedbackComposition.MaxPictureWidth}.");
+            Assert.Contains(
+                $"padding:6px {MailBody.QuotePaddingRight}px 6px {MailBody.QuotePaddingLeft}px; border-left:{MailBody.QuoteBarWidth}px solid",
+                new MailBody(MailBody.WideWidth).Quote("x", "(none)").ToHtml("S"),
+                StringComparison.Ordinal);
+            Assert.Contains($"max-width:{MailBody.WideWidth}px", new MailBody(MailBody.WideWidth).Quote("x", "(none)").ToHtml("S"), StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // *** THE QUOTATION'S PANEL IS DRAWN BY THE MAIL ITSELF (owner report, 2026-10-16: a feedback of
+        // pictures alone showed them outside "that blue'ish panel"). *** The panel was never ours:
+        // Fastmail paints its own #E8ECF2 behind a <blockquote> with words in it, and not behind one
+        // holding only a picture - the HTML had the picture inside all along. So the quotation is a
+        // plain block carrying the panel's background itself, the same with words, pictures or both,
+        // in any mail program.
+        // ###########################################################################################
+        [Fact]
+        public void A_quotation_is_a_panel_the_mail_draws_itself_with_words_or_pictures_alone()
+        {
+            var image = new MailLinkedImage("p@x", "a.png", "image/png", [1]);
+
+            foreach (MailBody body in new[]
+            {
+                new MailBody().Quote("Only words", "(none)"),
+                new MailBody().Quote([MailQuotePart.Picture(image)], "(none)"),
+            })
+            {
+                string html = body.ToHtml("S");
+
+                Assert.DoesNotContain("<blockquote", html, StringComparison.Ordinal);
+                Assert.Contains("background-color:#e8ecf2;", html, StringComparison.Ordinal);
+            }
+        }
+
+        // The one-text quotation every other mail uses renders exactly as it did before pictures.
+        [Fact]
+        public void A_quote_of_words_alone_is_one_italic_run()
+        {
+            Assert.Contains(
+                MailBody.QuotePanelStart + "<i>Only words</i>" + MailBody.QuotePanelEnd,
+                new MailBody().Quote("Only words", "(none)").ToHtml("S"),
+                StringComparison.Ordinal);
+        }
+
+        // A picture shown more than once - in one quote or in two - is carried ONCE (code review,
+        // 2026-10-16): every linked image is a base64 copy in the mail, while the HTML may refer to
+        // one "cid:" as often as it likes.
+        [Fact]
+        public void A_picture_shown_more_than_once_is_carried_once()
+        {
+            var image = new MailLinkedImage("p@x", "a.png", "image/png", [1]);
+            var other = new MailLinkedImage("q@x", "b.png", "image/png", [2]);
+
+            MailBody body = new MailBody()
+                .Quote([MailQuotePart.Picture(image), MailQuotePart.Words("again"), MailQuotePart.Picture(image)], "(none)")
+                .Quote([MailQuotePart.Picture(other), MailQuotePart.Picture(image)], "(none)");
+
+            Assert.Equal([image, other], body.ToMessage("to@example.com", "S").LinkedImages!);
+            Assert.Equal(3, body.ToHtml("S").Split("cid:p@x").Length - 1);
+        }
+
+        // A mail without pictures carries none - the sender then adds no linked resources.
+        [Fact]
+        public void A_body_without_pictures_carries_no_linked_images()
+        {
+            Assert.Null(new MailBody().Paragraph("Words").ToMessage("to@example.com", "S").LinkedImages);
         }
 
         [Fact]
