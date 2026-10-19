@@ -5,7 +5,7 @@
 
 # Wiki pages waiting to be pasted
 
-**14 pages waiting.**
+**15 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
@@ -19,6 +19,7 @@
 | `Controlling-oscilloscope-with-keyboard.md` | Home > At the bench > Oscilloscope from keyboard |
 | `Development-tools-used.md` | Home > Project > Tools used |
 | `Drafts-tab.md` | Home > The tabs > Drafts |
+| `Feedback-tab.md` | Home > The tabs > Feedback |
 | `Maintainer-tab.md` | Home > The tabs > Maintainer |
 | `Oscilloscope-tab.md` | Home > The tabs > Oscilloscope |
 | `Schematics-tab.md` | Home > The tabs > Schematics |

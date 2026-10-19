@@ -38,6 +38,17 @@ namespace CRT
             {
                 this.ClearAttachmentsButton.IsEnabled = this._customAttachments.Count > 0;
             };
+
+            // A file dropped or pasted into the text that is not a picture is an attachment, as
+            // if picked with "Attach file(s)".
+            this.FeedbackText.FilesForAttachment += (_, paths) =>
+            {
+                foreach (string path in paths)
+                {
+                    if (!this._customAttachments.Contains(path))
+                        this._customAttachments.Add(path);
+                }
+            };
         }
 
         // ###########################################################################################
@@ -177,7 +188,6 @@ namespace CRT
         private async void OnSubmitClick(object? sender, RoutedEventArgs e)
         {
             string email = this.EmailTextBox.Text?.Trim() ?? string.Empty;
-            string feedback = this.FeedbackTextBox.Text?.Trim() ?? string.Empty;
 
             if (!string.IsNullOrEmpty(email) && !Regex.IsMatch(email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
             {
@@ -188,18 +198,11 @@ namespace CRT
             if (!this.thisShowsAccountAddress)
                 UserSettings.ContactEmail = email;
 
-            if (string.IsNullOrEmpty(feedback))
-            {
-                this.ShowStatus("Please provide a description of your issue or suggestion before sending", isError: true);
-                return;
-            }
-
             this.SubmitButton.IsEnabled = false;
             this.ShowStatus(string.Empty, isError: false);
 
             bool attachLogs = this.AttachLogfileCheckBox.IsChecked == true;
             bool attachConfig = this.AttachConfigsCheckBox.IsChecked == true;
-            var customPaths = this._customAttachments.ToList();
 
             try
             {
@@ -210,14 +213,38 @@ namespace CRT
                 // again - so a large attachment on a slow line is never cut off while it is visibly
                 // moving, and only two minutes with NOTHING happening gives up (WaitLimit).
                 // ###########################################################################################
-                WaitResult<(bool Success, int StatusCode, string ResponseBody)> waited = await BusyOverlay.RunAsync(
+                WaitResult<(bool Success, int StatusCode, string ResponseBody, string? NotSent)> waited = await BusyOverlay.RunAsync(
                     this,
                     CrtWaitWording.SendingFeedback,
-                    context =>
+                    async context =>
                     {
+                        // On the UI thread, under the overlay: what the field and the list hold
+                        // once a paste or a drop under way has put in what it brings.
+                        FeedbackToSend toSend = await this.GatherAsync();
+
+                        if (toSend.Text.Length == 0)
+                            return (false, 0, string.Empty, (string?)FeedbackWording.NothingWritten);
+
                         IProgress<string> progress = context.AsProgress();
-                        return Task.Run(() => this.ProcessAndSendFeedbackAsync(
-                            email, feedback, attachLogs, attachConfig, customPaths, progress, context.Token));
+
+                        return await Task.Run(async () =>
+                        {
+                            // A pasted picture's PNG may still be encoding - waited for here, off
+                            // the UI thread, under the overlay.
+                            (List<FeedbackZipPicture> ready, List<FeedbackPicture> unreadable) = await TabFeedback.PreparePicturesAsync(toSend.Pictures);
+
+                            // ###########################################################################
+                            // *** A PICTURE THAT CANNOT BE READ STOPS THE SEND (code review,
+                            // 2026-10-16). *** Left out, the send went on, CRT said "sent" and cleared
+                            // the field - and a picture the user could see never went. Nothing is
+                            // sent, and the user is told which picture to put right.
+                            // ###########################################################################
+                            if (unreadable.Count > 0)
+                                return (false, 0, string.Empty, (string?)TabFeedback.NotReadWording(unreadable));
+
+                            return await this.ProcessAndSendFeedbackAsync(
+                                email, toSend.Text, attachLogs, attachConfig, toSend.Attachments, ready, toSend.PictureWidths, progress, context.Token);
+                        });
                     });
 
                 // Nothing answers back from the feedback page, so whether it arrived cannot be
@@ -229,12 +256,16 @@ namespace CRT
                     return;
                 }
 
-                var (success, statusCode, responseBody) = waited.Value;
+                var (success, statusCode, responseBody, notSent) = waited.Value;
 
-                if (success)
+                if (notSent is not null)
+                {
+                    this.ShowStatus(notSent, isError: true);
+                }
+                else if (success)
                 {
                     this.ShowStatus(FeedbackWording.Sent, isError: false);
-                    this.FeedbackTextBox.Text = string.Empty;
+                    this.FeedbackText.Clear();
                     this._customAttachments.Clear();
                     this.AttachLogfileCheckBox.IsChecked = false;
                     this.AttachConfigsCheckBox.IsChecked = false;
@@ -282,9 +313,78 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // *** WHAT A SEND CARRIES IS READ ONCE EVERYTHING ON ITS WAY IN HAS ARRIVED (code review,
+        // 2026-10-16). *** Read at the click, a photo still decoding from a drop - or a file on its
+        // way to the attachments list - was left out, and the Clear after a successful send threw
+        // it away unsent. The text with a marker line where each picture sits (the pictures go in
+        // the zip under the names the markers say - FeedbackComposition), each picture's width in
+        // the mail as its corners left it, and the attachments.
+        // ###########################################################################################
+        internal async Task<FeedbackToSend> GatherAsync()
+        {
+            await this.FeedbackText.WhenSettledAsync();
+
+            return new FeedbackToSend(
+                this.FeedbackText.ComposeText().Trim(),
+                this.FeedbackText.Pictures,
+                this.FeedbackText.PictureWidthsText(),
+                this._customAttachments.ToList());
+        }
+
+        // ###########################################################################################
+        // The pictures as they go into the zip: a pasted one's PNG (encoded since the paste, waited
+        // for here), a dropped one by its file, STREAMED into the zip as an attachment is (code
+        // review, 2026-10-16: twenty 15 MB photos were read into memory together) - and those that
+        // cannot be had (a dropped file moved or deleted since, a PNG that could not be encoded),
+        // each logged. The caller sends nothing while there is one.
+        // ###########################################################################################
+        internal static async Task<(List<FeedbackZipPicture> Ready, List<FeedbackPicture> Unreadable)> PreparePicturesAsync(IReadOnlyList<FeedbackPicture> pictures)
+        {
+            var ready = new List<FeedbackZipPicture>();
+            var unreadable = new List<FeedbackPicture>();
+
+            foreach (FeedbackPicture picture in pictures)
+            {
+                if (picture.FilePath is { } path)
+                {
+                    if (File.Exists(path))
+                    {
+                        ready.Add(FeedbackZipPicture.FromFile(picture.Name, path));
+                    }
+                    else
+                    {
+                        Logger.Warning($"The picture [{picture.Name}] is no longer at [{path}] - the feedback is not sent");
+                        unreadable.Add(picture);
+                    }
+
+                    continue;
+                }
+
+                try
+                {
+                    ready.Add(FeedbackZipPicture.FromBytes(picture.Name, await picture.ReadBytesAsync()));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"The picture [{picture.Name}] could not be made ready for the feedback - [{ex.Message}]");
+                    unreadable.Add(picture);
+                }
+            }
+
+            return (ready, unreadable);
+        }
+
+        // What the user is told about pictures that cannot be had - dropped files and pasted
+        // pictures each in their own words.
+        internal static string NotReadWording(IEnumerable<FeedbackPicture> unreadable) =>
+            FeedbackWording.PicturesNotRead(
+                unreadable.Where(picture => picture.FilePath is not null).Select(picture => picture.Name).ToList(),
+                unreadable.Where(picture => picture.FilePath is null).Select(picture => picture.Name).ToList());
+
+        // ###########################################################################################
         // Collects local files, generates the zip stream, and performs the multipart POST request.
         // ###########################################################################################
-        private async Task<(bool Success, int StatusCode, string ResponseBody)> ProcessAndSendFeedbackAsync(string email, string feedbackText, bool attachLogs, bool attachConfig, List<string> customPaths, IProgress<string> progress, CancellationToken cancellationToken)
+        private async Task<(bool Success, int StatusCode, string ResponseBody, string? NotSent)> ProcessAndSendFeedbackAsync(string email, string feedbackText, bool attachLogs, bool attachConfig, List<string> customPaths, List<FeedbackZipPicture> pictures, string pictureWidths, IProgress<string> progress, CancellationToken cancellationToken)
         {
             var targetFiles = new List<(string Source, string ZipEntryName)>();
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -332,8 +432,10 @@ namespace CRT
                 }
             }
 
+            targetFiles = FeedbackZip.WithUniqueEntryNames(pictures.Select(picture => picture.Name), targetFiles);
+
             // 2. Count the total raw size of files for precise Zipping progress
-            long totalUncompressedBytes = 0;
+            long totalUncompressedBytes = pictures.Sum(FeedbackZip.SizeOf);
             foreach (var file in targetFiles)
             {
                 if (File.Exists(file.Source))
@@ -357,21 +459,39 @@ namespace CRT
                     progress.Report("Packaging payload... 100%");
                 }
 
+                void ReportAdded(int bytesAdded)
+                {
+                    currentUncompressedBytes += bytesAdded;
+                    if (totalUncompressedBytes > 0)
+                    {
+                        int percent = (int)((currentUncompressedBytes * 100) / totalUncompressedBytes);
+                        if (percent != lastReportedPercent)
+                        {
+                            lastReportedPercent = percent;
+                            progress.Report($"Packaging payload... {percent}%");
+                        }
+                    }
+                }
+
+                // The pictures first - the text's markers name them, and they are what the reader
+                // of the mail looks for. A dropped one whose file has gone since it was checked
+                // stops the send, as PreparePicturesAsync's check does.
+                foreach (FeedbackZipPicture picture in pictures)
+                {
+                    try
+                    {
+                        FeedbackZip.AddPicture(archive, picture, ReportAdded);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        Logger.Warning($"The picture [{picture.Name}] could not be read for the feedback - [{ex.Message}]");
+                        return (false, 0, string.Empty, FeedbackWording.PicturesNotRead([picture.Name], []));
+                    }
+                }
+
                 foreach (var file in targetFiles)
                 {
-                    AddFileToZipSafe(archive, file.Source, file.ZipEntryName, bytesAdded =>
-                    {
-                        currentUncompressedBytes += bytesAdded;
-                        if (totalUncompressedBytes > 0)
-                        {
-                            int percent = (int)((currentUncompressedBytes * 100) / totalUncompressedBytes);
-                            if (percent != lastReportedPercent)
-                            {
-                                lastReportedPercent = percent;
-                                progress.Report($"Packaging payload... {percent}%");
-                            }
-                        }
-                    });
+                    AddFileToZipSafe(archive, file.Source, file.ZipEntryName, ReportAdded);
                 }
             }
 
@@ -382,13 +502,13 @@ namespace CRT
 
             // Over the server's limit: said here, before a long upload ends in a refusal.
             if (hasAttachment && zipFile.Length > FeedbackContract.MaximumAttachmentBytes)
-                return (false, 413, $"Not sent: the zip is {zipFile.Length} bytes.");
+                return (false, 413, $"Not sent: the zip is {zipFile.Length} bytes.", null);
 
             // 4. The form - CRT.Data's FeedbackContract, the one the server reads. The zip is
             //    streamed from its file as it is sent.
             using var httpClient = new HttpClient { Timeout = AppConfig.UploadTimeout };
             using MultipartFormDataContent formContent = FeedbackContract.BuildForm(
-                email, feedbackText, AppConfig.AppDisplayVersionString, hasAttachment ? zipFile : null);
+                email, feedbackText, AppConfig.AppDisplayVersionString, hasAttachment ? zipFile : null, pictureWidths);
 
             // Track Upload progress - reported often enough to keep the wait alive on a slow line,
             // and saying what is waited for once the last byte is sent (ProgressableStreamContent).
@@ -404,7 +524,7 @@ namespace CRT
 
             string responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
-            return (FeedbackContract.IsSuccess((int)response.StatusCode, responseBody), (int)response.StatusCode, responseBody);
+            return (FeedbackContract.IsSuccess((int)response.StatusCode, responseBody), (int)response.StatusCode, responseBody, null);
         }
 
         // ###########################################################################################
@@ -418,7 +538,7 @@ namespace CRT
             try
             {
                 using var fs = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                var entry = archive.CreateEntry(entryName, FeedbackZip.CompressionFor(entryName));
                 using var entryStream = entry.Open();
 
                 if (onBytesRead != null)
@@ -442,4 +562,10 @@ namespace CRT
             }
         }
     }
+
+    // ###########################################################################################
+    // What one send carries, read at once (TabFeedback.GatherAsync): the text with its marker
+    // lines, the pictures, their widths in the mail, and the attachments' paths.
+    // ###########################################################################################
+    internal sealed record FeedbackToSend(string Text, IReadOnlyList<FeedbackPicture> Pictures, string PictureWidths, List<string> Attachments);
 }

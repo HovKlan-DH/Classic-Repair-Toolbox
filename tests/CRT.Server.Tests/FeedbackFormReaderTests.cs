@@ -75,6 +75,24 @@ namespace CRT.Server.Tests
             Assert.Equal(zip, await File.ReadAllBytesAsync(this.Incoming));
         }
 
+        // The pictures' widths (2026-10-15), as CRT sends them, are read as sent; without them the
+        // form reads as it always has.
+        [Fact]
+        public async Task The_pictures_widths_CRT_sends_are_read_and_their_absence_is_nothing()
+        {
+            string widths = FeedbackComposition.PictureWidthsText([("pasted-image-1.png", 640)]);
+
+            using MultipartFormDataContent with = FeedbackContract.BuildForm(string.Empty, "[pasted-image-1.png]", "3.1.0", attachmentZip: null, widths);
+            FeedbackFormRead read = await this.ReadAsync(with);
+
+            Assert.Equal(widths, read.Form!.PictureWidths);
+            Assert.Equal(640, FeedbackComposition.ReadPictureWidths(read.Form.PictureWidths)["pasted-image-1.png"]);
+
+            File.Delete(this.Incoming);
+            using MultipartFormDataContent without = FeedbackContract.BuildForm(string.Empty, "Words.", "3.1.0", attachmentZip: null);
+            Assert.Equal("", (await this.ReadAsync(without)).Form!.PictureWidths);
+        }
+
         [Fact]
         public async Task Without_files_attached_there_is_no_zip()
         {

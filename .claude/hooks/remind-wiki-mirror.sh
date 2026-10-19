@@ -82,7 +82,7 @@ src/CRT.App/Main/Main\.NoticeDemo=Commandline-parameters
 src/CRT.App/CRT\.App\.csproj|Classic-Repair-Toolbox\.slnx=Compiling-yourself-from-source Development-tools-used
 src/CRT.App/Handlers/Online/BoardView|src/CRT.App/Main/Main\.BoardViews|src/CRT.Data/BoardViewContract|src/CRT.Data/CheckInContract|src/CRT.Server/Handlers/Usage/ApiUsage=Information-collected
 src/CRT.App/Tabs/Maintainer/|src/CRT.App/Main/Main\.Maintainer|src/CRT.App/Handlers/Maintainer/=Maintainer-tab
-src/CRT.App/Tabs/Feedback/|src/CRT.App/Handlers/Data/FeedbackWording|src/CRT.Data/FeedbackContract=Feedback-tab
+src/CRT.App/Tabs/Feedback/|src/CRT.App/Handlers/Data/FeedbackWording|src/CRT.Data/FeedbackComposition|src/CRT.Data/FeedbackContract|src/CRT.Server/Handlers/Feedback/=Feedback-tab
 src/CRT.App/Main/Main\.UpdateRequired|src/CRT.App/Controls/UpdateRequiredOverlay|src/CRT.App/Handlers/Online/AppUpdateRequire=Drafts-tab Maintainer-tab
 "
 

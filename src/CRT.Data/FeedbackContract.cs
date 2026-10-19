@@ -32,6 +32,14 @@ namespace Handlers.DataHandling
         public const string AttachmentField = "attachmentFile";
         public const string AttachmentFileName = "FeedbackPayload.zip";
 
+        // ###########################################################################################
+        // The width each picture in the text is shown at in the mail (2026-10-15,
+        // FeedbackComposition.PictureWidthsText) - OPTIONAL, added beside the form every CRT has
+        // always sent: a CRT without pictures never sends it, and a server that does not know it
+        // reads past it and shows each picture at its own width.
+        // ###########################################################################################
+        public const string PictureWidthsField = "pictureWidths";
+
         // What the server answers, as the whole body, when the feedback was mailed.
         public const string SuccessAnswer = "Success";
 
@@ -69,9 +77,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The form CRT sends. `attachmentZip` is read from where it stands as the form is sent, and
         // disposed with the form; null, or a seekable stream with nothing left in it, sends no
-        // attachment part at all.
+        // attachment part at all. `pictureWidths` blank sends no widths part.
         // ###########################################################################################
-        public static MultipartFormDataContent BuildForm(string email, string feedback, string version, Stream? attachmentZip)
+        public static MultipartFormDataContent BuildForm(string email, string feedback, string version, Stream? attachmentZip, string? pictureWidths = null)
         {
             var form = new MultipartFormDataContent
             {
@@ -79,6 +87,9 @@ namespace Handlers.DataHandling
                 { new StringContent(feedback ?? string.Empty), FeedbackContract.FeedbackField },
                 { new StringContent(version ?? string.Empty), FeedbackContract.VersionField }
             };
+
+            if (!string.IsNullOrWhiteSpace(pictureWidths))
+                form.Add(new StringContent(pictureWidths), FeedbackContract.PictureWidthsField);
 
             bool empty = attachmentZip is null || (attachmentZip.CanSeek && attachmentZip.Length - attachmentZip.Position <= 0);
 

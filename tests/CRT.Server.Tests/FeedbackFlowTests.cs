@@ -50,8 +50,421 @@ namespace CRT.Server.Tests
             return path;
         }
 
-        private Task<FeedbackOutcome> SendAsync(string email, string feedback, string? zip = null, string version = "2.6.0", FeedbackDestination? destination = null) =>
-            FeedbackFlow.HandleAsync(new FeedbackForm(email, feedback, version, zip), destination ?? this.Destination(), this.thisMailer, CancellationToken.None);
+        private Task<FeedbackOutcome> SendAsync(string email, string feedback, string? zip = null, string version = "2.6.0", FeedbackDestination? destination = null, string pictureWidths = "") =>
+            FeedbackFlow.HandleAsync(new FeedbackForm(email, feedback, version, zip, pictureWidths), destination ?? this.Destination(), this.thisMailer, CancellationToken.None);
+
+        // A "PNG" of the given size: the signature the content check reads, then nothing.
+        private static byte[] LargePng(int size)
+        {
+            byte[] bytes = new byte[size];
+            FeedbackFlowTests.OnePixelPng.AsSpan(0, 8).CopyTo(bytes);
+            return bytes;
+        }
+
+        // A zip of binary entries - the pictures CRT's Feedback tab puts at the zip's root.
+        private string ZipFileOfBytes(params (string Name, byte[] Bytes)[] entries)
+        {
+            string path = Path.Combine(this.thisRoot, $"{Guid.NewGuid():N}.zip");
+
+            using (var stream = new FileStream(path, FileMode.CreateNew))
+            using (var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                foreach ((string name, byte[] bytes) in entries)
+                {
+                    using Stream entry = archive.CreateEntry(name).Open();
+                    entry.Write(bytes, 0, bytes.Length);
+                }
+            }
+
+            return path;
+        }
+
+        // A minimal valid 1x1 PNG - the signature check reads the first bytes of a real one.
+        private static readonly byte[] OnePixelPng =
+        [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+            0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+            0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+            0x42, 0x60, 0x82
+        ];
+
+        // ###########################################################################################
+        // *** PICTURES IN THE TEXT ARE SHOWN IN THE MAIL (owner request, 2026-10-15). *** The text
+        // names a picture by a marker line - what CRT's Feedback tab writes (CRT.Data's
+        // FeedbackComposition, used here too, so a marker CRT writes is one the server reads) - and
+        // the zip holds the file at its root: the HTML shows it INSIDE the sender's quoted words,
+        // where the line sat (owner report, 2026-10-15: each run of words was a box of its own,
+        // the pictures between the boxes), and the plain text keeps the marker. A picture the mail
+        // shows is NOT saved as well (owner report, the same day: "they are inline so they should
+        // not be uploaded to server") - the other files are, as before.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_picture_the_text_names_is_shown_inside_the_senders_quote_and_not_saved()
+        {
+            string marker = FeedbackComposition.Marker(FeedbackComposition.PastedName(1));
+            string zip = this.ZipFileOfBytes(("pasted-image-1.png", FeedbackFlowTests.OnePixelPng), ("notes.txt", "some notes"u8.ToArray()));
+
+            FeedbackOutcome outcome = await this.SendAsync("user@example.com", $"Black screen after warm-up:\n{marker}\nThe PLA gets hot.", zip);
+
+            Assert.True(outcome.IsDelivered);
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+
+            MailLinkedImage picture = Assert.Single(mail.LinkedImages ?? []);
+            Assert.Equal("pasted-image-1.png", picture.FileName);
+            Assert.Equal("image/png", picture.ContentType);
+            Assert.Equal(FeedbackFlowTests.OnePixelPng, picture.Bytes);
+
+            // ONE quote panel, holding the words above, the picture, and the words below - in that order.
+            string html = mail.HtmlBody!;
+            int quote = html.IndexOf(MailBody.QuotePanelStart, StringComparison.Ordinal);
+            int above = html.IndexOf("Black screen after warm-up:", StringComparison.Ordinal);
+            int image = html.IndexOf($"<img src=\"cid:{picture.ContentId}\"", StringComparison.Ordinal);
+            int below = html.IndexOf("The PLA gets hot.", StringComparison.Ordinal);
+            int quoteEnd = html.IndexOf(MailBody.QuotePanelEnd, below, StringComparison.Ordinal);
+            Assert.True(quote >= 0 && quote < above && above < image && image < below && below < quoteEnd, html);
+            Assert.Equal(1, FeedbackFlowTests.Count(html, MailBody.QuotePanelStart));
+
+            // The plain text reads as the sender typed it.
+            Assert.Contains("[pasted-image-1.png]", mail.Body, StringComparison.Ordinal);
+
+            // Shown, so not saved; the other file is.
+            Assert.False(File.Exists(Path.Combine(this.Folder, "pasted-image-1.png")));
+            Assert.True(File.Exists(Path.Combine(this.Folder, "notes.txt")));
+            Assert.Equal(1, outcome.FilesSaved);
+        }
+
+        // The owner's own feedback of 2026-10-15: words and two pasted screenshots, nothing else.
+        // Nothing is left to save, so there is no folder, no reference and no list of files.
+        [Fact]
+        public async Task Pictures_alone_save_nothing_so_the_mail_has_no_reference_and_no_files()
+        {
+            string zip = this.ZipFileOfBytes(("pasted-image-1.png", FeedbackFlowTests.OnePixelPng), ("pasted-image-2.png", FeedbackFlowTests.OnePixelPng));
+
+            FeedbackOutcome outcome = await this.SendAsync(
+                "user@example.com", "Hej Dennis.\n[pasted-image-1.png]\nDet går fint:\n[pasted-image-2.png]\n// Dennis", zip);
+
+            Assert.True(outcome.IsDelivered);
+            Assert.Null(outcome.Reference);
+            Assert.Equal(0, outcome.FilesSaved);
+            Assert.False(Directory.Exists(this.Folder));
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Equal(2, (mail.LinkedImages ?? []).Count);
+            Assert.Equal(1, FeedbackFlowTests.Count(mail.HtmlBody!, MailBody.QuotePanelStart));
+            Assert.DoesNotContain("Internal reference", mail.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("Files associated", mail.Body, StringComparison.Ordinal);
+        }
+
+        // A feedback of pictures and no words at all (owner report, 2026-10-16: then the pictures
+        // were not in the panel the sender's words have): the pictures are still the sender's
+        // quotation - one panel the mail draws itself (MailBody's QuotePanelStart, never a
+        // <blockquote>, which Fastmail painted only when it held words), holding them, and nothing
+        // standing in for missing words.
+        [Fact]
+        public async Task Pictures_without_any_words_are_shown_inside_the_senders_panel()
+        {
+            string zip = this.ZipFileOfBytes(("pasted-image-1.png", FeedbackFlowTests.OnePixelPng), ("pasted-image-2.png", FeedbackFlowTests.OnePixelPng));
+
+            await this.SendAsync("user@example.com", "[pasted-image-1.png]\n[pasted-image-2.png]", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            string html = mail.HtmlBody!;
+
+            int panel = html.IndexOf(MailBody.QuotePanelStart, StringComparison.Ordinal);
+            int first = html.IndexOf("<img", StringComparison.Ordinal);
+            int last = html.LastIndexOf("<img", StringComparison.Ordinal);
+            int panelEnd = html.IndexOf(MailBody.QuotePanelEnd, last, StringComparison.Ordinal);
+
+            Assert.True(panel >= 0 && panel < first && first < last && last < panelEnd, html);
+            Assert.Equal(1, FeedbackFlowTests.Count(html, MailBody.QuotePanelStart));
+            Assert.DoesNotContain("<blockquote", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("(no text given)", html, StringComparison.Ordinal);
+        }
+
+        private static int Count(string text, string value)
+        {
+            int count = 0;
+
+            for (int at = text.IndexOf(value, StringComparison.Ordinal); at >= 0; at = text.IndexOf(value, at + value.Length, StringComparison.Ordinal))
+                count++;
+
+            return count;
+        }
+
+        [Fact]
+        public async Task A_marker_naming_no_file_in_the_zip_stays_a_line_of_the_senders_text()
+        {
+            string zip = this.ZipFile(("notes.txt", "some notes"));
+
+            await this.SendAsync("user@example.com", "See:\n[pasted-image-1.png]\nmore", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Null(mail.LinkedImages);
+            Assert.DoesNotContain("<img", mail.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("[pasted-image-1.png]", mail.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("[pasted-image-1.png]", mail.Body, StringComparison.Ordinal);
+        }
+
+        // The mail may be so large; a picture past what the text leaves of it is saved and said, not
+        // shown - and the pictures before it still are.
+        [Fact]
+        public async Task A_picture_past_the_mails_room_is_saved_and_said_not_shown()
+        {
+            FeedbackDestination destination = this.Destination() with { MaxMailBytes = FeedbackFlow.MailOverheadBytes + 300 * 1024 };
+            string zip = this.ZipFileOfBytes(("pasted-image-1.png", FeedbackFlowTests.OnePixelPng), ("pasted-image-2.png", FeedbackFlowTests.LargePng(400 * 1024)));
+
+            await this.SendAsync("user@example.com", "[pasted-image-1.png]\n[pasted-image-2.png]", zip, destination: destination);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            MailLinkedImage shown = Assert.Single(mail.LinkedImages ?? []);
+            Assert.Equal("pasted-image-1.png", shown.FileName);
+            Assert.Contains("pasted-image-2.png", mail.Body, StringComparison.Ordinal);
+            Assert.Contains("too large to show in the mail", mail.Body, StringComparison.Ordinal);
+
+            // The one the mail could not show is kept, or it would reach nobody; the shown one is not.
+            Assert.True(File.Exists(Path.Combine(this.Folder, "pasted-image-2.png")));
+            Assert.False(File.Exists(Path.Combine(this.Folder, "pasted-image-1.png")));
+        }
+
+        // The pictures get the mail's room in the order the TEXT names them, not the zip's order - a
+        // picture early in the text is never pushed out by one further down.
+        [Fact]
+        public async Task The_pictures_get_the_mails_room_in_the_order_the_text_names_them()
+        {
+            FeedbackDestination destination = this.Destination() with { MaxMailBytes = FeedbackFlow.MailOverheadBytes + 640 * 1024 };
+            string zip = this.ZipFileOfBytes(("small.png", FeedbackFlowTests.LargePng(100 * 1024)), ("big.png", FeedbackFlowTests.LargePng(400 * 1024)));
+
+            await this.SendAsync("user@example.com", "[big.png]\n[small.png]", zip, destination: destination);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Equal("big.png", Assert.Single(mail.LinkedImages ?? []).FileName);
+            Assert.True(File.Exists(Path.Combine(this.Folder, "small.png")));
+        }
+
+        // A width the sender gave a picture in CRT's field is its width in the mail.
+        [Fact]
+        public async Task A_picture_is_shown_at_the_width_its_sender_gave_it()
+        {
+            string zip = this.ZipFileOfBytes(("pasted-image-1.png", FeedbackFlowTests.OnePixelPng), ("pasted-image-2.png", FeedbackFlowTests.OnePixelPng));
+
+            await this.SendAsync(
+                "user@example.com", "[pasted-image-1.png]\n[pasted-image-2.png]", zip,
+                pictureWidths: FeedbackComposition.PictureWidthsText([("pasted-image-1.png", 480)]));
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Equal([480, null], (mail.LinkedImages ?? []).Select(picture => picture.Width));
+            Assert.Contains("width=\"480\"", mail.HtmlBody, StringComparison.Ordinal);
+            Assert.Equal(1, FeedbackFlowTests.Count(mail.HtmlBody!, "width=\""));
+        }
+
+        // ###########################################################################################
+        // *** THE WHOLE MAIL STAYS WITHIN ITS LIMIT (owner decision, 2026-10-15: up to 20 MB). *** The
+        // pictures' room, base64-encoded in lines, plus both text bodies base64-encoded, plus the
+        // overhead, never comes to more than the limit - and comes close to it.
+        // ###########################################################################################
+        [Theory]
+        [InlineData(0)]
+        [InlineData(1024)]
+        [InlineData(3 * 1024 * 1024)]
+        [InlineData(3 * 1024 * 1024 + 100_000)]
+        public void The_pictures_room_keeps_the_whole_mail_within_its_limit(long textBytesPerBody)
+        {
+            long room = FeedbackFlow.PictureRoom(FeedbackFlow.MaxMailBytes, textBytesPerBody);
+            long pictures = room * 4 / 3 * 78 / 76;
+            long text = 2 * textBytesPerBody * 4 / 3;
+
+            Assert.True(pictures + text + FeedbackFlow.MailOverheadBytes <= FeedbackFlow.MaxMailBytes);
+            Assert.True(pictures + text + FeedbackFlow.MailOverheadBytes > FeedbackFlow.MaxMailBytes - 16);
+        }
+
+        [Fact]
+        public void A_mail_of_words_alone_leaves_the_pictures_about_fourteen_MB_and_more_text_leaves_less()
+        {
+            Assert.InRange(FeedbackFlow.PictureRoom(FeedbackFlow.MaxMailBytes, 0), 14L * 1024 * 1024, 15L * 1024 * 1024);
+            Assert.True(FeedbackFlow.PictureRoom(FeedbackFlow.MaxMailBytes, 3 * 1024 * 1024) < FeedbackFlow.PictureRoom(FeedbackFlow.MaxMailBytes, 0));
+            Assert.Equal(0, FeedbackFlow.PictureRoom(FeedbackFlow.MaxMailBytes, FeedbackFlow.MaxMailBytes));
+        }
+
+        // A zip is what the sender made it: a file named as a picture whose bytes are not one is
+        // never put into the mail as an image.
+        [Fact]
+        public async Task A_file_named_as_a_picture_whose_contents_are_not_one_is_not_shown()
+        {
+            string zip = this.ZipFileOfBytes(("pasted-image-1.png", "<html>not a picture</html>"u8.ToArray()));
+
+            await this.SendAsync("user@example.com", "[pasted-image-1.png]", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Null(mail.LinkedImages);
+            Assert.Contains("not the image its name says", mail.Body, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(this.Folder, "pasted-image-1.png")));
+        }
+
+        // Only a file at the zip's ROOT is a picture of the text; a marker names a file name, never a path.
+        [Fact]
+        public async Task A_picture_in_a_folder_of_the_zip_is_not_the_texts_picture()
+        {
+            string zip = this.ZipFileOfBytes(("board/pasted-image-1.png", FeedbackFlowTests.OnePixelPng));
+
+            await this.SendAsync("user@example.com", "[pasted-image-1.png]", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Null(mail.LinkedImages);
+            Assert.True(File.Exists(Path.Combine(this.Folder, "board", "pasted-image-1.png")));
+        }
+
+        // A feedback without markers - every CRT released before pictures - is mailed as before.
+        [Fact]
+        public async Task A_feedback_without_markers_carries_no_pictures()
+        {
+            string zip = this.ZipFileOfBytes(("shot.png", FeedbackFlowTests.OnePixelPng));
+
+            await this.SendAsync("user@example.com", "Just words.", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Null(mail.LinkedImages);
+            Assert.DoesNotContain("<img", mail.HtmlBody, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(this.Folder, "shot.png")));
+        }
+
+        // ###########################################################################################
+        // *** A MARKER LINE REPEATED SHOWS ITS PICTURE ONCE (code review, 2026-10-16). *** The text
+        // is the sender's, and every repeat of a marker line put the picture into the mail again -
+        // 12,000 lines naming one 14 MB picture made SmtpClient encode 220 GB. The picture is shown
+        // at its first line and carried once; a later line naming it stays as written.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_marker_line_repeated_shows_its_picture_once_and_carries_it_once()
+        {
+            string zip = this.ZipFileOfBytes(("a.png", FeedbackFlowTests.OnePixelPng));
+
+            await this.SendAsync("user@example.com", "[a.png]\nagain:\n[a.png]\n[A.PNG]", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Single(mail.LinkedImages ?? []);
+            Assert.Equal(1, FeedbackFlowTests.Count(mail.HtmlBody!, "<img"));
+            Assert.Contains("[a.png]", mail.HtmlBody, StringComparison.Ordinal);
+            Assert.Contains("[A.PNG]", mail.HtmlBody, StringComparison.Ordinal);
+            Assert.Equal(3, FeedbackFlowTests.Count(mail.Body, "[a.png]") + FeedbackFlowTests.Count(mail.Body, "[A.PNG]"));
+        }
+
+        // A line naming the sender's own attachment that is no picture refers to it: the file is
+        // saved as ever, and the mail never calls it a picture it could not show.
+        [Fact]
+        public async Task A_marker_naming_a_file_that_is_no_picture_leaves_it_an_attachment()
+        {
+            string zip = this.ZipFile(("notes.txt", "some notes"));
+
+            await this.SendAsync("user@example.com", "My notes:\n[notes.txt]", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.Null(mail.LinkedImages);
+            Assert.DoesNotContain("picture", mail.Body, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("[notes.txt]", mail.Body, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(this.Folder, "notes.txt")));
+        }
+
+        // Each picture's type is the one the review routes serve the same file as - the server's
+        // one allowlist (ReviewAssetLocator).
+        [Theory]
+        [InlineData("shot.png")]
+        [InlineData("photo.JPEG")]
+        public async Task A_pictures_type_is_the_one_the_server_serves_it_as(string name)
+        {
+            byte[] bytes = name.EndsWith(".png", StringComparison.Ordinal)
+                ? FeedbackFlowTests.OnePixelPng
+                : [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01];
+            string zip = this.ZipFileOfBytes((name, bytes));
+
+            await this.SendAsync("user@example.com", $"[{name}]", zip);
+
+            MailLinkedImage picture = Assert.Single(Assert.Single(this.thisMailer.Sent).LinkedImages ?? []);
+            Assert.Equal(CRT.Server.Handlers.Submissions.ReviewAssetLocator.ContentTypeFor(name), picture.ContentType);
+            Assert.StartsWith("image/", picture.ContentType, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // *** THE TEXT'S SHARE OF THE MAIL IS WHAT THE MAIL MAKES OF IT (code review, 2026-10-16). ***
+        // The quotation indents every line by four spaces in the plain text and ends it with "<br>"
+        // in the HTML, so a text of short lines is far larger in the mail than as typed - and the
+        // pictures were given the difference: a picture as large as the room counted from the typed
+        // text took the whole mail past its limit.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_text_of_many_short_lines_leaves_the_pictures_only_what_the_mail_leaves()
+        {
+            string feedback = string.Join("\n", Enumerable.Repeat("a", 50_000)) + "\n[big.png]";
+            FeedbackDestination destination = this.Destination() with { MaxMailBytes = FeedbackFlow.MailOverheadBytes + 1024 * 1024 };
+            long roomAsTyped = FeedbackFlow.PictureRoom(destination.MaxMailBytes, FeedbackFlow.MailBytes(feedback));
+            string zip = this.ZipFileOfBytes(("big.png", FeedbackFlowTests.LargePng((int)roomAsTyped - 2048)));
+
+            await this.SendAsync("user@example.com", feedback, zip, destination: destination);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.True(FeedbackFlowTests.MailSize(mail) <= destination.MaxMailBytes, $"{FeedbackFlowTests.MailSize(mail)} > {destination.MaxMailBytes}");
+        }
+
+        // A zip of thousands of entries the server will not save made a note each - written after the
+        // pictures' room was fixed, megabytes of them. The mail lists them within a room of their
+        // own and says how many more there were.
+        [Fact]
+        public async Task Thousands_of_notes_are_listed_within_their_room_and_the_rest_counted()
+        {
+            var entries = Enumerable.Range(0, 3000).Select(i => ($"../escaped-{i}.txt", "evil")).Append(("fine.txt", "ok")).ToArray();
+            string zip = this.ZipFile(entries);
+
+            await this.SendAsync("user@example.com", "Words.", zip);
+
+            EmailMessage mail = Assert.Single(this.thisMailer.Sent);
+            Assert.InRange(Encoding.UTF8.GetByteCount(mail.Body), 1, 64 * 1024);
+            Assert.InRange(Encoding.UTF8.GetByteCount(mail.HtmlBody!), 1, 96 * 1024);
+            Assert.Contains("more note(s) not listed", mail.Body, StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(this.Folder, "fine.txt")));
+        }
+
+        // The text's share is measured as the quotation draws it - never less than either body takes.
+        [Theory]
+        [InlineData("One line.")]
+        [InlineData("a\nb\nc\n\n\nd")]
+        [InlineData("\"quoted\" <b>&amp;</b>\r\nsecond")]
+        public void The_texts_share_is_what_its_quotation_takes_in_either_body(string text)
+        {
+            MailBody quoted = new MailBody(MailBody.WideWidth).Quote(text, string.Empty);
+            long share = FeedbackFlow.QuotedMailBytes(text);
+
+            Assert.True(share >= Encoding.UTF8.GetByteCount(quoted.ToText()));
+            Assert.True(share >= Encoding.UTF8.GetByteCount(quoted.ToHtml(string.Empty)));
+            Assert.True(share >= FeedbackFlow.MailBytes(text));
+        }
+
+        // A list goes in, in order, while it fits its count and its room; the rest is counted.
+        [Fact]
+        public void A_list_is_listed_while_it_fits_and_the_rest_counted()
+        {
+            string[] items = ["first", "second", "third"];
+
+            AssertListed(["first", "second", "third"], 0, FeedbackFlow.ListWithin(items, 10, 10_000));
+            AssertListed(["first", "second"], 1, FeedbackFlow.ListWithin(items, 2, 10_000));
+            AssertListed(["first"], 2, FeedbackFlow.ListWithin(items, 10, FeedbackFlow.MailBytes("first") + 40));
+            AssertListed([], 3, FeedbackFlow.ListWithin(items, 10, 0));
+
+            // A name full of what HTML encodes counts as the mail carries it.
+            string quotes = new('"', 1000);
+            Assert.Equal(1, FeedbackFlow.ListWithin([quotes], 10, 2000).NotListed);
+        }
+
+        private static void AssertListed(string[] listed, int notListed, (List<string> Listed, int NotListed) list)
+        {
+            Assert.Equal(listed, list.Listed);
+            Assert.Equal(notListed, list.NotListed);
+        }
+
+        // What a mail comes to as it is sent: both bodies base64-encoded, and each picture too, in
+        // lines of 76, with about a kilobyte of its own part's headers.
+        private static long MailSize(EmailMessage mail) =>
+            (Encoding.UTF8.GetByteCount(mail.Body) + Encoding.UTF8.GetByteCount(mail.HtmlBody ?? string.Empty)) * 4L / 3 +
+            (mail.LinkedImages ?? []).Sum(picture => picture.Bytes.Length * 4L / 3 * 78 / 76 + 1024);
 
         [Fact]
         public async Task Text_alone_is_mailed_to_the_owner_from_the_service_with_reply_to_the_sender()

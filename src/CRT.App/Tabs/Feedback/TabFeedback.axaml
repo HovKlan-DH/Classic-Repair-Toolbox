@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CRT"
              x:Class="CRT.TabFeedback">
 	<Grid RowDefinitions="Auto,*,Auto,Auto,Auto" Margin="16">
 
@@ -44,36 +45,13 @@
                 FontSize="12" />
         </StackPanel>
 
-        <!-- Feedback Area -->
+        <!-- Feedback Area: the text with pictures in it (FeedbackComposer, 2026-10-15) - a paste or
+             a drop puts a picture where the caret is; what is sent is plain text with a marker line
+             per picture, the pictures in the zip. -->
         <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,0,0,16">
             <TextBlock Grid.Row="0" Text="Your feedback:" FontSize="12" Margin="0,0,0,4" />
-            <TextBox Grid.Row="1" x:Name="FeedbackTextBox"
-                     Background="{DynamicResource Form_Bg}"
-                     Foreground="{DynamicResource Form_Fg}"
-                     AcceptsReturn="True" TextWrapping="Wrap"
-                     PlaceholderText="Describe your issue, suggestion or question...">
-                <TextBox.Styles>
-
-                    <!-- Prevent Background and Border changes on Hover -->
-                    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
-                        <Setter Property="Background" Value="{DynamicResource Form_Bg}" />
-                    </Style>
-
-                    <!-- Prevent Background changes on Click/Focus -->
-                    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                        <Setter Property="Background" Value="{DynamicResource Form_Bg}" />
-                    </Style>
-
-                    <!-- Prevent Foreground changes on Hover and Focus -->
-                    <Style Selector="TextBox:pointerover">
-                        <Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
-                    </Style>
-
-                    <Style Selector="TextBox:focus">
-                        <Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
-                    </Style>
-                </TextBox.Styles>
-            </TextBox>
+            <local:FeedbackComposer Grid.Row="1" x:Name="FeedbackText"
+                                    PlaceholderText="Describe your issue, suggestion or question. A screenshot can be pasted or dropped straight into the text." />
         </Grid>
 
 		<!-- Attachments Configuration -->

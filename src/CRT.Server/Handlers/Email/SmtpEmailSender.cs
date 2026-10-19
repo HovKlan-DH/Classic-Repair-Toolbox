@@ -76,8 +76,21 @@ namespace CRT.Server.Handlers.Email
                 // ###########################################################################################
                 if (!string.IsNullOrEmpty(message.HtmlBody))
                 {
-                    mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
-                        message.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html));
+                    AlternateView html = AlternateView.CreateAlternateViewFromString(
+                        message.HtmlBody, Encoding.UTF8, MediaTypeNames.Text.Html);
+
+                    // A feedback's pictures ride inside the mail as linked resources the HTML
+                    // refers to by "cid:" (2026-10-15). The view owns them, and the message the view.
+                    foreach (MailLinkedImage image in message.LinkedImages ?? [])
+                    {
+                        html.LinkedResources.Add(new LinkedResource(new MemoryStream(image.Bytes), image.ContentType)
+                        {
+                            ContentId = image.ContentId,
+                            TransferEncoding = TransferEncoding.Base64
+                        });
+                    }
+
+                    mail.AlternateViews.Add(html);
                 }
 
                 mail.To.Add(message.ToAddress);

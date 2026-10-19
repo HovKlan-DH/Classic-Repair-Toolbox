@@ -439,6 +439,18 @@ echo "test" | sendmail -v you@example.com
 Make sure the message actually **arrives**, and not in spam. A verification or invitation mail that
 lands in spam looks exactly like a broken service.
 
+**A feedback mail can be up to 20 MB** (server 3.4.0: the pictures pasted into the text are shown in
+it - `FeedbackFlow.MaxMailBytes`). Postfix refuses anything over its `message_size_limit`, 10 MB by
+default, and a refused feedback reaches nobody (CRT says the server could not pass it on). Raise it
+with room to spare, and check the mailbox the feedback goes to takes a mail that size too:
+
+```bash
+postconf message_size_limit                          # 10240000 = the default, too small
+sudo postconf -e message_size_limit=26214400         # 25 MB
+sudo systemctl reload postfix
+postconf message_size_limit                          # 26214400
+```
+
 ## 10. The first administrator
 
 Nothing in the service or in CRT can make an administrator - an endpoint that could would be one to
