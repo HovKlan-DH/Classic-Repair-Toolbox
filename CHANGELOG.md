@@ -1,4 +1,4 @@
-# 3.1.0, 2026-October-??
+# 3.1.0, 2026-October-24
 ------------------------
 - **Application**
   - Added "Bring my draft up to date" button in "Draft" tab, when data from online source changed after a draft was started
@@ -12,7 +12,7 @@
     - `red` only for delete, discard and reject
     - `green` for save, submit, add and approve
   - Changed both application launch and board switching are faster
-  - Fixed macOS "No route to host" when using oscilloscope
+  - Fixed macOS 15+ "No route to host" error due to missing local network permissions
   - Fixed many minor defects/issues and changed minor UI, especially for the new contribution method
 - **Data**
   - Added `Rigol MHO900` oscilloscope
