@@ -197,6 +197,55 @@ internal static class KiCadFixtures
     )
     """;
 
+    // KiCad 6+ copies each pin's name and type from the symbol onto its pad.
+    public const string PcbWithPinFunctions = """
+    (kicad_pcb (version 20240108) (generator pcbnew)
+      (net 1 "/CPU/~{RESET}")
+      (footprint "Package_DIP:DIP-40" (layer "F.Cu")
+        (at 10 10)
+        (property "Reference" "U8")
+        (pad "40" thru_hole circle (at 0 0) (size 1.6 1.6) (layers "*.Cu") (net 1 "/CPU/~{RESET}") (pinfunction "~{RES}") (pintype "input"))
+        (pad "1" thru_hole rect (at 0 2.54) (size 1.6 1.6) (layers "*.Cu"))
+      )
+    )
+    """;
+
+    // A sheet keeping its library symbols: a two-unit gate with a De Morgan body style, and a symbol
+    // derived from it with no pins of its own.
+    public const string SchematicWithLibrarySymbols = """
+    (kicad_sch (version 20230121) (generator eeschema)
+      (lib_symbols
+        (symbol "74xx:74LS00"
+          (symbol "74LS00_1_1"
+            (pin input line (at 0 0 0) (length 2.54) (name "A" (effects (font (size 1 1)))) (number "1" (effects (font (size 1 1)))))
+            (pin output inverted (at 5 0 180) (length 2.54) (name "~{Y}") (number "3"))
+          )
+          (symbol "74LS00_1_2"
+            (pin input line (at 0 0 0) (length 2.54) (name "A_DEMORGAN") (number "1"))
+          )
+          (symbol "74LS00_2_1"
+            (pin input line (at 0 0 0) (length 2.54) (name "A") (number "4"))
+          )
+          (symbol "74LS00_0_1"
+            (pin power_in line (at 0 5 270) (length 2.54) hide (name "VCC") (number "14"))
+            (pin power_in line (at 0 -5 90) (length 2.54) hide (name "GND") (number "7"))
+          )
+        )
+        (symbol "74xx:74LS01" (extends "74LS00"))
+      )
+      (symbol (lib_id "74xx:74LS00") (at 30 30 0) (unit 1)
+        (property "Reference" "U5" (at 30 28 0))
+        (property "Value" "74LS00" (at 30 32 0))
+      )
+      (symbol (lib_id "74xx:74LS00") (at 60 30 0) (unit 2)
+        (property "Reference" "U5" (at 60 28 0))
+      )
+      (symbol (lib_id "74xx:74LS01") (at 90 30 0) (unit 1)
+        (property "Reference" "U6" (at 90 28 0))
+      )
+    )
+    """;
+
     public const string Schematic = """
     (kicad_sch (version 20230121) (generator eeschema)
       (uuid "11111111-2222-3333-4444-555555555555")

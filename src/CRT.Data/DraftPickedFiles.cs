@@ -92,6 +92,30 @@ namespace Handlers.DataHandling
             this.RemoveSetAsideFolderIfEmpty();
         }
 
+        // ###########################################################################################
+        // The save was made, but a write takes in only the names its rows cite (DraftFiles.ListFor):
+        // the copies it took in - gone from where they arrived - are kept, what they replaced let go
+        // of; each one still lying there goes as the copy of a save not made does, what it replaced
+        // coming back (code review, 2026-10-26 - left lying, the next write by any editor took it in
+        // unasked). True when every copy was taken in.
+        // ###########################################################################################
+        public bool KeepTakenIn()
+        {
+            List<(string Copy, string? SetAside)> lying = this.thisCopies.Where(copy => File.Exists(copy.Copy)).ToList();
+
+            foreach ((string copy, string? setAside) in this.thisCopies.Where(copy => !File.Exists(copy.Copy)))
+            {
+                if (setAside is not null)
+                    DraftPickedFiles.TryDelete(setAside);
+            }
+
+            this.thisCopies.Clear();
+            this.thisCopies.AddRange(lying);
+            this.TakeBack();
+
+            return lying.Count == 0;
+        }
+
         // The save was not made: every copy goes, and what it replaced comes back - last copy first,
         // so a place copied to twice gets back what was there before either.
         public void TakeBack()

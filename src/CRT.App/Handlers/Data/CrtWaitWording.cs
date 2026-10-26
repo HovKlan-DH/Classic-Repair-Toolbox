@@ -38,6 +38,12 @@ namespace Handlers.DataHandling
         // "Copy from another board" (slice 5) - the other boards' files read for the same part.
         public const string LookingAtOtherBoards = "Looking for the same part on the other boards...";
 
+        // "Also on other boards" for a file replaced - the other boards' file lists read for its bytes.
+        public const string LookingForFilesOnOtherBoards = "Looking for the same files on the other boards...";
+
+        // "Also on other boards" for a part AND its files - one read of the other boards for both.
+        public const string LookingForPartAndFilesOnOtherBoards = "Looking for the same part and files on the other boards...";
+
         // "Also on other boards" (slice 5) - each board's draft made when it has none, changed and saved.
         public const string ChangingOtherBoards = "Putting the change into the other boards' drafts...";
 

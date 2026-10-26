@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 
 namespace Handlers.DataHandling
@@ -20,10 +21,17 @@ namespace Handlers.DataHandling
         // "Copy from another board" (slice 5) - what the component took, and from where.
         public static string ComponentCopied(string label, string fromBoard) => $"[{label}] copied from {fromBoard}";
 
+        // "Also on other boards" for files - the files another board's draft took, by their row names.
+        public static string FilesCopied(IReadOnlyList<string> rowNames, string fromBoard) =>
+            rowNames.Count == 1 ? $"[{rowNames[0]}] copied from {fromBoard}" : $"Files copied from {fromBoard}";
+
         // One field of a component, from the component pane - "Short description of [U8]".
         public static string ComponentField(string label, string field) => $"{field} of [{label}]";
 
         public static string ComponentPins(string label) => $"Pins of [{label}]";
+
+        // "Fill from KiCad" - the pins the board's KiCad data has, added and named.
+        public static string ComponentPinsFromKiCad(string label) => $"Pins of [{label}] from KiCad";
 
         public static string ComponentReplacements(string label) => $"Replacement parts of [{label}]";
 

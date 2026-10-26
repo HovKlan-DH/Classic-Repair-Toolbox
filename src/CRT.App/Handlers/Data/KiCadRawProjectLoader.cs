@@ -284,7 +284,12 @@ namespace Handlers.DataHandling
                 .Where(net => !string.IsNullOrWhiteSpace(net.Id))
                 .ToDictionary(net => net.Id!, net => net.Name ?? net.Id!, StringComparer.OrdinalIgnoreCase);
 
-            var footprints = ExtractFootprints(pcb, netMap);
+            // KiCad's "no net" (net 0 "") - a pad on it is on no net (KiCadNetRef.IsNoNet).
+            var noNetIds = new HashSet<string>(
+                nets.Where(net => net.IsNoNet && !string.IsNullOrWhiteSpace(net.Id)).Select(net => net.Id!),
+                StringComparer.OrdinalIgnoreCase);
+
+            var footprints = ExtractFootprints(pcb, netMap, noNetIds);
             var routing = ExtractRouting(pcb, netMap);
 
             var result = new KiCadPcb
@@ -426,7 +431,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static List<KiCadPcbFootprint> ExtractFootprints(
             SExpressionNode pcb,
-            IReadOnlyDictionary<string, string> netMap)
+            IReadOnlyDictionary<string, string> netMap,
+            IReadOnlySet<string> noNetIds)
         {
             var footprints = new List<KiCadPcbFootprint>();
 
@@ -481,8 +487,14 @@ namespace Handlers.DataHandling
                             {
                                 Id = netId,
                                 Name = netName,
-                                NormalizedName = NormalizeNetName(netName)
-                            }
+                                NormalizedName = NormalizeNetName(netName),
+
+                                // An older file's unconnected pad, (net 0 "") - its name reads "0"
+                                // (code review, 2026-10-26: the pin showed net "0").
+                                IsNoNet = !string.IsNullOrWhiteSpace(netId) && noNetIds.Contains(netId) && string.IsNullOrWhiteSpace(inlineNetName)
+                            },
+                        PinFunction = ChildValue(padNode, "pinfunction"),
+                        PinType = ChildValue(padNode, "pintype")
                     });
                 }
 
@@ -864,6 +876,7 @@ namespace Handlers.DataHandling
         private static List<KiCadSchematicSymbol> ExtractSchematicSymbols(SExpressionNode schematic)
         {
             var result = new List<KiCadSchematicSymbol>();
+            Dictionary<string, List<KiCadSchematicPin>> libraryPins = ExtractLibrarySymbolPins(schematic);
 
             foreach (var symbolNode in Children(schematic, "symbol"))
             {
@@ -885,16 +898,103 @@ namespace Handlers.DataHandling
                     .FirstOrDefault(property => string.Equals(property.Name, "Value", StringComparison.OrdinalIgnoreCase))
                     ?.Value;
 
+                // An instance names its library symbol by "lib_name" when the sheet keeps an edited
+                // copy of it, else by "lib_id".
+                string libraryName = ChildValue(symbolNode, "lib_name") ?? ChildValue(symbolNode, "lib_id") ?? string.Empty;
+
                 result.Add(new KiCadSchematicSymbol
                 {
                     Reference = reference,
                     Value = value,
                     At = ExtractAt(Child(symbolNode, "at")),
-                    PropertiesDetailed = properties
+                    PropertiesDetailed = properties,
+                    Pins = libraryPins.TryGetValue(libraryName, out List<KiCadSchematicPin>? pins) ? pins : new List<KiCadSchematicPin>()
                 });
             }
 
             return result;
+        }
+
+        // ###########################################################################################
+        // Every library symbol the sheet keeps a copy of ("lib_symbols"), by name, with the pins of
+        // ALL its units - a 74LS00's four gates and its power pins are one chip's pins - each number
+        // once. A De Morgan alternative ("<name>_<unit>_2") draws the same pins again and is passed
+        // over. A symbol derived from another ("extends") with no pins of its own takes its parent's.
+        // ###########################################################################################
+        private static Dictionary<string, List<KiCadSchematicPin>> ExtractLibrarySymbolPins(SExpressionNode schematic)
+        {
+            var result = new Dictionary<string, List<KiCadSchematicPin>>(StringComparer.Ordinal);
+
+            if (Child(schematic, "lib_symbols") is not { } library)
+            {
+                return result;
+            }
+
+            var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var symbolNode in Children(library, "symbol"))
+            {
+                string? name = Arg(symbolNode, 0);
+
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                var pins = new List<KiCadSchematicPin>();
+                var numbers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                // Each number once - the first unit to draw it names it.
+                void Take(SExpressionNode node) =>
+                    pins.AddRange(Children(node, "pin")
+                        .Select(pinNode => new KiCadSchematicPin
+                        {
+                            Number = Arg(Child(pinNode, "number"), 0)?.Trim() ?? string.Empty,
+                            Name = Arg(Child(pinNode, "name"), 0) ?? string.Empty,
+                            Type = Arg(pinNode, 0) ?? string.Empty
+                        })
+                        .Where(pin => pin.Number.Length > 0 && numbers.Add(pin.Number)));
+
+                Take(symbolNode);
+
+                foreach (var unitNode in Children(symbolNode, "symbol"))
+                {
+                    if (!IsAlternateBodyStyle(Arg(unitNode, 0)))
+                    {
+                        Take(unitNode);
+                    }
+                }
+
+                result[name] = pins;
+
+                if (ChildValue(symbolNode, "extends") is { Length: > 0 } parent)
+                {
+                    parents[name] = parent;
+                }
+            }
+
+            foreach ((string name, string parent) in parents)
+            {
+                // The parent is named without its library: "74xx:74LS00" extends "74LS01".
+                int colon = name.IndexOf(':');
+                string sameLibrary = colon >= 0 ? name[..(colon + 1)] + parent : parent;
+
+                if (result[name].Count == 0 &&
+                    (result.TryGetValue(sameLibrary, out List<KiCadSchematicPin>? parentPins) || result.TryGetValue(parent, out parentPins)))
+                {
+                    result[name] = parentPins;
+                }
+            }
+
+            return result;
+        }
+
+        // "74LS00_1_2" - unit 1 drawn in body style 2, KiCad's De Morgan alternative.
+        private static bool IsAlternateBodyStyle(string? unitName)
+        {
+            string[] parts = (unitName ?? string.Empty).Split('_');
+
+            return parts.Length >= 3 && parts[^1] == "2" && int.TryParse(parts[^2], NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
         // ###########################################################################################

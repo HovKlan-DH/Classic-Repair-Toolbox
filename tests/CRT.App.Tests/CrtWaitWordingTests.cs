@@ -25,6 +25,8 @@ public sealed class CrtWaitWordingTests
             CrtWaitWording.AddingFile,
             CrtWaitWording.CapturingOscilloscope,
             CrtWaitWording.LookingAtOtherBoards,
+            CrtWaitWording.LookingForFilesOnOtherBoards,
+            CrtWaitWording.LookingForPartAndFilesOnOtherBoards,
             CrtWaitWording.ChangingOtherBoards,
             CrtWaitWording.ReadingPublishedBoard,
             CrtWaitWording.MakingDraft,

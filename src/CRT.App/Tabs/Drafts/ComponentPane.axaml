@@ -122,7 +122,7 @@
 								Content="Also on other boards"
 								Margin="0,0,8,4"
 								IsVisible="False"
-								ToolTip.Tip="Make the same change to the same part - the same part number - on the other boards, each in its own draft"
+								ToolTip.Tip="Make the same change on the other boards, each in its own draft - to the same part (the same part number), and to the files you replaced where another board has the same file"
 								Click="OnAlsoOnOtherBoardsClick" />
 						<!-- The popup as it will look once the draft is published - from the draft, now. -->
 						<Button x:Name="PreviewPopupButton"
@@ -262,11 +262,20 @@
 						Padding="12,10">
 					<StackPanel Spacing="6">
 						<TextBlock Classes="PaneHeading" Text="Also on other boards" />
-						<TextBlock x:Name="AlsoIntroText" Classes="PaneIntro" />
-						<TextBlock Classes="FieldLabel" Text="The boards" />
-						<StackPanel x:Name="AlsoBoardsPanel" Spacing="2" />
-						<TextBlock Classes="FieldLabel" Text="What to change there" />
-						<StackPanel x:Name="AlsoPartsPanel" Spacing="2" />
+						<!-- The same part - the same part number - on the other boards. -->
+						<StackPanel x:Name="AlsoPartsSection" Spacing="6">
+							<TextBlock x:Name="AlsoIntroText" Classes="PaneIntro" />
+							<TextBlock Classes="FieldLabel" Text="The boards" />
+							<StackPanel x:Name="AlsoBoardsPanel" Spacing="2" />
+							<TextBlock Classes="FieldLabel" Text="What to change there" />
+							<StackPanel x:Name="AlsoPartsPanel" Spacing="2" />
+						</StackPanel>
+						<!-- The files the draft replaced, on the boards with the same file (the plan: "This
+						     datasheet is also used by 11 other boards - change it there too?"). -->
+						<StackPanel x:Name="AlsoFilesSection" Spacing="6" Margin="0,8,0,0">
+							<TextBlock x:Name="AlsoFilesIntroText" Classes="PaneIntro" />
+							<StackPanel x:Name="AlsoFilesPanel" Spacing="2" />
+						</StackPanel>
 						<StackPanel Orientation="Horizontal" Spacing="8">
 							<Button x:Name="AlsoChangeButton"
 									Classes="Accept"
@@ -350,6 +359,15 @@
 								VerticalAlignment="Bottom"
 								IsVisible="False"
 								Click="OnAddCasePinsClick" />
+						<!-- The pins the board's KiCad data has for the component, with their names - offered
+						     while it has any (ComponentPane.KiCadPins.cs). -->
+						<Button x:Name="FillFromKiCadButton"
+								Classes="Accept"
+								Content="Fill from KiCad"
+								VerticalAlignment="Bottom"
+								IsVisible="False"
+								ToolTip.ShowOnDisabled="True"
+								Click="OnFillFromKiCadClick" />
 					</StackPanel>
 
 					<Grid ColumnDefinitions="Auto,*" Margin="0,10,0,0">
@@ -373,11 +391,19 @@
 									<ColumnDefinition Width="8" />
 									<ColumnDefinition Width="140" />
 									<ColumnDefinition Width="8" />
+									<ColumnDefinition Width="Auto" SharedSizeGroup="PinNets" />
 									<ColumnDefinition Width="Auto" SharedSizeGroup="PinButtons" />
 								</Grid.ColumnDefinitions>
 								<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Pin" />
 								<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Signal name" />
 								<TextBlock Grid.Column="4" Classes="FieldLabel" Text="Direction" />
+								<!-- The net of each pin on this board, from its KiCad data - shown, never stored. -->
+								<TextBlock x:Name="PinNetHeading"
+										   Grid.Column="6"
+										   Classes="FieldLabel"
+										   Margin="0,0,8,0"
+										   Text="Net on this board"
+										   IsVisible="False" />
 							</Grid>
 
 							<ItemsControl x:Name="PinsItemsControl">
@@ -391,6 +417,7 @@
 												<ColumnDefinition Width="8" />
 												<ColumnDefinition Width="140" />
 												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="PinNets" />
 												<ColumnDefinition Width="Auto" SharedSizeGroup="PinButtons" />
 											</Grid.ColumnDefinitions>
 											<TextBox Grid.Column="0" Text="{Binding Pin, Mode=TwoWay}" />
@@ -400,7 +427,17 @@
 													  ItemsSource="{Binding DirectionChoices}"
 													  SelectedItem="{Binding Direction, Mode=TwoWay}"
 													  PlaceholderText="Direction" />
-											<Button Grid.Column="6"
+											<TextBlock Grid.Column="6"
+													   Text="{Binding Net}"
+													   IsVisible="{Binding HasNet}"
+													   MaxWidth="180"
+													   Margin="0,0,8,0"
+													   VerticalAlignment="Center"
+													   FontSize="11"
+													   Opacity="0.75"
+													   TextTrimming="CharacterEllipsis"
+													   ToolTip.Tip="{Binding Net}" />
+											<Button Grid.Column="7"
 													Classes="Danger"
 													Content="Remove"
 													Tag="{Binding}"
@@ -1018,11 +1055,42 @@
 							</ItemsControl.ItemTemplate>
 						</ItemsControl>
 
-						<Button x:Name="AddBoardFileButton"
-								Classes="Accept"
-								Content="Add file"
-								HorizontalAlignment="Left"
-								Click="OnAddBoardFileClick" />
+						<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+							<Button x:Name="AddBoardFileButton"
+									Classes="Accept"
+									Content="Add file"
+									Click="OnAddBoardFileClick" />
+							<!-- The files replaced here, on the other boards with the same file. -->
+							<Button x:Name="BoardFilesAlsoButton"
+									Content="Also on other boards"
+									IsVisible="False"
+									ToolTip.Tip="Put the files you replaced on the other boards that have the same file, each in its own draft"
+									Click="OnBoardFilesAlsoClick" />
+						</StackPanel>
+
+						<Border x:Name="BoardAlsoPanel"
+								IsVisible="False"
+								Margin="0,8,0,0"
+								BorderBrush="{DynamicResource Form_Border}"
+								BorderThickness="1"
+								CornerRadius="3"
+								Padding="12,10">
+							<StackPanel Spacing="6">
+								<TextBlock Classes="PaneHeading" Text="Also on other boards" />
+								<TextBlock x:Name="BoardAlsoIntroText" Classes="PaneIntro" />
+								<StackPanel x:Name="BoardAlsoFilesPanel" Spacing="2" />
+								<StackPanel Orientation="Horizontal" Spacing="8">
+									<Button x:Name="BoardAlsoChangeButton"
+											Classes="Accept"
+											Content="Change them too"
+											ToolTip.Tip="Put your new file into each ticked board's own draft, in place of the old one - reviewed by that board's maintainers"
+											Click="OnBoardAlsoChangeClick" />
+									<Button x:Name="CancelBoardAlsoButton"
+											Content="Cancel"
+											Click="OnCancelBoardAlsoClick" />
+								</StackPanel>
+							</StackPanel>
+						</Border>
 					</StackPanel>
 
 					<StackPanel Spacing="4">
@@ -1209,12 +1277,20 @@
 														 MinimumPrefixLength="0"
 														 IsTextCompletionEnabled="False"
 														 PlaceholderText="PHI2, /RESET" />
-										<Button Grid.Column="4"
-												Classes="Danger"
-												Content="Remove"
-												Tag="{Binding}"
-												ToolTip.Tip="Remove this signal"
-												Click="OnRemoveSignalClick" />
+										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
+											<!-- Click-to-light-up: the net lit on the Schematics tab. -->
+											<Button Content="Show on board"
+													Tag="{Binding}"
+													IsEnabled="{Binding CanShowOnBoard}"
+													ToolTip.Tip="Light this net up on the Schematics tab"
+													ToolTip.ShowOnDisabled="True"
+													Click="OnShowSignalOnBoardClick" />
+											<Button Classes="Danger"
+													Content="Remove"
+													Tag="{Binding}"
+													ToolTip.Tip="Remove this signal"
+													Click="OnRemoveSignalClick" />
+										</StackPanel>
 									</Grid>
 									<TextBlock Text="{Binding Problem}"
 											   IsVisible="{Binding HasProblem}"
@@ -1232,6 +1308,48 @@
 							Content="Add signal"
 							HorizontalAlignment="Left"
 							Click="OnAddSignalClick" />
+
+					<!-- Signals suggested from the board's KiCad net names (ComponentPane.SignalSuggestions.cs). -->
+					<StackPanel x:Name="SignalSuggestionsPanel" Spacing="4" Margin="0,14,0,0" IsVisible="False">
+						<TextBlock x:Name="SignalSuggestionsHeading" Classes="PaneHeading" />
+						<TextBlock x:Name="SignalSuggestionsIntroText" Classes="PaneIntro" />
+
+						<ItemsControl x:Name="SignalSuggestionsItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="local:ComponentPaneSignalSuggestion">
+									<Grid Margin="0,0,0,4">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="Auto" SharedSizeGroup="SignalButtons" />
+										</Grid.ColumnDefinitions>
+										<TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+										<TextBlock Grid.Column="2" Text="{Binding KiCadNetName}" VerticalAlignment="Center" FontSize="11" Opacity="0.75" TextTrimming="CharacterEllipsis" />
+										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
+											<Button Content="Show on board"
+													Tag="{Binding}"
+													ToolTip.Tip="Light this net up on the Schematics tab"
+													Click="OnShowSuggestionOnBoardClick" />
+											<Button Classes="Accept"
+													Content="Add"
+													Tag="{Binding}"
+													ToolTip.Tip="Add this signal"
+													Click="OnAddSuggestionClick" />
+										</StackPanel>
+									</Grid>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+
+						<Button x:Name="AddAllSuggestionsButton"
+								Classes="Accept"
+								Content="Add all suggestions"
+								HorizontalAlignment="Left"
+								ToolTip.Tip="Add every suggested signal - one step, so Undo takes them all back"
+								Click="OnAddAllSuggestionsClick" />
+					</StackPanel>
 				</StackPanel>
 
 			</StackPanel>

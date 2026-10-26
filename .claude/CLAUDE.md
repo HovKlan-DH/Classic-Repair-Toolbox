@@ -630,6 +630,66 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   straight to the session, a failed save left the step in for the timer to save after CRT said it had
   not. **The row a source offers is one that MATCHED the part number** - the region's, else the first
   (`ComponentCopy.Sources`): the region's row whatever its part number was the other region's chip.
+  **"Also on other boards" takes the FILES the draft replaced too** (2026-10-26 - the plan's "This
+  datasheet is also used by 11 other boards - change it there too?"; `ChangedFiles`, no part number
+  needed): a component's file or picture, or a board file under Files and links (its own button
+  there), whose row - paired by its NAME - cites other bytes than published is offered to every other
+  published board listing the SAME BYTES (by SHA-256; the live trees share 2,333 files so), where one
+  of its component files, pictures or board files cites them - never a scope baseline's or a
+  schematic's, the board's own. **The new file goes into THAT board's draft as a change of its rows**
+  (second code review, 2026-10-26: written over the old bytes it was no step, a board file had no
+  way back but discarding the draft, and a PNG sat under a JPG's name): under a name of that board's
+  own and of its own TYPE (`ChangedFiles.NameFor` - the old file's folder, the new file's name, never a
+  name the board has), every component file, picture and board file there citing the old file pointed
+  at it (`ChangedFiles.Repointed`) - ONE step named after this board (`DraftStepWording.FilesCopied`),
+  which that board's Undo takes back - through `DraftEdits.OpenForChangeAsync`/`CopyInAndApplyAsync`
+  (a copy the save did not take in is taken back, `DraftPickedFiles.KeepTakenIn`). Only where that
+  draft still has the published bytes (`ChangedFiles.CanPut` - never over a version of its own), never
+  under a name climbing out of the board's folder (`ChangedFiles.Elsewhere`, `DraftFiles.TryArrivedPath`).
+  **A draft "Also on other boards" MADE for a board that then took nothing is deleted again**
+  (`LetGoOfDraftMadeForNothing`). **The part and its files are found in ONE read of the other boards,
+  read in parallel** (`FindAlsoTargets`; a board's data and file list from one read of its board file),
+  the part looked for only when something of it changed - and said not found while its files are
+  offered; **every ticked component of a board gets the part's change** - each its own step - and what
+  came of each board is `AlsoOnOtherBoardsOutcome`'s to say (one not changed where something else was
+  is said by its label).
+  **"Fill from KiCad" and "net on this board"** (2026-10-26 - the plan: "On a KiCad board, Fill from
+  KiCad adds each pin's net and its name from the symbol. The popup shows the signal name and 'net on
+  this board' side by side"; `KiCadComponentPins`, read from the loaded data by `KiCadPinTable`): the
+  FIRST PCB file's pads give the pin numbers and nets (`KiCadReferenceMatcher`'s rule), the schematic's
+  symbol pins - every unit, from the sheet's own `lib_symbols` (`KiCadSchematicSymbol.Pins`) - name a pin
+  before the pad's own `pinfunction`/`pintype` (KiCad 6+; all a board without a schematic has). Names
+  in CRT's spelling ("~{RESET}" is "~RESET", "~" none; a pad number EVERY pad's name ends in is taken
+  off - a real name may hold "_"), directions in `ComponentVocabulary`'s words, a supply pin told by its
+  NAME too (the live 250469's library types every pin "input"). **The net is never stored** - it is the
+  board's, read when shown: beside each pin in the pane (the host reads the pins whenever a component
+  is shown - `ComponentPane.ComponentShown`, `TabDrafts.LoadKiCadPinsAsync`) and in the popup
+  (`TabSchematics.KiCadPinNetsOf`, the KiCad data loaded for the board on screen). "Fill from KiCad"
+  adds the pins missing and fills in EMPTY names and directions only - never what was typed - as ONE
+  step. The pins are asked for again when the draft's KiCad files change while the component is shown
+  (`ComponentPane.FollowKiCadFiles`, after every change and save), and a read answers only the ask it
+  was started for (`KiCadPinsAsk` - an older read ending last never wins); an older file's pad on
+  KiCad's "no net", (net 0 ""), is on no net (the loader marks it `IsNoNet` - its name reads "0").
+  KiCad's escapes in a name ("~{RESET}", "{slash}", "~") are read by ONE rule,
+  `KiCadNetNames.Readable` - the pins, the nets shown and the signal suggestions alike. The board's
+  KiCad project is read for the pane by ONE helper (`TabDrafts.ReadBoardKiCadAsync`), and "Show on
+  board", lighting a net and the picture tools hand the board on screen over by one
+  (`SaveAndHandOverBoardOnScreenAsync`).
+  **Important signals: suggestions and click-to-light-up** (2026-10-26 - the plan: "pick nets from a
+  searchable KiCad list, with suggestions and click-to-light-up"; `ImportantSignalSuggestions`,
+  `ComponentPane.SignalSuggestions.cs`): once the nets are read, every net whose WHOLE name says what it
+  is - a supply, ground, a clock, a control line, a bus line - is suggested under the name the live
+  boards use ("+5VDC", "9VAC", "Ground", "Clock; PHI2", "RESET", "A0"); a net a row has is never
+  offered (`KiCadNetChoices.NormalizedOf` - the panel's rule). "Add" and "Add all suggestions" are one
+  step each, taken after what the boxes hold is in (a net just typed is not added twice). **The list
+  is changed in place** (`InPlaceList.Sync`): every box left commits the signals, and a list rebuilt
+  then threw away the "Add" a press had gone down on. "Show on board" is off on a board without KiCad
+  data - there is nothing to light. "Show on board" on a row or a suggestion is `Main.ShowNetOnBoard` ->
+  `TabSchematics.ShowOnlyNet`: only that net lit (locked, as a click on its trace locks it; every
+  component selected let go of and the highlights rebuilt - one selected only on the schematic kept
+  its nets lit), on the
+  board read again first when the pane's saves left it behind; while the board's KiCad data is still
+  loading it WAITS for `KiCadSettled` (the load lets go of every locked net), and a board load drops it.
   **Credits know who is at the keyboard** (owner decisions, 2026-10-26: "Yes, let us try that", "Do it
   now"): a credit name and contact are REMEMBERED (`UserSettings.CreditName`/`CreditContact`, set
   together by `RememberCreditIdentity` - a blank name changes nothing; NEVER the contact email, since

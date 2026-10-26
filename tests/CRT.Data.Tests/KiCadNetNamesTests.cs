@@ -174,4 +174,18 @@ public sealed class KiCadNetNamesTests
         Assert.True(KiCadNetChoices.None.Finds("ANYTHING"));
         Assert.True(KiCadNetNames.Choices([]).Finds("ANYTHING"));
     }
+
+    // ###########################################################################################
+    // THE ONE RULE for reading KiCad's escapes in a name (code review, 2026-10-26: written twice, with
+    // different rules) - the overbar as CRT spells it, "{slash}" as "/", "~" alone as no name.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("~{RESET}", "~RESET")]
+    [InlineData("R{slash}~{W}", "R/~W")]
+    [InlineData("R~{W}", "R~W")]
+    [InlineData("~", "")]
+    [InlineData(" A0 ", "A0")]
+    [InlineData(null, "")]
+    public void A_KiCad_name_is_read_as_CRT_spells_it(string? kiCad, string readable) =>
+        Assert.Equal(readable, KiCadNetNames.Readable(kiCad));
 }

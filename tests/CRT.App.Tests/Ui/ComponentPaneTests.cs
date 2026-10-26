@@ -641,8 +641,8 @@ public sealed class ComponentPaneTests : IDisposable
         return new BoardDocument.StoredFileRow { Name = name, Sha256 = sha, Size = bytes.Length };
     }
 
-    // The published board with U8's picture, one scope baseline and a datasheet, stored in the draft.
-    private DraftSession OpenDraftWithFiles()
+    // The published board with U8's picture, one scope baseline and a datasheet.
+    private static BoardData PublishedWithFiles()
     {
         BoardData board = Published();
         board.ComponentImages.AddRange([
@@ -650,6 +650,13 @@ public sealed class ComponentPaneTests : IDisposable
             new ComponentImageEntry { BoardLabel = "U8", Pin = "1", Name = "VSS", File = "Scope baseline/U8_1.png", TimeDiv = "50us", VoltsDiv = "1V", TriggerLevelVolts = "1.5V" },
         ]);
         board.ComponentLocalFiles.Add(new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/6510.pdf" });
+        return board;
+    }
+
+    // That board as the draft, its files stored in the draft.
+    private DraftSession OpenDraftWithFiles()
+    {
+        BoardData board = PublishedWithFiles();
 
         Directory.CreateDirectory(this.DraftFolder);
         BoardFiles.Write(this.BoardFile, BoardDocumentMapping.ToDocument(
@@ -1586,6 +1593,141 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // Suggestions and click-to-light-up (the plan: "pick nets from a searchable KiCad list, with
+    // suggestions and click-to-light-up"): once the nets are read, the ones whose names say what they
+    // are - but none a row has - are suggested; "Add" takes one, "Add all suggestions" the rest as ONE
+    // step; "Show on board" asks the host to light a net up.
+    // ###########################################################################################
+    [Fact]
+    public void The_KiCad_nets_suggest_signals_and_Show_on_board_asks_for_the_net()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.ImportantSignals);
+            StackPanel suggestions = Get<StackPanel>(pane, "SignalSuggestionsPanel");
+
+            // Nothing while the nets are being read.
+            Assert.False(suggestions.IsVisible);
+
+            pane.UseNetChoices(KiCadNetNames.Choices([
+                ("PHI2", "PHI2", false),
+                ("/CPU/~{RESET}", "~{RESET}", false),
+                ("+5V", "+5V", false),
+                ("GND", "GND", false),
+                ("MA0", "MA0", false),
+            ]));
+
+            // PHI2 is the "Clock" row's already.
+            Assert.True(suggestions.IsVisible);
+            Assert.Equal(
+                ["+5VDC:+5V", "Ground:GND", "RESET:~{RESET}"],
+                pane.SignalSuggestionsForTests.Select(suggestion => $"{suggestion.DisplayName}:{suggestion.KiCadNetName}"));
+            Assert.Equal("Suggested from the KiCad nets (3)", Get<TextBlock>(pane, "SignalSuggestionsHeading").Text);
+
+            Assert.True(pane.AddSuggestions([pane.SignalSuggestionsForTests[2]]));
+            Assert.Equal("Important signals", session.UndoDescription);
+            Assert.Contains(session.Content.Board.KiCadImportantSignals, row => row.DisplayName == "RESET" && row.KiCadNetName == "~{RESET}");
+            Assert.Equal(2, pane.SignalSuggestionsForTests.Count);
+
+            Click(Get<Button>(pane, "AddAllSuggestionsButton"));
+            Assert.Empty(pane.SignalSuggestionsForTests);
+            Assert.False(suggestions.IsVisible);
+            Assert.Equal(4, session.Content.Board.KiCadImportantSignals.Count);
+
+            // All of them were one step.
+            Assert.True(session.Undo());
+            Assert.Equal(2, session.Content.Board.KiCadImportantSignals.Count);
+
+            var asked = new List<string>();
+            pane.ShowNetRequested += (_, net) => asked.Add(net);
+
+            Assert.True(pane.SignalsForTests[0].CanShowOnBoard);
+            pane.ShowNetOnBoard(" PHI2 ");
+            pane.ShowNetOnBoard(" ");
+            Assert.Equal(["PHI2"], asked);
+
+            window.Close();
+        });
+    }
+
+    // A signal with no net, or one the KiCad data does not have, has nothing to light up.
+    [Fact]
+    public void A_signal_without_a_net_the_KiCad_data_has_cannot_be_shown_on_the_board()
+    {
+        var row = new ComponentPaneSignalRow { DisplayName = "Reset" };
+        row.UseChoices(KiCadNetNames.Choices([("PHI2", "PHI2", false)]));
+        Assert.False(row.CanShowOnBoard);
+
+        row.KiCadNetName = "NRESET";
+        row.UseChoices(KiCadNetNames.Choices([("PHI2", "PHI2", false)]));
+        Assert.False(row.CanShowOnBoard);
+
+        // A board without KiCad data has no net to light up at all (code review, 2026-10-26: the
+        // button switched to the Schematics tab and lit nothing).
+        row.KiCadNetName = "PHI2";
+        row.UseChoices(KiCadNetNames.Choices([("PHI2", "PHI2", false)]));
+        Assert.True(row.CanShowOnBoard);
+        row.UseChoices(KiCadNetChoices.None);
+        Assert.False(row.CanShowOnBoard);
+    }
+
+    // ###########################################################################################
+    // The suggestions are kept in place while they stay the same (code review, 2026-10-26): every box
+    // left commits the signals, and a list cleared and refilled then threw away the button a press had
+    // just gone down on - the click was lost (the trap CLAUDE.md records for the drafts list).
+    // ###########################################################################################
+    [Fact]
+    public void A_suggestion_still_suggested_keeps_its_row_when_the_signals_change()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.ImportantSignals);
+            pane.UseNetChoices(KiCadNetNames.Choices([("PHI2", "PHI2", false), ("+5V", "+5V", false), ("GND", "GND", false)]));
+
+            ComponentPaneSignalSuggestion first = pane.SignalSuggestionsForTests[0];
+
+            pane.SignalsForTests[0].DisplayName = "Clock; PHI2";
+            pane.CommitHeld();
+
+            Assert.Equal("Important signals", session.UndoDescription);
+            Assert.Same(first, pane.SignalSuggestionsForTests[0]);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "Add all suggestions" adds what is suggested once the signals typed are in (code review,
+    // 2026-10-26): it took the list first, and a net just typed into a row went in twice.
+    // ###########################################################################################
+    [Fact]
+    public void Add_all_suggestions_does_not_add_a_net_just_typed_into_a_row_again()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.ImportantSignals);
+            pane.UseNetChoices(KiCadNetNames.Choices([("PHI2", "PHI2", false), ("+5V", "+5V", false), ("GND", "GND", false)]));
+
+            Click(Get<Button>(pane, "AddSignalButton"));
+            pane.SignalsForTests[^1].DisplayName = "5 volts";
+            pane.SignalsForTests[^1].KiCadNetName = "+5V";
+
+            Click(Get<Button>(pane, "AddAllSuggestionsButton"));
+
+            Assert.Single(session.Content.Board.KiCadImportantSignals, row => row.KiCadNetName == "+5V");
+            Assert.Single(session.Content.Board.KiCadImportantSignals, row => row.KiCadNetName == "GND");
+
+            window.Close();
+        });
+    }
+
     // Another editor's change, or an undo, shows in the part at once - its rows read again.
     [Fact]
     public void An_undo_reads_the_board_part_again()
@@ -1735,10 +1877,16 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.False(also.IsVisible);
 
             var handed = new List<(string Label, List<string> Boards, List<ComponentCopyPart> Parts)>();
-            pane.FindOnOtherBoards = (_, _) => Task.FromResult<IReadOnlyList<ComponentCopySource>>([OtherPla(), OtherPla() with { BoardName = "Commodore 64 - 250469" }]);
-            pane.ApplyToOtherBoards = (here, targets, parts) =>
+            var searched = new List<string>();
+            pane.FindAlsoTargets = (partNumber, region, files) =>
             {
-                handed.Add((here.Row.BoardLabel, targets.Select(target => target.BoardName).ToList(), parts.ToList()));
+                searched.Add($"{partNumber}|{region}|{files.Count}");
+                return Task.FromResult(new AlsoTargets([OtherPla(), OtherPla() with { BoardName = "Commodore 64 - 250469" }], []));
+            };
+            pane.ApplyToOtherBoards = (here, targets, parts, files) =>
+            {
+                Assert.Empty(files);
+                handed.Add((here!.Row.BoardLabel, targets.Select(target => target.BoardName).ToList(), parts.ToList()));
                 return Task.FromResult("Changed on 1 board, in its own draft: Commodore 64 - 250425.");
             };
 
@@ -1749,6 +1897,8 @@ public sealed class ComponentPaneTests : IDisposable
 
             await pane.OpenAlsoPanelAsync();
 
+            // One search of the other boards, for the part and its files at once.
+            Assert.Equal(["906114-01|PAL|0"], searched);
             Assert.True(pane.IsAlsoPanelOpen);
             List<CheckBox> boards = Get<StackPanel>(pane, "AlsoBoardsPanel").Children.OfType<CheckBox>().ToList();
             Assert.Equal(2, boards.Count);
@@ -1787,6 +1937,337 @@ public sealed class ComponentPaneTests : IDisposable
             await pane.OpenCopyPanelAsync();
             Assert.Equal(ComponentPaneWording.CopyFoundNothing("XYZ"), Get<TextBlock>(pane, "PaneMessageText").Text);
             Assert.False(pane.IsCopyPanelOpen);
+
+            window.Close();
+        });
+    }
+
+    // ---- also on other boards, for files ------------------------------------------------------
+
+    // A published board's own board file, listing `files` - what the draft's files are compared with.
+    private string PublishedBoardFile(BoardData board, params (string Name, byte[] Bytes)[] files)
+    {
+        string path = Path.Combine(this.thisWorkspace.Root, "Published", Guid.NewGuid().ToString("N"), DataTreeLayout.BoardFileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        BoardFiles.Write(path, BoardDocumentMapping.ToDocument(
+            new BoardContent(board, [], []),
+            name => name,
+            files.Select(file => new BoardDocument.StoredFileRow
+            {
+                Name = file.Name,
+                Sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(file.Bytes)),
+                Size = file.Bytes.Length,
+            }).ToList()));
+
+        return path;
+    }
+
+    // ###########################################################################################
+    // "Also on other boards" for a file (the plan: "This datasheet is also used by 11 other boards -
+    // change it there too?"): a datasheet replaced is offered - with no part number at all - to the
+    // boards the host finds with the same file, each ticked, and handed over as files alone.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_datasheet_replaced_is_offered_to_the_boards_with_the_same_file()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+        BoardData published = PublishedWithFiles();
+        string publishedFile = this.PublishedBoardFile(
+            published,
+            ("Component images/U8.png", ComponentPaneTests.Png),
+            ("Scope baseline/U8_1.png", ComponentPaneTests.Png),
+            ("Component local files/6510.pdf", [37, 80, 68, 70]));
+        string picked = this.Pickable("6510 rev B.pdf", [37, 80, 68, 70, 66]);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            pane.Show(session, "U8", "PAL", published, publishedFile);
+            Dispatcher.UIThread.RunJobs();
+
+            Button also = Get<Button>(pane, "AlsoOnOtherBoardsButton");
+            Assert.False(also.IsVisible);
+
+            var asked = new List<ChangedFile>();
+            pane.FindAlsoTargets = (partNumber, _, files) =>
+            {
+                Assert.Equal(string.Empty, partNumber);
+                asked.AddRange(files);
+                return Task.FromResult(new AlsoTargets(
+                    [],
+                    [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Component local files/6510.pdf")]));
+            };
+
+            var handed = new List<ChangedFileElsewhere>();
+            pane.ApplyToOtherBoards = (here, targets, parts, files) =>
+            {
+                Assert.Empty(targets);
+                Assert.Empty(parts);
+                handed.AddRange(files);
+                return Task.FromResult("Changed on 1 board, in its own draft: Commodore 64 - 250425.");
+            };
+
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+            await pane.ChangeFileAsync(pane.FilesForTests[0]);
+
+            // No part number: the file replaced is enough to look for.
+            Assert.True(also.IsVisible);
+
+            await pane.OpenAlsoPanelAsync();
+
+            ChangedFile datasheet = Assert.Single(asked);
+            Assert.Equal(("Datasheet", "Component local files/6510.pdf"), (datasheet.RowName, datasheet.PublishedName));
+            Assert.False(Get<StackPanel>(pane, "AlsoPartsSection").IsVisible);
+            Assert.True(Get<StackPanel>(pane, "AlsoFilesSection").IsVisible);
+
+            StackPanel filesPanel = Get<StackPanel>(pane, "AlsoFilesPanel");
+            Assert.Equal("Datasheet (6510.pdf)", Assert.Single(filesPanel.Children.OfType<TextBlock>()).Text);
+            Assert.True(Assert.Single(filesPanel.Children.OfType<CheckBox>()).IsChecked);
+
+            await pane.ChangeOtherBoardsAsync();
+
+            Assert.Equal("Commodore 64 - 250425", Assert.Single(handed).BoardName);
+            Assert.False(pane.IsAlsoPanelOpen);
+            Assert.Equal("Changed on 1 board, in its own draft: Commodore 64 - 250425.", Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // Nothing found for a file replaced on a component WITH a part number, whose other parts are as
+    // published: no search by part number ran, so none is said to have found nothing (code review,
+    // 2026-10-26: "No other board ... has a component with the part number [6510]" - never looked for).
+    // ###########################################################################################
+    [Fact]
+    public async Task Nothing_found_for_a_file_alone_says_nothing_of_the_part_number()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+        BoardData published = PublishedWithFiles();
+        published.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510", Category = "IC", Description = "The processor", PartNumber = "6510" };
+        string publishedFile = this.PublishedBoardFile(published, ("Component local files/6510.pdf", [37, 80, 68, 70]));
+        string picked = this.Pickable("6510 rev B.pdf", [37, 80, 68, 70, 66]);
+
+        session.Apply("Part number", content => content with { Board = ComponentPaneEdits.WithField(content.Board, "U8", "PAL", ComponentField.PartNumber, "6510") });
+
+        await UiTest.RunAsync(async () =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            pane.Show(session, "U8", "PAL", published, publishedFile);
+            Dispatcher.UIThread.RunJobs();
+
+            var partsAsked = new List<string>();
+            pane.FindAlsoTargets = (partNumber, _, _) =>
+            {
+                partsAsked.Add(partNumber);
+                return Task.FromResult(AlsoTargets.None);
+            };
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+
+            await pane.ChangeFileAsync(pane.FilesForTests[0]);
+            await pane.OpenAlsoPanelAsync();
+
+            // Nothing of the part changed: it is not looked for.
+            Assert.Equal([string.Empty], partsAsked);
+            Assert.Equal("No other board on this machine has the files you replaced.", Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A part changed AND a file replaced, with no other board having the part but some having the
+    // file: the panel offers the file - and says the part was not found (code review, 2026-10-26: the
+    // part's section was hidden without a word, and the notes were expected to go across too).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_part_no_other_board_has_is_said_while_its_files_are_offered()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+        BoardData published = PublishedWithFiles();
+        published.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510", Category = "IC", Description = "The processor", PartNumber = "6510" };
+        string publishedFile = this.PublishedBoardFile(published, ("Component local files/6510.pdf", [37, 80, 68, 70]));
+        string picked = this.Pickable("6510 rev B.pdf", [37, 80, 68, 70, 66]);
+
+        session.Apply("Part number", content => content with { Board = ComponentPaneEdits.WithField(content.Board, "U8", "PAL", ComponentField.PartNumber, "6510") });
+
+        await UiTest.RunAsync(async () =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            pane.Show(session, "U8", "PAL", published, publishedFile);
+            Dispatcher.UIThread.RunJobs();
+
+            pane.FindAlsoTargets = (_, _, files) => Task.FromResult(new AlsoTargets(
+                [],
+                [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Component local files/6510.pdf")]));
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+
+            Get<TextBox>(pane, "RepairNotesBox").Text = "Runs hot";
+            pane.CommitHeld();
+            await pane.ChangeFileAsync(pane.FilesForTests[0]);
+            await pane.OpenAlsoPanelAsync();
+
+            Assert.True(pane.IsAlsoPanelOpen);
+            Assert.False(Get<StackPanel>(pane, "AlsoPartsSection").IsVisible);
+            Assert.Equal(ComponentPaneWording.CopyFoundNothing("6510"), Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // The board's own files under Files and links: nothing to offer until one is replaced, then the
+    // button, the boards with the same file ticked, and the files alone handed to the host.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_board_file_replaced_is_offered_to_the_boards_with_the_same_file()
+    {
+        BoardData board = WithBoardParts();
+        byte[] manual = [37, 80, 68, 70, 77];
+
+        Directory.CreateDirectory(this.DraftFolder);
+        BoardFiles.Write(this.BoardFile, BoardDocumentMapping.ToDocument(
+            new BoardContent(board, [], []),
+            name => name,
+            [this.Stored("Board local files/manual.pdf", manual)]));
+
+        DraftSession session = DraftSession.Open(this.DraftsRoot, ComponentPaneTests.BoardKey)!;
+        string publishedFile = this.PublishedBoardFile(WithBoardParts(), ("Board local files/manual.pdf", manual));
+        string picked = this.Pickable("manual 2nd edition.pdf", [37, 80, 68, 70, 50]);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            pane.ShowBoardPart(session, PaneBoardPart.FilesAndLinks, WithBoardParts(), publishedFile);
+            Dispatcher.UIThread.RunJobs();
+
+            Button also = Get<Button>(pane, "BoardFilesAlsoButton");
+            Assert.False(also.IsVisible);
+
+            await pane.OpenBoardAlsoPanelAsync();
+            Assert.Equal(ComponentPaneWording.AlsoBoardFilesNothingChanged, Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            pane.FindAlsoTargets = (_, _, files) => Task.FromResult(new AlsoTargets(
+                [],
+                [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Board local files/C64 manual.pdf")]));
+
+            var handed = new List<(ComponentCopySource? Here, ChangedFileElsewhere File)>();
+            pane.ApplyToOtherBoards = (here, _, _, files) =>
+            {
+                handed.AddRange(files.Select(file => (here, file)));
+                return Task.FromResult("Changed on 1 board, in its own draft: Commodore 64 - 250425.");
+            };
+
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+            await pane.ChangeBoardFileAsync(pane.BoardFilesForTests.Single(row => row.Name == "Service manual"));
+
+            Assert.True(also.IsVisible);
+
+            await pane.OpenBoardAlsoPanelAsync();
+
+            Assert.True(pane.IsBoardAlsoPanelOpen);
+            StackPanel filesPanel = Get<StackPanel>(pane, "BoardAlsoFilesPanel");
+            Assert.Equal("Service manual (manual.pdf)", Assert.Single(filesPanel.Children.OfType<TextBlock>()).Text);
+            Assert.Equal("Commodore 64 - 250425 - as C64 manual.pdf", Assert.Single(filesPanel.Children.OfType<CheckBox>()).Content);
+
+            await pane.ChangeBoardFilesOnOtherBoardsAsync();
+
+            (ComponentCopySource? here, ChangedFileElsewhere file) = Assert.Single(handed);
+            Assert.Null(here);
+            Assert.Equal("Board local files/C64 manual.pdf", file.NameThere);
+            Assert.False(pane.IsBoardAlsoPanelOpen);
+
+            window.Close();
+        });
+    }
+
+    // ---- the pins from the board's KiCad data ---------------------------------------------------
+
+    // U8's pins as the board's KiCad data has them - pin 1 as the draft has it, two more.
+    private static readonly KiCadPin[] U8KiCadPins =
+    [
+        new("1", "GND", "Ground", "GND"),
+        new("2", "RDY", "Input", "RDY"),
+        new("40", "VCC", "Power", "+5V"),
+    ];
+
+    // ###########################################################################################
+    // "Fill from KiCad" (the plan: "On a KiCad board, Fill from KiCad adds each pin's net and its
+    // name from the symbol"): offered once the host hands the pins over, each pin showing its net on
+    // this board; the pins missing added as ONE step - pin 1's name as typed is kept - and a second
+    // fill finds nothing to do.
+    // ###########################################################################################
+    [Fact]
+    public void Fill_from_KiCad_adds_the_pins_missing_as_one_step_and_shows_each_pins_net()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            Button fill = Get<Button>(pane, "FillFromKiCadButton");
+
+            Assert.False(fill.IsVisible);
+            Assert.False(pane.FillFromKiCad());
+
+            // Pins of another component are not taken.
+            pane.UseKiCadPins(session, "U1", U8KiCadPins);
+            Assert.False(fill.IsVisible);
+
+            pane.UseKiCadPins(session, "u8", U8KiCadPins);
+            Assert.True(fill.IsVisible);
+            Assert.True(Get<TextBlock>(pane, "PinNetHeading").IsVisible);
+            Assert.Equal("GND", Assert.Single(pane.PinsForTests).Net);
+
+            Assert.True(pane.FillFromKiCad());
+
+            Assert.Equal("Pins of [U8] from KiCad", session.UndoDescription);
+            Assert.Equal(
+                ["1:VSS:Ground", "2:RDY:Input", "40:VCC:Power"],
+                ComponentPaneEdits.PinsOf(session.Content.Board, "U8", "PAL").Select(pin => $"{pin.Pin}:{pin.Name}:{pin.Direction}"));
+            Assert.Equal(["GND", "RDY", "+5V"], pane.PinsForTests.Select(row => row.Net));
+            Assert.Equal("Filled from KiCad: 2 pins added.", Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            Assert.False(pane.FillFromKiCad());
+            Assert.Equal(ComponentPaneWording.NothingToFillFromKiCad, Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            // A pin typed by hand shows its net once it is in.
+            pane.PinsForTests[1].Pin = "40";
+            pane.PinsForTests[2].Pin = "2";
+            pane.CommitHeld();
+            Assert.Equal(["GND", "+5V", "RDY"], pane.PinsForTests.Select(row => row.Net));
+
+            window.Close();
+        });
+    }
+
+    // Another component shown lets go of the KiCad pins - they were the last one's.
+    [Fact]
+    public void Another_component_shown_lets_go_of_the_KiCad_pins()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            var shown = new List<string>();
+            pane.ComponentShown += (_, label) => shown.Add(label);
+
+            pane.UseKiCadPins(session, "U8", U8KiCadPins);
+            pane.Show(session, "U1", "PAL", Published());
+
+            Assert.Equal(["U1"], shown);
+            Assert.Empty(pane.KiCadPinsForTests);
+            Assert.False(Get<Button>(pane, "FillFromKiCadButton").IsVisible);
 
             window.Close();
         });

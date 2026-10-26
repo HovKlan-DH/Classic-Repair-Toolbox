@@ -176,13 +176,45 @@ namespace Handlers.DataHandling
             $"The same part - part number [{partNumber.Trim()}] - is on these boards. What you changed here goes into each ticked board's own draft, as one step there - each is reviewed by that board's maintainers. What the part has there of what is ticked is replaced.";
 
         public const string AlsoNothingChanged =
-            "Your draft changes nothing of this part that could go to another board yet - its package, notes, pins, replacement parts or links.";
+            "Your draft changes nothing of this part that could go to another board yet - its package, notes, pins, replacement parts, links, files or pictures.";
+
+        // A file replaced with nothing on the other boards to change: no part number to find the part
+        // by, or none that has it, and no other board with the file it replaced.
+        public static string AlsoFoundNothing(string partNumber) =>
+            partNumber.Trim().Length == 0
+                ? "No other board on this machine has the files you replaced."
+                : $"No other board on this machine has a component with the part number [{partNumber.Trim()}], or the files you replaced.";
+
+        // ###########################################################################################
+        // Above the files the draft replaced (2026-10-26 - the plan: "This datasheet is also used by 11
+        // other boards - change it there too?"): the same bytes as published here, on the boards listed
+        // under each - and what happens to them.
+        // ###########################################################################################
+        public const string AlsoFilesIntro =
+            "The files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's Undo takes it back. A board whose draft has a version of its own keeps it.";
+
+        // The board's own files: the same, offered under Files and links.
+        public const string AlsoBoardFilesIntro =
+            "The board files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's Undo takes it back. A board whose draft has a version of its own keeps it.";
+
+        public const string AlsoBoardFilesNothingChanged =
+            "Your draft replaces none of the board's files yet - pick another file for one with Change file first.";
+
+        public const string AlsoBoardFilesFoundNothing =
+            "No other board on this machine has the board files you replaced.";
 
         // ###########################################################################################
         // What came of it: the boards changed, and those that were not, with why - "Changed on 2 boards,
-        // each in its own draft: A, B. Not changed on C - its draft could not be saved."
+        // each in its own draft: A, B. Not changed on C - its draft could not be saved." - then each
+        // component not changed on a board where something else was ("[U7] not changed on B - ..."; code
+        // review, 2026-10-26), then each file not put on a board it was ticked for: "[Datasheet
+        // (6510.pdf)] not put on D - ...".
         // ###########################################################################################
-        public static string AlsoDone(IReadOnlyList<string> changed, IReadOnlyList<(string Board, string Why)> notChanged)
+        public static string AlsoDone(
+            IReadOnlyList<string> changed,
+            IReadOnlyList<(string Board, string Why)> notChanged,
+            IReadOnlyList<(string File, string Board, string Why)>? filesNotPut = null,
+            IReadOnlyList<(string Label, string Board, string Why)>? componentsNotChanged = null)
         {
             var parts = new List<string>();
 
@@ -194,6 +226,8 @@ namespace Handlers.DataHandling
             }
 
             parts.AddRange(notChanged.Select(board => $"Not changed on {board.Board} - {board.Why}."));
+            parts.AddRange((componentsNotChanged ?? []).Select(component => $"[{component.Label.Trim()}] not changed on {component.Board} - {component.Why}."));
+            parts.AddRange((filesNotPut ?? []).Select(file => $"[{file.File}] not put on {file.Board} - {file.Why}."));
 
             return string.Join(" ", parts);
         }
@@ -203,6 +237,15 @@ namespace Handlers.DataHandling
         public const string AlsoNoDraft = "no draft could be made of it";
 
         public const string AlsoNotSaved = "its draft could not be saved";
+
+        // Why a file was not put on a board (ChangedFiles.CanPut, and the copy itself).
+        public const string AlsoFileNoLongerThere = "that board's draft no longer has it";
+
+        public const string AlsoFileOwnVersion = "that board's draft has a version of its own";
+
+        public const string AlsoFileNotCopied = "it could not be copied into that board's draft";
+
+        public const string AlsoFileNotFound = "your new file is not in your draft";
 
         // A file of the board that is in neither the draft nor the data on this machine.
         public static string FileNotFound(string? name) =>
@@ -216,6 +259,40 @@ namespace Handlers.DataHandling
 
         public const string FileNotCopied =
             "The file could not be copied into your draft - see the log for why.";
+
+        // ---- important signals suggested ----------------------------------------------------------
+
+        public static string SignalSuggestionsHeading(int count) =>
+            $"Suggested from the KiCad nets ({count.ToString(CultureInfo.InvariantCulture)})";
+
+        public const string SignalSuggestionsIntro =
+            "Nets of this board whose names say what they are - a supply, ground, a clock, reset, a bus line. Add the ones worth checking first; Show on board lights a net up on the Schematics tab, so you can see which it is.";
+
+        // ---- fill from KiCad ----------------------------------------------------------------------
+
+        public static string FillFromKiCadTip(string label) =>
+            $"Add every pin the board's KiCad data has for [{label.Trim()}], with the name and direction its symbol gives it, and fill in the names and directions still empty - nothing you typed is changed. Undo takes it back.";
+
+        public const string NothingToFillFromKiCad =
+            "The pins already have everything the board's KiCad data has for this component.";
+
+        // What "Fill from KiCad" did: "Filled from KiCad: 38 pins added, 2 named."
+        public static string FilledFromKiCad(int added, int filled)
+        {
+            var parts = new List<string>();
+
+            if (added > 0)
+                parts.Add(added == 1 ? "1 pin added" : $"{added.ToString(CultureInfo.InvariantCulture)} pins added");
+
+            if (filled > 0)
+                parts.Add(filled == 1 ? "1 pin filled in" : $"{filled.ToString(CultureInfo.InvariantCulture)} pins filled in");
+
+            return $"Filled from KiCad: {string.Join(", ", parts)}.";
+        }
+
+        // Above the nets: what they are - read from the board's KiCad data, never stored.
+        public const string NetHeadingTip =
+            "The net each pin is on, on this board - read from the board's KiCad data as it is shown, not stored with the pins.";
 
         // How many of a case's pin numbers the pins do not list yet - 0 for a case whose count CRT
         // cannot tell.

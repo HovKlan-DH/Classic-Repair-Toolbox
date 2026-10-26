@@ -637,6 +637,497 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
+    // A component opened - or just added - has its pins read from its board's KiCad data and handed
+    // to the pane, which then offers "Fill from KiCad" (the plan: "On a KiCad board, Fill from KiCad
+    // adds each pin's net and its name from the symbol").
+    // ###########################################################################################
+    [Fact]
+    public async Task A_component_shown_gets_its_pins_from_the_boards_KiCad_data()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+
+            var asked = new List<string>();
+            tab.KiCadPinsOverrideForTests = (identity, label) =>
+            {
+                asked.Add($"{identity}|{label}");
+                return Task.FromResult<IReadOnlyList<KiCadPin>>([new KiCadPin("1", "VSS", "Ground", "GND")]);
+            };
+
+            tab.ShowBoard(entry, Board(), "PAL", null);
+            await tab.OpenComponentAsync("U8");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal([$"{BoardA}|U8"], asked);
+            Assert.Single(tab.ComponentPaneForTests.KiCadPinsForTests);
+            Assert.True(tab.ComponentPaneForTests.GetControl<Button>("FillFromKiCadButton").IsVisible);
+
+            // A component added is shown too - and its pins asked for.
+            await tab.AddComponentAsync();
+            tab.ComponentPaneForTests.GetControl<TextBox>("NewLabelBox").Text = "U12";
+            tab.ComponentPaneForTests.GetControl<AutoCompleteBox>("NewCategoryBox").Text = "IC";
+            Assert.True(tab.ComponentPaneForTests.AddNewComponent());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal([$"{BoardA}|U8", $"{BoardA}|U12"], asked);
+        });
+    }
+
+    // ###########################################################################################
+    // "Show on board" on an important signal: the pane's net handed to Main - with the board read
+    // again first when the pane's saves left the board on screen behind, as for a component.
+    // ###########################################################################################
+    [Fact]
+    public async Task Show_on_board_on_a_signal_hands_its_net_to_Main()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.NetChoicesOverrideForTests = _ => Task.FromResult(KiCadNetNames.Choices([("CLK", "CLK", false)]));
+
+            var shown = new List<(string Net, bool ReadBoardFirst)>();
+            tab.ShowNetOverrideForTests = (net, readBoardFirst) => shown.Add((net, readBoardFirst));
+
+            tab.ShowBoard(entry, Board(), "PAL", null);
+            await tab.OpenBoardPartAsync(PaneBoardPart.ImportantSignals);
+            Dispatcher.UIThread.RunJobs();
+
+            tab.ComponentPaneForTests.ShowNetOnBoard("CLK");
+            Dispatcher.UIThread.RunJobs();
+            await tab.ComponentPaneForTests.LastSave;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal([("CLK", false)], shown);
+        });
+    }
+
+    // ###########################################################################################
+    // EVERY component of a board with the part number is changed - each one listed is ticked (code
+    // review, 2026-10-26: the boards were taken once each, and only a board's FIRST 4164 got the pins
+    // while the pane said the board was changed).
+    // ###########################################################################################
+    [Fact]
+    public async Task Also_on_other_boards_changes_every_ticked_component_of_a_board()
+    {
+        BoardData Rams(params string[] labels) => new()
+        {
+            Components = labels.Select(label => new ComponentEntry { BoardLabel = label, FriendlyName = "RAM", PartNumber = "4164", Category = "IC" }).ToList(),
+        };
+
+        WriteDraft(BoardA, Rams("U9"));
+        WriteDraft(BoardB, Rams("U9", "U10"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            TabDrafts tab = Tab(entry, other);
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? Rams("U9") : Rams("U9", "U10");
+            tab.ShowBoard(entry, Rams("U9"), "PAL", null);
+
+            await tab.OpenComponentAsync("U9");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-16";
+            pane.CommitHeld();
+
+            await pane.OpenAlsoPanelAsync();
+            Assert.Equal(2, pane.GetControl<StackPanel>("AlsoBoardsPanel").Children.OfType<CheckBox>().Count());
+            await pane.ChangeOtherBoardsAsync();
+
+            DraftSession otherDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
+            Assert.Equal(["DIP-16", "DIP-16"], otherDraft.Content.Board.Components.Select(component => component.Package));
+        });
+    }
+
+    // ###########################################################################################
+    // A board given a file but whose part could not be changed says so (code review, 2026-10-26: the
+    // file going in listed the board as "Changed", and the part's failed save was never said).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_part_not_changed_on_a_board_that_took_the_file_is_said()
+    {
+        byte[] old = [37, 80, 68, 70, 49];
+        byte[] mine = [37, 80, 68, 70, 50];
+
+        BoardData Cpu(string label) => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC" }],
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = label, Name = "Datasheet", File = "Component local files/6510.pdf" }],
+        };
+
+        WriteDraftWithFiles(BoardA, Cpu("U8"), ("Component local files/6510.pdf", old));
+        WriteDraftWithFiles(BoardB, Cpu("U7"), ("Component local files/6510.pdf", old));
+
+        var published = new Dictionary<string, (BoardData Board, string File)>(StringComparer.OrdinalIgnoreCase)
+        {
+            [BoardA] = (Cpu("U8"), this.PublishedFile(Cpu("U8"), ("Component local files/6510.pdf", old))),
+            [BoardB] = (Cpu("U7"), this.PublishedFile(Cpu("U7"), ("Component local files/6510.pdf", old))),
+        };
+
+        string picked = Path.Combine(this.thisWorkspace.Root, "Picked", "6510 rev B.pdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(picked)!);
+        File.WriteAllBytes(picked, mine);
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry a = Entry("250407", BoardA);
+            HardwareBoardEntry b = Entry("250425", BoardB);
+            TabDrafts tab = Tab(a, b);
+            tab.PublishedBoardOverrideForTests = entry => published[entry.ExcelDataFile].Board;
+            tab.PublishedBoardFileOverrideForTests = entry => published[entry.ExcelDataFile].File;
+            tab.ShowBoard(a, published[BoardA].Board, "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+            await pane.ChangeFileAsync(pane.FilesForTests[0]);
+
+            await pane.OpenAlsoPanelAsync();
+
+            // The part's save fails once; the file's, after it, is made.
+            DraftSession bDraft = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardB)!;
+            int writes = 0;
+            bDraft.WhileWritingForTests = () =>
+            {
+                if (writes++ == 0)
+                {
+                    throw new IOException("held open by another program");
+                }
+            };
+
+            await pane.ChangeOtherBoardsAsync();
+            bDraft.WhileWritingForTests = null;
+
+            Assert.True(string.IsNullOrEmpty(bDraft.Content.Board.Components.Single().Package));
+            string newName = Assert.Single(bDraft.Content.Board.ComponentLocalFiles).File;
+            Assert.Equal(Sha(mine), bDraft.ListedFiles[newName].Sha256);
+
+            string said = pane.GetControl<TextBlock>("PaneMessageText").Text ?? string.Empty;
+            Assert.Contains($"Changed on 1 board, in its own draft: {b}.", said, StringComparison.Ordinal);
+            Assert.Contains($"[U7] not changed on {b} - its draft could not be saved.", said, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // The component's KiCad pins are read again when the draft's KiCad data changes while it is open
+    // (code review, 2026-10-26: a KiCad project imported with the component open left "Fill from
+    // KiCad" hidden and the nets empty until it was opened again).
+    // ###########################################################################################
+    [Fact]
+    public async Task The_KiCad_pins_are_read_again_when_the_drafts_KiCad_data_changes()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+
+            int asked = 0;
+            tab.KiCadPinsOverrideForTests = (_, _) =>
+            {
+                asked++;
+                return Task.FromResult<IReadOnlyList<KiCadPin>>([]);
+            };
+
+            tab.ShowBoard(entry, Board(), "PAL", null);
+            await tab.OpenComponentAsync("U8");
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(1, asked);
+
+            // A KiCad project imported into the draft: copied in, then taken into its list.
+            string folder = DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA);
+            Directory.CreateDirectory(Path.Combine(folder, "KiCad data"));
+            File.WriteAllText(Path.Combine(folder, "KiCad data", "board.kicad_pcb"), "(kicad_pcb)");
+            Assert.True(await DraftEdits.TakeInNewFilesAsync(BoardA));
+
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(2, asked);
+        });
+    }
+
+    // ###########################################################################################
+    // A draft made for a board where nothing then went in is let go of again (code review, 2026-10-26:
+    // every such board was left with an empty draft in "My drafts", to be discarded by hand).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_draft_made_for_a_board_that_took_nothing_is_let_go_of()
+    {
+        BoardData Cpu(string label, string package) => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC", Package = package }],
+        };
+
+        WriteDraft(BoardA, Cpu("U8", ""));
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            TabDrafts tab = Tab(entry, other);
+
+            // B has the package already - and no draft, so one is made for it.
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? Cpu("U8", "") : Cpu("U7", "DIP-40");
+            tab.SeedDraftOverrideForTests = identity =>
+            {
+                WriteDraft(identity, Cpu("U7", "DIP-40"));
+                return true;
+            };
+
+            tab.ShowBoard(entry, Cpu("U8", ""), "PAL", null);
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+
+            await pane.OpenAlsoPanelAsync();
+            await pane.ChangeOtherBoardsAsync();
+
+            Assert.Contains($"Not changed on {other} - it is like that there already.", pane.GetControl<TextBlock>("PaneMessageText").Text ?? string.Empty, StringComparison.Ordinal);
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardB));
+        });
+    }
+
+    // ###########################################################################################
+    // A file put on another board is ONE step of that board's draft, which its Undo takes back (code
+    // review, 2026-10-26: written straight into the draft's file list, it was no step at all - and a
+    // board file had no other way back but discarding the whole draft).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_file_put_on_another_board_is_one_step_that_boards_Undo_takes_back()
+    {
+        byte[] old = [37, 80, 68, 70, 49];
+        byte[] mine = [37, 80, 68, 70, 50];
+
+        BoardData WithManual() => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU", Category = "IC" }],
+            BoardLocalFiles = [new BoardLocalFileEntry { Category = "Resources", Name = "Service manual", File = "Board local files/manual.pdf" }],
+        };
+
+        WriteDraftWithFiles(BoardA, WithManual(), ("Board local files/manual.pdf", old));
+        WriteDraftWithFiles(BoardB, WithManual(), ("Board local files/manual.pdf", old));
+
+        var published = new Dictionary<string, (BoardData Board, string File)>(StringComparer.OrdinalIgnoreCase)
+        {
+            [BoardA] = (WithManual(), this.PublishedFile(WithManual(), ("Board local files/manual.pdf", old))),
+            [BoardB] = (WithManual(), this.PublishedFile(WithManual(), ("Board local files/manual.pdf", old))),
+        };
+
+        string picked = Path.Combine(this.thisWorkspace.Root, "Picked", "manual 2nd edition.pdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(picked)!);
+        File.WriteAllBytes(picked, mine);
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry a = Entry("250407", BoardA);
+            HardwareBoardEntry b = Entry("250425", BoardB);
+            TabDrafts tab = Tab(a, b);
+            tab.PublishedBoardOverrideForTests = entry => published[entry.ExcelDataFile].Board;
+            tab.PublishedBoardFileOverrideForTests = entry => published[entry.ExcelDataFile].File;
+            tab.ShowBoard(a, published[BoardA].Board, "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.FilesAndLinks);
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+            await pane.ChangeBoardFileAsync(pane.BoardFilesForTests.Single());
+
+            await pane.OpenBoardAlsoPanelAsync();
+            await pane.ChangeBoardFilesOnOtherBoardsAsync();
+
+            DraftSession bDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
+            string newName = Assert.Single(bDraft.Content.Board.BoardLocalFiles).File;
+            Assert.Equal(Sha(mine), bDraft.ListedFiles[newName].Sha256);
+
+            Assert.True(bDraft.CanUndo);
+            Assert.True(bDraft.Undo());
+            Assert.Equal("Board local files/manual.pdf", Assert.Single(bDraft.Content.Board.BoardLocalFiles).File);
+        });
+    }
+
+    // ###########################################################################################
+    // The pins a LATER read found are kept - a read started before a KiCad import that ends after the
+    // read started by it never puts the old pins back (code review, 2026-10-26).
+    // ###########################################################################################
+    [Fact]
+    public async Task An_older_KiCad_pin_read_ending_last_does_not_win()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+
+            var reads = new List<TaskCompletionSource<IReadOnlyList<KiCadPin>>>();
+            tab.KiCadPinsOverrideForTests = (_, _) =>
+            {
+                var read = new TaskCompletionSource<IReadOnlyList<KiCadPin>>();
+                reads.Add(read);
+                return read.Task;
+            };
+
+            tab.ShowBoard(entry, Board(), "PAL", null);
+            await tab.OpenComponentAsync("U8");
+
+            string folder = DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA);
+            Directory.CreateDirectory(Path.Combine(folder, "KiCad data"));
+            File.WriteAllText(Path.Combine(folder, "KiCad data", "board.kicad_pcb"), "(kicad_pcb)");
+            Assert.True(await DraftEdits.TakeInNewFilesAsync(BoardA));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(2, reads.Count);
+
+            reads[1].SetResult([new KiCadPin("1", "VSS", "Ground", "GND")]);
+            Dispatcher.UIThread.RunJobs();
+            reads[0].SetResult([new KiCadPin("1", "OLD", "", "")]);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("VSS", Assert.Single(tab.ComponentPaneForTests.KiCadPinsForTests).Name);
+        });
+    }
+
+    // ---- also on other boards, for files ----------------------------------------------------------
+
+    private static string Sha(byte[] bytes) => Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+
+    // A draft of `board` listing `files`, their bytes in the draft's own store.
+    private static void WriteDraftWithFiles(string excelDataFile, BoardData board, params (string Name, byte[] Bytes)[] files)
+    {
+        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
+        string folder = Path.GetDirectoryName(boardFile)!;
+        Directory.CreateDirectory(folder);
+
+        var listed = new List<BoardDocument.StoredFileRow>();
+
+        foreach ((string name, byte[] bytes) in files)
+        {
+            string stored = Path.Combine(folder, DataTreeLayout.StoredFilePath(Sha(bytes), name).Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(stored)!);
+            File.WriteAllBytes(stored, bytes);
+            listed.Add(new BoardDocument.StoredFileRow { Name = name, Sha256 = Sha(bytes), Size = bytes.Length });
+        }
+
+        BoardFiles.Write(boardFile, BoardDocumentMapping.ToDocument(new BoardContent(board, [], []), name => name, listed));
+        DraftMarkerStore.Save(DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile), new DraftMarker { BoardKey = excelDataFile });
+    }
+
+    // The published board file of `board`, listing `files` - in a folder of the test's own.
+    private string PublishedFile(BoardData board, params (string Name, byte[] Bytes)[] files)
+    {
+        string path = Path.Combine(this.thisWorkspace.Root, "Published", Guid.NewGuid().ToString("N"), DataTreeLayout.BoardFileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+        BoardFiles.Write(path, BoardDocumentMapping.ToDocument(
+            new BoardContent(board, [], []),
+            name => name,
+            files.Select(file => new BoardDocument.StoredFileRow { Name = file.Name, Sha256 = Sha(file.Bytes), Size = file.Bytes.Length }).ToList()));
+
+        return path;
+    }
+
+    // ###########################################################################################
+    // "Also on other boards" for a file, end to end (the plan: "This datasheet is also used by 11
+    // other boards - change it there too?"): a datasheet replaced on this board goes into the draft of
+    // each other board that has the same file, under THAT board's name for it - never over a version
+    // that board's draft has of its own, and never onto bytes another board uses as a scope baseline.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_datasheet_replaced_goes_into_the_other_boards_drafts_that_have_the_same_file()
+    {
+        const string BoardC = "Commodore/C64/250469/board.json";
+        const string BoardD = "Commodore/C64/326298/board.json";
+
+        byte[] old = [37, 80, 68, 70, 49];
+        byte[] mine = [37, 80, 68, 70, 50];
+        byte[] theirs = [37, 80, 68, 70, 51];
+
+        BoardData WithDatasheet(string label, string file) => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", Category = "IC" }],
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = label, Name = "Datasheet", File = file }],
+        };
+
+        var asBaseline = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU", Category = "IC" }],
+            ComponentImages = [new ComponentImageEntry { BoardLabel = "U1", Pin = "1", File = "Scope baseline/odd.pdf", TimeDiv = "1us" }],
+        };
+
+        WriteDraftWithFiles(BoardA, WithDatasheet("U8", "Component local files/6510.pdf"), ("Component local files/6510.pdf", old));
+        WriteDraftWithFiles(BoardB, WithDatasheet("U7", "Component local files/6510.pdf"), ("Component local files/6510.pdf", old));
+        WriteDraftWithFiles(BoardC, WithDatasheet("U2", "Component local files/MOS 6510.pdf"), ("Component local files/MOS 6510.pdf", theirs));
+
+        var published = new Dictionary<string, (BoardData Board, string File)>(StringComparer.OrdinalIgnoreCase)
+        {
+            [BoardA] = (WithDatasheet("U8", "Component local files/6510.pdf"), this.PublishedFile(WithDatasheet("U8", "Component local files/6510.pdf"), ("Component local files/6510.pdf", old))),
+            [BoardB] = (WithDatasheet("U7", "Component local files/6510.pdf"), this.PublishedFile(WithDatasheet("U7", "Component local files/6510.pdf"), ("Component local files/6510.pdf", old))),
+            [BoardC] = (WithDatasheet("U2", "Component local files/MOS 6510.pdf"), this.PublishedFile(WithDatasheet("U2", "Component local files/MOS 6510.pdf"), ("Component local files/MOS 6510.pdf", old))),
+            [BoardD] = (asBaseline, this.PublishedFile(asBaseline, ("Scope baseline/odd.pdf", old))),
+        };
+
+        string picked = Path.Combine(this.thisWorkspace.Root, "Picked", "6510 rev B.pdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(picked)!);
+        File.WriteAllBytes(picked, mine);
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry a = Entry("250407", BoardA);
+            HardwareBoardEntry b = Entry("250425", BoardB);
+            HardwareBoardEntry c = Entry("250469", BoardC);
+            HardwareBoardEntry d = Entry("326298", BoardD);
+            TabDrafts tab = Tab(a, b, c, d);
+            tab.PublishedBoardOverrideForTests = entry => published[entry.ExcelDataFile].Board;
+            tab.PublishedBoardFileOverrideForTests = entry => published[entry.ExcelDataFile].File;
+            tab.ShowBoard(a, published[BoardA].Board, "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+            await pane.ChangeFileAsync(pane.FilesForTests[0]);
+
+            await pane.OpenAlsoPanelAsync();
+
+            Assert.Equal(
+                [b.ToString(), $"{c} - as MOS 6510.pdf"],
+                pane.GetControl<StackPanel>("AlsoFilesPanel").Children.OfType<CheckBox>().Select(box => box.Content as string));
+
+            await pane.ChangeOtherBoardsAsync();
+
+            // B has the new file under a name of its own, its row pointed at it as ONE step named after
+            // this board, saved; C keeps its own version.
+            DraftSession bDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
+            Assert.Equal("Component local files/6510 rev B.pdf", Assert.Single(ComponentPaneEdits.FilesOf(bDraft.Content.Board, "U7")).File);
+            Assert.Equal(Sha(mine), bDraft.ListedFiles["Component local files/6510 rev B.pdf"].Sha256);
+            Assert.Equal($"[Datasheet] copied from {a}", bDraft.UndoDescription);
+            Assert.False(bDraft.HasUnsavedChanges);
+            Assert.Equal(
+                Sha(mine),
+                BoardFiles.ReadDocument(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardB))!.Files.Single().Sha256);
+
+            DraftSession cDraft = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardC)!;
+            Assert.Equal(Sha(theirs), cDraft.ListedFiles["Component local files/MOS 6510.pdf"].Sha256);
+
+            string said = pane.GetControl<TextBlock>("PaneMessageText").Text ?? string.Empty;
+            Assert.Contains($"Changed on 1 board, in its own draft: {b}.", said, StringComparison.Ordinal);
+            Assert.Contains($"[Datasheet (6510.pdf)] not put on {c} - that board's draft has a version of its own.", said, StringComparison.Ordinal);
+            Assert.DoesNotContain(d.ToString(), said, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
     // Several drafts in one submit (slice 5): the Submit dialog is offered every OTHER draft, and one
     // ticked is made ready as its own Submit would - a change held only in memory saved into its file
     // first, the credit typed put in for its own work - while one with errors is not sent and says so.

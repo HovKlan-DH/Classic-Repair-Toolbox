@@ -73,6 +73,7 @@ namespace CRT
             this.thisIsNew = true;
             this.thisBoardPart = null;
             this.CloseCopyPanel();
+            this.ForgetKiCadPins();
 
             this.thisShowing = true;
 
@@ -185,6 +186,7 @@ namespace CRT
 
             this.ShowComponent();
             this.ContentChanged?.Invoke(this, EventArgs.Empty);
+            this.RaiseComponentShown();
             Dispatcher.UIThread.Post(() => this.FriendlyNameBox.Focus(), DispatcherPriority.Background);
 
             return true;

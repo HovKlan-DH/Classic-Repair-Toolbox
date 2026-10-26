@@ -64,6 +64,7 @@ namespace CRT
             this.CreditsItemsControl.ItemsSource = this.thisCredits;
             this.SignalsItemsControl.ItemsSource = this.thisSignals;
             this.InitializeBoardPictures();
+            this.InitializeSignalSuggestions();
         }
 
         // ###########################################################################################
@@ -92,6 +93,7 @@ namespace CRT
             this.thisIsNew = false;
             this.thisBoardPart = part;
             this.CloseCopyPanel();
+            this.ForgetKiCadPins();
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
 
@@ -119,6 +121,7 @@ namespace CRT
             }
 
             this.ShowNetsLine();
+            this.ShowSignalSuggestions();
         }
 
         // The component's rows let go - a board part shows none of them, and none may be committed.
@@ -190,6 +193,7 @@ namespace CRT
 
             this.ShowBoardPartLines();
             this.ShowBoardPartChanged();
+            this.ShowSignalSuggestions();
         }
 
         // The headings with their counts, and the line for a list with nothing in it.
@@ -261,6 +265,7 @@ namespace CRT
         {
             this.ChangedMark.IsVisible = this.IsBoardPartChanged;
             ToolTip.SetTip(this.ChangedMark, ComponentPaneWording.BoardPartChangedTip);
+            this.ShowBoardFilesAlsoOffer();
         }
 
         // ---- the part's changes into the draft ----------------------------------------------------
@@ -310,11 +315,13 @@ namespace CRT
             List<KiCadImportantSignalEntry> rows = this.thisSignals.Select(row => row.ToEntry()).ToList();
             this.ApplyBoardPart(DraftStepWording.ImportantSignals, board => BoardPartEdits.WithImportantSignals(board, rows));
 
-            // Each row's net judged again as it now reads.
+            // Each row's net judged again as it now reads, and what is suggested follows.
             foreach (ComponentPaneSignalRow row in this.thisSignals)
             {
                 row.UseChoices(this.thisNetChoices);
             }
+
+            this.ShowSignalSuggestions();
         }
 
         // One change of a board part, as the pane's own step - "Changed" follows.
@@ -651,7 +658,21 @@ namespace CRT
 
         public string DisplayName { get => this.thisDisplayName; set => this.Set(ref this.thisDisplayName, value); }
 
-        public string KiCadNetName { get => this.thisNetName; set => this.Set(ref this.thisNetName, value); }
+        public string KiCadNetName
+        {
+            get => this.thisNetName;
+            set
+            {
+                if (this.Set(ref this.thisNetName, value))
+                {
+                    this.Raise(nameof(this.CanShowOnBoard));
+                }
+            }
+        }
+
+        // "Show on board" lights the net up - while there is one, and the board's KiCad data has it: a
+        // board without KiCad data has nothing to light (code review, 2026-10-26).
+        public bool CanShowOnBoard => this.thisNetChoices.Count > 0 && this.thisNetName.Trim().Length > 0 && this.thisProblem.Length == 0;
 
         public IReadOnlyList<string> NetChoices
         {
@@ -660,6 +681,7 @@ namespace CRT
             {
                 this.thisNetChoices = value;
                 this.Raise(nameof(this.NetChoices));
+                this.Raise(nameof(this.CanShowOnBoard));
             }
         }
 
@@ -671,6 +693,7 @@ namespace CRT
                 if (this.Set(ref this.thisProblem, value))
                 {
                     this.Raise(nameof(this.HasProblem));
+                    this.Raise(nameof(this.CanShowOnBoard));
                 }
             }
         }

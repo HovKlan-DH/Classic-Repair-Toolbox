@@ -58,7 +58,13 @@ namespace CRT
     //   ComponentPane.Board.cs  - the board's files and links, credits and important signals
     //   ComponentPane.BoardPictures.cs - the board's pictures and the colours a marked component is
     //                             drawn in on each, with their previews
-    //   ComponentPane.Copy.cs   - "Copy from another board": the same part's data from another board
+    //   ComponentPane.SignalSuggestions.cs - important signals suggested from the KiCad net names, and
+    //                             "Show on board" lighting a net up on the Schematics tab
+    //   ComponentPane.KiCadPins.cs - the component's pins from the board's KiCad data: "Fill from
+    //                             KiCad" and each pin's net on this board
+    //   ComponentPane.Copy.cs   - "Copy from another board": the same part's data from another board;
+    //                             "Also on other boards": this draft's change of the part, and the
+    //                             files it replaced, onto the other boards' own drafts
     // ###########################################################################################
     public partial class ComponentPane : UserControl
     {
@@ -193,8 +199,10 @@ namespace CRT
             this.thisIsNew = false;
             this.thisBoardPart = null;
             this.CloseCopyPanel();
+            this.ForgetKiCadPins();
 
             this.ShowComponent();
+            this.RaiseComponentShown();
         }
 
         // ###########################################################################################
@@ -241,8 +249,10 @@ namespace CRT
             this.thisBoardLinks.Clear();
             this.thisCredits.Clear();
             this.thisSignals.Clear();
+            this.thisSignalSuggestions.Clear();
             this.thisBoardPictures.Clear();
             this.CloseCopyPanel();
+            this.ForgetKiCadPins();
         }
 
         // ###########################################################################################
@@ -284,6 +294,7 @@ namespace CRT
             {
                 previous.ChangeComing -= this.OnSessionChangeComing;
                 previous.Changed -= this.OnSessionChanged;
+                previous.SaveStateChanged -= this.OnSessionSaveStateChanged;
             }
 
             this.thisSession = session;
@@ -292,6 +303,7 @@ namespace CRT
             {
                 session.ChangeComing += this.OnSessionChangeComing;
                 session.Changed += this.OnSessionChanged;
+                session.SaveStateChanged += this.OnSessionSaveStateChanged;
             }
 
             this.thisSaveTimer.IsEnabled = session is not null;
@@ -465,6 +477,7 @@ namespace CRT
 
             this.AddCasePinsButton.IsVisible = missing > 0;
             this.AddCasePinsButton.Content = ComponentPaneWording.AddCasePins(package, missing, pins.Count == 0);
+            this.ShowKiCadPins();
         }
 
         private void ShowEmptyLines()
@@ -627,6 +640,7 @@ namespace CRT
             if (ReferenceEquals(sender, this.thisSession) && !this.IsOwnEdit(change))
             {
                 this.ShowComponent();
+                this.FollowKiCadFiles();
             }
         }
 
@@ -884,6 +898,12 @@ namespace CRT
                 this.Saved?.Invoke(this, session.ExcelDataFile);
             }
 
+            // A file added is listed - with its bytes, what "Also on other boards" goes by - once written.
+            if (ReferenceEquals(session, this.thisSession))
+            {
+                this.ShowAlsoOffers();
+            }
+
             return outcome;
         }
     }
@@ -923,6 +943,25 @@ namespace CRT
             ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.PinDirections, this.thisDirection)
                 ? ComponentVocabulary.PinDirections
                 : [.. ComponentVocabulary.PinDirections, this.thisDirection];
+
+        // The net the pin is on on this board, from its KiCad data - shown, never part of the entry.
+        public string Net { get; private set; } = string.Empty;
+
+        public bool HasNet => this.Net.Length > 0;
+
+        public void UseNet(string? net)
+        {
+            string wanted = net ?? string.Empty;
+
+            if (string.Equals(this.Net, wanted, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            this.Net = wanted;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.Net)));
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.HasNet)));
+        }
 
         public static ComponentPanePinRow From(ComponentPinEntry pin) => new()
         {

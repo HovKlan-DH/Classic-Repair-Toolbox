@@ -38,6 +38,23 @@ public sealed class ComponentPopupContentTests
         Assert.Empty(ComponentPopupContent.PinsOf(pins, "", "PAL"));
     }
 
+    // Each pin beside its net on this board, by its number - a pin the KiCad data has no net for, none.
+    [Fact]
+    public void A_pin_shows_its_net_on_this_board_by_its_number()
+    {
+        ComponentPinEntry[] pins =
+        [
+            new() { BoardLabel = "U8", Pin = " 2 ", Name = "PHI0", Direction = "Input" },
+            new() { BoardLabel = "U8", Pin = "10", Name = "A0" },
+        ];
+
+        var nets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["2"] = "PHI0" };
+
+        Assert.Equal(
+            [new ComponentPopupPin("2", "PHI0", "Input", "PHI0"), new ComponentPopupPin("10", "A0", string.Empty, string.Empty)],
+            ComponentPopupContent.PinsOf(pins, "U8", "PAL", nets));
+    }
+
     // "8500 - Drop-in" on the first line, what to change and where it comes from under it.
     [Fact]
     public void A_replacement_part_reads_part_number_and_kind_then_changes_and_source()

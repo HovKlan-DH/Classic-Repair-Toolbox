@@ -203,19 +203,10 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(edit);
 
-            string draftsRoot = DraftManager.DraftsRoot;
-
-            if ((DraftManager.Sessions.Find(draftsRoot, excelDataFile)
-                 ?? await Task.Run(() => DraftManager.Sessions.Get(draftsRoot, excelDataFile))) is not DraftSession session)
+            if (await DraftEdits.OpenForChangeAsync(excelDataFile) is not DraftSession session)
             {
                 return null;
             }
-
-            // What the table holds goes in first, so the file is asked about with it in the session.
-            session.CollectHeldChanges(DraftSaveWording.ReadAgainStep);
-
-            if (await Task.Run(session.FileChangedOutside))
-                session.ReadFileIfChanged(DraftSaveWording.ReadAgainStep);
 
             // The change's own mark, so a save that cannot be made takes back this change and no other.
             object origin = new DraftEditOrigin(description);
@@ -229,6 +220,70 @@ namespace Handlers.DataHandling
                            session.ApplyWithFollow(description, edit, origin);
 
             return applied ? (session, origin) : null;
+        }
+
+        // ###########################################################################################
+        // The draft's session, opened for a change as every editor's change opens it: on the pool when
+        // it is not open yet, what its editors hold handed over first (so the file is asked about with
+        // it in the session), and a file written meanwhile read - the change then lands on the draft as
+        // it is. Null without a draft. UI thread.
+        // ###########################################################################################
+        public static async Task<DraftSession?> OpenForChangeAsync(string excelDataFile)
+        {
+            string draftsRoot = DraftManager.DraftsRoot;
+
+            if ((DraftManager.Sessions.Find(draftsRoot, excelDataFile)
+                 ?? await Task.Run(() => DraftManager.Sessions.Get(draftsRoot, excelDataFile))) is not DraftSession session)
+            {
+                return null;
+            }
+
+            session.CollectHeldChanges(DraftSaveWording.ReadAgainStep);
+
+            if (await Task.Run(session.FileChangedOutside))
+                session.ReadFileIfChanged(DraftSaveWording.ReadAgainStep);
+
+            return session;
+        }
+
+        // ###########################################################################################
+        // `files` - each a file and the name the change gives it - copied into the draft's folder, then
+        // `transform` - the rows citing them - applied as ONE step and saved, as every editor's change
+        // (ApplyAndSaveAsync: taken back out when the save cannot be made). The copies the write took
+        // in are kept; when the save is not made, or the write did not take a copy in, the copy is
+        // taken back out with what it replaced (DraftPickedFiles.KeepTakenIn; code review, 2026-10-26 -
+        // left lying there, the next write by any editor took it in unasked). The save's outcome; null
+        // when nothing could be copied. UI thread, as every change.
+        // ###########################################################################################
+        public static async Task<DraftWorkbookEditOutcome?> CopyInAndApplyAsync(
+            string excelDataFile,
+            IReadOnlyList<(string Source, string Name)> files,
+            string description,
+            Func<BoardData, BoardData?> transform)
+        {
+            ArgumentNullException.ThrowIfNull(files);
+            ArgumentNullException.ThrowIfNull(transform);
+
+            string folder = DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, excelDataFile);
+            DraftPickedFiles picked = await Task.Run(() => DraftPickedFiles.CopyInto(folder, files));
+
+            if (!picked.AnyLying)
+            {
+                return null;
+            }
+
+            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(excelDataFile, description, transform, takeInNewFiles: true);
+
+            if (outcome == DraftWorkbookEditOutcome.Saved)
+            {
+                picked.KeepTakenIn();
+            }
+            else
+            {
+                picked.TakeBack();
+            }
+
+            return outcome;
         }
 
         // The same, all on the calling thread - for ApplyWithFollowAndSaveNow, which nothing may wait for.

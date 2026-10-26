@@ -65,6 +65,14 @@ namespace Handlers.DataHandling
 
             return !this.HasNets || wanted.Length == 0 || this.thisResolver.ContainsKey(wanted);
         }
+
+        // The normalised name the panel finds `net` by - null for a net it does not find.
+        public string? NormalizedOf(string? net)
+        {
+            string wanted = net?.Trim() ?? string.Empty;
+
+            return wanted.Length > 0 && this.thisResolver.TryGetValue(wanted, out string? normalized) ? normalized : null;
+        }
     }
 
     // ###########################################################################################
@@ -78,8 +86,30 @@ namespace Handlers.DataHandling
     //
     // Plain strings in, like KiCadReferenceMatcher: the KiCad types live in CRT.App.
     // ###########################################################################################
-    public static class KiCadNetNames
+    public static partial class KiCadNetNames
     {
+        // ###########################################################################################
+        // A KiCad name - a pin's, or a net's last part - as CRT spells it: KiCad's overbar "~{RESET}"
+        // is "~RESET" (the component pane's own hint), a "/" written inside a name as "{slash}" is "/",
+        // and "~" alone - KiCad's "no name" - is none. THE ONE RULE for reading KiCad's escapes (code
+        // review, 2026-10-26: written twice, with different rules) - KiCadComponentPins and
+        // ImportantSignalSuggestions both read names through it.
+        // ###########################################################################################
+        public static string Readable(string? kiCadName)
+        {
+            string name = kiCadName?.Trim() ?? string.Empty;
+
+            if (name == "~")
+            {
+                return string.Empty;
+            }
+
+            return KiCadNetNames.Overbar().Replace(name.Replace("{slash}", "/", StringComparison.Ordinal), match => "~" + match.Groups[1].Value);
+        }
+
+        [System.Text.RegularExpressions.GeneratedRegex(@"~\{([^}]*)\}")]
+        private static partial System.Text.RegularExpressions.Regex Overbar();
+
         // Every name a net is known by -> its normalised name. A net with no normalised name is no
         // net at all here, as it is to the panel.
         public static Dictionary<string, string> Resolver(IEnumerable<(string? Name, string? NormalizedName)> nets)

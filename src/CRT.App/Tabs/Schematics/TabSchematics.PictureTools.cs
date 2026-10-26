@@ -262,10 +262,12 @@ public partial class TabSchematics
     {
         this.thisKiCadSettled = hasProject ? BoardKiCad.Loaded : BoardKiCad.None;
         this.TryStartPendingTool();
+        this.ShowNetAskedForBeforeKiCadSettled();
     }
 
     // A board load: whatever was asked or refused is for the board before, and its end is no
-    // reason to leave this tab. The tools themselves end with the viewer's reset.
+    // reason to leave this tab. The tools themselves end with the viewer's reset. So is a net asked
+    // to be lit up (ShowOnlyNet) - one asked for after this load asks again once it ends.
     private void ForgetPictureToolsForNewBoard()
     {
         this.thisPendingTool = null;
@@ -273,6 +275,7 @@ public partial class TabSchematics
         this.thisToolFromWorkspace = false;
         this.thisImageSettledFor = null;
         this.thisKiCadSettled = null;
+        this.thisNetToShowOnceKiCadSettles = null;
         this.FollowPictureTool();
     }
 

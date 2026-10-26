@@ -34,6 +34,14 @@ public partial class TabSchematics
     // KiCad import / overlay
     private KiCadProjectBundle? thisKiCadProject;
 
+    // ###########################################################################################
+    // Each pin of `label` with the net it is on on the board shown, by pin number - from the KiCad
+    // data loaded for it (KiCadPinTable), for the component popup's "net on this board". Empty while
+    // none is loaded.
+    // ###########################################################################################
+    internal Dictionary<string, string> KiCadPinNetsOf(string label) =>
+        KiCadComponentPins.NetsByPin(KiCadPinTable.PinsOf(this.thisKiCadProject?.Root, label));
+
     private readonly HashSet<string> thisSelectedKiCadReferences = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly HashSet<string> thisSelectedKiCadNormalizedNetNames = new(StringComparer.OrdinalIgnoreCase);
@@ -476,6 +484,71 @@ public partial class TabSchematics
     {
         return this.ResolveKiCadViewForSchematicName(this.GetCurrentSchematicName());
     }
+
+    // ###########################################################################################
+    // Only the KiCad net `netName` lit up - the Contribute tab's "Show on board" on an important signal
+    // (CRT 4.0 step 2: "click-to-light-up"). Found by the Important signals panel's own rule
+    // (KiCadNetNames.Resolver), every other selection let go - the components', the panel's and the
+    // nets clicked - and the net locked, as a click on its trace locks it. While the board's KiCad
+    // data is still loading it WAITS for it (KiCadSettled, TabSchematics.PictureTools.cs): the load
+    // lets go of every locked net. A net the data does not have lights up nothing.
+    // ###########################################################################################
+    internal void ShowOnlyNet(string netName)
+    {
+        string wanted = netName?.Trim() ?? string.Empty;
+        this.thisNetToShowOnceKiCadSettles = null;
+
+        if (wanted.Length == 0)
+        {
+            return;
+        }
+
+        if (this.thisKiCadSettled is null)
+        {
+            this.thisNetToShowOnceKiCadSettles = wanted;
+            return;
+        }
+
+        var root = this.thisKiCadProject?.Root;
+
+        if (root is null || !KiCadNetNames.Resolver(root.Pcb.SelectMany(pcb => pcb.Nets.List).Select(net => (net.Name, net.NormalizedName)))
+                .TryGetValue(wanted, out string? normalized))
+        {
+            return;
+        }
+
+        this.thisSchematicsOnlySelectedBoardLabels.Clear();
+        this.MainWindow?.ComponentFilterListBox.SelectedItems?.Clear();
+
+        // The highlights and nets of the components selected rebuilt from nothing selected (code
+        // review, 2026-10-26): one selected only on the schematic changes no list selection, and its
+        // highlight and nets stayed lit beside the net asked for.
+        this.UpdateHighlightsForComponents([]);
+        this.ClearAllKiCadTraceSelections();
+
+        this.thisLockedKiCadNetNames.Add(normalized);
+        this.RefreshKiCadOverlay(forceImmediate: true);
+        this.RefreshBlinkStateFromCurrentSelection();
+    }
+
+    // The net asked for while the board's KiCad data was loading - lit once it has settled.
+    private string? thisNetToShowOnceKiCadSettles;
+
+    private void ShowNetAskedForBeforeKiCadSettled()
+    {
+        if (this.thisNetToShowOnceKiCadSettles is { } net)
+        {
+            this.ShowOnlyNet(net);
+        }
+    }
+
+    // A test's KiCad project, in place of a board's load - and the nets locked, lit up.
+    internal void UseKiCadProjectForTests(KiCadProjectBundle? project) => this.thisKiCadProject = project;
+
+    internal IReadOnlyCollection<string> LockedKiCadNetNamesForTests => this.thisLockedKiCadNetNames;
+
+    // The nets the selected components light up.
+    internal IReadOnlyCollection<string> SelectedKiCadNetNamesForTests => this.thisSelectedKiCadNormalizedNetNames;
 
     // ###########################################################################################
     // Clears all explicit KiCad trace selections and any selected Important signals so shared nets

@@ -160,6 +160,15 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("net")]
         public KiCadNetRef? Net { get; init; }
+
+        // The pin's name and electrical type as KiCad 6 and later copy them onto the pad from the
+        // symbol ("pinfunction", "pintype") - blank in an older file. A board with no schematic has
+        // nothing else naming its pins (KiCadComponentPins).
+        [JsonPropertyName("pin_function")]
+        public string? PinFunction { get; init; }
+
+        [JsonPropertyName("pin_type")]
+        public string? PinType { get; init; }
     }
 
     public sealed class KiCadPcbRouting
@@ -370,6 +379,25 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("properties_detailed")]
         public List<KiCadSchematicSymbolPropertyDetailed> PropertiesDetailed { get; init; } = new();
+
+        // Every pin of the part the symbol draws - all its units - from the sheet's own copy of the
+        // library symbol (its "lib_symbols"). Shared between the instances of one library symbol.
+        [JsonPropertyName("pins")]
+        public List<KiCadSchematicPin> Pins { get; init; } = new();
+    }
+
+    // One pin of a library symbol: its number, name ("~" for none) and electrical type ("input",
+    // "power_in", "passive", ...).
+    public sealed class KiCadSchematicPin
+    {
+        [JsonPropertyName("number")]
+        public string Number { get; init; } = string.Empty;
+
+        [JsonPropertyName("name")]
+        public string Name { get; init; } = string.Empty;
+
+        [JsonPropertyName("type")]
+        public string Type { get; init; } = string.Empty;
     }
 
     public sealed class KiCadSchematicSymbolPropertyDetailed

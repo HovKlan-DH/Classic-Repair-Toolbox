@@ -4,8 +4,12 @@ using System.Linq;
 
 namespace Handlers.DataHandling
 {
-    // One pin as the component popup lists it.
-    public sealed record ComponentPopupPin(string Pin, string Name, string Direction);
+    // One pin as the component popup lists it - with its net on this board, from the board's KiCad
+    // data ("" without).
+    public sealed record ComponentPopupPin(string Pin, string Name, string Direction, string Net = "")
+    {
+        public bool HasNet => this.Net.Length > 0;
+    }
 
     // One replacement part as the component popup lists it - its part number and kind on the first line.
     public sealed record ComponentPopupReplacement(string Title, string Changes, string Source)
@@ -32,15 +36,29 @@ namespace Handlers.DataHandling
                     .Select(part => part?.Trim() ?? string.Empty)
                     .Where(part => part.Length > 0));
 
-        // The component's pins in `region` (a pin with no region is in every one), in number order.
-        public static List<ComponentPopupPin> PinsOf(IEnumerable<ComponentPinEntry> pins, string? label, string? region)
+        // ###########################################################################################
+        // The component's pins in `region` (a pin with no region is in every one), in number order -
+        // each with its net on this board from `nets` (by pin number; the plan: "The popup shows the
+        // signal name and 'net on this board' side by side").
+        // ###########################################################################################
+        public static List<ComponentPopupPin> PinsOf(
+            IEnumerable<ComponentPinEntry> pins,
+            string? label,
+            string? region,
+            IReadOnlyDictionary<string, string>? nets = null)
         {
             ArgumentNullException.ThrowIfNull(pins);
 
             return pins
                 .Where(pin => ComponentPopupContent.InScope(pin.BoardLabel, pin.Region, label, region))
                 .OrderBy(pin => pin.Pin, ComponentPaneEdits.PinOrder)
-                .Select(pin => new ComponentPopupPin(pin.Pin?.Trim() ?? string.Empty, pin.Name?.Trim() ?? string.Empty, pin.Direction?.Trim() ?? string.Empty))
+                .Select(pin =>
+                {
+                    string number = pin.Pin?.Trim() ?? string.Empty;
+                    string net = nets is not null && nets.TryGetValue(number, out string? found) ? found : string.Empty;
+
+                    return new ComponentPopupPin(number, pin.Name?.Trim() ?? string.Empty, pin.Direction?.Trim() ?? string.Empty, net);
+                })
                 .ToList();
         }
 

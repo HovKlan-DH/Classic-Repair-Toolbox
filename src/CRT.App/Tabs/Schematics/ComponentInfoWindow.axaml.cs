@@ -88,6 +88,9 @@ namespace CRT
         private IReadOnlyList<ComponentPinEntry> _allPins = [];
         private IReadOnlyList<ComponentReplacementEntry> _allReplacements = [];
 
+        // Each pin's net on this board by its number, from the board's KiCad data - empty without.
+        private IReadOnlyDictionary<string, string> _pinNets = new Dictionary<string, string>();
+
         // The board's "Scope measurements" files, found - linked under a scope baseline.
         private IReadOnlyList<ComponentLocalFileItem> _measuringNotes = [];
         private bool _suppressThumbnailSelection = false;
@@ -769,11 +772,16 @@ namespace CRT
 
             // The board's own files - its "Scope measurements" ones say how the baselines were measured
             // (ScopeMeasurementFiles, 2026-10-26), linked under a scope baseline.
-            IReadOnlyList<BoardLocalFileEntry>? boardFiles = null)
+            IReadOnlyList<BoardLocalFileEntry>? boardFiles = null,
+
+            // Each pin's net on this board, by its number - from the board's KiCad data, as the
+            // Schematics tab has it loaded (KiCadComponentPins.NetsByPin); null without.
+            IReadOnlyDictionary<string, string>? pinNets = null)
         {
             this.ClearTemporaryCapturedOscilloscopeImage();
             this._allPins = pins ?? [];
             this._allReplacements = replacements ?? [];
+            this._pinNets = pinNets ?? new Dictionary<string, string>();
 
             // Found as the component's own files are - see below - each with the root it came from.
             this._measuringNotes = ScopeMeasurementFiles.Among(boardFiles)
@@ -1397,8 +1405,9 @@ namespace CRT
             // Links only - not the Workbooks tab's search marks, which are about worklogs.
             TextLinkRenderer.ApplySegments(this.InfoRepairNotes, notes, segments: null);
 
-            List<ComponentPopupPin> pins = ComponentPopupContent.PinsOf(this._allPins, this._boardLabel, this._localRegion);
+            List<ComponentPopupPin> pins = ComponentPopupContent.PinsOf(this._allPins, this._boardLabel, this._localRegion, this._pinNets);
             this.PinoutSection.IsVisible = pins.Count > 0;
+            this.InfoPinsHeading.IsVisible = pins.Any(pin => pin.HasNet);
             this.InfoPinsItemsControl.ItemsSource = pins;
             this.InfoPinoutDrawing.Show(entry?.Package, ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion));
 

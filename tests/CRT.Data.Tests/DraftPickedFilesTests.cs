@@ -89,6 +89,40 @@ public sealed class DraftPickedFilesTests : IDisposable
         Assert.Equal("already here", File.ReadAllText(lying));
     }
 
+    // ###########################################################################################
+    // A save made, but a copy the write did NOT take in - still lying where it was put - goes as the
+    // copy of a save not made does, what it replaced coming back; one taken in is kept (code review,
+    // 2026-10-26: Keep let go of both, and the stray copy waited for the next write by any editor).
+    // ###########################################################################################
+    [Fact]
+    public void Kept_after_a_save_only_the_copies_the_write_took_in_stay()
+    {
+        this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Commodore", "C64", "250407", "Component local files", "other.pdf"), "the earlier file");
+
+        DraftPickedFiles copies = DraftPickedFiles.CopyInto(this.DraftFolder, [
+            (this.Picked("taken in"), "Component images/U8.png"),
+            (this.Picked("not taken in"), "Component local files/other.pdf"),
+        ]);
+
+        // The write took the picture in - and removed it from where it arrived.
+        File.Delete(this.InDraft("Component images/U8.png"));
+
+        Assert.False(copies.KeepTakenIn());
+
+        Assert.Equal("the earlier file", File.ReadAllText(this.InDraft("Component local files/other.pdf")));
+        Assert.False(Directory.Exists(Path.Combine(this.DraftFolder, DraftPickedFiles.SetAsideFolder)));
+        Assert.False(copies.AnyLying);
+    }
+
+    [Fact]
+    public void Kept_after_a_save_that_took_every_copy_in_says_so()
+    {
+        DraftPickedFiles copies = DraftPickedFiles.CopyInto(this.DraftFolder, [(this.Picked("taken in"), "Component images/U8.png")]);
+        File.Delete(this.InDraft("Component images/U8.png"));
+
+        Assert.True(copies.KeepTakenIn());
+    }
+
     // A picked file that is gone by the time it is copied is skipped, as before.
     [Fact]
     public void A_picked_file_that_is_gone_is_skipped()

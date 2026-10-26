@@ -213,6 +213,11 @@ namespace CRT
             var pins = boardData?.ComponentPins ?? new List<ComponentPinEntry>();
             var replacements = boardData?.ComponentReplacements ?? new List<ComponentReplacementEntry>();
             var boardFiles = boardData?.BoardLocalFiles ?? new List<BoardLocalFileEntry>();
+
+            // Each pin's net on the board shown, from the KiCad data the Schematics tab has loaded for
+            // it - the board every popup and the Contribute tab's preview are of.
+            var pinNets = this.TabSchematicsControl.KiCadPinNetsOf(boardLabel);
+
             var componentEntries = boardData?.Components
                 .Where(c => string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
                 .ToList() ?? new List<ComponentEntry>();
@@ -245,7 +250,8 @@ namespace CRT
                     boardIdentity,
                     pins,
                     replacements,
-                    boardFiles);
+                    boardFiles,
+                    pinNets);
 
                 popup.UpdateOscilloscopeSessionTitleState(
                     this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -287,7 +293,8 @@ namespace CRT
                 boardIdentity,
                 pins,
                 replacements,
-                boardFiles);
+                boardFiles,
+                pinNets);
 
             this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
                 this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -696,6 +703,17 @@ namespace CRT
         internal void ShowComponentOnBoard(string boardLabel, bool readBoardFirst)
         {
             this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyComponent(boardLabel));
+            this.SwitchToSchematicsTab();
+        }
+
+        // ###########################################################################################
+        // The Contribute tab's "Show on board" on an important signal (CRT 4.0 step 2 - "click-to-light-
+        // up"): the Schematics tab with only the net `netName` lit up, on the board read again first
+        // when it has not caught up with the draft - as for a component.
+        // ###########################################################################################
+        internal void ShowNetOnBoard(string netName, bool readBoardFirst)
+        {
+            this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyNet(netName));
             this.SwitchToSchematicsTab();
         }
 

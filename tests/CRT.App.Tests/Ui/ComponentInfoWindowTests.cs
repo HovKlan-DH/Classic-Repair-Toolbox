@@ -353,6 +353,37 @@ public class ComponentInfoWindowTests : IDisposable
             ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 
             Assert.Equal(["1", "2"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Select(pin => pin.Pin));
+
+            // Without the board's KiCad data there are no nets, and no headings for them.
+            Assert.False(ControlOf<Control>(window, "InfoPinsHeading").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // With the board's KiCad data loaded, each pin shows its net on this board beside its signal name
+    // (the plan: "side by side"), under headings saying which is which.
+    // ###########################################################################################
+    [Fact]
+    public void Each_pin_shows_its_net_on_this_board_beside_its_signal_name()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                pins:
+                [
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "2", Name = "PHI2", Direction = "Input" },
+                ],
+                pinNets: new Dictionary<string, string> { ["1"] = "+5V" });
+
+            Assert.True(ControlOf<Control>(window, "InfoPinsHeading").IsVisible);
+            Assert.Equal(
+                [new ComponentPopupPin("1", "VCC", "Power", "+5V"), new ComponentPopupPin("2", "PHI2", "Input", "")],
+                ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl"));
         });
     }
 
@@ -701,7 +732,8 @@ public class ComponentInfoWindowTests : IDisposable
         bool hasExplicitRegionComponents = false,
         string draftBoardFolder = "",
         IReadOnlyList<ComponentPinEntry>? pins = null,
-        IReadOnlyList<ComponentReplacementEntry>? replacements = null)
+        IReadOnlyList<ComponentReplacementEntry>? replacements = null,
+        IReadOnlyDictionary<string, string>? pinNets = null)
     {
         window.SetComponent(
             BoardLabel,
@@ -716,7 +748,9 @@ public class ComponentInfoWindowTests : IDisposable
             draftBoardFolder,
             boardIdentity: string.Empty,
             pins,
-            replacements);
+            replacements,
+            boardFiles: null,
+            pinNets: pinNets);
     }
 
     private static ComponentEntry Component(

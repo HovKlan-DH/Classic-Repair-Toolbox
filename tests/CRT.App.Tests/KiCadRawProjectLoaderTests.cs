@@ -739,6 +739,41 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
     }
 
     [Fact]
+    public async Task Pads_carry_the_pin_name_and_type_KiCad_copied_from_the_symbol()
+    {
+        KiCadProjectRoot? root = await this.LoadAsync(this.WritePcb(KiCadFixtures.PcbWithPinFunctions));
+
+        List<KiCadPcbPad> pads = root!.Pcb[0].Footprints.Single().Pads;
+        Assert.Equal(("~{RES}", "input"), (pads[0].PinFunction, pads[0].PinType));
+
+        // An older pad, or one with nothing copied onto it, has neither.
+        Assert.Null(pads[1].PinFunction);
+        Assert.Null(pads[1].PinType);
+    }
+
+    // ###########################################################################################
+    // A symbol's pins come from the sheet's own copy of its library symbol: every unit's (the gates
+    // and the hidden power pins are one chip's), the De Morgan body style passed over, and a derived
+    // symbol taking its parent's.
+    // ###########################################################################################
+    [Fact]
+    public async Task Schematic_symbols_carry_every_pin_of_their_library_symbol()
+    {
+        string schematic = this.thisWorkspace.WriteFile("gates.kicad_sch", KiCadFixtures.SchematicWithLibrarySymbols);
+
+        KiCadProjectRoot? root = await this.LoadAsync(schematic);
+
+        List<KiCadSchematicSymbol> symbols = root!.Schematics[0].Symbols;
+        Assert.Equal(3, symbols.Count);
+
+        Assert.Equal(
+            ["1:A:input", "3:~{Y}:output", "4:A:input", "14:VCC:power_in", "7:GND:power_in"],
+            symbols[0].Pins.Select(pin => $"{pin.Number}:{pin.Name}:{pin.Type}"));
+        Assert.Same(symbols[0].Pins, symbols[1].Pins);
+        Assert.Equal(symbols[0].Pins, symbols[2].Pins);
+    }
+
+    [Fact]
     public async Task Schematic_symbols_expose_their_reference()
     {
         string sch = this.thisWorkspace.WriteFile("board.kicad_sch", KiCadFixtures.Schematic);
