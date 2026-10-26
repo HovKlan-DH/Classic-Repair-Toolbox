@@ -22,11 +22,11 @@ namespace CRT
     // *** A FIRST CHANGE MAKES THE DRAFT. *** Every action on the left works on the board's draft,
     // and on a board with none it makes one first (Main.EnsureDraftAsync - the published file
     // copied, as every editor's first save does), so nobody has to "start a draft" before working.
-    // The component editor makes its own on its first save.
     //
-    // *** NOT YET THE PLAN'S WHOLE SCREEN. *** A component opens in the component pane
-    // (TabDrafts.Component.cs), but "Add component" still opens the component editor's window, and
-    // the board's parts their windows or their sheet of the table - step 2's next slices.
+    // *** NOT YET THE PLAN'S WHOLE SCREEN. *** A component opens in the component pane, "Add
+    // component" opens its form for a new one, and the board's pictures, files and links, credits and
+    // important signals open there too (TabDrafts.Component.cs) - but KiCad data still opens its
+    // window, and adding or renaming pictures the "Schematic images" window.
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
@@ -40,13 +40,11 @@ namespace CRT
         // "My drafts" falls back to its placeholder after every pick - set from code, not a pick.
         private bool thisResettingMyDrafts;
 
-        // For tests, in place of Main: showing a board picked in "My drafts", making a board's first
-        // draft, and opening the component editor on a new component.
+        // For tests, in place of Main: showing a board picked in "My drafts", and making a board's
+        // first draft.
         internal Action<HardwareBoardEntry>? SelectBoardOverrideForTests { get; set; }
 
         internal Func<HardwareBoardEntry, Task<bool>>? EnsureDraftOverrideForTests { get; set; }
-
-        internal Action? AddComponentOverrideForTests { get; set; }
 
         // The board the tab is about - none before a board is shown.
         internal HardwareBoardEntry? CurrentEntry => this.thisCurrentEntry;
@@ -107,6 +105,46 @@ namespace CRT
             {
                 _ = TabDrafts.SaveLeftDraftAsync(session);
             }
+
+            this.LetGoOfDraftMadeOnlyToLook(tableEntry);
+        }
+
+        // ###########################################################################################
+        // *** A DRAFT MADE ONLY TO OPEN SOMETHING ON THE BOARD GOES AGAIN when that closes with nothing
+        // in it (code review, 2026-10-26). *** Opening a component - "Edit this component" is on
+        // everybody's right-click menu - a board part or the table makes the board's draft first
+        // (OnCurrentDraftAsync); looked at and closed, it stayed - the tab's title red, an empty draft in
+        // "My drafts". Only a draft such an opening made this run, with nothing waiting to be saved, no
+        // change against the published board and nothing else open on it - never a new board's.
+        // ###########################################################################################
+        private string? thisDraftMadeToLook;
+
+        private void LetGoOfDraftMadeOnlyToLook(HardwareBoardEntry entry)
+        {
+            if (!string.Equals(this.thisDraftMadeToLook, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase) ||
+                this.IsTableOpenFor(entry) || this.IsComponentOpenFor(entry))
+            {
+                return;
+            }
+
+            this.thisDraftMadeToLook = null;
+
+            if (DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile) is { HasUnsavedChanges: true })
+            {
+                return;
+            }
+
+            DraftStatus? status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile, entry.IsPublished);
+
+            if (status is null || status.IsNewBoard ||
+                DraftStatusReader.CountChangesCached(status) > 0 ||
+                DraftStatusReader.CountOtherChangesCached(status, DraftManager.DraftsRoot).Any)
+            {
+                return;
+            }
+
+            Logger.Info($"The draft of [{entry.ExcelDataFile}] was made only to open something on it, and holds nothing - let go of again");
+            this.DiscardConfirmed(entry);
         }
 
         // A draft no editor shows any more, saved off the UI thread - a failure is the session's, said
@@ -278,6 +316,8 @@ namespace CRT
                     return;
                 }
 
+                // Let go of again should what is opened close with nothing in it (LetGoOfDraftMadeOnlyToLook).
+                this.thisDraftMadeToLook = entry.ExcelDataFile;
                 this.RefreshDrafts();
             }
 
@@ -298,20 +338,26 @@ namespace CRT
                 ? this.CloseTableAsync()
                 : this.OnCurrentDraftAsync(this.ShowTableAsync);
 
+        // The pictures and their colours in the pane (slice 4b); adding, removing and renaming them is
+        // the "Schematic images" window's, opened from there (ManagePicturesRequested).
         private void OnPicturesClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry, BoardFilesSection.SchematicImages)), "Pictures");
+            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Pictures), "Pictures");
+
+        private void ManagePictures() =>
+            this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry, BoardFilesSection.SchematicImages)), "Schematic images");
 
         private void OnKiCadClick(object? sender, RoutedEventArgs e) =>
             this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry, BoardFilesSection.KiCadData)), "KiCad data");
 
+        // The board's own lists, in the pane on the right (slice 4a - TabDrafts.Component.cs).
         private void OnImportantSignalsClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.ShowTableOnSheetAsync(BoardWorkbookSchema.SheetKiCadImportantSignals), "Important signals");
+            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.ImportantSignals), "Important signals");
 
         private void OnFilesAndLinksClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.ShowTableOnSheetAsync(BoardWorkbookSchema.SheetBoardLocalFiles), "Files and links");
+            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.FilesAndLinks), "Files and links");
 
         private void OnCreditsClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.ShowTableOnSheetAsync(BoardWorkbookSchema.SheetCredits), "Credits");
+            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Credits), "Credits");
 
         private void OnTableViewClick(object? sender, RoutedEventArgs e) =>
             this.RunGuarded(this.ToggleTableViewAsync, "Table view");
@@ -325,16 +371,9 @@ namespace CRT
             }
         }
 
-        private void OnAddComponentClick(object? sender, RoutedEventArgs e)
-        {
-            if (this.AddComponentOverrideForTests is { } add)
-            {
-                add();
-                return;
-            }
-
-            this.thisMainWindow?.OpenNewComponentContributionWindow();
-        }
+        // A new component, named in the component pane's form (TabDrafts.Component.cs).
+        private void OnAddComponentClick(object? sender, RoutedEventArgs e) =>
+            this.RunGuarded(this.AddComponentAsync, "Add component");
 
         // ###########################################################################################
         // A click's work, started and watched: nothing may leave a click handler that awaits (App lets

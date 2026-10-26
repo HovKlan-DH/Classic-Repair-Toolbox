@@ -280,6 +280,9 @@ namespace CRT
             }
 
             this.CloseTableWithoutAsking();
+
+            // A draft made only to open the table goes again, nothing in it (TabDrafts.Workspace.cs).
+            this.LetGoOfDraftMadeOnlyToLook(entry);
             return true;
         }
 

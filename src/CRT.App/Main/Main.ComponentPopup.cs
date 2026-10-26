@@ -14,8 +14,10 @@ namespace CRT
 {
     // ###########################################################################################
     // The component filter/search list, the component info popup(s) it opens, the "blink
-    // selected" highlight timer, the region (PAL/NTSC) toggle, and the contribution editor
-    // window opened from a popup. See Main.axaml.cs for the file map of the whole partial class.
+    // selected" highlight timer, the region (PAL/NTSC) toggle, and what the Contribute tab's
+    // component pane asks of them: "Show on board" and "Preview popup" (CRT 4.0 step 2, slice 3c -
+    // the component editor's window they replace is gone). See Main.axaml.cs for the file map of the
+    // whole partial class.
     // ###########################################################################################
     public partial class Main
     {
@@ -164,16 +166,6 @@ namespace CRT
         // ###########################################################################################
         internal void OpenComponentInfoPopup(string boardLabel, string displayText)
         {
-            string componentKey = $"{boardLabel}\u001F{displayText}";
-            var boardData = this._currentBoardData;
-            bool hasExplicitRegionComponents = ComponentListBuilder.HasExplicitRegionComponents(boardData);
-            var images = boardData?.ComponentImages ?? new List<ComponentImageEntry>();
-            var localFiles = boardData?.ComponentLocalFiles ?? new List<ComponentLocalFileEntry>();
-            var links = boardData?.ComponentLinks ?? new List<ComponentLinkEntry>();
-            var componentEntries = boardData?.Components
-                .Where(c => string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
-                .ToList() ?? new List<ComponentEntry>();
-
             // Component images and local files are resolved draft-first through the draft folder -
             // see DraftFileResolver. The VIEWED folder, so it is empty under "view boards as
             // officially published" and the popup then shows only published bytes.
@@ -183,6 +175,47 @@ namespace CRT
 
             // The board whose published file lists the names a row cites (DraftFileResolver).
             string boardIdentity = this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty;
+
+            this.ShowComponentInfoPopup(this._currentBoardData, boardLabel, displayText, draftBoardFolder, boardIdentity);
+        }
+
+        // ###########################################################################################
+        // The Contribute tab's "Preview popup" (CRT 4.0 step 2, slice 3c - the plan: "Preview popup
+        // shows exactly what will be published"): the popup on `board`, the draft as it is in memory,
+        // its pictures from the draft's folder `draftBoardFolder`. The board on screen may not have
+        // caught up with the draft yet (TabDrafts.CatchUpBoardOnScreen), so it is not read from there.
+        // ###########################################################################################
+        internal void OpenComponentPreview(BoardData board, string boardLabel, string draftBoardFolder, string boardIdentity)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            ComponentEntry? row = ComponentPaneEdits.RowShown(board, boardLabel, this._localRegion);
+            string displayText = string.Join(
+                " | ",
+                new[] { row?.BoardLabel ?? boardLabel, row?.FriendlyName, row?.TechnicalNameOrValue }
+                    .Select(part => part?.Trim() ?? string.Empty)
+                    .Where(part => part.Length > 0));
+
+            this.ShowComponentInfoPopup(board, boardLabel, displayText, draftBoardFolder, boardIdentity);
+        }
+
+        // ###########################################################################################
+        // The popup of `boardLabel` on `boardData`, according to the user's settings - one popup
+        // reused, or one per component.
+        // ###########################################################################################
+        private void ShowComponentInfoPopup(BoardData? boardData, string boardLabel, string displayText, string draftBoardFolder, string boardIdentity)
+        {
+            string componentKey = $"{boardLabel}\u001F{displayText}";
+            bool hasExplicitRegionComponents = ComponentListBuilder.HasExplicitRegionComponents(boardData);
+            var images = boardData?.ComponentImages ?? new List<ComponentImageEntry>();
+            var localFiles = boardData?.ComponentLocalFiles ?? new List<ComponentLocalFileEntry>();
+            var links = boardData?.ComponentLinks ?? new List<ComponentLinkEntry>();
+            var pins = boardData?.ComponentPins ?? new List<ComponentPinEntry>();
+            var replacements = boardData?.ComponentReplacements ?? new List<ComponentReplacementEntry>();
+            var boardFiles = boardData?.BoardLocalFiles ?? new List<BoardLocalFileEntry>();
+            var componentEntries = boardData?.Components
+                .Where(c => string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
+                .ToList() ?? new List<ComponentEntry>();
 
             if (UserSettings.MultipleInstancesForComponentPopup)
             {
@@ -209,7 +242,10 @@ namespace CRT
                     DataManager.DataRoot,
                     hasExplicitRegionComponents,
                     draftBoardFolder,
-                    boardIdentity);
+                    boardIdentity,
+                    pins,
+                    replacements,
+                    boardFiles);
 
                 popup.UpdateOscilloscopeSessionTitleState(
                     this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -248,7 +284,10 @@ namespace CRT
                 DataManager.DataRoot,
                 hasExplicitRegionComponents,
                 draftBoardFolder,
-                boardIdentity);
+                boardIdentity,
+                pins,
+                replacements,
+                boardFiles);
 
             this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
                 this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -648,85 +687,68 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens a maximized contribution editor window for the selected component - on `board`, the
-        // draft as the Contribute tab's component pane left it (the board on screen may not have
-        // caught up with it yet, and a window opened on that would save it back).
+        // The Contribute tab's "Show on board" (CRT 4.0 step 2, slice 3c): the Schematics tab with only
+        // `boardLabel` selected. `readBoardFirst` when the board on screen has not caught up with the
+        // draft yet - it is read again, and the component selected once that load has its highlights
+        // (DoWhatWasAskedAfterLoad): a reload drops the selection, and a component the draft added or
+        // marked is not on the board as it was.
         // ###########################################################################################
-        internal void OpenComponentContributionWindow(string boardLabel, BoardData board)
+        internal void ShowComponentOnBoard(string boardLabel, bool readBoardFirst)
         {
-            if (string.IsNullOrWhiteSpace(boardLabel))
+            this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyComponent(boardLabel));
+            this.SwitchToSchematicsTab();
+        }
+
+        // ###########################################################################################
+        // `then` on the board on screen as its draft now is: at once, or - when the Contribute tab's
+        // saves left it behind - once the board is read again, `schematic` selected. Used by "Show on
+        // board" and the picture tools (Main.PictureTools.cs).
+        // ###########################################################################################
+        private void OnBoardShownUpToDate(bool readBoardFirst, string schematic, Action then)
+        {
+            if (readBoardFirst)
+            {
+                this._afterBoardLoad = (this.GetCurrentBoardKey(), then, 0);
+                this.ReloadCurrentBoardFromDisk(schematic);
+            }
+            else
+            {
+                this._afterBoardLoad = null;
+                then();
+            }
+        }
+
+        // What waits for the board on screen to be read again - for the load of that board only, and
+        // only the load that TOOK it (`Load`, 0 while none has): one that never reached its end - the
+        // board file being replaced as it was read, a failure - leaves nothing for a later reload of the
+        // same board to run out of the blue (code review, 2026-10-26).
+        private (string BoardKey, Action Then, int Load)? _afterBoardLoad;
+
+        // At the start of every board load: taken by it, or - taken by an earlier one - dropped.
+        private void TakeWhatWaitsForLoad(int loadVersion)
+        {
+            if (this._afterBoardLoad is not { } asked)
             {
                 return;
             }
 
-            this.ShowComponentContributionWindow(window => window.LoadComponent(
-                board,
-                DataManager.DataRoot,
-                this.HardwareComboBox.SelectedItem as string ?? string.Empty,
-                this.BoardComboBox.SelectedItem as string ?? string.Empty,
-                this._localRegion,
-                boardLabel,
-                this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty));
+            this._afterBoardLoad = asked.Load == 0 ? asked with { Load = loadVersion } : null;
         }
 
-        // ###########################################################################################
-        // Opens the contribution editor on a component that does not exist in the board data yet,
-        // so a missing component can be suggested from scratch.
-        // ###########################################################################################
-        internal void OpenNewComponentContributionWindow()
+        // The load that took it has the board in: run, when that load is the latest and of its board.
+        internal void DoWhatWasAskedAfterLoad(string boardKey)
         {
-            if (this._currentBoardData == null)
+            if (this._afterBoardLoad is not { } asked)
             {
                 return;
             }
 
-            this.ShowComponentContributionWindow(window => window.LoadNewComponent(
-                this._currentBoardData,
-                DataManager.DataRoot,
-                this.HardwareComboBox.SelectedItem as string ?? string.Empty,
-                this.BoardComboBox.SelectedItem as string ?? string.Empty,
-                this._localRegion,
-                this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty));
-        }
+            this._afterBoardLoad = null;
 
-        // ###########################################################################################
-        // Creates the contribution editor, lets the caller load it, and shows it maximized on the
-        // screen the main window is on.
-        // ###########################################################################################
-        private void ShowComponentContributionWindow(Action<ComponentContributionWindow> loadContent)
-        {
-            var window = new ComponentContributionWindow();
-            loadContent(window);
-
-            // ###########################################################################################
-            // *** A SAVE IN THIS WINDOW WRITES THE DRAFT WORKBOOK AND NOTHING ELSE, so the board has
-            // to be re-read or every surface keeps showing the pre-save data. *** Reported
-            // (2026-09-23): a changed component description saved successfully and then could not be
-            // seen on the board, nor when the component was reopened for editing.
-            //
-            // ReloadCurrentBoardFromDisk is the SAME entry point the label editor's save uses - it
-            // clears the cache for both of a drafted board's workbook paths and reloads - so the two
-            // local-edit paths cannot drift apart.
-            //
-            // The current schematic is passed so the reload lands back on the view the contributor
-            // was on, exactly as the label editor does.
-            // ###########################################################################################
-            window.SetRefreshBoardAfterSave(() => this.ReloadCurrentBoardFromDisk(
-                this.TabSchematicsControl.GetCurrentSchematicName()));
-
-            // A save takes the contributor to the Contribute tab, where the next step is (owner
-            // request, 2026-09-24, for the Drafts tab). The window is maximized over this one, so it
-            // closes first - switching the tab behind it would change nothing that can be seen.
-            window.SetAfterSaved(() =>
+            if (asked.Load == this._boardSelectionLoadVersion && string.Equals(asked.BoardKey, boardKey, StringComparison.OrdinalIgnoreCase))
             {
-                window.Close();
-                this.SwitchToContributeTab();
-            });
-
-            this.PositionFullscreenWindowOnSameScreen(window);
-            window.WindowState = Avalonia.Controls.WindowState.Maximized;
-            window.Show(this);
-            window.Focus();
+                asked.Then();
+            }
         }
 
         // ###########################################################################################
@@ -747,6 +769,9 @@ namespace CRT
                     hasSeenOscilloscopeSession,
                     hasActiveOscilloscopeSession);
             }
+
+            // The Contribute tab's component pane offers "Capture from my oscilloscope" while it can.
+            this.TabDrafts.ShowScopeConnected(hasActiveOscilloscopeSession);
         }
 
         // ###########################################################################################

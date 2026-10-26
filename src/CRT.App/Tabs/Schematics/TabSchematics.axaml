@@ -471,13 +471,6 @@
 											   IsHitTestVisible="False"/>
 								</StackPanel>
 
-								<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnBoardContributorModeRowClicked">
-									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
-										<CheckBox x:Name="CheckBoardContributorMode" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
-									</Viewbox>
-									<TextBlock Text="Enable contributor mode" FontSize="11" Foreground="{DynamicResource SchematicsPanels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
-								</StackPanel>
-
 							</StackPanel>
 						</StackPanel>
 					</Border>
@@ -817,7 +810,7 @@
 
 		<!-- Right-click menu over the inline thumbnail panel - a quick way to detach thumbnails to
 		     their own window without going to the Configuration tab. Same visual style as
-		     SchematicsLabelEditorMenuBorder below (Schematics_Panels_Bg/Border, CornerRadius 6),
+		     SchematicsMenuBorder below (Schematics_Panels_Bg/Border, CornerRadius 6),
 		     but a separate control: that menu is contributor-mode/label-editor/calibration specific
 		     and lives over the schematic image, not the thumbnail column. -->
 		<!-- Spans ALL THREE columns (no Grid.Column), deliberately. Confined to the thumbnail
@@ -849,7 +842,7 @@
 			</StackPanel>
 		</Border>
 
-		<Border x:Name="SchematicsLabelEditorMenuBorder"
+		<Border x:Name="SchematicsMenuBorder"
 				IsVisible="False"
 				ZIndex="5000"
 				HorizontalAlignment="Left"
@@ -859,49 +852,66 @@
 				BorderThickness="1"
 				CornerRadius="6"
 				Padding="10,8">
-			<StackPanel x:Name="SchematicsLabelEditorMenuPanel"
+			<!-- THE MENU A RIGHT-CLICK ON A COMPONENT OPENS, for everyone (CRT 4.0 step 2, slice 6 - the
+			     plan: "Right-clicking a component offers Edit this component to everyone"). It was
+			     contributor mode's menu over an empty spot; the two tools it offered now start from the
+			     Contribute tab's Pictures, with the bar below (TabSchematics.PictureTools.cs). -->
+			<StackPanel x:Name="SchematicsMenuPanel"
 						Spacing="8"
 						Width="235">
-				<TextBlock x:Name="SchematicsLabelEditorMenuStateTextBlock"
-						   Text="Contributor mode actions"
+				<TextBlock x:Name="SchematicsMenuTitleText"
 						   FontSize="11"
 						   FontWeight="Bold"
+						   TextWrapping="Wrap"
 						   Foreground="{DynamicResource Schematics_Panels_Fg}" />
 
-				<Button x:Name="EnableLabelEditorButton"
-						Content="Enable component label editor"
+				<Button x:Name="MenuHighlightButton"
 						HorizontalAlignment="Stretch" />
 
-				<Button x:Name="ApplyLabelEditorChangesButton"
-					Classes="Accept"
-					Content="Apply all editor changes"
-					IsVisible="False"
-					HorizontalAlignment="Stretch" />
-				
-				<Button x:Name="CancelLabelEditorChangesButton"
-						Classes="Danger"
-						Content="Discard all editor changes"
-						IsVisible="False"
+				<Button x:Name="MenuEditComponentButton"
+						Content="Edit this component"
 						HorizontalAlignment="Stretch" />
-
-				<Button x:Name="BeginKiCadTraceCalibrationButton"
-						Content="Calibrate KiCad traces"
-						HorizontalAlignment="Stretch" />
-
-				<Button x:Name="ApplyKiCadTraceCalibrationButton"
-						Classes="Accept"
-						Content="Apply KiCad calibration"
-						IsVisible="False"
-						HorizontalAlignment="Stretch" />
-
-				<Button x:Name="CancelKiCadTraceCalibrationButton"
-						Classes="Danger"
-						Content="Discard KiCad calibration"
-						IsVisible="False"
-						HorizontalAlignment="Stretch" />
-
-				
 			</StackPanel>
+		</Border>
+
+		<!-- THE PICTURE TOOL'S BAR (slice 6 - the plan: "Mark components and Align KiCad open the
+		     Schematics tab in that tool, with a bar and a Done button"): what the tool is on, how it
+		     is used, and Done (saves into the draft) and Cancel - or, when the tool cannot start on
+		     the picture, why, and Close. Over the top of the picture, in its column. -->
+		<Border x:Name="PictureToolBarBorder"
+				IsVisible="False"
+				ZIndex="4999"
+				HorizontalAlignment="Center"
+				VerticalAlignment="Top"
+				MaxWidth="720"
+				Margin="12,8,12,0"
+				Background="{DynamicResource Schematics_Panels_Bg}"
+				BorderBrush="{DynamicResource Schematics_Panels_Border}"
+				BorderThickness="1"
+				CornerRadius="6"
+				Padding="12,8">
+			<Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+				<StackPanel Spacing="2" VerticalAlignment="Center">
+					<TextBlock x:Name="PictureToolTitleText"
+							   FontWeight="Bold"
+							   TextWrapping="Wrap"
+							   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+					<TextBlock x:Name="PictureToolHelpText"
+							   FontSize="12"
+							   TextWrapping="Wrap"
+							   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+				</StackPanel>
+				<StackPanel Grid.Column="1"
+							Orientation="Horizontal"
+							Spacing="8"
+							VerticalAlignment="Center">
+					<Button x:Name="PictureToolCancelButton"
+							Content="Cancel" />
+					<Button x:Name="PictureToolDoneButton"
+							Classes="Accept"
+							Content="Done" />
+				</StackPanel>
+			</Grid>
 		</Border>
 
 		<Border x:Name="SchematicsNewLabelPromptBorder"

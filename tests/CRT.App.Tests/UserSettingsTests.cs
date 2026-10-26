@@ -691,7 +691,7 @@ public sealed class UserSettingsTests : IDisposable
     [Fact]
     public void Not_every_setter_short_circuits_an_unchanged_value()
     {
-        // CURRENT BEHAVIOUR, and inconsistent: InteractiveCadTraceHoverMode, ContributorMode
+        // CURRENT BEHAVIOUR, and inconsistent: InteractiveCadTraceHoverMode
         // and SetLastHardware all return early when the value has not changed, but
         // BlinkSelected (and several like it) write the whole file again regardless. Harmless,
         // but it means re-applying UI state does real disk I/O and logs a "Setting changed"
@@ -1149,46 +1149,64 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.IsUserThemeColorResourceKey("schematics_tracepalette_color1"));
     }
 
-    // --------------------------------------------------------- contributor mode
+    // --------------------------------------------------------- the detailed log (contributor mode until slice 6)
 
     [Fact]
-    public void Contributor_mode_defaults_to_off()
+    public void The_detailed_log_defaults_to_off()
     {
         this.LoadSettings("{}");
 
-        Assert.False(UserSettings.ContributorMode);
+        Assert.False(UserSettings.DetailedLog);
+    }
+
+    // ###########################################################################################
+    // Contributor mode went (CRT 4.0 step 2, slice 6) and left what it switched on besides its menu -
+    // the log's debug lines and the data check at launch - as "Write a detailed log", under the name
+    // already STORED: whoever had the mode on keeps the detailed log, and it is written back so.
+    // ###########################################################################################
+    [Fact]
+    public void Contributor_mode_once_on_is_the_detailed_log_and_stays_stored_under_its_name()
+    {
+        this.LoadSettings("""{"contributorMode": true}""");
+        Assert.True(UserSettings.DetailedLog);
+        Assert.True(UserSettings.ValidateDataOnLaunch);
+
+        string path = this.LoadSettings("{}");
+        UserSettings.DetailedLog = true;
+
+        Assert.True(ReadJson(path)["contributorMode"]!.GetValue<bool>());
     }
 
     [Fact]
-    public void Legacy_settings_are_migrated_into_contributor_mode()
+    public void Legacy_settings_are_migrated_into_the_detailed_log()
     {
         // Before contributor mode existed, the pair of validate-on-launch + debug-logging was
         // what a contributor turned on. Those users keep their setup after upgrading.
         this.LoadSettings("""{"validateDataOnLaunch": true, "debugLogging": true}""");
 
-        Assert.True(UserSettings.ContributorMode);
+        Assert.True(UserSettings.DetailedLog);
     }
 
     [Fact]
-    public void Only_one_legacy_flag_does_not_enable_contributor_mode()
+    public void Only_one_legacy_flag_does_not_turn_the_detailed_log_on()
     {
         this.LoadSettings("""{"validateDataOnLaunch": true, "debugLogging": false}""");
 
-        Assert.False(UserSettings.ContributorMode);
+        Assert.False(UserSettings.DetailedLog);
     }
 
     [Fact]
-    public void An_explicit_contributor_mode_value_is_never_overridden_by_migration()
+    public void An_explicit_value_is_never_overridden_by_migration()
     {
         this.LoadSettings("""
         {"contributorMode": false, "validateDataOnLaunch": true, "debugLogging": true}
         """);
 
-        Assert.False(UserSettings.ContributorMode);
+        Assert.False(UserSettings.DetailedLog);
     }
 
     [Fact]
-    public void Contributor_mode_drives_debug_logging()
+    public void The_detailed_log_drives_debug_logging()
     {
         this.LoadSettings("""{"contributorMode": true}""");
 
@@ -1641,5 +1659,30 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal(1200, UserSettings.WorklogEntryWindowWidth);
         Assert.Equal(800, UserSettings.WorklogEntryWindowHeight);
         Assert.Equal(0.6, UserSettings.WorklogEntryWindowLeftColumnRatio);
+    }
+
+    // ###########################################################################################
+    // The name and contact a user is credited by (2026-10-26) - remembered together, written to the
+    // file, read back; a blank name changes nothing, since nobody is credited by nothing. Never the
+    // contact email: credits are shown to everybody.
+    // ###########################################################################################
+    [Fact]
+    public void The_credit_name_and_contact_are_remembered_together_and_a_blank_name_changes_nothing()
+    {
+        string path = this.LoadSettings("""{ "contactEmail": "me@example.org" }""");
+
+        Assert.Equal(string.Empty, UserSettings.CreditName);
+        Assert.Equal(string.Empty, UserSettings.CreditContact);
+
+        UserSettings.RememberCreditIdentity(" Anna ", " RHD ");
+        UserSettings.RememberCreditIdentity("  ", "lost");
+
+        Assert.Equal(("Anna", "RHD"), (UserSettings.CreditName, UserSettings.CreditContact));
+        Assert.Equal("Anna", ReadJson(path)["creditName"]!.GetValue<string>());
+        Assert.Equal("RHD", ReadJson(path)["creditContact"]!.GetValue<string>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(("Anna", "RHD"), (UserSettings.CreditName, UserSettings.CreditContact));
+        Assert.Equal("me@example.org", UserSettings.ContactEmail);
     }
 }

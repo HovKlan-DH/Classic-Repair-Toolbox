@@ -124,6 +124,69 @@ public sealed class ComponentPaneEditsTests
         Assert.Equal("Short description", ComponentPaneEdits.NameOf(ComponentField.Description));
     }
 
+    // ---- a new component (slice 3c) -----------------------------------------------------------
+
+    // A new component goes into its category in label order (ComponentPlacement), with its label,
+    // region and category and nothing else - every other row as it was.
+    [Fact]
+    public void A_new_component_is_placed_in_its_category_with_its_label_region_and_category()
+    {
+        BoardData board = new()
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor" },
+                new ComponentEntry { BoardLabel = "U2", Category = "IC" },
+                new ComponentEntry { BoardLabel = "U10", Category = "IC" },
+            ],
+        };
+
+        BoardData changed = ComponentPaneEdits.WithNewComponent(board, " U3 ", "NTSC", " IC ");
+
+        Assert.Equal(["C1", "U2", "U3", "U10"], changed.Components.Select(row => row.BoardLabel));
+        ComponentEntry added = changed.Components[2];
+        Assert.Equal("NTSC", added.Region);
+        Assert.Equal("IC", added.Category);
+        Assert.Equal(string.Empty, added.FriendlyName);
+        Assert.Same(board.Components[0], changed.Components[0]);
+    }
+
+    // A category nobody used yet goes last; no category at all too - the Contribute tab lists it anyway.
+    [Fact]
+    public void A_new_category_and_no_category_both_go_last()
+    {
+        BoardData board = Board();
+
+        Assert.Equal("R1", ComponentPaneEdits.WithNewComponent(board, "R1", null, "Resistor").Components[^1].BoardLabel);
+        Assert.Equal("X1", ComponentPaneEdits.WithNewComponent(board, "X1", "", "").Components[^1].BoardLabel);
+    }
+
+    // A label names one component: one the board has in ANY region is no new component, and a blank
+    // one is none at all - the same board, so no step.
+    [Fact]
+    public void A_label_the_board_has_in_any_region_or_a_blank_one_changes_nothing()
+    {
+        BoardData board = Board();
+
+        Assert.Same(board, ComponentPaneEdits.WithNewComponent(board, "u1", "PAL", "IC"));
+        Assert.Same(board, ComponentPaneEdits.WithNewComponent(board, "U1", "", "IC"));
+        Assert.Same(board, ComponentPaneEdits.WithNewComponent(board, "  ", "", "IC"));
+    }
+
+    // "Show on board" can show only a component marked on a picture.
+    [Fact]
+    public void A_component_is_marked_on_a_picture_when_any_highlight_names_it()
+    {
+        BoardData board = new()
+        {
+            ComponentHighlights = [new ComponentHighlightEntry { BoardLabel = "U8", SchematicName = "Top" }],
+        };
+
+        Assert.True(ComponentPaneEdits.IsMarkedOnAPicture(board, " u8 "));
+        Assert.False(ComponentPaneEdits.IsMarkedOnAPicture(board, "U1"));
+        Assert.False(ComponentPaneEdits.IsMarkedOnAPicture(board, ""));
+    }
+
     // ---- pins -------------------------------------------------------------------------------
 
     [Fact]
@@ -292,6 +355,143 @@ public sealed class ComponentPaneEditsTests
 
         BoardData changed = ComponentPaneEdits.WithPins(before, "U8", "PAL", [new ComponentPinEntry { Pin = "1", Name = "GND" }]);
         Assert.Equal("u8", Assert.Single(changed.ComponentPins).BoardLabel);
+    }
+
+    // ---- pictures, scope baselines and files (slice 3b) -----------------------------------------
+
+    private static ComponentImageEntry Picture(string label, string name, string region = "", string pin = "") =>
+        new() { BoardLabel = label, Region = region, Name = name, Pin = pin, File = $"Component images/{label}-{name}.png" };
+
+    private static ComponentImageEntry Baseline(string label, string pin, string region = "") =>
+        new() { BoardLabel = label, Region = region, Pin = pin, Name = $"Signal {pin}", File = $"Scope baseline/{label}_{pin}.png", TimeDiv = "50us", VoltsDiv = "1V", TriggerLevelVolts = "1.5V" };
+
+    // U8 in every region with pictures and baselines mixed in one list, U1 in two regions.
+    private static BoardData BoardWithImages() => new()
+    {
+        Components =
+        [
+            new ComponentEntry { BoardLabel = "U1", Region = "PAL", FriendlyName = "VIC" },
+            new ComponentEntry { BoardLabel = "U1", Region = "NTSC", FriendlyName = "VIC" },
+            new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU" },
+        ],
+        ComponentImages =
+        [
+            Picture("U8", "Top"),
+            Baseline("U8", "1"),
+            Picture("U1", "Top", region: "PAL"),
+            Baseline("U1", "2", region: "NTSC"),
+            // A pin and no scope setting: a picture, by the one rule (ComponentImageKinds).
+            Picture("U8", "Pinout", pin: "3"),
+            Baseline("U8", "2"),
+        ],
+        ComponentLocalFiles =
+        [
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/6510.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Datasheet", File = "Component local files/6569.pdf" },
+        ],
+    };
+
+    // ###########################################################################################
+    // A component's pictures and scope baselines are one list in the board - told apart by the one
+    // rule (a pin AND a scope setting is a baseline), and shown for the region shown, a row of no
+    // region in every region.
+    // ###########################################################################################
+    [Fact]
+    public void Pictures_and_baselines_of_the_region_shown_are_told_apart_by_the_baseline_rule()
+    {
+        BoardData board = BoardWithImages();
+
+        Assert.Equal(["Top", "Pinout"], ComponentPaneEdits.PicturesOf(board, "u8", "PAL").Select(row => row.Name));
+        Assert.Equal(["1", "2"], ComponentPaneEdits.BaselinesOf(board, "U8", "PAL").Select(row => row.Pin));
+
+        Assert.Equal(["Top"], ComponentPaneEdits.PicturesOf(board, "U1", "PAL").Select(row => row.Name));
+        Assert.Empty(ComponentPaneEdits.BaselinesOf(board, "U1", "PAL"));
+        Assert.Equal(["2"], ComponentPaneEdits.BaselinesOf(board, "U1", "NTSC").Select(row => row.Pin));
+    }
+
+    // Pictures replace the component's pictures where the first stood - its baselines, the other
+    // components' rows and the order of everything else stay as they were.
+    [Fact]
+    public void Pictures_replace_the_components_pictures_in_place_and_leave_its_baselines()
+    {
+        BoardData board = BoardWithImages();
+
+        BoardData after = ComponentPaneEdits.WithPictures(board, "U8", "PAL",
+        [
+            new ComponentImageEntry { Name = " Top side ", File = "Component images/U8-Top.png", Note = "Socketed" },
+            new ComponentImageEntry { Name = "Bottom", File = " Component images/U8-Bottom.png " },
+            new ComponentImageEntry(),
+        ]);
+
+        Assert.Equal(
+            ["U8|Top side", "U8|Bottom", "U8|1", "U1|Top", "U1|2", "U8|2"],
+            after.ComponentImages.Select(row => $"{row.BoardLabel}|{(ComponentImageKinds.IsScopeBaseline(row) ? row.Pin : row.Name)}"));
+        Assert.Equal("Component images/U8-Bottom.png", after.ComponentImages[1].File);
+        Assert.Equal("Socketed", after.ComponentImages[0].Note);
+        Assert.Same(board.Components, after.Components);
+    }
+
+    [Fact]
+    public void The_same_pictures_baselines_and_files_handed_back_are_no_change()
+    {
+        BoardData board = BoardWithImages();
+
+        Assert.Same(board, ComponentPaneEdits.WithPictures(board, "U8", "PAL", ComponentPaneEdits.PicturesOf(board, "U8", "PAL")));
+        Assert.Same(board, ComponentPaneEdits.WithBaselines(board, "U8", "PAL", ComponentPaneEdits.BaselinesOf(board, "U8", "PAL")));
+        Assert.Same(board, ComponentPaneEdits.WithFiles(board, "U8", ComponentPaneEdits.FilesOf(board, "U8")));
+    }
+
+    // ###########################################################################################
+    // Baselines replace the component's baselines in place and leave its pictures - every field
+    // trimmed, a note keeping its lines; the other region's baselines are not the region shown's.
+    // ###########################################################################################
+    [Fact]
+    public void Baselines_replace_the_components_baselines_in_place_and_leave_its_pictures()
+    {
+        BoardData board = BoardWithImages();
+        ComponentImageEntry first = ComponentPaneEdits.BaselinesOf(board, "U8", "PAL")[0];
+
+        BoardData after = ComponentPaneEdits.WithBaselines(board, "U8", "PAL",
+        [
+            new ComponentImageEntry
+            {
+                Region = first.Region,
+                Pin = " 1 ",
+                Name = first.Name,
+                File = first.File,
+                TimeDiv = " 20us ",
+                VoltsDiv = first.VoltsDiv,
+                TriggerLevelVolts = first.TriggerLevelVolts,
+                MachineState = " At the READY prompt ",
+                Source = "Known-good board",
+                Note = "First line\nSecond line",
+            },
+        ]);
+
+        Assert.Equal(
+            ["U8|Top", "U8|1", "U1|Top", "U1|2", "U8|Pinout"],
+            after.ComponentImages.Select(row => $"{row.BoardLabel}|{(ComponentImageKinds.IsScopeBaseline(row) ? row.Pin : row.Name)}"));
+
+        ComponentImageEntry changed = after.ComponentImages[1];
+        Assert.Equal(("1", "20us", "At the READY prompt", "First line\nSecond line"), (changed.Pin, changed.TimeDiv, changed.MachineState, changed.Note));
+        Assert.Equal("U8", changed.BoardLabel);
+    }
+
+    // A component's files have no region; an empty one is left out and the label keeps its spelling.
+    [Fact]
+    public void Files_replace_the_components_files_in_place()
+    {
+        BoardData board = BoardWithImages();
+
+        BoardData after = ComponentPaneEdits.WithFiles(board, "u8",
+        [
+            new ComponentLocalFileEntry { Name = " Datasheet ", File = "Component local files/6510.pdf" },
+            new ComponentLocalFileEntry { Name = "Service note", File = "Component local files/6510 note.txt" },
+            new ComponentLocalFileEntry(),
+        ]);
+
+        Assert.Equal(["U8|Datasheet", "U8|Service note", "U1|Datasheet"], after.ComponentLocalFiles.Select(row => $"{row.BoardLabel}|{row.Name}"));
+        Assert.Equal(["Datasheet"], ComponentPaneEdits.FilesOf(board, "U8").Select(row => row.Name));
     }
 
     // Every edit keeps the board's other sections - its caption and date included.

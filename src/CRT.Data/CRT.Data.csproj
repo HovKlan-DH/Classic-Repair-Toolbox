@@ -74,6 +74,13 @@
     <InternalsVisibleTo Include="CRT.Server.Tests" />
 
     <!--
+    CRT.App.Tests needs DraftSession's WhileWritingForTests (code review, 2026-10-26): a draft whose
+    save cannot be made, as the app's own flows meet it - "Also on other boards" must take its step
+    back out of another board's draft then. Nothing else of CRT.Data's internals is meant for it.
+    -->
+    <InternalsVisibleTo Include="CRT.App.Tests" />
+
+    <!--
     CRT.Server itself needs BoardDataReader from Phase 5 task 3: computing a change summary for a
     maintainer means comparing the SUBMITTED board (which the manifest carries whole) against the
     PUBLISHED one, and only the server has the data tree to read that second half from.

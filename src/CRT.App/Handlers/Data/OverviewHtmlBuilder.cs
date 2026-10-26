@@ -17,6 +17,54 @@ namespace Handlers.DataHandling
     public static class OverviewHtmlBuilder
     {
         // ###########################################################################################
+        // The Overview tab's rows of a board - one per component row, in the board's order, with its
+        // files and links. NOTES are the component's repair notes (CRT 4.0, step 2 slice 3c); a
+        // component without any keeps what the column always showed, its first image's note - every
+        // board converted from the Excel data has no repair notes yet, and the column would go blank.
+        // ###########################################################################################
+        public static List<OverviewRow> BuildRows(BoardData boardData)
+        {
+            ArgumentNullException.ThrowIfNull(boardData);
+
+            var rows = new List<OverviewRow>();
+
+            foreach (var comp in boardData.Components)
+            {
+                string repairNotes = comp.RepairNotes?.Trim() ?? string.Empty;
+                string note = repairNotes.Length > 0
+                    ? repairNotes
+                    : boardData.ComponentImages
+                        .FirstOrDefault(ci => string.Equals(ci.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))?.Note ?? string.Empty;
+
+                var links = new List<OverviewLink>();
+
+                links.AddRange(boardData.ComponentLocalFiles
+                    .Where(lf => string.Equals(lf.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))
+                    .Select(lf => new OverviewLink(lf.Name, lf.File, OverviewLinkType.LocalFile)));
+
+                links.AddRange(boardData.ComponentLinks
+                    .Where(l => string.Equals(l.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))
+                    .Select(l => new OverviewLink(l.Name, l.Url, OverviewLinkType.WebLink)));
+
+                rows.Add(new OverviewRow
+                {
+                    IsSelectedForPrint = true,
+                    Component = comp.BoardLabel ?? string.Empty,
+                    Category = comp.Category ?? string.Empty,
+                    TechnicalName = comp.TechnicalNameOrValue ?? string.Empty,
+                    FriendlyName = comp.FriendlyName ?? string.Empty,
+                    PartNumber = comp.PartNumber ?? string.Empty,
+                    Package = comp.Package?.Trim() ?? string.Empty,
+                    ShortDescription = comp.Description ?? string.Empty,
+                    Notes = note,
+                    Links = links
+                });
+            }
+
+            return rows;
+        }
+
+        // ###########################################################################################
         // Composes the "component | friendly | technical" display string for one overview row,
         // skipping blank parts so the separator never appears with nothing around it.
         // ###########################################################################################

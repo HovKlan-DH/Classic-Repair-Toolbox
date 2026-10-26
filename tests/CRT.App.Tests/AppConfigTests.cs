@@ -23,4 +23,17 @@ public sealed class AppConfigTests
         Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, AppConfig.KiCadCacheFolder, StringComparison.Ordinal);
         Assert.False(AppConfig.KiCadCacheFolder.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
     }
+
+    // A scope capture waiting for "Add this baseline" too (code review, 2026-10-26): in /tmp another
+    // account could swap the screenshot before it went into the draft and the submission.
+    [Fact]
+    public void A_scope_capture_waits_in_the_users_own_app_data_folder_not_the_shared_temporary_one()
+    {
+        string ownFolder = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            AppConfig.AppFolderName);
+
+        Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, AppConfig.ScopeCaptureWaitFolder, StringComparison.Ordinal);
+        Assert.False(AppConfig.ScopeCaptureWaitFolder.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
+    }
 }

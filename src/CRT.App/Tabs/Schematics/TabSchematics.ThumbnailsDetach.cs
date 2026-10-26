@@ -29,7 +29,7 @@ namespace CRT;
 // This file also owns the small right-click menu over the inline thumbnail panel itself
 // (SchematicsThumbnailsContextMenuBorder) - a quicker way to detach than going to Configuration,
 // which stays the primary/discoverable way to do it and to turn it back off from the tab side.
-// It is a separate control from SchematicsLabelEditorMenuBorder: that one is contributor-mode/
+// It is a separate control from SchematicsMenuBorder: that one is contributor-mode/
 // label-editor/calibration specific and positioned over the schematic image, not the thumbnail
 // column, and this action has nothing to do with any of those modes.
 //

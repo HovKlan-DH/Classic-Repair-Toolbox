@@ -78,6 +78,34 @@ namespace Handlers.DataHandling
         ];
 
         // ###########################################################################################
+        // A scope baseline's T/DIV and V/DIV as the pane offers them (the plan: "T/DIV and V/DIV as
+        // drop-downs") - the 1-2-5 steps every scope uses, spelt as the converted data spells them
+        // ("50us", "1ms", "500ns", "1V", "500mV": all 13,862 published baselines, 2026-10-26). Offered,
+        // not enforced: a box takes any value, and one already published reads as it is.
+        // ###########################################################################################
+        public static IReadOnlyList<string> TimeDivisions { get; } = ComponentVocabulary.Steps(["ns", "us", "ms", "s"], lastUnitUpTo: 10);
+
+        public static IReadOnlyList<string> VoltDivisions { get; } = ComponentVocabulary.Steps(["mV", "V"], lastUnitUpTo: 10);
+
+        // 1, 2, 5, 10, 20, 50, 100, 200, 500 of each unit, then the last unit up to `lastUnitUpTo`.
+        private static List<string> Steps(IReadOnlyList<string> units, int lastUnitUpTo)
+        {
+            int[] values = [1, 2, 5, 10, 20, 50, 100, 200, 500];
+            var steps = new List<string>();
+
+            for (int unit = 0; unit < units.Count; unit++)
+            {
+                bool last = unit == units.Count - 1;
+
+                steps.AddRange(values
+                    .Where(value => !last || value <= lastUnitUpTo)
+                    .Select(value => $"{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}{units[unit]}"));
+            }
+
+            return steps;
+        }
+
+        // ###########################################################################################
         // How many pins a case has, by its name - what the pane needs to number the pins and draw the
         // case: a DIP's count is in its name ("DIP-40", "DIP-24 wide", "dip 28"), TO-92 and TO-220
         // have three. Null for a case whose count is not in its name - SIP, "Other", anything typed.

@@ -276,7 +276,425 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
         });
     }
 
-    // A part of the board with no screen of its own yet opens the table view on its sheet.
+    // ###########################################################################################
+    // The board's own lists open in the pane on the right (slice 4a) - its draft made first, the
+    // table closed - and the important signals get the board's KiCad nets once they are read.
+    // ###########################################################################################
+    [Fact]
+    public async Task Credits_and_important_signals_open_in_the_pane_and_the_signals_get_the_nets()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.NetChoicesOverrideForTests = _ => Task.FromResult(KiCadNetNames.Choices([("CLK", "CLK", false)]));
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            await tab.ShowTableOnSheetAsync(BoardWorkbookSchema.SheetCredits);
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+
+            Assert.False(tab.IsTableOpen);
+            Assert.True(tab.IsComponentOpen);
+            Assert.Equal(PaneBoardPart.Credits, tab.ComponentPaneForTests.BoardPart);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.ImportantSignals);
+            await Until(() => tab.ComponentPaneForTests.SignalsForTests.Count == 1 && tab.ComponentPaneForTests.SignalsForTests[0].NetChoices.Count == 1);
+
+            Assert.Equal(["CLK"], tab.ComponentPaneForTests.SignalsForTests[0].NetChoices);
+            Assert.False(tab.ComponentPaneForTests.SignalsForTests[0].HasProblem);
+
+            // The pictures and their colours too (slice 4b).
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+            Assert.Equal(PaneBoardPart.Pictures, tab.ComponentPaneForTests.BoardPart);
+            Assert.Equal(["Top"], tab.ComponentPaneForTests.BoardPicturesForTests.Select(row => row.Name));
+        });
+    }
+
+    // ###########################################################################################
+    // A draft made only because something was opened on the board - a component ("Edit this
+    // component" on everybody's right-click menu), a board part, the table - goes again when that is
+    // closed with nothing in the draft (code review, 2026-10-26): it stayed, the tab's title turned
+    // red, and an empty draft sat in "My drafts". A draft with a change, or one there before, stays.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_draft_made_only_to_look_goes_again_when_closed_with_nothing_in_it()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.EnsureDraftOverrideForTests = _ =>
+            {
+                WriteDraft(BoardA, new BoardData());
+                return Task.FromResult(true);
+            };
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+
+            tab.CloseComponent();
+
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+
+            // Made again to look - and this time changed: it stays.
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.True(session.Apply("Credits", content => content with { Board = BoardPartEdits.WithCredits(content.Board, [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }]) }));
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+
+            tab.CloseComponent();
+
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // Submit reads the board as published for its credit suggestions under CRT's "please wait" (code
+    // review, 2026-10-26): a large board not yet read was read with nothing on screen and the window
+    // open to clicks, between the "reading your changes" wait and the dialog.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_published_board_for_the_credits_is_read_under_please_wait()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            var overlay = new BusyOverlay();
+            var root = new Grid();
+            root.Children.Add(tab);
+            root.Children.Add(overlay);
+            var window = new Window { Content = root, Width = 1300, Height = 900 };
+            window.Show();
+
+            bool busyWhileReading = false;
+            tab.PublishedBoardOverrideForTests = _ =>
+            {
+                busyWhileReading = overlay.IsBusy;
+                return Board();
+            };
+
+            DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, BoardA)!;
+            Assert.NotNull(await tab.PublishedBoardForCreditsAsync(entry, status));
+
+            Assert.True(busyWhileReading);
+            window.Close();
+        });
+    }
+
+    // A draft that was there before is never let go of, however little it holds.
+    [Fact]
+    public async Task A_draft_there_before_stays_whatever_it_holds()
+    {
+        WriteDraft(BoardA, new BoardData());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            tab.CloseComponent();
+
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // A picture's preview marks the components of the region CRT shows (code review, 2026-10-26): the
+    // part used the pane's region, which only opening a component set - empty first, hiding every
+    // regional component, or the region of the last component opened.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_pictures_preview_marks_the_components_of_the_region_shown()
+    {
+        BoardData Marked()
+        {
+            BoardData board = Board();
+            board.ComponentHighlights.Add(new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "1", Width = "5", Height = "5" });
+            board.ComponentHighlights.Add(new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U2", X = "20", Y = "20", Width = "5", Height = "5" });
+            return board;
+        }
+
+        WriteDraft(BoardA, Marked());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Marked();
+            tab.ShowBoard(entry, Marked(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+
+            // U1 is PAL only, U2 NTSC only: the PAL one alone.
+            Assert.Equal([new Avalonia.Rect(1, 1, 5, 5)], tab.ComponentPaneForTests.BoardPicturesForTests.Single().Highlights);
+        });
+    }
+
+    // ###########################################################################################
+    // "Mark components" on a picture (slice 6): handed to Main as "Show on board" is - with the board on
+    // screen read again first when the pane's saves left it behind, and that reload handed over once.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picture_tool_goes_to_the_Schematics_tab_on_the_board_as_the_draft_now_is()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.ReloadBoardOverrideForTests = _ => { };
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            var started = new List<(PictureTool Tool, string Picture, bool ReadBoardFirst)>();
+            tab.PictureToolOverrideForTests = (tool, picture, readBoardFirst) => started.Add((tool, picture, readBoardFirst));
+
+            // On screen, as in CRT: a save of the pane's then leaves the board on screen behind.
+            var window = new Window { Content = tab, Width = 1300, Height = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+            await tab.StartPictureToolAsync(PictureTool.MarkComponents, "Top");
+
+            // The board on screen is the draft as shown: nothing to read again.
+            Assert.Equal([(PictureTool.MarkComponents, "Top", false)], started);
+
+            // A change the pane saves leaves the board on screen behind: read it again first, once.
+            await tab.OpenComponentAsync("U8");
+            tab.ComponentPaneForTests.GetControl<TextBox>("FriendlyNameBox").Text = "CPU 6510";
+            await tab.StartPictureToolAsync(PictureTool.AlignKiCad, "Top");
+            await tab.StartPictureToolAsync(PictureTool.AlignKiCad, "Top");
+
+            Assert.Equal([(PictureTool.AlignKiCad, "Top", true), (PictureTool.AlignKiCad, "Top", false)], started.Skip(1));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // The credits ticked in the Submit dialog (2026-10-26) go into the draft as ONE step and are
+    // saved - and the board then handed back, the one a submit sends, carries them, with the draft's
+    // fingerprint as it now is.
+    // ###########################################################################################
+    [Fact]
+    public async Task Credits_from_the_Submit_dialog_go_into_the_draft_and_the_board_sent_carries_them()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            DraftStatus status = DraftStatusReader.Resolve(this.thisWorkspace.Root, DraftManager.DraftsRoot, BoardA)!;
+            string before = DraftFingerprint.Compute(status.WorkbookPath, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA));
+
+            (BoardData Board, string Fingerprint)? added = await tab.AddCreditsToDraftAsync(
+                entry,
+                status,
+                [new CreditEntry { Category = "Board data", NameOrHandle = "Bo", Contact = "RHD" }]);
+
+            Assert.NotNull(added);
+            Assert.Contains(added!.Value.Board.Credits, credit => credit.NameOrHandle == "Bo" && credit.Category == "Board data");
+            Assert.NotEqual(before, added.Value.Fingerprint);
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.Equal("Credits", session.UndoDescription);
+            Assert.False(session.HasUnsavedChanges);
+        });
+    }
+
+    // ###########################################################################################
+    // "Copy from another board" (slice 5) looks only at the OTHER boards - never the one the pane is
+    // open on - and offers their components with the same part number.
+    // ###########################################################################################
+    [Fact]
+    public async Task Copy_from_another_board_looks_at_the_other_boards_only()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            TabDrafts tab = Tab(entry, other);
+
+            // Both boards have a 6510 - only the other one's may be offered.
+            BoardData WithCpu(string label) => new()
+            {
+                Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC", Package = "DIP-40" }],
+            };
+
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? WithCpu("U8") : WithCpu("U7");
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            tab.ComponentPaneForTests.GetControl<TextBox>("PartNumberBox").Text = "6510";
+            await tab.ComponentPaneForTests.OpenCopyPanelAsync();
+
+            ComponentCopySource offered = Assert.Single(tab.ComponentPaneForTests.GetControl<ComboBox>("CopySourceBox").Items.OfType<ComponentCopySource>());
+            Assert.Equal(other.ToString(), offered.BoardName);
+            Assert.Equal("U7", offered.Row.BoardLabel);
+        });
+    }
+
+    // ###########################################################################################
+    // "Also on other boards" end to end (slice 5): what this draft changed of the part goes into the
+    // OTHER board's own draft as one step named after this board, and is saved; a board of which no
+    // draft can be made is said, not changed.
+    // ###########################################################################################
+    [Fact]
+    public async Task Also_on_other_boards_changes_the_part_in_the_other_boards_own_draft()
+    {
+        BoardData Cpu(string label) => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC" }],
+        };
+
+        WriteDraft(BoardA, Cpu("U8"));
+        WriteDraft(BoardB, Cpu("U7"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            HardwareBoardEntry noDraft = Entry("250469", "Commodore/C64/" + Guid.NewGuid().ToString("N") + "/board.json");
+            TabDrafts tab = Tab(entry, other, noDraft);
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? Cpu("U8") : board.ExcelDataFile == BoardB ? Cpu("U7") : Cpu("U1");
+            tab.ShowBoard(entry, Cpu("U8"), "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+
+            await pane.OpenAlsoPanelAsync();
+            await pane.ChangeOtherBoardsAsync();
+
+            DraftSession otherDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
+            Assert.Equal("DIP-40", otherDraft.Content.Board.Components.Single().Package);
+            Assert.Equal($"[U7] copied from {entry}", otherDraft.UndoDescription);
+            Assert.False(otherDraft.HasUnsavedChanges);
+
+            string said = pane.GetControl<TextBlock>("PaneMessageText").Text ?? string.Empty;
+            Assert.Contains($"Changed on 1 board, in its own draft: {other}.", said, StringComparison.Ordinal);
+            Assert.Contains($"Not changed on {noDraft} - no draft could be made of it.", said, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // An other board's draft that cannot be saved is said so - and is left as it was (code review,
+    // 2026-10-26): the step stayed in its draft held in memory, its header said "Could not save" and
+    // the timer that saves drafts no editor holds could save it later, after CRT had said it had not.
+    // ###########################################################################################
+    [Fact]
+    public async Task Also_on_other_boards_takes_its_change_back_out_of_a_draft_that_cannot_be_saved()
+    {
+        BoardData Cpu(string label) => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC" }],
+        };
+
+        WriteDraft(BoardA, Cpu("U8"));
+        WriteDraft(BoardB, Cpu("U7"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            TabDrafts tab = Tab(entry, other);
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? Cpu("U8") : Cpu("U7");
+            tab.ShowBoard(entry, Cpu("U8"), "PAL", null);
+
+            DraftSession otherDraft = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardB)!;
+            otherDraft.WhileWritingForTests = () => throw new IOException("held open by another program");
+
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+
+            await pane.OpenAlsoPanelAsync();
+            await pane.ChangeOtherBoardsAsync();
+
+            Assert.Contains($"Not changed on {other} - its draft could not be saved.", pane.GetControl<TextBlock>("PaneMessageText").Text ?? string.Empty, StringComparison.Ordinal);
+            Assert.True(string.IsNullOrEmpty(otherDraft.Content.Board.Components.Single().Package));
+            Assert.False(otherDraft.HasUnsavedChanges);
+            Assert.False(otherDraft.CanUndo);
+
+            otherDraft.WhileWritingForTests = null;
+        });
+    }
+
+    // ###########################################################################################
+    // Several drafts in one submit (slice 5): the Submit dialog is offered every OTHER draft, and one
+    // ticked is made ready as its own Submit would - a change held only in memory saved into its file
+    // first, the credit typed put in for its own work - while one with errors is not sent and says so.
+    // ###########################################################################################
+    [Fact]
+    public async Task Another_draft_is_offered_and_made_ready_to_send_with_the_credit_typed()
+    {
+        const string BoardC = "Commodore/C64/250469/board.json";
+
+        WriteDraft(BoardA, Board());
+        WriteDraft(BoardB, new BoardData { Components = [new ComponentEntry { BoardLabel = "U7", Category = "IC", FriendlyName = "CPU" }] });
+        WriteDraft(BoardC, new BoardData
+        {
+            Schematics = [new BoardSchematicEntry { SchematicName = "" }],
+            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC", FriendlyName = "CPU" }],
+        });
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry a = Entry("250407", BoardA);
+            HardwareBoardEntry b = Entry("250425", BoardB);
+            HardwareBoardEntry c = Entry("250469", BoardC);
+            TabDrafts tab = Tab(a, b, c);
+
+            IReadOnlyList<OtherDraftOffer> offers = tab.OtherDraftOffers(a);
+            Assert.Equal([BoardB, BoardC], offers.Select(offer => offer.Entry.ExcelDataFile));
+            Assert.Null(offers[0].NotOffered);
+            Assert.EndsWith("to fix first", offers[1].NotOffered, StringComparison.Ordinal);
+
+            // A change held only in memory - as "Also on other boards" leaves one while its save runs.
+            DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardB)!;
+            Assert.True(session.Apply("Links", content => content with { Board = BoardPartEdits.WithBoardLinks(content.Board, [new BoardLinkEntry { Name = "Forum", Url = "https://example.org" }]) }));
+            Assert.True(session.HasUnsavedChanges);
+
+            OtherDraftReady ready = await tab.PrepareOtherDraftAsync(b, "Bo", "RHD");
+
+            SubmitDraftTarget target = Assert.IsType<SubmitDraftTarget>(ready.Target);
+            Assert.Equal(b.ToString(), target.DisplayName);
+            Assert.Equal("Commodore/C64/250425", target.Identity.BoardId);
+            Assert.Equal("Forum", Assert.Single(target.Board.BoardLinks).Name);
+            Assert.Contains(target.Board.Credits, credit => credit.NameOrHandle == "Bo" && credit.Contact == "RHD");
+            Assert.True(target.Credited);
+            Assert.False(session.HasUnsavedChanges);
+            Assert.NotEmpty(target.Fingerprint);
+
+            // Its errors cannot be shown from inside the dialog, so it is not sent.
+            OtherDraftReady withErrors = await tab.PrepareOtherDraftAsync(c, "Bo", "RHD");
+            Assert.Null(withErrors.Target);
+            Assert.EndsWith("to fix first", withErrors.Reason, StringComparison.Ordinal);
+
+            // No name typed: nothing more is credited.
+            OtherDraftReady uncredited = await tab.PrepareOtherDraftAsync(b, " ", "");
+            Assert.False(Assert.IsType<SubmitDraftTarget>(uncredited.Target).Credited);
+            Assert.Equal(target.Board.Credits.Count, uncredited.Target.Board.Credits.Count);
+        });
+    }
+
+    // The table view opens on a sheet asked for (what the board parts did until slice 4a).
     [Fact]
     public async Task Credits_open_the_table_view_on_its_sheet()
     {
@@ -529,6 +947,33 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
+    // The component pane's "Capture from my oscilloscope" (slice 3b) follows the Oscilloscope tab's
+    // session as Main hands it to the tab - offered while connected, gone when not.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_pane_offers_the_scope_capture_while_Main_says_a_scope_is_connected()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, Board(), "PAL", null);
+            await tab.OpenComponentAsync("U8");
+
+            Button capture = tab.ComponentPaneForTests.GetControl<Button>("CaptureBaselineButton");
+            Assert.False(capture.IsVisible);
+
+            tab.UseScopeCapture(_ => Task.FromResult<byte[]?>(null), connected: true);
+            Assert.True(capture.IsVisible);
+
+            tab.ShowScopeConnected(false);
+            Assert.False(capture.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
     // Opening the table waits for the pane's close-save before it reads the draft - under CRT's
     // "please wait" (code review, 2026-10-26): the contributor pressed for it, and a large board's
     // save takes a second or two in which the tab took clicks on a half-switched workspace.
@@ -772,6 +1217,107 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.False(tab.IsComponentOpen);
             Assert.True(tab.ComponentPaneForTests.LastSave.IsCompleted);
             Assert.False(File.Exists(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardA)));
+        });
+    }
+
+    // ###########################################################################################
+    // "Add component" (slice 3c) opens the pane's form on the board shown; the component added is in
+    // the left column at once, marked as the draft's change.
+    // ###########################################################################################
+    [Fact]
+    public async Task Add_component_opens_the_panes_form_and_the_list_follows_the_component_added()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            await tab.AddComponentAsync();
+
+            Assert.True(tab.IsComponentOpen);
+            Assert.True(tab.ComponentPaneForTests.IsNewComponentForm);
+
+            tab.ComponentPaneForTests.GetControl<TextBox>("NewLabelBox").Text = "U9";
+            tab.ComponentPaneForTests.GetControl<AutoCompleteBox>("NewCategoryBox").Text = "IC";
+            Assert.True(tab.ComponentPaneForTests.AddNewComponent());
+
+            ComponentListItem added = tab.ComponentsShownForTests.Single(item => item.BoardLabel == "U9");
+            Assert.True(added.IsDrafted);
+        });
+    }
+
+    // ###########################################################################################
+    // "Show on board": the pane's change saved first, and - since the board on screen is then behind
+    // the draft - Main told to read it again before it selects the component; with nothing saved
+    // since, it selects at once. Leaving the tab reads nothing again after that.
+    // ###########################################################################################
+    [Fact]
+    public async Task Show_on_board_saves_first_and_has_the_board_read_again_only_when_it_is_behind()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            var reloads = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloads.Add;
+            var shown = new List<(string Label, bool ReadFirst)>();
+            tab.ShowOnBoardOverrideForTests = (label, readFirst) => shown.Add((label, readFirst));
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            // On screen, as in CRT: a save of the pane's then leaves the board on screen behind.
+            var window = new Window { Content = tab, Width = 1300, Height = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            await tab.OpenComponentAsync("U8");
+            await tab.ShowComponentOnBoardAsync("U8");
+
+            tab.ComponentPaneForTests.GetControl<TextBox>("FriendlyNameBox").Text = "Processor";
+            await tab.ShowComponentOnBoardAsync("U8");
+
+            Assert.Equal([("U8", false), ("U8", true)], shown);
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.False(session.HasUnsavedChanges);
+            Assert.Equal("Processor", session.Content.Board.Components.Single(row => row.BoardLabel == "U8").FriendlyName);
+
+            // Handed over: the board on screen has nothing left to catch up with.
+            tab.CatchUpBoardOnScreen();
+            Assert.Empty(reloads);
+
+            window.Close();
+        });
+    }
+
+    // "Preview popup" is of the draft as it is in memory - what the boxes hold included.
+    [Fact]
+    public async Task Preview_popup_is_of_the_draft_held_in_memory()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            var previews = new List<(BoardData Board, string Label, string Identity)>();
+            tab.PreviewOverrideForTests = (board, label, identity) => previews.Add((board, label, identity));
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            tab.ComponentPaneForTests.GetControl<TextBox>("DescriptionBox").Text = "Runs the show";
+            tab.ComponentPaneForTests.GetControl<Button>("PreviewPopupButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            (BoardData board, string label, string identity) = Assert.Single(previews);
+            Assert.Equal("U8", label);
+            Assert.Equal(BoardA, identity);
+            Assert.Equal("Runs the show", board.Components.Single(row => row.BoardLabel == "U8").Description);
         });
     }
 

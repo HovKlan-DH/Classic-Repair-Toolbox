@@ -111,18 +111,6 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Handle manual row clicks for board-specific contributor mode.
-    // ###########################################################################################
-    private void OnBoardContributorModeRowClicked(object? sender, PointerPressedEventArgs e)
-    {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            this.CheckBoardContributorMode.IsChecked = !this.CheckBoardContributorMode.IsChecked;
-            e.Handled = true;
-        }
-    }
-
-    // ###########################################################################################
     // Restores board-specific schematic settings from persisted configuration.
     // ###########################################################################################
     private void RestoreBoardSettings(string boardKey)
@@ -140,9 +128,6 @@ public partial class TabSchematics
         this.CheckGlobalShowTracesOnComponentSelect.IsChecked = UserSettings.SchematicsShowTracesOnComponentSelect;
         this.CheckGlobalShowOppositeSideTraces.IsChecked = UserSettings.SchematicsShowOppositeSideTraces;
         this.CheckGlobalShowZones.IsChecked = UserSettings.SchematicsShowZones;
-
-        this.CheckBoardContributorMode.IsEnabled = hasBoard;
-        this.CheckBoardContributorMode.IsChecked = UserSettings.ContributorMode;
 
         bool isInteractiveCadTraceHoverEnabled =
             !string.Equals(UserSettings.InteractiveCadTraceHoverMode, "Disabled", StringComparison.Ordinal);
@@ -185,14 +170,6 @@ public partial class TabSchematics
             "HoldShift" => this.thisIsInteractiveCadTraceHoverShiftPressed,
             _ => true
         };
-    }
-
-    // ###########################################################################################
-    // Returns true when contributor-only schematic actions are enabled globally.
-    // ###########################################################################################
-    private static bool IsBoardContributorModeEnabled()
-    {
-        return UserSettings.ContributorMode;
     }
 
     // ###########################################################################################

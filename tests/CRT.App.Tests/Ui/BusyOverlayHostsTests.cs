@@ -54,7 +54,9 @@ public sealed class BusyOverlayHostsTests : IDisposable
         {
             Assert.NotNull(BusyOverlay.For(new MySubmissionsWindow()));
             Assert.NotNull(BusyOverlay.For(new BoardFilesWindow()));
-            Assert.NotNull(BusyOverlay.For(new ComponentContributionWindow()));
+
+            // (The component editor's window was here until 2026-10-26: CRT 4.0's component pane,
+            // on the Contribute tab, waits under Main's overlay - TabDrafts' BusyOverlay.RunLocalAsync.)
 
             // Bringing a draft up to date reads two workbooks and may copy pictures (2026-10-13).
             Assert.NotNull(BusyOverlay.For(new DraftDriftWindow()));

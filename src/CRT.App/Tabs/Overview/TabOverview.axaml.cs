@@ -39,36 +39,7 @@ namespace CRT
         // ###########################################################################################
         public void LoadData(BoardData boardData)
         {
-            var rows = new List<OverviewRow>();
-
-            foreach (var comp in boardData.Components)
-            {
-                var note = boardData.ComponentImages
-                    .FirstOrDefault(ci => string.Equals(ci.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))?.Note ?? string.Empty;
-
-                var links = new List<OverviewLink>();
-
-                links.AddRange(boardData.ComponentLocalFiles
-                    .Where(lf => string.Equals(lf.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))
-                    .Select(lf => new OverviewLink(lf.Name, lf.File, OverviewLinkType.LocalFile)));
-
-                links.AddRange(boardData.ComponentLinks
-                    .Where(l => string.Equals(l.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))
-                    .Select(l => new OverviewLink(l.Name, l.Url, OverviewLinkType.WebLink)));
-
-                rows.Add(new OverviewRow
-                {
-                    IsSelectedForPrint = true,
-                    Component = comp.BoardLabel ?? string.Empty,
-                    Category = comp.Category ?? string.Empty,
-                    TechnicalName = comp.TechnicalNameOrValue ?? string.Empty,
-                    FriendlyName = comp.FriendlyName ?? string.Empty,
-                    PartNumber = comp.PartNumber ?? string.Empty,
-                    ShortDescription = comp.Description ?? string.Empty,
-                    Notes = note,
-                    Links = links
-                });
-            }
+            var rows = OverviewHtmlBuilder.BuildRows(boardData);
 
             this._allRows = rows;
             this._visibleRows = rows;

@@ -41,6 +41,10 @@
 //   TabSchematics.Worklog.TestSeams.cs        ...ForTests seams for the area-drawing flow - see
 //                                             that file's own header
 //   TabSchematics.Settings.cs                 Board-level and global setting rows
+//   TabSchematics.PictureTools.cs             "Mark components" and "Align KiCad" started on a
+//                                             picture from the Contribute tab, with their bar
+//                                             (Done/Cancel), and the menu a right-click on a
+//                                             component opens ("Edit this component")
 //
 // They are one partial class, so state is shared; each field is declared in the part
 // that owns it.
@@ -122,9 +126,8 @@ public partial class TabSchematics : UserControl
 
         this.ClearImportantSignalsButton.Click += (_, _) => this.ClearImportantSignalsSelection();
 
-        this.EnableLabelEditorButton.Click += (_, _) => this.BeginLabelEditorMode();
-        this.CancelLabelEditorChangesButton.Click += (_, _) => this.CancelLabelEditorChanges();
-        this.ApplyLabelEditorChangesButton.Click += (_, _) => this.ApplyLabelEditorChanges();
+        // The picture tools' bar and the component menu (TabSchematics.PictureTools.cs).
+        this.WirePictureTools();
 
         this.ConfirmNewLabelEditorBoardLabelButton.Click += (_, _) => this.ConfirmNewLabelEditorPrompt();
         this.CancelNewLabelEditorBoardLabelButton.Click += (_, _) => this.CancelNewLabelEditorPrompt();
@@ -133,10 +136,6 @@ public partial class TabSchematics : UserControl
         this.NewLabelEditorCategoryComboBox.KeyDown += this.OnNewLabelEditorPromptKeyDown;
 
         this.ClearKiCadTraceSelectionButton.Click += (_, _) => this.ClearAllKiCadTraceSelections();
-
-        this.BeginKiCadTraceCalibrationButton.Click += (_, _) => this.BeginKiCadTraceCalibrationMode();
-        this.ApplyKiCadTraceCalibrationButton.Click += (_, _) => this.ApplyKiCadTraceCalibration();
-        this.CancelKiCadTraceCalibrationButton.Click += (_, _) => this.CancelKiCadTraceCalibrationMode();
 
         this.CheckGlobalShowCalibrationTracesAndPads.IsChecked = true;
         this.CheckGlobalShowCalibrationTracesAndPads.IsCheckedChanged += (_, _) =>
@@ -199,7 +198,6 @@ public partial class TabSchematics : UserControl
         this.CheckGlobalShowOppositeSideTraces.IsChecked = UserSettings.SchematicsShowOppositeSideTraces;
         this.CheckGlobalShowZones.IsChecked = UserSettings.SchematicsShowZones;
         this.CheckGlobalHoverHighlightsTraces.IsChecked = true;
-        this.CheckBoardContributorMode.IsChecked = UserSettings.ContributorMode;
         this.thisSuppressGlobalSettingsChanged = false;
         this.thisSuppressBoardSettingsChanged = false;
 
@@ -336,17 +334,6 @@ public partial class TabSchematics : UserControl
             this.UpdateInteractiveCadTraceHoverModeUi();
             this.RefreshKiCadHoverPadUi();
             this.RefreshKiCadOverlay();
-        };
-
-        this.CheckBoardContributorMode.IsCheckedChanged += (s, e) =>
-        {
-            if (this.thisSuppressBoardSettingsChanged)
-            {
-                return;
-            }
-
-            bool isEnabled = this.CheckBoardContributorMode.IsChecked == true;
-            UserSettings.ContributorMode = isEnabled;
         };
 
         this.SchematicsInteractiveCadTraceHoverHoldShiftCheckBox.IsCheckedChanged +=
@@ -690,7 +677,8 @@ public partial class TabSchematics : UserControl
                IsInsideVisibleOverlay(this.TracesPanel) ||
                IsInsideVisibleOverlay(this.KiCadNetConnectionsPanel) ||
                IsInsideVisibleOverlay(this.TraceFloatingPalette) ||
-               IsInsideVisibleOverlay(this.SchematicsLabelEditorMenuBorder) ||
+               IsInsideVisibleOverlay(this.SchematicsMenuBorder) ||
+               IsInsideVisibleOverlay(this.PictureToolBarBorder) ||
                IsInsideVisibleOverlay(this.SchematicsNewLabelPromptBorder);
     }
 
@@ -831,8 +819,12 @@ public partial class TabSchematics : UserControl
         this.thisLabelEditorOriginalDragRectangles.Clear();
         this.thisLabelEditorWorkingHighlights.Clear();
         this.UpdateLabelEditorLockState();
-        this.HideLabelEditorMenu();
+        this.HideSchematicsMenu();
         this.HideNewLabelEditorPrompt();
+
+        // Whatever a picture tool asked for was for the board before - once BOTH tools are reset, so
+        // the bar follows them (TabSchematics.PictureTools.cs).
+        this.ForgetPictureToolsForNewBoard();
 
         this.SchematicsLabelEditorOverlay.ApplyState(
             rectangles: Array.Empty<Rect>(),
@@ -933,27 +925,6 @@ public partial class TabSchematics : UserControl
         {
             this.ClampSchematicsMatrix();
         }, DispatcherPriority.Background);
-    }
-
-    // ###########################################################################################
-    // Returns true when the schematics actions menu is allowed to be shown.
-    // Contributor mode enables menu entry from empty-space right click, and active editor or KiCad
-    // calibration workflows keep the same shared floating menu available.
-    //
-    // Never during worklog entry mode: on a contributor-mode board the first clause is true, so the
-    // menu could still open while an area was being marked out - and it offers "Enable label editor"
-    // and the calibration mode, which is exactly how two modes ended up active at once.
-    // ###########################################################################################
-    private bool CanShowSchematicsActionsMenu()
-    {
-        if (this.thisIsWorklogEntryMode)
-        {
-            return false;
-        }
-
-        return IsBoardContributorModeEnabled() ||
-               this.thisIsLabelEditorMode ||
-               this.thisIsKiCadTraceCalibrationMode;
     }
 
     // ###########################################################################################

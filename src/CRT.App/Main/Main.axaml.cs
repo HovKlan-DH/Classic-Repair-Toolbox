@@ -55,6 +55,9 @@ namespace CRT
         //                               machine's worklogs and settings that name it follow
         //   Main.SettingsNotice.cs    - "your settings could not be read": started on defaults, and
         //                               where the unreadable file was kept
+        //   Main.PictureTools.cs      - "Mark components" and "Align KiCad" from the Contribute tab, on
+        //                               the Schematics tab and back, and "Edit this component" from a
+        //                               right-click on a component
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -236,6 +239,7 @@ namespace CRT
             InitializeComponent();
 
             this.TabSchematicsControl.Initialize(this);
+            this.WirePictureTools();
             this.TabOverview.Initialize(this);
             this.TabWorkbooks.Initialize(this);
             this.TabDrafts.Initialize(this);

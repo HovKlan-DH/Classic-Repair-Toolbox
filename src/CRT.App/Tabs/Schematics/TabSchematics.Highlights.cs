@@ -1281,6 +1281,26 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
+    // Only `boardLabel` selected - the Contribute tab's "Show on board" (CRT 4.0 step 2, slice 3c).
+    // Every other selection let go first, the component list's and the schematic-only one alike; then
+    // the component picked as a click on it would (SelectComponentByBoardLabel - a schematic-only
+    // selection when the list's filters hide it).
+    // ###########################################################################################
+    internal void ShowOnlyComponent(string boardLabel)
+    {
+        string label = boardLabel?.Trim() ?? string.Empty;
+
+        if (label.Length == 0 || this.MainWindow == null)
+        {
+            return;
+        }
+
+        this.thisSchematicsOnlySelectedBoardLabels.Clear();
+        this.MainWindow.ComponentFilterListBox.SelectedItems?.Clear();
+        this.SelectComponentByBoardLabel(label);
+    }
+
+    // ###########################################################################################
     // Returns true when the board label is selected either through the visible component list or
     // through the schematic-only hidden-selection cache.
     // ###########################################################################################

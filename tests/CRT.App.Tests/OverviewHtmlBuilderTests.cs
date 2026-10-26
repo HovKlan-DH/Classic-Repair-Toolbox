@@ -271,4 +271,57 @@ public class OverviewHtmlBuilderTests
         Assert.Equal(expectLocal, link.IsLocalFile);
         Assert.Equal(expectWeb, link.IsWebLink);
     }
+
+    // -------------------------------------------------------------- BuildRows (CRT 4.0, slice 3c)
+
+    // One row per component row, in the board's order, with its package, its files and links.
+    [Fact]
+    public void A_boards_rows_carry_each_components_fields_package_files_and_links()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Category = "IC", TechnicalNameOrValue = "6510", FriendlyName = "CPU", PartNumber = "906", Package = " DIP-40 ", Description = "The processor" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor" },
+            ],
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/6510.pdf" }],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "u8", Name = "Article", Url = "https://example.org" }],
+        };
+
+        List<OverviewRow> rows = OverviewHtmlBuilder.BuildRows(board);
+
+        Assert.Equal(["U8", "C1"], rows.Select(row => row.Component));
+        Assert.Equal("DIP-40", rows[0].Package);
+        Assert.Equal("The processor", rows[0].ShortDescription);
+        Assert.Equal(["Datasheet", "Article"], rows[0].Links.Select(link => link.Name));
+        Assert.True(rows[0].Links[0].IsLocalFile);
+        Assert.Empty(rows[1].Links);
+    }
+
+    // Notes are the repair notes; a component without any keeps the column's old content, its first
+    // image's note - every converted board has no repair notes yet.
+    [Fact]
+    public void Notes_are_the_repair_notes_and_else_the_first_images_note()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", RepairNotes = "Socket it" },
+                new ComponentEntry { BoardLabel = "U9" },
+                new ComponentEntry { BoardLabel = "U10" },
+            ],
+            ComponentImages =
+            [
+                new ComponentImageEntry { BoardLabel = "U8", Note = "Image note of U8" },
+                new ComponentImageEntry { BoardLabel = "U9", Note = "First of U9" },
+                new ComponentImageEntry { BoardLabel = "U9", Note = "Second of U9" },
+            ],
+        };
+
+        List<OverviewRow> rows = OverviewHtmlBuilder.BuildRows(board);
+
+        Assert.Equal(["Socket it", "First of U9", string.Empty], rows.Select(row => row.Notes));
+    }
 }

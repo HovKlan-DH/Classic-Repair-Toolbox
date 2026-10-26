@@ -40,9 +40,25 @@ namespace CRT
     //     the draft's header says Saved, Saving... or "Could not save" with Try again.
     //   - WHAT ANOTHER EDITOR CHANGES SHOWS AT ONCE: before any change not the pane's own, what the
     //     pane holds goes in first (ChangeComing), and after it the pane reads the component again.
+    //   - ITS SCOPE BASELINES, PICTURES AND FILES TOO (slice 3b, 2026-10-26): a file added goes into the
+    //     draft under a name of the board's own and is saved at once (ComponentPane.Files.cs).
+    //   - AND THE COMPONENT AS A WHOLE (slice 3c, 2026-10-26): a new one added, one deleted, "Show on
+    //     board" and "Preview popup" (ComponentPane.Whole.cs) - the component editor's window is gone.
+    //   - AND, IN PLACE OF A COMPONENT, ONE OF THE BOARD'S OWN LISTS (slice 4a, 2026-10-26): its files
+    //     and links, its credits or its important signals (ComponentPane.Board.cs).
     //
-    // Pictures, scope baselines and files are still the component editor window's - its button here
-    // opens it on the same component (the next slice moves them into the pane).
+    // The file map:
+    //   ComponentPane.axaml.cs  - showing a component, the fields, pins, replacement parts and links,
+    //                             committing and saving, Undo changes
+    //   ComponentPane.Files.cs  - scope baselines (with the new-baseline panel and the capture),
+    //                             pictures and files: adding, changing, thumbnails
+    //   ComponentPane.Whole.cs  - the new-component form, Delete component and "Bring back", the
+    //                             buttons that ask the host to show the component on the board or
+    //                             preview its popup
+    //   ComponentPane.Board.cs  - the board's files and links, credits and important signals
+    //   ComponentPane.BoardPictures.cs - the board's pictures and the colours a marked component is
+    //                             drawn in on each, with their previews
+    //   ComponentPane.Copy.cs   - "Copy from another board": the same part's data from another board
     // ###########################################################################################
     public partial class ComponentPane : UserControl
     {
@@ -94,6 +110,9 @@ namespace CRT
             this.ReplacementsItemsControl.ItemsSource = this.thisReplacements;
             this.LinksItemsControl.ItemsSource = this.thisLinks;
             this.PackageBox.ItemsSource = ComponentVocabulary.Packages;
+            this.InitializeImagesAndFiles();
+            this.InitializeWhole();
+            this.InitializeBoardParts();
 
             this.thisSaveTimer.Tick += (_, _) => this.SaveIfDue();
             this.thisTypingTimer.Tick += (_, _) =>
@@ -112,9 +131,6 @@ namespace CRT
 
         // Asked to close (its Close button).
         public event EventHandler? CloseRequested;
-
-        // Asked for the component editor window on this component - pictures, baselines and files.
-        public event EventHandler? ComponentEditorRequested;
 
         // One of the pane's own changes went into the draft - the host's list follows.
         public event EventHandler? ContentChanged;
@@ -174,6 +190,9 @@ namespace CRT
             this.thisRegion = region?.Trim() ?? string.Empty;
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
+            this.thisIsNew = false;
+            this.thisBoardPart = null;
+            this.CloseCopyPanel();
 
             this.ShowComponent();
         }
@@ -209,11 +228,21 @@ namespace CRT
             this.thisTypingTimer.Stop();
             this.UseSession(null);
             this.thisLabel = string.Empty;
+            this.thisIsNew = false;
+            this.thisBoardPart = null;
+            this.thisNetChoices = null;
             this.thisPublished = null;
             this.thisPublishedBoardFile = string.Empty;
             this.thisPins.Clear();
             this.thisReplacements.Clear();
             this.thisLinks.Clear();
+            this.ForgetImagesAndFiles();
+            this.thisBoardFiles.Clear();
+            this.thisBoardLinks.Clear();
+            this.thisCredits.Clear();
+            this.thisSignals.Clear();
+            this.thisBoardPictures.Clear();
+            this.CloseCopyPanel();
         }
 
         // ###########################################################################################
@@ -284,9 +313,25 @@ namespace CRT
 
             this.thisTypingTimer.Stop();
 
+            // The new-component form reads the draft only to judge the label typed.
+            if (this.thisIsNew)
+            {
+                this.ShowNewComponentState();
+                return;
+            }
+
+            // A board part in place of a component (ComponentPane.Board.cs).
+            if (this.thisBoardPart is not null)
+            {
+                this.ShowBoardPartRows();
+                return;
+            }
+
             BoardData board = session.Content.Board;
             ComponentEntry? row = ComponentPaneEdits.RowShown(board, this.thisLabel, this.thisRegion);
 
+            this.NewComponentPanel.IsVisible = false;
+            this.BoardPartPanel.IsVisible = false;
             this.GonePanel.IsVisible = row is null;
             this.SectionsScrollViewer.IsVisible = row is not null;
 
@@ -297,9 +342,24 @@ namespace CRT
                 this.RegionText.IsVisible = false;
                 this.GoneText.Text = ComponentPaneWording.NotOnBoard(this.thisLabel);
                 this.ShowChangedState();
+                this.ShowGoneActions();
                 return;
             }
 
+            // ###########################################################################################
+            // A component with a row of ONE region only, open in the other (RowShown fell back to its
+            // first row - an NTSC-only component opened while CRT shows PAL): the pane works in the row's
+            // own region. In the other, every section read back empty, so each commit filed the rows again
+            // beside the ones already there (slice 3c, ComponentPaneTests).
+            // ###########################################################################################
+            string ownRegion = row.Region?.Trim() ?? string.Empty;
+
+            if (ownRegion.Length > 0 && !string.Equals(ownRegion, this.thisRegion, StringComparison.OrdinalIgnoreCase))
+            {
+                this.thisRegion = ownRegion;
+            }
+
+            this.ShowActions(board);
             this.thisShowing = true;
 
             try
@@ -320,11 +380,11 @@ namespace CRT
                 ComponentPane.Fill(this.thisPins, ComponentPaneEdits.PinsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPanePinRow.From));
                 ComponentPane.Fill(this.thisReplacements, ComponentPaneEdits.ReplacementsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneReplacementRow.From));
                 ComponentPane.Fill(this.thisLinks, ComponentPaneEdits.LinksOf(board, this.thisLabel).Select(ComponentPaneLinkRow.From));
+                this.ShowImagesAndFiles(board);
 
                 this.TitleText.Text = ComponentPaneWording.Title(row);
                 this.RegionText.Text = ComponentPaneWording.RegionLine(this.thisRowRegion);
                 this.RegionText.IsVisible = this.RegionText.Text.Length > 0;
-                this.ElsewhereText.Text = ComponentPaneWording.Elsewhere(board, this.thisLabel, this.thisRegion);
             }
             finally
             {
@@ -414,6 +474,7 @@ namespace CRT
             this.NoReplacementsText.IsVisible = this.thisReplacements.Count == 0;
             this.NoLinksText.IsVisible = this.thisLinks.Count == 0;
             this.LinksHeading.IsVisible = this.thisLinks.Count > 0;
+            this.ShowImageAndFileHeadings();
         }
 
         // "Changed", and "Undo changes to <label>", while the draft changes the component.
@@ -422,8 +483,10 @@ namespace CRT
             bool changed = this.IsComponentChanged;
 
             this.ChangedMark.IsVisible = changed;
+            ToolTip.SetTip(this.ChangedMark, ComponentPaneWording.ComponentChangedTip);
             this.UndoChangesButton.IsVisible = changed;
             this.UndoChangesButton.Content = ReviewChangesWindow.UndoLabel(this.thisLabel);
+            this.ShowAlsoOffer();
         }
 
         // ---- the pane's changes into the draft --------------------------------------------------
@@ -434,7 +497,19 @@ namespace CRT
         // ###########################################################################################
         internal void CommitHeld()
         {
-            if (this.thisSession is null || this.thisShowing || !this.SectionsScrollViewer.IsVisible)
+            if (this.thisSession is null || this.thisShowing)
+            {
+                return;
+            }
+
+            // A board part holds its own lists (ComponentPane.Board.cs).
+            if (this.thisBoardPart is not null)
+            {
+                this.CommitBoardPart();
+                return;
+            }
+
+            if (!this.SectionsScrollViewer.IsVisible)
             {
                 return;
             }
@@ -445,7 +520,10 @@ namespace CRT
             }
 
             this.CommitPins();
+            this.CommitBaselines();
+            this.CommitPictures();
             this.CommitReplacements();
+            this.CommitFiles();
             this.CommitLinks();
 
             // The case drawn as the package now reads.
@@ -564,6 +642,13 @@ namespace CRT
                 return;
             }
 
+            // The new-component form is judged as it is typed in, and goes into the draft only when added.
+            if (this.thisIsNew)
+            {
+                this.OnNewComponentTextChanged();
+                return;
+            }
+
             if (ReferenceEquals(e.Source, this.DescriptionBox))
             {
                 this.ShowCounter();
@@ -595,6 +680,11 @@ namespace CRT
         // Enter in a one-line box takes what it says into the draft at once.
         private void OnPaneKeyDown(object? sender, KeyEventArgs e)
         {
+            if (this.AddOnEnter(e))
+            {
+                return;
+            }
+
             if (e.Key == Key.Enter && e.Source is TextBox { AcceptsReturn: false })
             {
                 this.thisTypingTimer.Stop();
@@ -606,12 +696,6 @@ namespace CRT
         // ---- buttons ----------------------------------------------------------------------------
 
         private void OnCloseClick(object? sender, RoutedEventArgs e) => this.CloseRequested?.Invoke(this, EventArgs.Empty);
-
-        private void OnComponentEditorClick(object? sender, RoutedEventArgs e)
-        {
-            this.CommitHeld();
-            this.ComponentEditorRequested?.Invoke(this, EventArgs.Empty);
-        }
 
         // ###########################################################################################
         // "Undo changes to <label>": the component back as published - every row of it, every region

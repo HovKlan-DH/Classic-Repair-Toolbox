@@ -23,6 +23,29 @@ namespace Handlers.DataHandling
         // window writes (2026-10-10). Same rule as WithCadName.
         public BoardSchematicEntry WithSchematicName(string schematicName) => this.With(schematicName, this.CadName);
 
+        // The colours a marked component is drawn in on this picture, as one value (CRT 4.0 step 2,
+        // slice 4b - the component pane's Pictures). A method, not a property: the row's properties
+        // are its columns (BoardDocumentMapping, BoardSchematicEntryTests count them by reflection).
+        public PictureColours ReadColours() => new(
+            this.SchematicHighlightColor,
+            this.SchematicHighlightOpacity,
+            this.OppositeTraceHighlightColor,
+            this.ThumbnailHighlightColor,
+            this.ThumbnailHighlightOpacity);
+
+        // This row with other colours and every other column as it was. Same rule as WithCadName.
+        public BoardSchematicEntry WithColours(PictureColours colours) => new()
+        {
+            SchematicName = this.SchematicName,
+            CadName = this.CadName,
+            SchematicImageFile = this.SchematicImageFile,
+            SchematicHighlightColor = colours.HighlightColor,
+            SchematicHighlightOpacity = colours.HighlightOpacity,
+            OppositeTraceHighlightColor = colours.OppositeTraceColor,
+            ThumbnailHighlightColor = colours.ThumbnailHighlightColor,
+            ThumbnailHighlightOpacity = colours.ThumbnailHighlightOpacity,
+        };
+
         private BoardSchematicEntry With(string schematicName, string cadName) => new()
         {
             SchematicName = schematicName,
@@ -385,6 +408,34 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
             ComponentPins = componentPins ?? this.ComponentPins,
             ComponentReplacements = componentReplacements ?? this.ComponentReplacements,
+        };
+
+        // ###########################################################################################
+        // The same board with some of its own sections replaced - the component pane's board parts
+        // (BoardPartEdits, CRT 4.0 step 2 slice 4a). A null list keeps the board's own. Lists shared,
+        // as WithRevisionDate's are.
+        // ###########################################################################################
+        public BoardData WithBoardSections(
+            List<BoardLocalFileEntry>? boardLocalFiles = null,
+            List<BoardLinkEntry>? boardLinks = null,
+            List<CreditEntry>? credits = null,
+            List<KiCadImportantSignalEntry>? kiCadImportantSignals = null) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = this.HardwareName,
+            BoardName = this.BoardName,
+            Schematics = this.Schematics,
+            Components = this.Components,
+            ComponentImages = this.ComponentImages,
+            ComponentHighlights = this.ComponentHighlights,
+            ComponentLocalFiles = this.ComponentLocalFiles,
+            ComponentLinks = this.ComponentLinks,
+            BoardLocalFiles = boardLocalFiles ?? this.BoardLocalFiles,
+            BoardLinks = boardLinks ?? this.BoardLinks,
+            Credits = credits ?? this.Credits,
+            KiCadImportantSignals = kiCadImportantSignals ?? this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
         };
 
         // The same board with different highlights - used when a save drops the highlights of a

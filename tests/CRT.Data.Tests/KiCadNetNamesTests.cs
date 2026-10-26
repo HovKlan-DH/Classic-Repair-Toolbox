@@ -144,4 +144,34 @@ public sealed class KiCadNetNamesTests
         Assert.Empty(report.UsedNetNames);
         Assert.Empty(report.UnresolvedSignals);
     }
+
+    // ---- the choices an important signal picks from (slice 4a) ---------------------------------
+
+    // The names to pick are the report's; a net is found by the panel's own rule - its own name or its
+    // normalised one, trimmed, capitals ignored - and net 0 is found though never offered.
+    [Fact]
+    public void The_choices_offer_the_normalised_names_and_find_a_net_as_the_panel_does()
+    {
+        KiCadNetChoices choices = KiCadNetNames.Choices([("/Sheet1/CLK", "CLK", false), ("A10", "A10", false), ("A2", "A2", false), ("", "0", true)]);
+
+        Assert.Equal(["A2", "A10", "CLK"], choices.Names);
+        Assert.True(choices.HasNets);
+        Assert.True(choices.Finds(" clk "));
+        Assert.True(choices.Finds("/Sheet1/CLK"));
+        Assert.True(choices.Finds("0"));
+        Assert.False(choices.Finds("NOPE"));
+
+        // Half a row is the table's to point at, not the picker's.
+        Assert.True(choices.Finds("  "));
+    }
+
+    // A board without KiCad data offers nothing and calls no typed net missing.
+    [Fact]
+    public void Without_KiCad_data_every_net_may_be_typed()
+    {
+        Assert.False(KiCadNetChoices.None.HasNets);
+        Assert.Empty(KiCadNetChoices.None.Names);
+        Assert.True(KiCadNetChoices.None.Finds("ANYTHING"));
+        Assert.True(KiCadNetNames.Choices([]).Finds("ANYTHING"));
+    }
 }

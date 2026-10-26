@@ -280,16 +280,46 @@ namespace CRT
                 return null;
             }
 
+            string outputFilePath = BuildCapturedOscilloscopeImageFilePath(
+                componentImageEntry,
+                displayedRegion,
+                outputDirectory);
+
+            byte[]? png = await this.CaptureOscilloscopePngAsync(cancellationToken).ConfigureAwait(false);
+
+            if (png is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                Directory.CreateDirectory(outputDirectory);
+                await File.WriteAllBytesAsync(outputFilePath, png, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                this.AppendOutputLine("Warning", $"Could not save the oscilloscope image to [{outputFilePath}]: {ex.Message}");
+                return null;
+            }
+
+            this.AppendOutputLine("Info", $"Saved oscilloscope image to [{outputFilePath}]");
+            return outputFilePath;
+        }
+
+        // ###########################################################################################
+        // THE OSCILLOSCOPE'S SCREEN, CAPTURED OVER THE ACTIVE SCPI SESSION, AS PNG BYTES - or null, with
+        // the reason in this tab's output. What the popup saves into the image folder above, and what
+        // the Contribute tab's component pane makes a scope baseline's screenshot of ("Capture from my
+        // oscilloscope", CRT 4.0 step 2) - which needs no image folder: the screenshot goes into the draft.
+        // ###########################################################################################
+        public async Task<byte[]?> CaptureOscilloscopePngAsync(CancellationToken cancellationToken)
+        {
             OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
             if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: true))
             {
                 return null;
             }
-
-            string outputFilePath = BuildCapturedOscilloscopeImageFilePath(
-                componentImageEntry,
-                displayedRegion,
-                outputDirectory);
 
             bool enteredSemaphore = false;
 
@@ -326,12 +356,10 @@ namespace CRT
 
                 using (capturedBitmap)
                 {
-                    Directory.CreateDirectory(outputDirectory);
-                    capturedBitmap.Save(outputFilePath, new PngBitmapEncoderOptions());
+                    using var png = new MemoryStream();
+                    capturedBitmap.Save(png, new PngBitmapEncoderOptions());
+                    return png.ToArray();
                 }
-
-                this.AppendOutputLine("Info", $"Saved oscilloscope image to [{outputFilePath}]");
-                return outputFilePath;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

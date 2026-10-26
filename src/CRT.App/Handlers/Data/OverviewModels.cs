@@ -34,6 +34,9 @@ namespace Handlers.DataHandling
         public string TechnicalName { get; init; } = string.Empty;
         public string FriendlyName { get; init; } = string.Empty;
         public string PartNumber { get; init; } = string.Empty;
+
+        // The chip's case, "DIP-40" (CRT 4.0).
+        public string Package { get; init; } = string.Empty;
         public string ShortDescription { get; init; } = string.Empty;
         public string Notes { get; init; } = string.Empty;
         public List<OverviewLink> Links { get; init; } = new();

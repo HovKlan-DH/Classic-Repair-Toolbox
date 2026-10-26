@@ -167,7 +167,7 @@ public partial class TabSchematics
         if (!this.thisIsKiCadTraceCalibrationMode ||
             this.currentFullResBitmap == null ||
             this.thisKiCadTraceCalibrationDragMode != LabelEditorDragMode.None ||
-            this.SchematicsLabelEditorMenuBorder.IsVisible)
+            this.SchematicsMenuBorder.IsVisible)
         {
             return false;
         }
@@ -261,12 +261,13 @@ public partial class TabSchematics
         // to the live drag box - see InvalidateKiCadHoverHitTestCachesForCalibrationChange.
         this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
-        this.HideLabelEditorMenu();
+        this.HideSchematicsMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.SchematicsContainer.Focus();
         this.Focus();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.UpdateSchematicsHoverUi(new Point(0, 0));
+        this.FollowPictureTool();
 
         Logger.Info($"KiCad trace calibration mode enabled for schematic [{this.GetCurrentSchematicName()}]");
     }
@@ -300,10 +301,11 @@ public partial class TabSchematics
         // back to the persisted box, and any cache built against the live drag box must go with it.
         this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
-        this.HideLabelEditorMenu();
+        this.HideSchematicsMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.SchematicsContainer.Focus();
+        this.FollowPictureTool();
 
         Logger.Info("KiCad trace calibration mode canceled");
     }
@@ -463,10 +465,11 @@ public partial class TabSchematics
         // where the visible traces now are, until the app restarted and rebuilt the caches fresh.
         this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
-        this.HideLabelEditorMenu();
+        this.HideSchematicsMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.SchematicsContainer.Focus();
+        this.FollowPictureTool();
 
         Logger.Info(
             $"KiCad trace calibration saved for schematic [{schematicName}] " +

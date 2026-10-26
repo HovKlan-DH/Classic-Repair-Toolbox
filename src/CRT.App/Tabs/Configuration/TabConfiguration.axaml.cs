@@ -57,6 +57,7 @@ namespace CRT
             this.EnableMaintainerTabCheckBox.IsChecked = UserSettings.EnableMaintainerTab;
             this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsChecked = UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting;
             this.ViewOfficialPublishedOnlyCheckBox.IsChecked = UserSettings.ViewOfficialPublishedOnly;
+            this.DetailedLogCheckBox.IsChecked = UserSettings.DetailedLog;
 
             bool isAllBoardsScope = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
             this.WorkbooksScopeAllBoardsRadioButton.IsChecked = isAllBoardsScope;
@@ -92,6 +93,9 @@ namespace CRT
             this.WorkbooksScopeAllBoardsRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorkbooksScopeCurrentBoardRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorklogCurrencyComboBox.SelectionChanged += this.OnWorklogCurrencySelectionChanged;
+
+            // The log's debug lines, and the data check at launch (slice 6 - contributor mode's).
+            this.DetailedLogCheckBox.IsCheckedChanged += (_, _) => UserSettings.DetailedLog = this.DetailedLogCheckBox.IsChecked == true;
         }
 
         // ###########################################################################################

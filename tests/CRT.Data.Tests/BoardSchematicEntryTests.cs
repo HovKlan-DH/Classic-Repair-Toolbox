@@ -63,6 +63,31 @@ public sealed class BoardSchematicEntryTests
             "PCB; Top");
     }
 
+    // The pictures' colours (slice 4b): every colour column replaced, the name, CAD name and image
+    // file kept - checked by reflection, so a column added later cannot be lost by the copy.
+    [Fact]
+    public void A_recoloured_schematic_row_keeps_its_name_CAD_name_and_image_file()
+    {
+        var original = new BoardSchematicEntry { SchematicName = "Top", CadName = "PCB Top", SchematicImageFile = "top.png", SchematicHighlightColor = "Red" };
+        BoardSchematicEntry result = original.WithColours(new PictureColours("a", "b", "c", "d", "e"));
+
+        string[] colourColumns =
+        [
+            nameof(BoardSchematicEntry.SchematicHighlightColor),
+            nameof(BoardSchematicEntry.SchematicHighlightOpacity),
+            nameof(BoardSchematicEntry.OppositeTraceHighlightColor),
+            nameof(BoardSchematicEntry.ThumbnailHighlightColor),
+            nameof(BoardSchematicEntry.ThumbnailHighlightOpacity),
+        ];
+
+        foreach (PropertyInfo property in typeof(BoardSchematicEntry).GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(property => !colourColumns.Contains(property.Name)))
+        {
+            Assert.Equal(property.GetValue(original), property.GetValue(result));
+        }
+
+        Assert.Equal(new PictureColours("a", "b", "c", "d", "e"), result.ReadColours());
+    }
+
     [Fact]
     public void A_highlight_on_a_renamed_schematic_keeps_its_rectangle_and_label()
     {

@@ -268,6 +268,7 @@ public partial class TabSchematics
             this.RebuildImportantSignalsPanel();
             this.RestoreBoardSettings(expectedBoardKey);
             this.RefreshKiCadOverlay();
+            this.KiCadSettled(hasProject: false);
             return;
         }
 
@@ -379,6 +380,9 @@ public partial class TabSchematics
         this.RefreshKiCadOverlay();
 
         this.SetKiCadInitializingIndicatorVisible(false);
+
+        // An "Align KiCad" waiting for the board's KiCad data (TabSchematics.PictureTools.cs).
+        this.KiCadSettled(hasProject: this.thisKiCadProject is not null);
     }
 
     // ###########################################################################################

@@ -214,6 +214,10 @@ namespace CRT
             this._suppressCategoryFilterSave = true;
             int loadVersion = unchecked(++this._boardSelectionLoadVersion);
 
+            // What waits for the board to be read again is this load's - or, taken by a load that
+            // never reached its end, dropped (Main.ComponentPopup.cs).
+            this.TakeWhatWaitsForLoad(loadVersion);
+
             // The load this one supersedes stops decoding thumbnails (code review, 2026-10-13); it
             // used to run to its end and only then find it had been overtaken.
             this._boardLoadCts?.Cancel();
@@ -570,6 +574,10 @@ namespace CRT
                         this.TabOverview.LoadData(boardData);
                         this.ShowBoardInContributeTab(entry);
                         this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
+
+                        // The Contribute tab's "Show on board" or a picture tool waited for this board to
+                        // be read again (OnBoardShownUpToDate) - now its highlights and thumbnails are there.
+                        this.DoWhatWasAskedAfterLoad(boardKey);
                     }, DispatcherPriority.Background);
 
                     if (rawPaths.Count > 0)
@@ -582,6 +590,18 @@ namespace CRT
                             }
 
                             await this.TabSchematicsControl.LoadKiCadProjectForCurrentBoardAsync(rawPaths);
+                        }, DispatcherPriority.Background);
+                    }
+                    else
+                    {
+                        // No KiCad data, so no load is asked for - an "Align KiCad" waiting for it is
+                        // told there is none (TabSchematics.PictureTools.cs).
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                        {
+                            if (loadVersion == this._boardSelectionLoadVersion)
+                            {
+                                this.TabSchematicsControl.KiCadSettled(hasProject: false);
+                            }
                         }, DispatcherPriority.Background);
                     }
                 }
@@ -859,8 +879,11 @@ namespace CRT
         // ###########################################################################################
         internal void ReloadCurrentBoardFromDisk(string schematicNameToRestore)
         {
+            // Not while a picture tool is on - read again when it ends (Main.PictureTools.cs).
+            bool waitsForTool = this.WaitsForTool(schematicNameToRestore);
+
             var boardKey = this.GetCurrentBoardKey();
-            if (!string.IsNullOrWhiteSpace(boardKey) && !string.IsNullOrWhiteSpace(schematicNameToRestore))
+            if (!waitsForTool && !string.IsNullOrWhiteSpace(boardKey) && !string.IsNullOrWhiteSpace(schematicNameToRestore))
             {
                 UserSettings.SetLastSchematicForBoard(boardKey, schematicNameToRestore);
             }
@@ -879,6 +902,11 @@ namespace CRT
             // The Drafts tab's table, open on that draft, reads its file again if something wrote it
             // past the draft held in memory (CRT 4.0 step 1 - TabDrafts.ReadTableDraftAgain).
             this.TabDrafts.ReadTableDraftAgain();
+
+            if (waitsForTool)
+            {
+                return;
+            }
 
             // Not a board CHANGE, so the component search box is deliberately left alone - the same
             // thing passing a null sender used to express before this became a typed argument.

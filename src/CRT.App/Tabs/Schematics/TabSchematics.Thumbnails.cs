@@ -173,6 +173,9 @@ public partial class TabSchematics
 
             this.CancelWorklogEntryMode();
 
+            // A picture tool waiting for this picture starts once its image is read (TabSchematics.PictureTools.cs).
+            this.thisImageSettledFor = null;
+
             this.UpdateOverlayLabels();
 
             this.RebuildImportantSignalsPanel();
@@ -213,7 +216,10 @@ public partial class TabSchematics
             this.RestoreBoardSettings(boardKey ?? string.Empty);
 
             if (selected == null || string.IsNullOrEmpty(selected.ImageFilePath))
+            {
+                this.ImageSettled(selected?.Name, shown: false);
                 return;
+            }
 
             var bitmap = await Task.Run(() =>
             {
@@ -285,6 +291,10 @@ public partial class TabSchematics
                 // boards) needs re-applying once this schematic's bitmap has actually finished loading -
                 // otherwise the overlay silently never appears until the checkbox is toggled off and on.
                 this.RefreshWorklogEntriesListOverlay();
+
+                // Laid out and drawn: a picture tool waiting for this picture can start on it.
+                if (ReferenceEquals(this.SelectedThumbnail, selected))
+                    this.ImageSettled(selected.Name, shown: bitmap != null);
             });
         }
         catch (Exception ex)

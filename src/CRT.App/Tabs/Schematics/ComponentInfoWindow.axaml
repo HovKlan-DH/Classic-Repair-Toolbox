@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
+        xmlns:data="clr-namespace:Handlers.DataHandling"
         x:Class="CRT.ComponentInfoWindow"
         Title="Component Information"
         Width="680"
@@ -511,6 +512,21 @@
 						</Grid>
 					</StackPanel>
 
+					<!-- Repair notes (CRT 4.0, hidden when empty) - a link in them can be clicked. -->
+					<StackPanel x:Name="RepairNotesSection"
+								IsVisible="False"
+								Spacing="2"
+								Margin="0,8,0,0">
+						<TextBlock Text="Repair notes"
+								   FontSize="10"
+								   FontWeight="SemiBold"
+								   Foreground="{DynamicResource Fg}" />
+						<TextBlock x:Name="InfoRepairNotes"
+								   TextWrapping="Wrap"
+								   FontSize="12"
+								   Foreground="{DynamicResource Fg}" />
+					</StackPanel>
+
 					<!-- 4. Image note (hidden when empty or no thumbnail selected) -->
 					<StackPanel x:Name="ImageNoteSection"
 								IsVisible="False"
@@ -529,6 +545,90 @@
 									 TextWrapping="Wrap"
 									 FontSize="12" />
 						</Grid>
+					</StackPanel>
+
+					<!-- What the scope baseline shown was measured under (CRT 4.0, hidden when it says nothing). -->
+					<StackPanel x:Name="BaselineConditionsSection"
+								IsVisible="False"
+								Spacing="2"
+								Margin="0,8,0,0">
+						<TextBlock Text="Scope baseline"
+								   FontSize="10"
+								   FontWeight="SemiBold"
+								   Foreground="{DynamicResource Fg}" />
+						<SelectableTextBlock x:Name="InfoBaselineConditions"
+											 TextWrapping="Wrap"
+											 FontSize="12"
+											 Foreground="{DynamicResource Fg}" />
+
+						<!-- How the board's baselines were measured: its "Scope measurements" files (2026-10-26). -->
+						<TextBlock x:Name="InfoMeasuringNotesLabel"
+								   Text="How this board's baselines were measured:"
+								   FontSize="11"
+								   Opacity="0.75"
+								   Margin="0,4,0,0"
+								   Foreground="{DynamicResource Fg}" />
+						<ItemsControl x:Name="InfoMeasuringNotesItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="local:ComponentLocalFileItem">
+									<Button Classes="ComponentResourceLinkButton"
+											Margin="0,2,0,2"
+											Tag="{Binding}"
+											Click="OnLocalFileButtonClick">
+										<TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+									</Button>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</StackPanel>
+
+					<!-- The pinout (CRT 4.0, hidden without pins): the case drawn when CRT can draw it, and
+					     every pin with its signal name and direction. -->
+					<StackPanel x:Name="PinoutSection"
+								IsVisible="False"
+								Spacing="4"
+								Margin="0,8,0,0">
+						<TextBlock Text="Pinout"
+								   FontSize="10"
+								   FontWeight="SemiBold"
+								   Foreground="{DynamicResource Fg}" />
+						<local:PinoutDrawing x:Name="InfoPinoutDrawing"
+											 HorizontalAlignment="Left"
+											 Margin="0,2,0,4"
+											 IsVisible="False" />
+						<ItemsControl x:Name="InfoPinsItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="data:ComponentPopupPin">
+									<Grid ColumnDefinitions="36,140,*">
+										<TextBlock Grid.Column="0" Text="{Binding Pin}" FontSize="11" Foreground="{DynamicResource Fg}" />
+										<TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
+										<TextBlock Grid.Column="2" Text="{Binding Direction}" FontSize="11" Opacity="0.75" Foreground="{DynamicResource Fg}" />
+									</Grid>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</StackPanel>
+
+					<!-- Replacement parts (CRT 4.0, hidden without any). -->
+					<StackPanel x:Name="ReplacementsSection"
+								IsVisible="False"
+								Spacing="4"
+								Margin="0,8,0,0">
+						<TextBlock Text="Replacement parts"
+								   FontSize="10"
+								   FontWeight="SemiBold"
+								   Foreground="{DynamicResource Fg}" />
+						<ItemsControl x:Name="InfoReplacementsItemsControl">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="data:ComponentPopupReplacement">
+									<StackPanel Margin="0,0,0,6">
+										<TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
+										<TextBlock Text="{Binding Changes}" IsVisible="{Binding HasChanges}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
+										<TextBlock Text="{Binding Source}" IsVisible="{Binding HasSource}" FontSize="11" Opacity="0.75" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
+									</StackPanel>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
 					</StackPanel>
 
 					<!-- 5. Component local files (hidden when empty) -->

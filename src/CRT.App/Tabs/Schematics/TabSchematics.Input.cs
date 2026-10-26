@@ -124,7 +124,7 @@ public partial class TabSchematics
             return;
         }
 
-        if (this.IsPointerInsideLabelEditorMenu(point) || this.IsPointerInsideNewLabelPrompt(point))
+        if (this.IsPointerInsideSchematicsMenu(point) || this.IsPointerInsideNewLabelPrompt(point))
         {
             e.Handled = true;
             return;
@@ -136,9 +136,9 @@ public partial class TabSchematics
             return;
         }
 
-        if (pointer.Properties.IsLeftButtonPressed && this.thisIsShowingLabelEditorMenu)
+        if (pointer.Properties.IsLeftButtonPressed && this.thisIsShowingSchematicsMenu)
         {
-            this.HideLabelEditorMenu();
+            this.HideSchematicsMenu();
         }
 
         if (this.thisIsKiCadTraceCalibrationMode)
@@ -687,24 +687,17 @@ public partial class TabSchematics
 
         if (isStationaryRightClick)
         {
-            if (this.thisIsWorklogEntryMode)
+            if (this.thisIsWorklogEntryMode || this.thisIsKiCadTraceCalibrationMode)
             {
-                // Right-click while marking a worklog entry area only pans - no context menu.
-            }
-            else if (this.thisIsKiCadTraceCalibrationMode)
-            {
-                this.ShowLabelEditorMenu(point);
+                // Right-click while marking a worklog entry area, or aligning KiCad, only pans - the
+                // tool's bar has Done and Cancel (TabSchematics.PictureTools.cs).
             }
             else if (this.thisIsLabelEditorMode)
             {
                 if (this.TryGetLabelEditorHighlightAtContainerPoint(point, out var workingIndex))
                 {
                     this.DeleteLabelEditorHighlight(workingIndex);
-                    this.HideLabelEditorMenu();
-                }
-                else
-                {
-                    this.ShowLabelEditorMenu(point);
+                    this.HideSchematicsMenu();
                 }
             }
             else
@@ -713,7 +706,8 @@ public partial class TabSchematics
 
                 if (this.TryGetHoveredBoardLabel(point, out var boardLabel, out _))
                 {
-                    this.ToggleComponentSelectionByBoardLabel(boardLabel);
+                    // Its highlight on or off, and "Edit this component" - for everyone (slice 6).
+                    this.ShowComponentMenu(point, boardLabel);
                 }
                 else if (!string.IsNullOrWhiteSpace(activeHoveredKiCadNetName) && this.thisLockedKiCadNetNames.Contains(activeHoveredKiCadNetName))
                 {
@@ -730,7 +724,9 @@ public partial class TabSchematics
                 }
                 else
                 {
-                    this.ShowLabelEditorMenu(point);
+                    // An empty spot: the menu that was contributor mode's opened here - its two tools
+                    // start from the Contribute tab's Pictures now.
+                    this.HideSchematicsMenu();
                 }
             }
         }

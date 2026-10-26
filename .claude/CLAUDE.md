@@ -371,7 +371,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   **Fields are declared in the part that owns them.**
 - **Pure logic does not belong in a tab** - see `Handlers/Geometry/` above.
 - **`Controls/` holds the controls more than one tab or window uses** - the table editor
-  (`Controls/BoardTable/`), `BusyOverlay`, `ListRowDrag`. **They touch nothing of CRT's
+  (`Controls/BoardTable/`), `BusyOverlay`, `ListRowDrag`, `PinoutDrawing`. **They touch nothing of CRT's
   orchestration - no `Main`, `DataManager`, `UserSettings` or `Logger`**; a host hands them what they
   need, and CRT.Data's `CrtLog` is their logging seam. `SharedControlsIndependenceTests` enforces it.
   A control used by one tab stays in that tab's folder.
@@ -423,8 +423,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   pressed something - closing the table, submitting, quitting - IS under it (`TabDrafts.SaveTableNowAsync`).
 - **User-visible punctuation is plain ASCII** (hyphens, straight quotes) unless an app label already
   has a character such as "·".
-- Biggest files, for context budgeting: `Tabs/Contribute/ComponentContribution.axaml.cs`,
-  `Tabs/Schematics/ComponentInfoWindow.axaml.cs`, `Handlers/Data/UserSettings.cs`,
+- Biggest files, for context budgeting: `Tabs/Schematics/ComponentInfoWindow.axaml.cs`, `Handlers/Data/UserSettings.cs`,
   `Handlers/Data/WorklogManager.cs`, `Tabs/Schematics/TabSchematics.Worklog.cs`,
   `Handlers/Data/DataManager.cs` (~1,700-2,200 lines each). Read the part you need.
 
@@ -446,8 +445,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 
 One folder per tab - `About`, `Configuration`, `Drafts` (the Contribute tab), `Feedback`,
 `Maintainer`, `Oscilloscope`, `Overview`, `Resources`, `Schematics`, `Workbooks` - each a
-`UserControl` with its logic in code-behind. `Contribute/` holds the component editor window
-(`ComponentContribution`), `Worklog/` the worklog's dialog windows. **Conditional tabs:**
+`UserControl` with its logic in code-behind. `Worklog/` holds the worklog's dialog windows (the
+component editor's window, `Contribute/`, went in CRT 4.0's step 2 - the component pane replaced it).
+**Conditional tabs:**
 Oscilloscope (`ApplyOscilloscopeTabVisibility`), Workbooks with the worklog bar
 (`ApplyWorklogBarVisibility`), Maintainer (`EnableMaintainerTab`, off by default). Hiding a selected
 tab moves the selection to the first visible one.
@@ -462,8 +462,8 @@ it shows (`Main.ShowBoardInContributeTab` -> `TabDrafts.ShowBoard`, `TabDrafts.W
 top to bottom: "My drafts" (a drop-down list that SELECTS that board in CRT and goes back to its
 placeholder), "My submissions", "Add a new board"; the shown board's draft header - or, with no draft,
 a line saying the first change makes one; then a left column of the board's parts with counts
-(`ContributeBoardParts` - Pictures and KiCad data open their windows, Important signals, Files and
-links and Credits open the table on their sheet), the component list with its own search, "Add
+(`ContributeBoardParts` - KiCad data opens its window; Pictures, Important signals, Files and links
+and Credits open in the pane since slices 4a/4b), the component list with its own search, "Add
 component" and "Table view"; and on the right ONE of the table, the component pane or a start panel.
 **The table and the pane are views of the board SHOWN** - showing another board closes them
 (`CloseTableForAnotherBoard`, `CloseComponent`), and the left column reads the draft as they
@@ -482,7 +482,8 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   maximized window"): Basics (friendly name, technical name, part number, category, package, the
   short description with its counter to `ShortDescriptionLimit`, repair notes), Pinout (the pins,
   "Add the N pins of DIP-40" from `ComponentVocabulary.PinCountOf`, the case drawn from above -
-  `PinoutDrawing`, every position `PinoutGeometry`), replacement parts and links. **Every change is a
+  `PinoutDrawing` in `Controls/`, the popup draws it too; every position `PinoutGeometry`), scope baselines, pictures, replacement parts,
+  files and links. **Every change is a
   transform of the draft held in memory** (`ComponentPaneEdits` - the component AS SHOWN, the region
   CRT shows by the component list's rule; the other region's rows and every other component's are
   carried across in place; a change that changes nothing returns the SAME board, so no step): a box
@@ -508,16 +509,151 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   left out of the submission (code review, 2026-10-26; `SettleTableEditsAsync` - only that board's
   draft is saved, asked about or discarded). **The pane takes the session's `Changed` on the UI thread**
   (`OnSessionChanged` posts itself there, as the table does): a direct write (`WriteFileDirectly` - the
-  KiCad data window's Remove) raises it on the pool, and the pane threw. Pictures, scope baselines and files are still the
-  component editor window's - its button opens it on the draft AS THE PANE LEFT IT
-  (`Main.OpenComponentContributionWindow(label, board)`: Main's board may not have caught up, and a
-  window opened on that would save it back). "Add component" still opens that window too.
+  KiCad data window's Remove) raises it on the pool, and the pane threw.
+  **Scope baselines, pictures and files are the pane's too** (slice 3b, 2026-10-26;
+  `ComponentPane.Files.cs`, the rows `ComponentPaneEdits.BaselinesOf`/`PicturesOf`/`FilesOf` - one
+  "Component images" list told apart by `ComponentImageKinds`): **a file added is copied in under a
+  name of the board's own and the draft SAVED at once** (`ComponentPaneFileNames` - its kind's usual
+  folder, never a name the board has, which it would replace for every row; a baseline named
+  `<label>_<pin>_<signal>` as the published ones), so no undo leaves a file lying uncited. **A baseline
+  is one only with its pin, a scope setting and a screenshot** (`ComponentPaneWording.BaselineProblem`):
+  a new one waits in its panel until it has them, and an edit that would make one a picture is held
+  back - the draft keeps it as it was, the reason under it. T/DIV and V/DIV are `ComponentVocabulary`'s
+  1-2-5 steps spelt as the data spells them ("50us", "1V"). **"Capture from my oscilloscope"** shows
+  while the Oscilloscope tab has a session (`TabDrafts.UseScopeCapture`/`ShowScopeConnected`, from
+  Main with the popups') and takes `TabOscilloscope.CaptureOscilloscopePngAsync` - no image folder
+  needed; the capture waits for "Add this baseline" in the user's OWN app data folder
+  (`AppConfig.ScopeCaptureWaitFolder` - never the shared temporary one, where another account could
+  swap it). Thumbnails decode small on the pool and are never disposed by hand (one still drawn takes the
+  render thread down). **How the board's baselines were measured is its board files of the category
+  "Scope measurements"** (owner decision, 2026-10-26: "Do what you recommend" - the live trees already
+  keep it so, five boards with "Introduction to ... scope measurements" texts; NO board field, no wire
+  or server change; `ScopeMeasurementFiles`): linked above a component's baselines in the pane and
+  under a baseline in the popup, edited under Files and links like any board file.
+  **The component as a whole is the pane's too; the component editor's window is GONE** (slice 3c,
+  2026-10-26; `ComponentPane.Whole.cs` - the plan: "The 2,200-line component editor is replaced, not
+  adapted"). **"Add component" opens the pane's form** (`TabDrafts.AddComponentAsync` ->
+  `ComponentPane.ShowNew`): the board label, the region only on a board with regional components, the
+  category; nothing goes into the draft until "Add component" there, then ONE step
+  (`ComponentPaneEdits.WithNewComponent` - placed by `ComponentPlacement`; a label the board has in ANY
+  region refused with the reason, `ContributionPackaging.ValidateNewComponent`; no category said and
+  allowed - the Contribute tab lists it anyway). **A component of one region opened while CRT shows the
+  other is worked on in its own region** (`ShowComponent` - else every section read back empty and each
+  commit filed its rows again). **"Delete component"** is `ComponentBoardWriter.ApplyComponentDelete` -
+  every row, every region - as ONE step, and "Bring [U8] back" undoes it while it is the latest step.
+  **"Show on board"** (enabled only for a component with a highlight, `IsMarkedOnAPicture`) saves the
+  pane, then `Main.ShowComponentOnBoard`: the Schematics tab with ONLY that component selected
+  (`TabSchematics.ShowOnlyComponent`) - when the pane's saves left the board on screen behind, it is
+  read again first and selected once that load has its highlights (`ShowComponentAskedForAfterLoad`),
+  the catch-up handed over so leaving the tab reads nothing again. **"Preview popup"** opens the popup
+  on the draft AS HELD IN MEMORY with the draft's folder whatever "view boards as officially published"
+  says (`Main.OpenComponentPreview` -> `ShowComponentInfoPopup`, the popups' one path). **The popup and
+  the Overview show the new data**: the package on the category line, repair notes with clickable links,
+  the pinout (drawn, and every pin with name and direction - of the region shown), replacement parts,
+  a baseline's machine state and source (`ComponentPopupContent`); the Overview has a Package column and
+  its Notes are the repair notes, else the first image's note as before (`OverviewHtmlBuilder.BuildRows`).
+  **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
+  `TabDrafts.OpenBoardPartAsync`): the left column's "Files and links", "Credits" and "Important
+  signals" show one of them in place of a component (`PaneBoardPart`) - Pictures and KiCad data still
+  open their windows. Each list is ONE step when changed (`BoardPartEdits`, replaced as a whole);
+  files, links and credits are listed and written GROUPED BY CATEGORY (`BoardPartEdits.Grouped`), and
+  a list differing only by its order is the SAME board, so opening and leaving a part changes nothing.
+  A board file added goes to "Board local files/" under a free name and is saved at once, as a
+  component's. An important signal picks its net from the board's KiCad nets, read on the pool
+  (`TabDrafts.ReadNetChoicesAsync` - the files the Schematics tab draws, `KiCadProjectLoader`) and
+  handed over once read (`UseNetChoices`); one the panel will not find says so under it
+  (`KiCadNetChoices.Finds` - `KiCadNetNames`' one rule). A heading row's button column shares its
+  width with the rows' (`SharedSizeGroup`, in a `Grid.IsSharedSizeScope` panel) - an empty Auto column
+  in the heading widened its star columns, and the labels stood off their boxes.
+  **Pictures and their colours** (slice 4b, 2026-10-26; `ComponentPane.BoardPictures.cs`, the left
+  column's "Pictures"): a card per picture with a preview of the picture and the components marked on
+  it (`PicturePreview`, every position `PicturePreviewGeometry`), drawn in the colours as they are
+  picked - a colour picker and opacity slider for the marked components and for the thumbnail, a
+  picker for the other side's trace - and "Use for all pictures". ONE step for every picture's
+  colours (`BoardPartEdits.WithPictureColours`, by name AND image file); written as the board keeps
+  them, a colour by NAME when it has one (`RectGeometry.ColorText`), an opacity as "30%"
+  (`PictureColours.OpacityText`). **A picker writing back the colour it shows writes nothing** (the
+  row's setters compare with what is shown - a blank colour shows CRT's default, and the picker would
+  otherwise write it). Adding, removing, renaming and ordering pictures stay the "Schematic images"
+  window's, opened from the part ("Add, remove or rename pictures"). `BoardSchematicEntry.ReadColours`
+  is a METHOD: the row's properties are its columns, counted by reflection. **The part marks the
+  components of the region CRT shows** (`ShowBoardPart(..., region)`). **The pane reads each picture
+  ONCE** - its thumbnails and the previews alike (`PaneImageCache`; code review, 2026-10-26): kept by
+  WHERE THE BYTES LIE, their length and write time - never by name, which another board's file or bytes
+  put back share - and a load from before the cache was let go keeps nothing (`Generation`). **A
+  picture's own size comes from its header for every type CRT shows** (`ImagePixelSize`: PNG, JPEG,
+  GIF, BMP, WebP); with it unknown, the preview draws no marks rather than wrong ones.
+  **Contributor mode is GONE** (slice 6, 2026-10-26 - the plan: "Mark components and Align KiCad open
+  the Schematics tab in that tool, with a bar and a Done button. Right-clicking a component offers
+  Edit this component to everyone."). **Each picture card has "Mark components" and "Align KiCad"**
+  (the latter only on a board whose draft lists "KiCad data/" files, for a picture with a CAD name):
+  what the pane holds is saved, then `Main.StartPictureTool` opens the Schematics tab - on the board
+  read again first when the pane's saves left it behind (`Main.OnBoardShownUpToDate`, the one
+  after-load hook "Show on board" uses too, `DoWhatWasAskedAfterLoad`). **The tool WAITS for what it
+  works on** (`TabSchematics.PictureTools.cs`; `PictureToolStart` decides): the picture's image read
+  (`ImageSettled`, end of the selection change), and for aligning the board's KiCad data settled
+  (`KiCadSettled` - at the end of the KiCad load, and from Main for a board with no KiCad files, which
+  asks for no load); what can never come is REFUSED with the reason on the bar, never waited for. The
+  bar FOLLOWS the label editor and the calibration (`FollowPictureTool`, called wherever either starts
+  or ends): Done is their own save, Cancel their own cancel; a tool someone asked for reports its end
+  (`PictureToolEnded`) and Main goes back to the Contribute tab; a board load forgets it silently.
+  **The label editor's Done follows the bar BEFORE it reads the board again** (code review,
+  2026-10-26: the reload's reset forgot who asked, and Done never went back). **A board read again
+  WAITS while a tool is on** (`Main.WaitsForTool`, run when the tool goes off - `ToolOff`): the
+  reload reset the tab and threw the label editor's unsaved rectangles away; a tool asked for while
+  one is on shows the one that is on. **What waits for a board load belongs to the load that TOOK
+  it** (`Main.TakeWhatWaitsForLoad`): one that never reached its end leaves nothing for a later
+  reload to run out of the blue.
+  **A right-click on a component opens a menu for everyone** (the floating menu that was contributor
+  mode's): its highlight on or off - what that right-click did by itself before - and "Edit this
+  component" (`Main.EditComponentAsync` -> the pane, its draft made by `OnCurrentDraftAsync`). An empty
+  spot opens nothing; inside a tool the bar has Done and Cancel. **What the mode switched on besides
+  its menu is "Write a detailed log" on the Configuration tab** (`UserSettings.DetailedLog` - the
+  log's debug lines and every board's data checked at launch), STORED as `contributorMode`, so
+  whoever had the mode on keeps it. The Wiki still describes contributor mode (step 5).
+  **"Copy from another board"** (slice 5, 2026-10-26; `ComponentPane.Copy.cs`, `ComponentCopy`): the
+  same part - the same PART NUMBER, trimmed, capitals ignored - on the OTHER published boards of this
+  machine (`TabDrafts.FindOnOtherBoardsAsync`, read on the pool under the BusyOverlay; never the board
+  the pane is on) lends this component its package, short description, repair notes, pins,
+  replacement parts and links - each ticked when the source has it - as ONE step named after the
+  board; pins and parts are filed under THIS component's label and region. Files (another board's
+  bytes) and anything the board decides itself (label, category, highlights, baselines) never come.
+  **"Also on other boards"** is the other way round (same files, `ComponentCopy.Changed`): offered
+  while the draft changes one of those six parts of a component with a part number, it lists the same
+  part's published boards, every one ticked, and the parts changed (draft against published), and
+  writes them into EACH board's OWN draft as one step "[U7] copied from <this board>", saved at once
+  (`TabDrafts.ApplyToOtherBoardsAsync` - a missing draft is seeded from the published file there,
+  NOT through `Main.EnsureDraftAsync`, which reloads the board on screen and words its problems as this
+  board's; refused while the Contribute tab is covered). What came of each board is said in the pane
+  (`ComponentPaneWording.AlsoDone`). Both read PUBLISHED boards only - never another draft. **Each
+  board's change goes through `DraftEdits.ApplyAndSaveAsync`** (code review, 2026-10-26): applied
+  straight to the session, a failed save left the step in for the timer to save after CRT said it had
+  not. **The row a source offers is one that MATCHED the part number** - the region's, else the first
+  (`ComponentCopy.Sources`): the region's row whatever its part number was the other region's chip.
+  **Credits know who is at the keyboard** (owner decisions, 2026-10-26: "Yes, let us try that", "Do it
+  now"): a credit name and contact are REMEMBERED (`UserSettings.CreditName`/`CreditContact`, set
+  together by `RememberCreditIdentity` - a blank name changes nothing; NEVER the contact email, since
+  credits are shown to everybody). The Credits part's **"Add me"** adds a row by them (the pane's
+  `CreditIdentity`/`RememberCreditIdentity` seams, the settings handed in by `TabDrafts.Initialize`),
+  and remembers the name once the row is in the draft. **The Submit dialog offers a credit for the
+  work sent, BEFORE sending** (`CreditSuggestions.For` - the draft against the published board, each
+  kind of change its category in the board's own spelling; `SubmitDraftWindow.AddCreditsFirstAsync`):
+  ticked ones go into the draft as one "Credits" step and are saved, and the board and fingerprint
+  sent are read again (`TabDrafts.AddCreditsToDraftAsync`) - a credit added after sending would need
+  a submission of its own. A draft that cannot take them sends nothing (`CreditsNotAdded`).
+  Left unused by the window's going, with their tests: `ComponentBoardWriter.ApplyComponentSave` and
+  `ComponentDraftWriter`'s rows, `ContributionFileLocations.ForBoard`/`CheckNewFileLocation`,
+  `ContributionPackaging.BuildDeleteComponentSummary`, `DraftStepWording.ComponentSaved`.
 
 - **No action asks whether to make a draft - it is made** (`Main.EnsureDraftAsync`, `Main.FirstDraft.cs`;
   "Edit board as draft" and `DraftExistsWindow` are gone): seeded from the published FILE
   (`DraftSeeder.SeedFromPublishedFile`) under the BusyOverlay, after the API revision is asked
   (`AskApiRevisionBeforeFirstDraftAsync`); a covered tab, or a seed that fails, makes nothing and says
   why on the tab's problem line (`TabDrafts.ShowDraftProblem`). A draft made meanwhile counts as made.
+  **A draft made only to OPEN something - a component ("Edit this component" is on everybody's
+  right-click), a board part, the table - goes again when that closes with nothing in it**
+  (`TabDrafts.LetGoOfDraftMadeOnlyToLook`; code review, 2026-10-26): nothing waiting to be saved, no
+  change against the published board, never a new board's, never one there before.
 - **"Contribution in use"** (`Main.thisContributionInUse` - a draft, or unread news on something sent)
   is what the Drafts tab's visibility used to be: it decides whether CRT asks the API revision.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
@@ -584,10 +720,22 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   its cache (an image renamed for a board not selected in the drop-down lists went to the queue
   under its OLD name, 2026-10-11) and answers the PUBLISHED board under "view boards as officially
   published". `TabDraftsSubmitBoardTests`.
+- **Several drafts in one submit** (slice 5, 2026-10-26; `SubmitDraftWindow.OtherDrafts.cs`,
+  `TabDrafts.SubmitOthers.cs`, words `SubmitDraftsWording`): the Submit dialog lists the OTHER drafts
+  "My drafts" holds, UNTICKED, each greyed out with its row's reason (nothing in it, already sent,
+  errors). Each one ticked is sent AFTER the board's own, as a submission of its OWN (the server and a
+  maintainer take one board at a time - no server change), with the same address and message. It is
+  made ready only once Submit is pressed (`PrepareOtherDraftAsync`: its session saved, the same checks
+  as its own Submit, a draft with errors NOT sent - no table can open from inside the dialog - and
+  credited under the name typed, for its own work). One that cannot go is said by name and never
+  stops the rest; several boards' outcome lists each. Nothing ticked: the dialog is as it always was.
+  **The other drafts are credited only while "Credit me on the other drafts I tick too" is ticked**
+  (`CreditOthersCheckBox`; unticking every credit of this board unticks it - code review, 2026-10-26),
+  and **a credit put into a draft before a send that then failed is SAID** - the draft is not
+  "unchanged" (`SubmitDraftWindow.NoConnectionMessage(credited)`, `SubmitDraftsWording.Intro`).
 - **A submission the server no longer knows reads "No longer on the server"** (404 after a board
   deletion or the data reset; `SubmissionReceipt.NotFoundUtc`): neutral colour, never blocks Submit,
   no BETA try, not reported on a discard.
-- **"Save to draft" in the component editor lands on the Contribute tab**, only after a successful save.
 - **The draft's header** (CRT 4.0 step 1's last slice, 2026-10-25, at the top of the Contribute tab
   since step 2; `TabDrafts.Header.cs`,
   `DraftHeaderState`): the save state (Saved / Saving... / "Could not save - <reason>" with Try again),
@@ -614,17 +762,14 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   refused at Submit, fixable nowhere in the table), and the rename alone is no change of the component.
   **The Submit dialog shows the same summary** ("Your changes") and **Discard draft lists what is lost**
   (`AsLines(max: 12)`) - the words are `DraftChangeSummary`'s, nowhere else.
-- **The component editor saves unfinished work** (`ComponentContribution.UnfinishedWork.cs`; the plan:
-  "Only Submit asks for problems to be fixed"): only a board label error, a file location CRT cannot
-  write to, or a label already taken stops "Save to draft". A missing category, an image row with
-  neither file nor note, a picture CRT cannot show are left to the table's checks. A picked file with no
-  folder goes in its kind's usual one (`ContributionFileLocations.DefaultFolderFor`). **A save not made
-  takes its copied files back** (`DraftPickedFiles` - a file a copy replaced is set aside in
-  `.crt-set-aside` and put back; code review, 2026-10-26): left lying in the draft folder, the next
-  write by ANY editor took them in after "could not be saved". A file replaced under the name its row
-  cites changes no row, so the draft is written anyway (`ApplyAndSaveAsync(takeInNewFiles)`). Its own "Undo
-  changes to [U8]" shows while the component differs from the published board, and shows the component
-  again from the session after - or closes, for a component the published board lacks.
+- **Unfinished work is saved** (the plan: "Only Submit asks for problems to be fixed"): a missing
+  category, an image row with neither file nor note, a picture CRT cannot show are left to the table's
+  checks. A file goes in its kind's usual folder (`ContributionFileLocations.DefaultFolderFor`, through
+  `ComponentPaneFileNames`). **A save not made takes its copied files back** (`DraftPickedFiles` - a
+  file a copy replaced is set aside in `.crt-set-aside` and put back; code review, 2026-10-26): left
+  lying in the draft folder, the next write by ANY editor took them in after "could not be saved". A
+  file replaced under the name its row cites changes no row, so the draft is written anyway
+  (`ApplyAndSaveAsync(takeInNewFiles)`).
 - **A NEW DRAFT IS SEEDED FROM THE PUBLISHED FILE AS IT IS ON DISK** (`DraftSeeder.SeedFromPublishedFile`),
   never from `BoardDataReader`'s cache - an Excel edit made while CRT ran would be lost.
 - **A draft keeps its BASE** (code review, 2026-10-13): `.crt-base.json` (`DraftBase`) - the published
@@ -641,7 +786,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   (`DraftFolderLayout.IsDraftOnlyFile`). Files and calibrations count for Submit (`DraftOtherChanges`,
   measured against the base); only row ORDER does not.
 - **Every editor changes the ONE draft held in memory** (CRT 4.0 step 1, 2026-10-25; `DraftEdits`):
-  the component editor, the label editor, the KiCad calibration and "Schematic images" hand their
+  the component pane, the label editor, the KiCad calibration and "Schematic images" hand their
   change to the draft's `DraftSession` and save it at once. **Only handing over what the table holds
   and applying the result run on the UI thread** (code review, 2026-10-25): the session is opened,
   the file asked about (`FileChangedOutside`) and the edit worked out with what follows it
@@ -767,7 +912,7 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   no row is a line above the table. Duplicates and rows a save drops are WARNINGS (owner decision
   2026-10-03), marked on every row of the set. Submit on a draft with errors sends nothing and opens
   its table on them. Two warnings are the table's alone (the Everything scope, never the server's;
-  2026-10-25, since the component editor saves unfinished work): `component.no_category` (it is not in
+  2026-10-25, since unfinished work is saved): `component.no_category` (it is not in
   the component list without one) and `image.not_displayable`.
 - **The search box** (`BoardTableSearch`, the Workbooks tab's `WorklogSearchQuery` grammar, every
   cell): decided ONCE when typed; a search finding nothing anywhere keeps only the current sheet with
@@ -895,6 +1040,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 | `TabSchematics.Worklog.cs` / `.Worklog.TestSeams.cs` | Worklog overlay, area drawing and moving |
 | `TabSchematics.KiCad*.cs` | KiCad load, panels, rendering, render cache, geometry, hit-testing, calibration |
 | `TabSchematics.Settings.cs` | Board-level and global setting rows |
+| `TabSchematics.PictureTools.cs` | "Mark components"/"Align KiCad" asked for from the Contribute tab, their bar (Done/Cancel), and the right-click menu on a component ("Edit this component") |
 
 #### Maintainer (`Tabs/Maintainer/`, logic in `Handlers/Maintainer/`)
 
@@ -1191,17 +1337,14 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   uses (`FileRemovalWording.Unused`). Every entry fetched from a tree carries where its bytes lie
   (`BoardFileEntry.TreePath`/`PlaceInTree`, `BoardTableAnswer.FilePlaces`, `ProductionPlanAnswer
   .FileNames`) - the public data is laid out by checksum.
-- **The component editor files a picked file under the board's own names** (2026-10-25;
-  `ContributionFileLocations.ForBoard`): "File location" offers the folders the board's names
-  already use plus the four every converted board keeps its files in (`UsualFolders`) - never the
-  data or drafts tree's folders, which in 4.0 are the store's checksum folders and CRT's bookkeeping.
-  A name under `Files/` or `.crt-` is never listed by a draft write (`DraftFiles`), so a file filed
-  there was copied in and lost; and no folder may have a segment starting with a dot
-  (`IsWritableFolder`) - the server refuses every such name (`file.hidden_name`), so it was refused
-  only at Submit. A file picked from inside the data folder keeps the row's folder (no
-  "used where it lies" any more); an existing file is previewed by its name through
-  `DraftFileResolver`, as the popup finds it. The drafts flow's words name no Excel: the lock-file
-  check stays, worded "open in another program".
+- **A picked file is filed under the board's own names** (2026-10-25, the component editor's "File
+  location"; since slice 3c the component pane, `ComponentPaneFileNames`): the four folders every
+  converted board keeps its files in (`ContributionFileLocations.UsualFolders`/`DefaultFolderFor`) -
+  never the data or drafts tree's folders, which in 4.0 are the store's checksum folders and CRT's
+  bookkeeping. A name under `Files/` or `.crt-` is never listed by a draft write (`DraftFiles`), so a
+  file filed there was copied in and lost; and no folder may have a segment starting with a dot
+  (`IsWritableFolder`) - the server refuses every such name (`file.hidden_name`). The drafts flow's
+  words name no Excel: the lock-file check stays, worded "open in another program".
 - **CRT 4.0's pre-releases talk to a TEST INSTANCE of the service** (owner decision, 2026-10-25: "We
   need the test server"): its own program folder, settings, database (`crt_review_test`) and port
   (5198), at `https://classic-repair-toolbox.dk/crt-test/api/`, publishing into the 4.0 trees, with a
@@ -1248,14 +1391,13 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   keeps its rows line for line. **A submission that does not carry the two lists keeps the published
   ones** (`SubmissionRows.ComponentPins` null - `PublishMerge`); an empty list is "none". Every rule
   about them is a table WARNING (`BoardDataChecks.CheckCrt4Data`; the short description's limit is
-  `ComponentVocabulary.ShortDescriptionLimit`, 100). The component editor keeps what it cannot edit
-  from the row it replaces (`ComponentBoardWriter`); a deleted component - editor or table - takes its
+  `ComponentVocabulary.ShortDescriptionLimit`, 100). A deleted component - pane or table - takes its
   pins and replacements, a regional variant only its region's. **Every hand-made BoardData that
   carries the board's sections names EVERY property** (`BoardDataCaptionTests
   .Every_copy_of_a_board_names_every_section`) - a section a copy leaves out is dropped silently. The
-  board-level "how the baselines were measured" waits for the baseline editor (no row the differ, the
-  summary or the merges could carry yet); the popup and the Overview tab show the new data from the
-  component pane's slice on.
+  board-level "how the baselines were measured" is NOT a field: it is the board's "Scope measurements"
+  files (owner decision, 2026-10-26; `ScopeMeasurementFiles`). The popup and the Overview tab show the
+  new data since slice 3c (`ComponentPopupContent`, `OverviewHtmlBuilder.BuildRows`).
 - **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
   empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
   files by their Excel-tree paths), and the Wiki's 4.0 pages (step 5 - `Assets/Wiki/` still describes
@@ -1494,7 +1636,7 @@ upload - held by their own contract tests)? No: change it freely. Yes:
   first** (`Main.ConfirmLeavingTablesAsync`, shared with quitting): Velopack's restart exits without a
   Closing event. A covered Maintainer tab asks without a Save (`LeavingUpdateRequired`); a covered
   Contribute tab gets nothing new - no first draft is made, and "Add a new board" makes nothing - while
-  another editor's "Save to draft" still saves, onto the draft held in memory (`DraftEdits`).
+  another editor's change (the label editor's, say) still saves, onto the draft held in memory (`DraftEdits`).
 - **When CRT.App's `InformationalVersion` is a release (no `-`), the surface must be frozen as
   `crt-<version>.txt`**: the first test run writes it and fails once - commit it with the release.
   **Never edit a `crt-*.txt`**; put the field or route back instead. A break the owner decided on goes

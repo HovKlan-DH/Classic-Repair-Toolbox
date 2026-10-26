@@ -39,8 +39,9 @@ namespace CRT
     //   TabDrafts.Table.cs  - table mode: opening/closing the table on its draft's session, saving
     //                         it (and the component pane) before the draft's file is acted on, and the
     //                         question when that fails
-    //   TabDrafts.Component.cs - the component pane on the right (ComponentPane): opening, closing,
-    //                         and what follows its changes
+    //   TabDrafts.Component.cs - the component pane on the right (ComponentPane): opening it on a
+    //                         component or on a new one's form, closing, what follows its changes,
+    //                         and its "Show on board" and "Preview popup"
     //   TabDrafts.Header.cs - the draft's header on its row: save state, Undo/Redo, Try again,
     //                         "Review changes" with "Undo changes to <component>", and the summary
     //                         the Submit and Discard draft dialogs show
@@ -48,6 +49,8 @@ namespace CRT
     //                         comes back to the front, so a draft edited in Excel shows its new numbers
     //   TabDrafts.UpdateRequired.cs - "CRT has to be updated" over the whole tab, when the server
     //                         turns this version of CRT away from submissions
+    //   TabDrafts.SubmitOthers.cs - the other drafts the Submit dialog offers to send with one, and
+    //                         making each ready once Submit is pressed
     // ###########################################################################################
     public partial class TabDrafts : UserControl
     {
@@ -116,6 +119,15 @@ namespace CRT
             // Every draft no editor holds, saved when due (TabDrafts.Table.cs) - for the run, from here:
             // a tab a test builds has no Main and no timer.
             this.StartDraftSaveTimer();
+
+            // The component pane's "Capture from my oscilloscope" (TabDrafts.Component.cs).
+            this.UseScopeCapture(
+                mainWindow.TabOscilloscopeControl.CaptureOscilloscopePngAsync,
+                mainWindow.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState());
+
+            // The Credits part's "Add me" - by the name and contact the settings remember (2026-10-26).
+            this.ComponentPane.CreditIdentity = () => (UserSettings.CreditName, UserSettings.CreditContact);
+            this.ComponentPane.RememberCreditIdentity = UserSettings.RememberCreditIdentity;
         }
 
         // ###########################################################################################
@@ -611,6 +623,48 @@ namespace CRT
                 return;
             }
 
+            SubmissionIdentity identity = TabDrafts.IdentityFor(entry, status);
+
+            // What the draft changes, in words - "Review changes"' summary, shown before anything is sent.
+            DraftChangeSummary changes = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
+
+            // The credits that work deserves, against the board as published (CreditSuggestions).
+            List<CreditSuggestion> credits = CreditSuggestions.For(await this.PublishedBoardForCreditsAsync(entry, status), mergedData);
+
+            var window = this.SubmitWindowFactoryForTests?.Invoke() ?? new SubmitDraftWindow();
+
+            window.Initialize(
+                entry.ToString(),
+                mergedData,
+                identity,
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
+                DataManager.DataRoot,
+                TabDrafts.CalibrationsFor(entry, mergedData),
+
+                // A signed-in maintainer sends with the account (2026-10-01) - see UseMaintainerAccount.
+                this.thisMaintainerAccount,
+                draftFingerprint,
+                changes,
+                credits,
+                added => this.AddCreditsToDraftAsync(entry, status, added));
+
+            // The other drafts, to send with this one under the same message (TabDrafts.SubmitOthers.cs).
+            window.OfferOtherDrafts(this.OtherDraftOffers(entry), this.PrepareOtherDraftAsync);
+
+            await window.ShowDialog(ownerWindow);
+
+            // The draft is untouched either way, but the row is rebuilt regardless: a submission
+            // that failed on a missing file is very often followed by the user fixing it, and a
+            // stale row would then still describe the state that failed.
+            this.RefreshDrafts();
+        }
+
+        // ###########################################################################################
+        // Who a draft's submission is about - built from its board identity and, for a new board, its
+        // registration. Shared by the board Submit was pressed on and every other draft sent with it.
+        // ###########################################################################################
+        private static SubmissionIdentity IdentityFor(HardwareBoardEntry entry, DraftStatus status)
+        {
             // ###########################################################################################
             // THE REGISTRATION IS THE SOURCE OF TRUTH FOR A DRAFT-ONLY BOARD, not the board entry.
             //
@@ -654,7 +708,7 @@ namespace CRT
                 ? registeredBoard
                 : NewBoardIdentity.ExtractBoard(entry.ExcelDataFile);
 
-            var identity = new SubmissionIdentity
+            return new SubmissionIdentity
             {
                 // "Manufacturer/Hardware/Board", NOT the ExcelDataFile - the .xlsx on the end names
                 // a file, and for a draft-only board one that does not exist. This is the
@@ -677,41 +731,29 @@ namespace CRT
                 ApplicationVersion = AppConfig.AppDisplayVersionString,
                 CreatedUtc = DateTimeOffset.UtcNow
             };
-
-            // What the draft changes, in words - "Review changes"' summary, shown before anything is sent.
-            DraftChangeSummary changes = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
-
-            var window = this.SubmitWindowFactoryForTests?.Invoke() ?? new SubmitDraftWindow();
-
-            window.Initialize(
-                entry.ToString(),
-                mergedData,
-                identity,
-                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
-                DataManager.DataRoot,
-
-                // The draft's KiCad calibrations, read from the draft's own JSON SIDECAR rather
-                // than from mergedData - BoardData has no calibration section, which is exactly why
-                // a contributor's calibration work never travelled before this was wired up.
-                DraftBoardSource.CollectCalibrations(
-                    DraftBoardSource.ResolveWritablePath(
-                        DataManager.DataRoot,
-                        DraftManager.DraftsRoot,
-                        entry.ExcelDataFile),
-                    mergedData),
-
-                // A signed-in maintainer sends with the account (2026-10-01) - see UseMaintainerAccount.
-                this.thisMaintainerAccount,
-                draftFingerprint,
-                changes);
-
-            await window.ShowDialog(ownerWindow);
-
-            // The draft is untouched either way, but the row is rebuilt regardless: a submission
-            // that failed on a missing file is very often followed by the user fixing it, and a
-            // stale row would then still describe the state that failed.
-            this.RefreshDrafts();
         }
+
+        // ###########################################################################################
+        // The draft's KiCad calibrations, read from the draft's own board file rather than from the
+        // board sent - BoardData has no calibration section, which is exactly why a contributor's
+        // calibration work never travelled before this was wired up.
+        // ###########################################################################################
+        private static IReadOnlyList<KiCadCalibrationEntry> CalibrationsFor(HardwareBoardEntry entry, BoardData board) =>
+            DraftBoardSource.CollectCalibrations(
+                DraftBoardSource.ResolveWritablePath(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile),
+                board);
+
+        // The same, read for Submit's credit suggestions - under CRT's "please wait", since Submit was
+        // pressed for it (code review, 2026-10-26: a large board not read yet was read with nothing on
+        // screen, between the "reading your changes" wait and the dialog).
+        internal Task<BoardData?> PublishedBoardForCreditsAsync(HardwareBoardEntry entry, DraftStatus status) =>
+            BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingPublishedBoard, () => this.PublishedBoardForAsync(entry, status));
+
+        // The board as published, or null for a new one - what the credits are suggested against.
+        private async Task<BoardData?> PublishedBoardForAsync(HardwareBoardEntry entry, DraftStatus status) =>
+            this.PublishedBoardOverrideForTests is not null
+                ? this.PublishedBoardOverrideForTests(entry)
+                : await TabDrafts.LoadPublishedBoardAsync(entry, status);
 
         // ###########################################################################################
         // *** WHAT A SUBMIT SENDS IS THE DRAFT WORKBOOK ON DISK, read now - the file its fingerprint
@@ -736,6 +778,28 @@ namespace CRT
         // ###########################################################################################
         internal static Task<BoardData?> BoardForFilesWindowAsync(HardwareBoardEntry entry) =>
             Task.Run(() => DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, entry.ExcelDataFile));
+
+        // ###########################################################################################
+        // The credits ticked in the Submit dialog into the draft, as ONE step ("Credits") saved at
+        // once - each in its category's group (BoardPartEdits) - then the board a submit sends and its
+        // fingerprint read again, so what goes out and what the receipt remembers carry them. Null
+        // when the draft could not take them; the draft's header says why.
+        // ###########################################################################################
+        internal async Task<(BoardData Board, string Fingerprint)?> AddCreditsToDraftAsync(HardwareBoardEntry entry, DraftStatus status, IReadOnlyList<CreditEntry> credits)
+        {
+            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                entry.ExcelDataFile,
+                DraftStepWording.Credits,
+                board => BoardPartEdits.WithCredits(board, [.. board.Credits, .. credits]));
+
+            if (outcome != DraftWorkbookEditOutcome.Saved || await TabDrafts.BoardToSendAsync(status) is not { } board)
+            {
+                Logger.Warning($"Could not put the credits into the draft of [{entry.ExcelDataFile}] before submitting - [{outcome}]");
+                return null;
+            }
+
+            return (board, TabDrafts.FingerprintOf(entry, status));
+        }
 
         // What the draft holds, as DraftFingerprint gives it - see that class.
         private static string FingerprintOf(HardwareBoardEntry entry, DraftStatus status) =>
@@ -1003,6 +1067,10 @@ namespace CRT
         public bool CanSubmit { get; }
         public string SubmitTooltip { get; }
 
+        // Why the Submit dialog cannot send this draft along with another's, in its short words - or
+        // null when it can (slice 5). Errors count here: no table opens on another board's.
+        internal string? NotOfferedWithOthers { get; }
+
         // Whether to show the drift line and the "What changed" button (the "Updated officially"
         // chip beside the name was removed, owner request 2026-09-28). Only a real
         // difference counts - an unrecorded base revision is not evidence of drift, so it stays
@@ -1130,6 +1198,7 @@ namespace CRT
             bool hasSomething = rowCount > 0 || otherChanges.Any;
 
             this.CanSubmit = hasSomething && !alreadySent;
+            this.NotOfferedWithOthers = SubmitDraftsWording.NotOffered(hasSomething, alreadySent, problems.Errors);
 
             this.SubmitTooltip = !hasSomething
                 ? (status.IsNewBoard

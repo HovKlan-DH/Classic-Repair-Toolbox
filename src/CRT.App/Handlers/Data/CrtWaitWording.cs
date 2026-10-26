@@ -30,6 +30,17 @@ namespace Handlers.DataHandling
 
         public const string OpeningComponent = "Opening the component...";
 
+        // A picture, a screenshot or a file added in the component pane - copied in and saved.
+        public const string AddingFile = "Adding the file to your draft...";
+
+        public const string CapturingOscilloscope = "Taking the screenshot from the oscilloscope...";
+
+        // "Copy from another board" (slice 5) - the other boards' files read for the same part.
+        public const string LookingAtOtherBoards = "Looking for the same part on the other boards...";
+
+        // "Also on other boards" (slice 5) - each board's draft made when it has none, changed and saved.
+        public const string ChangingOtherBoards = "Putting the change into the other boards' drafts...";
+
         public const string MakingDraft = "Making your draft of this board...";
 
         // Before the first draft of a run, when nothing has asked yet (Main.UpdateRequired.cs).
@@ -40,6 +51,9 @@ namespace Handlers.DataHandling
         // "Review changes", and the Submit and Discard draft dialogs, reading what the draft changes
         // (DraftChangeSummary) - step 1's last slice, 2026-10-25.
         public const string ReadingChanges = "Reading what your draft changes...";
+
+        // Submit's credit suggestions are worked out against the board as published (code review, 2026-10-26).
+        public const string ReadingPublishedBoard = "Reading the board as published...";
 
         public const string UndoingComponentChanges = "Putting the component back to its published values...";
 

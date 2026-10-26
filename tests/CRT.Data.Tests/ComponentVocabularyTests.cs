@@ -97,4 +97,23 @@ public sealed class ComponentVocabularyTests
         Assert.False(ComponentVocabulary.IsDualInLine("TO-92"));
         Assert.False(ComponentVocabulary.IsDualInLine("DIP"));
     }
+
+    // ###########################################################################################
+    // T/DIV and V/DIV as the scope baseline editor offers them (CRT 4.0 step 2, slice 3b): the
+    // 1-2-5 steps every scope uses, spelt as the converted data spells them - "50us", "1ms",
+    // "500ns", "1V", "500mV" - so a value picked reads like the 13,862 baselines already published.
+    // ###########################################################################################
+    [Fact]
+    public void The_time_and_volt_divisions_are_the_scope_steps_spelt_as_the_data_spells_them()
+    {
+        Assert.Contains("50us", ComponentVocabulary.TimeDivisions);
+        Assert.Contains("1ms", ComponentVocabulary.TimeDivisions);
+        Assert.Contains("500ns", ComponentVocabulary.TimeDivisions);
+        Assert.Equal("1ns", ComponentVocabulary.TimeDivisions[0]);
+        Assert.Equal("10s", ComponentVocabulary.TimeDivisions[^1]);
+        Assert.Equal(31, ComponentVocabulary.TimeDivisions.Count);
+
+        Assert.Equal(["1mV", "2mV", "5mV", "10mV", "20mV", "50mV", "100mV", "200mV", "500mV", "1V", "2V", "5V", "10V"], ComponentVocabulary.VoltDivisions);
+        Assert.Equal(ComponentVocabulary.TimeDivisions.Count, ComponentVocabulary.TimeDivisions.Distinct().Count());
+    }
 }

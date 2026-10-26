@@ -35,6 +35,39 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
+    // The nets a board's KiCad data offers an important signal (CRT 4.0 step 2, slice 4a - the plan:
+    // "Board > Important signals: pick nets from a searchable KiCad list"): every name to pick from,
+    // and whether a typed net is one the Schematics tab's panel will find - by KiCadNetNames' one rule.
+    // Empty for a board without KiCad data: then any net may be typed, and none is said to be missing.
+    // ###########################################################################################
+    public sealed class KiCadNetChoices
+    {
+        private readonly IReadOnlyDictionary<string, string> thisResolver;
+
+        public static KiCadNetChoices None { get; } = new([], new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        public KiCadNetChoices(IReadOnlyList<string> names, IReadOnlyDictionary<string, string> resolver)
+        {
+            this.Names = names ?? [];
+            this.thisResolver = resolver ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Every net name to pick from, in natural order (KiCadNetNames.NormalizedNames).
+        public IReadOnlyList<string> Names { get; }
+
+        public bool HasNets => this.Names.Count > 0;
+
+        // Whether the panel finds `net` - always true while there are no nets to judge by, and for a
+        // blank net (half a row lights up nothing, and the table's checks point at it).
+        public bool Finds(string? net)
+        {
+            string wanted = net?.Trim() ?? string.Empty;
+
+            return !this.HasNets || wanted.Length == 0 || this.thisResolver.ContainsKey(wanted);
+        }
+    }
+
+    // ###########################################################################################
     // How an "Important signals" row finds its net.
     //
     // *** ONE RULE WITH THE SCHEMATICS TAB. *** Its "Important signals" panel
@@ -95,6 +128,16 @@ namespace Handlers.DataHandling
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(name => name, NaturalLabelComparer.Instance)
                 .ToList();
+
+        // The nets to pick an important signal's from - the names and the panel's resolver, one read.
+        public static KiCadNetChoices Choices(IEnumerable<(string? Name, string? NormalizedName, bool IsNoNet)> nets)
+        {
+            List<(string? Name, string? NormalizedName, bool IsNoNet)> netList = nets.ToList();
+
+            return new KiCadNetChoices(
+                KiCadNetNames.NormalizedNames(netList),
+                KiCadNetNames.Resolver(netList.Select(net => (net.Name, net.NormalizedName))));
+        }
 
         // ###########################################################################################
         // The report for one project and one board's "Important signals" rows.

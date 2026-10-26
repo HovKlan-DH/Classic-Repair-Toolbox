@@ -97,6 +97,15 @@ namespace CRT
             AppFolderName,
             "KiCad cache");
 
+        // Where a scope capture waits for "Add this baseline" in the component pane - in the user's
+        // OWN app data folder, for the KiCad cache's reason (code review, 2026-10-26): under the
+        // shared /tmp another account could swap the screenshot before it went into the draft.
+        // Used by: ComponentPane.CaptureNewBaselineAsync
+        public static string ScopeCaptureWaitFolder => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            AppFolderName,
+            "Scope captures waiting");
+
         // Name of the folder oscilloscope captures are saved in until the user picks another one on
         // the Oscilloscope tab. Beside "Workbooks" and "Drafts", NOT inside "Data": until 2026-10-13
         // the default was the data folder itself, which "Allow deletion of orphan and non-used

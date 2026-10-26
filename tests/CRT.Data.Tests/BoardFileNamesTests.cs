@@ -148,4 +148,19 @@ public sealed class BoardFileNamesTests
         Assert.Equal("Board.png", names.Add("Commodore/C64/250407/Pictures/Board.png", ShaB));
         Assert.Equal("Board (2).png", names.Add("Commodore/C64/250407/Board.png", ShaA));
     }
+
+    // ###########################################################################################
+    // A FILE ADDED IN THE COMPONENT PANE TAKES A NAME NO FILE OF THE BOARD HAS (CRT 4.0 step 2,
+    // slice 3b). Given a taken name, it would REPLACE that file for every row citing it - another
+    // component's picture, say. Capitals do not make a name free; the number goes before the type.
+    // ###########################################################################################
+    [Fact]
+    public void A_free_name_is_the_one_asked_for_or_the_next_numbered_one()
+    {
+        Assert.Equal("Component images/U8.png", BoardFileNames.FreeName("Component images/U8.png", ["Component images/U9.png"]));
+        Assert.Equal("Component images/U8 (2).png", BoardFileNames.FreeName("Component images/U8.png", ["component images/u8.PNG"]));
+        Assert.Equal("Component images/U8 (3).png", BoardFileNames.FreeName("Component images/U8.png", ["Component images/U8.png", "Component images/U8 (2).png"]));
+        Assert.Equal("Component local files/README (2)", BoardFileNames.FreeName("Component local files/README", ["Component local files/README"]));
+        Assert.Equal("Scope baseline/U8_1.png", BoardFileNames.FreeName(" Scope baseline//U8_1.png ", []));
+    }
 }

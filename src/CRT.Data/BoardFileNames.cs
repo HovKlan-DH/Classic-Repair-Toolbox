@@ -171,6 +171,24 @@ namespace Handlers.DataHandling
             return string.Join('/', segments);
         }
 
+        // ###########################################################################################
+        // `preferred` when no name of `taken` is it (ignoring capitals), else the next numbered one -
+        // "Component images/U8 (2).png". For a file added to a board (the component pane, CRT 4.0
+        // step 2): given a taken name, it would REPLACE that file for every row citing it.
+        // ###########################################################################################
+        public static string FreeName(string preferred, IEnumerable<string> taken)
+        {
+            string name = BoardFileNames.Normalise(preferred);
+            var used = new HashSet<string>((taken ?? []).Select(BoardFileNames.Normalise), StringComparer.OrdinalIgnoreCase);
+
+            string free = name;
+
+            for (int number = 2; used.Contains(free); number++)
+                free = BoardFileNames.Numbered(name, number);
+
+            return free;
+        }
+
         private static bool TryStripFolder(string path, string folder, out string rest)
         {
             rest = string.Empty;

@@ -78,6 +78,7 @@
 							<ColumnDefinition Width="130" />
 							<ColumnDefinition Width="150" />
 							<ColumnDefinition Width="120" />
+							<ColumnDefinition Width="90" />
 							<ColumnDefinition Width="220" />
 							<ColumnDefinition Width="*" MinWidth="150" />
 							<ColumnDefinition Width="150" />
@@ -164,7 +165,7 @@
 							<Grid RowDefinitions="Auto,Auto">
 								<TextBlock Grid.Row="0"
 								           Classes="OverviewHeaderText"
-								           Text="Short description"
+								           Text="Package"
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
@@ -177,7 +178,7 @@
 							<Grid RowDefinitions="Auto,Auto">
 								<TextBlock Grid.Row="0"
 								           Classes="OverviewHeaderText"
-								           Text="Notes"
+								           Text="Short description"
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"
@@ -187,6 +188,19 @@
 						</Grid>
 
 						<Grid Grid.Column="7">
+							<Grid RowDefinitions="Auto,Auto">
+								<TextBlock Grid.Row="0"
+								           Classes="OverviewHeaderText"
+								           Text="Notes"
+								           Margin="8,0,8,0" />
+								<Border Grid.Row="1"
+								        Height="1"
+								        Background="{DynamicResource Table_BorderRowLine}"
+								        Margin="8,4,8,8" />
+							</Grid>
+						</Grid>
+
+						<Grid Grid.Column="8">
 							<Grid RowDefinitions="Auto,Auto">
 								<TextBlock Grid.Row="0"
 								           Classes="OverviewHeaderText"
@@ -220,6 +234,7 @@
 											<ColumnDefinition Width="130" />
 											<ColumnDefinition Width="150" />
 											<ColumnDefinition Width="120" />
+											<ColumnDefinition Width="90" />
 											<ColumnDefinition Width="220" />
 											<ColumnDefinition Width="*" MinWidth="150" />
 											<ColumnDefinition Width="150" />
@@ -272,20 +287,27 @@
 										                     Foreground="{DynamicResource Table_Fg}" />
 
 										<SelectableTextBlock Grid.Column="5"
-										                     Text="{Binding ShortDescription}"
+										                     Text="{Binding Package}"
 										                     TextWrapping="Wrap"
 										                     Margin="8,4,8,4"
 										                     VerticalAlignment="Top"
 										                     Foreground="{DynamicResource Table_Fg}" />
 
 										<SelectableTextBlock Grid.Column="6"
+										                     Text="{Binding ShortDescription}"
+										                     TextWrapping="Wrap"
+										                     Margin="8,4,8,4"
+										                     VerticalAlignment="Top"
+										                     Foreground="{DynamicResource Table_Fg}" />
+
+										<SelectableTextBlock Grid.Column="7"
 										                     Text="{Binding Notes}"
 										                     TextWrapping="Wrap"
 										                     Margin="8,4,8,4"
 										                     VerticalAlignment="Top"
 										                     Foreground="{DynamicResource Table_Fg}" />
 
-										<ItemsControl Grid.Column="7"
+										<ItemsControl Grid.Column="8"
 										              ItemsSource="{Binding Links}"
 										              Margin="8,4,8,4"
 										              VerticalAlignment="Top">

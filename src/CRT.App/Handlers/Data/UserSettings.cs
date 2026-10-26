@@ -123,6 +123,7 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? WorklogShowEntriesChecked { get; set; }
 
+        // "Write a detailed log" since contributor mode went (slice 6) - the stored name stays.
         [JsonPropertyName("contributorMode")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? ContributorMode { get; set; }
@@ -237,6 +238,12 @@ namespace Handlers.DataHandling
         // follow its FILE to whatever it is called now (LocalSchematicRename.CatchUp).
         [JsonPropertyName("schematicImagesByBoard")] public Dictionary<string, List<SchematicImageSetting>> SchematicImagesByBoard { get; set; } = new();
         [JsonPropertyName("contactEmail")] public string ContactEmail { get; set; } = string.Empty;
+
+        // The name or handle - and the contact, if any - this user wants in a board's credits (CRT 4.0,
+        // 2026-10-26, owner decision: "Yes, let us try that"). Remembered the first time they credit
+        // themselves; never the contact email above, since credits are shown to everybody.
+        [JsonPropertyName("creditName")] public string CreditName { get; set; } = string.Empty;
+        [JsonPropertyName("creditContact")] public string CreditContact { get; set; } = string.Empty;
 
         [JsonPropertyName("oscilloscopeVendor")] public string LastOscilloscopeVendor { get; set; } = string.Empty;
         [JsonPropertyName("oscilloscopeSeriesByVendor")] public Dictionary<string, string> LastOscilloscopeSeriesByVendor { get; set; } = new();
@@ -502,17 +509,18 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Returns true when global contributor mode is enabled.
+        // Returns true when "Write a detailed log" is on (stored as contributor mode was - see DetailedLog).
         // ###########################################################################################
-        private static bool IsContributorModeEnabled()
+        private static bool IsDetailedLogEnabled()
         {
             return _data.ContributorMode ?? false;
         }
 
         // ###########################################################################################
-        // Migrates the removed legacy configuration checkboxes into contributor mode once.
+        // Migrates the removed legacy configuration checkboxes into the detailed log once - the pair
+        // that became contributor mode, which became the detailed log.
         // ###########################################################################################
-        private static void MigrateLegacyContributorModeSettings()
+        private static void MigrateLegacyDetailedLogSettings()
         {
             if (_data.ContributorMode.HasValue)
             {
@@ -527,11 +535,11 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Keeps the removed legacy settings synchronized with contributor mode.
+        // Keeps the removed legacy settings synchronized with the detailed log.
         // ###########################################################################################
-        private static void SyncContributorModeLinkedSettings()
+        private static void SyncDetailedLogLinkedSettings()
         {
-            bool isEnabled = IsContributorModeEnabled();
+            bool isEnabled = IsDetailedLogEnabled();
 
             _data.ValidateDataOnLaunch = isEnabled;
             _data.DebugLogging = isEnabled;
@@ -678,11 +686,11 @@ namespace Handlers.DataHandling
 
         public static bool ValidateDataOnLaunch
         {
-            get => IsContributorModeEnabled();
+            get => IsDetailedLogEnabled();
             set
             {
                 _data.ContributorMode = value;
-                SyncContributorModeLinkedSettings();
+                SyncDetailedLogLinkedSettings();
                 Logger.Info($"Setting changed: [ValidateDataOnLaunch] [{value}]");
                 Save();
             }
@@ -690,11 +698,11 @@ namespace Handlers.DataHandling
 
         public static bool DebugLogging
         {
-            get => IsContributorModeEnabled();
+            get => IsDetailedLogEnabled();
             set
             {
                 _data.ContributorMode = value;
-                SyncContributorModeLinkedSettings();
+                SyncDetailedLogLinkedSettings();
                 Logger.Info($"Setting changed: [DebugLogging] [{value}]");
                 Save();
             }
@@ -1049,14 +1057,20 @@ namespace Handlers.DataHandling
             }
         }
 
-        public static bool ContributorMode
+        // ###########################################################################################
+        // "Write a detailed log" on the Configuration tab (CRT 4.0 step 2, slice 6): the debug lines in
+        // the log, and every board's data checked at launch into it - what contributor mode switched on
+        // besides its menu, before the mode went. Kept under the name already STORED, "contributorMode",
+        // so whoever had the mode on keeps the detailed log (stored names keep their spelling).
+        // ###########################################################################################
+        public static bool DetailedLog
         {
             get => _data.ContributorMode ?? false;
             set
             {
                 _data.ContributorMode = value;
-                SyncContributorModeLinkedSettings();
-                Logger.Info($"Setting changed: [ContributorMode] [{value}]");
+                SyncDetailedLogLinkedSettings();
+                Logger.Info($"Setting changed: [DetailedLog] [{value}]");
                 Save();
             }
         }
@@ -1225,6 +1239,31 @@ namespace Handlers.DataHandling
                 Logger.Info($"Setting changed: [ContactEmail] [{(string.IsNullOrWhiteSpace(normalized) ? "empty" : "set")}]");
                 Save();
             }
+        }
+
+        // ###########################################################################################
+        // The name and contact this user is credited by (see CreditName in the data above) - set
+        // together, once a credit naming them has gone into a draft. A blank name keeps both as they
+        // were: nobody is credited by nothing.
+        // ###########################################################################################
+        public static string CreditName => _data.CreditName ?? string.Empty;
+
+        public static string CreditContact => _data.CreditContact ?? string.Empty;
+
+        public static void RememberCreditIdentity(string? name, string? contact)
+        {
+            string trimmedName = name?.Trim() ?? string.Empty;
+            string trimmedContact = contact?.Trim() ?? string.Empty;
+
+            if (trimmedName.Length == 0 ||
+                (string.Equals(_data.CreditName, trimmedName, StringComparison.Ordinal) &&
+                 string.Equals(_data.CreditContact, trimmedContact, StringComparison.Ordinal)))
+                return;
+
+            _data.CreditName = trimmedName;
+            _data.CreditContact = trimmedContact;
+            Logger.Info("Setting changed: [CreditName] [set]");
+            Save();
         }
 
         public static string Region
@@ -1662,10 +1701,10 @@ namespace Handlers.DataHandling
                 _data = loaded;
 
                 NormalizeCatalogueKeySets();
-                MigrateLegacyContributorModeSettings();
+                MigrateLegacyDetailedLogSettings();
 
                 var addedUserThemeDefaults = EnsureUserThemeColors();
-                SyncContributorModeLinkedSettings();
+                SyncDetailedLogLinkedSettings();
 
                 Logger.Info("Settings loaded:");
                 Logger.Info($"    Configuration:");
@@ -1698,7 +1737,7 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                 Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
                 Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");
-                Logger.Info($"        [ContributorMode] [{ContributorMode}]");
+                Logger.Info($"        [DetailedLog] [{DetailedLog}]");
                 Logger.Info($"        [InteractiveCadTraceHoverMode] [{InteractiveCadTraceHoverMode}]");
                 Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
                 Logger.Info($"        [WorkbooksLeftPanelWidth] [{_data.WorkbooksLeftPanelWidth:F1}]");
@@ -1819,7 +1858,7 @@ namespace Handlers.DataHandling
             NormalizeCatalogueKeySets();
 
             bool addedUserThemeDefaults = EnsureUserThemeColors();
-            SyncContributorModeLinkedSettings();
+            SyncDetailedLogLinkedSettings();
 
             if (addedUserThemeDefaults)
             {

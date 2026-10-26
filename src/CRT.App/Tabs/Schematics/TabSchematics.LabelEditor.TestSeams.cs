@@ -3,8 +3,10 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Handlers.DataHandling;
 using Handlers.Geometry;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT;
 
@@ -43,6 +45,12 @@ public partial class TabSchematics
         this.CurrentBoardDataOverrideForTests ?? this.MainWindow?.CurrentBoardData;
 
     internal bool IsLabelEditorModeForTests => this.thisIsLabelEditorMode;
+
+    // Stand in for the label editor's save into the draft (the schematic's name in; a failure, or
+    // null for saved) and for Main reading the board again after it - so a test can press Done.
+    internal Func<string, Task<string?>>? LabelEditorSaveOverrideForTests { get; set; }
+
+    internal Action<string>? ReloadBoardOverrideForTests { get; set; }
 
     internal string LabelEditorSchematicNameForTests => this.thisLabelEditorSchematicName;
 

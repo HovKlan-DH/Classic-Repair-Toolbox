@@ -143,6 +143,51 @@ namespace Handlers.DataHandling
             return board.WithComponentSections(components: components);
         }
 
+        // ---- a new component (slice 3c) -----------------------------------------------------------
+
+        // ###########################################################################################
+        // The board with a new component - its label, its region (blank: every region) and its
+        // category, nothing else yet - placed where a new component goes (ComponentPlacement: into its
+        // category in label order, a new category last). The same board when the label is blank or the
+        // board has it already, in any region: a label names one component (ContributionPackaging
+        // .ValidateNewComponent says why to the person adding it).
+        // ###########################################################################################
+        public static BoardData WithNewComponent(BoardData board, string? label, string? region, string? category)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string wanted = ComponentPaneEdits.Normalised(ComponentField.FriendlyName, label);
+
+            if (wanted.Length == 0 || board.Components.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)))
+            {
+                return board;
+            }
+
+            string filedCategory = ComponentPaneEdits.Normalised(ComponentField.Category, category);
+
+            var components = board.Components.ToList();
+            components.Insert(
+                ComponentPlacement.InsertionIndex(components, filedCategory, wanted),
+                new ComponentEntry
+                {
+                    BoardLabel = wanted,
+                    Region = region?.Trim() ?? string.Empty,
+                    Category = filedCategory,
+                });
+
+            return board.WithComponentSections(components: components);
+        }
+
+        // Whether the component has a highlight on any picture - what "Show on board" can show.
+        public static bool IsMarkedOnAPicture(BoardData board, string? label)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string wanted = label?.Trim() ?? string.Empty;
+
+            return wanted.Length > 0 && board.ComponentHighlights.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted));
+        }
+
         // ---- pins -------------------------------------------------------------------------------
 
         // The component's pins in `region`, as the board lists them.
@@ -339,6 +384,138 @@ namespace Handlers.DataHandling
                 rows));
         }
 
+        // ---- pictures and scope baselines (slice 3b) ---------------------------------------------
+
+        // The component's pictures in `region`: its "Component images" rows that are no scope
+        // baseline (ComponentImageKinds - the one rule, the popup's and the converter's).
+        public static List<ComponentImageEntry> PicturesOf(BoardData board, string? label, string? region)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            return board.ComponentImages
+                .Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region) && !ComponentImageKinds.IsScopeBaseline(row))
+                .ToList();
+        }
+
+        // The component's scope baselines in `region`: a pin AND a scope setting.
+        public static List<ComponentImageEntry> BaselinesOf(BoardData board, string? label, string? region)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            return board.ComponentImages
+                .Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region) && ComponentImageKinds.IsScopeBaseline(row))
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // The board with the component's pictures in `region` replaced by `pictures`, where the first
+        // of them stood - its scope baselines and every other row left in place (one list holds both).
+        // Each filed under the component's label; a row with nothing in it is left out; every value
+        // trimmed, a note keeping its lines. The same board when nothing changed.
+        // ###########################################################################################
+        public static BoardData WithPictures(BoardData board, string? label, string? region, IReadOnlyList<ComponentImageEntry> pictures) =>
+            ComponentPaneEdits.WithImages(board, label, region, pictures, baselines: false);
+
+        // ###########################################################################################
+        // The same for the component's scope baselines, its pictures left in place. A row handed over
+        // that is no baseline by the rule is written as it is - read as a picture from then on: the pane
+        // holds back an edit that would do that (a pin cleared, every scope setting cleared), and
+        // nothing here drops a row.
+        // ###########################################################################################
+        public static BoardData WithBaselines(BoardData board, string? label, string? region, IReadOnlyList<ComponentImageEntry> baselines) =>
+            ComponentPaneEdits.WithImages(board, label, region, baselines, baselines: true);
+
+        private static BoardData WithImages(BoardData board, string? label, string? region, IReadOnlyList<ComponentImageEntry> images, bool baselines)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+            ArgumentNullException.ThrowIfNull(images);
+
+            List<ComponentImageEntry> before = baselines
+                ? ComponentPaneEdits.BaselinesOf(board, label, region)
+                : ComponentPaneEdits.PicturesOf(board, label, region);
+            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region, before.Select(row => row.BoardLabel));
+
+            List<ComponentImageEntry> rows = images
+                .Select(row => new ComponentImageEntry
+                {
+                    BoardLabel = filedLabel,
+                    Region = row.Region?.Trim() ?? string.Empty,
+                    Pin = row.Pin?.Trim() ?? string.Empty,
+                    Name = row.Name?.Trim() ?? string.Empty,
+                    ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
+                    File = row.File?.Trim() ?? string.Empty,
+                    Note = ComponentPaneEdits.Normalised(ComponentField.RepairNotes, row.Note),
+                    TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
+                    VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
+                    TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
+                    MachineState = row.MachineState?.Trim() ?? string.Empty,
+                    Source = row.Source?.Trim() ?? string.Empty,
+                })
+                .Where(row => row.Name.Length > 0 || row.File.Length > 0 || row.Note.Length > 0 || row.Pin.Length > 0)
+                .ToList();
+
+            if (ComponentPaneEdits.SameRows(before, rows, ComponentPaneEdits.KeyOf))
+            {
+                return board;
+            }
+
+            return board.WithComponentSections(componentImages: ComponentPaneEdits.ReplaceInScope(
+                board.ComponentImages,
+                row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region) && ComponentImageKinds.IsScopeBaseline(row) == baselines,
+                rows));
+        }
+
+        // ---- files ------------------------------------------------------------------------------
+
+        // The component's files - a file has no region: it is the component's in every region.
+        public static List<ComponentLocalFileEntry> FilesOf(BoardData board, string? label)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string wanted = label?.Trim() ?? string.Empty;
+
+            return wanted.Length == 0
+                ? []
+                : board.ComponentLocalFiles.Where(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)).ToList();
+        }
+
+        // The same as WithLinks, for the component's files.
+        public static BoardData WithFiles(BoardData board, string? label, IReadOnlyList<ComponentLocalFileEntry> files)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+            ArgumentNullException.ThrowIfNull(files);
+
+            string wanted = label?.Trim() ?? string.Empty;
+
+            if (wanted.Length == 0)
+            {
+                return board;
+            }
+
+            List<ComponentLocalFileEntry> before = ComponentPaneEdits.FilesOf(board, label);
+            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region: null, before.Select(row => row.BoardLabel));
+
+            List<ComponentLocalFileEntry> rows = files
+                .Select(row => new ComponentLocalFileEntry
+                {
+                    BoardLabel = filedLabel,
+                    Name = row.Name?.Trim() ?? string.Empty,
+                    File = row.File?.Trim() ?? string.Empty,
+                })
+                .Where(row => row.Name.Length > 0 || row.File.Length > 0)
+                .ToList();
+
+            if (ComponentPaneEdits.SameRows(before, rows, row => string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Name?.Trim(), row.File?.Trim())))
+            {
+                return board;
+            }
+
+            return board.WithComponentSections(componentLocalFiles: ComponentPaneEdits.ReplaceInScope(
+                board.ComponentLocalFiles,
+                row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted),
+                rows));
+        }
+
         // ---- shared -----------------------------------------------------------------------------
 
         // ###########################################################################################
@@ -361,15 +538,17 @@ namespace Handlers.DataHandling
         private static bool SameLabel(string? rowLabel, string wanted) =>
             string.Equals(rowLabel?.Trim(), wanted, StringComparison.OrdinalIgnoreCase);
 
-        // A row's region is shown in `region` when it is blank (every region) or the same.
-        private static bool InRegion(string? rowRegion, string? region)
+        // A row's region is shown in `region` when it is blank (every region) or the same. The ONE rule -
+        // ComponentCopy and the popup (ComponentPopupContent) ask it too (code review, 2026-10-26).
+        internal static bool InRegion(string? rowRegion, string? region)
         {
             string own = rowRegion?.Trim() ?? string.Empty;
 
             return own.Length == 0 || string.Equals(own, region?.Trim(), StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool InScope(string? rowLabel, string? rowRegion, string? label, string? region)
+        // A row of the component `label` as shown in `region` - its label, in any capitals, and its region.
+        internal static bool InScope(string? rowLabel, string? rowRegion, string? label, string? region)
         {
             string wanted = label?.Trim() ?? string.Empty;
 
@@ -378,6 +557,22 @@ namespace Handlers.DataHandling
 
         private static string KeyOf(ComponentPinEntry pin) =>
             string.Join('\u001F', ComponentPaneEdits.LabelKey(pin.BoardLabel), pin.Region?.Trim(), pin.Pin?.Trim(), pin.Name?.Trim(), pin.Direction?.Trim());
+
+        private static string KeyOf(ComponentImageEntry row) =>
+            string.Join(
+                '\u001F',
+                ComponentPaneEdits.LabelKey(row.BoardLabel),
+                row.Region?.Trim(),
+                row.Pin?.Trim(),
+                row.Name?.Trim(),
+                row.ExpectedOscilloscopeReading?.Trim(),
+                row.File?.Trim(),
+                ComponentPaneEdits.Normalised(ComponentField.RepairNotes, row.Note),
+                row.TimeDiv?.Trim(),
+                row.VoltsDiv?.Trim(),
+                row.TriggerLevelVolts?.Trim(),
+                row.MachineState?.Trim(),
+                row.Source?.Trim());
 
         private static string KeyOf(ComponentReplacementEntry row) =>
             string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), row.Changes?.Trim(), row.Source?.Trim());

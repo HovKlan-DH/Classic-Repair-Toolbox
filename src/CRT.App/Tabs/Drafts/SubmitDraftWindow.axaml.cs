@@ -32,6 +32,12 @@ namespace CRT
     // a named trap in the strategy document. Hashing a 76 MB board and uploading it both happen
     // on the thread pool; progress arrives through an IProgress whose callback posts to the
     // dispatcher.
+    //
+    // FILE MAP:
+    //   SubmitDraftWindow.axaml.cs   - the board the dialog was opened on: what it sends, the credit
+    //                                  offer, the send itself (SubmitAsync) and what came of it
+    //   SubmitDraftWindow.OtherDrafts.cs - the contributor's other drafts, sent after it with the same
+    //                                  message (slice 5), and what came of each
     // ###########################################################################################
     public partial class SubmitDraftWindow : Window
     {
@@ -67,18 +73,41 @@ namespace CRT
         // (2026-10-25) the draft's board file lists them by name, the published board's as well as
         // its own (SubmissionKiCadFiles.Collect) - and an import no write has listed yet goes too.
         // ###########################################################################################
-        private IReadOnlyList<string> CollectKiCadFiles()
+        private static IReadOnlyList<string> CollectKiCadFiles(string boardFolder, SubmissionIdentity? identity)
         {
-            if (this.thisIdentity is null || string.IsNullOrWhiteSpace(this.thisBoardFolder))
+            if (identity is null || string.IsNullOrWhiteSpace(boardFolder))
                 return [];
 
             return SubmissionKiCadFiles.Collect(
-                BoardFiles.ReadDocument(Path.Combine(this.thisBoardFolder, DataTreeLayout.BoardFileName)),
-                DraftFiles.ArrivedKiCadNames(this.thisBoardFolder));
+                BoardFiles.ReadDocument(Path.Combine(boardFolder, DataTreeLayout.BoardFileName)),
+                DraftFiles.ArrivedKiCadNames(boardFolder));
         }
 
-        // The board the files are named by - its board file (DataTreeLayout.BoardFilePath).
-        private string BoardIdentity => this.thisIdentity is null ? string.Empty : DataTreeLayout.BoardFilePath(this.thisIdentity.BoardId);
+        // The board the dialog was opened on, as one board to send (SubmitDraftTarget).
+        private SubmitDraftTarget ThisTarget => new(
+            this.thisBoardDisplayName,
+            this.thisMergedData!,
+            this.thisIdentity!,
+            this.thisBoardFolder,
+            this.thisCalibrations,
+            this.thisDraftFingerprint);
+
+        // ###########################################################################################
+        // What a send says when it never got there, for one board alone (ShowFailure). A credit is put
+        // into the draft BEFORE sending, so then the draft is not unchanged - said so (code review,
+        // 2026-10-26: "your draft is unchanged" over a draft that now held the credit).
+        // ###########################################################################################
+        internal static string NoConnectionMessage(bool credited) =>
+            "The submission could not be sent. Check your internet connection and try again - nothing has been lost" +
+            (credited ? ". Your credit is in your draft now, so it goes with the next try." : ", and your draft is unchanged.");
+
+        internal static string UnexpectedMessage(bool credited) =>
+            "Something unexpected stopped the submission. Nothing has been lost" +
+            (credited ? " - your credit is in your draft now, so it goes with the next try. Try again" : ", and your draft is unchanged - try again") +
+            ", and if it keeps happening, tell us through the Feedback tab.";
+
+        // A credit went into the draft before sending (AddCreditsFirstAsync).
+        private bool thisCreditAdded;
 
         // Set once the submission has been sent, so the caller can tell whether the draft should
         // be left alone (always, for now - see the Drafts tab) and what to show afterwards.
@@ -133,7 +162,13 @@ namespace CRT
 
             // What the draft changes, in words (DraftChangeSummary) - the summary "Review changes"
             // shows, shown here too (CRT 4.0 step 1's last slice). Null shows none.
-            DraftChangeSummary? changes = null)
+            DraftChangeSummary? changes = null,
+
+            // The credits the draft's work deserves (CreditSuggestions), and how ticked ones go into
+            // the draft before anything is sent - the board and fingerprint as they then are, or
+            // null when the draft could not take them (2026-10-26). Without both, no offer is shown.
+            IReadOnlyList<CreditSuggestion>? creditSuggestions = null,
+            Func<IReadOnlyList<CreditEntry>, Task<(BoardData Board, string Fingerprint)?>>? addCredits = null)
         {
             ArgumentNullException.ThrowIfNull(mergedData);
             ArgumentNullException.ThrowIfNull(identity);
@@ -185,8 +220,101 @@ namespace CRT
             }
 
             this.ShowChanges(changes);
+            this.thisAddCredits = addCredits;
+            this.ShowCreditOffer(addCredits is null ? [] : creditSuggestions ?? []);
             this.BuildSummary();
             this.UpdateSubmitEnabled();
+        }
+
+        // ###########################################################################################
+        // CREDIT FOR THE WORK SENT (CRT 4.0 step 2, 2026-10-26 - the plan: "After a submission, CRT
+        // suggests a credit for what you sent"; owner decision: "Do it now").
+        //
+        // Offered BEFORE sending, so the credit travels with the work it credits - a credit added after
+        // would need a submission of its own. Each category the draft's work deserves is a tick box,
+        // ticked; the name and contact are the ones CRT remembers from the last credit (never the
+        // email above - credits are shown to everybody). A blank name credits nobody.
+        // ###########################################################################################
+        private Func<IReadOnlyList<CreditEntry>, Task<(BoardData Board, string Fingerprint)?>>? thisAddCredits;
+
+        internal const string CreditsNotAdded =
+            "Your credit could not be put into your draft, so nothing was sent. Your draft's header says why - " +
+            "try again, or leave the name empty to send without a credit.";
+
+        private void ShowCreditOffer(IReadOnlyList<CreditSuggestion> suggestions)
+        {
+            this.CreditChoicesPanel.Children.Clear();
+
+            foreach (CreditSuggestion suggestion in suggestions)
+            {
+                var box = new CheckBox
+                {
+                    Content = suggestion.SubCategory.Length == 0 ? suggestion.Category : $"{suggestion.Category} - {suggestion.SubCategory}",
+                    IsChecked = true,
+                    Tag = suggestion,
+                };
+
+                box.IsCheckedChanged += (_, _) => this.OnOwnCreditTicked();
+                this.CreditChoicesPanel.Children.Add(box);
+            }
+
+            this.thisOwnCreditSuggestions = suggestions.Count;
+            this.ShowCreditOfferFor();
+
+            if (string.IsNullOrWhiteSpace(this.CreditNameTextBox.Text))
+            {
+                this.CreditNameTextBox.Text = UserSettings.CreditName;
+                this.CreditContactTextBox.Text = UserSettings.CreditContact;
+            }
+        }
+
+        internal IReadOnlyList<string> CreditChoicesForTests =>
+            this.CreditOfferPanel.IsVisible
+                ? this.CreditChoicesPanel.Children.OfType<CheckBox>().Select(box => box.Content as string ?? string.Empty).ToList()
+                : [];
+
+        // ###########################################################################################
+        // The ticked credits into the draft, as the first thing Submit does - what is then sent is the
+        // board with them, and the receipt remembers the draft as it then is. False, with the reason
+        // said, when the draft could not take them: nothing is sent.
+        // ###########################################################################################
+        internal async Task<bool> AddCreditsFirstAsync()
+        {
+            if (!this.CreditOfferPanel.IsVisible || this.thisAddCredits is not { } add || this.thisMergedData is null)
+            {
+                return true;
+            }
+
+            List<CreditSuggestion> picked = this.CreditChoicesPanel.Children
+                .OfType<CheckBox>()
+                .Where(box => box.IsChecked == true)
+                .Select(box => box.Tag)
+                .OfType<CreditSuggestion>()
+                .ToList();
+
+            string name = this.CreditNameTextBox.Text ?? string.Empty;
+            string contact = this.CreditContactTextBox.Text ?? string.Empty;
+
+            List<CreditEntry> credits = CreditSuggestions.ToAdd(this.thisMergedData, picked, name, contact);
+
+            if (credits.Count == 0)
+            {
+                return true;
+            }
+
+            if (await add(credits) is not { } added)
+            {
+                return false;
+            }
+
+            this.thisMergedData = added.Board;
+            this.thisDraftFingerprint = added.Fingerprint;
+            this.thisCreditAdded = true;
+            UserSettings.RememberCreditIdentity(name, contact);
+
+            // In: a Submit tried again after a failure does not add them twice.
+            this.CreditOfferPanel.IsVisible = false;
+            return true;
         }
 
         // ###########################################################################################
@@ -255,7 +383,7 @@ namespace CRT
 
             // The board's KiCad data travels too (2026-09-26) - only said when there is any, since
             // most boards have none and a permanent "KiCad files: 0" would read as something missing.
-            int kiCadFiles = this.CollectKiCadFiles().Count;
+            int kiCadFiles = SubmitDraftWindow.CollectKiCadFiles(this.thisBoardFolder, this.thisIdentity).Count;
 
             if (kiCadFiles > 0)
                 this.AddSummaryLine("KiCad files", kiCadFiles.ToString(CultureInfo.InvariantCulture));
@@ -267,20 +395,24 @@ namespace CRT
                 "worked out when you submit - files the server already has are not sent again");
         }
 
+        // A Grid, not a horizontal StackPanel: a StackPanel hands its text unlimited width, so a long
+        // value ran off the dialog's edge instead of wrapping (owner report, 2026-10-26).
         private void AddSummaryLine(string label, string value)
         {
-            var panel = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6 };
+            var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,6,*") };
 
-            panel.Children.Add(new TextBlock
+            line.Children.Add(new TextBlock
             {
                 Text = $"{label}:",
                 FontWeight = FontWeight.Bold,
                 MinWidth = 120
             });
 
-            panel.Children.Add(new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap });
+            var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap };
+            Grid.SetColumn(text, 2);
+            line.Children.Add(text);
 
-            this.SummaryPanel.Children.Add(panel);
+            this.SummaryPanel.Children.Add(line);
         }
 
         // ###########################################################################################
@@ -304,14 +436,54 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Does the whole submission, off the UI thread.
+        // Does the whole submission, off the UI thread - this board's, then each other draft ticked
+        // (SubmitDraftWindow.OtherDrafts.cs).
         // ###########################################################################################
         private async void OnSubmitClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await this.SubmitNowAsync();
+            }
+            catch (Exception ex)
+            {
+                // SubmitNowAsync lets nothing out; this is the guard every async void handler has.
+                Logger.Critical($"Submitting a draft failed unexpectedly - [{ex}]");
+            }
+        }
+
+        // What Submit does - apart from the async void handler so a test can wait for it. Nothing
+        // leaves it.
+        internal async Task SubmitNowAsync()
         {
             if (this.thisMergedData is null || this.thisIdentity is null)
                 return;
 
+            // Read before the panels switch: what is ticked, and the credit those go under - none when
+            // crediting the other drafts is unticked (code review, 2026-10-26).
+            List<OtherDraftOffer> others = this.TickedOtherDrafts();
+            bool creditOthers = this.CreditOthersCheckBox.IsChecked == true;
+            string creditName = creditOthers ? this.CreditNameTextBox.Text ?? string.Empty : string.Empty;
+            string creditContact = creditOthers ? this.CreditContactTextBox.Text ?? string.Empty : string.Empty;
+
             this.ShowProgressPanel();
+
+            // The credits ticked go into the draft first, so they are sent with the work (2026-10-26).
+            try
+            {
+                if (!await this.AddCreditsFirstAsync())
+                {
+                    this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave this async void handler (see the catch below).
+                Logger.Critical($"Putting the credits into the draft before submitting failed - [{ex}]");
+                this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
+                return;
+            }
 
             // Disposed in the finally below rather than held for the window's life: a
             // CancellationTokenSource owns a wait handle, and this dialog can be opened repeatedly.
@@ -324,11 +496,30 @@ namespace CRT
 
             try
             {
-                SubmissionResult result = await Task.Run(
-                    () => this.SubmitAsync(progress, token), token);
+                this.thisSendingName = others.Count > 0 ? this.thisBoardDisplayName : string.Empty;
 
-                this.Result = result;
-                this.ShowOutcome(result);
+                var outcomes = new List<BoardOutcome> { await this.SendOneAsync(this.ThisTarget, progress, token) };
+                this.Result = outcomes[0].Result;
+
+                if (others.Count == 0)
+                {
+                    if (outcomes[0].Result is { } result)
+                        this.ShowOutcome(result);
+                    else
+                        this.ShowFailure(outcomes[0].FailureMessage, outcomes[0].Findings);
+
+                    return;
+                }
+
+                // Every other draft ticked, after this one - each credited under the name typed here.
+                bool creditedOthers = await this.SendOtherDraftsAsync(others, creditName, creditContact, outcomes, progress, token);
+
+                if (creditedOthers)
+                {
+                    UserSettings.RememberCreditIdentity(creditName, creditContact);
+                }
+
+                this.ShowOutcomes(outcomes, credited: creditedOthers || this.thisCreditAdded);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -358,30 +549,16 @@ namespace CRT
 
                 this.Close();
             }
-            catch (SubmissionRejectedException ex)
-            {
-                this.ShowFailure(ex.Message, ex.Findings);
-            }
-            catch (Exception ex) when (ex is System.Net.Http.HttpRequestException or IOException or TaskCanceledException)
-            {
-                this.ShowFailure(
-                    "The submission could not be sent. Check your internet connection and try again - " +
-                    "nothing has been lost, and your draft is unchanged.",
-                    []);
-            }
             catch (Exception ex)
             {
                 // *** NOTHING ELSE MAY LEAVE THIS HANDLER (code review, 2026-10-13). *** It is async
                 // void, and App's dispatcher handler lets an exception that escapes one take CRT
-                // down - mid-submit, with the dialog stuck on "Preparing contribution". A file the
-                // hashing cannot read (UnauthorizedAccessException is not an IOException) was the
-                // known way here; anything else is reported the same way and logged in full.
+                // down - mid-submit, with the dialog stuck on "Preparing contribution". A send's own
+                // failures are its outcome (SendOneAsync); anything else is reported the same way and
+                // logged in full.
                 Logger.Critical($"Submitting a draft failed unexpectedly - [{ex}]");
 
-                this.ShowFailure(
-                    "Something unexpected stopped the submission. Nothing has been lost, and your draft is unchanged - " +
-                    "try again, and if it keeps happening, tell us through the Feedback tab.",
-                    []);
+                this.ShowFailure(SubmitDraftWindow.UnexpectedMessage(this.thisCreditAdded), []);
             }
             finally
             {
@@ -391,37 +568,39 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The three steps, in order. Runs entirely on the thread pool.
+        // The three steps, in order, for one board. Runs entirely on the thread pool.
         // ###########################################################################################
         private async Task<SubmissionResult> SubmitAsync(
+            SubmitDraftTarget target,
             IProgress<SubmissionProgress> progress,
             CancellationToken token)
         {
+            // The board the files are named by - its board file (DataTreeLayout.BoardFilePath).
+            string boardIdentity = DataTreeLayout.BoardFilePath(target.Identity.BoardId);
+
             // What the rows cite, plus the board's KiCad data - the folder no row cites, which the
             // rows-only list silently left behind until 2026-09-26 (a new board published without
             // its traces). Both are hashed the same way; SubmissionFileLocator resolves each path
             // against the draft first, then the synced data.
-            IReadOnlyList<string> kiCadFiles = this.CollectKiCadFiles();
+            IReadOnlyList<string> kiCadFiles = SubmitDraftWindow.CollectKiCadFiles(target.BoardFolder, target.Identity);
 
             List<string> paths =
             [
-                .. SubmissionManifestBuilder.CollectReferencedFiles(this.thisMergedData!),
+                .. SubmissionManifestBuilder.CollectReferencedFiles(target.Board),
                 .. kiCadFiles
             ];
 
             FileHashResult hashed = await SubmissionClient.HashFilesAsync(
-                this.thisDataRoot, this.thisBoardFolder, paths, progress, token, this.BoardIdentity);
-
-            SubmissionIdentity identity = this.thisIdentity!;
+                this.thisDataRoot, target.BoardFolder, paths, progress, token, boardIdentity);
 
             // The summary and contact address were typed after Initialize ran, so they are read
             // from the fields captured on the UI thread rather than from the identity.
             var manifest = SubmissionManifestBuilder.Build(
-                this.thisMergedData!,
-                SubmitDraftWindow.IdentityToSend(identity, this.SummaryText, DateTimeOffset.UtcNow),
+                target.Board,
+                SubmitDraftWindow.IdentityToSend(target.Identity, this.SummaryText, DateTimeOffset.UtcNow),
                 hashed.Hashes,
                 renames: null,
-                calibrations: this.thisCalibrations,
+                calibrations: target.Calibrations,
                 kiCadFiles: kiCadFiles);
 
             manifest.Manifest.ContactEmail = this.EmailText;
@@ -454,7 +633,7 @@ namespace CRT
             //
             // Written before any byte is uploaded, so a crash mid-upload still leaves a receipt.
             // ###########################################################################################
-            SubmissionReceiptStore.Record(this.NewReceipt(negotiation.SubmissionId, negotiation.UploadToken, DateTimeOffset.UtcNow));
+            SubmissionReceiptStore.Record(this.NewReceipt(target.Identity.BoardId, target.Fingerprint, negotiation.SubmissionId, negotiation.UploadToken, DateTimeOffset.UtcNow));
             this.thisUnfinished.Created(negotiation.SubmissionId);
 
             // Upload only what the server asked for.
@@ -482,8 +661,8 @@ namespace CRT
                 // all means hashing already located this file, so a failure is a real change on
                 // disk between the two passes.
                 if (!SubmissionFileLocator.TryLocate(
-                        this.thisDataRoot, this.thisBoardFolder, file.Path,
-                        out string absolute, out string reason, this.BoardIdentity))
+                        this.thisDataRoot, target.BoardFolder, file.Path,
+                        out string absolute, out string reason, boardIdentity))
                 {
                     throw new SubmissionRejectedException(
                         0,
@@ -523,14 +702,18 @@ namespace CRT
         // The receipt kept for a submission the server has just created - see SubmitAsync for why
         // it is written then. It carries what the draft held as it was sent (2026-10-03).
         // ###########################################################################################
-        internal SubmissionReceipt NewReceipt(long submissionId, string uploadToken, DateTimeOffset sentUtc) => new()
+        internal SubmissionReceipt NewReceipt(long submissionId, string uploadToken, DateTimeOffset sentUtc) =>
+            this.NewReceipt(this.thisIdentity?.BoardId ?? string.Empty, this.thisDraftFingerprint, submissionId, uploadToken, sentUtc);
+
+        // The same for any board sent from this dialog - this one, or another draft sent with it.
+        private SubmissionReceipt NewReceipt(string boardId, string draftFingerprint, long submissionId, string uploadToken, DateTimeOffset sentUtc) => new()
         {
             SubmissionId = submissionId,
             UploadToken = uploadToken,
-            BoardId = this.thisIdentity?.BoardId ?? string.Empty,
+            BoardId = boardId,
             Summary = this.SummaryText,
             SentUtc = sentUtc,
-            DraftFingerprint = this.thisDraftFingerprint
+            DraftFingerprint = draftFingerprint
         };
 
         // Read on the UI thread before the work starts, because a TextBox cannot be touched from
@@ -592,7 +775,10 @@ namespace CRT
         {
             Dispatcher.UIThread.Post(() =>
             {
-                this.ProgressText.Text = progress.Describe();
+                // Which board, when several go (SubmitDraftWindow.OtherDrafts.cs).
+                this.ProgressText.Text = this.thisSendingName.Length == 0
+                    ? progress.Describe()
+                    : SubmitDraftsWording.Sending(this.thisSendingName, progress.Describe());
 
                 // Only while the progress panel is up: a report still queued when the outcome
                 // arrives must not turn "Contribution sent" back into "Sending contribution".
@@ -643,8 +829,8 @@ namespace CRT
                     "Your contribution is queued for review. You will get an email when a maintainer has " +
                     "looked at it.\n\nIf it is accepted, it goes into the BETA source first, for a final check, " +
                     "and then into the stable source that everyone downloads - you get an email at each step." +
-                    "\n\nYour draft is untouched - keep using it as normal. It tidies itself away once your work " +
-                    "is in the stable source.";
+                    (this.thisCreditAdded ? "\n\nYour draft is untouched but for your credit, sent with it - keep " : "\n\nYour draft is untouched - keep ") +
+                    "using it as normal. It tidies itself away once your work is in the stable source.";
             }
             else
             {
@@ -652,7 +838,7 @@ namespace CRT
 
                 this.OutcomeText.Text =
                     "The server found problems that have to be fixed before this can be reviewed. " +
-                    "Your draft is untouched.";
+                    (this.thisCreditAdded ? "Your draft is untouched but for your credit, which is in it now." : "Your draft is untouched.");
             }
 
             this.ShowFindings(result.Findings, isRefusal: !result.IsAccepted);

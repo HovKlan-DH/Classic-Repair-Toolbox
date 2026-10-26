@@ -844,4 +844,45 @@ public sealed class ComponentBoardWriterTests
         Assert.Equal("U9", Assert.Single(deleted.ComponentPins).BoardLabel);
         Assert.Empty(deleted.ComponentReplacements);
     }
+
+    // ###########################################################################################
+    // Deleting a component takes every row of it - its images, files, links and highlights - and
+    // leaves every other component and the board's own sections as they were. What the component
+    // pane's "Delete component" does (slice 3c); moved here from the component editor window's tests
+    // when the window went.
+    // ###########################################################################################
+    [Fact]
+    public void Deleting_a_component_takes_every_row_of_it_and_leaves_the_boards_own_sections()
+    {
+        var board = new BoardData
+        {
+            RevisionDate = "2026-01-15",
+            Components =
+            {
+                new ComponentEntry { BoardLabel = "U1", FriendlyName = "VIC-II", Category = "IC", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor" },
+            },
+            ComponentImages = { new ComponentImageEntry { BoardLabel = "U1", Region = "PAL", Pin = "1", Name = "Pin 1", File = "Scope baseline/u1-pin1.png" } },
+            ComponentHighlights = { new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U1", X = "10", Y = "20", Width = "30", Height = "40" } },
+            ComponentLocalFiles = { new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Datasheet", File = "Component local files/vic.pdf" } },
+            ComponentLinks = { new ComponentLinkEntry { BoardLabel = "U1", Name = "Datasheet", Url = "https://example.com/vic" } },
+            BoardLocalFiles =
+            {
+                new BoardLocalFileEntry { Category = "Schematics", Name = "Sheet 1" },
+                new BoardLocalFileEntry { Category = "Schematics", Name = "Sheet 2" },
+            },
+            BoardLinks = { new BoardLinkEntry { Category = "Repairs", Name = "Repair log", Url = "https://example.com/log" } },
+        };
+
+        BoardData result = ComponentBoardWriter.ApplyComponentDelete(board, "u1");
+
+        Assert.Equal(["C1"], result.Components.Select(row => row.BoardLabel));
+        Assert.Empty(result.ComponentImages);
+        Assert.Empty(result.ComponentLocalFiles);
+        Assert.Empty(result.ComponentLinks);
+        Assert.Empty(result.ComponentHighlights);
+        Assert.Equal(2, result.BoardLocalFiles.Count);
+        Assert.Single(result.BoardLinks);
+        Assert.Equal("2026-01-15", result.RevisionDate);
+    }
 }

@@ -66,8 +66,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // "UNDO CHANGES TO <component>" (step 1's last slice, 2026-10-25): every row of the component
         // back to `published`'s - gone, for a component the published board does not have - as ONE
-        // step of the draft's history, so even this is one Undo away (ComponentRevert). The same for
-        // the component editor and "Review changes".
+        // step of the draft's history, so even this is one Undo away (ComponentRevert). "Review
+        // changes" asks it; the component pane does the same on its own session.
         //
         // *** AND ITS FILES REPLACED UNDER THEIR OWN NAMES (code review, 2026-10-26). *** The rows name
         // them the same, so the draft's list kept the contributor's bytes and the next submission sent

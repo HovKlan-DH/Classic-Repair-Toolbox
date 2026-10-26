@@ -9,6 +9,7 @@ using Handlers.DataHandling;
 using Handlers.Geometry;
 using Handlers.IcTesting;
 using Handlers.Oscilloscope;
+using Handlers.Theming;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -81,6 +82,14 @@ namespace CRT
 
         // The board whose published file lists the names the rows cite (DraftFileResolver).
         private string _boardIdentity = string.Empty;
+
+        // The board's pins and replacement parts (CRT 4.0) - the component's, of the region shown, are
+        // listed (ComponentPopupContent).
+        private IReadOnlyList<ComponentPinEntry> _allPins = [];
+        private IReadOnlyList<ComponentReplacementEntry> _allReplacements = [];
+
+        // The board's "Scope measurements" files, found - linked under a scope baseline.
+        private IReadOnlyList<ComponentLocalFileItem> _measuringNotes = [];
         private bool _suppressThumbnailSelection = false;
         private bool _suppressRegionToggle = false;
         private double _normalWidth = 680.0;
@@ -754,9 +763,32 @@ namespace CRT
             string dataRoot,
             bool hasExplicitRegionComponents,
             string draftBoardFolder = "",
-            string boardIdentity = "")
+            string boardIdentity = "",
+            IReadOnlyList<ComponentPinEntry>? pins = null,
+            IReadOnlyList<ComponentReplacementEntry>? replacements = null,
+
+            // The board's own files - its "Scope measurements" ones say how the baselines were measured
+            // (ScopeMeasurementFiles, 2026-10-26), linked under a scope baseline.
+            IReadOnlyList<BoardLocalFileEntry>? boardFiles = null)
         {
             this.ClearTemporaryCapturedOscilloscopeImage();
+            this._allPins = pins ?? [];
+            this._allReplacements = replacements ?? [];
+
+            // Found as the component's own files are - see below - each with the root it came from.
+            this._measuringNotes = ScopeMeasurementFiles.Among(boardFiles)
+                .Select(note =>
+                {
+                    DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, note.File, boardIdentity);
+
+                    return new ComponentLocalFileItem
+                    {
+                        Name = note.Name,
+                        FullPath = resolved?.FullPath ?? Path.Combine(dataRoot, note.File.Replace('/', Path.DirectorySeparatorChar)),
+                        SourceRoot = resolved?.Root ?? dataRoot,
+                    };
+                })
+                .ToList();
 
             // Reset pin navigation state whenever a new component is loaded
             this._pinBufferCts?.Cancel();
@@ -958,6 +990,18 @@ namespace CRT
             this.ImageNoteSection.IsVisible = show;
             if (show)
                 this.InfoNote.Text = note!.Trim();
+
+            // What a scope baseline was measured under (CRT 4.0) - beside its note - and, for any
+            // baseline, how the board's were measured: its "Scope measurements" files (2026-10-26).
+            string? conditions = ComponentPopupContent.BaselineConditions(item?.SourceEntry);
+            bool notes = item?.SourceEntry is { } image && ComponentImageKinds.IsScopeBaseline(image) && this._measuringNotes.Count > 0;
+
+            this.BaselineConditionsSection.IsVisible = conditions is not null || notes;
+            this.InfoBaselineConditions.IsVisible = conditions is not null;
+            this.InfoBaselineConditions.Text = conditions ?? string.Empty;
+            this.InfoMeasuringNotesLabel.IsVisible = notes;
+            this.InfoMeasuringNotesItemsControl.IsVisible = notes;
+            this.InfoMeasuringNotesItemsControl.ItemsSource = notes ? this._measuringNotes : null;
         }
 
         // ###########################################################################################
@@ -1323,18 +1367,12 @@ namespace CRT
             this.TitleText.Text = titleText;
             this.ApplyOscilloscopeSessionTitleState();
 
-            // Category | Part-number
-            string category = entry?.Category ?? string.Empty;
-            string partNumber = entry?.PartNumber ?? string.Empty;
-            var catPartParts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(category))
-                catPartParts.Add(category.Trim());
-            if (!string.IsNullOrWhiteSpace(partNumber))
-                catPartParts.Add(partNumber.Trim());
-            bool hasCatPart = catPartParts.Count > 0;
+            // Category | Part-number | Package (CRT 4.0)
+            string categoryLine = ComponentPopupContent.CategoryLine(entry);
+            bool hasCatPart = categoryLine.Length > 0;
             this.InfoCategoryPartNumber.IsVisible = hasCatPart;
             if (hasCatPart)
-                this.InfoCategoryPartNumber.Text = string.Join(" | ", catPartParts);
+                this.InfoCategoryPartNumber.Text = categoryLine;
 
             // One-liner description
             string description = entry?.Description ?? string.Empty;
@@ -1342,7 +1380,31 @@ namespace CRT
             this.OneLinerSection.IsVisible = hasDescription;
             this.InfoDescription.Text = hasDescription ? description.Trim() : string.Empty;
 
+            this.RefreshCrt4Data(entry);
             this.UpdateTestAffordance(entry);
+        }
+
+        // ###########################################################################################
+        // CRT 4.0's new component data, of the region shown (step 2, slice 3c): the repair notes with
+        // their links clickable, the pinout - the case drawn when CRT can draw it, and every pin listed
+        // with its signal name and direction - and the replacement parts. A section with nothing in it
+        // is hidden, as every other one is.
+        // ###########################################################################################
+        private void RefreshCrt4Data(ComponentEntry? entry)
+        {
+            string notes = entry?.RepairNotes?.Trim() ?? string.Empty;
+            this.RepairNotesSection.IsVisible = notes.Length > 0;
+            // Links only - not the Workbooks tab's search marks, which are about worklogs.
+            TextLinkRenderer.ApplySegments(this.InfoRepairNotes, notes, segments: null);
+
+            List<ComponentPopupPin> pins = ComponentPopupContent.PinsOf(this._allPins, this._boardLabel, this._localRegion);
+            this.PinoutSection.IsVisible = pins.Count > 0;
+            this.InfoPinsItemsControl.ItemsSource = pins;
+            this.InfoPinoutDrawing.Show(entry?.Package, ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion));
+
+            List<ComponentPopupReplacement> replacements = ComponentPopupContent.ReplacementsOf(this._allReplacements, this._boardLabel, this._localRegion);
+            this.ReplacementsSection.IsVisible = replacements.Count > 0;
+            this.InfoReplacementsItemsControl.ItemsSource = replacements;
         }
 
         private IcTestEntry? _activeTestEntry;

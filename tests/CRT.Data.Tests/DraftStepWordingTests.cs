@@ -20,6 +20,20 @@ public sealed class DraftStepWordingTests
         Assert.Equal("Schematic image [Top] removed", DraftStepWording.SchematicRemoved("Top"));
         Assert.Equal("Schematic image [Top] renamed [Front]", DraftStepWording.SchematicRenamed("Top", "Front"));
         Assert.Equal("CAD name of [Top]", DraftStepWording.CadName("Top"));
+
+        // The component pane's own sections (CRT 4.0 step 2).
+        Assert.Equal("Pictures of [U8]", DraftStepWording.ComponentPictures("U8"));
+        Assert.Equal("Scope baselines of [U8]", DraftStepWording.ComponentBaselines("U8"));
+        Assert.Equal("Files of [U8]", DraftStepWording.ComponentFiles("U8"));
+        Assert.Equal("[U9] added", DraftStepWording.ComponentAdded("U9"));
+        Assert.Equal("[U7] copied from Commodore 64 - 250425", DraftStepWording.ComponentCopied("U7", "Commodore 64 - 250425"));
+
+        // The board's own lists (slice 4a).
+        Assert.Equal("The board's files", DraftStepWording.BoardFiles);
+        Assert.Equal("The board's links", DraftStepWording.BoardLinks);
+        Assert.Equal("Credits", DraftStepWording.Credits);
+        Assert.Equal("Important signals", DraftStepWording.ImportantSignals);
+        Assert.Equal("Colours of the pictures", DraftStepWording.PictureColours);
     }
 
     [Fact]
@@ -37,6 +51,7 @@ public sealed class DraftStepWordingTests
         [
             DraftStepWording.ComponentSaved("U8"),
             DraftStepWording.ComponentDeleted("U8"),
+            DraftStepWording.ComponentAdded("U8"),
             DraftStepWording.ComponentReverted("U8"),
             DraftStepWording.ComponentsMarked("Top"),
             DraftStepWording.Calibration("Top"),
@@ -47,6 +62,11 @@ public sealed class DraftStepWordingTests
             DraftStepWording.CadName("Top"),
             DraftStepWording.KiCadFileRemoved,
             DraftStepWording.BroughtUpToDate,
+            DraftStepWording.BoardFiles,
+            DraftStepWording.BoardLinks,
+            DraftStepWording.Credits,
+            DraftStepWording.ImportantSignals,
+            DraftStepWording.PictureColours,
         ];
 
         Assert.All(names, name =>

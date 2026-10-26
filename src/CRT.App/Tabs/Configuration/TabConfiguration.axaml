@@ -452,6 +452,14 @@
                     HorizontalContentAlignment="Center"
                     ToolTip.Tip="The log file, the crash log and your settings file - the files to attach when reporting a problem"
                     Click="OnOpenLogsFolderClick" />
+
+			<!-- What "Enable contributor mode" switched on besides its menu (CRT 4.0 step 2, slice 6 - the
+			     mode went): the log's debug lines, and every board's data checked at launch into it.
+			     Kept under the stored name, so whoever had the mode on keeps it (UserSettings.DetailedLog). -->
+			<CheckBox x:Name="DetailedLogCheckBox"
+					  Content="Write a detailed log"
+					  Margin="0,10,0,0"
+					  ToolTip.Tip="More lines in the log file, and every board's data checked when CRT starts, with what is found written into the log - for reporting a problem" />
 		</StackPanel>
 
 		</ScrollViewer>

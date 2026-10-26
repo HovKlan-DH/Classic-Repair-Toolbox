@@ -323,6 +323,24 @@ public class RectGeometryTests
         Assert.Equal(Colors.Magenta, RectGeometry.ParseColorOrDefault(text, Colors.Magenta));
     }
 
+    // ------------------------------------------------------- ColorText (slice 4b)
+
+    // A colour picked is written by its name when it has one - as the live trees write theirs - else
+    // as "#RRGGBB", the alpha only when it is not opaque; each reads back as the same colour.
+    [Fact]
+    public void A_colour_is_written_by_its_name_or_as_hex_and_reads_back_the_same()
+    {
+        Assert.Equal("Red", RectGeometry.ColorText(Colors.Red));
+        Assert.Equal("DodgerBlue", RectGeometry.ColorText(Colors.DodgerBlue));
+        Assert.Equal("#123456", RectGeometry.ColorText(Color.FromRgb(0x12, 0x34, 0x56)));
+        Assert.Equal("#80FF0000", RectGeometry.ColorText(Color.FromArgb(0x80, 0xFF, 0, 0)));
+
+        foreach (Color color in new[] { Colors.Red, Colors.DodgerBlue, Color.FromRgb(0x12, 0x34, 0x56), Color.FromArgb(0x80, 0xFF, 0, 0) })
+        {
+            Assert.Equal(color, RectGeometry.ParseColorOrDefault(RectGeometry.ColorText(color), Colors.Black));
+        }
+    }
+
     // ------------------------------------------------------- ParseOpacityOrDefault
 
     [Theory]

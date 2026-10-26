@@ -51,106 +51,11 @@ public partial class TabSchematics
     // Label editor
     private bool thisIsLabelEditorMode;
 
-    private bool thisIsShowingLabelEditorMenu;
-
     private string thisLabelEditorSchematicName = string.Empty;
 
     private readonly List<EditableComponentHighlight> thisLabelEditorWorkingHighlights = new();
 
     private EditableComponentHighlight? thisPendingNewLabelEditorHighlight;
-
-    // ###########################################################################################
-    // Returns true when the pointer is currently inside the floating label-editor menu bounds.
-    // ###########################################################################################
-    private bool IsPointerInsideLabelEditorMenu(Point containerPoint)
-    {
-        if (!this.SchematicsLabelEditorMenuBorder.IsVisible)
-        {
-            return false;
-        }
-
-        Point? translatedTopLeft = this.SchematicsLabelEditorMenuBorder.TranslatePoint(new Point(0, 0), this.SchematicsContainer);
-        if (!translatedTopLeft.HasValue)
-        {
-            return false;
-        }
-
-        var menuRect = new Rect(translatedTopLeft.Value, this.SchematicsLabelEditorMenuBorder.Bounds.Size);
-        return menuRect.Contains(containerPoint);
-    }
-
-    // ###########################################################################################
-    // Shows the floating schematic action menu at the requested schematic container location.
-    // The menu adapts its height to contributor mode, label editor mode, and the new KiCad trace
-    // calibration workflow.
-    // ###########################################################################################
-    private void ShowLabelEditorMenu(Point containerPoint)
-    {
-        if (!this.CanShowSchematicsActionsMenu())
-        {
-            return;
-        }
-
-        this.UpdateLabelEditorMenuButtons();
-
-        double estimatedWidth = 250.0;
-        double estimatedHeight =
-            this.thisIsLabelEditorMode ? 110.0 :
-            this.thisIsKiCadTraceCalibrationMode ? 105.0 :
-            195.0;
-
-        double x = Math.Clamp(
-            containerPoint.X,
-            6.0,
-            Math.Max(6.0, this.SchematicsContainer.Bounds.Width - estimatedWidth));
-
-        double y = Math.Clamp(
-            containerPoint.Y,
-            6.0,
-            Math.Max(6.0, this.SchematicsContainer.Bounds.Height - estimatedHeight));
-
-        this.SchematicsLabelEditorMenuBorder.Margin = new Thickness(x, y, 0, 0);
-        this.SchematicsLabelEditorMenuBorder.IsVisible = true;
-        this.thisIsShowingLabelEditorMenu = true;
-    }
-
-    // ###########################################################################################
-    // Hides the floating label-editor action menu.
-    // ###########################################################################################
-    private void HideLabelEditorMenu()
-    {
-        this.SchematicsLabelEditorMenuBorder.IsVisible = false;
-        this.thisIsShowingLabelEditorMenu = false;
-    }
-
-    // ###########################################################################################
-    // Updates the menu text and button visibility according to the current editor and calibration
-    // state, including the new KiCad trace calibration start/apply/discard workflow.
-    // ###########################################################################################
-    private void UpdateLabelEditorMenuButtons()
-    {
-        this.SchematicsLabelEditorMenuStateTextBlock.Text =
-            this.thisIsLabelEditorMode
-                ? "Component label editor mode"
-                : this.thisIsKiCadTraceCalibrationMode
-                    ? "KiCad trace calibration"
-                    : "Contributor mode actions";
-
-        this.EnableLabelEditorButton.IsVisible =
-            !this.thisIsLabelEditorMode &&
-            !this.thisIsKiCadTraceCalibrationMode;
-
-        this.BeginKiCadTraceCalibrationButton.IsVisible =
-            !this.thisIsLabelEditorMode &&
-            !this.thisIsKiCadTraceCalibrationMode &&
-            this.HasCurrentSchematicKiCadTraces();
-
-        this.ApplyLabelEditorChangesButton.IsVisible = this.thisIsLabelEditorMode;
-        this.CancelLabelEditorChangesButton.IsVisible = this.thisIsLabelEditorMode;
-
-        this.ApplyKiCadTraceCalibrationButton.IsVisible = this.thisIsKiCadTraceCalibrationMode;
-        this.CancelKiCadTraceCalibrationButton.IsVisible = this.thisIsKiCadTraceCalibrationMode;
-    }
 
     // ###########################################################################################
     // Loads a fresh working-copy snapshot of highlight rectangles for the current schematic.
@@ -224,8 +129,9 @@ public partial class TabSchematics
         this.LoadLabelEditorWorkingCopyForCurrentSchematic();
         this.UpdateLabelEditorLockState();
         this.RefreshLabelEditorOverlay();
-        this.HideLabelEditorMenu();
+        this.HideSchematicsMenu();
         this.SchematicsContainer.Focus();
+        this.FollowPictureTool();
 
         Logger.Info($"Label editor enabled for schematic [{this.thisLabelEditorSchematicName}] with [{this.thisLabelEditorWorkingHighlights.Count}] rectangles loaded");
     }
@@ -251,10 +157,11 @@ public partial class TabSchematics
         this.thisLabelEditorRedoStack.Clear();
 
         this.UpdateLabelEditorLockState();
-        this.HideLabelEditorMenu();
+        this.HideSchematicsMenu();
         this.HideNewLabelEditorPrompt();
         this.RefreshLabelEditorOverlay();
         this.SchematicsContainer.Focus();
+        this.FollowPictureTool();
 
         Logger.Info("Label editor changes canceled");
     }
@@ -299,7 +206,7 @@ public partial class TabSchematics
             Logger.Debug($"Label editor resolved schematic name: [{schematicName}]");
             Logger.Debug($"Label editor resolved region: [{region}]");
 
-            if (string.IsNullOrWhiteSpace(excelPath) || string.IsNullOrWhiteSpace(cacheKey))
+            if (this.LabelEditorSaveOverrideForTests is null && (string.IsNullOrWhiteSpace(excelPath) || string.IsNullOrWhiteSpace(cacheKey)))
             {
                 Logger.Warning("Label editor save failed - could not resolve current board Excel path");
                 return;
@@ -332,7 +239,9 @@ public partial class TabSchematics
             // takes a noticeable moment, and neither can be stopped halfway - so past the limit the
             // overlay lifts and the save carries on to its own end (BusyOverlay.RunLocalAsync).
             // ###########################################################################################
-            string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingLabels, async () =>
+            string? failure = this.LabelEditorSaveOverrideForTests is { } saveForTests
+                ? await saveForTests(schematicName)
+                : await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingLabels, async () =>
             {
                 // Copied from the published FILE as it is now, never from the board cache - see
                 // DraftSeeder.SeedFromPublishedFile.
@@ -392,7 +301,7 @@ public partial class TabSchematics
             this.thisLabelEditorRedoStack.Clear();
 
             this.UpdateLabelEditorLockState();
-            this.HideLabelEditorMenu();
+            this.HideSchematicsMenu();
             this.HideNewLabelEditorPrompt();
             this.RefreshLabelEditorOverlay();
             this.SchematicsContainer.Focus();
@@ -404,7 +313,15 @@ public partial class TabSchematics
             // NewContributeStrategy.md Phase 2's "sync never destroys a draft" guarantee), so that risk
             // no longer exists for this save path and the warning would now be describing something
             // that cannot happen.
-            this.MainWindow?.ReloadCurrentBoardFromDisk(schematicName);
+            // The bar follows BEFORE the board is read again (code review, 2026-10-26): that reload
+            // resets the tab, which forgets who asked for the tool - and its end was never told, so
+            // Done left CRT on this tab.
+            this.FollowPictureTool();
+
+            if (this.ReloadBoardOverrideForTests is { } reloadForTests)
+                reloadForTests(schematicName);
+            else
+                this.MainWindow?.ReloadCurrentBoardFromDisk(schematicName);
 
             Logger.Info($"Label editor changes saved and reload requested for schematic [{schematicName}]");
         }

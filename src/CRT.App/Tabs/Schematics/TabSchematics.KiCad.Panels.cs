@@ -67,7 +67,7 @@ public partial class TabSchematics
 
         if (boardData == null || root == null || root.Pcb.Count == 0)
         {
-            if (UserSettings.ContributorMode)
+            if (UserSettings.DetailedLog)
             {
                 Logger.Warning("Important signals debug: panel rebuild aborted because board data or KiCad PCB data is unavailable");
             }
@@ -95,9 +95,9 @@ public partial class TabSchematics
 
         var normalizedNameByAnyKnownName = KiCadNetNames.Resolver(nets.Select(net => (net.Name, net.NormalizedName)));
 
-        bool isContributorMode = UserSettings.ContributorMode;
+        bool isDetailedLog = UserSettings.DetailedLog;
 
-        if (isContributorMode)
+        if (isDetailedLog)
         {
             Logger.Debug($"Important signals debug: Excel rows loaded [{boardData.KiCadImportantSignals.Count}]");
             Logger.Debug($"Important signals debug: loaded [{knownNetNames.Count}] raw KiCad net names");
@@ -130,7 +130,7 @@ public partial class TabSchematics
             {
                 invalidRowCount++;
 
-                if (isContributorMode)
+                if (isDetailedLog)
                 {
                     Logger.Warning(
                         $"Important signals debug: skipped invalid Excel row with DisplayName=[{displayName}] KiCadNetName=[{kiCadNetName}]");
@@ -153,7 +153,7 @@ public partial class TabSchematics
             {
                 unresolvedRowCount++;
 
-                if (isContributorMode)
+                if (isDetailedLog)
                 {
                     Logger.Warning(
                         $"Important signals debug: Excel KiCad net name [{kiCadNetName}] for display name [{displayName}] did not match any loaded KiCad net name");
@@ -175,7 +175,7 @@ public partial class TabSchematics
             {
                 duplicateResolvedDisplayNameToNetPairs.Add(resolvedPairKey);
 
-                if (isContributorMode)
+                if (isDetailedLog)
                 {
                     Logger.Warning(
                         $"Important signals debug: duplicate resolved mapping detected for display name [{displayName}] -> normalized net [{normalizedNetName}]");
@@ -186,7 +186,7 @@ public partial class TabSchematics
             resolvedRowCount++;
         }
 
-        if (isContributorMode)
+        if (isDetailedLog)
         {
             foreach (var duplicateDisplayName in excelRowCountByDisplayName
                          .Where(entry => entry.Value > 1)
@@ -209,7 +209,7 @@ public partial class TabSchematics
 
         if (this.thisImportantSignalDisplayNames.Count == 0)
         {
-            if (isContributorMode)
+            if (isDetailedLog)
             {
                 Logger.Warning("Important signals debug: no Excel signal rows could be resolved to loaded KiCad net names");
             }
@@ -237,7 +237,7 @@ public partial class TabSchematics
         this.ImportantSignalsPanel.IsVisible = true;
         this.UpdateImportantSignalsClearButtonState(true);
 
-        if (isContributorMode)
+        if (isDetailedLog)
         {
             Logger.Debug($"Important signals debug: built [{items.Count}] visible important signal groups");
 

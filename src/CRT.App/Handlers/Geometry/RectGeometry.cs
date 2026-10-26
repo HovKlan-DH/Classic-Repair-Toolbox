@@ -162,6 +162,40 @@ namespace Handlers.Geometry
         }
 
         // ###########################################################################################
+        // A colour as the board file keeps it (CRT 4.0 step 2, slice 4b - a picture's colours picked in
+        // the component pane): by its NAME when it is one of the named colours ("Red", "DodgerBlue" -
+        // what every picture of the live trees uses), else "#RRGGBB", with the alpha in front only when
+        // it is not opaque. ParseColorOrDefault reads every one of them back.
+        // ###########################################################################################
+        public static string ColorText(Color color)
+        {
+            if (color.A == 255 && RectGeometry.NamedColors.Value.TryGetValue(color.ToUInt32(), out string? name))
+            {
+                return name;
+            }
+
+            return color.A == 255
+                ? string.Create(CultureInfo.InvariantCulture, $"#{color.R:X2}{color.G:X2}{color.B:X2}")
+                : string.Create(CultureInfo.InvariantCulture, $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}");
+        }
+
+        // Avalonia's named colours by value - the first name of a value wins ("Aqua" and "Cyan" are one).
+        private static readonly Lazy<Dictionary<uint, string>> NamedColors = new(() =>
+        {
+            var named = new Dictionary<uint, string>();
+
+            foreach (System.Reflection.PropertyInfo property in typeof(Colors).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (property.PropertyType == typeof(Color) && property.GetValue(null) is Color value && value.A == 255)
+                {
+                    named.TryAdd(value.ToUInt32(), property.Name);
+                }
+            }
+
+            return named;
+        });
+
+        // ###########################################################################################
         // Parses an opacity written either as 0..1, as 0..100, or with a trailing percent sign, and
         // clamps the result to 0..1. Falls back when the text cannot be parsed at all.
         // ###########################################################################################

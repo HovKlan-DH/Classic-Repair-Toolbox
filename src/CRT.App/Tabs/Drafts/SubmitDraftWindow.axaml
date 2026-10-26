@@ -120,6 +120,48 @@
 					   Margin="0,2,0,0"
 					   Text="A sentence is enough. It is the first thing whoever reviews this will read." />
 
+			<!-- THE OTHER DRAFTS (CRT 4.0 step 2, slice 5 - the plan: "Submit offers to send all the drafts
+			     at once, with one message"). Each one ticked is sent after this one, as a submission of its
+			     own with the same address and message; unticked to start with, and greyed out with the
+			     reason when it cannot go (OfferOtherDrafts). Hidden with no other draft. -->
+			<StackPanel x:Name="OtherDraftsSection" IsVisible="False" Spacing="2" Margin="0,12,0,0">
+				<TextBlock x:Name="OtherDraftsHeadingText" FontWeight="Bold" />
+				<TextBlock x:Name="OtherDraftsIntroText"
+						   TextWrapping="Wrap"
+						   Opacity="0.75"
+						   FontSize="12" />
+				<ScrollViewer MaxHeight="140" Margin="0,4,0,0">
+					<StackPanel x:Name="OtherDraftsPanel" Spacing="2" />
+				</ScrollViewer>
+			</StackPanel>
+
+			<!-- CREDIT FOR THE WORK SENT (CRT 4.0 step 2, 2026-10-26 - the plan: "After a submission, CRT
+			     suggests a credit for what you sent"). Offered BEFORE sending, so the credit travels with
+			     the work it credits; ticked ones go into the draft first (ShowCreditOffer). Hidden when
+			     the draft's changes deserve none. -->
+			<StackPanel x:Name="CreditOfferPanel" IsVisible="False" Spacing="2" Margin="0,12,0,0">
+				<TextBlock Text="Your name in the board's credits"
+						   FontWeight="Bold" />
+				<TextBlock TextWrapping="Wrap"
+						   Opacity="0.75"
+						   FontSize="12"
+						   Text="For the work you are sending - the About tab shows the credits to everybody once it is published. Untick what you do not want, or leave the name empty for no credit." />
+				<StackPanel x:Name="CreditChoicesPanel" Spacing="2" Margin="0,4,0,4" />
+				<Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto,Auto">
+					<TextBlock Grid.Row="0" Grid.Column="0" Text="Name or handle" FontSize="12" />
+					<TextBlock Grid.Row="0" Grid.Column="2" Text="Contact (shown to everybody)" FontSize="12" />
+					<TextBox Grid.Row="1" Grid.Column="0" x:Name="CreditNameTextBox" />
+					<TextBox Grid.Row="1" Grid.Column="2" x:Name="CreditContactTextBox" Watermark="A forum, a Discord, a web page" />
+				</Grid>
+				<!-- While another draft is ticked: its credit goes under the same name (slice 5). -->
+				<CheckBox x:Name="CreditOthersCheckBox"
+						  IsChecked="True"
+						  Margin="0,4,0,0"
+						  IsVisible="False">
+					<TextBlock x:Name="CreditOthersText" TextWrapping="Wrap" />
+				</CheckBox>
+			</StackPanel>
+
 			<!-- Local problems - a referenced file that is missing, for instance. Hidden unless
 			     there are any. -->
 			<Border x:Name="ProblemsBorder"

@@ -284,6 +284,140 @@ public class ComponentInfoWindowTests : IDisposable
     }
 
     // -----------------------------------------------------------------------------------------
+    // CRT 4.0's new component data (step 2, slice 3c)
+    // -----------------------------------------------------------------------------------------
+
+    // The package joins the category line; the repair notes get a section of their own.
+    [Fact]
+    public void The_package_joins_the_category_line_and_the_repair_notes_are_shown()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[]
+            {
+                new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", PartNumber = "906114-01", Package = "DIP-28", RepairNotes = "Runs hot. See https://example.org/pla" },
+            });
+
+            Assert.Equal("IC | 906114-01 | DIP-28", TextOf(window, "InfoCategoryPartNumber"));
+            Assert.True(ControlOf<Control>(window, "RepairNotesSection").IsVisible);
+
+            // Links in them are runs of their own, so the TextBlock's Text is empty (CLAUDE.md).
+            TextBlock notes = ControlOf<TextBlock>(window, "InfoRepairNotes");
+            string shown = string.Concat(notes.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text));
+            Assert.Contains("Runs hot.", shown, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void Without_new_data_the_new_sections_stay_hidden()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() });
+
+            Assert.False(ControlOf<Control>(window, "RepairNotesSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "ReplacementsSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "BaselineConditionsSection").IsVisible);
+        });
+    }
+
+    // The pins of the region shown are listed, the case drawn; switching the popup's region lists
+    // that region's.
+    [Fact]
+    public void The_pinout_lists_the_pins_of_the_region_shown_and_follows_the_region_buttons()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                hasExplicitRegionComponents: true,
+                pins:
+                [
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Region = "NTSC", Pin = "2", Name = "NTSC clock" },
+                    new ComponentPinEntry { BoardLabel = "U9", Pin = "1", Name = "Another chip" },
+                ]);
+
+            Assert.True(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.Equal([new ComponentPopupPin("1", "VCC", "Power")], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl"));
+            Assert.Equal(8, ControlOf<PinoutDrawing>(window, "InfoPinoutDrawing").LayoutForTests!.Pins.Count);
+
+            ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal(["1", "2"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Select(pin => pin.Pin));
+        });
+    }
+
+    // ###########################################################################################
+    // Under a scope baseline, how the board's baselines were measured: its "Scope measurements"
+    // files, each a link (2026-10-26). Read once the picture has loaded - the section follows the
+    // picture selected.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_scope_baseline_links_the_boards_scope_measurement_files()
+    {
+        string root = this.thisWorkspace.Path_("Data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Scope baseline"));
+        File.WriteAllBytes(Path.Combine(root, "Scope baseline", "U8_1.png"), Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="));
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = CreateWindow();
+
+            window.SetComponent(
+                BoardLabel,
+                "U8",
+                [Component()],
+                [new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "1", Name = "PHI2", File = "Scope baseline/U8_1.png", TimeDiv = "1us" }],
+                [],
+                [],
+                "PAL",
+                root,
+                hasExplicitRegionComponents: false,
+                boardFiles:
+                [
+                    new BoardLocalFileEntry { Category = "Scope measurements", Name = "Introduction", File = "Scope baseline/intro.txt" },
+                    new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = "Board local files/manual.pdf" },
+                ]);
+
+            for (int attempt = 0; attempt < 100 && ItemsOf<ComponentImageItem>(window, "ThumbnailList").Count == 0; attempt++)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.True(ControlOf<Control>(window, "BaselineConditionsSection").IsVisible);
+            Assert.True(ControlOf<Control>(window, "InfoMeasuringNotesLabel").IsVisible);
+            Assert.Equal(["Introduction"], ItemsOf<ComponentLocalFileItem>(window, "InfoMeasuringNotesItemsControl").Select(note => note.Name));
+        });
+    }
+
+    [Fact]
+    public void The_replacement_parts_are_listed()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component() },
+                replacements: [new ComponentReplacementEntry { BoardLabel = BoardLabel, PartNumber = "PLAnkton", Kind = "Drop-in" }]);
+
+            Assert.True(ControlOf<Control>(window, "ReplacementsSection").IsVisible);
+            Assert.Equal("PLAnkton - Drop-in", Assert.Single(ItemsOf<ComponentPopupReplacement>(window, "InfoReplacementsItemsControl")).Title);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Local files and links
     // -----------------------------------------------------------------------------------------
 
@@ -565,7 +699,9 @@ public class ComponentInfoWindowTests : IDisposable
         IEnumerable<ComponentLinkEntry>? links = null,
         string region = "PAL",
         bool hasExplicitRegionComponents = false,
-        string draftBoardFolder = "")
+        string draftBoardFolder = "",
+        IReadOnlyList<ComponentPinEntry>? pins = null,
+        IReadOnlyList<ComponentReplacementEntry>? replacements = null)
     {
         window.SetComponent(
             BoardLabel,
@@ -577,7 +713,10 @@ public class ComponentInfoWindowTests : IDisposable
             region,
             DataRoot,
             hasExplicitRegionComponents,
-            draftBoardFolder);
+            draftBoardFolder,
+            boardIdentity: string.Empty,
+            pins,
+            replacements);
     }
 
     private static ComponentEntry Component(

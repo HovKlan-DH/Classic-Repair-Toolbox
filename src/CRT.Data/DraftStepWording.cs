@@ -14,6 +14,12 @@ namespace Handlers.DataHandling
 
         public static string ComponentDeleted(string label) => $"[{label}] deleted";
 
+        // A new component, from the component pane's "Add component" (slice 3c).
+        public static string ComponentAdded(string label) => $"[{label}] added";
+
+        // "Copy from another board" (slice 5) - what the component took, and from where.
+        public static string ComponentCopied(string label, string fromBoard) => $"[{label}] copied from {fromBoard}";
+
         // One field of a component, from the component pane - "Short description of [U8]".
         public static string ComponentField(string label, string field) => $"{field} of [{label}]";
 
@@ -22,6 +28,24 @@ namespace Handlers.DataHandling
         public static string ComponentReplacements(string label) => $"Replacement parts of [{label}]";
 
         public static string ComponentLinks(string label) => $"Links of [{label}]";
+
+        public static string ComponentPictures(string label) => $"Pictures of [{label}]";
+
+        public static string ComponentBaselines(string label) => $"Scope baselines of [{label}]";
+
+        public static string ComponentFiles(string label) => $"Files of [{label}]";
+
+        // The board's own lists, from the component pane's board parts (slice 4a).
+        public const string BoardFiles = "The board's files";
+
+        public const string BoardLinks = "The board's links";
+
+        public const string Credits = "Credits";
+
+        public const string ImportantSignals = "Important signals";
+
+        // The pictures' highlight colours (slice 4b).
+        public const string PictureColours = "Colours of the pictures";
 
         // "Undo changes to IC1" - the component back to its published values (ComponentRevert).
         public static string ComponentReverted(string label) => $"[{label}] back to its published values";

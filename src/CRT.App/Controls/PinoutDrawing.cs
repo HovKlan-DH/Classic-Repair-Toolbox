@@ -12,8 +12,9 @@ namespace CRT
 {
     // ###########################################################################################
     // A COMPONENT'S CASE DRAWN FROM ABOVE (CRT 4.0 step 2, 2026-10-25 - the plan's Pinout: "CRT draws
-    // the top view, with the notch and pin 1"). The component pane hands it the package and the pins;
-    // every position is PinoutGeometry's, so this only paints. A case CRT cannot draw takes no room.
+    // the top view, with the notch and pin 1"). The component pane and the component popup hand it the
+    // package and the pins - so it is in Controls/ since slice 3c - and every position is
+    // PinoutGeometry's, so this only paints. A case CRT cannot draw takes no room.
     // ###########################################################################################
     public sealed class PinoutDrawing : Control
     {
