@@ -76,6 +76,32 @@ public sealed class BoardTableHistoryTests
         Assert.Equal(1, sheet.ChangeCount);
     }
 
+    // ###########################################################################################
+    // Where the latest change was, without taking it back - what the Drafts tab's table hands the
+    // draft's session with each change, so the draft's undo puts the cursor on it (2026-10-25).
+    // ###########################################################################################
+    [Fact]
+    public void Latest_says_where_the_latest_change_was_and_takes_nothing_back()
+    {
+        BoardTableDocument document = Open();
+        BoardTableSheet sheet = Components(document);
+
+        Assert.Null(document.History.Latest);
+
+        FriendlyName(Row(sheet, "U1")).Text = "CPU 6510";
+        FriendlyName(Row(sheet, "U2")).Text = "VIC II";
+        sheet.Refresh();
+
+        BoardTableHistoryResult? latest = document.History.Latest;
+
+        Assert.NotNull(latest);
+        Assert.Same(sheet, latest.Sheet);
+        Assert.Same(Row(sheet, "U2"), latest.Row);
+        Assert.Equal(Column(BoardWorkbookSchema.ColFriendlyName), latest.Column);
+        Assert.Equal(2, document.History.UndoCount);
+        Assert.Equal("VIC II", FriendlyName(Row(sheet, "U2")).Text);
+    }
+
     [Fact]
     public void Undo_removes_an_inserted_row_and_redo_brings_back_the_SAME_row()
     {

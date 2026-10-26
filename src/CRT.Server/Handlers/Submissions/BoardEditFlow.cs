@@ -47,7 +47,8 @@ namespace CRT.Server.Handlers.Submissions
     //                  is refused.
     //   5. FILES     - every file the rows cite must be in BETA already, and is taken from there
     //                  (imported by the create, as any submission's unchanged files are). A
-    //                  maintainer edits rows here and cannot bring in a file nobody has sent.
+    //                  maintainer edits rows here and cannot bring in a file nobody has sent. The
+    //                  board's KiCad data goes along as BETA has it.
     //   6. REMOVALS  - what the publish would remove, which CheckAsync answers BEFORE the reason is
     //                  asked, and which the edit must send back unchanged - the approval's own rule
     //                  (FileRemovalPreview), checked here too so nothing is made for a publish the
@@ -108,7 +109,22 @@ namespace CRT.Server.Handlers.Submissions
                 beta.Value.Rows,
                 MayEdit: refusal is null,
                 MayNotEditReason: refusal,
-                BetaDataUrl: betaDataUrl));
+                BetaDataUrl: betaDataUrl,
+                FilePlaces: BoardEditFlow.FilePlaces(root, boardId!)));
+        }
+
+        // Where each file of the board lies in the tree at `root` - see BoardTableAnswer.FilePlaces.
+        internal static IReadOnlyDictionary<string, string> FilePlaces(string root, string boardId)
+        {
+            var places = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach ((string name, BoardDocument.StoredFileRow file) in PublishedBoardFiles.ByName(root, boardId) ?? new Dictionary<string, BoardDocument.StoredFileRow>())
+            {
+                if (PublishedBoardFiles.StoredRelative(file) is { Length: > 0 } stored)
+                    places[name] = stored;
+            }
+
+            return places;
         }
 
         // ###########################################################################################
@@ -137,8 +153,10 @@ namespace CRT.Server.Handlers.Submissions
             if (!BoardDescriptorRules.IsValidBoardId(boardId))
                 return BoardTableOutcome.NotFound(BoardEditFlow.NotInStableMessage);
 
+            string stableRoot = Path.GetFullPath(productionTreeRoot);
+
             (BoardData Board, SubmissionRows Rows)? stable = await BoardEditFlow
-                .ReadBetaAsync(Path.GetFullPath(productionTreeRoot), boardId!, boards, cancellationToken)
+                .ReadBetaAsync(stableRoot, boardId!, boards, cancellationToken)
                 .ConfigureAwait(false);
 
             if (stable is null)
@@ -151,7 +169,8 @@ namespace CRT.Server.Handlers.Submissions
                 MayEdit: false,
                 MayNotEditReason: BoardEditFlow.StableReadOnlyMessage,
                 BetaDataUrl: null,
-                ProductionDataUrl: productionDataUrl));
+                ProductionDataUrl: productionDataUrl,
+                FilePlaces: BoardEditFlow.FilePlaces(stableRoot, boardId!)));
         }
 
         // ###########################################################################################
@@ -176,7 +195,8 @@ namespace CRT.Server.Handlers.Submissions
                 .PrepareAsync(access, request, dataTreeRoot, store, boards, oneSubmissionInBeta, nowUtc, cancellationToken)
                 .ConfigureAwait(false);
 
-            return refusal ?? BoardEditOutcome.Checked(prepared!.Removals.Files);
+            // By the board's names - a stored file's place is its checksum (2026-10-25).
+            return refusal ?? BoardEditOutcome.Checked(prepared!.Removals.FileNames());
         }
 
         // ###########################################################################################
@@ -214,8 +234,9 @@ namespace CRT.Server.Handlers.Submissions
             if (string.IsNullOrWhiteSpace(request!.Summary))
                 return BoardEditOutcome.Refused(BoardEditFlow.NoReasonMessage, []);
 
-            // The files the maintainer was shown, or a list that has moved since the check.
-            if (!prepared!.Removals.Matches(request.ExpectedRemovals))
+            // The files the maintainer was shown - by name, as the check said them - or a list that
+            // has moved since the check.
+            if (!prepared!.Removals.MatchesNames(request.ExpectedRemovals))
                 return BoardEditOutcome.Conflict(BoardEditFlow.RemovalsChangedMessage);
 
             // ---- 7. Queue -----------------------------------------------------------------------
@@ -380,13 +401,18 @@ namespace CRT.Server.Handlers.Submissions
                 return (null, BoardEditOutcome.Refused(BoardEditFlow.NothingChangedMessage, []));
 
             // ---- 5. Files ----------------------------------------------------------------------
-            PublishedTreeView? tree = PublishedTreeProbe.For(root);
+            //
+            // In the CRT 4.0 tree (2026-10-25) a row cites a file by the board's name, and "in BETA"
+            // is a name BETA's board lists whose bytes BETA holds (PublishedBoardFiles).
+            PublishedTreeView? tree = PublishedTreeProbe.For(root, boardId);
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow> listed =
+                PublishedBoardFiles.ByName(root, boardId) ?? new Dictionary<string, BoardDocument.StoredFileRow>();
             var findings = new List<ValidationFinding>();
             var files = new List<SubmissionFile>();
 
             foreach (string path in SubmissionManifestBuilder.CollectReferencedFiles(SubmissionRowsBoard.ToBoard(edited)))
             {
-                if (BoardEditFlow.TryFindInBeta(root, tree, path, out SubmissionFile? file))
+                if (BoardEditFlow.TryFindInBeta(root, listed, path, out SubmissionFile? file))
                 {
                     files.Add(file!);
                     continue;
@@ -399,6 +425,21 @@ namespace CRT.Server.Handlers.Submissions
                     Subject = path,
                     Message = $"[{path}] is not in BETA. A change made on the Boards screen can only use files BETA already holds."
                 });
+            }
+
+            // ###########################################################################################
+            // *** THE BOARD'S KiCad DATA GOES ALONG AS BETA HAS IT (2026-10-25). *** No row cites it,
+            // and in the 4.0 tree a publish writes the board's list of files from what the submission
+            // carries - so a table edit sent without it would publish the board without its traces.
+            // Every name BETA's board lists in its "KiCad data" folder travels unchanged.
+            // ###########################################################################################
+            foreach (BoardDocument.StoredFileRow kiCad in listed.Values.Where(file => SubmissionKiCadFiles.IsInKiCadFolder(file.Name)))
+            {
+                if (!files.Any(file => string.Equals(file.Path, kiCad.Name, StringComparison.OrdinalIgnoreCase)) &&
+                    BoardEditFlow.TryFindInBeta(root, listed, kiCad.Name, out SubmissionFile? file))
+                {
+                    files.Add(file!);
+                }
             }
 
             if (findings.Count > 0)
@@ -505,25 +546,31 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The file at `path` as BETA holds it - its hash from the tree's cache and its size from
-        // disk - when the path is inside the tree, reached through no link, and there. The create
-        // imports it from there and hashes what it copies, which is the real check.
+        // The file BETA's board lists under `name` - its checksum from the board's list and its size
+        // from disk - when its stored file is inside the tree, reached through no link, and there.
+        // The create imports it from there and hashes what it copies, which is the real check.
         // ###########################################################################################
-        private static bool TryFindInBeta(string root, PublishedTreeView? tree, string path, out SubmissionFile? file)
+        private static bool TryFindInBeta(
+            string root,
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow> listed,
+            string name,
+            out SubmissionFile? file)
         {
             file = null;
 
-            string? hash = tree?.HashOf(path);
+            if (!listed.TryGetValue(name, out BoardDocument.StoredFileRow? row))
+                return false;
 
-            if (hash is null ||
-                !SubmissionPathRules.TryResolve(root, path, out string resolved, out _) ||
+            string resolved = PublishedBoardFiles.StoredPath(root, row.Sha256, row.Name);
+
+            if (resolved.Length == 0 ||
                 PublishPathSafety.FindLinkOnPath(root, resolved, PublishPathSafety.IsLink) is not null ||
                 !File.Exists(resolved))
             {
                 return false;
             }
 
-            file = new SubmissionFile { Path = path, Sha256 = hash, SizeBytes = new FileInfo(resolved).Length };
+            file = new SubmissionFile { Path = name, Sha256 = row.Sha256.Trim().ToLowerInvariant(), SizeBytes = new FileInfo(resolved).Length };
             return true;
         }
 

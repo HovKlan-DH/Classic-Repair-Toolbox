@@ -82,8 +82,8 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
 		</Style>
 
-		<!-- The "File location" box of a row whose newly picked file has no folder, or one outside
-		     this board and the shared folders - "Save to draft" refuses it (ValidateNewFileLocations).
+		<!-- The "File location" box of a row whose newly picked file has no folder, or one that
+		     cannot hold a file of the board - "Save to draft" refuses it (ValidateNewFileLocations).
 		     Only the colour changes, never the thickness, so marking a row never moves the layout. -->
 		<Style Selector="ComboBox.LocationError">
 			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
@@ -814,6 +814,16 @@
 		</Border>
 
 		<Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+			<!-- "Undo changes to [U8]" - the component back to its published values, one step of the
+			     draft's history (CRT 4.0 step 1's last slice, 2026-10-25). Shown, and labelled with the
+			     component, from code (ComponentContribution.UnfinishedWork.cs) - only while it differs. -->
+			<Button Grid.Column="0"
+					x:Name="UndoChangesButton"
+					Classes="Danger"
+					HorizontalAlignment="Left"
+					IsVisible="False"
+					Click="OnUndoChangesClick" />
+
 			<StackPanel Grid.Column="1"
 						Orientation="Horizontal"
 						Spacing="8">

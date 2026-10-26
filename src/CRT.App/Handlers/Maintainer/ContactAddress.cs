@@ -46,7 +46,7 @@ namespace Handlers.MaintainerHandling
         // there is no account to create, which would then be untrue.
         public const string SubmitNote =
             "Sent with your maintainer account, as you are signed in on the Maintainer tab, so the maintainer reviewing it " +
-            "sees a verified address. The outcome is shown in \"My submissions\" on the Drafts tab. Sign out on the Maintainer " +
+            "sees a verified address. The outcome is shown in \"My submissions\" on the Contribute tab. Sign out on the Maintainer " +
             "tab to send with another address.";
     }
 }

@@ -80,7 +80,9 @@ namespace Handlers.DataHandling
 
                 Directory.CreateDirectory(directory);
 
-                LoadFrom(Path.Combine(directory, ReceiptsFileName));
+                // The receipts of what was sent to the test instance in a file of their own while
+                // CRT talks to it - see ContributionServer (2026-10-25).
+                LoadFrom(Path.Combine(directory, Handlers.Online.ContributionServer.FileNameFor(ReceiptsFileName)));
             }
             catch (Exception ex)
             {

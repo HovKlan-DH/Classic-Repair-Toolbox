@@ -6,29 +6,30 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHICH FILES a submission may carry and WHERE (security review, 2026-09-25). Pure: a manifest
-    // and a view of the published tree in, findings out.
+    // WHICH FILES a submission may carry (security review, 2026-09-25). Pure: a manifest and a view
+    // of the published board in, findings out.
     //
-    // SubmissionPathRules answers "is this path SHAPED safely" - relative, contained, no
-    // traversal. That turned out not to be enough, because a perfectly shaped path can still:
+    // *** IN THE CRT 4.0 TREE A SUBMITTED FILE IS NAMED BY ITS BOARD (2026-10-25). *** A file's
+    // `Path` is the board's own name for it ("Component images/7406.png"), the name its rows cite;
+    // its bytes are stored under their checksum (DataTreeLayout.StoredFilePath), so a submission
+    // never names a place in the tree and can never touch another board's file. The rules that
+    // stopped a path reaching another board or a shared folder (SubmissionFileScope's Foreign and
+    // shared files) went with the shared folders - every board owns its files (owner decision,
+    // 2026-10-24).
     //
-    //   1. name ANOTHER BOARD'S file ("Commodore/C64/250407/..." inside a submission to the
-    //      Amstrad CPC), which the publish then overwrote - see SubmissionFileScope;
-    //   2. be a file NO ROW USES, which the review screen had no way to show, so a maintainer
+    // SubmissionPathRules answers "is this name SHAPED safely" - relative, no traversal, no
+    // control characters, no two names that differ only by capitalisation. A safely shaped name can
+    // still:
+    //
+    //   1. be a file NO ROW USES, which the review screen had no way to show, so a maintainer
     //      approved it without ever seeing it;
-    //   3. be any type at all - a dot-file such as ".htaccess", which the web server hosting the
-    //      data tree honours, or an executable that syncs to every user's disk;
-    //   4. differ from a published path only by capitalisation, which Linux keeps apart and every
-    //      Windows and macOS client merges.
+    //   2. be any type at all - a dot-file such as ".htaccess", or an executable that syncs to
+    //      every user's disk (a name is also where CRT puts the file in a draft or a KiCad copy);
+    //   3. give a NEW board a folder that differs from a published one only by capitalisation,
+    //      which Linux keeps apart and every Windows and macOS client merges.
     //
     // Each is refused here, at create (before anything is uploaded) and again by PublishPlan (the
     // last gate before the tree is written). The same rules in both places, from this one class.
-    //
-    // *** EVERY RULE WAS CHECKED AGAINST EVERY SHIPPED BOARD. *** This project has twice shipped a
-    // rule that rejected correct, already-published data (region-variant labels, note-only image
-    // rows). SubmissionFileRulesShippedDataTests reads every board in Assets/Data and asserts none
-    // of them is refused - which is how the C128DCR's cross-board scope-baseline references were
-    // found, and why an UNCHANGED foreign file is allowed.
     // ###########################################################################################
     public static class SubmissionFileRules
     {
@@ -41,13 +42,12 @@ namespace Handlers.DataHandling
         // are images the review screen and the app already draw. The MiniPro catalogue is found by
         // scanning folders rather than through rows, so it never travels in a submission. *** The
         // board's own KiCad DATA travels since 2026-09-26, but NOT through this list: the KiCad
-        // types CRT reads are admitted only inside the board's own "KiCad data" folder
+        // types CRT reads are admitted only in the board's "KiCad data" folder
         // (SubmissionKiCadFiles.IsSubmittable), never anywhere a row could cite one. ***
         //
-        // *** NOT .svg, .json, .xml or .xlsx. *** SVG can carry script. A .json is the board's own
-        // highlight sidecar or its system.json, both generated at publish and never uploaded - an
-        // uploaded one would rewrite a board's highlights or its maintainer list. A workbook is
-        // generated from the rows (PublishPlan refuses one with its own message).
+        // *** NOT .svg, .json, .xml or .xlsx. *** SVG can carry script. The board file and the main
+        // file are .json, written by the publish from the rows and never uploaded. A workbook is
+        // what older CRTs read, and no 4.0 board names one.
         //
         // SubmissionContentRules must know the signature of every entry here - see its default arm.
         // ###########################################################################################
@@ -58,16 +58,16 @@ namespace Handlers.DataHandling
         };
 
         // ###########################################################################################
-        // Is this path's NAME acceptable - allowed type, and nothing hidden anywhere along it?
+        // Is this name acceptable - allowed type, and nothing hidden anywhere along it?
         //
         // *** A DOT ANYWHERE AT THE START OF A SEGMENT IS REFUSED, not just on the file. *** ".git/x"
-        // and ".well-known/y" are folders the web server and tooling treat specially, and a
-        // dot-file such as ".htaccess" is read by Apache as configuration for the folder it sits
-        // in. The checksum manifest already skips every dot-path, so nothing legitimate is lost.
+        // and ".well-known/y" are folders tooling treats specially, a dot-file such as ".htaccess"
+        // is read by Apache as configuration for the folder it sits in, and CRT's own bookkeeping in
+        // a draft is ".crt-*". The checksum manifest skips every dot-path, so nothing legitimate is
+        // lost.
         //
-        // `kiCadProjectFile` widens the allowlist to the KiCad types CRT reads - passed true ONLY
-        // for a file SubmissionKiCadFiles.IsSubmittable already said yes to (2026-09-26), so a
-        // .kicad_pcb outside the board's own "KiCad data" folder is refused like any other type.
+        // `kiCadProjectFile` widens the allowlist - passed true ONLY for a file
+        // SubmissionKiCadFiles.IsSubmittable already said yes to (2026-09-26).
         // ###########################################################################################
         public static bool TryCheckName(string? path, out string code, out string reason, bool kiCadProjectFile = false)
         {
@@ -100,7 +100,7 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            if (kiCadProjectFile && ComponentListBuilder.IsSupportedKiCadRawFile(path))
+            if (kiCadProjectFile)
                 return true;
 
             if (!SubmissionFileRules.AllowedExtensions.Contains(extension))
@@ -109,7 +109,7 @@ namespace Handlers.DataHandling
                 reason =
                     $"[{path}] is a {extension} file, which cannot be submitted. Board data may carry " +
                     $"these types: {string.Join(", ", SubmissionFileRules.AllowedExtensions.Order(StringComparer.Ordinal))}, " +
-                    "plus KiCad project files inside the board's own \"KiCad data\" folder.";
+                    "plus KiCad project files in the board's own \"KiCad data\" folder.";
                 return false;
             }
 
@@ -117,7 +117,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The files a manifest's ROWS name - the only files it may carry.
+        // The files a manifest's ROWS name - the only files besides its KiCad data it may carry.
         //
         // Through the SHARED collector, the same one the client builds its file list from, so a
         // client that sends exactly what its rows reference is never refused by this rule.
@@ -132,19 +132,55 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Is this one of the manifest's files the submission may carry: a KiCad file by
+        // SubmissionKiCadFiles' rule (against the published board's file of that name), or a file a
+        // row cites - of an allowed type and no hidden name either way? The reason when it is not.
+        // ###########################################################################################
+        public static bool TryAdmit(
+            SubmissionManifest manifest,
+            SubmissionFile file,
+            IReadOnlySet<string> referenced,
+            PublishedTreeView? board,
+            out string code,
+            out string reason)
+        {
+            ArgumentNullException.ThrowIfNull(manifest);
+            ArgumentNullException.ThrowIfNull(file);
+            ArgumentNullException.ThrowIfNull(referenced);
+
+            bool kiCadProjectFile = SubmissionKiCadFiles.IsSubmittable(manifest, file.Path, board?.HashOf(file.Path), file.Sha256);
+
+            if (!SubmissionFileRules.TryCheckName(file.Path, out code, out reason, kiCadProjectFile))
+                return false;
+
+            if (!kiCadProjectFile && !referenced.Contains(file.Path))
+            {
+                code = "file.not_used";
+                reason =
+                    $"[{file.Path}] is in the submission, but nothing in the board uses it. Only files " +
+                    "the board's rows name, and its KiCad data, can be submitted.";
+
+                return false;
+            }
+
+            return true;
+        }
+
+        // ###########################################################################################
         // Every problem with the manifest's FILES, all at once.
         //
-        // `tree` is what is published now. Null means it could not be consulted, and then every
-        // foreign file is refused - the one rule that needs the tree fails CLOSED without it - and
-        // case variants go unchecked here (PublishPlan checks them again against the real tree).
+        // `board` is the published board's files by name (PublishedTreeView), and the published
+        // tree's folders - for the board folder's capitalisation. Null means it could not be
+        // consulted: no file of the KiCad folder is then admitted on the strength of being published
+        // already, and the folder goes unchecked here (PublishPlan checks it again).
         //
-        // Paths that are not even SHAPED safely are skipped (SubmissionPathRules.IsSafelyShaped):
+        // Names that are not even SHAPED safely are skipped (SubmissionPathRules.IsSafelyShaped):
         // SubmissionPathRules.ValidateManifestPaths reports those, and every caller runs it first. A
-        // second finding about the same bad path under another code only contradicted the first.
+        // second finding about the same bad name under another code only contradicted the first.
         // ###########################################################################################
         public static IReadOnlyList<ValidationFinding> ValidateManifestFiles(
             SubmissionManifest manifest,
-            PublishedTreeView? tree)
+            PublishedTreeView? board)
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
@@ -160,43 +196,14 @@ namespace Handlers.DataHandling
                 if (!SubmissionPathRules.IsSafelyShaped(file.Path, out _))
                     continue;
 
-                // The board's own KiCad data (2026-09-26): a type of its own, and cited by no row -
-                // CRT reads the folder by name - so it is exempt from the citation rule below.
-                bool kiCadProjectFile = SubmissionKiCadFiles.IsSubmittable(manifest, file.Path);
-
-                if (!SubmissionFileRules.TryCheckName(file.Path, out string nameCode, out string nameReason, kiCadProjectFile))
-                {
-                    findings.Add(SubmissionFileRules.Error(nameCode, file.Path, nameReason));
-                    continue;
-                }
-
-                if (!kiCadProjectFile && !referenced.Contains(file.Path))
-                {
-                    findings.Add(SubmissionFileRules.Error(
-                        "file.not_used",
-                        file.Path,
-                        $"[{file.Path}] is in the submission, but nothing in the board uses it. Only files " +
-                        "the board's rows name can be submitted."));
-
-                    continue;
-                }
-
-                if (SubmissionFileScopes.Classify(manifest, file.Path) == SubmissionFileScope.Foreign)
-                {
-                    SubmissionFileRules.CheckForeign(file, tree, findings);
-                    continue;
-                }
-
-                string? variant = tree?.FindCaseVariant(file.Path);
-
-                if (variant is not null)
-                    findings.Add(SubmissionFileRules.CaseVariant(file.Path, variant));
+                if (!SubmissionFileRules.TryAdmit(manifest, file, referenced, board, out string code, out string reason))
+                    findings.Add(SubmissionFileRules.Error(code, file.Path, reason));
             }
 
-            // The board's own folder too, which a submission carrying no files at all would
-            // otherwise never check - "commodore/C64/250407" beside a published "Commodore/...".
+            // The board's own folder, which a NEW board would create - "commodore/C64/250407" beside
+            // a published "Commodore/...".
             string boardFolder = $"{manifest.Manufacturer}/{manifest.Hardware}/{manifest.Board}";
-            string? folderVariant = tree?.FindCaseVariant(boardFolder);
+            string? folderVariant = board?.FindCaseVariant(boardFolder);
 
             if (folderVariant is not null)
             {
@@ -210,44 +217,6 @@ namespace Handlers.DataHandling
 
             return findings;
         }
-
-        // ###########################################################################################
-        // A file outside this board and the shared folders: allowed ONLY when it is byte-identical
-        // to what is published there. Citing another board's file is how real data is shaped;
-        // CHANGING it from here is what must never happen. See SubmissionFileScope's header.
-        // ###########################################################################################
-        private static void CheckForeign(SubmissionFile file, PublishedTreeView? tree, List<ValidationFinding> findings)
-        {
-            string? published = tree?.HashOf(file.Path);
-
-            if (published is null)
-            {
-                findings.Add(SubmissionFileRules.Error(
-                    "file.other_board",
-                    file.Path,
-                    $"[{file.Path}] belongs to another board. A submission can only add or change files " +
-                    "in its own board's folder and in the shared folders."));
-
-                return;
-            }
-
-            if (!string.Equals(published, file.Sha256, StringComparison.Ordinal))
-            {
-                findings.Add(SubmissionFileRules.Error(
-                    "file.other_board_changed",
-                    file.Path,
-                    $"[{file.Path}] belongs to another board and differs from the published copy. Another " +
-                    "board's files can be used as they are, but not changed from here."));
-            }
-        }
-
-        internal static ValidationFinding CaseVariant(string path, string variant) =>
-            SubmissionFileRules.Error(
-                "path.case_collision_published",
-                path,
-                $"[{path}] differs only by capitalisation from the published [{variant}]. On Windows " +
-                "and macOS the two are the same file, so this would overwrite it for most users. Use " +
-                "the published spelling.");
 
         private static ValidationFinding Error(string code, string subject, string message) =>
             new() { Severity = ValidationSeverity.Error, Code = code, Subject = subject, Message = message };

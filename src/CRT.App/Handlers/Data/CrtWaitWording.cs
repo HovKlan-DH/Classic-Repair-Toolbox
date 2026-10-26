@@ -28,12 +28,20 @@ namespace Handlers.DataHandling
 
         public const string OpeningTable = "Opening the table...";
 
+        public const string OpeningComponent = "Opening the component...";
+
         public const string MakingDraft = "Making your draft of this board...";
 
         // Before the first draft of a run, when nothing has asked yet (Main.UpdateRequired.cs).
         public const string CheckingDraftsWithServer = "Checking with the server that this version of CRT can send drafts...";
 
         public const string ComparingWithOfficial = "Comparing your draft with the published data...";
+
+        // "Review changes", and the Submit and Discard draft dialogs, reading what the draft changes
+        // (DraftChangeSummary) - step 1's last slice, 2026-10-25.
+        public const string ReadingChanges = "Reading what your draft changes...";
+
+        public const string UndoingComponentChanges = "Putting the component back to its published values...";
 
         public const string BringingDraftUpToDate = "Bringing your draft up to date with the published data...";
 

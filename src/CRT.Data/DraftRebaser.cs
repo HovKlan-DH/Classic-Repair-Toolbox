@@ -46,22 +46,21 @@ namespace Handlers.DataHandling
     // BRINGS ONE DRAFT UP TO DATE WITH THE PUBLISHED BOARD (code review, 2026-10-13) - the files
     // around DraftRebase's merge.
     //
-    // Reads the base (what the draft was copied from), the draft and the published board, merges
-    // them, and writes - in this order, so a stop anywhere leaves a draft that is still whole:
+    // *** A CRT 4.0 DRAFT (2026-10-24). *** Reads the base (the published board file as it was
+    // copied), the draft's board file and the published one, merges the rows (DraftRebase) and the
+    // file lists (DraftRebaseFiles), and writes - in this order, so a stop anywhere leaves a draft
+    // that is still whole:
     //
-    //   1. the draft's workbook and sidecar, as ONE guarded write (DraftWorkbookStore
-    //      .ReplaceIfUnchanged - refused if Excel saved the workbook meanwhile, the previous
-    //      workbook put back if the sidecar cannot be written);
-    //   2. the board's own files the contributor did NOT change, replaced with the published bytes
-    //      where the update replaced them, and files the update added copied in - exactly the copies
-    //      a fresh draft would hold. A file the contributor changed is never touched;
-    //   3. the new base (the published board as it is now);
-    //   4. the marker - its BaseRevision, which the submission tells the server, and the content the
+    //   1. the draft's board file, as ONE guarded write (DraftWorkbookStore.ReplaceIfUnchanged -
+    //      refused if the draft changed meanwhile). Its file list follows the update where the
+    //      contributor left a file as copied - the bytes stay in the tree's store, nothing is copied;
+    //   2. the new base (the published board file as it is now);
+    //   3. the marker - its BaseRevision, which the submission tells the server, and the content the
     //      drift check compares - ONLY once the new base is kept.
     //
-    // Stopped after 1, 2 or 3, the next run merges again from the old base: everything the update
-    // brought is then in the draft already and merges without a conflict. *** That is why 4 waits
-    // for 3 (code review, 2026-10-13). *** A marker noting the new content beside the OLD base made
+    // Stopped after 1 or 2, the next run merges again from the old base: everything the update
+    // brought is then in the draft already and merges without a conflict. *** That is why 3 waits
+    // for 2 (code review, 2026-10-13). *** A marker noting the new content beside the OLD base made
     // every later run answer "already up to date", and measured the contributor's changes - and the
     // files the update replaced - against the wrong board for good.
     // ###########################################################################################
@@ -77,40 +76,55 @@ namespace Handlers.DataHandling
             if (marker.IsNewBoard)
                 return new DraftRebaseReport { Outcome = DraftRebaseOutcome.NoBase };
 
-            DraftBase? based = DraftBaseStore.Load(draftsRoot, excelDataFile);
+            BoardDocument? baseDocument = DraftBaseStore.LoadDocument(draftsRoot, excelDataFile);
 
-            if (based is null)
+            if (baseDocument is null)
                 return new DraftRebaseReport { Outcome = DraftRebaseOutcome.NoBase };
 
-            string publishedWorkbook = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
-            string publishedContent = DraftBaseStore.PublishedContentHash(publishedWorkbook);
+            string publishedPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
+            string publishedContent = DraftBaseStore.PublishedContentHash(publishedPath);
 
             if (publishedContent.Length > 0 && string.Equals(publishedContent, marker.BaseContentHash, StringComparison.Ordinal))
                 return new DraftRebaseReport { Outcome = DraftRebaseOutcome.AlreadyUpToDate };
 
-            string draftWorkbook = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
+            string draftPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
             string fingerprint = DraftWorkbookStore.Fingerprint(draftsRoot, excelDataFile);
 
             if (fingerprint.Length == 0)
                 return new DraftRebaseReport { Outcome = DraftRebaseOutcome.NoDraft };
 
-            BoardData? draft = BoardDataReader.ReadWorkbookUncached(draftWorkbook);
-
-            if (draft is null)
+            if (BoardFiles.ReadDocument(draftPath) is not BoardDocument draftDocument)
                 return new DraftRebaseReport { Outcome = DraftRebaseOutcome.DraftUnreadable };
 
-            BoardData? published = BoardDataReader.ReadWorkbookUncached(publishedWorkbook);
-
-            if (published is null)
+            if (BoardFiles.ReadDocument(publishedPath) is not BoardDocument publishedDocument)
                 return new DraftRebaseReport { Outcome = DraftRebaseOutcome.PublishedUnreadable };
 
+            BoardContent based = BoardDocumentMapping.ToContent(baseDocument);
+            BoardContent draft = BoardDocumentMapping.ToContent(draftDocument);
+            BoardContent published = BoardDocumentMapping.ToContent(publishedDocument);
+
+            // A file the contributor replaced - in the draft's list, or lying in its folder as a new
+            // file not yet taken in - is theirs, and so are the rows citing it.
+            string draftFolder = Path.GetDirectoryName(draftPath)!;
+            HashSet<string> replaced = DraftRebaseFiles.Replaced(
+                baseDocument.Files,
+                draftDocument.Files,
+                name => File.Exists(Path.Combine(draftFolder, name.Replace('/', Path.DirectorySeparatorChar))));
+
             DraftRebaseResult merged = DraftRebase.Merge(
-                based.Board,
-                draft,
-                published,
+                DraftRebaseFiles.MarkReplaced(based.Board, replaced),
+                draft.Board,
+                published.Board,
                 based.Calibrations,
-                DraftBoardSource.CollectCalibrations(draftWorkbook, draft),
-                DraftBoardSource.CollectCalibrations(publishedWorkbook, published));
+                draft.Calibrations,
+                published.Calibrations);
+
+            List<BoardDocument.StoredFileRow> files = DraftRebaseFiles.Merge(
+                baseDocument.Files,
+                draftDocument.Files,
+                publishedDocument.Files,
+                replaced,
+                out int filesUpdated);
 
             // 1. The board, guarded against an edit made while this ran.
             DraftWorkbookEditOutcome written = DraftWorkbookStore.ReplaceIfUnchanged(
@@ -119,7 +133,8 @@ namespace Handlers.DataHandling
                 fingerprint,
                 merged.Board,
                 merged.Calibrations,
-                BoardComponentHighlightStorage.LoadSchematicRenames(publishedWorkbook));
+                published.Renames,
+                files);
 
             switch (written)
             {
@@ -133,16 +148,13 @@ namespace Handlers.DataHandling
                     return new DraftRebaseReport { Outcome = DraftRebaseOutcome.WriteFailed };
             }
 
-            // 2. The files the contributor left alone follow the update.
-            int filesUpdated = DraftRebaser.FollowPublishedFiles(draftsRoot, dataRoot, excelDataFile, based, merged.Board);
-
-            // 3 and 4. The new base, then - only with it kept - the marker.
+            // 2 and 3. The new base, then - only with it kept - the marker.
             bool noted;
 
             try
             {
-                DraftBaseStore.Save(draftsRoot, excelDataFile, DraftBaseStore.Capture(dataRoot, excelDataFile, published, draftsRoot));
-                noted = DraftWorkbookStore.RecordBroughtUpToDate(draftsRoot, excelDataFile, published.RevisionDate, publishedContent);
+                DraftBaseStore.SaveDocument(draftsRoot, excelDataFile, publishedDocument);
+                noted = DraftWorkbookStore.RecordBroughtUpToDate(draftsRoot, excelDataFile, publishedDocument.RevisionDate, publishedContent);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
@@ -165,7 +177,7 @@ namespace Handlers.DataHandling
             }
 
             CrtLog.Info(
-                $"Brought the draft for [{excelDataFile}] up to date with revision [{published.RevisionDate}] - " +
+                $"Brought the draft for [{excelDataFile}] up to date with revision [{publishedDocument.RevisionDate}] - " +
                 $"{merged.ChangesKept} change(s) kept, {merged.Conflicts.Count} conflict(s), {filesUpdated} file(s) updated");
 
             return new DraftRebaseReport
@@ -175,130 +187,6 @@ namespace Handlers.DataHandling
                 FilesUpdated = filesUpdated,
                 Conflicts = merged.Conflicts,
             };
-        }
-
-        // ###########################################################################################
-        // The board's OWN files the merged board references: a copy the contributor did not change
-        // (its bytes still the base's) takes the published bytes when the update replaced them, and
-        // a file the draft has no copy of is copied in when the published tree has it - the copies a
-        // fresh draft would hold. Another board's file is never copied (DraftFolderLayout), and a
-        // copy the contributor changed is never touched. Returns how many files were written or
-        // removed.
-        //
-        // *** A COPY NOTHING CITES ANY MORE GOES (code review, 2026-10-13). *** The update deleted
-        // U8's image row, or pointed it at another file: the draft's untouched copy of the old file
-        // stayed, the new base no longer listed it, and the Drafts row counted it as a file the
-        // contributor had changed - Submit on, with nothing of theirs to send, and a draft that
-        // could never be retired. A copy of a base file the merged board no longer cites is removed
-        // while it still holds the base's bytes; one the contributor changed stays theirs.
-        // ###########################################################################################
-        private static int FollowPublishedFiles(string draftsRoot, string dataRoot, string excelDataFile, DraftBase based, BoardData merged)
-        {
-            var baseFiles = new Dictionary<string, DraftBaseFile>(StringComparer.Ordinal);
-
-            foreach (DraftBaseFile file in based.Files)
-                baseFiles.TryAdd(file.Path, file);
-
-            int written = DraftRebaser.RemoveUncitedCopies(draftsRoot, excelDataFile, based, merged);
-
-            foreach (string relative in SubmissionManifestBuilder.CollectReferencedFiles(merged))
-            {
-                string draftPath = DraftFolderLayout.GetReferencedFilePath(draftsRoot, excelDataFile, relative);
-                string? withinBoard = DraftFolderLayout.RelativeToBoardFolder(excelDataFile, relative);
-
-                if (draftPath.Length == 0 || withinBoard is null)
-                    continue;
-
-                string publishedPath = Path.Combine(dataRoot, relative.Replace('/', Path.DirectorySeparatorChar));
-
-                if (!File.Exists(publishedPath))
-                    continue;
-
-                try
-                {
-                    if (File.Exists(draftPath))
-                    {
-                        // Changed by the contributor (or not from the base at all): theirs, untouched.
-                        if (!baseFiles.TryGetValue(withinBoard, out DraftBaseFile? baseFile) ||
-                            !string.Equals(DraftFingerprint.CachedFileHash(draftPath), baseFile.Sha256, StringComparison.Ordinal))
-                        {
-                            continue;
-                        }
-
-                        if (string.Equals(DraftFingerprint.CachedFileHash(publishedPath), baseFile.Sha256, StringComparison.Ordinal))
-                            continue; // The update did not replace it either.
-                    }
-
-                    string? folder = Path.GetDirectoryName(draftPath);
-
-                    if (!string.IsNullOrWhiteSpace(folder))
-                        Directory.CreateDirectory(folder);
-
-                    string temporary = DraftFolderLayout.TemporaryPathFor(draftPath);
-                    File.Copy(publishedPath, temporary, overwrite: true);
-                    File.Move(temporary, draftPath, overwrite: true);
-                    written++;
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // One file not refreshed is a file that still holds the older copy - shown, sent
-                    // and fixable like any other. Not a reason to undo the merge.
-                    CrtLog.Warning($"Could not bring the draft's copy of [{relative}] up to date - [{ex.Message}]");
-                }
-            }
-
-            return written;
-        }
-
-        // The base files the merged board no longer cites whose draft copy still holds the base's
-        // bytes - removed. Returns how many.
-        private static int RemoveUncitedCopies(string draftsRoot, string excelDataFile, DraftBase based, BoardData merged)
-        {
-            var cited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (string relative in SubmissionManifestBuilder.CollectReferencedFiles(merged))
-            {
-                if (DraftFolderLayout.RelativeToBoardFolder(excelDataFile, relative) is string withinBoard)
-                    cited.Add(withinBoard);
-            }
-
-            string boardFolder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
-
-            if (string.IsNullOrWhiteSpace(boardFolder))
-                return 0;
-
-            int removed = 0;
-
-            foreach (DraftBaseFile file in based.Files)
-            {
-                if (cited.Contains(file.Path))
-                    continue;
-
-                string copy = Path.GetFullPath(Path.Combine(boardFolder, file.Path.Replace('/', Path.DirectorySeparatorChar)));
-
-                // Inside the board's own draft folder, and still exactly what was copied.
-                if (!copy.StartsWith(Path.GetFullPath(boardFolder) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-                    !File.Exists(copy))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    if (!string.Equals(DraftFingerprint.CachedFileHash(copy), file.Sha256, StringComparison.Ordinal))
-                        continue; // The contributor's own bytes - theirs, untouched.
-
-                    File.Delete(copy);
-                    removed++;
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Left behind it reads as a changed file - fixable by hand, not a reason to stop.
-                    CrtLog.Warning($"Could not remove the draft's copy of [{file.Path}], which the board no longer cites - [{ex.Message}]");
-                }
-            }
-
-            return removed;
         }
     }
 }

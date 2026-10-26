@@ -77,6 +77,26 @@ namespace CRT
         // Used by: DraftManager.Load
         public const string DraftsFolderName = "Drafts";
 
+        // Name of the local data folder - the synced copy of the online data tree. CRT 4.0 keeps its
+        // tree in a folder of its own (2026-10-24): a new folder is seeded from the install package
+        // instead of downloading a gigabyte, and the 3.x folder ("Data", LegacyDataFolderName) is
+        // left as it was - its user-made boards are taken in as drafts at the first 4.0 launch.
+        // Overridden entirely by "--data-root=".
+        // Used by: DataManager.ResolveDataRoot
+        public const string DataFolderName = "Data v4";
+        public const string LegacyDataFolderName = "Data";
+
+        // Where a board's KiCad files are copied under their own names for the loaders - a cache,
+        // rebuilt from the data whenever it is missing (BoardKiCadFolder). In the user's OWN app
+        // data folder, beside "Data v4" (code review, 2026-10-25): under the temporary folder - the
+        // shared /tmp on Linux - another account could make the copy's folder a link, and the copy
+        // deletes every file there it does not want.
+        // Used by: Main.KiCadRawPathsFor, BoardFilesWindow
+        public static string KiCadCacheFolder => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            AppFolderName,
+            "KiCad cache");
+
         // Name of the folder oscilloscope captures are saved in until the user picks another one on
         // the Oscilloscope tab. Beside "Workbooks" and "Drafts", NOT inside "Data": until 2026-10-13
         // the default was the data folder itself, which "Allow deletion of orphan and non-used
@@ -92,7 +112,7 @@ namespace CRT
         //
         // A drafted board keeps the same folder name under its own draft Files/ folder, so
         // importing KiCad data and later publishing it need no path rewriting.
-        // Used by: DataManager (sync protection, orphan cleanup), Main.GetCurrentBoardKiCadRawPaths,
+        // Used by: DataManager (sync protection, orphan cleanup), Main.KiCadRawPathsFor,
         // BoardFilesWindow's KiCad import.
         public const string KiCadDataFolderName = "KiCad data";
 
@@ -106,21 +126,25 @@ namespace CRT
         // Used by: WorklogManager
         public const string WorklogIndexFileName = "index.json";
 
-        // Prefix and suffix for the versioned main Excel file containing hardware definitions.
+        // Prefix and suffix for the versioned main file listing every board and oscilloscope - in
+        // CRT 4.0 the data tree's "Classic-Repair-Toolbox.v4.0.0.json" (DataTreeLayout.MainFileName;
+        // 2026-10-24). The newest at or below CRT's own version is read.
         // Used by: DataManager.InitializeAsync, DataManager.LoadMainExcel
         public const string MainExcelFileNamePrefix = "Classic-Repair-Toolbox.v";
-        public const string MainExcelFileSuffix = ".xlsx";
+        public const string MainExcelFileSuffix = ".json";
 
-        // Name of the main Excel file containing all hardware and board definitions.
+        // The main file looked for when no versioned one is found - the 4.0 tree's own.
         // Used by: DataManager.InitializeAsync, DataManager.LoadMainExcel
-        public const string MainExcelFileName = "Classic-Repair-Toolbox.xlsx";
+        public const string MainExcelFileName = DataTreeLayout.MainFileName;
 
         // ===== Online Services =====================================================================
 
-        // URL to the JSON manifest listing all data files and their SHA-256 checksums.
+        // URL to the JSON manifest listing all data files and their SHA-256 checksums - CRT 4.0's
+        // own trees (2026-10-24): an installed 3.x downloads every file ITS manifest lists, so the
+        // 4.0 data lives beside the frozen Excel trees, never among them (DataTreeLayout).
         // Used by: OnlineServices.FetchManifestAsync
-        public const string ChecksumsUrl = "https://classic-repair-toolbox.dk/app-data/dataChecksums.json";
-        public const string ChecksumsUrl_test = "https://classic-repair-toolbox.dk/app-data-BETA/dataChecksums.json";
+        public const string ChecksumsUrl = "https://classic-repair-toolbox.dk/app-data-v4/dataChecksums.json";
+        public const string ChecksumsUrl_test = "https://classic-repair-toolbox.dk/app-data-v4-BETA/dataChecksums.json";
 
         // URL for the launch check-in.
         // Used by: OnlineServices.CheckInVersionAsync
@@ -130,21 +154,46 @@ namespace CRT
         // CheckInContract keeps the form they have always sent, so both arrive alike.
         public const string CheckInUrl = CrtServerBaseUrl + "/" + CheckInContract.PathUnderApi;
 
-        // The CRT.Server host with NO path - what the Maintainer tab's review client builds on
-        // (ReviewApiRoutes.DefaultBaseAddress), since every one of its routes appends the full
-        // "/api/..." path itself. One host, so the two base addresses below cannot drift apart.
+        // The LIVE CRT.Server host with NO path. Its "/api" twin below is where every CRT sends its
+        // launch check-in, its feedback and its board views - a pre-release too, so the usage
+        // numbers and the feedback mail always reach the live service (2026-10-25; see
+        // ContributionServerRootUrl for what a pre-release sends elsewhere).
         public const string CrtServerRootUrl = "https://classic-repair-toolbox.dk";
 
-        // Base URL of the CRT.Server API (NewContributeStrategy.md Phase 3 onward) - accounts,
-        // and from Phase 4 the submission pipeline.
+        // Base URL of the LIVE CRT.Server API: the check-in (CheckInUrl), feedback
+        // (TabFeedback.FeedbackUrl) and board views (BoardViewReporter).
         //
-        // *** IT CARRIES "/api", AND CrtServerRootUrl DOES NOT - ON PURPOSE. *** SubmissionClient
-        // appends only "/submissions", while the review routes append "/api/review/...". A base
-        // ending in "/api" handed to the review client would request "/api/api/..." - a 404 on the
-        // first request. ReviewApiRoutesTests pins the review side.
-        //
-        // Used by: SubmissionClient, BoardViewReporter, and whatever later phases add.
+        // *** IT CARRIES "/api", AND THE ROOT DOES NOT - ON PURPOSE. *** SubmissionClient appends
+        // only "/submissions", while the review routes append "/api/review/...". A base ending in
+        // "/api" handed to the review client would request "/api/api/..." - a 404 on the first
+        // request. ReviewApiRoutesTests pins the review side.
         public const string CrtServerBaseUrl = CrtServerRootUrl + "/api";
+
+        // ###########################################################################################
+        // *** THE CONTRIBUTION SERVICE THIS CRT SUBMITS TO, SIGNS IN TO AND ASKS THE API REVISION OF
+        // (owner decision, 2026-10-25: "We need the test server"). *** While CRT 4.0 is in
+        // pre-release that is the TEST instance - its own program, database and port beside the live
+        // one, publishing into the 4.0 trees (INSTALLING.md, "A test instance for CRT 4.0's
+        // pre-releases") - so the live service keeps serving CRT 3.x until the release, and a 4.0
+        // pre-release never sends a submission named the 4.0 way to a 3.x service.
+        //
+        // *** ON RELEASE DAY IT GOES BACK TO CrtServerRootUrl. *** ContributionServerTests fails a
+        // CRT whose InformationalVersion is a release while this still names the test instance, and
+        // the release workflow runs the tests first - so a release cannot ship pointing at it.
+        //
+        // What a CRT remembers of the service it talks to - the Maintainer tab's sign-in and the
+        // receipts of what it sent - is kept in files of the test instance's own while it does
+        // (ContributionServerFiles), never in the ones CRT 3.x reads and writes.
+        // ###########################################################################################
+        public const string TestServerRootUrl = "https://classic-repair-toolbox.dk/crt-test";
+
+        public const string ContributionServerRootUrl = TestServerRootUrl;
+
+        // The same with "/api" - SubmissionClient's base (see CrtServerBaseUrl for why both exist).
+        public const string ContributionServerBaseUrl = ContributionServerRootUrl + "/api";
+
+        // Whether this CRT talks to the test instance - its sign-in and submissions screens say so.
+        public static bool UsesTestServer => string.Equals(ContributionServerRootUrl, TestServerRootUrl, StringComparison.Ordinal);
 
         // Timeout for uploading one blob chunk. Generous, because a contributor on a domestic
         // connection uploading a 40 MB board scan is doing nothing wrong - and unlike the manifest

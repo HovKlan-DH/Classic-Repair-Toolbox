@@ -22,10 +22,10 @@ namespace CRT.Server.Handlers.Submissions
     // each one of two known-good versions; stopping midway through the removals leaves files nothing
     // cites - untidy, but every board still loads. Re-running repairs either.
     //
-    // *** NO SHARED FILE IS EVER REMOVED HERE (owner decision, 2026-09-27). *** A shared file is
-    // only ever RESTORED to production's bytes; one the rolled-back submissions added stays, unused,
-    // for Account > Unused files (AutomaticRemovalScope). The board's own BETA-only files are removed
-    // directly: production's workbook, now in place, does not cite them.
+    // *** WHAT IT REMOVES WAS DECIDED BY THE PLAN (CRT 4.0 tree, 2026-10-25). *** The board's BETA
+    // board file when the board leaves BETA, and the stored files no BETA board lists once
+    // production's board file is back (BetaRollbackFiles) - bytes another board lists are never in
+    // the list. There are no shared files in that tree to put back.
     // ###########################################################################################
     public static class BetaRollbackWriter
     {

@@ -50,7 +50,7 @@ namespace Handlers.Online
 
         public SubmissionClient(string? baseUrl = null)
         {
-            this.thisBaseUrl = (baseUrl ?? AppConfig.CrtServerBaseUrl).TrimEnd('/');
+            this.thisBaseUrl = (baseUrl ?? AppConfig.ContributionServerBaseUrl).TrimEnd('/');
         }
 
         // ###########################################################################################
@@ -63,13 +63,17 @@ namespace Handlers.Online
         //
         // A file that cannot be read is REPORTED rather than throwing, because one unreadable file
         // out of 1100 should produce a message naming it, not a failed submission naming nothing.
+        //
+        // `boardIdentity` (2026-10-25): the board the files are the board's names for - a CRT 4.0
+        // board names its files, found as SubmissionFileLocator finds them.
         // ###########################################################################################
         public static async Task<FileHashResult> HashFilesAsync(
             string dataRoot,
             string draftBoardFolder,
             IReadOnlyList<string> relativePaths,
             IProgress<SubmissionProgress>? progress = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? boardIdentity = null)
         {
             ArgumentNullException.ThrowIfNull(relativePaths);
 
@@ -94,7 +98,7 @@ namespace Handlers.Online
                 // is still checked: a hand-edited spreadsheet is untrusted input too, and this is
                 // the one place the app turns a stored string into a file read.
                 if (!SubmissionFileLocator.TryLocate(
-                        dataRoot, draftBoardFolder, relative, out string absolute, out string reason))
+                        dataRoot, draftBoardFolder, relative, out string absolute, out string reason, boardIdentity))
                 {
                     problems.Add($"[{relative}] cannot be used: {reason}");
                     done++;

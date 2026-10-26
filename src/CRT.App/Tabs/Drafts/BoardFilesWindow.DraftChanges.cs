@@ -14,7 +14,9 @@ namespace CRT
     // A rename, a CAD name, a new order and a removal each rewrite the whole draft workbook and its
     // sidecar - up to a couple of seconds on the largest board - and they did it on the UI thread:
     // the window froze with nothing to say why, against the rule that every wait the user watches
-    // runs under BusyOverlay. Now each runs on the pool while the overlay holds the window.
+    // runs under BusyOverlay. Now each is saved on the pool while the overlay holds the window -
+    // through the draft held in memory since 2026-10-25 (ApplyToDraftAsync), so the change itself is
+    // applied on the UI thread and the save is what waits.
     //
     // *** ONE AT A TIME. *** The overlay takes every NEW click, but a click whose press came first
     // still lands - typing a name and then clicking another row's Remove starts the rename (the box
@@ -83,9 +85,26 @@ namespace CRT
                 return true;
             });
 
-        // One draft write, on the pool, under the window's "please wait".
+        // One piece of file work, on the pool, under the window's "please wait".
         private Task<T> WriteDraftAsync<T>(string message, Func<T> write) =>
             BusyOverlay.RunLocalAsync(this, message, () => Task.Run(write));
+
+        // ###########################################################################################
+        // One change of the draft's rows through the draft held in memory (DraftEdits - CRT 4.0 step
+        // 1, 2026-10-25): applied on the UI thread, so the Drafts tab's table shows it and its Ctrl+Z
+        // takes it back, and saved on the pool, under the window's "please wait". A save that cannot
+        // be made is taken back out, so this window's "could not" lines still mean nothing changed.
+        // ###########################################################################################
+        private Task<DraftWorkbookEditOutcome> ApplyToDraftAsync(
+            string message,
+            string description,
+            Func<BoardData, BoardData?> transform,
+            IReadOnlyDictionary<string, string?>? follow = null)
+        {
+            string excelDataFile = this.thisExcelDataFile;
+
+            return BusyOverlay.RunLocalAsync(this, message, () => DraftEdits.ApplyAndSaveAsync(excelDataFile, description, transform, follow));
+        }
 
         // ###########################################################################################
         // Which row of the draft a row on screen is: its name, its image file, and its place among

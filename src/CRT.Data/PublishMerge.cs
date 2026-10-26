@@ -37,12 +37,14 @@ namespace Handlers.DataHandling
         // published may be null - that is a NEW BOARD, the ordinary case for the highest-risk kind
         // of submission, not an error.
         //
-        // *** THE REVISION DATE IS THE ONE FIELD THAT FALLS BACK. *** Every other section is taken
-        // from the submission alone. The date falls back to the published one because an older
-        // client does not send it at all (the field was added 2026-09-22), and blanking it would
-        // be far worse than leaving it: it is what a contributor's draft records as its
-        // BaseRevision, so an empty one makes every existing draft look as though it were based on
-        // nothing and the drift check has no answer to give.
+        // *** THE REVISION DATE FALLS BACK, AND SO DO CRT 4.0's PINS AND REPLACEMENTS. *** Every
+        // other section is taken from the submission alone. The date falls back to the published one
+        // because an older client does not send it at all (the field was added 2026-09-22), and
+        // blanking it would be far worse than leaving it: it is what a contributor's draft records as
+        // its BaseRevision, so an empty one makes every existing draft look as though it were based
+        // on nothing and the drift check has no answer to give. The two 4.0 sections (2026-10-25)
+        // fall back for the same reason: one not sent at all is a client that does not know them,
+        // and taking its silence as "none" would delete what a newer CRT published.
         // ###########################################################################################
         public static BoardData Build(SubmissionManifest manifest, BoardData? published)
         {
@@ -74,7 +76,9 @@ namespace Handlers.DataHandling
                 BoardLocalFiles = [.. rows.BoardLocalFiles],
                 BoardLinks = [.. rows.BoardLinks],
                 Credits = [.. rows.Credits],
-                KiCadImportantSignals = [.. rows.KiCadImportantSignals]
+                KiCadImportantSignals = [.. rows.KiCadImportantSignals],
+                ComponentPins = [.. rows.ComponentPins ?? published?.ComponentPins ?? []],
+                ComponentReplacements = [.. rows.ComponentReplacements ?? published?.ComponentReplacements ?? []],
             };
         }
 

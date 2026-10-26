@@ -78,6 +78,9 @@ namespace CRT
         private string _boardLabel = string.Empty;
         private string _dataRoot = string.Empty;
         private string _draftBoardFolder = string.Empty;
+
+        // The board whose published file lists the names the rows cite (DraftFileResolver).
+        private string _boardIdentity = string.Empty;
         private bool _suppressThumbnailSelection = false;
         private bool _suppressRegionToggle = false;
         private double _normalWidth = 680.0;
@@ -750,7 +753,8 @@ namespace CRT
             string region,
             string dataRoot,
             bool hasExplicitRegionComponents,
-            string draftBoardFolder = "")
+            string draftBoardFolder = "",
+            string boardIdentity = "")
         {
             this.ClearTemporaryCapturedOscilloscopeImage();
 
@@ -780,7 +784,7 @@ namespace CRT
                     .Select(f =>
                     {
                         string officialPath = Path.Combine(dataRoot, f.File.Replace('/', Path.DirectorySeparatorChar));
-                        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, f.File);
+                        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, f.File, boardIdentity);
 
                         return new ComponentLocalFileItem
                         {
@@ -815,6 +819,7 @@ namespace CRT
             this._allComponentImages = componentImages;
             this._dataRoot = dataRoot;
             this._draftBoardFolder = draftBoardFolder;
+            this._boardIdentity = boardIdentity;
             this._localRegion = region;
             this._hasExplicitRegionComponents = hasExplicitRegionComponents;
             this.UpdateRegionButtonsState();
@@ -1035,6 +1040,7 @@ namespace CRT
                 this._loadCts = new CancellationTokenSource();
                 var cts = this._loadCts;
                 string draftBoardFolder = this._draftBoardFolder;
+                string boardIdentity = this._boardIdentity;
 
                 var displayableEntries = entries
                     .Where(ComponentImageQueries.HasDisplayableImageFile)
@@ -1063,7 +1069,7 @@ namespace CRT
                             // An image attached only in a local draft (not yet synced under Data/) is
                             // resolved via the same official-first/draft-fallback rule every other
                             // BoardData File value now uses - see DraftFileResolver.
-                            var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File) ??
+                            var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File, boardIdentity) ??
                                 Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
                             if (File.Exists(fullPath))
                             {

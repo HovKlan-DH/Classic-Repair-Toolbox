@@ -8,24 +8,19 @@ namespace ClassicRepairToolbox.Tests;
 // downloads, and the project owner decided against retained revisions, so it cannot be undone. Every
 // refusal here is a thing that would otherwise be discovered halfway through replacing a board.
 //
-// The one that carries the most weight is the GENERATION guard. Older workbook generations are
-// frozen compatibility targets - "Classic-Repair-Toolbox.xlsx" still serves every app build
-// before 2.0.0 - and writing one does not fail loudly. It succeeds, and older builds get data
-// they cannot read.
+// In the CRT 4.0 tree (2026-10-25) a publish writes two kinds of file, both at places the SERVER
+// decides: the board file "<board id>/board.json", and each file's bytes stored once under their
+// checksum, "Files/<ab>/<sha256>.<ext>". A submitted file's path is the board's NAME for it.
 public sealed class PublishPlanTests
 {
     private const string Root = "/srv/beta";
-    private const string BoardFolder = "/srv/beta/Commodore/C64/250407";
-    private const string Stem = "Data C64 250407";
 
-    // The board's own folder, relative to the data root - the shape every real submitted path has.
-    private const string Own = "Commodore/C64/250407/";
+    private static readonly string HashA = new('a', 64);
+    private static readonly string HashB = new('b', 64);
 
     // ###########################################################################################
-    // A manifest whose ROWS cite every file it carries (security review, 2026-09-25).
-    //
-    // A publish now refuses a file no row uses - such a file is shown nowhere and was approved
-    // unseen - so a fixture carrying files and no rows no longer describes a real submission. Each
+    // A manifest whose ROWS cite every file it carries (security review, 2026-09-25). A publish
+    // refuses a file no row uses - such a file is shown nowhere and was approved unseen - so each
     // file is cited as a board-level file, the simplest row that can name any file type.
     // ###########################################################################################
     private static SubmissionManifest Manifest(params SubmissionFile[] files)
@@ -45,200 +40,203 @@ public sealed class PublishPlanTests
         return manifest;
     }
 
-    private static SubmissionFile File(string path, string? hash = null, long size = 1024) => new()
+    private static SubmissionFile File(string name, string? hash = null, long size = 1024) => new()
     {
-        Path = path,
-        Sha256 = hash ?? new string('a', 64),
+        Path = name,
+        Sha256 = hash ?? PublishPlanTests.HashA,
         SizeBytes = size
     };
 
     private static PublishPlanResult Build(
         SubmissionManifest manifest,
-        IEnumerable<string>? existing = null,
-        string stem = PublishPlanTests.Stem,
         string revision = "r2",
-        PublishedTreeView? tree = null) =>
-        PublishPlan.Build(
+        PublishedTreeView? board = null,
+        IEnumerable<string>? stored = null)
+    {
+        var held = new HashSet<string>(stored ?? [], StringComparer.Ordinal);
+
+        return PublishPlan.Build(
             PublishPlanTests.Root,
-            PublishPlanTests.BoardFolder,
-            existing ?? ["Data C64 250407 v2.0.0.xlsx"],
-            stem,
             manifest,
             revision,
             new DateTimeOffset(2026, 9, 21, 12, 0, 0, TimeSpan.Zero),
             ["Someone"],
             BoardDescriptorRules.BoardOrigin.Contributed,
-            tree);
+            board,
+            held.Contains);
+    }
 
     private static bool HasCode(PublishPlanResult result, string code) =>
         result.Problems.Any(problem => problem.Code == code);
 
+    // A published board listing these names (name -> hash), in a tree holding these folders.
+    private static PublishedTreeView Board(IReadOnlyDictionary<string, string>? listed = null, params string[] folders) =>
+        new(
+            name => listed is not null && listed.TryGetValue(name, out string? hash) ? hash : null,
+            folder =>
+            {
+                string prefix = folder.Length == 0 ? string.Empty : folder + "/";
+
+                List<string> entries = folders
+                    .Where(path => path.StartsWith(prefix, StringComparison.Ordinal))
+                    .Select(path => path[prefix.Length..].Split('/')[0])
+                    .Where(entry => entry.Length > 0)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                return entries.Count == 0 && folder.Length > 0 ? null : entries;
+            });
+
+    // -----------------------------------------------------------------------------------
+    // Where it writes
+    // -----------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_board_file_is_the_boards_own_board_json_under_the_data_root()
+    {
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("Sheet1.png")));
+
+        Assert.True(result.IsPlanned, string.Join(" ", result.Problems.Select(problem => problem.Message)));
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(PublishPlanTests.Root, "Commodore", "C64", "250407", "board.json")),
+            result.Plan!.BoardFilePath);
+        Assert.Equal("Commodore/C64/250407/board.json", result.Plan.BoardFileRelative);
+        Assert.Equal(Path.GetDirectoryName(result.Plan.BoardFilePath), result.Plan.BoardFolder);
+    }
+
+    [Fact]
+    public void A_file_is_stored_under_its_checksum_never_under_its_name()
+    {
+        // The whole point of the 4.0 tree's security: a submission never names a place to write.
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("Images/U8.PNG")));
+
+        PlannedFile file = Assert.Single(result.Plan!.Files);
+
+        Assert.Equal("Images/U8.PNG", file.Name);
+        Assert.Equal($"Files/aa/{PublishPlanTests.HashA}.png", file.StoredPath);
+        Assert.Equal(Path.GetFullPath(Path.Combine(PublishPlanTests.Root, "Files", "aa", PublishPlanTests.HashA + ".png")), file.AbsolutePath);
+    }
+
+    [Fact]
+    public void Two_names_of_the_same_bytes_are_stored_once()
+    {
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
+            PublishPlanTests.File("Images/a.png"),
+            PublishPlanTests.File("Images/b.png")));
+
+        Assert.Equal(2, result.Plan!.Files.Count);
+        Assert.Single(result.Plan.StoredFiles);
+        Assert.Equal(1024, result.Plan.TotalFileBytes);
+    }
+
+    [Fact]
+    public void Bytes_the_tree_already_holds_are_listed_but_never_written()
+    {
+        // A one-cell typo fix on a board of 1,200 files stores nothing at all.
+        string stored = $"Files/aa/{PublishPlanTests.HashA}.png";
+
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(PublishPlanTests.File("Images/u8.png")),
+            stored: [stored]);
+
+        Assert.True(result.IsPlanned);
+        Assert.Empty(result.Plan!.Files);
+        Assert.Equal("Images/u8.png", Assert.Single(result.Plan.UnchangedFiles).Name);
+        Assert.Equal("Images/u8.png", Assert.Single(result.Plan.FileList).Name);
+    }
+
+    [Fact]
+    public void Leaving_stored_bytes_alone_does_not_change_the_content_hash()
+    {
+        // Written or left alone, the file is part of the board, so the content hash - what decides
+        // whether the board waits for production - must not depend on which it was.
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File("Images/u8.png"));
+
+        PublishPlanResult unchanged = PublishPlanTests.Build(manifest, stored: [$"Files/aa/{PublishPlanTests.HashA}.png"]);
+        PublishPlanResult written = PublishPlanTests.Build(manifest);
+
+        Assert.Empty(unchanged.Plan!.Files);
+        Assert.Single(written.Plan!.Files);
+        Assert.Equal(written.Plan.Descriptor.ContentHash, unchanged.Plan.Descriptor.ContentHash);
+    }
+
+    [Fact]
+    public void The_file_list_names_every_file_with_its_bytes_in_name_order()
+    {
+        PublishPlanResult result = PublishPlanTests.Build(
+            PublishPlanTests.Manifest(
+                PublishPlanTests.File("b.png", PublishPlanTests.HashB, 7),
+                PublishPlanTests.File("A.png", PublishPlanTests.HashA, 9)),
+            stored: [$"Files/bb/{PublishPlanTests.HashB}.png"]);
+
+        Assert.Collection(
+            result.Plan!.FileList,
+            file => Assert.Equal(("A.png", PublishPlanTests.HashA, 9L), (file.Name, file.Sha256, file.Size)),
+            file => Assert.Equal(("b.png", PublishPlanTests.HashB, 7L), (file.Name, file.Sha256, file.Size)));
+    }
+
+    // -----------------------------------------------------------------------------------
+    // The KiCad data (2026-09-26)
+    // -----------------------------------------------------------------------------------
+
     // ###########################################################################################
-    // *** THE BOARD'S KiCad DATA IS PLANNED FOR WRITING (2026-09-26). *** PublishPlan re-runs the
+    // *** THE BOARD'S KiCad DATA IS PLANNED ALTHOUGH NO ROW CITES IT. *** PublishPlan re-runs the
     // create-time file rules as the last gate before the tree, so the same exemption must hold
-    // here: a KiCad file in the board's own folder is written although no row cites it, and one
-    // anywhere else is refused - a rule loosened at create only would let a queued submission
-    // publish what create no longer accepts, or the other way round.
+    // here: a KiCad file under "KiCad data/" goes in, and one anywhere else is refused.
     // ###########################################################################################
     [Fact]
     public void The_boards_own_KiCad_data_is_planned_although_no_row_cites_it()
     {
-        SubmissionManifest manifest = PublishPlanTests.Manifest(
-            PublishPlanTests.File("Commodore/C64/250407/Sheet1.png"));
-
-        manifest.Files.Add(PublishPlanTests.File("Commodore/C64/250407/KiCad data/board.kicad_pcb", new string('b', 64)));
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File("Sheet1.png"));
+        manifest.Files.Add(PublishPlanTests.File("KiCad data/board.kicad_pcb", PublishPlanTests.HashB));
 
         PublishPlanResult result = PublishPlanTests.Build(manifest);
 
         Assert.True(result.IsPlanned, string.Join("; ", result.Problems.Select(problem => problem.Code)));
-        Assert.Contains(result.Plan!.Files, file => file.RelativePath == "Commodore/C64/250407/KiCad data/board.kicad_pcb");
+        Assert.Contains(result.Plan!.Files, file => file.Name == "KiCad data/board.kicad_pcb");
     }
 
     [Fact]
     public void A_KiCad_file_outside_its_folder_is_refused_at_the_last_gate_too()
     {
-        SubmissionManifest manifest = PublishPlanTests.Manifest(
-            PublishPlanTests.File("Commodore/C64/250407/Sheet1.png"));
-
-        manifest.Files.Add(PublishPlanTests.File("Commodore/C64/250407/board.kicad_pcb", new string('b', 64)));
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File("Sheet1.png"));
+        manifest.Files.Add(PublishPlanTests.File("board.kicad_pcb", PublishPlanTests.HashB));
 
         PublishPlanResult result = PublishPlanTests.Build(manifest);
 
-        Assert.Contains(result.Problems, problem => problem.Code == "file.type-refused");
+        Assert.True(PublishPlanTests.HasCode(result, "file.type-refused"));
+    }
+
+    // A file nothing reads (a generated report) that the converted board already has stays with it
+    // for as long as nobody changes it - and cannot be brought in new.
+    [Fact]
+    public void A_KiCad_folder_straggler_stays_only_as_the_published_board_has_it()
+    {
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File("Sheet1.png"));
+        manifest.Files.Add(PublishPlanTests.File("KiCad data/KiCad-traces.json", PublishPlanTests.HashB));
+
+        PublishedTreeView same = PublishPlanTests.Board(new Dictionary<string, string> { ["KiCad data/KiCad-traces.json"] = PublishPlanTests.HashB });
+        PublishedTreeView other = PublishPlanTests.Board(new Dictionary<string, string> { ["KiCad data/KiCad-traces.json"] = PublishPlanTests.HashA });
+
+        Assert.True(PublishPlanTests.Build(manifest, board: same).IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(PublishPlanTests.Build(manifest, board: other), "file.type-refused"));
+        Assert.True(PublishPlanTests.HasCode(PublishPlanTests.Build(manifest), "file.type-refused"));
     }
 
     // -----------------------------------------------------------------------------------
-    // The generation guard
-    // -----------------------------------------------------------------------------------
-
-    [Fact]
-    public void The_workbook_is_named_for_the_newest_generation_present()
-    {
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(),
-            existing: ["Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx"]);
-
-        Assert.True(result.IsPlanned);
-        Assert.Equal("Data C64 250407 v2.0.0.xlsx", result.Plan!.WorkbookFileName);
-        Assert.Equal(Version.Parse("2.0.0"), result.Plan.TargetGeneration);
-    }
-
-    [Fact]
-    public void A_newer_generation_in_the_tree_is_targeted_without_any_configuration_change()
-    {
-        // The project owner's rule: "always use the newest version". Adding a 3.0.0 file to the tree
-        // is the ONLY action needed - nothing here is configured.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(),
-            existing: ["Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx", "Data C64 250407 v3.0.0.xlsx"]);
-
-        Assert.True(result.IsPlanned);
-        Assert.Equal("Data C64 250407 v3.0.0.xlsx", result.Plan!.WorkbookFileName);
-    }
-
-    [Fact]
-    public void A_tree_with_only_the_unversioned_original_publishes_into_it()
-    {
-        // The original IS a generation - the first one. A tree that has never been versioned is
-        // publishing into its own newest, which is correct.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(),
-            existing: ["Data C64 250407.xlsx"]);
-
-        Assert.True(result.IsPlanned);
-        Assert.Equal("Data C64 250407.xlsx", result.Plan!.WorkbookFileName);
-        Assert.Null(result.Plan.TargetGeneration);
-    }
-
-    [Fact]
-    public void A_brand_new_board_with_an_empty_folder_is_REFUSED_when_the_tree_has_no_generation()
-    {
-        // *** THIS TEST USED TO ASSERT THE OPPOSITE, AND THE OPPOSITE WAS A BUG. *** It read
-        // "A_brand_new_board_with_an_empty_folder_publishes_unversioned" and pinned exactly that
-        // - nothing in the folder means no generation, so the board publishes as
-        // "Data C64 250407.xlsx".
-        //
-        // That file is the FROZEN generation serving every application build before 2.0.0, and the
-        // project owner's rule is that it is never written. So every new board - the highest-value
-        // kind of contribution there is - would have been published into the one place it must not
-        // go, silently, and older builds would have received contributed data they cannot read.
-        //
-        // Found 2026-09-22 while wiring ApprovePublishFlow, whose own tests failed on the path the
-        // published board landed at. The generation now comes from the TREE's master workbooks
-        // when the board's own folder is empty; with no versioned master anywhere, publishing is
-        // refused rather than guessed at.
-        //
-        // This Build() helper points at a temp root with no master workbooks in it, which is the
-        // "no generation anywhere" case.
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(), existing: []);
-
-        Assert.False(result.IsPlanned);
-        Assert.Contains(result.Problems, problem => problem.Code == "publish.no-generation");
-    }
-
-    [Fact]
-    public void An_EXISTING_unversioned_board_is_NOT_treated_as_a_new_one()
-    {
-        // *** THE DISTINCTION THE FIRST VERSION OF THE NEW-BOARD GUARD MISSED. ***
-        // ResolveNewestGeneration answers null for BOTH "the folder is empty" and "the folder
-        // holds only an unversioned board", and those are opposite situations:
-        //
-        //   - empty            -> a new board, which must NOT land in the frozen unversioned file;
-        //   - unversioned only -> an existing board that legitimately lives there.
-        //
-        // Conflating them made every unversioned board unpublishable, which the existing test
-        // above caught immediately. The folder's EMPTINESS is what separates them, and this pins
-        // that the non-empty case still plans.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(),
-            existing: ["Data C64 250407.xlsx", "Images/sheet1.png"]);
-
-        Assert.True(result.IsPlanned);
-        Assert.Null(result.Plan!.TargetGeneration);
-    }
-
-    [Fact]
-    public void A_submitted_workbook_is_REFUSED_rather_than_written()
-    {
-        // *** THE GUARD THAT PROTECTS A FROZEN GENERATION. *** The board workbook is GENERATED
-        // from the submitted rows; a submission has no business carrying one. Accepting an
-        // uploaded .xlsx would let a contributor overwrite any generation's workbook, including
-        // the unversioned original that serves every pre-2.0.0 build, and the write would succeed
-        // silently.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Data C64 250407.xlsx")));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.workbook-upload"));
-    }
-
-    [Fact]
-    public void A_workbook_hidden_in_a_subfolder_is_refused_too()
-    {
-        // The rule is about the extension anywhere in the submission, not about a name matching a
-        // generation - see PublishPlan.LooksLikeWorkbook for why the broad rule was chosen.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Files/notes.xlsx")));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.workbook-upload"));
-    }
-
-    // -----------------------------------------------------------------------------------
-    // Path safety
+    // What is refused
     // -----------------------------------------------------------------------------------
 
     [Theory]
-    [InlineData("../../evil.png")]
-    [InlineData("Images/./../../evil.png")]
-    [InlineData("/etc/passwd")]
-    public void A_path_escaping_the_board_folder_is_refused(string path)
+    [InlineData("../escape.png")]
+    [InlineData("Images/../../escape.png")]
+    [InlineData("/etc/passwd.png")]
+    // windows-path-literal: a hostile name shaped like a drive path, refused on every platform
+    [InlineData("C:/Windows/x.png")]
+    public void A_name_escaping_its_folder_is_refused(string name)
     {
-        // Delegated to SubmissionPathRules, which resolves and then checks containment. Asserted
-        // here anyway: this is the last gate before bytes land, and a caller that forgot to check
-        // the result is the bug that already shipped once in the upload loop.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(path)));
+        // A name is where CRT puts the file in a draft and a KiCad copy, so it is still a path.
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File(name)));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.path-refused"));
@@ -247,400 +245,149 @@ public sealed class PublishPlanTests
     [Fact]
     public void A_file_with_an_unusable_hash_is_refused()
     {
-        // The hash is how the blob is found. Without a usable one there is nothing to copy, and
-        // "content-addressed" stops meaning anything.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", hash: "not-a-hash")));
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png", "not-a-hash")));
 
         Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.hash-invalid"));
     }
 
     [Fact]
-    public void The_same_path_twice_is_refused()
+    public void The_same_name_twice_is_refused()
     {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png"),
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png")));
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png"), PublishPlanTests.File("a.png")));
 
-        Assert.False(result.IsPlanned);
         Assert.True(PublishPlanTests.HasCode(result, "file.duplicate"));
     }
 
     [Fact]
-    public void Two_paths_differing_only_in_case_are_refused_and_BOTH_are_named()
+    public void Two_names_differing_only_in_case_are_refused_and_BOTH_are_named()
     {
-        // Both can exist on the Linux server and only one on a Windows client, so the published
-        // tree would be un-syncable for much of the audience. The message must name both
-        // spellings - "already exists" about a file you can plainly see is baffling.
+        // One file on Windows and macOS, where CRT puts a draft's files under their names.
         PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/U8.png"),
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.PNG")));
+            PublishPlanTests.File("Images/U8.png"),
+            PublishPlanTests.File("images/u8.png", PublishPlanTests.HashB)));
 
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.case-collision"));
+        ValidationFinding problem = Assert.Single(result.Problems, finding => finding.Code == "file.case-collision");
 
-        string message = result.Problems.First(problem => problem.Code == "file.case-collision").Message;
-        Assert.Contains("Images/u8.PNG", message);
-        Assert.Contains("Images/U8.png", message);
+        Assert.Contains("Images/U8.png", problem.Message, StringComparison.Ordinal);
+        Assert.Contains("images/u8.png", problem.Message, StringComparison.Ordinal);
     }
-
-    // -----------------------------------------------------------------------------------
-    // Identity
-    // -----------------------------------------------------------------------------------
 
     [Fact]
     public void A_board_id_that_disagrees_with_its_own_names_is_refused()
     {
-        // The id is a database primary key AND resolves a folder. A mismatch means everything
-        // keyed off it disagrees with what is printed on screen.
         SubmissionManifest manifest = PublishPlanTests.Manifest();
-        manifest.Board = "250425";
+        manifest.BoardId = "Commodore/C64/250425";
 
-        PublishPlanResult result = PublishPlanTests.Build(manifest);
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "board.id-mismatch"));
+        Assert.True(PublishPlanTests.HasCode(PublishPlanTests.Build(manifest), "board.id-mismatch"));
     }
 
     [Fact]
     public void A_malformed_board_id_is_refused()
     {
         SubmissionManifest manifest = PublishPlanTests.Manifest();
-        manifest.BoardId = "../../etc";
+        manifest.BoardId = "Commodore/../etc";
 
-        PublishPlanResult result = PublishPlanTests.Build(manifest);
+        Assert.True(PublishPlanTests.HasCode(PublishPlanTests.Build(manifest), "board.id-invalid"));
+    }
 
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "board.id-invalid"));
+    [Theory]
+    [InlineData("Files")]
+    [InlineData("MiniPro")]
+    [InlineData("files")]
+    public void A_manufacturer_named_as_one_of_the_trees_own_folders_is_refused(string manufacturer)
+    {
+        // A board there would sit among the stored files or the IC tests.
+        SubmissionManifest manifest = PublishPlanTests.Manifest();
+        manifest.Manufacturer = manufacturer;
+        manifest.BoardId = $"{manufacturer}/C64/250407";
+
+        Assert.True(PublishPlanTests.HasCode(PublishPlanTests.Build(manifest), "board.reserved-folder"));
     }
 
     [Fact]
     public void A_publish_with_no_revision_is_refused()
     {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(), revision: "");
+        Assert.True(PublishPlanTests.HasCode(PublishPlanTests.Build(PublishPlanTests.Manifest(), revision: " "), "publish.no-revision"));
+    }
+
+    [Fact]
+    public void A_file_NO_ROW_USES_is_refused()
+    {
+        // Nothing would show it, so no maintainer could have seen it - which is exactly how a file
+        // that should never be published gets published.
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File("a.png"));
+        manifest.Rows.BoardLocalFiles.Clear();
+
+        PublishPlanResult result = PublishPlanTests.Build(manifest);
 
         Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "publish.no-revision"));
+        Assert.True(PublishPlanTests.HasCode(result, "file.not-used"));
     }
 
-    [Fact]
-    public void A_publish_with_no_board_stem_is_refused()
+    [Theory]
+    [InlineData(".htaccess")]
+    [InlineData("Images/.hidden/x.png")]
+    [InlineData("run.exe")]
+    [InlineData("drawing.svg")]
+    [InlineData("board.json")]
+    [InlineData("Data C64 250407.xlsx")]
+    [InlineData("README")]
+    public void A_file_of_a_type_board_data_never_uses_is_refused(string name)
     {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(), stem: "");
+        // A .json or a workbook in particular: the board file is the publish's, from the rows.
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File(name)));
 
         Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "publish.no-workbook-name"));
-    }
-
-    // -----------------------------------------------------------------------------------
-    // The plan itself
-    // -----------------------------------------------------------------------------------
-
-    // ###########################################################################################
-    // *** A FILE PATH IS RESOLVED AGAINST THE DATA ROOT, NOT THE BOARD FOLDER (corrected
-    // 2026-09-23). ***
-    //
-    // This test used to pass "Images/u8.png" and assert the result landed under the BOARD folder,
-    // and it passed - because those paths are not the shape a real submission carries. A real one
-    // is already data-root-relative ("Commodore/C64/250407/Sheet1.png"), so resolving it against
-    // the board folder wrote it to "<root>/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png".
-    //
-    // The first real publish duplicated 1,215 files into the board folder that way - the whole
-    // board nested inside itself - and every client then re-downloaded the lot, which is how the
-    // project owner noticed.
-    //
-    // The unrealistic input is what let it hide, so the input is corrected here too.
-    // ###########################################################################################
-    [Fact]
-    public void A_planned_publish_resolves_a_file_to_its_DATA_ROOT_relative_location()
-    {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Commodore/C64/250407/Sheet1.png"),
-            PublishPlanTests.File("Commodore/C64/250407/Files/manual.pdf")));
-
-        Assert.True(result.IsPlanned);
-        Assert.Equal(2, result.Plan!.Files.Count);
-
-        foreach (PlannedFile file in result.Plan.Files)
-        {
-            Assert.True(Path.IsPathRooted(file.AbsolutePath));
-
-            // Inside the tree, and resolved by SubmissionPathRules rather than re-joined by the
-            // caller - a re-join reintroduces the traversal hole.
-            Assert.StartsWith(
-                Path.GetFullPath(PublishPlanTests.Root),
-                Path.GetFullPath(file.AbsolutePath),
-                StringComparison.Ordinal);
-
-            // ###########################################################################################
-            // *** AND THE BOARD SEGMENTS APPEAR EXACTLY ONCE. *** This is what fails against the
-            // version that shipped, which produced
-            // "/srv/beta/Commodore/C64/250407/Commodore/C64/250407/Sheet1.png".
-            //
-            // Counted WITHOUT surrounding slashes, deliberately. In that doubled path the two
-            // occurrences share the slash between them, so searching for "/Commodore/C64/250407/"
-            // matches only once and the assertion passes against the bug - which is precisely what
-            // the first version of this test did.
-            // ###########################################################################################
-            string full = Path.GetFullPath(file.AbsolutePath).Replace('\\', '/');
-
-            Assert.Equal(
-                1,
-                full.Split("Commodore/C64/250407", StringSplitOptions.None).Length - 1);
-        }
-    }
-
-    // ###########################################################################################
-    // *** A SHARED FILE LIVES OUTSIDE THE BOARD FOLDER, and the old base could never write it. ***
-    //
-    // "Commodore/Shared files/Component images/6526.png" belongs beside the MANUFACTURER, cited by
-    // boards across it. Containing a publish to one board's folder made that impossible to express,
-    // which is the second half of why the base was wrong rather than merely off by a prefix.
-    // ###########################################################################################
-    [Fact]
-    public void A_manufacturer_SHARED_file_is_published_beside_the_manufacturer()
-    {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("Commodore/Shared files/Component images/6526.png")));
-
-        Assert.True(result.IsPlanned);
-
-        PlannedFile file = Assert.Single(result.Plan!.Files);
-        string full = Path.GetFullPath(file.AbsolutePath).Replace('\\', '/');
-
-        Assert.EndsWith("/Commodore/Shared files/Component images/6526.png", full, StringComparison.Ordinal);
-
-        // Emphatically NOT inside the board being published.
-        Assert.DoesNotContain("/250407/", full, StringComparison.Ordinal);
-    }
-
-    // The containment that matters is still enforced - it is simply measured from the data root.
-    [Fact]
-    public void A_traversal_out_of_the_DATA_ROOT_is_still_refused()
-    {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File("../../etc/passwd")));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.path-refused"));
+        Assert.True(PublishPlanTests.HasCode(result, "file.type-refused"));
     }
 
     [Fact]
-    public void The_relative_path_is_kept_alongside_the_absolute_one()
+    public void A_NEW_BOARD_whose_folder_differs_from_a_published_one_only_by_case_is_refused()
     {
-        // The descriptor's content hash is computed over RELATIVE paths. Folding the server's own
-        // directory layout into a hash every client compares against would make every client
-        // permanently out of date.
+        // "commodore/C64/250407" beside the real "Commodore/C64/250407": on a client the two are
+        // one folder, so the "new" board's file would replace the real board's there.
+        SubmissionManifest manifest = PublishPlanTests.Manifest();
+        manifest.BoardId = "commodore/C64/250407";
+        manifest.Manufacturer = "commodore";
+
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
+            manifest,
+            board: PublishPlanTests.Board(folders: "Commodore/C64/250407/board.json"));
 
-        PlannedFile file = Assert.Single(result.Plan!.Files);
-        Assert.Equal(PublishPlanTests.Own + "Images/u8.png", file.RelativePath);
+        Assert.False(result.IsPlanned);
+        Assert.True(PublishPlanTests.HasCode(result, "board.case-collision"));
     }
 
     [Fact]
-    public void The_descriptor_carries_the_boards_identity_and_the_revision()
+    public void An_EXACT_published_folder_is_not_a_case_collision()
     {
+        // Anti-vacuity: publishing over the board's own published file is the ordinary case.
         PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
-
-        BoardDescriptor descriptor = result.Plan!.Descriptor;
-
-        Assert.Equal("Commodore/C64/250407", descriptor.BoardId);
-        Assert.Equal("Commodore", descriptor.Manufacturer);
-        Assert.Equal("C64", descriptor.Hardware);
-        Assert.Equal("250407", descriptor.Board);
-        Assert.Equal("r2", descriptor.Revision);
-        Assert.Equal(BoardDescriptorRules.BoardOrigin.Contributed, descriptor.Origin);
-        Assert.Equal(["Someone"], descriptor.Maintainers);
-        Assert.NotEmpty(descriptor.ContentHash);
-    }
-
-    [Fact]
-    public void The_content_hash_does_not_depend_on_the_order_files_arrive_in()
-    {
-        // A directory walk or a database query returns whatever order it likes; two machines
-        // hashing the same board must agree, or every client reads as permanently stale.
-        PublishPlanResult forwards = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64)),
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64))));
-
-        PublishPlanResult backwards = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64)),
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64))));
-
-        Assert.Equal(forwards.Plan!.Descriptor.ContentHash, backwards.Plan!.Descriptor.ContentHash);
-    }
-
-    [Fact]
-    public void A_changed_file_moves_the_content_hash()
-    {
-        // Anti-vacuity for the test above: if the hash ignored its inputs, the ordering test
-        // would pass while proving nothing.
-        PublishPlanResult before = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64))));
-
-        PublishPlanResult after = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('2', 64))));
-
-        Assert.NotEqual(before.Plan!.Descriptor.ContentHash, after.Plan!.Descriptor.ContentHash);
-    }
-
-    [Fact]
-    public void A_changed_revision_moves_the_content_hash_even_with_identical_files()
-    {
-        // A metadata-only republish still has to be picked up by clients.
-        PublishPlanResult r2 = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png")),
-            revision: "r2");
-
-        PublishPlanResult r3 = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png")),
-            revision: "r3");
-
-        Assert.NotEqual(r2.Plan!.Descriptor.ContentHash, r3.Plan!.Descriptor.ContentHash);
-    }
-
-    [Fact]
-    public void A_publish_with_no_files_at_all_is_still_planned()
-    {
-        // A rows-only change - the typo fix that uploads nothing - is the commonest contribution
-        // there is. It must produce a plan, not a refusal.
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
+            PublishPlanTests.Manifest(PublishPlanTests.File("u8.png")),
+            board: PublishPlanTests.Board(folders: "Commodore/C64/250407/board.json"));
 
         Assert.True(result.IsPlanned);
-        Assert.Empty(result.Plan!.Files);
-        Assert.Equal(0, result.Plan.TotalFileBytes);
-    }
-
-    [Fact]
-    public void The_total_bytes_are_summed_across_the_planned_files()
-    {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/a.png", new string('1', 64), size: 100),
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", new string('2', 64), size: 250)));
-
-        Assert.Equal(350, result.Plan!.TotalFileBytes);
     }
 
     [Fact]
     public void Every_problem_is_reported_at_once_rather_than_one_per_attempt()
     {
-        // A contributor fixing refusals one at a time, with a full upload between each, is how a
-        // contribution stops happening.
         PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(
             PublishPlanTests.File("../escape.png"),
-            PublishPlanTests.File(PublishPlanTests.Own + "Images/b.png", hash: "nope")));
+            PublishPlanTests.File("a.png", "bad"),
+            PublishPlanTests.File("run.exe")));
 
-        Assert.False(result.IsPlanned);
-        Assert.Equal(2, result.Problems.Count);
+        Assert.True(result.Problems.Count >= 3);
     }
 
     [Fact]
     public void A_refused_plan_carries_no_plan_at_all()
     {
-        // Deliberately not "a plan plus a problems list": a partially valid publish is not a
-        // thing that may proceed, and a caller holding both would have to remember to check.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("../escape.png")));
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("../escape.png")));
 
         Assert.False(result.IsPlanned);
         Assert.Null(result.Plan);
-        Assert.NotEmpty(result.Problems);
-    }
-
-    // -----------------------------------------------------------------------------------
-    // Folding the generated workbook into the content hash
-    // -----------------------------------------------------------------------------------
-
-    [Fact]
-    public void A_rows_only_change_moves_the_content_hash_once_the_workbook_is_folded_in()
-    {
-        // *** THE SILENT FAILURE DescriptorWithWorkbook EXISTS TO PREVENT. *** A typo fix uploads
-        // NO files, so its uploaded-file list is byte-identical to the previous publish's. If the
-        // executor wrote the planned descriptor as-is, the content hash would not move and no
-        // client would ever re-download the board that just changed.
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
-
-        string plannedHash = result.Plan!.Descriptor.ContentHash;
-        string sidecar = new('9', 64);
-
-        string withOldWorkbook = result.Plan.DescriptorWithWorkbook(new string('1', 64), sidecar).ContentHash;
-        string withNewWorkbook = result.Plan.DescriptorWithWorkbook(new string('2', 64), sidecar).ContentHash;
-
-        Assert.NotEqual(plannedHash, withOldWorkbook);
-        Assert.NotEqual(withOldWorkbook, withNewWorkbook);
-    }
-
-    [Fact]
-    public void A_HIGHLIGHT_ONLY_change_moves_the_content_hash_through_the_SIDECAR()
-    {
-        // *** THE SAME SILENT FAILURE, ONE FILE OVER, and the sidecar is the ONLY thing that can
-        // catch it. *** A submission that merely MOVES A HIGHLIGHT changes no workbook row - the
-        // highlights do not live in the workbook at all - and uploads no file. So the workbook
-        // hash does not move either, and without the sidecar folded in the content hash would be
-        // identical to the previous publish's. No client would re-download the board, and the
-        // moved highlight would never reach anybody.
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
-
-        string workbook = new('1', 64);
-
-        string before = result.Plan!.DescriptorWithWorkbook(workbook, new string('a', 64)).ContentHash;
-        string after = result.Plan.DescriptorWithWorkbook(workbook, new string('b', 64)).ContentHash;
-
-        Assert.NotEqual(before, after);
-    }
-
-    [Fact]
-    public void Folding_the_workbook_in_leaves_every_other_descriptor_field_alone()
-    {
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
-
-        BoardDescriptor planned = result.Plan!.Descriptor;
-        BoardDescriptor final = result.Plan.DescriptorWithWorkbook(new string('c', 64), new string('d', 64));
-
-        Assert.Equal(planned.BoardId, final.BoardId);
-        Assert.Equal(planned.Manufacturer, final.Manufacturer);
-        Assert.Equal(planned.Hardware, final.Hardware);
-        Assert.Equal(planned.Board, final.Board);
-        Assert.Equal(planned.Revision, final.Revision);
-        Assert.Equal(planned.PublishedUtc, final.PublishedUtc);
-        Assert.Equal(planned.Origin, final.Origin);
-        Assert.Equal(planned.Maintainers, final.Maintainers);
-    }
-
-    [Fact]
-    public void Folding_the_workbook_in_does_not_mutate_the_plan()
-    {
-        // BoardDescriptor is a mutable class, so a plan that quietly changed under a caller
-        // holding it would defeat the whole "decide it all up front" design.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")));
-
-        string before = result.Plan!.Descriptor.ContentHash;
-        result.Plan.DescriptorWithWorkbook(new string('c', 64), new string('d', 64));
-
-        Assert.Equal(before, result.Plan.Descriptor.ContentHash);
-    }
-
-    [Fact]
-    public void A_missing_workbook_hash_is_refused_rather_than_hashed_as_blank()
-    {
-        // Accepting a blank would produce a plausible-looking descriptor whose hash silently did
-        // not account for the workbook at all - the exact bug this method prevents.
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
-
-        string good = new('c', 64);
-
-        Assert.Throws<ArgumentException>(() => result.Plan!.DescriptorWithWorkbook("", good));
-        Assert.Throws<ArgumentException>(() => result.Plan!.DescriptorWithWorkbook("not-a-hash", good));
-
-        // The SIDECAR hash is equally required, for the same reason: a blank one produces a
-        // plausible descriptor whose hash silently does not account for the board's highlights.
-        Assert.Throws<ArgumentException>(() => result.Plan!.DescriptorWithWorkbook(good, ""));
-        Assert.Throws<ArgumentException>(() => result.Plan!.DescriptorWithWorkbook(good, "not-a-hash"));
     }
 
     [Fact]
@@ -648,8 +395,9 @@ public sealed class PublishPlanTests
     {
         // Codes follow SubmissionValidator's "subject.problem" convention so a caller can group
         // or translate a refusal without parsing prose.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("../escape.png")));
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("../escape.png")));
+
+        Assert.NotEmpty(result.Problems);
 
         foreach (ValidationFinding problem in result.Problems)
         {
@@ -661,227 +409,111 @@ public sealed class PublishPlanTests
     }
 
     // -----------------------------------------------------------------------------------
-    // WHICH files, and WHOSE (security review, 2026-09-25)
-    //
-    // The same rules SubmissionFileRules applies at create, applied again at the last gate before
-    // an irreversible write - a submission queued weeks ago, or by an older build, must not reach
-    // the tree on the strength of a check that ran then.
+    // The descriptor and its content hash
     // -----------------------------------------------------------------------------------
 
-    // A tree holding the given files (relative path -> hash). Folders are derived from the paths.
-    private static PublishedTreeView Tree(params (string Path, string Hash)[] files)
+    [Fact]
+    public void The_descriptor_carries_the_boards_identity_and_the_revision()
     {
-        var hashes = files.ToDictionary(file => file.Path, file => file.Hash, StringComparer.Ordinal);
+        BoardDescriptor descriptor = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png"))).Plan!.Descriptor;
 
-        return new PublishedTreeView(
-            path => hashes.TryGetValue(path, out string? hash) ? hash : null,
-            folder =>
-            {
-                string prefix = folder.Length == 0 ? string.Empty : folder + "/";
-
-                List<string> entries = hashes.Keys
-                    .Where(path => path.StartsWith(prefix, StringComparison.Ordinal))
-                    .Select(path => path[prefix.Length..].Split('/')[0])
-                    .Distinct(StringComparer.Ordinal)
-                    .ToList();
-
-                return entries.Count == 0 && folder.Length > 0 ? null : entries;
-            });
+        Assert.Equal("Commodore/C64/250407", descriptor.BoardId);
+        Assert.Equal("r2", descriptor.Revision);
+        Assert.Equal(BoardDescriptorRules.BoardOrigin.Contributed, descriptor.Origin);
     }
 
     [Fact]
-    public void A_file_NO_ROW_USES_is_refused()
+    public void The_content_hash_does_not_depend_on_the_order_files_arrive_in()
     {
-        // Nothing would show it, so no maintainer could have seen it - which is exactly how a file
-        // that should never be published gets published.
-        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "a.png"));
-        manifest.Rows.BoardLocalFiles.Clear();
+        PublishPlanResult one = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png"), PublishPlanTests.File("b.png", PublishPlanTests.HashB)));
+        PublishPlanResult two = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("b.png", PublishPlanTests.HashB), PublishPlanTests.File("a.png")));
 
-        PublishPlanResult result = PublishPlanTests.Build(manifest);
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.not-used"));
-    }
-
-    [Theory]
-    [InlineData("Commodore/C64/250407/.htaccess")]
-    [InlineData("Commodore/C64/250407/run.exe")]
-    [InlineData("Commodore/C64/250407/drawing.svg")]
-    [InlineData("Commodore/C64/250407/system.json")]
-    [InlineData("Commodore/C64/250407/README")]
-    public void A_file_of_a_type_board_data_never_uses_is_refused(string path)
-    {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File(path)));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.type-refused"));
+        Assert.Equal(one.Plan!.Descriptor.ContentHash, two.Plan!.Descriptor.ContentHash);
     }
 
     [Fact]
-    public void ANOTHER_boards_file_is_refused_when_the_tree_cannot_be_consulted()
+    public void A_changed_file_moves_the_content_hash()
     {
-        // Fails CLOSED: without the tree there is no way to know the file is left unchanged.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File("Commodore/C64/250425/Sheet1.png")));
+        PublishPlanResult before = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png")));
+        PublishPlanResult after = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png", PublishPlanTests.HashB)));
 
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.other-board"));
+        Assert.NotEqual(before.Plan!.Descriptor.ContentHash, after.Plan!.Descriptor.ContentHash);
     }
 
     [Fact]
-    public void ANOTHER_boards_file_that_would_CHANGE_is_refused()
+    public void A_changed_revision_moves_the_content_hash_even_with_identical_files()
     {
-        // The attack this whole section exists for: a submission to one board carrying new bytes
-        // for another board's file, which the publish then copied over the real one.
-        string foreign = "Commodore/C64/250425/Sheet1.png";
+        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File("a.png"));
 
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(foreign, new string('1', 64))),
-            tree: PublishPlanTests.Tree((foreign, new string('2', 64))));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "file.other-board"));
-    }
-
-    [Fact]
-    public void ANOTHER_boards_file_cited_UNCHANGED_is_planned_but_never_written()
-    {
-        // Real data does this: the C128DCR 250477 board cites scope-baseline texts that live in
-        // the C128 310378 folder. Refusing it would make a published board unsubmittable; writing
-        // it would be pointless at best. So it is neither - but it stays part of the content.
-        string foreign = "Commodore/C128/310378/Scope baseline/notes.txt";
-        string hash = new('3', 64);
-
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(foreign, hash)),
-            tree: PublishPlanTests.Tree((foreign, hash)));
-
-        Assert.True(result.IsPlanned);
-        Assert.Empty(result.Plan!.Files);
-        Assert.Equal(foreign, Assert.Single(result.Plan.UnchangedFiles).RelativePath);
-    }
-
-    [Fact]
-    public void An_unchanged_foreign_file_still_counts_toward_the_content_hash()
-    {
-        // Leaving it out would make two different boards - one citing it, one not - hash alike.
-        string foreign = "Commodore/C128/310378/Scope baseline/notes.txt";
-        string hash = new('3', 64);
-        PublishedTreeView tree = PublishPlanTests.Tree((foreign, hash));
-
-        PublishPlanResult with = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(foreign, hash)), tree: tree);
-
-        PublishPlanResult without = PublishPlanTests.Build(PublishPlanTests.Manifest(), tree: tree);
-
-        Assert.NotEqual(without.Plan!.Descriptor.ContentHash, with.Plan!.Descriptor.ContentHash);
         Assert.NotEqual(
-            without.Plan.DescriptorWithWorkbook(new string('1', 64), new string('2', 64)).ContentHash,
-            with.Plan.DescriptorWithWorkbook(new string('1', 64), new string('2', 64)).ContentHash);
-    }
-
-    // ###########################################################################################
-    // *** THE BOARD'S OWN AND SHARED FILES ARE NOT REWRITTEN WHEN NOTHING CHANGED (code review,
-    // 2026-09-25). *** A manifest lists every file the board cites - about 1,200 for the C64
-    // 250407 board - so a one-cell typo fix used to re-verify and rewrite every one of them,
-    // touching each file's modified time and making the hash caches and the checksum manifest
-    // re-hash the lot. A file already published byte-identical at the same path is left alone,
-    // exactly as another board's file already was - and stays in the content hash.
-    // ###########################################################################################
-    [Theory]
-    [InlineData(PublishPlanTests.Own + "Images/u8.png")]
-    [InlineData("Commodore/Shared files/Component images/6526.jpg")]
-    [InlineData("Generic shared files/Component images/7805.jpg")]
-    public void A_file_already_published_byte_identical_is_planned_but_never_written(string path)
-    {
-        string hash = new('5', 64);
-
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(path, hash)),
-            tree: PublishPlanTests.Tree((path, hash)));
-
-        Assert.True(result.IsPlanned, string.Join(" ", result.Problems.Select(problem => problem.Message)));
-        Assert.Empty(result.Plan!.Files);
-        Assert.Equal(path, Assert.Single(result.Plan.UnchangedFiles).RelativePath);
+            PublishPlanTests.Build(manifest, revision: "r2").Plan!.Descriptor.ContentHash,
+            PublishPlanTests.Build(manifest, revision: "r3").Plan!.Descriptor.ContentHash);
     }
 
     [Fact]
-    public void A_file_whose_published_bytes_DIFFER_is_written()
+    public void A_publish_with_no_files_at_all_is_still_planned()
     {
-        string path = PublishPlanTests.Own + "Images/u8.png";
-
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(path, new string('5', 64))),
-            tree: PublishPlanTests.Tree((path, new string('6', 64))));
-
-        Assert.Equal(path, Assert.Single(result.Plan!.Files).RelativePath);
-        Assert.Empty(result.Plan.UnchangedFiles);
-    }
-
-    // Written or left alone, the file is part of what the board holds, so the content hash - what
-    // every client compares to decide whether to sync - must not depend on which it was.
-    [Fact]
-    public void Leaving_an_unchanged_file_alone_does_not_change_the_content_hash()
-    {
-        string path = PublishPlanTests.Own + "Images/u8.png";
-        string hash = new('5', 64);
-        SubmissionManifest manifest = PublishPlanTests.Manifest(PublishPlanTests.File(path, hash));
-
-        PublishPlanResult unchanged = PublishPlanTests.Build(manifest, tree: PublishPlanTests.Tree((path, hash)));
-        PublishPlanResult written = PublishPlanTests.Build(manifest, tree: PublishPlanTests.Tree());
-
-        Assert.Empty(unchanged.Plan!.Files);
-        Assert.Single(written.Plan!.Files);
-        Assert.Equal(written.Plan.Descriptor.ContentHash, unchanged.Plan.Descriptor.ContentHash);
-    }
-
-    [Fact]
-    public void A_path_differing_from_a_PUBLISHED_one_only_by_case_is_refused()
-    {
-        // Two files on the Linux server, one on every Windows and macOS client - whichever syncs
-        // last wins, so this would overwrite the published file for most users.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "images/u8.png")),
-            tree: PublishPlanTests.Tree((PublishPlanTests.Own + "Images/u8.png", new string('4', 64))));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "path.case-collision"));
-    }
-
-    [Fact]
-    public void A_NEW_BOARD_whose_folder_differs_from_a_published_one_only_by_case_is_refused()
-    {
-        // "commodore/C64/250407" beside the real "Commodore/C64/250407": on a client the two are
-        // one folder, so the "new" board would replace the real board's files there.
-        SubmissionManifest manifest = PublishPlanTests.Manifest();
-        manifest.BoardId = "commodore/C64/250407";
-        manifest.Manufacturer = "commodore";
-
-        PublishPlanResult result = PublishPlanTests.Build(
-            manifest,
-            tree: PublishPlanTests.Tree(("Commodore/C64/250407/Sheet1.png", new string('5', 64))));
-
-        Assert.False(result.IsPlanned);
-        Assert.True(PublishPlanTests.HasCode(result, "board.case-collision"));
-    }
-
-    [Fact]
-    public void An_EXACT_published_path_is_not_a_case_collision()
-    {
-        // Anti-vacuity: replacing a published file under its own spelling is the ordinary case.
-        PublishPlanResult result = PublishPlanTests.Build(
-            PublishPlanTests.Manifest(PublishPlanTests.File(PublishPlanTests.Own + "Images/u8.png")),
-            tree: PublishPlanTests.Tree((PublishPlanTests.Own + "Images/u8.png", new string('6', 64))));
+        // A board of rows alone - a new board with no pictures yet - is a board.
+        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
 
         Assert.True(result.IsPlanned);
-        Assert.Single(result.Plan!.Files);
+        Assert.Empty(result.Plan!.FileList);
+    }
+
+    // ###########################################################################################
+    // *** THE BOARD FILE MUST BE FOLDED IN. *** A rows-only change - the commonest contribution -
+    // stores nothing, so without the board file's hash the content hash would not move and the
+    // promotion, which compares exactly this hash, would never offer the board. The board file
+    // holds the highlights too, so a highlight-only change moves it the same way.
+    // ###########################################################################################
+    [Fact]
+    public void A_rows_only_change_moves_the_content_hash_once_the_board_file_is_folded_in()
+    {
+        PublishPlanDetail plan = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png"))).Plan!;
+
+        Assert.NotEqual(
+            plan.DescriptorWithBoardFile(new string('1', 64)).ContentHash,
+            plan.DescriptorWithBoardFile(new string('2', 64)).ContentHash);
+    }
+
+    [Fact]
+    public void Folding_the_board_file_in_leaves_every_other_descriptor_field_alone()
+    {
+        PublishPlanDetail plan = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png"))).Plan!;
+        BoardDescriptor folded = plan.DescriptorWithBoardFile(new string('1', 64));
+
+        Assert.Equal(plan.Descriptor.BoardId, folded.BoardId);
+        Assert.Equal(plan.Descriptor.Revision, folded.Revision);
+        Assert.Equal(plan.Descriptor.PublishedUtc, folded.PublishedUtc);
+        Assert.Equal(plan.Descriptor.Maintainers, folded.Maintainers);
+        Assert.Equal(plan.Descriptor.Origin, folded.Origin);
+        Assert.NotEqual(plan.Descriptor.ContentHash, folded.ContentHash);
+    }
+
+    [Fact]
+    public void Folding_the_board_file_in_does_not_mutate_the_plan()
+    {
+        PublishPlanDetail plan = PublishPlanTests.Build(PublishPlanTests.Manifest(PublishPlanTests.File("a.png"))).Plan!;
+        string before = plan.Descriptor.ContentHash;
+
+        _ = plan.DescriptorWithBoardFile(new string('1', 64));
+
+        Assert.Equal(before, plan.Descriptor.ContentHash);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("not-a-hash")]
+    public void A_missing_board_file_hash_is_refused_rather_than_hashed_as_blank(string hash)
+    {
+        PublishPlanDetail plan = PublishPlanTests.Build(PublishPlanTests.Manifest()).Plan!;
+
+        Assert.Throws<ArgumentException>(() => plan.DescriptorWithBoardFile(hash));
     }
 
     [Fact]
     public void The_plan_carries_the_data_root_so_the_writer_can_check_for_links()
     {
-        PublishPlanResult result = PublishPlanTests.Build(PublishPlanTests.Manifest());
-
-        Assert.Equal(PublishPlanTests.Root, result.Plan!.DataRoot);
+        Assert.Equal(PublishPlanTests.Root, PublishPlanTests.Build(PublishPlanTests.Manifest()).Plan!.DataRoot);
     }
 }

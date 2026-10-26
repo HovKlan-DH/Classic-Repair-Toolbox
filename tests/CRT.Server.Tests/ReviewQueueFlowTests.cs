@@ -54,7 +54,7 @@ namespace CRT.Server.Tests
         {
             string folder = Path.Combine([this.thisTree, .. boardId.Split('/')]);
             Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, $"Data {boardId.Split('/')[1]} {boardId.Split('/')[2]}.xlsx"), "a workbook");
+            File.WriteAllText(Path.Combine(folder, DataTreeLayout.BoardFileName), "a board file");
         }
 
         private static async Task<long> AddAsync(FakeSubmissionStore store, string boardId = "Commodore/C64/250407", bool touchesSharedFiles = false)
@@ -254,11 +254,11 @@ namespace CRT.Server.Tests
             Assert.Null(ReviewQueueFlow.BetaRevisionOf(PublishedBoardLocation.None, board: null));
         }
 
-        // A real workbook in the BETA tree, carrying a revision date.
+        // A real board file in the BETA tree, carrying a revision date.
         private void PublishWorkbook(string boardId, string revision)
         {
             string[] parts = boardId.Split('/');
-            string path = Path.Combine([this.thisTree, .. parts, $"Data {parts[1]} {parts[2]} v2.0.0.xlsx"]);
+            string path = Path.Combine([this.thisTree, .. parts, DataTreeLayout.BoardFileName]);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
             BoardWorkbookWriter.Write(path, new BoardData

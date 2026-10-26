@@ -223,7 +223,7 @@ namespace Handlers.DataHandling
             this.thisDocument.History.Record(this, row, focusIndex, -1);
             this.Rows.Insert(at, row);
 
-            this.thisDocument.MarkDirty();
+            this.thisDocument.MarkDirty(this);
             this.Refresh();
 
             return row;
@@ -281,7 +281,7 @@ namespace Handlers.DataHandling
             this.Rows.Move(from, to);
             row.IsPlacedByUser = true;
 
-            this.thisDocument.MarkDirty();
+            this.thisDocument.MarkDirty(this);
             this.Refresh();
 
             return true;
@@ -442,7 +442,7 @@ namespace Handlers.DataHandling
                 this.Rows.Remove(row);
             }
 
-            this.thisDocument.MarkDirty();
+            this.thisDocument.MarkDirty(this);
             this.Refresh();
         }
 
@@ -485,7 +485,7 @@ namespace Handlers.DataHandling
             this.Rows[index] = restored;
             this.thisGhostsByPublishedIndex.Remove(ghost.PublishedIndex);
 
-            this.thisDocument.MarkDirty();
+            this.thisDocument.MarkDirty(this);
             this.Refresh();
 
             return restored;
@@ -508,6 +508,280 @@ namespace Handlers.DataHandling
             this.Refresh();
 
             return true;
+        }
+
+        // ###########################################################################################
+        // *** A BLOCK OF CELLS PASTED (CRT 4.0, 2026-10-25 - the plan's step 0: "the table view gains
+        // block copy and paste, fill down, and find & replace"). *** The block's top-left cell lands
+        // on `anchor`, each of its rows in the next row the grid SHOWS (`shownRows`, in order) from
+        // the anchor's row down, each of its cells one column further right:
+        //
+        //   - a red row is passed over - it is not in the draft, and cannot be typed into either;
+        //   - rows the block still has when the shown rows run out are ADDED at the end of the sheet,
+        //     as "Insert row" adds one (a new component is placed in its category on save) - unless
+        //     `mayAddRows` is false: the table narrowed by a pill or a search, where a row added at
+        //     the end would be out of sight. They are left out then;
+        //   - cells past the last column are left out, and a block row with fewer cells writes only
+        //     the cells it has;
+        //   - a FIRST ROW that is the sheet's own column headings, from where it lands - copied out of
+        //     a spreadsheet with its heading row - is left out: it is never data.
+        //
+        // ONE change: one undo step, one refresh, the board checked once. Nothing at all when the
+        // anchor is on a red row, as a one-cell paste there is refused.
+        // ###########################################################################################
+        public BoardTablePasteResult PasteBlock(
+            BoardTableCell anchor,
+            IReadOnlyList<IReadOnlyList<string>> block,
+            IReadOnlyList<BoardTableRow> shownRows,
+            bool mayAddRows)
+        {
+            ArgumentNullException.ThrowIfNull(anchor);
+            ArgumentNullException.ThrowIfNull(block);
+            ArgumentNullException.ThrowIfNull(shownRows);
+
+            if (anchor.Row.IsDeleted || !ReferenceEquals(anchor.Row.Sheet, this) || block.Count == 0)
+            {
+                return BoardTablePasteResult.Nothing;
+            }
+
+            int column = anchor.ColumnIndex;
+            List<IReadOnlyList<string>> rows = block.ToList();
+            bool headingsLeftOut = rows.Count > 1 && this.IsHeadingRow(rows[0], column);
+
+            if (headingsLeftOut)
+            {
+                rows.RemoveAt(0);
+            }
+
+            List<BoardTableRow> order = shownRows.Contains(anchor.Row) ? shownRows.ToList() : this.Rows.ToList();
+            List<BoardTableRow> targets = order
+                .Skip(order.IndexOf(anchor.Row))
+                .Where(row => !row.IsDeleted && ReferenceEquals(row.Sheet, this))
+                .Take(rows.Count)
+                .ToList();
+
+            int missing = rows.Count - targets.Count;
+            int rowsAdded = mayAddRows ? missing : 0;
+            int widest = rows.Count == 0 ? 0 : rows.Max(row => row.Count);
+            int fitting = Math.Min(widest, this.Columns.Count - column);
+
+            int WriteRows(int from, int to)
+            {
+                int written = 0;
+
+                for (int i = from; i < to; i++)
+                {
+                    for (int j = 0; j < Math.Min(rows[i].Count, fitting); j++)
+                    {
+                        written += BoardTableSheet.Write(targets[i].Cells[column + j], rows[i][j]) ? 1 : 0;
+                    }
+                }
+
+                return written;
+            }
+
+            // The rows already there first, so the undo step's first change - where Ctrl+Z puts the
+            // cursor - is the anchor's cell, not a row added at the end.
+            int changed = this.AsOneChange(() =>
+            {
+                int existing = targets.Count;
+                int written = WriteRows(0, existing);
+
+                targets.AddRange(this.AppendRows(rowsAdded));
+
+                return written + WriteRows(existing, targets.Count);
+            });
+
+            return new BoardTablePasteResult(
+                targets,
+                column,
+                fitting,
+                changed,
+                rowsAdded,
+                RowsLeftOut: missing - rowsAdded,
+                ColumnsLeftOut: Math.Max(0, widest - fitting),
+                headingsLeftOut);
+        }
+
+        // ###########################################################################################
+        // ONE value into several cells - a single copied cell pasted onto a selection, the way a
+        // spreadsheet fills the selection with it. Red rows' cells and other sheets' are passed over.
+        // One change, as PasteBlock. Returns how many cells changed.
+        // ###########################################################################################
+        public int PasteIntoCells(IReadOnlyList<BoardTableCell> cells, string? text)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+
+            List<BoardTableCell> live = this.LiveCellsOf(cells);
+
+            return live.Count == 0
+                ? 0
+                : this.AsOneChange(() => live.Count(cell => BoardTableSheet.Write(cell, text)));
+        }
+
+        // ###########################################################################################
+        // FILL DOWN (Ctrl+D, as in a spreadsheet): in every column among `cells`, the TOPMOST of its
+        // cells - in the sheet's order - gives its text to the others. The top cell may be a red
+        // row's (its text is the published value shown); the others must be live. A caller wanting a
+        // spreadsheet's Ctrl+D on one row hands the row above's cell too (BoardTableEditor.FillDown).
+        // One change. Returns how many cells changed.
+        // ###########################################################################################
+        public int FillDown(IReadOnlyList<BoardTableCell> cells)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+
+            List<(BoardTableCell Target, string Text)> fills = this.FillsOf(cells, out _);
+
+            return fills.Count == 0
+                ? 0
+                : this.AsOneChange(() => fills.Count(fill => BoardTableSheet.Write(fill.Target, fill.Text)));
+        }
+
+        // ###########################################################################################
+        // Whether every cell a write would go into is on a red row - so the paste or the fill can
+        // change nothing, and says why rather than "the cells already held it" (code review,
+        // 2026-10-25). OnlyDeletedRows for a paste into `cells`, FillsOnlyDeletedRows for a FillDown.
+        // ###########################################################################################
+        public bool OnlyDeletedRows(IReadOnlyList<BoardTableCell> cells)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+
+            return this.LiveCellsOf(cells).Count == 0 && cells.Any(cell => cell.Row.IsDeleted && ReferenceEquals(cell.Row.Sheet, this));
+        }
+
+        public bool FillsOnlyDeletedRows(IReadOnlyList<BoardTableCell> cells)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+
+            return this.FillsOf(cells, out int onDeletedRows).Count == 0 && onDeletedRows > 0;
+        }
+
+        // What a FillDown of `cells` writes: each live cell below its column's topmost and the text it
+        // takes - and how many cells below a top one it passes over for being on a red row.
+        private List<(BoardTableCell Target, string Text)> FillsOf(IReadOnlyList<BoardTableCell> cells, out int onDeletedRows)
+        {
+            var position = new Dictionary<BoardTableRow, int>(ReferenceEqualityComparer.Instance);
+            for (int i = 0; i < this.Rows.Count; i++)
+            {
+                position[this.Rows[i]] = i;
+            }
+
+            var fills = new List<(BoardTableCell Target, string Text)>();
+            onDeletedRows = 0;
+
+            foreach (IGrouping<int, BoardTableCell> column in cells
+                         .Where(cell => position.ContainsKey(cell.Row))
+                         .Distinct(ReferenceEqualityComparer.Instance)
+                         .Cast<BoardTableCell>()
+                         .GroupBy(cell => cell.ColumnIndex))
+            {
+                List<BoardTableCell> ordered = column.OrderBy(cell => position[cell.Row]).ToList();
+                string text = ordered[0].Text;
+
+                onDeletedRows += ordered.Skip(1).Count(cell => cell.Row.IsDeleted);
+                fills.AddRange(ordered.Skip(1).Where(cell => !cell.Row.IsDeleted).Select(cell => (cell, text)));
+            }
+
+            return fills;
+        }
+
+        // The live cells of `cells` that are this sheet's, each once.
+        private List<BoardTableCell> LiveCellsOf(IReadOnlyList<BoardTableCell> cells) =>
+            cells
+                .Where(cell => !cell.Row.IsDeleted && ReferenceEquals(cell.Row.Sheet, this) && this.Rows.Contains(cell.Row))
+                .Distinct(ReferenceEqualityComparer.Instance)
+                .Cast<BoardTableCell>()
+                .ToList();
+
+        // ###########################################################################################
+        // Runs `edits` as ONE change of this sheet: one undo step (a group - every cell's own step
+        // rides along with the first), the board checked once, and the sheet refreshed once at the
+        // end. Returns what `edits` returns - how many cells it changed.
+        // ###########################################################################################
+        internal int AsOneChange(Func<int> edits)
+        {
+            BoardTableHistory history = this.thisDocument.History;
+            int changed;
+
+            history.BeginGroup();
+
+            try
+            {
+                using (this.thisDocument.DeferProblems())
+                {
+                    changed = edits();
+                    this.Refresh();
+                }
+            }
+            finally
+            {
+                history.EndGroup(this);
+            }
+
+            return changed;
+        }
+
+        // Sets a cell's text; true when that changed it (the text is normalised on the way in).
+        internal static bool Write(BoardTableCell cell, string? text)
+        {
+            string before = cell.Text;
+            cell.Text = text ?? string.Empty;
+
+            return !string.Equals(before, cell.Text, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // Empty rows at the end of the sheet, as "Insert row" makes them - for a paste longer than
+        // the rows it lands on. Recorded with the change they are part of (inside AsOneChange, so
+        // the history keeps the sheet as it was before the paste); not refreshed one by one.
+        // ###########################################################################################
+        private List<BoardTableRow> AppendRows(int count)
+        {
+            var added = new List<BoardTableRow>(Math.Max(0, count));
+
+            if (count <= 0)
+            {
+                return added;
+            }
+
+            this.thisDocument.History.Record(this, null, this.Rows.Count, -1);
+
+            for (int i = 0; i < count; i++)
+            {
+                var row = new BoardTableRow(this, [], isDeleted: false) { IsInsertedThisSession = true };
+                this.Rows.Add(row);
+                added.Add(row);
+            }
+
+            this.thisDocument.MarkDirty(this);
+            return added;
+        }
+
+        // Whether a pasted row is this sheet's column headings from `fromColumn` on: every cell
+        // with text in it names the column it would land in (ignoring capitals), and one does.
+        private bool IsHeadingRow(IReadOnlyList<string> row, int fromColumn)
+        {
+            bool named = false;
+
+            for (int j = 0; j < row.Count; j++)
+            {
+                string text = BoardTableCell.NormaliseText(row[j]);
+
+                if (text.Length == 0)
+                {
+                    continue;
+                }
+
+                if (fromColumn + j >= this.Columns.Count ||
+                    !string.Equals(text, this.Columns[fromColumn + j], StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                named = true;
+            }
+
+            return named;
         }
 
         // ###########################################################################################
@@ -688,7 +962,7 @@ namespace Handlers.DataHandling
         internal void OnCellEdited(BoardTableCell cell)
         {
             this.NeedsRefresh = true;
-            this.thisDocument.MarkDirty();
+            this.thisDocument.MarkDirty(this);
 
             this.CellEdited?.Invoke(this, cell);
         }

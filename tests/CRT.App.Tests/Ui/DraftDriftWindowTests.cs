@@ -196,29 +196,43 @@ public sealed class DraftDriftWindowTests : IDisposable
         });
     }
 
-    // Under a table with unsaved edits of this draft nothing may write it (CLAUDE.md) - the
-    // contributor is told what settles it, and the draft is left alone.
+    // ###########################################################################################
+    // *** NO LONGER HELD BACK BY THE TABLE (CRT 4.0 step 1, 2026-10-25). *** Bringing the draft up to
+    // date runs under the draft held in memory: what it holds is saved first, then the rebase writes
+    // the file and the draft is read back (DraftEdits.WriteFileDirectlyAsync - DraftSessionTests
+    // cover that). When what it holds cannot be saved - the table's change, with the file written by
+    // another program meanwhile - nothing is rebased, and the window says why.
+    // ###########################################################################################
     [Fact]
-    public async Task Bringing_up_to_date_waits_for_the_tables_unsaved_edits()
+    public async Task Bringing_up_to_date_changes_nothing_when_what_the_draft_holds_cannot_be_saved_first()
     {
+        string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, ExcelDataFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
+        CachedWorkbooks.Write(workbook, new BoardData { RevisionDate = "2026-01-01" });
+
+        DraftMarkerStore.Save(
+            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile),
+            new DraftMarker { BoardKey = ExcelDataFile, BaseRevision = "2026-May-12" });
+
+        DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, ExcelDataFile)!;
+        Assert.True(session.Apply("The table's change", content => content with { Board = content.Board.WithRevisionDate("2026-02-02") }));
+        Assert.True(DraftWorkbookStore.Edit(DraftManager.DraftsRoot, ExcelDataFile, board => board.WithRevisionDate("2026-03-03")));
+
         await UiTest.RunAsync(async () =>
         {
-            var window = new DraftDriftWindow();
-            window.Initialize("Commodore 64 - 250407", ExcelDataFile, ReportWithBase(), _ => UnsavedTableEditsPrompt.SavingElsewhere);
-
-            UnsavedTableEditsPrompt? shown = null;
-            window.ShowSavingBlockedOverrideForTests = prompt =>
-            {
-                shown = prompt;
-                return Task.CompletedTask;
-            };
+            DraftDriftWindow window = WindowFor(ReportWithBase());
 
             await window.RebaseAsync();
 
-            Assert.Equal(UnsavedTableEditsPrompt.SavingElsewhere, shown);
             Assert.False(window.BroughtUpToDate);
             Assert.True(window.RebaseButtonVisibleForTests);
+            Assert.Equal(
+                "Nothing was changed. " + DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.ChangedOnDisk),
+                window.StatusTextForTests);
         });
+
+        Assert.Equal("The table's change", session.UndoDescription);
+        Assert.Equal("2026-03-03", DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, ExcelDataFile)!.RevisionDate);
     }
 
     // ------------------------------------------------------------------ The rows

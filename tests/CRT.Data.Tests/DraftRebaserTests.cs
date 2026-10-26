@@ -7,7 +7,9 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // Bringing a real draft folder up to date (code review, 2026-10-13): DraftRebaser around
-// DraftRebase's merge - the workbook, the board's own files, the base and the marker.
+// DraftRebase's merge - the board file and its file list, the base and the marker. In CRT 4.0
+// (2026-10-24) a board names its files and the tree's store keeps their bytes; a draft names the
+// same files, and only the bytes the contributor brought are in its own store.
 //
 // Shares "BoardData": the published and draft workbooks are read through BoardDataReader.
 // ###########################################################################################
@@ -15,8 +17,8 @@ namespace ClassicRepairToolbox.Tests;
 public sealed class DraftRebaserTests : IDisposable
 {
     private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
-    private const string ImageA = "Commodore/C64/250407/Sheet1.png";
-    private const string ImageB = "Commodore/C64/250407/Component images/U8.png";
+    private const string ImageA = "Sheet1.png";
+    private const string ImageB = "Component images/U8.png";
 
     private readonly TempWorkspace thisWorkspace = new();
 
@@ -43,24 +45,38 @@ public sealed class DraftRebaserTests : IDisposable
     private static ComponentEntry Component(string label, string description) =>
         new() { BoardLabel = label, Description = description };
 
+    // The published board with the two files it names, their bytes in the tree's store. A board
+    // whose rows cite only one of them names only that one.
     private void Publish(BoardData board, string imageABytes, string imageBBytes)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(this.PublishedWorkbook)!);
         BoardWorkbookWriter.Write(this.PublishedWorkbook, board);
-        this.WriteData(ImageA, imageABytes);
-        this.WriteData(ImageB, imageBBytes);
+
+        var cited = DraftFiles.CitedNames(board).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        BoardDocument.StoredFileRow a = StoredFiles.Put(this.DataRoot, ImageA, imageABytes);
+        BoardDocument.StoredFileRow b = StoredFiles.Put(this.DataRoot, ImageB, imageBBytes);
+        BoardFiles.Change(this.PublishedWorkbook, document => document.Files = new[] { a, b }.Where(file => cited.Contains(file.Name)).ToList());
+
         BoardDataReader.ClearAllCache();
     }
 
-    private void WriteData(string relative, string text)
-    {
-        string full = Path.Combine(this.DataRoot, relative.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        File.WriteAllText(full, text);
-    }
+    private string DraftFolder => DraftFolderLayout.GetBoardFolder(this.DraftsRoot, BoardKey);
 
-    private string DraftFileText(string relative) =>
-        File.ReadAllText(DraftFolderLayout.GetReferencedFilePath(this.DraftsRoot, BoardKey, relative));
+    private string? DraftFilePath(string name) => DraftFileResolver.Resolve(this.DataRoot, this.DraftFolder, name, BoardKey);
+
+    private string DraftFileText(string name) => File.ReadAllText(this.DraftFilePath(name)!);
+
+    // The contributor replaces a picture: the new file is picked into the draft folder under its
+    // name, and the draft's next write takes it in.
+    private void ReplaceInDraft(string name, string text)
+    {
+        string arrived = Path.Combine(this.DraftFolder, name.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(arrived)!);
+        File.WriteAllText(arrived, text);
+
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, BoardKey, board => board));
+        Assert.False(File.Exists(arrived));
+    }
 
     private void Seed()
     {
@@ -98,7 +114,7 @@ public sealed class DraftRebaserTests : IDisposable
         // The contributor fixes U8 and replaces the U8 scope picture.
         Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, BoardKey, board => Board(
             board.RevisionDate, Component("U8", "6510 CPU"), Component("U9", "VIC"))));
-        File.WriteAllText(DraftFolderLayout.GetReferencedFilePath(this.DraftsRoot, BoardKey, ImageB), "u8 MINE");
+        this.ReplaceInDraft(ImageB, "u8 MINE");
 
         // Somebody else's work is published: U9 corrected, C1 added, the schematic re-scanned and
         // the U8 picture replaced too.
@@ -151,12 +167,16 @@ public sealed class DraftRebaserTests : IDisposable
 
         this.Publish(Board("2026-10-01", Component("U8", "CPU"), Component("C1", "Cap")), "sheet v2", "u8 v1");
 
-        // The base is written through a temporary file beside it: a folder in its place stops it.
+        // The base is replaced by moving a new file over it: held open, it cannot be (Windows -
+        // elsewhere file locks are advisory).
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
         string basePath = DraftFolderLayout.GetBasePath(this.DraftsRoot, BoardKey);
-        string blocker = DraftFolderLayout.TemporaryPathFor(basePath);
-        Directory.CreateDirectory(blocker);
+        DraftRebaseReport first;
 
-        DraftRebaseReport first = DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey);
+        using (new FileStream(basePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            first = DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey);
+        }
 
         Assert.Equal(DraftRebaseOutcome.NotNoted, first.Outcome);
         Assert.Equal("2026-09-01", DraftBaseStore.Load(this.DraftsRoot, BoardKey)!.Revision);
@@ -167,8 +187,6 @@ public sealed class DraftRebaserTests : IDisposable
 
         // The draft has the update already.
         Assert.Contains(BoardDataReader.ReadWorkbookUncached(this.DraftWorkbook)!.Components, c => c.BoardLabel == "C1");
-
-        Directory.Delete(blocker);
 
         DraftRebaseReport second = DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey);
 
@@ -185,23 +203,21 @@ public sealed class DraftRebaserTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A COPY NOTHING CITES ANY MORE GOES (code review, 2026-10-13). *** The update dropped U8's
-    // image row: the draft's untouched copy of the picture stayed, the new base no longer listed it,
-    // and the Drafts row counted it as the contributor's change - Submit on, with nothing to send.
-    // A copy the contributor changed stays theirs.
+    // *** A FILE NOTHING CITES ANY MORE GOES (code review, 2026-10-13). *** The update dropped U8's
+    // image row: the draft's untouched picture stayed, the new base no longer listed it, and the
+    // Drafts row counted it as the contributor's change - Submit on, with nothing to send. A picture
+    // the contributor replaced stays theirs - and so does the row citing it (DraftRebaseFiles).
     // ###########################################################################################
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void A_copy_the_update_stopped_citing_is_removed_unless_the_contributor_changed_it(bool contributorChangedIt)
+    public void A_file_the_update_stopped_citing_is_removed_unless_the_contributor_changed_it(bool contributorChangedIt)
     {
         this.Publish(Board("2026-09-01", Component("U8", "CPU")), "sheet v1", "u8 v1");
         this.Seed();
 
-        string copy = DraftFolderLayout.GetReferencedFilePath(this.DraftsRoot, BoardKey, ImageB);
-
         if (contributorChangedIt)
-            File.WriteAllText(copy, "u8 MINE");
+            this.ReplaceInDraft(ImageB, "u8 MINE");
 
         // The update drops the image row, and the server's tidying removes the picture.
         BoardData withoutImage = Board("2026-10-01", Component("U8", "CPU"));
@@ -215,11 +231,15 @@ public sealed class DraftRebaserTests : IDisposable
         };
 
         this.Publish(withoutImage, "sheet v1", "unused");
-        File.Delete(Path.Combine(this.DataRoot, ImageB.Replace('/', Path.DirectorySeparatorChar)));
 
         Assert.Equal(DraftRebaseOutcome.BroughtUpToDate, DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey).Outcome);
 
-        Assert.Equal(contributorChangedIt, File.Exists(copy));
+        BoardDocument draft = BoardFiles.ReadDocument(this.DraftWorkbook)!;
+        Assert.Equal(contributorChangedIt, draft.Files.Any(file => file.Name == ImageB));
+        Assert.Equal(contributorChangedIt, draft.ComponentImages.Any(row => row.File == ImageB));
+
+        if (contributorChangedIt)
+            Assert.Equal("u8 MINE", this.DraftFileText(ImageB));
 
         DraftStatus? status = DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, BoardKey);
         Assert.Equal(contributorChangedIt ? 1 : 0, DraftStatusReader.CountOtherChangesCached(status, this.DraftsRoot).Files);

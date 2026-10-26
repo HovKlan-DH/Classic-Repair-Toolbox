@@ -174,7 +174,7 @@ namespace CRT
                     () => Task.Run(() => DraftChangeReport.For(status, draftsRoot, publishedPath)));
 
                 var window = new DraftDriftWindow();
-                window.Initialize(entry.ToString(), entry.ExcelDataFile, report, this.TabDrafts.SavingBlockedFor);
+                window.Initialize(entry.ToString(), entry.ExcelDataFile, report);
                 await window.ShowDialog(this);
 
                 // Brought up to date: the board on screen is this draft's, read again.

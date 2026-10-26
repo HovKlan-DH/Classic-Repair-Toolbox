@@ -249,9 +249,9 @@ namespace CRT
                 this.TabWorkbooks?.FocusSearchBox();
             }
 
-            // The Drafts tab's table editor owns the keyboard while it is open - see
+            // The Contribute tab's table editor owns the keyboard while it is open - see
             // ShouldReturnFocusToComponentSearch. Coming back to the tab puts focus back in it.
-            if (ReferenceEquals(this.MainTabControl?.SelectedItem, this.DraftsTabItem))
+            if (ReferenceEquals(this.MainTabControl?.SelectedItem, this.ContributeTabItem))
             {
                 this.TabDrafts.FocusTableIfOpen();
             }

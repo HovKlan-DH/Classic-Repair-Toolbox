@@ -6,20 +6,20 @@ using Xunit;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// The data folders CRT reads BY NAME, rather than through a workbook, must be the ones the
-// server's "unused files" rule keeps (DataTreeUsage, 2026-09-25).
+// The data folders CRT reads BY NAME, rather than through a board file, must be the ones the
+// data tree keeps (DataTreeUsage, 2026-09-25; the 4.0 tree's DataTreeLayout, 2026-10-24).
 //
-// No workbook cites the MiniPro IC tests or a board's KiCad files; the rule keeps them only
-// because it is told CRT reads those folders. If the app moved one and the rule did not follow,
-// the server would call every file in it unused - and remove it from every user's download. So
-// each folder is compared here, app side against rule side, and the test fails on either moving
-// alone.
+// No board cites the MiniPro IC tests; the 4.0 tree keeps them only because it reserves their
+// top folder (DataTreeLayout.ReservedTopFolders), and the converter carries them there. If the
+// app moved the folder and the tree did not follow, every file in it would be missing from
+// every user's download. So the folder is compared here, app side against tree side, and the
+// test fails on either moving alone.
 // ###########################################################################################
 [Collection("DataManager")]
 public sealed class DataFoldersReadByNameTests
 {
     [Fact]
-    public void The_MiniPro_folder_the_app_reads_is_one_the_rule_keeps()
+    public void The_MiniPro_folder_the_app_reads_is_one_the_tree_keeps()
     {
         string root = DataManager.DataRoot;
         string catalogue = string.IsNullOrEmpty(root)
@@ -28,9 +28,8 @@ public sealed class DataFoldersReadByNameTests
 
         catalogue = catalogue.Replace(Path.DirectorySeparatorChar, '/');
 
-        Assert.Contains(
-            DataTreeUsage.FoldersReadByName,
-            folder => catalogue.StartsWith(folder + "/", StringComparison.Ordinal));
+        Assert.StartsWith(DataTreeLayout.MiniProTestsFolder + "/", catalogue, StringComparison.Ordinal);
+        Assert.Contains(DataTreeLayout.MiniProTestsFolder.Split('/')[0], DataTreeLayout.ReservedTopFolders);
     }
 
     [Fact]

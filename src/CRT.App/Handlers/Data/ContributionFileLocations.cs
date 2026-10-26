@@ -1,150 +1,119 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // The folders the component editor offers in its "File location" drop-down: every END folder
-    // (one with no sub-folders) of the data tree AND of the drafts tree, as "/"-separated paths
-    // relative to their own root ("Commodore/C64/250407/Scope baseline"), narrowed by WritableBy to
-    // the folders a submission for the board being edited may write.
+    // The folders the component editor offers in its "File location" drop-down - folders of the
+    // BOARD'S OWN FILE NAMES (CRT 4.0, 2026-10-25).
     //
-    // *** THE DRAFTS TREE IS INCLUDED, AND THAT IS THE FIX (owner report, 2026-09-24). ***
-    // The list used to be built from the data root alone. A board created with "Add a new board"
-    // exists ONLY under the drafts root, so its folders - the "Scope baseline" folder DraftSeeder
-    // creates for it in particular - were never offered, and a file could not be filed there.
+    // *** IN 4.0 A ROW NAMES A FILE OF ITS BOARD *** ("Scope baseline/U19_1_PAL.png" -
+    // BoardFileNames), and the bytes lie in a store laid out by checksum ("Files/ab/<sha256>.png").
+    // So the data tree's folders say nothing about where a file of the board goes, and the list is
+    // no longer read off the disk: it was built from the data tree's and the drafts tree's end
+    // folders, which in a 4.0 tree are the store's checksum folders and CRT's own bookkeeping.
     //
-    // Both trees use the same Manufacturer/Hardware/Board layout (DraftFolderLayout mirrors Data/
-    // on purpose), so a path relative to either root means the same place, and a location picked
-    // from the drafts half is stored exactly like one from the data half. DraftFileResolver's
-    // BuildDraftFileDestination already maps "Manufacturer/Hardware/Board/Scope baseline/x.png"
-    // into the draft's own folder, so nothing downstream of this list needed to change.
+    // It offers:
+    //   - every folder a name the board's rows cite already uses ("Truth tables" on the C64), and
+    //   - the four folders every converted board keeps its files in (UsualFolders), so a new board,
+    //     or one with no scope baseline yet, offers them too (the trees measured 2026-10-25:
+    //     schematics at the top, then exactly these four, and "Truth tables" on two boards).
     //
-    // Merged case-INSENSITIVELY: a published board with a seeded draft appears in both trees, and
-    // listing each of its folders twice would double the drop-down for nothing. Sorted the same
-    // way, since that is the order the window re-sorts into once a row's own location is added.
+    // A file is one of the board's whatever folder it is in - the server takes any name inside the
+    // board (the Excel tree's "[x] belongs to another board" went with the shared folders) - so
+    // there is nothing to narrow by board any more. What is left out is what can never hold a file
+    // of a board: see IsWritableFolder.
     //
-    // Fails soft per folder: an unreadable directory is skipped rather than losing the whole list,
-    // matching what the window did before this was extracted.
+    // Sorted ignoring capitals, the order the window re-sorts into once a row's own location is
+    // added; listed once whatever the capitals, since a name is matched ignoring them.
     // ###########################################################################################
     internal static class ContributionFileLocations
     {
-        public static List<string> FindEndFolders(params string?[] roots)
+        public static IReadOnlyList<string> UsualFolders { get; } =
+        [
+            "Board local files",
+            "Component images",
+            "Component local files",
+            DraftFolderLayout.ScopeBaselineFolderName,
+        ];
+
+        public static List<string> ForBoard(BoardData? board)
         {
-            var endFolders = new List<string>();
+            IEnumerable<string> used = board == null
+                ? []
+                : DraftFiles.CitedNames(board)
+                    .Select(BoardFileNames.Normalise)
+                    .Where(name => name.Contains('/'))
+                    .Select(name => name[..name.LastIndexOf('/')]);
 
-            foreach (string? root in roots)
-            {
-                if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
-                {
-                    continue;
-                }
-
-                ContributionFileLocations.FindEndFoldersRecursive(root, root, endFolders);
-            }
-
-            return endFolders
+            return ContributionFileLocations.UsualFolders
+                .Concat(used)
+                .Where(ContributionFileLocations.IsWritableFolder)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 
         // ###########################################################################################
-        // *** ONLY THE FOLDERS A SUBMISSION FOR THIS BOARD MAY WRITE (owner request, 2026-09-25). ***
-        // The drop-down offered every end folder of every board of every manufacturer - dozens of
-        // entries, nearly all of them folders the server refuses a new file in ("[x] belongs to
-        // another board"). It now offers the board's own folder and its sub-folders, this
-        // manufacturer's "Shared files" folders and the "Generic shared files" folders.
+        // Whether a new file may be filed in this folder of the board's names. Left out:
         //
-        // The board's own folder is ADDED even when it is not an end folder: its schematic images
-        // and other files sit directly in it, and a board with no sub-folders at all would
-        // otherwise offer none of its own.
+        //   - the board's store ("Files/..."): a name there is never a file of the board, so a draft
+        //     write would not list it and the file would be lost (DraftFiles takes in only what can
+        //     be a contributor's file);
+        //   - a folder with a segment starting with a dot - "." and "..", CRT's bookkeeping
+        //     (".crt-..."), and every hidden folder: the server refuses any such name
+        //     (SubmissionFileRules.TryCheckName, "file.hidden_name"), and a file filed there was
+        //     copied in and listed, only to be refused at Submit (code review, 2026-10-25);
+        //   - a drive or other ":" a name cannot carry, which would name a file somewhere else.
         //
-        // An unrecognisable board id filters nothing. The save refuses such a window anyway, and an
-        // empty drop-down would only hide why.
+        // "/"-separated; a backslash and slashes at either end are forgiven, as the writer forgives
+        // them (ComponentBoardWriter.JoinFilePath).
         // ###########################################################################################
-        public static List<string> WritableBy(string? boardId, IEnumerable<string> folders)
-        {
-            ArgumentNullException.ThrowIfNull(folders);
-
-            if (!BoardDescriptorRules.IsValidBoardId(boardId))
-            {
-                return folders.ToList();
-            }
-
-            return folders
-                .Append(boardId!)
-                .Where(folder => ContributionFileLocations.IsWritableFolder(boardId, folder))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-        }
-
-        // ###########################################################################################
-        // Whether a new file may be filed in this folder by a submission for this board.
-        //
-        // *** THE SERVER'S OWN RULE DECIDES "WHOSE FOLDER" - SubmissionFileScopes.Classify, which
-        // SubmissionFileRules refuses a submission by. *** A second opinion here would drift from it,
-        // and the contributor would again find out only when the server refused the submission.
-        // Classify judges a FILE path, so a name stands in for the file: a folder is writable exactly
-        // when a file directly inside it is.
-        //
-        // Two more are left out, although the server would take a file in either:
-        //   - a folder CRT reads by NAME (DataTreeUsage.FoldersReadByName - the MiniPro IC tests),
-        //     which no row cites;
-        //   - a draft's COPY of a shared folder ("<board>/Commodore/Shared files/..."). A new file
-        //     filed in a shared folder is kept inside the draft under its whole path
-        //     (DraftFileResolver.BuildDraftFileDestination), so the drafts-tree scan reports that
-        //     copy as a folder of the board itself. It exists nowhere else.
-        // ###########################################################################################
-        public static bool IsWritableFolder(string? boardId, string? folder)
+        public static bool IsWritableFolder(string? folder)
         {
             string trimmed = folder?.Trim().Replace('\\', '/').Trim('/') ?? string.Empty;
 
-            if (trimmed.Length == 0 || !BoardDescriptorRules.IsValidBoardId(boardId))
+            if (trimmed.Length == 0)
             {
                 return false;
             }
 
-            string[] board = boardId!.Split('/');
+            string[] segments = trimmed.Split('/');
 
-            SubmissionFileScope scope = SubmissionFileScopes.Classify(
-                board[0], board[1], board[2], trimmed + "/file");
-
-            if (scope == SubmissionFileScope.Foreign)
+            if (segments.Any(segment => segment.Trim().Length == 0 || segment.StartsWith('.') || segment.Contains(':')))
             {
                 return false;
             }
 
-            bool isReadByName = DataTreeUsage.FoldersReadByName.Any(readByName =>
-                string.Equals(trimmed, readByName, StringComparison.OrdinalIgnoreCase) ||
-                trimmed.StartsWith(readByName + "/", StringComparison.OrdinalIgnoreCase));
-
-            if (isReadByName)
-            {
-                return false;
-            }
-
-            if (scope == SubmissionFileScope.Own)
-            {
-                string[] within = trimmed.Length == boardId.Length
-                    ? []
-                    : trimmed[(boardId.Length + 1)..].Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-                bool isDraftCopyOfSharedFolder =
-                    (within.Length > 0 && SubmissionFileScopes.IsSharedFolderName(within[0])) ||
-                    (within.Length > 1 && SubmissionFileScopes.IsSharedFolderName(within[1]));
-
-                if (isDraftCopyOfSharedFolder)
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return !string.Equals(segments[0], DataTreeLayout.FilesFolder, StringComparison.OrdinalIgnoreCase);
         }
+
+        // The kinds of file row the component editor has - for the folder a picked file goes in when
+        // its row names none (DefaultFolderFor).
+        public enum FileRowKind
+        {
+            ComponentPicture,
+            ScopeBaseline,
+            ComponentFile,
+            BoardFile
+        }
+
+        // ###########################################################################################
+        // *** A PICKED FILE WITH NO FOLDER GOES IN ITS KIND'S USUAL ONE (CRT 4.0 step 1, 2026-10-25).
+        // *** "Save to draft" refused a newly picked file with an empty "File location" (owner report,
+        // 2026-09-25: saved like that, the file sat at the top of the board); unfinished work is fine
+        // now, so the file is filed where every converted board keeps that kind (UsualFolders) - a
+        // picture in "Component images", a scope baseline in "Scope baseline", a component's file in
+        // "Component local files", a board's in "Board local files" - and never as a bare name.
+        // ###########################################################################################
+        public static string DefaultFolderFor(FileRowKind kind) => kind switch
+        {
+            FileRowKind.ComponentPicture => "Component images",
+            FileRowKind.ScopeBaseline => DraftFolderLayout.ScopeBaselineFolderName,
+            FileRowKind.ComponentFile => "Component local files",
+            _ => "Board local files",
+        };
 
         // What stops a newly picked file being filed where its row says - see CheckNewFile.
         public enum NewFileProblem
@@ -155,57 +124,22 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // *** A NEWLY PICKED FILE MUST BE FILED IN A FOLDER THE SUBMISSION MAY WRITE (owner report,
-        // 2026-09-25). *** A file picked from outside the data folder keeps whatever "File location"
-        // its row shows, and a new row's starts EMPTY. Saved like that, the row stored the bare file
-        // name ("HotCPU.png") - a file at the very top of the data tree, outside every board - and
-        // the server refused the whole submission much later with "[HotCPU.png] belongs to another
-        // board". "Save to draft" now refuses it instead, while the row is still on screen.
-        //
-        // `usedInPlace` is a file picked from the data folder and left where it is: it IS the
-        // published copy, and citing another board's file unchanged is how real data is shaped (the
-        // C128DCR cites the C128's scope baselines), which the server allows too.
+        // *** A NEWLY PICKED FILE MUST BE FILED IN A FOLDER (owner report, 2026-09-25). *** A new
+        // row's "File location" starts EMPTY, and saved like that the file sat at the top of the
+        // board beside its schematics. "Save to draft" refuses it, while the row is still on screen.
+        // A folder that cannot hold a file of the board (IsWritableFolder) is refused too - the
+        // drop-down offers none, but a row keeps its own folder in its list.
         // ###########################################################################################
-        public static NewFileProblem CheckNewFile(string? boardId, string? fileLocation, bool usedInPlace)
+        public static NewFileProblem CheckNewFile(string? fileLocation)
         {
             if (string.IsNullOrWhiteSpace(fileLocation))
             {
                 return NewFileProblem.NoFolder;
             }
 
-            if (usedInPlace || ContributionFileLocations.IsWritableFolder(boardId, fileLocation))
-            {
-                return NewFileProblem.None;
-            }
-
-            return NewFileProblem.FolderNotWritable;
-        }
-
-        private static void FindEndFoldersRecursive(string rootPath, string currentPath, List<string> endFolders)
-        {
-            try
-            {
-                var subDirs = Directory.GetDirectories(currentPath);
-                if (subDirs.Length == 0)
-                {
-                    string relativePath = Path.GetRelativePath(rootPath, currentPath);
-                    if (!string.IsNullOrWhiteSpace(relativePath) && relativePath != ".")
-                    {
-                        endFolders.Add(relativePath.Replace('\\', '/'));
-                    }
-                }
-                else
-                {
-                    foreach (var subDir in subDirs)
-                    {
-                        ContributionFileLocations.FindEndFoldersRecursive(rootPath, subDir, endFolders);
-                    }
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // Unreadable directories are skipped safely
-            }
+            return ContributionFileLocations.IsWritableFolder(fileLocation)
+                ? NewFileProblem.None
+                : NewFileProblem.FolderNotWritable;
         }
     }
 }

@@ -19,7 +19,7 @@ namespace CRT.Server.Tests
     // intermittently, which is the sort of flake that gets rerun until it passes. The fix is a
     // fresh cache key per read; this file is what stops it coming back.
     //
-    // Uses a real temp folder and a real workbook, because what is under test is reading a file
+    // Uses a real temp folder and a real board file, because what is under test is reading a file
     // that changes underneath - which a fake filesystem could not express.
     // ###########################################################################################
     // Shares the "BoardFiles" collection - see PublishExecutorTests for why these must not run
@@ -63,7 +63,7 @@ namespace CRT.Server.Tests
             string folder = Path.Combine(this.thisRoot, "Commodore", "C64", "250407");
             Directory.CreateDirectory(folder);
 
-            string path = Path.Combine(folder, "Data C64 250407 v2.0.0.xlsx");
+            string path = Path.Combine(folder, DataTreeLayout.BoardFileName);
 
             BoardWorkbookWriter.Write(path, new BoardData
             {

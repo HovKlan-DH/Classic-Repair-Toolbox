@@ -23,7 +23,7 @@ public sealed class UnusedFilesDisplayTests
             new UnusedFileEntry("Commodore/Shared files/readme.txt", 512 * 1024));
 
         Assert.Equal(
-            "2 files in the BETA data that nothing uses, 3.5 MB (10,921 files checked against 2 master workbooks and 22 board workbooks).",
+            "2 files in the BETA data that nothing uses, 3.5 MB (10,921 files checked against 2 main data files and 22 board files).",
             UnusedFilesDisplay.Summary(listing));
     }
 

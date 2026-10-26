@@ -305,8 +305,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one outside this board
-        // and the shared folders (ContributionFileLocations.CheckNewFile): the "File location" box
+        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one that cannot hold a
+        // file of the board (ContributionFileLocations.CheckNewFile): the "File location" box
         // turns red. Cleared the moment a folder is chosen. Never part of the uploaded payload.
         // ###########################################################################################
         private bool thisHasLocationError;
@@ -388,8 +388,8 @@ namespace CRT
         public string? OriginalFilePath { get; set; }
 
         // ###########################################################################################
-        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one outside this board
-        // and the shared folders (ContributionFileLocations.CheckNewFile): the "File location" box
+        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one that cannot hold a
+        // file of the board (ContributionFileLocations.CheckNewFile): the "File location" box
         // turns red. Cleared the moment a folder is chosen. Never part of the uploaded payload.
         // ###########################################################################################
         private bool thisHasLocationError;
@@ -479,8 +479,8 @@ namespace CRT
         public string? OriginalFilePath { get; set; }
 
         // ###########################################################################################
-        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one outside this board
-        // and the shared folders (ContributionFileLocations.CheckNewFile): the "File location" box
+        // Set by "Save to draft" when a NEWLY PICKED file has no folder, or one that cannot hold a
+        // file of the board (ContributionFileLocations.CheckNewFile): the "File location" box
         // turns red. Cleared the moment a folder is chosen. Never part of the uploaded payload.
         // ###########################################################################################
         private bool thisHasLocationError;
@@ -507,9 +507,15 @@ namespace CRT
         public string Url { get; set; } = string.Empty;
     }
 
+    // ###########################################################################################
+    // FILE MAP:
+    //   ComponentContribution.axaml.cs           - loading, the rows, saving to the draft
+    //   ComponentContribution.UnfinishedWork.cs  - "Undo changes to <component>", and the folder a
+    //                                              picked file goes in when its row names none
+    // ###########################################################################################
     public partial class ComponentContributionWindow : Window
     {
-        public ObservableCollection<string> AvailableEndFolders { get; } = new();
+        public ObservableCollection<string> AvailableFileFolders { get; } = new();
 
         private readonly ObservableCollection<ContributionComponentRow> thisComponentRows = new();
         private readonly ObservableCollection<ContributionComponentImageRow> thisComponentImageRows = new();
@@ -577,13 +583,9 @@ namespace CRT
         // ###########################################################################################
         private Action? thisAfterSaved;
 
-        // Asks whether the Drafts tab's table holds unsaved edits for a board (its ExcelDataFile),
-        // and which notice says so - Main wires it to TabDrafts.SavingBlockedFor. Null from it means
-        // nothing to wait for, and so does no check at all (tests building the window alone).
-        private Func<string, UnsavedTableEditsPrompt?>? thisSavingBlockedFor;
-
-        // Replaces the notice's dialog in tests, which cannot wait on ShowDialog - handed the notice.
-        internal Func<UnsavedTableEditsPrompt, Task>? ShowSavingBlockedOverrideForTests { get; set; }
+        // Why the last save could not be made, in words for the status line (DraftSaveWording.EditNotSaved)
+        // - null after a save that landed, or one that failed before it reached the draft.
+        private string? thisSaveFailure;
 
         // True when the window was opened on a component that is not in the board data at all. The
         // board label then comes from the contributor rather than from the board, which is what the
@@ -604,6 +606,9 @@ namespace CRT
 
         // Shown in place of the component summary while a new component has no label yet.
         private const string NewComponentTitleText = "New component - not yet part of the board data";
+
+        // The mark on a new component's empty category box - it is saved anyway (CRT 4.0 step 1).
+        internal const string NoCategoryYetText = "No category yet - it is not in the component list until it has one";
 
         // How far the data sections fade once delete mode is on. Faint enough to read as inactive,
         // solid enough that the rows can still be read - which is the whole point of dimming them
@@ -639,12 +644,6 @@ namespace CRT
         public void SetAfterSaved(Action afterSaved)
         {
             this.thisAfterSaved = afterSaved;
-        }
-
-        // Tells the window how to ask about the Drafts tab's table. See SubmitAsync.
-        public void SetUnsavedTableEditsCheck(Func<string, UnsavedTableEditsPrompt?> savingBlockedFor)
-        {
-            this.thisSavingBlockedFor = savingBlockedFor;
         }
 
         // ###########################################################################################
@@ -685,6 +684,9 @@ namespace CRT
 
             this.PopulateHeader();
             this.LoadRows(boardData, boardLabel);
+
+            // "Undo changes to [U8]" while the component differs from the published board.
+            this.CheckUndoChanges();
         }
 
         // ###########################################################################################
@@ -723,6 +725,9 @@ namespace CRT
             this.PopulateHeader();
             this.LoadRows(boardData, string.Empty);
 
+            // Nothing published to go back to.
+            this.CheckUndoChanges();
+
             var newRow = new ContributionComponentRow
             {
                 Region = this.thisLocalRegion
@@ -747,7 +752,7 @@ namespace CRT
             this.thisBoardRevisionDate = boardData.RevisionDate?.Trim() ?? string.Empty;
             this.thisLocalRegion = region;
 
-            this.PopulateEndFolders(dataRoot);
+            this.PopulateFileFolders(boardData);
             this.PopulateAvailableCategories(boardData);
         }
 
@@ -784,28 +789,21 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Discovers every folder a file row can be placed in - the data tree's AND the drafts
-        // tree's, so a board that exists only as a draft offers its own folders too. See
-        // ContributionFileLocations for why both, and why that needed nothing else to change.
+        // The folders a file row can be placed in: the folders of the board's own file names, and
+        // the ones every board keeps its files in (CRT 4.0, 2026-10-25 - see
+        // ContributionFileLocations.ForBoard for why the data tree's folders are not it any more). A
+        // row whose file already sits elsewhere keeps its own folder in its list regardless
+        // (SetAvailableFileLocations adds it back).
         //
-        // *** ONLY THIS BOARD'S FOLDERS AND THE SHARED ONES (owner request, 2026-09-25) - see
-        // ContributionFileLocations.WritableBy. *** A row whose file already sits elsewhere keeps
-        // its own folder in its list regardless (SetAvailableFileLocations adds it back).
-        //
-        // Rebuilt on every open, so a board created a moment ago is already in the list. Needs
-        // thisBoardExcelFile, which names the board - ApplyBoardContext sets it first.
+        // Rebuilt on every open, from the board the window is opened on.
         // ###########################################################################################
-        private void PopulateEndFolders(string dataRoot)
+        private void PopulateFileFolders(BoardData boardData)
         {
-            this.AvailableEndFolders.Clear();
+            this.AvailableFileFolders.Clear();
 
-            IEnumerable<string> writable = ContributionFileLocations.WritableBy(
-                BoardDescriptorRules.BoardIdFromExcelDataFile(this.thisBoardExcelFile),
-                ContributionFileLocations.FindEndFolders(dataRoot, DraftManager.DraftsRoot));
-
-            foreach (string folder in writable)
+            foreach (string folder in ContributionFileLocations.ForBoard(boardData))
             {
-                this.AvailableEndFolders.Add(folder);
+                this.AvailableFileFolders.Add(folder);
             }
         }
 
@@ -1334,34 +1332,36 @@ namespace CRT
         // an async void click handler cannot offer.
         private async Task SubmitAsync()
         {
-            // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (owner
-            // request, 2026-09-24). *** Both write the same draft: saving here would make the table's
-            // own save refused, and its edits lost. So nothing is saved and a notice sends the
-            // contributor to the Drafts tab first - this window stays open exactly as it is. With the
-            // Drafts tab covered ("CRT has to be updated"), the notice says what settles them then.
-            if (this.thisSavingBlockedFor?.Invoke(this.thisBoardExcelFile) is UnsavedTableEditsPrompt blocked)
-            {
-                await (this.ShowSavingBlockedOverrideForTests?.Invoke(blocked) ?? UnsavedTableEditsWindow.ShowSavingBlockedAsync(this, blocked));
-                return;
-            }
-
+            // No longer held back by the Drafts tab's table (CRT 4.0 step 1, 2026-10-25): both edit the
+            // one draft held in memory, so this save lands on top of the table's edits - see
+            // SaveComponentToDraftAsync.
+            // ###########################################################################################
+            // *** UNFINISHED WORK IS SAVED (CRT 4.0 step 1, 2026-10-25 - the plan: "Unfinished work is
+            // fine. Only Submit asks for problems to be fixed"). *** What stops a save now is only what
+            // would lose the work: a new component with no board label, or one another component has
+            // (its rows would have nothing of their own to be filed under), and a file filed in a
+            // folder that cannot hold a file of the board (it would never be listed). A component with
+            // no category, a picture with neither file nor note, or one CRT cannot show, are marked on
+            // their rows and saved - the Drafts tab's row and table count them, and Submit stops on
+            // those the server refuses. A picked file with no folder goes in its kind's usual one.
+            // ###########################################################################################
             if (this.ShouldValidateContributedRows())
             {
                 var newComponentProblem = this.ValidateNewComponentRow();
-                if (newComponentProblem != null)
+                if (newComponentProblem is { Row.HasBoardLabelError: true } labelProblem)
                 {
-                    this.RevealComponentRow(newComponentProblem.Value.Row);
-                    this.ShowStatus(newComponentProblem.Value.Message, true);
+                    this.RevealComponentRow(labelProblem.Row);
+                    this.ShowStatus(labelProblem.Message, true);
                     return;
                 }
 
-                var componentImageProblem = this.ValidateComponentImageRows();
-                if (componentImageProblem != null)
+                // Marks what is unfinished; refuses nothing.
+                if (this.ValidateComponentImageRows() is { } unfinishedImage)
                 {
-                    this.RevealComponentImageRow(componentImageProblem.Value.Row);
-                    this.ShowStatus(componentImageProblem.Value.Message, true);
-                    return;
+                    Logger.Info($"Saving a component with an unfinished image row - [{unfinishedImage.Message}]");
                 }
+
+                this.FillDefaultFileLocations();
 
                 // After the image check, which first clears the mark of every image row it passes.
                 var locationProblem = this.ValidateNewFileLocations();
@@ -1402,7 +1402,7 @@ namespace CRT
                 }
                 else
                 {
-                    this.ShowStatus("Could not save your draft - please check the logfile for details.", true);
+                    this.ShowStatus(this.thisSaveFailure ?? "Could not save your draft - please check the logfile for details.", true);
                 }
             }
             catch (Exception ex)
@@ -1425,20 +1425,21 @@ namespace CRT
         // that only existed to describe an overlay. A draft is now the board, so the rows the
         // window hands back simply ARE this component's rows.
         //
-        // The board it edits comes from DraftWorkbookStore.Edit, which reads the workbook as it
-        // is ON DISK - so an edit the contributor made in Excel while this window was open is
-        // not silently overwritten.
-        //
-        // Runs off the UI thread, mirroring TabSchematics.LabelEditor.cs's own save shape.
+        // The board it edits is the draft held in memory (DraftEdits - CRT 4.0 step 1, 2026-10-25),
+        // with whatever the Drafts tab's table holds in it and a file changed outside CRT read first -
+        // so neither is silently overwritten. The files are copied and the draft saved off the UI
+        // thread; the change itself is applied on it.
         //
         // *** EVERY ROW IS SNAPSHOT ON THE UI THREAD FIRST (code review, 2026-09-25). *** The
         // background half used to enumerate this window's ObservableCollections itself, while only
         // the Save button was disabled - so adding or removing a row, or a file picker completing,
         // during the save threw "Collection was modified" or wrote a torn snapshot into the draft.
-        // The pool thread now sees plain immutable lists and nothing else of this window's.
+        // The writers now see plain immutable lists and nothing else of this window's.
         // ###########################################################################################
         private async Task<bool> SaveComponentToDraftAsync()
         {
+            this.thisSaveFailure = null;
+
             string draftFolder = DraftFolderLayout.GetBoardFolder(
                 DraftManager.DraftsRoot,
                 this.thisBoardExcelFile);
@@ -1470,9 +1471,7 @@ namespace CRT
 
             string effectiveBoardLabel = this.ResolveEffectiveBoardLabel();
 
-            // The snapshot - see this method's header. Everything below the Task.Run reads only
-            // these locals.
-            string draftsRoot = DraftManager.DraftsRoot;
+            // The snapshot - see this method's header. Everything below reads only these locals.
             string boardExcelFile = this.thisBoardExcelFile;
             string editedRegion = this.thisLocalRegion;
             bool isDelete = this.thisIsDeleteComponent;
@@ -1486,26 +1485,39 @@ namespace CRT
             IReadOnlyList<ComponentDraftWriter.LocalFileDraftRow> boardFileRowsAtOpen = this.thisBoardLocalFileRowsAtOpen;
             IReadOnlyList<ComponentDraftWriter.LinkDraftRow> boardLinkRowsAtOpen = this.thisBoardLinkRowsAtOpen;
 
-            bool writeSucceeded = await Task.Run(() =>
+            // *** THROUGH THE DRAFT HELD IN MEMORY (CRT 4.0 step 1, 2026-10-25 - DraftEdits). *** The
+            // change lands on the draft every editor shows - the Drafts tab's table hands over what it
+            // holds first, and its Ctrl+Z takes this save back - and is saved straight away; a save
+            // that cannot be made is taken back out, so "could not be saved" still means nothing
+            // changed. It used to read and write the file itself, and had to wait for the table.
+            DraftWorkbookEditOutcome outcome;
+            DraftPickedFiles? copies = null;
+
+            try
             {
-                try
+                if (isDelete)
                 {
-                    if (isDelete)
-                    {
-                        return DraftWorkbookStore.Edit(
-                            draftsRoot,
-                            boardExcelFile,
-                            board => ComponentBoardWriter.ApplyComponentDelete(board, effectiveBoardLabel));
-                    }
-
-                    // Newly picked files (OriginalFilePath set, meaning the file picker touched
-                    // this row) are copied into the draft folder BEFORE the rows are built, so the
-                    // stored relative path already names bytes that exist.
-                    ComponentContributionWindow.CopyAttachedFilesIntoDraft(draftFolder, filesToCopy);
-
-                    return DraftWorkbookStore.Edit(
-                        draftsRoot,
+                    outcome = await DraftEdits.ApplyAndSaveAsync(
                         boardExcelFile,
+                        DraftStepWording.ComponentDeleted(effectiveBoardLabel),
+                        board => ComponentBoardWriter.ApplyComponentDelete(board, effectiveBoardLabel));
+                }
+                else
+                {
+                    // ###########################################################################################
+                    // Newly picked files (OriginalFilePath set, meaning the file picker touched this row)
+                    // are copied into the draft folder BEFORE the rows are applied, so the name a row
+                    // stores already names bytes that exist - the save takes them in. *** A SAVE NOT MADE
+                    // TAKES THEM BACK (code review, 2026-10-26): *** left lying there, the next write by any
+                    // editor took them in after "could not be saved" (DraftPickedFiles). And a file
+                    // replaced under the name its row already cites changes no row, so the draft is
+                    // written anyway to take it in now (takeInNewFiles).
+                    // ###########################################################################################
+                    copies = await Task.Run(() => DraftPickedFiles.CopyInto(draftFolder, filesToCopy));
+
+                    outcome = await DraftEdits.ApplyAndSaveAsync(
+                        boardExcelFile,
+                        DraftStepWording.ComponentSaved(effectiveBoardLabel),
                         board => ComponentBoardWriter.ApplyComponentSave(
                             board,
                             effectiveBoardLabel,
@@ -1524,14 +1536,25 @@ namespace CRT
                             // What the window loaded, so board-level rows changed elsewhere while
                             // it was open are merged rather than overwritten.
                             boardFileRowsAtOpen,
-                            boardLinkRowsAtOpen));
+                            boardLinkRowsAtOpen),
+                        takeInNewFiles: copies.AnyLying);
                 }
-                catch (Exception ex)
-                {
-                    Logger.Warning($"Component draft save failed - [{ex}]");
-                    return false;
-                }
-            });
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Component draft save failed - [{ex}]");
+                outcome = DraftWorkbookEditOutcome.WriteFailed;
+            }
+
+            bool writeSucceeded = outcome == DraftWorkbookEditOutcome.Saved;
+
+            if (copies is not null)
+            {
+                await Task.Run(writeSucceeded ? copies.Keep : copies.TakeBack);
+            }
+
+            // Said by SubmitAsync in place of "check the logfile".
+            this.thisSaveFailure = writeSucceeded ? null : DraftSaveWording.EditNotSaved(outcome);
 
             // The next save's baseline is what this one wrote - otherwise it would merge against
             // the state from before this save and could re-apply this save's changes.
@@ -1568,7 +1591,7 @@ namespace CRT
         // loaded from, and re-copying them would just duplicate storage for no reason.
         //
         // Split in two: CollectNewlyAttachedFiles reads this window's rows and must run on the UI
-        // thread; CopyAttachedFilesIntoDraft only copies bytes and runs on the pool thread, seeing
+        // thread; DraftPickedFiles.CopyInto only copies bytes and runs on the pool thread, seeing
         // nothing of the window but the list it is handed.
         // ###########################################################################################
         private IReadOnlyList<(string Source, string RelativeFile)> CollectNewlyAttachedFiles()
@@ -1592,36 +1615,6 @@ namespace CRT
             }
 
             return files;
-        }
-
-        private static void CopyAttachedFilesIntoDraft(
-            string draftFolder,
-            IReadOnlyList<(string Source, string RelativeFile)> files)
-        {
-            foreach ((string source, string relativeFile) in files)
-            {
-                if (!File.Exists(source))
-                {
-                    continue;
-                }
-
-                string destination = DraftFileResolver.BuildDraftFileDestination(draftFolder, relativeFile);
-
-                try
-                {
-                    string? destinationDirectory = Path.GetDirectoryName(destination);
-                    if (!string.IsNullOrWhiteSpace(destinationDirectory))
-                    {
-                        Directory.CreateDirectory(destinationDirectory);
-                    }
-
-                    File.Copy(source, destination, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning($"Failed to copy attached file [{source}] into draft - [{ex.Message}]");
-                }
-            }
         }
 
         // ###########################################################################################
@@ -1827,8 +1820,10 @@ namespace CRT
                 _ => string.Empty
             };
 
+            // Saved all the same (unfinished work is fine, CRT 4.0 step 1) - so the mark says what is
+            // left, not that the save is refused.
             row.CategoryErrorText = problem == ContributionPackaging.NewComponentProblem.CategoryMissing
-                ? "A category is required"
+                ? NoCategoryYetText
                 : string.Empty;
 
             row.HasBoardLabelError = !string.IsNullOrEmpty(row.BoardLabelErrorText);
@@ -1850,8 +1845,8 @@ namespace CRT
 
         // ###########################################################################################
         // Brings a component row on screen so its red mark is actually seen - the same reasoning as
-        // RevealComponentImageRow below: the section can be collapsed, and the row can sit below the
-        // fold, so the scroll is posted once the expander has laid its content out.
+        // RevealRow below: the section can be collapsed, and the row can sit below the fold, so the
+        // scroll is posted once the expander has laid its content out.
         // ###########################################################################################
         private void RevealComponentRow(ContributionComponentRow row)
         {
@@ -1915,35 +1910,17 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Brings a component image row on screen so its red mark is actually seen: the section is
-        // collapsed by default, and the row can sit far below the fold. The scroll is posted because
-        // the row's container does not exist until the expander has laid its content out.
-        // ###########################################################################################
-        private void RevealComponentImageRow(ContributionComponentImageRow row)
-        {
-            // Through the general one (code review, 2026-09-26): this used to carry its own copy of
-            // the expand-post-BringIntoView dance, so a later fix to the reveal timing would have
-            // had to be made twice. The index is read BEFORE posting, as RevealRow's own callers do
-            // - a row no longer in the list reveals nothing.
-            int index = this.thisComponentImageRows.IndexOf(row);
-
-            if (index >= 0)
-                ComponentContributionWindow.RevealRow(this.ComponentImagesExpander, this.ComponentImageRowsItemsControl, index);
-        }
-
-        // ###########################################################################################
-        // *** EVERY NEWLY PICKED FILE MUST BE FILED IN THIS BOARD'S FOLDERS OR A SHARED ONE (owner
-        // report, 2026-09-25). *** A file picked from outside the data folder keeps the row's
-        // "File location", which starts empty - and a row saved like that stored the bare file name
-        // ("HotCPU.png"), outside every board. The draft took it; the server refused the submission
-        // much later ("[HotCPU.png] belongs to another board"). The rule is
+        // *** EVERY NEWLY PICKED FILE MUST BE FILED IN A FOLDER OF THE BOARD (owner report,
+        // 2026-09-25). *** A picked file keeps the row's "File location", which starts empty - and a
+        // row saved like that stored the bare file name ("HotCPU.png"). Before CRT 4.0 the server
+        // refused the submission much later for it; in 4.0 it would sit at the top of the board,
+        // beside the schematics, where no board keeps such a file. The rule is
         // ContributionFileLocations.CheckNewFile; this marks every row it refuses (the "File
         // location" box, and an image row's own frame and text too) and returns the first, in
         // section order, with its message.
         // ###########################################################################################
         private (Action Reveal, string Message)? ValidateNewFileLocations()
         {
-            string boardId = BoardDescriptorRules.BoardIdFromExcelDataFile(this.thisBoardExcelFile);
             (Action Reveal, string Message)? firstProblem = null;
 
             void CheckSection(IReadOnlyList<IContributionFileRow> rows, string rowName, Expander section, ItemsControl list)
@@ -1951,7 +1928,7 @@ namespace CRT
                 for (int index = 0; index < rows.Count; index++)
                 {
                     IContributionFileRow row = rows[index];
-                    ContributionFileLocations.NewFileProblem problem = this.CheckNewFileLocation(boardId, row);
+                    ContributionFileLocations.NewFileProblem problem = ComponentContributionWindow.CheckNewFileLocation(row);
                     bool noFolder = problem == ContributionFileLocations.NewFileProblem.NoFolder;
 
                     row.HasLocationError = problem != ContributionFileLocations.NewFileProblem.None;
@@ -1966,7 +1943,7 @@ namespace CRT
                         imageRow.HasFileError = true;
                         imageRow.FileErrorText = noFolder
                             ? "Choose a file location"
-                            : "Choose one of this board's folders or a shared folder";
+                            : "Choose another file location";
                     }
 
                     if (firstProblem == null)
@@ -1975,8 +1952,8 @@ namespace CRT
                         string rowLabel = $"{rowName} #{index + 1} [{row.File}]";
 
                         string message = noFolder
-                            ? $"{rowLabel} has no file location - choose the folder it goes in: one of this board's folders, or a shared folder"
-                            : $"{rowLabel} is filed in [{row.FileLocation}], which is not one of this board's folders or a shared folder - choose one of those";
+                            ? $"{rowLabel} has no file location - choose the folder it goes in"
+                            : $"{rowLabel} is filed in [{row.FileLocation}], which cannot hold a file of the board - choose one of the folders offered";
 
                         firstProblem = (() => ComponentContributionWindow.RevealRow(section, list, rowIndex), message);
                     }
@@ -2006,14 +1983,13 @@ namespace CRT
 
         // ###########################################################################################
         // One row's answer. Only a file picked HERE is checked - its source is a full path. A row
-        // loaded from the board keeps the path it is stored under, and this window does not move a
+        // loaded from the board keeps the name it is stored under, and this window does not move a
         // stored file, so there is nothing for its location to decide.
         //
-        // A file picked from the data folder and left in the folder it came from is "used in
-        // place": it IS the published copy, so citing it is fine even from another board's folder.
-        // Compared exactly - a different capitalisation would name a different file on the server.
+        // A file picked from the data folder is checked like any other: in the CRT 4.0 tree there
+        // is no "published copy used where it lies" - see ApplySelectedFilePathToRow.
         // ###########################################################################################
-        private ContributionFileLocations.NewFileProblem CheckNewFileLocation(string boardId, IContributionFileRow row)
+        private static ContributionFileLocations.NewFileProblem CheckNewFileLocation(IContributionFileRow row)
         {
             if (string.IsNullOrWhiteSpace(row.File) ||
                 string.IsNullOrWhiteSpace(row.OriginalFilePath) ||
@@ -2022,21 +1998,14 @@ namespace CRT
                 return ContributionFileLocations.NewFileProblem.None;
             }
 
-            string location = row.FileLocation?.Trim().Replace('\\', '/').Trim('/') ?? string.Empty;
-
-            string? pickedFrom = ContributionPackaging.TryGetDataRootRelativeFolder(
-                this.thisDataRoot,
-                Path.GetDirectoryName(row.OriginalFilePath));
-
-            bool usedInPlace = !string.IsNullOrEmpty(pickedFrom) &&
-                               string.Equals(pickedFrom, location, StringComparison.Ordinal);
-
-            return ContributionFileLocations.CheckNewFile(boardId, location, usedInPlace);
+            return ContributionFileLocations.CheckNewFile(row.FileLocation);
         }
 
         // ###########################################################################################
-        // Opens a section and brings one of its rows on screen - RevealComponentImageRow's reasoning,
-        // for any section: the row's container does not exist until the expander has laid it out.
+        // Opens a section and brings one of its rows on screen so its red mark is actually seen: a
+        // section can be collapsed (the component images' is by default) and the row far below the
+        // fold. The scroll is posted because the row's container does not exist until the expander
+        // has laid it out.
         // ###########################################################################################
         private static void RevealRow(Expander section, ItemsControl list, int index)
         {
@@ -2052,12 +2021,31 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Resolves an edited file path so it can be verified for existence and previewed.
-        // Accepts both relative paths (resolved against data-root) and external absolute paths.
+        // Resolves a row's file so it can be previewed: a file picked in this window by its full
+        // path, or a file of the board by its NAME.
+        //
+        // *** A NAME IS LOOKED UP AS EVERY OTHER SURFACE LOOKS IT UP (CRT 4.0, 2026-10-25). ***
+        // DraftFileResolver, in the draft's board file and store when the board on screen is the
+        // draft (the viewed folder, as the component popup asks), else in the published board's. A
+        // name used to be resolved as a path under the data root, which in the 4.0 tree finds
+        // nothing - the bytes lie under their checksum - so no existing image was previewed.
         // ###########################################################################################
         private string? ResolveExistingFilePath(string pathValue)
         {
-            return ContributionPackaging.ResolveExistingFilePath(this.thisDataRoot, pathValue);
+            string trimmed = pathValue?.Trim() ?? string.Empty;
+
+            if (trimmed.Length == 0 || Path.IsPathRooted(trimmed))
+            {
+                return ContributionPackaging.ResolveExistingFilePath(this.thisDataRoot, trimmed);
+            }
+
+            string viewedDraftFolder = DraftBoardSource.ViewedDraftFolder(
+                this.thisDataRoot,
+                DraftManager.DraftsRoot,
+                this.thisBoardExcelFile,
+                UserSettings.ViewOfficialPublishedOnly);
+
+            return DraftFileResolver.Resolve(this.thisDataRoot, viewedDraftFolder, trimmed, this.thisBoardExcelFile);
         }
 
         // ###########################################################################################
@@ -2251,7 +2239,7 @@ namespace CRT
             bool imagesOnly = row is ContributionComponentImageRow;
 
             string? currentPath = this.GetCurrentFilePath(row);
-            string? suggestedStartLocation = this.GetSuggestedStartLocation(currentPath);
+            string? suggestedStartLocation = ComponentContributionWindow.GetSuggestedStartLocation(currentPath);
 
             var options = new FilePickerOpenOptions
             {
@@ -2308,33 +2296,26 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Computes the best starting directory for the file picker based on the current file value.
+        // Where the file picker opens: in the folder of the file this row was given in this window,
+        // while that folder exists. Otherwise nowhere in particular - the system's own choice,
+        // usually the folder last picked from.
+        //
+        // *** NOT THE DATA FOLDER ANY MORE (CRT 4.0, 2026-10-25). *** It opened there, because a
+        // board's files used to be picked from there and cited where they lay. In the 4.0 tree the
+        // data folder holds the store, every file named by its checksum - nothing to pick from.
         // ###########################################################################################
-        private string? GetSuggestedStartLocation(string? currentPath)
+        private static string? GetSuggestedStartLocation(string? currentPath)
         {
             string trimmed = currentPath?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(trimmed))
+
+            if (!Path.IsPathRooted(trimmed))
             {
-                return Directory.Exists(this.thisDataRoot) ? this.thisDataRoot : null;
+                return null;
             }
 
-            if (Path.IsPathRooted(trimmed))
-            {
-                string? rootedDirectory = Path.GetDirectoryName(trimmed);
-                if (!string.IsNullOrWhiteSpace(rootedDirectory) && Directory.Exists(rootedDirectory))
-                {
-                    return rootedDirectory;
-                }
-            }
+            string? directory = Path.GetDirectoryName(trimmed);
 
-            string combinedPath = Path.Combine(this.thisDataRoot, trimmed.Replace('/', Path.DirectorySeparatorChar));
-            string? combinedDirectory = Path.GetDirectoryName(combinedPath);
-            if (!string.IsNullOrWhiteSpace(combinedDirectory) && Directory.Exists(combinedDirectory))
-            {
-                return combinedDirectory;
-            }
-
-            return Directory.Exists(this.thisDataRoot) ? this.thisDataRoot : null;
+            return !string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory) ? directory : null;
         }
 
         // ###########################################################################################
@@ -2424,22 +2405,20 @@ namespace CRT
             row.File = Path.GetFileName(selectedPath);
             row.OriginalFilePath = selectedPath;
 
-            // Containment is decided by ContributionPackaging.TryGetDataRootRelativeFolder (pure,
-            // unit tested) rather than by a prefix test here - see its header for the sibling-folder
-            // case a bare StartsWith let through, and why a traversing FileLocation must never reach
-            // the uploaded payload.
-            //
-            // null means the file is OUTSIDE the data root, and FileLocation is then deliberately
-            // left alone: the file keeps whatever drop-down folder the user selected.
-            string? relativeFolder = ContributionPackaging.TryGetDataRootRelativeFolder(
-                this.thisDataRoot,
-                Path.GetDirectoryName(selectedPath));
-
-            if (relativeFolder != null)
+            // A row naming no folder files the picked file in its kind's usual one, said at once in its
+            // drop-down (ContributionFileLocations.DefaultFolderFor).
+            if (string.IsNullOrWhiteSpace(row.FileLocation))
             {
-                row.FileLocation = relativeFolder;
+                row.FileLocation = this.DefaultFolderFor(row);
             }
 
+            // *** THE ROW KEEPS THE FOLDER CHOSEN IN ITS DROP-DOWN, wherever the file was picked
+            // from (CRT 4.0, 2026-10-25). *** A file picked from inside the data folder used to take
+            // that folder as its location - the published copy, cited where it lay. In the 4.0 tree
+            // the data folder's folders are the store's ("Files/ab"), not the board's, and a name
+            // there is never listed (ContributionFileLocations.IsWritableFolder): the picked file
+            // was copied into the draft and then lost. A board owns its files by name, so a file
+            // picked anywhere is the board's new file, filed where the row says.
             this.SetAvailableFileLocations(row);
 
             // The folder list was just rebuilt, so the bound drop-down is told to read the
@@ -2458,7 +2437,7 @@ namespace CRT
 
             string currentFileLocation = row.FileLocation?.Trim() ?? string.Empty;
 
-            var folders = this.AvailableEndFolders
+            var folders = this.AvailableFileFolders
                 .Concat(string.IsNullOrWhiteSpace(currentFileLocation) ? Enumerable.Empty<string>() : new[] { currentFileLocation })
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase);

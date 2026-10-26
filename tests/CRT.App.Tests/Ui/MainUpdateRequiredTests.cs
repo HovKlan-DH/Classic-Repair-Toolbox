@@ -314,14 +314,16 @@ public sealed class MainUpdateRequiredTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** INSTALLING THE UPDATE ASKS ABOUT UNSAVED TABLE EDITS FIRST (code review, 2026-10-09). ***
-    // The restart exits CRT without the window's Closing event, so quitting's question was never
-    // asked: the overlay's "Install update" threw away the edits in a Drafts table it had itself put
-    // out of reach - under a line saying "nothing is lost". Cancel installs nothing; Save saves the
-    // draft, then installs. The table's Save needs no server, so it works under the cover.
+    // *** INSTALLING THE UPDATE SAVES THE DRAFTS TABLE FIRST (code review, 2026-10-09). *** The
+    // restart exits CRT without the window's Closing event, so quitting's question was never asked:
+    // the overlay's "Install update" threw away the edits in a Drafts table it had itself put out of
+    // reach - under a line saying "nothing is lost". A draft saves itself (CRT 4.0 step 1,
+    // 2026-10-25), so what still waits is saved and the update installed, asking nothing; only a
+    // save that cannot be made asks - Cancel installs nothing, Discard installs. Saving needs no
+    // server, so it works under the cover.
     // ###########################################################################################
     [Fact]
-    public async Task Installing_the_update_asks_about_the_Drafts_tables_unsaved_edits_first()
+    public async Task Installing_the_update_saves_the_Drafts_table_first_and_asks_only_when_it_cannot()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -340,7 +342,7 @@ public sealed class MainUpdateRequiredTests : IDisposable
             window.TabDrafts.PublishedBoardOverrideForTests = _ => null;
             await window.TabDrafts.OpenTableAsync(entry);
 
-            BoardTableSheet components = window.TabDrafts.TableEditor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+            BoardTableSheet components = window.TabDrafts.TableEditor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
             components.Rows[0].Cells[components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName)].Text = "Typed in the table";
             Assert.True(window.TabDrafts.HasUnsavedTableEdits);
 
@@ -362,20 +364,31 @@ public sealed class MainUpdateRequiredTests : IDisposable
                 return Task.FromResult(false);
             };
 
-            // Cancel: nothing installed, the edits kept.
+            // Saved first: nothing asked, the edit in the draft, the update installed.
             await window.InstallPendingUpdateAsync();
 
-            Assert.Equal([UnsavedTableEditsPrompt.Leaving], asked);
-            Assert.Equal(0, installs);
-            Assert.True(window.TabDrafts.HasUnsavedTableEdits);
-
-            // Save: into the draft, then installed.
-            answer = UnsavedTableEditsChoice.Save;
-            await window.InstallPendingUpdateAsync();
-
+            Assert.Empty(asked);
             Assert.Equal(1, installs);
             Assert.False(window.TabDrafts.HasUnsavedTableEdits);
             Assert.Equal("Typed in the table", DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, excelDataFile)!.Components[0].FriendlyName);
+
+            // A change whose save is refused - the draft written outside the table meanwhile: asked,
+            // and Cancel installs nothing and keeps the change.
+            components.Rows[0].Cells[components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName)].Text = "Typed again";
+            CachedWorkbooks.Write(workbook, new BoardData { Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "Written elsewhere" }] });
+
+            await window.InstallPendingUpdateAsync();
+
+            Assert.Equal([UnsavedTableEditsPrompt.DraftChangedOnDisk], asked);
+            Assert.Equal(1, installs);
+            Assert.True(window.TabDrafts.HasUnsavedTableEdits);
+
+            // Discard: the draft as written elsewhere, and the update installed.
+            answer = UnsavedTableEditsChoice.Discard;
+            await window.InstallPendingUpdateAsync();
+
+            Assert.Equal(2, installs);
+            Assert.Equal("Written elsewhere", DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, excelDataFile)!.Components[0].FriendlyName);
         });
     }
 
@@ -426,12 +439,12 @@ public sealed class MainUpdateRequiredTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** NOTHING NEW IS MADE FOR A COVERED DRAFTS TAB (code review, 2026-10-09). *** "Edit board as
-    // draft" and "Add a new board" exist to work in that tab; a draft made under its cover opened a
-    // table nobody could reach. Both make nothing, and the Contribute tab says why.
+    // *** NOTHING NEW IS MADE UNDER A COVERED CONTRIBUTE TAB (code review, 2026-10-09). *** A board's
+    // first draft and "Add a new board" exist to work in that tab; a draft made under its cover was
+    // a dead end. Both make nothing, and the tab's own line says why.
     // ###########################################################################################
     [Fact]
-    public async Task Edit_board_as_draft_and_Add_a_new_board_make_nothing_while_the_Drafts_tab_is_covered()
+    public async Task A_first_draft_and_Add_a_new_board_make_nothing_while_the_Contribute_tab_is_covered()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -439,20 +452,20 @@ public sealed class MainUpdateRequiredTests : IDisposable
             DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
 
             var (window, _) = BuildWindow(ClientVersionContract.ApiRevision + 1);
-            window.EditAsDraftBoardOverrideForTests = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = excelDataFile };
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = excelDataFile };
 
             await window.AskServerApiRevisionAsync();
             Assert.True(window.TabDrafts.IsUpdateRequiredShown);
 
-            TextBlock problem = window.TabContribute.GetControl<TextBlock>("DraftProblemText");
+            TextBlock problem = window.TabDrafts.GetControl<TextBlock>("DraftProblemText");
 
-            await window.EditBoardAsDraftAsync();
+            Assert.False(await window.EnsureDraftAsync(entry));
 
             Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile));
             Assert.True(problem.IsVisible);
             Assert.Equal(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered, problem.Text);
 
-            window.TabContribute.ShowDraftProblem(null);
+            window.TabDrafts.ShowDraftProblem(null);
 
             // No dialog is opened - one would block here - and the same line says why.
             await window.OpenNewBoardWindowAsync();
@@ -466,7 +479,7 @@ public sealed class MainUpdateRequiredTests : IDisposable
     // *** THE FIRST DRAFT OF A RUN ASKS THE SERVER FIRST (code review, 2026-10-10). *** With no
     // drafts and the Maintainer tab off, nothing had asked - so the guard above could not fire: the
     // draft was made, the Drafts tab appeared, its first showing asked, and the answer covered the
-    // table just opened. Now "Edit board as draft" asks first and makes nothing; "Add a new board"
+    // table just opened. Now a board's first draft asks first and makes nothing; "Add a new board"
     // after it finds the tab covered without asking again - one question a run.
     // ###########################################################################################
     [Fact]
@@ -478,7 +491,7 @@ public sealed class MainUpdateRequiredTests : IDisposable
             DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
 
             var (window, asked) = BuildWindow(ClientVersionContract.ApiRevision + 1);
-            window.EditAsDraftBoardOverrideForTests = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = excelDataFile };
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = excelDataFile };
 
             // No drafts, the Maintainer tab off: StartAsync's question does not go out.
             window.AllowApiRevisionQuestionForTests();
@@ -486,16 +499,16 @@ public sealed class MainUpdateRequiredTests : IDisposable
             Assert.Equal(0, asked());
             Assert.False(window.TabDrafts.IsUpdateRequiredShown);
 
-            TextBlock problem = window.TabContribute.GetControl<TextBlock>("DraftProblemText");
+            TextBlock problem = window.TabDrafts.GetControl<TextBlock>("DraftProblemText");
 
-            await window.EditBoardAsDraftAsync();
+            Assert.False(await window.EnsureDraftAsync(entry));
 
             Assert.Equal(1, asked());
             Assert.True(window.TabDrafts.IsUpdateRequiredShown);
             Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile));
             Assert.Equal(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered, problem.Text);
 
-            window.TabContribute.ShowDraftProblem(null);
+            window.TabDrafts.ShowDraftProblem(null);
             await window.OpenNewBoardWindowAsync();
 
             Assert.Equal(1, asked());

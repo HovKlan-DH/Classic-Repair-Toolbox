@@ -265,6 +265,17 @@ namespace Handlers.DataHandling
         public List<CreditEntry> Credits { get; set; } = new();
         public List<KiCadImportantSignalEntry> KiCadImportantSignals { get; set; } = new();
 
+        // ###########################################################################################
+        // CRT 4.0's own sections (step 2, 2026-10-25): each component's pins and replacement parts.
+        //
+        // *** NULL IS "NOT SENT", AND KEEPS WHAT IS PUBLISHED. *** A client that does not know them
+        // omits them, and PublishMerge then keeps the published board's - an empty list would delete
+        // every pin a newer CRT had published. A client that knows them always sends them, empty
+        // when the board has none (SubmissionManifestBuilder).
+        // ###########################################################################################
+        public List<ComponentPinEntry>? ComponentPins { get; set; }
+        public List<ComponentReplacementEntry>? ComponentReplacements { get; set; }
+
         // The KiCad trace calibration, which is per-schematic rather than per-component. Included
         // because a contributor who calibrates a board's traces has done substantial work that
         // would otherwise not travel with their submission.

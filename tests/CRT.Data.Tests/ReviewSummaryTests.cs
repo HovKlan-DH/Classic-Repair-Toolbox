@@ -363,13 +363,18 @@ public sealed class ReviewSummaryTests
             BoardLocalFiles = [new BoardLocalFileEntry { Category = "Manuals", Name = "Service", File = "b.pdf" }],
             BoardLinks = [new BoardLinkEntry { Category = "Community", Name = "Forum", Url = "https://example.com" }],
             Credits = [new CreditEntry { Category = "Photos", SubCategory = "Scans", NameOrHandle = "Someone" }],
-            KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "Clock", KiCadNetName = "/CLK" }]
+            KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "Clock", KiCadNetName = "/CLK" }],
+
+            // CRT 4.0's own sections (2026-10-25).
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VCC", Direction = "Power" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in" }]
         };
 
-        // The ELEVENTH section rides alongside rather than inside the board: BoardData has no
-        // calibration section, so it is passed separately. Added 2026-09-22, when calibrations
+        // The calibrations ride alongside rather than inside the board: BoardData has no
+        // calibration section, so they are passed separately. Added 2026-09-22, when calibrations
         // began travelling with submissions - before that they would have published unreviewed,
-        // which is the exact failure this test exists to catch.
+        // which is the exact failure this test exists to catch. Thirteen sections in all since
+        // CRT 4.0's pins and replacement parts (2026-10-25).
         ReviewChangeSummary summary = ReviewSummary.Compare(
             published,
             submitted,
@@ -380,8 +385,8 @@ public sealed class ReviewSummaryTests
                 new KiCadCalibrationEntry { SchematicName = "Sheet 1", CadName = "board.kicad_pcb" }
             ]);
 
-        Assert.Equal(11, summary.Sections.Count);
-        Assert.Equal(11, summary.ChangedSections.Count);
+        Assert.Equal(13, summary.Sections.Count);
+        Assert.Equal(13, summary.ChangedSections.Count);
 
         foreach (ReviewSectionChange section in summary.Sections)
         {

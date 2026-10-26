@@ -1,7 +1,7 @@
 namespace Handlers.Online
 {
     // ###########################################################################################
-    // WHAT A COVERED DRAFTS OR MAINTAINER TAB SAYS (owner request, 2026-10-09; see
+    // WHAT A COVERED CONTRIBUTE OR MAINTAINER TAB SAYS (owner request, 2026-10-09; see
     // AppUpdateRequirement). Shown by UpdateRequiredOverlay, which cannot be closed - so it says
     // plainly what is wrong, what it stops, that nothing is lost, and the one way out.
     //
@@ -32,12 +32,12 @@ namespace Handlers.Online
             : "Until it is, the Maintainer tab cannot be used - the server turns this version of CRT away.";
 
         // ###########################################################################################
-        // On the Contribute tab, when "Edit board as draft" or "Add a new board" is pressed while
-        // the Drafts tab is covered (code review, 2026-10-09). Both exist to work in that tab, so
-        // they make nothing - a draft opened under the cover was a dead end.
+        // When a board's first draft or "Add a new board" is started while the Contribute tab is
+        // covered (code review, 2026-10-09). Both exist to work in that tab, so they make nothing - a
+        // draft opened under the cover was a dead end.
         // ###########################################################################################
         public const string NoDraftWhileDraftsTabCovered =
-            "Nothing was made: CRT has to be updated before drafts can be worked on - the Drafts tab says why.";
+            "Nothing was made: CRT has to be updated before drafts can be worked on - the Contribute tab says why.";
 
         // ###########################################################################################
         // The whole overlay for one tab. `pendingVersion` is the update CRT's own check found

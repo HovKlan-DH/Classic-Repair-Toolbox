@@ -9,23 +9,23 @@ namespace CRT.Server.Tests
     // BoardListingFlow - placing a NEW board in CRT's drop-down lists from the Boards screen
     // (owner request, 2026-09-27): "The maintainer should order the new system, so it becomes visible
     // in the right location for the drop-down lists. This must be done before it can be pushed to
-    // BETA." The list is BETA's newest main Excel data file; a real one is written for every test.
+    // BETA." The list is BETA's main file (CRT 4.0 tree); a real one is written for every test.
     // ###########################################################################################
     public sealed class BoardListingFlowTests : IDisposable
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
         private static readonly MasterListingRow C64 =
-            new("Commodore 64", "250407 (long board)", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", string.Empty);
+            new("Commodore 64", "250407 (long board)", "Commodore/C64/250407/board.json", string.Empty);
 
         private static readonly MasterListingRow C128 =
-            new("Commodore 128", "310378 (C128 & C128D)", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx", "Has 6581 SID.");
+            new("Commodore 128", "310378 (C128 & C128D)", "Commodore/C128/310378/board.json", "Has 6581 SID.");
 
         private static readonly MasterListingRow Spectrum =
-            new("ZX Spectrum 16K/48K", "Issue 4B", "ZX Spectrum/Spectrum 16K-48K/Issue 4B/Data ZX Issue 4B v2.0.0.xlsx", string.Empty);
+            new("ZX Spectrum 16K/48K", "Issue 4B", "ZX Spectrum/Spectrum 16K-48K/Issue 4B/board.json", string.Empty);
 
         private const string Open128 = "Commodore/C128/310378 Open128";
-        private const string Open128Workbook = "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx";
+        private const string Open128Workbook = "Commodore/C128/310378 Open128/board.json";
 
         private readonly string thisBeta = Path.Combine(Path.GetTempPath(), "crt-listing", Guid.NewGuid().ToString("N"));
 
@@ -46,7 +46,7 @@ namespace CRT.Server.Tests
             }
         }
 
-        private string MasterPath => Path.Combine(this.thisBeta, "Classic-Repair-Toolbox.v2.0.0.xlsx");
+        private string MasterPath => Path.Combine(this.thisBeta, DataTreeLayout.MainFileName);
 
         private static BoardListingFlow Flow(FakeSubmissionStore store) =>
             new(store, new PublishLock(), NullLogger<BoardListingFlow>.Instance);
@@ -141,7 +141,7 @@ namespace CRT.Server.Tests
         // ------------------------------------------------------------------ the contributor's notes
 
         // ###########################################################################################
-        // *** THE NOTES REACH THE MAIN EXCEL DATA FILE (owner request, 2026-10-05: "that note needs to
+        // *** THE NOTES REACH THE MAIN FILE (owner request, 2026-10-05: "that note needs to
         // be sent also to the server, as this notes needs to go into the main Excel in the 'Hardware
         // and Board' sheet and in the column 'Hardware notes in "Overview" tab'"). *** The notes the
         // contributor typed in "Create board" are where the placement starts; saving that placement,
@@ -152,7 +152,7 @@ namespace CRT.Server.Tests
         {
             const string Notes = "Open-source replica of the C128 board.";
 
-            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128Workbook);
+            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128);
             FakeSubmissionStore store = await BoardListingFlowTests.SubmittedAsync(
                 BoardListingFlowTests.Open128, SubmissionState.Merged, notes: Notes);
 
@@ -276,7 +276,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_board_in_BETA_the_list_does_not_carry_is_offered_as_in_BETA()
         {
-            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128Workbook);
+            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128);
 
             BoardListingOutcome outcome = await BoardListingFlowTests.Flow(new FakeSubmissionStore()).ListAsync(
                 BoardListingFlowTests.Admin(), this.thisBeta, PublishedBoardLister.List(this.thisBeta));
@@ -332,7 +332,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Placing_a_board_already_in_BETA_adds_its_row_at_once_where_it_was_placed()
         {
-            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128Workbook);
+            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128);
             FakeSubmissionStore store = await BoardListingFlowTests.SubmittedAsync(BoardListingFlowTests.Open128, SubmissionState.Merged);
 
             SetPlacementOutcome outcome = await BoardListingFlowTests.Flow(store).SetAsync(
@@ -357,7 +357,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_board_in_BETA_with_no_row_is_given_one_and_placed()
         {
-            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128Workbook);
+            DataTreeBuilder.Board(this.thisBeta, BoardListingFlowTests.Open128);
             var store = new FakeSubmissionStore();
 
             SetPlacementOutcome outcome = await BoardListingFlowTests.Flow(store).SetAsync(

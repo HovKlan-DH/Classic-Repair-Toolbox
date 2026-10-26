@@ -12,12 +12,11 @@ namespace CRT.Server.Handlers.Submissions
     // administrator assigns maintainers by looking at the tree, and the row is created on the first
     // assignment (ISubmissionStore.EnsureBoardAsync).
     //
-    // A board is a folder three levels down holding at least one workbook. The two shared-file
-    // folders are skipped by name: "Generic shared files" at the top and "Shared files" beside a
-    // manufacturer's boards are not boards and never get a maintainer. Skipped by
-    // SubmissionFileScopes.IsSharedFolderName, the rule SubmissionValidator refuses such board names
-    // by - so no board it skips can ever be published. A thin filesystem walk, tested against a
-    // temp tree.
+    // A board is a folder three levels down holding its board file, "board.json" - the CRT 4.0 tree
+    // (2026-10-25; DataTreeLayout). The tree's own top folders ("Files", the stored files, and
+    // "MiniPro") are skipped, as are the Excel trees' two shared-file folder names, which
+    // SubmissionValidator refuses as board names - so no board this skips can ever be published. A
+    // thin filesystem walk, tested against a temp tree.
     // ###########################################################################################
     public static class PublishedBoardLister
     {
@@ -36,8 +35,11 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     string manufacturer = Path.GetFileName(manufacturerFolder);
 
-                    if (SubmissionFileScopes.IsSharedFolderName(manufacturer))
+                    if (SubmissionFileScopes.IsSharedFolderName(manufacturer) ||
+                        DataTreeLayout.ReservedTopFolders.Contains(manufacturer, StringComparer.OrdinalIgnoreCase))
+                    {
                         continue;
+                    }
 
                     foreach (string hardwareFolder in Directory.EnumerateDirectories(manufacturerFolder))
                     {
@@ -50,7 +52,7 @@ namespace CRT.Server.Handlers.Submissions
                         {
                             string board = Path.GetFileName(boardFolder);
 
-                            if (!Directory.EnumerateFiles(boardFolder, "*.xlsx").Any())
+                            if (!File.Exists(Path.Combine(boardFolder, DataTreeLayout.BoardFileName)))
                                 continue;
 
                             boards.Add(new KnownBoard(

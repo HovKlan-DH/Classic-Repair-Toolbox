@@ -770,4 +770,78 @@ public sealed class ComponentBoardWriterTests
         Assert.Equal(("Commodore 128 and 128D", "310378"), (saved.HardwareName, saved.BoardName));
         Assert.Equal(("Commodore 128 and 128D", "310378"), (deleted.HardwareName, deleted.BoardName));
     }
+
+    // ------------------------------------------------------------- CRT 4.0's data (2026-10-25)
+
+    private static BoardData BoardWithCrt4Data() => new()
+    {
+        HardwareName = string.Empty,
+        BoardName = string.Empty,
+        Components =
+        [
+            new ComponentEntry { BoardLabel = "U8", FriendlyName = "CIA", Region = "PAL", Package = "DIP-40", RepairNotes = "Runs hot when failing." },
+            new ComponentEntry { BoardLabel = "U9", FriendlyName = "SID" },
+        ],
+        ComponentImages =
+        [
+            new ComponentImageEntry { BoardLabel = "U8", Region = "PAL", Pin = "2", Name = "PA0", File = "b.png", TimeDiv = "1mS", MachineState = "READY prompt", Source = "Known-good board" },
+        ],
+        ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" }, new ComponentPinEntry { BoardLabel = "U9", Pin = "1", Name = "CAP1A" }],
+        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in" }],
+    };
+
+    // ###########################################################################################
+    // *** "SAVE TO DRAFT" KEEPS WHAT THIS WINDOW CANNOT EDIT. *** The window knows nothing of a
+    // package, repair notes or a baseline's machine state and source; rebuilt from its fields alone,
+    // every save would have erased them. They come from the row the save replaces.
+    // ###########################################################################################
+    [Fact]
+    public void Saving_a_component_keeps_its_package_notes_and_baseline_conditions()
+    {
+        BoardData saved = ComponentBoardWriterTests.Save(
+            ComponentBoardWriterTests.BoardWithCrt4Data(),
+            "U8",
+            components: [new ComponentDraftWriter.ComponentDraftRow { BoardLabel = "U8", FriendlyName = "CIA 1", Region = "PAL", Category = "IC" }],
+            images: [new ComponentDraftWriter.ComponentImageDraftRow { BoardLabel = "U8", Region = "PAL", Pin = "2", Name = "PA0", File = "b.png", TimeDiv = "2mS" }],
+            editedRegion: "PAL");
+
+        ComponentEntry component = saved.Components.Single(row => row.BoardLabel == "U8");
+        Assert.Equal("CIA 1", component.FriendlyName);
+        Assert.Equal("DIP-40", component.Package);
+        Assert.Equal("Runs hot when failing.", component.RepairNotes);
+
+        ComponentImageEntry baseline = Assert.Single(saved.ComponentImages);
+        Assert.Equal("2mS", baseline.TimeDiv);
+        Assert.Equal("READY prompt", baseline.MachineState);
+        Assert.Equal("Known-good board", baseline.Source);
+
+        // Not this window's at all - carried as they are.
+        Assert.Equal(2, saved.ComponentPins.Count);
+        Assert.Single(saved.ComponentReplacements);
+    }
+
+    // A row the window adds - a new region, a new baseline - has nothing to keep.
+    [Fact]
+    public void A_new_row_from_the_window_starts_with_none_of_them()
+    {
+        BoardData saved = ComponentBoardWriterTests.Save(
+            ComponentBoardWriterTests.BoardWithCrt4Data(),
+            "U8",
+            components: [new ComponentDraftWriter.ComponentDraftRow { BoardLabel = "U8", FriendlyName = "CIA", Region = "NTSC", Category = "IC" }],
+            editedRegion: "NTSC");
+
+        ComponentEntry ntsc = saved.Components.Single(row => row.BoardLabel == "U8" && row.Region == "NTSC");
+        Assert.Equal(string.Empty, ntsc.Package);
+        Assert.Equal(string.Empty, ntsc.RepairNotes);
+    }
+
+    // Deleting the component takes its pins and replacement parts along - and no other component's.
+    [Fact]
+    public void Deleting_a_component_takes_its_pins_and_replacements_along()
+    {
+        BoardData deleted = ComponentBoardWriter.ApplyComponentDelete(ComponentBoardWriterTests.BoardWithCrt4Data(), "u8");
+
+        Assert.Equal("U9", Assert.Single(deleted.ComponentPins).BoardLabel);
+        Assert.Empty(deleted.ComponentReplacements);
+    }
 }

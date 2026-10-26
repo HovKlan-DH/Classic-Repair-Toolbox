@@ -8,7 +8,7 @@ using Handlers.Online;
 namespace CRT
 {
     // ###########################################################################################
-    // "CRT HAS TO BE UPDATED" OVER A WHOLE TAB - the Drafts tab and the Maintainer tab, when the
+    // "CRT HAS TO BE UPDATED" OVER A WHOLE TAB - the Contribute tab and the Maintainer tab, when the
     // server turns this version of CRT away. The owner asked (2026-10-09) for a full-page modal "or
     // alike" there that cannot be closed and states that the app needs to be updated, "so it is
     // very clear for the user they must update". Which tab, and when, is AppUpdateRequirement's;

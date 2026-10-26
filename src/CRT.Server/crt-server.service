@@ -26,7 +26,11 @@ Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 # the folders below: the BETA and stable data, the stored uploads and the saved feedback. The
 # service's own folder (its program files and settings) is deliberately NOT among them.
 #
-# The stable data (.../public_html/app-data) is here because the settings in INSTALLING.md publish
+# Server 4.0.0 and newer write the CRT 4.0 trees (app-data-v4-BETA, app-data-v4) and never the
+# Excel ones CRT 3.x reads (app-data-BETA, app-data), which are left out so the filesystem keeps
+# them frozen - see INSTALLING.md, "Switching the service to the 4.0 trees".
+#
+# The stable data (.../public_html/app-data-v4) is here because the settings in INSTALLING.md publish
 # to stable. With publishing to stable OFF (the three Production* data settings empty), take it
 # out of the line: then the filesystem, not only the service's own check, keeps stable read-only.
 NoNewPrivileges=true
@@ -36,7 +40,7 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data /mydir/http/classic-repair-toolbox.dk/crt-server/blobs /mydir/http/classic-repair-toolbox.dk/user-feedback
+ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4 /mydir/http/classic-repair-toolbox.dk/crt-server/blobs /mydir/http/classic-repair-toolbox.dk/user-feedback
 
 [Install]
 WantedBy=multi-user.target

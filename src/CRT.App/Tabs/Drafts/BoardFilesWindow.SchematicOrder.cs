@@ -77,13 +77,11 @@ namespace CRT
                     .Select(row => (row.SchematicName, (string?)row.ImageFile))
                     .ToList();
 
-                string draftsRoot = DraftManager.DraftsRoot;
-                string excelDataFile = this.thisExcelDataFile;
                 bool listMatchedTheDraft = false;
 
-                bool saved = await this.WriteDraftAsync(CrtWaitWording.SavingSchematicOrder, () => DraftWorkbookStore.Edit(
-                    draftsRoot,
-                    excelDataFile,
+                DraftWorkbookEditOutcome outcome = await this.ApplyToDraftAsync(
+                    CrtWaitWording.SavingSchematicOrder,
+                    DraftStepWording.SchematicOrder,
                     board =>
                     {
                         List<BoardSchematicEntry> ordered = SchematicOrder.Apply(board.Schematics, order);
@@ -95,13 +93,11 @@ namespace CRT
                             .All(same => same);
 
                         return BoardFilesWindow.WithSchematicList(board, ordered);
-                    }));
+                    });
 
-                if (!saved)
+                if (outcome != DraftWorkbookEditOutcome.Saved)
                 {
-                    this.ShowStatus(
-                        "The new order could not be saved. If this board's Excel file is open in Excel, close it there and try again.",
-                        isError: true);
+                    this.ShowStatus("The new order could not be saved. " + DraftSaveWording.EditNotSaved(outcome), isError: true);
 
                     await this.ReloadSchematicsUnderOverlayAsync();
                     return;

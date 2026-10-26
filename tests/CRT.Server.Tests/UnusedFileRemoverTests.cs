@@ -8,22 +8,26 @@ namespace CRT.Server.Tests
     // UnusedFileRemover - the one place anything in a data tree is deleted because nothing uses
     // it (2026-09-25). It only ever removes FEWER files than it is given: the tree is read again,
     // a file used after all is kept, an unreadable tree removes nothing, and nothing goes through
-    // a link. Each of those is a test here.
+    // a link. Each of those is a test here. The tree is a CRT 4.0 one (2026-10-25): what goes is a
+    // stored file no board lists.
     // ###########################################################################################
     [Collection("BoardFiles")]
     public sealed class UnusedFileRemoverTests : IDisposable
     {
         private readonly string thisRoot = Path.Combine(Path.GetTempPath(), "crt-unused", Guid.NewGuid().ToString("N"));
 
-        private const string Cited = "Commodore/C64/250407/sheet1.png";
-        private const string Orphan = "Commodore/C64/250407/Scope baseline/old.png";
-        private const string OtherOrphan = "Generic shared files/Component images/7408.jpg";
+        // The board lists "sheet1.png"; two stored files no board lists lie beside it, each in a
+        // stored folder of its own.
+        private static readonly string Cited = DataTreeBuilder.Stored("sheet", "sheet1.png");
+        private static readonly string Orphan = DataTreeBuilder.Stored("old scope", "old.png");
+        private static readonly string OtherOrphan = DataTreeBuilder.Stored("7408 picture", "7408.jpg");
 
         public UnusedFileRemoverTests()
         {
-            DataTreeBuilder.Master(this.thisRoot, DataTreeBuilder.Workbook);
-            DataTreeBuilder.Board(this.thisRoot, DataTreeBuilder.Workbook, UnusedFileRemoverTests.Cited);
-            DataTreeBuilder.Files(this.thisRoot, UnusedFileRemoverTests.Cited, UnusedFileRemoverTests.Orphan, UnusedFileRemoverTests.OtherOrphan);
+            DataTreeBuilder.Master(this.thisRoot, DataTreeBuilder.BoardId);
+            DataTreeBuilder.Board(this.thisRoot, DataTreeBuilder.BoardId, ("sheet1.png", "sheet"));
+            DataTreeBuilder.StoreOnly(this.thisRoot, "old.png", "old scope");
+            DataTreeBuilder.StoreOnly(this.thisRoot, "7408.jpg", "7408 picture");
         }
 
         public void Dispose()
@@ -45,10 +49,12 @@ namespace CRT.Server.Tests
             UnusedFileRemoval removal = UnusedFileRemover.Remove(this.thisRoot, [UnusedFileRemoverTests.Orphan], NullLogger.Instance);
 
             Assert.Equal([UnusedFileRemoverTests.Orphan], removal.Removed);
-            Assert.False(File.Exists(Path.Combine(this.thisRoot, "Commodore", "C64", "250407", "Scope baseline", "old.png")));
-            Assert.False(Directory.Exists(Path.Combine(this.thisRoot, "Commodore", "C64", "250407", "Scope baseline")));
 
-            // The board folder is not empty, so it - and everything above it - stays.
+            string orphan = Path.Combine(this.thisRoot, UnusedFileRemoverTests.Orphan.Replace('/', Path.DirectorySeparatorChar));
+            Assert.False(File.Exists(orphan));
+            Assert.False(Directory.Exists(Path.GetDirectoryName(orphan)));
+
+            // The store holds other files, so it - and everything above it - stays.
             Assert.True(this.Exists(UnusedFileRemoverTests.Cited));
         }
 
@@ -76,7 +82,8 @@ namespace CRT.Server.Tests
         [Fact]
         public void An_unreadable_tree_removes_nothing_and_says_why()
         {
-            DataTreeBuilder.Master(this.thisRoot, DataTreeBuilder.Workbook, "Amstrad/CPC/464/Data CPC 464 v2.0.0.xlsx");
+            // The main file lists a board whose board file is not there.
+            DataTreeBuilder.Master(this.thisRoot, DataTreeBuilder.BoardId, "Amstrad/CPC/464");
 
             UnusedFileRemoval removal = UnusedFileRemover.Remove(this.thisRoot, [UnusedFileRemoverTests.Orphan], NullLogger.Instance);
 
@@ -94,7 +101,7 @@ namespace CRT.Server.Tests
                 this.thisRoot,
                 [UnusedFileRemoverTests.Orphan],
                 NullLogger.Instance,
-                isLink: path => path.EndsWith("Scope baseline", StringComparison.Ordinal));
+                isLink: path => path.EndsWith(Path.GetFileName(Path.GetDirectoryName(UnusedFileRemoverTests.Orphan)!), StringComparison.Ordinal));
 
             Assert.Empty(removal.Removed);
             Assert.True(this.Exists(UnusedFileRemoverTests.Orphan));
@@ -105,7 +112,7 @@ namespace CRT.Server.Tests
         {
             string outside = Path.Combine(Path.GetDirectoryName(this.thisRoot)!, "outside-" + Guid.NewGuid().ToString("N") + ".txt");
             File.WriteAllText(outside, "x");
-            DataTreeBuilder.Files(this.thisRoot, "Commodore/C64/250407/.hidden");
+            File.WriteAllText(DataTreeBuilder.Full(this.thisRoot, "Commodore/C64/250407/.hidden"), "x");
 
             try
             {

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Handlers.DataHandling;
 using Xunit;
@@ -16,13 +15,10 @@ namespace CRT.Data.Tests
     // *** WHY THIS TEST EXISTS. *** This pipeline has twice shipped a validation rule that
     // rejected correct, already-published data - region-variant labels, then note-only image rows
     // - each found only when the project owner's first real submission of a board failed. The file
-    // rules added in the security review are stricter still (own folder, allowed types, content
+    // rules added in the security review are stricter still (allowed types, cited by a row, content
     // signatures), so every one of them is run here over every board in Assets/Data, exactly as a
-    // client would submit it.
-    //
-    // It is what found the case the rules had to allow: C128DCR 250477 cites two scope-baseline
-    // texts that live in the C128 310378 folder. A plain "own folder only" rule refused a board
-    // that is live today; the rule now allows another board's file when it is left unchanged.
+    // client would submit it - since 2026-10-25 as the CRT 4.0 tree holds it (the converter's own
+    // plan of Assets/Data), so the files are the board's names.
     //
     // Reads the real shipped tree - no network, no display - so it runs on CI like any other test.
     // In the "BoardData" collection because BoardDataReader's cache is shared static state.
@@ -62,95 +58,74 @@ namespace CRT.Data.Tests
             }
         }
 
-        // The published tree as the server would see it: real listings, real hashes.
-        private static PublishedTreeView TreeOver(string dataRoot)
-        {
-            return new PublishedTreeView(
-                relative =>
-                {
-                    string full = Path.Combine(dataRoot, relative.Replace('/', Path.DirectorySeparatorChar));
-                    return File.Exists(full) ? SubmissionRulesShippedDataTests.HashOf(full) : null;
-                },
-                relative =>
-                {
-                    string full = relative.Length == 0 ? dataRoot : Path.Combine(dataRoot, relative.Replace('/', Path.DirectorySeparatorChar));
-
-                    return Directory.Exists(full)
-                        ? Directory.EnumerateFileSystemEntries(full).Select(Path.GetFileName).Select(name => name!).ToList()
-                        : null;
-                });
-        }
-
-        private static string HashOf(string path)
-        {
-            using FileStream stream = File.OpenRead(path);
-            return Convert.ToHexStringLower(SHA256.HashData(stream));
-        }
-
+        // ###########################################################################################
+        // *** EVERY SHIPPED BOARD, CONVERTED TO THE CRT 4.0 TREE, PASSES THE SERVER'S RULES AS A 4.0
+        // CRT SENDS IT (2026-10-25). *** The board's rows and every file its board file lists - by
+        // name, with their checksums, its KiCad data included - judged against that same board as
+        // published: an unchanged board sent again must never be refused, by the path rules, the
+        // file rules or the publish plan, nor any file of it.
+        // ###########################################################################################
         [Fact]
-        public async Task No_published_board_is_refused_by_the_file_rules()
+        public void No_converted_shipped_board_is_refused_by_the_file_rules_or_the_publish_plan()
         {
-            string dataRoot = SubmissionRulesShippedDataTests.DataRoot();
-            PublishedTreeView tree = SubmissionRulesShippedDataTests.TreeOver(dataRoot);
+            DataTreeConversionPlan plan = ClassicRepairToolbox.Tests.DataTreeConversionShippedDataTests.Planned.Value;
             var refusals = new List<string>();
-            int boards = 0;
 
-            foreach ((string folder, string workbook) in SubmissionRulesShippedDataTests.ShippedBoards(dataRoot))
+            Assert.Empty(plan.Problems);
+
+            foreach (ConvertedBoard converted in plan.Boards)
             {
-                string cacheKey = "shipped-rules:" + folder;
-                BoardData? board;
+                BoardData board = BoardDocumentMapping.ToContent(converted.Document).Board;
+                string[] parts = converted.BoardId.Split('/');
 
-                try
-                {
-                    board = await BoardDataReader.LoadAsync(workbook, cacheKey);
-                }
-                finally
-                {
-                    BoardDataReader.ClearCache(cacheKey);
-                }
+                var listed = new Dictionary<string, BoardDocument.StoredFileRow>(StringComparer.OrdinalIgnoreCase);
 
-                Assert.NotNull(board);
-                boards++;
+                foreach (BoardDocument.StoredFileRow file in converted.Document.Files)
+                    listed.TryAdd(file.Name, file);
 
-                string[] parts = folder.Split('/');
+                var published = new PublishedTreeView(
+                    name => listed.TryGetValue(name, out BoardDocument.StoredFileRow? file) ? file.Sha256 : null,
+                    _ => null);
 
-                // Built as the client builds it: the files are exactly what the rows cite. Only a
-                // file outside the board's own and shared folders needs its real hash - the rule
-                // compares it with what is published; every other hash is not looked at here.
                 var manifest = new SubmissionManifest
                 {
-                    BoardId = folder,
+                    BoardId = converted.BoardId,
                     Manufacturer = parts[0],
                     Hardware = parts[1],
                     Board = parts[2],
                     Rows = new SubmissionRows
                     {
-                        Schematics = [.. board!.Schematics],
+                        Schematics = [.. board.Schematics],
                         ComponentImages = [.. board.ComponentImages],
                         ComponentLocalFiles = [.. board.ComponentLocalFiles],
                         BoardLocalFiles = [.. board.BoardLocalFiles]
                     }
                 };
 
-                foreach (string path in SubmissionManifestBuilder.CollectReferencedFiles(board))
+                // Built as the client builds it: what the rows cite, then the KiCad data.
+                foreach (string name in SubmissionManifestBuilder.CollectReferencedFiles(board).Concat(SubmissionKiCadFiles.Collect(converted.Document)).Distinct(StringComparer.Ordinal))
                 {
-                    bool foreign = SubmissionFileScopes.Classify(parts[0], parts[1], parts[2], path) == SubmissionFileScope.Foreign;
-
-                    manifest.Files.Add(new SubmissionFile
+                    if (!listed.TryGetValue(name, out BoardDocument.StoredFileRow? file))
                     {
-                        Path = path,
-                        Sha256 = foreign
-                            ? SubmissionRulesShippedDataTests.HashOf(Path.Combine(dataRoot, path.Replace('/', Path.DirectorySeparatorChar)))
-                            : new string('0', 64)
-                    });
+                        refusals.Add($"{converted.BoardId}: [{name}] is cited but not in the board's list of files");
+                        continue;
+                    }
+
+                    manifest.Files.Add(new SubmissionFile { Path = name, Sha256 = file.Sha256, SizeBytes = file.Size });
                 }
 
-                refusals.AddRange(SubmissionFileRules.ValidateManifestFiles(manifest, tree)
-                    .Select(finding => $"{folder}: {finding.Code} {finding.Subject}"));
+                refusals.AddRange(SubmissionPathRules.ValidateManifestPaths(manifest, Path.GetTempPath())
+                    .Concat(SubmissionFileRules.ValidateManifestFiles(manifest, published))
+                    .Select(finding => $"{converted.BoardId}: {finding.Code} {finding.Subject}"));
+
+                PublishPlanResult publish = PublishPlan.Build(
+                    Path.GetTempPath(), manifest, "2026-October-25", DateTimeOffset.UtcNow, null, BoardDescriptorRules.BoardOrigin.Contributed, published, _ => true);
+
+                refusals.AddRange(publish.Problems.Select(problem => $"{converted.BoardId}: {problem.Code} {problem.Subject}"));
             }
 
-            // Anti-vacuity: an empty walk would pass without checking anything.
-            Assert.True(boards >= 10, $"Only {boards} shipped boards were found under {dataRoot}.");
+            // Anti-vacuity: an empty plan would pass without checking anything.
+            Assert.True(plan.Boards.Count >= 10, $"Only {plan.Boards.Count} shipped boards were converted.");
             Assert.Empty(refusals);
         }
 
@@ -228,6 +203,52 @@ namespace CRT.Data.Tests
             }
 
             Assert.True(cited.Count > 1000, $"Only {cited.Count} cited files were found.");
+            Assert.Empty(refusals);
+        }
+
+        // ###########################################################################################
+        // *** EVERY KiCad FILE A SHIPPED BOARD'S SUBMISSION CARRIES PASSES FINALISE'S CONTENT CHECK
+        // (code review, 2026-10-25). *** The test above reads only the files rows CITE; a board's KiCad
+        // data is cited by none, and travels in every submission of it (SubmissionKiCadFiles.Collect).
+        // The stragglers the converted trees keep there (KiCad-traces.json, a legacy .sch) failed the
+        // check finalise runs - SubmissionContentRules.MatchesWholeFile, called here as finalise calls
+        // it - so no submission of those boards could pass.
+        // ###########################################################################################
+        [Fact]
+        public void Every_KiCad_file_a_shipped_boards_submission_carries_passes_the_content_check_finalise_runs()
+        {
+            string dataRoot = SubmissionRulesShippedDataTests.DataRoot();
+            DataTreeConversionPlan plan = ClassicRepairToolbox.Tests.DataTreeConversionShippedDataTests.Planned.Value;
+            var refusals = new List<string>();
+            int checkedFiles = 0;
+
+            foreach (ConvertedBoard converted in plan.Boards)
+            {
+                foreach (string name in SubmissionKiCadFiles.Collect(converted.Document))
+                {
+                    string full = Path.Combine(dataRoot, converted.BoardId.Replace('/', Path.DirectorySeparatorChar), name.Replace('/', Path.DirectorySeparatorChar));
+
+                    if (!File.Exists(full))
+                    {
+                        refusals.Add($"{converted.BoardId}: [{name}] is listed but not found at {full}");
+                        continue;
+                    }
+
+                    byte[] head = new byte[SubmissionContentRules.SampleBytes];
+                    int length;
+
+                    using (FileStream stream = File.OpenRead(full))
+                        length = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+
+                    checkedFiles++;
+
+                    if (!SubmissionContentRules.MatchesWholeFile(name, head.AsSpan(0, length), () => new StreamReader(full), out string reason))
+                        refusals.Add($"{converted.BoardId}: [{name}] {reason}");
+                }
+            }
+
+            // Anti-vacuity: the shipped tree has KiCad projects, so real files were checked.
+            Assert.True(checkedFiles > 10, $"Only {checkedFiles} KiCad files were checked.");
             Assert.Empty(refusals);
         }
 

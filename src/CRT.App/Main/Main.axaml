@@ -23,7 +23,17 @@
 		<Style Selector="TabItem:pointerover /template/ Border#PART_SelectedPipe">
 			<Setter Property="IsVisible" Value="True" />
 		</Style>
-		
+
+		<!-- The Contribute tab's title: the tab's own colour, IndianRed while a draft exists
+		     (Main.ApplyContributeTabState). A style, not a local value, so the class can win. -->
+		<Style Selector="TextBlock.ContributeTabTitle">
+			<Setter Property="Foreground" Value="{Binding $parent[TabItem].Foreground}" />
+		</Style>
+
+		<Style Selector="TextBlock.ContributeTabTitle.hasDrafts">
+			<Setter Property="Foreground" Value="{DynamicResource Main_TabHeader_Drafts_Fg}" />
+		</Style>
+
 		<!-- Banner dismiss button: subtle hover on dark background -->
 		<Style Selector="Button.BannerDismissButton">
 			<Setter Property="BorderThickness" Value="0" />
@@ -444,38 +454,29 @@
 						<local:TabOscilloscope x:Name="TabOscilloscope" />
 					</TabItem>
 
-					<TabItem Header="Contribute">
-						<local:TabContribute x:Name="TabContribute" />
-					</TabItem>
-
-					<!-- Hidden until at least one drafted board exists (NewContributeStrategy.md
-					     Phase 2, session 2b) - IsVisible starts False so a launch with no drafts
-					     never flashes an empty tab; ApplyDraftsTabVisibility sets the real value at
-					     startup and after every board load, the same pattern WorkbooksTabItem uses. -->
-					<!-- The title is IndianRed in both themes (owner request, 2026-09-25): a
-					     draft is temporary - local work waiting to be submitted and published -
-					     and the tab says so at a glance. A TextBlock with its own Foreground, since
-					     the tab's selected and hover states would otherwise recolour a plain header. -->
-					<!-- ITS BADGE (owner request, 2026-09-30: "Like the "Maintainer" tab now has a
-					     badge, then I think the "Draft" also should have same functionality, as the
-					     contributor likewise can receive an update") counts the submissions with news
-					     the contributor has not seen - the same number as the "My submissions"
-					     button's badge inside the tab (Main.SubmissionChecks.cs). -->
-					<TabItem x:Name="DraftsTabItem" IsVisible="False">
+					<!-- THE CONTRIBUTE TAB (CRT 4.0 step 2, 2026-10-25 - the plan: "One tab instead of
+					     Contribute and Drafts"): always on screen, and TabDrafts underneath.
+					     Its title is IndianRed while a draft exists (owner request, 2026-09-25, for the
+					     Drafts tab: a draft is temporary - local work waiting to be submitted and
+					     published - and the tab says so at a glance; ApplyContributeTabState sets the
+					     class). Its BADGE (owner request, 2026-09-30) counts the submissions with news the
+					     contributor has not seen - the same number as the "My submissions" button's
+					     badge inside the tab (Main.SubmissionChecks.cs). -->
+					<TabItem x:Name="ContributeTabItem">
 						<TabItem.Header>
 							<StackPanel Orientation="Horizontal" Spacing="5">
-								<TextBlock x:Name="DraftsTabHeaderText"
-								           Text="Drafts"
-								           VerticalAlignment="Center"
-								           Foreground="{DynamicResource Main_TabHeader_Drafts_Fg}" />
-								<Border x:Name="DraftsTabBadge"
+								<TextBlock x:Name="ContributeTabHeaderText"
+								           Classes="ContributeTabTitle"
+								           Text="Contribute"
+								           VerticalAlignment="Center" />
+								<Border x:Name="ContributeTabBadge"
 								        IsVisible="False"
 								        Background="{DynamicResource Badge_Attention_Bg}"
 								        CornerRadius="8"
 								        Padding="4,0"
 								        MinWidth="16"
 								        VerticalAlignment="Center">
-									<TextBlock x:Name="DraftsTabBadgeText"
+									<TextBlock x:Name="ContributeTabBadgeText"
 									           FontSize="11"
 									           FontWeight="SemiBold"
 									           HorizontalAlignment="Center"

@@ -59,5 +59,32 @@ namespace CRT.Data.Tests
             Assert.True(FileRemovalPreview.Nothing.Matches([]));
             Assert.False(new FileRemovalPreview(["a/one.png"], null).Matches(null));
         }
+
+        // ###########################################################################################
+        // *** A 4.0 TREE'S REMOVAL IS A STORED FILE, SHOWN BY ITS BOARD NAME (2026-10-25). ***
+        // "Files/3f/3f7a...png" says nothing to a maintainer; the name the board knew it by does.
+        // Matching stays on the place - what is removed is what was shown.
+        // ###########################################################################################
+        [Fact]
+        public void A_removal_is_shown_by_its_board_name_and_matched_by_its_place()
+        {
+            var preview = new FileRemovalPreview(["Files/3f/3f7a.png", "Files/aa/aa01.pdf"], null)
+                .Named(new Dictionary<string, string> { ["Files/3f/3f7a.png"] = "Images/u8.png", ["Files/zz/elsewhere.png"] = "x.png" });
+
+            Assert.Equal("Images/u8.png", preview.NameOf("Files/3f/3f7a.png"));
+            Assert.Equal("Files/aa/aa01.pdf", preview.NameOf("Files/aa/aa01.pdf"));
+            Assert.Equal(["Files/3f/3f7a.png"], preview.Names!.Keys);
+            Assert.True(preview.Matches(["Files/aa/aa01.pdf", "Files/3f/3f7a.png"]));
+        }
+
+        [Fact]
+        public void Naming_nothing_leaves_the_preview_as_it_is()
+        {
+            var preview = new FileRemovalPreview(["a/one.png"], null);
+
+            Assert.Same(preview, preview.Named(null));
+            Assert.Same(FileRemovalPreview.Nothing, FileRemovalPreview.Nothing.Named(new Dictionary<string, string> { ["a"] = "b" }));
+            Assert.Null(preview.Named(new Dictionary<string, string>()).Names);
+        }
     }
 }

@@ -11,11 +11,12 @@ namespace ClassicRepairToolbox.Tests;
 // 2026-09-27: "the CRT App can kind of 'import' that into its Draft so it can be submitted").
 //
 // Without it such a folder has no marker, so nothing in the application sees it: no Drafts tab,
-// no Submit. The import writes the marker and nothing else decides anything differently - which
-// is why several tests below finish by asking the ORDINARY draft readers (HasDraft,
-// DraftStatusReader) rather than the import's own outcome.
+// no Submit. The import writes the marker - and in CRT 4.0 converts an Excel-era copy into a 4.0
+// draft (2026-10-24) - and nothing else decides anything differently, which is why several tests
+// below finish by asking the ORDINARY draft readers (HasDraft, DraftStatusReader) rather than the
+// import's own outcome.
 //
-// "BoardData" collection: these tests write and read board workbooks, like DraftStatusReaderTests.
+// "BoardData" collection: these tests write and read board files, like DraftStatusReaderTests.
 // ###########################################################################################
 [Collection("BoardData")]
 public sealed class DraftFolderImportTests : IDisposable
@@ -24,10 +25,15 @@ public sealed class DraftFolderImportTests : IDisposable
 
     private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
-    private const string PublishedKey = "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx";
+    // A published board, as the 4.0 main file lists it.
+    private const string PublishedKey = "Commodore/C64/250407/board.json";
 
-    // The owner's own case: a board made the old way, listed only by a _UserContribution workbook.
-    private const string LegacyKey = "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx";
+    // The Excel-era copy of it a contributor puts into Drafts/.
+    private const string PublishedWorkbook = "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx";
+
+    // The owner's own case: a board made the old way, never published.
+    private const string LegacyKey = "Commodore/C128/310378 Open128/board.json";
+    private const string LegacyWorkbook = "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx";
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
@@ -38,19 +44,28 @@ public sealed class DraftFolderImportTests : IDisposable
     // ------------------------------------------------------------------ the two kinds of draft
 
     [Fact]
-    public void A_hand_placed_copy_of_a_PUBLISHED_board_becomes_its_draft()
+    public void A_hand_placed_Excel_copy_of_a_PUBLISHED_board_becomes_its_4_0_draft()
     {
-        this.WriteDraftWorkbook(PublishedKey, BoardWith(3, "2026-August-7"));
+        this.WritePublishedBoard(PublishedKey, BoardWith(3, "2026-September-20"));
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(3, "2026-August-7"));
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
 
         Assert.Equal(DraftFolderImportKind.DraftOfPublishedBoard, outcome.Kind);
         Assert.Equal(PublishedKey, outcome.ExcelDataFile);
+        Assert.Equal("Data C64 250407 v2.0.0.xlsx", outcome.ConvertedFromWorkbook);
         Assert.True(DraftBoardSource.HasDraft(this.DraftsRoot, PublishedKey));
+        Assert.Equal(PublishedKey, this.MarkerOf(PublishedKey)!.BoardKey);
+
+        string folder = this.FolderOf(PublishedKey);
+        Assert.True(File.Exists(Path.Combine(folder, DataTreeLayout.BoardFileName)));
+        Assert.True(File.Exists(Path.Combine(folder, DraftConversion.OriginalsFolder, "Data C64 250407 v2.0.0.xlsx")));
+        Assert.False(File.Exists(Path.Combine(folder, "Data C64 250407 v2.0.0.xlsx")));
 
         DraftStatus? status = DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, PublishedKey);
         Assert.NotNull(status);
         Assert.False(status!.IsNewBoard);
+        Assert.Equal(3, BoardDataReader.ReadWorkbookUncached(status.WorkbookPath)!.Components.Count);
     }
 
     // ###########################################################################################
@@ -62,8 +77,8 @@ public sealed class DraftFolderImportTests : IDisposable
     [Fact]
     public void A_published_boards_copy_keeps_the_revision_written_inside_it_as_its_base()
     {
-        this.WriteDraftWorkbook(PublishedKey, BoardWith(1, "2026-August-7"));
-        this.WritePublishedWorkbook(PublishedKey, BoardWith(1, "2026-September-20"));
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(1, "2026-August-7"));
+        this.WritePublishedBoard(PublishedKey, BoardWith(1, "2026-September-20"));
 
         this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true));
 
@@ -73,12 +88,13 @@ public sealed class DraftFolderImportTests : IDisposable
     [Fact]
     public void A_folder_nothing_lists_becomes_a_NEW_board_named_after_its_folders()
     {
-        const string key = "Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx";
-        this.WriteDraftWorkbook(key, BoardWith(2));
+        const string key = "Amstrad/CPC 6128/MC0020/board.json";
+        this.WriteHandPlacedWorkbook("Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx", BoardWith(2));
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import());
 
         Assert.Equal(DraftFolderImportKind.NewBoard, outcome.Kind);
+        Assert.Equal(key, outcome.ExcelDataFile);
 
         NewBoardRegistration registration = this.MarkerOf(key)!.NewBoard!;
         Assert.Equal("CPC 6128", registration.HardwareName);
@@ -96,7 +112,7 @@ public sealed class DraftFolderImportTests : IDisposable
     [Fact]
     public void A_new_boards_registered_names_rebuild_its_folder_so_a_submission_is_accepted()
     {
-        this.WriteDraftWorkbook(LegacyKey, BoardWith(2));
+        this.WriteHandPlacedWorkbook(LegacyWorkbook, BoardWith(2));
 
         this.Import(new KnownDraftBoard(LegacyKey, IsPublished: false));
 
@@ -108,19 +124,17 @@ public sealed class DraftFolderImportTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE OWNER'S CASE (2026-09-27). *** A board made the old way is listed by a
-    // "_UserContribution" workbook and lives in Data/ - but it has never been PUBLISHED, so its copy
-    // in Drafts/ is a NEW board. And its rows must count against NOTHING: compared with the legacy
-    // copy in Data/ (the same board) every row was unchanged, the tab said "nothing added yet" and
-    // Submit was disabled. Fails against the version that compared against the file at the
-    // published path.
+    // *** THE OWNER'S CASE (2026-09-27). *** A board made the old way has never been PUBLISHED, so
+    // its copy in Drafts/ is a NEW board - and its rows must count against NOTHING: compared with
+    // a copy of the same board every row was unchanged, the tab said "nothing added yet" and
+    // Submit was disabled.
     // ###########################################################################################
     [Fact]
-    public void A_board_only_a_legacy_UserContribution_workbook_lists_is_a_NEW_board_whose_rows_all_count()
+    public void A_board_that_was_never_published_is_a_NEW_board_whose_rows_all_count()
     {
         BoardData board = BoardWith(4);
-        this.WritePublishedWorkbook(LegacyKey, board);
-        this.WriteDraftWorkbook(LegacyKey, board);
+        this.WritePublishedBoard(LegacyKey, board);
+        this.WriteHandPlacedWorkbook(LegacyWorkbook, board);
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import(new KnownDraftBoard(LegacyKey, IsPublished: false)));
 
@@ -136,7 +150,7 @@ public sealed class DraftFolderImportTests : IDisposable
     [Fact]
     public void A_published_listing_wins_over_a_local_one_for_the_same_folder()
     {
-        this.WriteDraftWorkbook(PublishedKey, BoardWith(1));
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(1));
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import(
             new KnownDraftBoard(PublishedKey, IsPublished: false),
@@ -145,24 +159,43 @@ public sealed class DraftFolderImportTests : IDisposable
         Assert.Equal(DraftFolderImportKind.DraftOfPublishedBoard, outcome.Kind);
     }
 
+    // A 4.0 board folder - a board.json, from another machine's drafts, say - needs only its
+    // marker; the folder itself is not touched.
+    [Fact]
+    public void A_hand_placed_4_0_board_folder_gets_its_marker_and_is_left_as_it_is()
+    {
+        string boardFile = Path.Combine(this.FolderOf(PublishedKey), DataTreeLayout.BoardFileName);
+        BoardWorkbookWriter.Write(boardFile, BoardWith(2, "2026-August-7"));
+        byte[] before = File.ReadAllBytes(boardFile);
+
+        DraftFolderImportOutcome outcome = Assert.Single(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
+
+        Assert.Equal(DraftFolderImportKind.DraftOfPublishedBoard, outcome.Kind);
+        Assert.Equal(string.Empty, outcome.ConvertedFromWorkbook);
+        Assert.Equal(before, File.ReadAllBytes(boardFile));
+        Assert.Equal("2026-August-7", this.MarkerOf(PublishedKey)!.BaseRevision);
+        Assert.False(Directory.Exists(Path.Combine(this.FolderOf(PublishedKey), DraftConversion.OriginalsFolder)));
+    }
+
     // ------------------------------------------------------------------ what is left alone
 
     [Fact]
     public void A_folder_that_is_already_a_draft_is_left_exactly_as_it_is()
     {
-        this.WriteDraftWorkbook(PublishedKey, BoardWith(1, "2026-August-7"));
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(1, "2026-August-7"));
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(this.DraftsRoot, PublishedKey),
             new DraftMarker { BoardKey = PublishedKey, BaseRevision = "the original" });
 
         Assert.Empty(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
         Assert.Equal("the original", this.MarkerOf(PublishedKey)!.BaseRevision);
+        Assert.True(File.Exists(Path.Combine(this.FolderOf(PublishedKey), "Data C64 250407 v2.0.0.xlsx")));
     }
 
     [Fact]
     public void Running_it_again_imports_nothing_more()
     {
-        this.WriteDraftWorkbook(PublishedKey, BoardWith(1));
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(1));
 
         Assert.Single(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
         Assert.Empty(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
@@ -184,14 +217,14 @@ public sealed class DraftFolderImportTests : IDisposable
     }
 
     [Fact]
-    public void A_folder_with_no_workbook_is_reported_and_not_imported()
+    public void A_folder_with_no_board_file_or_workbook_is_reported_and_not_imported()
     {
         this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Commodore", "C64", "250407", "Sheet1.png"), "x");
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import());
 
         Assert.False(outcome.Imported);
-        Assert.Contains("no board workbook", outcome.Reason);
+        Assert.Contains("no board file", outcome.Reason);
         Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, PublishedKey));
     }
 
@@ -199,24 +232,29 @@ public sealed class DraftFolderImportTests : IDisposable
     [Fact]
     public void Excels_owner_file_is_not_a_second_workbook()
     {
-        const string key = "Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx";
-        this.WriteDraftWorkbook(key, BoardWith(1));
+        const string key = "Amstrad/CPC 6128/MC0020/board.json";
+        this.WriteHandPlacedWorkbook("Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx", BoardWith(1));
         this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Amstrad", "CPC 6128", "MC0020", "~$Data CPC 6128 MC0020.xlsx"), "x");
 
         Assert.True(Assert.Single(this.Import()).Imported);
         Assert.Equal(key, this.MarkerOf(key)!.NewBoard!.ExcelDataFile);
     }
 
-    [Fact]
-    public void Several_workbooks_in_a_new_boards_folder_are_not_guessed_between()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Several_workbooks_in_a_folder_are_not_guessed_between(bool known)
     {
-        this.WriteDraftWorkbook("Amstrad/CPC 6128/MC0020/Data A.xlsx", BoardWith(1));
-        this.WriteDraftWorkbook("Amstrad/CPC 6128/MC0020/Data B.xlsx", BoardWith(1));
+        this.WriteHandPlacedWorkbook("Commodore/C64/250407/Data A.xlsx", BoardWith(1));
+        this.WriteHandPlacedWorkbook("Commodore/C64/250407/Data B.xlsx", BoardWith(1));
 
-        DraftFolderImportOutcome outcome = Assert.Single(this.Import());
+        DraftFolderImportOutcome outcome = Assert.Single(known
+            ? this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true))
+            : this.Import());
 
         Assert.False(outcome.Imported);
-        Assert.False(File.Exists(Path.Combine(this.DraftsRoot, "Amstrad", "CPC 6128", "MC0020", DraftFolderLayout.DraftMarkerFileName)));
+        Assert.Contains("2 workbooks", outcome.Reason);
+        Assert.False(File.Exists(Path.Combine(this.FolderOf(PublishedKey), DraftFolderLayout.DraftMarkerFileName)));
     }
 
     // ###########################################################################################
@@ -239,7 +277,7 @@ public sealed class DraftFolderImportTests : IDisposable
     [Fact]
     public void A_new_board_whose_folder_name_the_server_would_refuse_is_not_imported()
     {
-        this.WriteDraftWorkbook("Amstrad/CPC 6128/MC0020  rev B/Data.xlsx", BoardWith(1));
+        this.WriteHandPlacedWorkbook("Amstrad/CPC 6128/MC0020  rev B/Data.xlsx", BoardWith(1));
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import());
 
@@ -254,59 +292,34 @@ public sealed class DraftFolderImportTests : IDisposable
         Assert.Empty(DraftFolderImport.ImportUnmarkedFolders(this.DraftsRoot, [], Now));
     }
 
-    // ------------------------------------------------------------------ renaming to the known name
+    // ------------------------------------------------------------------ a conversion that cannot run
 
-    // ###########################################################################################
-    // Every draft lookup builds the workbook's path from the known board's file name, so a copy
-    // under another name (an older data generation, say) would be a draft whose workbook is never
-    // found. With exactly one workbook it is renamed - its sidecar with it, or the highlights would
-    // be left beside a name nothing reads.
-    // ###########################################################################################
+    // A workbook CRT cannot read is no draft it could show: the folder stays exactly as it was,
+    // with no marker left behind to make it a broken draft, and says why.
     [Fact]
-    public void A_known_boards_copy_under_another_name_is_renamed_together_with_its_sidecar()
+    public void A_workbook_that_cannot_be_read_leaves_the_folder_as_it_was()
     {
-        this.WriteDraftWorkbook("Commodore/C64/250407/Data C64 250407.xlsx", BoardWith(2));
-        string folder = Path.Combine(this.DraftsRoot, "Commodore", "C64", "250407");
-        File.WriteAllText(Path.Combine(folder, "Data C64 250407.json"), "{}");
-
-        DraftFolderImportOutcome outcome = Assert.Single(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
-
-        Assert.True(outcome.Imported);
-        Assert.Equal("Data C64 250407.xlsx", outcome.RenamedFrom);
-        Assert.True(File.Exists(Path.Combine(folder, "Data C64 250407 v2.0.0.xlsx")));
-        Assert.True(File.Exists(Path.Combine(folder, "Data C64 250407 v2.0.0.json")));
-        Assert.False(File.Exists(Path.Combine(folder, "Data C64 250407.xlsx")));
-        Assert.False(File.Exists(Path.Combine(folder, "Data C64 250407.json")));
-
-        Assert.True(File.Exists(DraftStatusReader.Resolve(this.DataRoot, this.DraftsRoot, PublishedKey)!.WorkbookPath));
-    }
-
-    [Fact]
-    public void A_known_boards_folder_with_several_workbooks_none_rightly_named_is_left_alone()
-    {
-        this.WriteDraftWorkbook("Commodore/C64/250407/Data A.xlsx", BoardWith(1));
-        this.WriteDraftWorkbook("Commodore/C64/250407/Data B.xlsx", BoardWith(1));
+        string workbook = this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx"), "not a workbook");
 
         DraftFolderImportOutcome outcome = Assert.Single(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true)));
 
         Assert.False(outcome.Imported);
-        Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, PublishedKey));
+        Assert.Contains("could not be read", outcome.Reason);
+        Assert.Equal("not a workbook", File.ReadAllText(workbook));
+        Assert.Equal(["Data C64 250407 v2.0.0.xlsx"], Directory.GetFileSystemEntries(this.FolderOf(PublishedKey)).Select(Path.GetFileName));
     }
 
     // ###########################################################################################
-    // A workbook open in Excel cannot be renamed on Windows. The import must then change NOTHING -
-    // in particular the sidecar, which moves first, has to be moved back - so the next start can
-    // simply try again.
+    // A workbook open in Excel cannot be read on Windows. The import must then leave NOTHING
+    // written - no marker making it a half-made draft - so the next start can simply try again.
     // ###########################################################################################
     [Fact]
-    public void A_rename_blocked_by_an_open_workbook_changes_nothing_and_is_retried_next_time()
+    public void A_workbook_held_open_changes_nothing_and_is_retried_next_time()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
 
-        this.WriteDraftWorkbook("Commodore/C64/250407/Data C64 250407.xlsx", BoardWith(1));
-        string folder = Path.Combine(this.DraftsRoot, "Commodore", "C64", "250407");
-        string workbook = Path.Combine(folder, "Data C64 250407.xlsx");
-        File.WriteAllText(Path.Combine(folder, "Data C64 250407.json"), "{}");
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(1));
+        string workbook = Path.Combine(this.FolderOf(PublishedKey), "Data C64 250407 v2.0.0.xlsx");
 
         DraftFolderImportOutcome outcome;
 
@@ -317,30 +330,27 @@ public sealed class DraftFolderImportTests : IDisposable
 
         Assert.False(outcome.Imported);
         Assert.True(File.Exists(workbook));
-        Assert.True(File.Exists(Path.Combine(folder, "Data C64 250407.json")));
-        Assert.False(File.Exists(Path.Combine(folder, "Data C64 250407 v2.0.0.json")));
         Assert.False(DraftBoardSource.HasDraft(this.DraftsRoot, PublishedKey));
 
         Assert.True(Assert.Single(this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true))).Imported);
     }
 
     // ###########################################################################################
-    // *** AN UNEXPECTED FAILURE COSTS ONE FOLDER, NEVER THE BOARD LIST (code review, 2026-09-27). ***
-    // The import runs inside DataManager's load of the main workbook, before the list of boards is
-    // set, so an exception escaping it left the application with no boards at all. Forced here with
-    // a known workbook name holding a NUL - which File.Move refuses with an ArgumentException, not
-    // an IOException - so the rename of one folder fails in a way the import never expected.
+    // *** A FAILURE COSTS ONE FOLDER, NEVER THE BOARD LIST (code review, 2026-09-27). *** The
+    // import runs inside DataManager's load of the main file, before the list of boards is set,
+    // so an exception escaping it left the application with no boards at all. Forced here with a
+    // folder whose marker's place is taken by a folder of that name, so writing the marker fails.
     // ###########################################################################################
     [Fact]
-    public void An_unexpected_failure_in_one_folder_is_reported_for_it_and_the_others_are_still_taken_in()
+    public void A_failure_in_one_folder_is_reported_for_it_and_the_others_are_still_taken_in()
     {
-        const string broken = "Commodore/C64/250407/Data C64 250407\0 v2.0.0.xlsx";
-        const string newBoard = "Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx";
+        const string newBoard = "Amstrad/CPC 6128/MC0020/board.json";
 
-        this.WriteDraftWorkbook("Commodore/C64/250407/Data C64 250407.xlsx", BoardWith(1));
-        this.WriteDraftWorkbook(newBoard, BoardWith(1));
+        this.WriteHandPlacedWorkbook(PublishedWorkbook, BoardWith(1));
+        Directory.CreateDirectory(Path.Combine(this.FolderOf(PublishedKey), DraftFolderLayout.DraftMarkerFileName));
+        this.WriteHandPlacedWorkbook("Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx", BoardWith(1));
 
-        IReadOnlyList<DraftFolderImportOutcome> outcomes = this.Import(new KnownDraftBoard(broken, IsPublished: true));
+        IReadOnlyList<DraftFolderImportOutcome> outcomes = this.Import(new KnownDraftBoard(PublishedKey, IsPublished: true));
 
         Assert.Equal(2, outcomes.Count);
         Assert.Contains(outcomes, outcome => !outcome.Imported && outcome.BoardFolder.EndsWith("250407", StringComparison.Ordinal));
@@ -350,10 +360,12 @@ public sealed class DraftFolderImportTests : IDisposable
     // ------------------------------------------------------------------ helpers
 
     private IReadOnlyList<DraftFolderImportOutcome> Import(params KnownDraftBoard[] known) =>
-        DraftFolderImport.ImportUnmarkedFolders(this.DraftsRoot, known, Now);
+        DraftFolderImport.ImportUnmarkedFolders(this.DraftsRoot, known, Now, oldDataRoot: string.Empty, treeContentRoot: this.DataRoot);
 
     private DraftMarker? MarkerOf(string key) =>
         DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(this.DraftsRoot, key));
+
+    private string FolderOf(string key) => DraftFolderLayout.GetBoardFolder(this.DraftsRoot, key);
 
     private static BoardData BoardWith(int components, string revision = "2026-09-01")
     {
@@ -367,15 +379,16 @@ public sealed class DraftFolderImportTests : IDisposable
         return board;
     }
 
-    // A workbook put into Drafts/ by hand - NO marker, which is the whole point.
-    private void WriteDraftWorkbook(string key, BoardData board)
+    // An Excel workbook put into Drafts/ by hand - NO marker, which is the whole point.
+    private void WriteHandPlacedWorkbook(string workbookPath, BoardData board)
     {
-        string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, key);
+        string path = Path.Combine([this.DraftsRoot, .. workbookPath.Split('/')]);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         BoardWorkbookWriter.Write(path, board);
     }
 
-    private void WritePublishedWorkbook(string key, BoardData board)
+    // The published board in the 4.0 tree.
+    private void WritePublishedBoard(string key, BoardData board)
     {
         string path = DraftBoardSource.PublishedPathOf(this.DataRoot, key);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

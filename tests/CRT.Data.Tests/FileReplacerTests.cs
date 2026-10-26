@@ -32,6 +32,72 @@ public sealed class FileReplacerTests : IDisposable
 
     private string Target => Path.Combine(this.thisRoot, "Data C128 310378 v2.0.0.json");
 
+    // ###########################################################################################
+    // *** A TARGET HELD OPEN FOR A MOMENT IS WAITED FOR (2026-10-25). *** On Windows a file open for
+    // reading cannot be replaced, and CRT reads its drafts' files on the UI thread (the Contribute
+    // tab's list, CRT's window coming to the front) while a draft saves itself off it - so a save now
+    // and then failed with the file "being used by another process" (found by a test that failed
+    // in some orders only). On Linux the rename succeeds anyway; the test then simply passes.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_target_held_open_for_a_moment_is_replaced_once_it_is_let_go()
+    {
+        FileReplacer.WriteAllText(this.Target, "first");
+
+        var reader = new FileStream(this.Target, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        Task release = Task.Run(async () =>
+        {
+            await Task.Delay(60);
+            await reader.DisposeAsync();
+        });
+
+        try
+        {
+            // On a thread of its own, as a draft's save runs - the reader lets go meanwhile.
+            await Task.Run(() => FileReplacer.WriteAllText(this.Target, "second"));
+        }
+        finally
+        {
+            await release;
+        }
+
+        Assert.Equal("second", await File.ReadAllTextAsync(this.Target));
+    }
+
+    // The rename is tried again while it is refused, a short pause apart - and gives up with what it
+    // threw after the last try, so a folder that may not be written still fails.
+    [Fact]
+    public void The_rename_is_tried_again_while_refused_and_gives_up_after_the_last_try()
+    {
+        int moves = 0;
+        var pauses = new List<TimeSpan>();
+
+        FileReplacer.MoveOver("from", "to", (_, _) =>
+        {
+            if (++moves < 3)
+                throw new IOException("used by another process");
+        }, pauses.Add);
+
+        Assert.Equal(3, moves);
+        Assert.Equal([FileReplacer.MovePause, FileReplacer.MovePause], pauses);
+
+        moves = 0;
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            FileReplacer.MoveOver("from", "to", (_, _) => { moves++; throw new UnauthorizedAccessException("denied"); }, _ => { }));
+        Assert.Equal(FileReplacer.MoveAttempts, moves);
+    }
+
+    // Anything else is not waited for.
+    [Fact]
+    public void Another_failure_is_not_tried_again()
+    {
+        int moves = 0;
+
+        Assert.Throws<ArgumentException>(() =>
+            FileReplacer.MoveOver("from", "to", (_, _) => { moves++; throw new ArgumentException("bad path"); }, _ => { }));
+        Assert.Equal(1, moves);
+    }
+
     [Fact]
     public void A_new_file_is_written_and_an_existing_one_replaced()
     {

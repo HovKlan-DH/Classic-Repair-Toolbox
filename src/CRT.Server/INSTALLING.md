@@ -678,6 +678,252 @@ and records each one it has applied. It **refuses to start** (`status=78`) when:
 that fails halfway leaves what it already created behind: read the log, look at the database, and
 clean up before restarting.
 
+## Converting a data tree for CRT 4.0
+
+**Not live yet.** CRT 4.0 keeps its board data as JSON instead of Excel, and reads it from two
+folders of its own. Until CRT 4.0 is released only its pre-releases read them, and only the test
+instance writes them ("A test instance for CRT 4.0's pre-releases", below): CRT 3.x and older keep
+reading `app-data` and `app-data-BETA`, and the 3.x service keeps writing those as before. The 4.0
+service writes only the 4.0 folders - see "Switching the service to the 4.0 trees" below.
+
+```
+public_html/
+├── app-data-v4-BETA/   <- CRT 4.0's BETA source: Data/ and dataChecksums.json beside it
+└── app-data-v4/        <- CRT 4.0's stable source
+```
+
+Inside each, `Data/` holds the main file (`Classic-Repair-Toolbox.v4.0.0.json`), one `board.json` per
+board in the board's own folder (`Commodore/C64/250407/board.json`), every file's bytes stored once
+under its checksum in `Files/`, and the MiniPro IC tests.
+
+### The two folders, once
+
+The same group and permissions as the trees in step 3:
+
+```bash
+for T in /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA \
+         /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4; do
+  sudo mkdir -p $T
+  sudo chgrp -R crt-data $T
+  sudo chmod -R g+rwX    $T
+  sudo find $T -type d -exec chmod g+s {} +
+done
+```
+
+And in the vhost, a `<Directory>` block for each, exactly like the two in step 8 with the folder's
+name changed - nothing in them may ever run either. Then `apachectl configtest && sudo systemctl
+reload httpd`.
+
+### Running the conversion
+
+The conversion is a command of the service's own program. It runs beside the running service,
+needs no settings and no database, and only READS the tree it converts. See what it would do first:
+
+```bash
+APP=/mydir/http/classic-repair-toolbox.dk/crt-server/app
+WEB=/mydir/http/classic-repair-toolbox.dk/public_html
+sudo -u crt-server dotnet $APP/CRT.Server.dll convert-data-tree --source=$WEB/app-data-BETA/Data --plan-only
+```
+
+It lists the boards, the files and their sizes, every file it leaves out (the older generations'
+workbooks, what only they cite, and `!` notes no board cites), and - as `PROBLEM:` lines - anything
+it could not carry: a column or sheet CRT does not read, a file a row cites that is missing, a board
+the main workbook does not list. **With a problem it writes nothing**; fix the data and run it again.
+
+Then convert each tree into its own 4.0 folder, with that folder's public address so its manifest is
+written:
+
+```bash
+sudo -u crt-server dotnet $APP/CRT.Server.dll convert-data-tree \
+  --source=$WEB/app-data-BETA/Data --target=$WEB/app-data-v4-BETA \
+  --public-url=https://classic-repair-toolbox.dk/app-data-v4-BETA/Data
+sudo -u crt-server dotnet $APP/CRT.Server.dll convert-data-tree \
+  --source=$WEB/app-data/Data --target=$WEB/app-data-v4 \
+  --public-url=https://classic-repair-toolbox.dk/app-data-v4/Data
+```
+
+- **Run it as `crt-server`**, so the files belong to the service that will write these trees later.
+- **Run it again whenever you like.** A second run keeps every file that is already right and removes
+  whatever the new conversion no longer holds, so a folder is always exactly one conversion of its tree
+  as it is now. On release day it runs once more, from the final Excel trees, just before the service
+  switches to the 4.0 folders.
+- **It refuses** a target holding anything else (an Excel tree, a folder of other files), a target
+  inside the tree it converts or around it, and a target that already has a manifest when
+  `--public-url` is missing (that manifest would describe the old files).
+- **Exit code** 0: written (or planned); 1: nothing written, and why is printed; 2: the command line
+  was wrong.
+
+A plan can also be made from a PC with .NET 10, against a tree over the network share - it only reads:
+`dotnet run --project src/CRT.Server -c Release -- convert-data-tree --source="Z:\mydir\http\classic-repair-toolbox.dk\public_html\app-data-BETA\Data" --plan-only`.
+
+### Switching the service to the 4.0 trees (release day)
+
+**Server 4.0.0 and newer publish ONLY into 4.0 trees** - a board file, the main file and stored files,
+never a workbook - and tell every CRT 3.x that sends a submission or opens the Maintainer tab to update
+(API revision 2). So it is deployed on CRT 4.0's release day, not before, in this order:
+
+0. **Stop the test instance** (its "On release day" below) - the 4.0 trees get one writer.
+1. **Work the queue empty on the running (3.x) service** - approve, publish to stable or reject every
+   submission waiting. A submission sent by CRT 3.x names its files by their place in the Excel tree
+   ("Commodore/C64/250407/Images/sheet.png"); approved into a 4.0 tree those would become the board's
+   names for them.
+2. **Convert both trees one last time** (above), from the final Excel trees.
+3. **Deploy the 4.0 service** and point its seven tree settings at the 4.0 folders:
+
+| Setting | Value |
+| --- | --- |
+| `DataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/Data` |
+| `ManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/dataChecksums.json` |
+| `PublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-BETA/Data` |
+| `ProductionTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4` |
+| `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/Data` |
+| `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/dataChecksums.json` |
+| `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4/Data` |
+
+4. **Install the unit that ships with 4.0.0** (step 7): its `ReadWritePaths=` line names the two
+   `app-data-v4` folders and no longer `app-data` or `app-data-BETA` - the Excel trees are frozen for
+   CRT 3.x from now on, and the filesystem then keeps them read-only too. `sudo systemctl
+   daemon-reload && sudo systemctl restart crt-server`, and check `GET /api/health` says the new
+   version and API revision 2.
+
+The rest of this guide still names the Excel folders the 3.x service writes (steps 3, 6, 7 and 8);
+for a 4.0 service read `app-data-v4-BETA` and `app-data-v4` there.
+
+## A test instance for CRT 4.0's pre-releases
+
+CRT 4.0's pre-releases (`4.0.0-alpha...`, `4.0.0-beta...`) submit to a **test instance** of the
+service, never to the live one. The live service keeps serving CRT 3.x from the Excel trees until the
+release; the test instance runs the newest build - server 4.0.0 and up, which must not go live before
+the release - and publishes into the CRT 4.0 trees the pre-releases read. Only submissions and the
+Maintainer tab go there: a pre-release sends its launch check-in, its feedback and its board views to
+the live service, like every CRT.
+
+|  | Live service | Test instance |
+| --- | --- | --- |
+| Program and settings | `crt-server/app` | `crt-server-test/app` |
+| Port (loopback) | 5199 | 5198 |
+| Address | `https://classic-repair-toolbox.dk/api/` | `https://classic-repair-toolbox.dk/crt-test/api/` |
+| Database | `crt_review` | `crt_review_test` |
+| Data it writes | `app-data-BETA`, `app-data` (until release day) | `app-data-v4-BETA`, `app-data-v4` |
+| Uploads and feedback | `crt-server/blobs`, `user-feedback` | `crt-server-test/blobs`, `crt-server-test/feedback` |
+| Unit | `crt-server.service` | `crt-server-test.service` |
+
+It is the same program, the same user and groups (`crt-server`, `crt-data`) and the steps of part
+one with these names. **Its accounts are its own**: a pre-release signs in to it (CRT says so above
+"Sign in"), so maintainers are invited on it separately and the administrator is made in its database.
+What it publishes is test data, replaced on release day.
+
+### Setting it up, once
+
+1. **The 4.0 folders and fresh data.** Make the two folders as in "The two folders, once" above (their
+   `<Directory>` blocks included), then run the conversion for both trees as there, as `crt-server`. The
+   trees converted over the network share on 2026-10-24 are an older snapshot, and files copied in over
+   the share are not the service's.
+
+2. **Its own folders** - as step 3, the upload store owned by the service and the feedback folder
+   setgid (nothing posts feedback to it, but the service needs one of its own):
+
+   ```bash
+   S=/mydir/http/classic-repair-toolbox.dk/crt-server-test
+   sudo mkdir -p $S/app $S/blobs $S/feedback
+   sudo chown -R root:crt-data $S && sudo chmod -R 0750 $S
+   sudo chown -R crt-server:crt-data $S/blobs
+   sudo chown crt-server:crt-server $S/feedback && sudo chmod 2775 $S/feedback
+   ```
+
+3. **Its database** - as step 4, with its own name and user (no `crt_update` table: check-ins go to
+   the live service):
+
+   ```sql
+   CREATE DATABASE crt_review_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER 'crt_review_test'@'127.0.0.1' IDENTIFIED BY '<make one up on the box>';
+   GRANT ALL PRIVILEGES ON crt_review_test.* TO 'crt_review_test'@'127.0.0.1';
+   FLUSH PRIVILEGES;
+   ```
+
+4. **The program** - publish as in step 5 and copy it into `crt-server-test/app` with the same
+   `chown -R root:crt-data` and `chmod -R 0750`.
+
+5. **Its settings** - as step 6, in `crt-server-test/app/appsettings.Production.json` (copied from
+   `appsettings.Example.json`, `root:crt-data`, mode 0640), with these values:
+
+   | Setting | Value |
+   | --- | --- |
+   | `DataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/Data` |
+   | `ManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/dataChecksums.json` |
+   | `PublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-BETA/Data` |
+   | `ProductionTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4` |
+   | `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/Data` |
+   | `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/dataChecksums.json` |
+   | `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4/Data` |
+   | `BlobStoreRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs` |
+   | `FeedbackRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback` |
+   | `ConnectionString` | `crt_review_test` and the password from 3. |
+   | `PublicApiBaseUrl` | `https://classic-repair-toolbox.dk/crt-test/api` - the links in its mails |
+   | `MailFromDisplayName` | `Classic Repair Toolbox (test)`, so its mails are told apart |
+   | `AllowDataReset` | `true` is fine here: it wipes test accounts and submissions, never a data tree |
+
+   The rest as for the live service (`FeedbackToAddress`, `MailFromAddress`, ...).
+
+6. **Its unit** - the program brings `crt-server-test.service`, every line of it the live unit's but
+   the five that say which instance it is (port 5198, its own folders):
+
+   ```bash
+   sudo cp /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/crt-server-test.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl enable --now crt-server-test
+   ss -ltnp | grep 5198                          # 127.0.0.1:5198 - NOT 0.0.0.0
+   curl -s http://127.0.0.1:5198/api/health      # its version, and "apiRevision":2
+   ```
+
+7. **Apache** - in the vhost, beside the `/api/` lines of step 8, then `apachectl configtest && sudo
+   systemctl reload httpd`:
+
+   ```apache
+   ProxyPass        /crt-test/api/  http://127.0.0.1:5198/api/
+   ProxyPassReverse /crt-test/api/  http://127.0.0.1:5198/api/
+   ```
+
+   **Check:** `curl -i -m 10 --resolve classic-repair-toolbox.dk:443:127.0.0.1
+   https://classic-repair-toolbox.dk/crt-test/api/health` - HTTP 200, `Server: Kestrel`, its JSON.
+
+8. **Its first administrator** - as step 10, against its address and database:
+
+   ```bash
+   curl -s -X POST https://classic-repair-toolbox.dk/crt-test/api/accounts/register -H 'Content-Type: application/json' \
+     -d '{"email":"you@example.com","password":"a long passphrase","displayName":"Your name"}'
+   ```
+
+   Open the link in the mail ("Classic Repair Toolbox (test)"), then
+   `UPDATE crt_review_test.accounts SET is_administrator = 1 WHERE email_normalised = 'you@example.com';`
+
+9. **End to end, with a CRT 4.0 pre-release**: the Maintainer tab says it signs in to the test server;
+   Account > **Server version** shows the test instance's version and API 2 on both lines; a small change
+   sent from the Drafts tab (whose Submit dialog says it goes to the test server) reaches the queue;
+   approving it changes `app-data-v4-BETA/dataChecksums.json`, publishing it to stable
+   `app-data-v4/dataChecksums.json`.
+
+### Running it
+
+- **Deploying a new build:** as "Deploying a new build" in part two, with
+  `ROOT=/mydir/http/classic-repair-toolbox.dk/crt-server-test`, `crt-server-test` and port 5198.
+  **Builds from the main branch go here, and not to the live service, until release day.**
+- **Its log:** the commands in "Is it working, and reading the log" with `-u crt-server-test`.
+- **Starting over:** "Resetting the contribution data" works here as on the live service (with
+  `AllowDataReset` true); the conversion, run again, puts the trees back to the live data as it is.
+
+### On release day
+
+Before "Switching the service to the 4.0 trees" (above): `sudo systemctl disable --now crt-server-test`,
+take its two `ProxyPass` lines out and reload Apache - the 4.0 trees get one writer, the live service.
+The last conversion replaces everything it published, so test data never reaches anybody. Its database
+and folder can go afterwards (`DROP DATABASE crt_review_test;`, `crt-server-test/`), or stay for the
+next pre-releases.
+
+**CRT's side:** the release build talks to the live service again - `AppConfig.ContributionServerRootUrl`
+set back to `AppConfig.CrtServerRootUrl`. A CRT whose version is a release and that still names the test
+instance fails `ContributionServerTests`, so the release workflow stops before it builds anything.
+
 ## Looking at the numbers
 
 ```bash

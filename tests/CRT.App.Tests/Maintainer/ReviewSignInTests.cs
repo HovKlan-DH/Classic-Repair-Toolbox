@@ -18,9 +18,17 @@ public sealed class ReviewSignInTests
         // SubmissionClient appends only "/submissions". Every method here appends the full path,
         // so that value produced "/api/api/review/queue" - a 404 on the very first request, from
         // an address that reads correctly in the source.
-        Assert.Equal("https://classic-repair-toolbox.dk", ReviewApiRoutes.DefaultBaseAddress);
+        //
+        // *** THE CONTRIBUTION SERVICE'S ADDRESS (2026-10-25). *** It was the live host, literally;
+        // while CRT 4.0 is in pre-release the Maintainer tab talks to the TEST instance, the address
+        // AppConfig.ContributionServerRootUrl names (ContributionServerTests holds which, and that a
+        // release never ships with the test one). The routes below are checked on the live host.
+        Assert.Equal(CRT.AppConfig.ContributionServerRootUrl, ReviewApiRoutes.DefaultBaseAddress);
+        Assert.Contains(ReviewApiRoutes.DefaultBaseAddress, new[] { CRT.AppConfig.CrtServerRootUrl, CRT.AppConfig.TestServerRootUrl });
         Assert.False(ReviewApiRoutes.DefaultBaseAddress.EndsWith("/api", StringComparison.Ordinal));
     }
+
+    private const string LiveHost = "https://classic-repair-toolbox.dk";
 
     [Fact]
     public void The_default_server_builds_VALID_routes()
@@ -29,15 +37,22 @@ public sealed class ReviewSignInTests
         // reintroduce silently: these are the exact URLs the server maps.
         Assert.Equal(
             "https://classic-repair-toolbox.dk/api/review/queue",
-            ReviewApiRoutes.Queue(ReviewApiRoutes.DefaultBaseAddress));
+            ReviewApiRoutes.Queue(ReviewSignInTests.LiveHost));
 
         Assert.Equal(
             "https://classic-repair-toolbox.dk/api/accounts/login",
-            ReviewApiRoutes.Login(ReviewApiRoutes.DefaultBaseAddress));
+            ReviewApiRoutes.Login(ReviewSignInTests.LiveHost));
 
         Assert.Equal(
             "https://classic-repair-toolbox.dk/api/accounts/forgot-password",
-            ReviewApiRoutes.ForgotPassword(ReviewApiRoutes.DefaultBaseAddress));
+            ReviewApiRoutes.ForgotPassword(ReviewSignInTests.LiveHost));
+
+        // And the test instance's, under its own path.
+        Assert.Equal(
+            "https://classic-repair-toolbox.dk/crt-test/api/review/queue",
+            ReviewApiRoutes.Queue(CRT.AppConfig.TestServerRootUrl));
+
+        Assert.Equal(ReviewApiRoutes.DefaultBaseAddress + "/api/accounts/login", ReviewApiRoutes.Login(ReviewApiRoutes.DefaultBaseAddress));
     }
 
     [Fact]
@@ -48,7 +63,7 @@ public sealed class ReviewSignInTests
         // server-side for the rest of its sliding lifetime.
         Assert.Equal(
             "https://classic-repair-toolbox.dk/api/accounts/logout",
-            ReviewApiRoutes.Logout(ReviewApiRoutes.DefaultBaseAddress));
+            ReviewApiRoutes.Logout(ReviewSignInTests.LiveHost));
     }
 
     [Fact]
@@ -61,13 +76,13 @@ public sealed class ReviewSignInTests
         // it can never be something a mail client follows.
         Assert.Equal(
             "https://classic-repair-toolbox.dk/api/accounts/reset-password",
-            ReviewApiRoutes.ResetPassword(ReviewApiRoutes.DefaultBaseAddress));
+            ReviewApiRoutes.ResetPassword(ReviewSignInTests.LiveHost));
 
         // The dead path, asserted as NOT what we build - a future "tidy-up" that shortens this to
         // "/reset" would recreate the original 404 exactly.
         Assert.DoesNotContain(
             "/accounts/reset?",
-            ReviewApiRoutes.ResetPassword(ReviewApiRoutes.DefaultBaseAddress),
+            ReviewApiRoutes.ResetPassword(ReviewSignInTests.LiveHost),
             StringComparison.Ordinal);
     }
 

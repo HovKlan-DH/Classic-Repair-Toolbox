@@ -163,10 +163,12 @@ public sealed class FileTreeTests
     }
 
     // ###########################################################################################
-    // *** THE WORKBOOK AND THE HIGHLIGHT FILE ARE SAID APART, NOT COUNTED (2026-09-30). *** The
-    // approval writes both from the table, and the workbook changes on every approval - counted,
-    // every tree said "1 file changes" at the least and could not agree with the Files button,
-    // which counts what the submission's own files do. Their rows still say "changed".
+    // *** THE FILES WRITTEN FROM THE TABLE ARE SAID APART, NOT COUNTED (2026-09-30). *** The
+    // approval writes them from the table, and they change on every approval - counted, every tree
+    // said "1 file changes" at the least and could not agree with the Files button, which counts
+    // what the submission's own files do. Their rows still say "changed". In the CRT 4.0 tree
+    // (2026-10-25) that is the board file alone; an Excel tree's were the workbook and the
+    // highlight file.
     // ###########################################################################################
     [Fact]
     public void The_summary_names_the_files_written_from_the_table_instead_of_counting_them()
@@ -176,25 +178,32 @@ public sealed class FileTreeTests
 
         FileTreeNode tree = FileTree.Build(
         [
-            FileTreeTests.E("Commodore/C128/310378/manual.pdf", BoardFileChange.Changed),
-            FileTreeTests.E("Commodore/C128/310378/extra.png", BoardFileChange.Added),
-            FileTreeTests.E("Commodore/C128/310378/Sheet1.png"),
-            Written("Commodore/C128/310378/Board.xlsx", BoardFileChange.Changed),
-            Written("Commodore/C128/310378/Board.json", BoardFileChange.Added)
+            FileTreeTests.E("manual.pdf", BoardFileChange.Changed),
+            FileTreeTests.E("Images/extra.png", BoardFileChange.Added),
+            FileTreeTests.E("Images/Sheet1.png"),
+            Written("board.json", BoardFileChange.Changed)
         ]);
 
         Assert.Equal(
-            "2 files change: 1 new, 1 changed, 0 removed. Approving also writes the workbook and the highlight file from the table. 1 file already the same.",
+            "2 files change: 1 new, 1 changed, 0 removed. Approving also writes the board file from the table. 1 file already the same.",
             FileTreeWording.Summary(tree));
 
-        // Only the workbook moves: that is said, and nothing is counted.
+        // Only the board file moves: that is said, and nothing is counted.
         Assert.Equal(
-            "Approving writes the workbook from the table; nothing else changes. 2 files already the same.",
+            "Approving writes the board file from the table; nothing else changes. 1 file already the same.",
             FileTreeWording.Summary(FileTree.Build(
             [
-                FileTreeTests.E("Commodore/C128/310378/Sheet1.png"),
-                Written("Commodore/C128/310378/Board.xlsx", BoardFileChange.Changed),
-                Written("Commodore/C128/310378/Board.json", BoardFileChange.Unchanged)
+                FileTreeTests.E("Images/Sheet1.png"),
+                Written("board.json", BoardFileChange.Changed)
+            ])));
+
+        // An Excel tree's two files, from an older server: the workbook and the highlight file.
+        Assert.Equal(
+            "Approving writes the workbook and the highlight file from the table; nothing else changes. 0 files already the same.",
+            FileTreeWording.Summary(FileTree.Build(
+            [
+                Written("Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx", BoardFileChange.Changed),
+                Written("Commodore/C128/310378/Data C128 310378 v2.0.0.json", BoardFileChange.Changed)
             ])));
     }
 

@@ -78,6 +78,29 @@ namespace Handlers.DataHandling
 
             ArgumentNullException.ThrowIfNull(data);
 
+            // ###########################################################################################
+            // *** HANDED A CRT 4.0 BOARD FILE, IT WRITES THAT (2026-10-24). *** The rows and the
+            // highlights go into the board.json; the calibrations, renames and the list of files the
+            // file already holds are kept - the workbook writer's share of a board, as a workbook
+            // never held them either (the sidecar writer writes those - BoardSidecarWriter).
+            // ###########################################################################################
+            if (DataTreeLayout.IsBoardFile(excelPath))
+            {
+                BoardDocument? existing = BoardFiles.ReadInFull(excelPath);
+                BoardContent? kept = existing is null ? null : BoardDocumentMapping.ToContent(existing);
+
+                BoardDocument document = BoardDocumentMapping.ToDocument(
+                    new BoardContent(data, kept?.Calibrations ?? [], kept?.Renames ?? []),
+                    name => name,
+                    existing?.Files ?? []);
+
+                BoardDocumentUnknowns.CarryOver(existing, document);
+                BoardFiles.Write(excelPath, document);
+
+                CrtLog.Info($"Wrote board file [{excelPath}]");
+                return;
+            }
+
             EpplusLicense.Ensure();
 
             using var package = EpplusLicense.NewPackage();

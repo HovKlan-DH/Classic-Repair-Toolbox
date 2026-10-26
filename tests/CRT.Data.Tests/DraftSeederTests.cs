@@ -40,7 +40,7 @@ public sealed class DraftSeederTests : IDisposable
             new BoardSchematicEntry
             {
                 SchematicName = "Sheet 1",
-                SchematicImageFile = "Commodore/C64/250407/Sheet1.png",
+                SchematicImageFile = "Sheet1.png",
             },
         ],
         Components =
@@ -55,13 +55,16 @@ public sealed class DraftSeederTests : IDisposable
                 BoardLabel = "U8",
                 Pin = "1",
                 Name = "Clock",
-                // A manufacturer shared file - referenced, but NOT this board's to own.
-                File = "Commodore/Shared files/scope.png",
+                File = "Scope baseline/scope.png",
             },
         ],
     };
 
-    // Writes the published side to disk: the files the board's rows reference.
+    // The published board's file in the 4.0 tree.
+    private void WritePublishedBoardFile(BoardDocument document) =>
+        BoardFiles.Write(DraftBoardSource.PublishedPathOf(this.DataRoot, DraftSeederTests.BoardKey), document);
+
+    // Writes files into the published board's folder - which no 4.0 board cites by path.
     private void WritePublishedFiles(params string[] relativePaths)
     {
         foreach (string relative in relativePaths)
@@ -122,19 +125,14 @@ public sealed class DraftSeederTests : IDisposable
     }
 
     [Fact]
-    public void Seeding_creates_a_workbook_the_app_can_read_back()
+    public void Seeding_creates_a_board_file_the_app_can_read_back()
     {
-        this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
-
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
             this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
-        Assert.True(File.Exists(result.WorkbookPath));
-
-        // The workbook carries the PUBLISHED file name, so the folder is indistinguishable from a
-        // real board - see DraftFolderLayoutTests for why that matters.
-        Assert.Equal("Data C64 250407.xlsx", Path.GetFileName(result.WorkbookPath));
+        Assert.Equal(DataTreeLayout.BoardFileName, Path.GetFileName(result.WorkbookPath));
+        Assert.Equal(2, BoardDataReader.ReadWorkbookUncached(result.WorkbookPath)!.Components.Count);
     }
 
     // ###########################################################################################
@@ -162,98 +160,87 @@ public sealed class DraftSeederTests : IDisposable
     }
 
     [Fact]
-    public void The_sidecar_is_copied_when_the_published_board_has_one()
+    public void The_published_boards_highlights_calibrations_and_renames_are_carried()
     {
-        this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
+        this.WritePublishedBoardFile(new BoardDocument
+        {
+            Schematics = [new BoardDocument.SchematicRow { Name = "Sheet 1", ImageFile = "Sheet1.png" }],
+            Highlights = [new BoardDocument.HighlightRow { Schematic = "Sheet 1", BoardLabel = "U8", X = 10, Y = 20, Width = 30, Height = 40 }],
+            KiCadCalibrations = [new BoardDocument.KiCadCalibrationRow { Schematic = "Sheet 1", CadName = "Top", OffsetX = 5, ScaleX = 2 }],
+            SchematicRenames = [new BoardDocument.SchematicRenameRow { From = "Old", To = "Sheet 1", File = "Sheet1.png", Date = "2026-10-01" }],
+        });
 
-        // The published sidecar, beside the published workbook.
-        string publishedSidecar = Path.Combine(
-            this.DataRoot, "Commodore", "C64", "250407", "Data C64 250407.json");
-
-        Directory.CreateDirectory(Path.GetDirectoryName(publishedSidecar)!);
-        File.WriteAllText(publishedSidecar, "{\"Component highlights\":{}}");
-
-        DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
+        DraftSeedResult result = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey);
 
         Assert.True(result.Created, result.Reason);
 
-        // Byte-copied rather than rewritten: the sidecar holds roots this app does not model
-        // ("KiCad calibration points", and whatever a future version adds), and rewriting it from
-        // a partial model would discard them.
-        string draftSidecar = DraftFolderLayout.GetSidecarPath(this.DraftsRoot, DraftSeederTests.BoardKey);
-        Assert.True(File.Exists(draftSidecar));
-        Assert.Equal(File.ReadAllText(publishedSidecar), File.ReadAllText(draftSidecar));
+        BoardDocument draft = BoardFiles.ReadDocument(result.WorkbookPath)!;
+        Assert.Equal(40, Assert.Single(draft.Highlights).Height);
+        Assert.Equal("Top", Assert.Single(draft.KiCadCalibrations).CadName);
+        Assert.Equal("Old", Assert.Single(draft.SchematicRenames).From);
     }
 
+    // One board file is the whole draft: no Excel-era JSON sidecar is written beside it.
     [Fact]
-    public void A_board_with_NO_sidecar_seeds_perfectly_well()
+    public void No_sidecar_is_written_beside_the_board_file()
     {
-        // Plenty of boards have no highlights at all. A missing sidecar is ordinary, not an error.
-        this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
-
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
             this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
-        Assert.False(File.Exists(DraftFolderLayout.GetSidecarPath(this.DraftsRoot, DraftSeederTests.BoardKey)));
+        Assert.Equal(
+            [DataTreeLayout.BoardFileName],
+            Directory.GetFiles(result.BoardFolder, "*.json")
+                .Select(Path.GetFileName)
+                .Where(name => !DraftFolderLayout.IsDraftOnlyFile(name)));
     }
 
     // ------------------------------------------------------------------ Which files travel
 
+    // ###########################################################################################
+    // *** NO FILE'S BYTES ARE COPIED. *** In a 4.0 tree the board names its files and the tree's
+    // store holds their bytes once; the draft names the same files, and they resolve to the
+    // tree's store until the contributor replaces one. Copying them (as the Excel-era seeder did)
+    // would store a gigabyte twice over across a few drafts.
+    // ###########################################################################################
     [Fact]
-    public void The_boards_OWN_files_are_copied_into_the_draft()
+    public void The_draft_names_every_published_file_and_their_bytes_stay_in_the_trees_store()
     {
-        this.WritePublishedFiles("Commodore/C64/250407/Sheet1.png");
+        BoardDocument.StoredFileRow sheet = StoredFiles.Put(this.DataRoot, "Sheet1.png", "the schematic");
+        BoardDocument.StoredFileRow scope = StoredFiles.Put(this.DataRoot, "Scope baseline/U8 pin 1.png", "a capture");
+        this.WritePublishedBoardFile(new BoardDocument
+        {
+            Schematics = [new BoardDocument.SchematicRow { Name = "Sheet 1", ImageFile = "Sheet1.png" }],
+            Files = [sheet, scope],
+        });
 
-        DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
+        DraftSeedResult result = DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey);
 
-        string copied = Path.Combine(
-            this.DraftsRoot, "Commodore", "C64", "250407", "Sheet1.png");
+        Assert.True(result.Created, result.Reason);
+        Assert.Equal(
+            [(scope.Name, scope.Sha256), (sheet.Name, sheet.Sha256)],
+            BoardFiles.ReadDocument(result.WorkbookPath)!.Files.Select(file => (file.Name, file.Sha256)).OrderBy(file => file.Name, StringComparer.Ordinal));
+        Assert.False(Directory.Exists(Path.Combine(result.BoardFolder, DataTreeLayout.FilesFolder)));
 
-        Assert.True(File.Exists(copied));
-        Assert.Equal(1, result.FilesCopied);
+        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(this.DataRoot, result.BoardFolder, "Sheet1.png", DraftSeederTests.BoardKey);
+        Assert.Equal(this.DataRoot, resolved!.Root);
+        Assert.Equal("the schematic", File.ReadAllText(resolved.FullPath));
     }
 
     // ###########################################################################################
-    // *** A SHARED FILE IS LEFT WHERE IT IS. ***
-    //
-    // A manufacturer "Shared files" image belongs to many boards. Copying one into this draft
-    // would FORK it: a later edit to the draft's copy would silently fail to reach the boards that
-    // share it. It keeps resolving against Data/ as it always did, and is REPORTED so the caller
-    // can say so rather than leaving it looking like a missing file.
+    // A board built in memory can cite a file the published board does not list - a partial
+    // sync, a hand-deleted image. That row was already broken before the draft existed, so seeding
+    // carries on rather than refusing to create the draft at all; the row's file is simply missing.
     // ###########################################################################################
     [Fact]
-    public void A_SHARED_file_is_not_copied_and_is_reported_as_shared()
+    public void A_cited_file_the_published_board_does_not_list_does_not_fail_the_seed()
     {
-        this.WritePublishedFiles(
-            "Commodore/C64/250407/Sheet1.png",
-            "Commodore/Shared files/scope.png");
-
-        DraftSeedResult result = DraftSeeder.SeedFromPublished(
-            this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
-
-        Assert.Contains("Commodore/Shared files/scope.png", result.FilesShared);
-
-        Assert.False(Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore", "Shared files")));
-    }
-
-    // ###########################################################################################
-    // A published board CAN reference a file the tree does not hold - a partial sync, a
-    // hand-deleted image. That row was already broken before the draft existed, so seeding
-    // reports it and carries on rather than refusing to create the draft at all.
-    // ###########################################################################################
-    [Fact]
-    public void A_referenced_file_that_is_MISSING_is_reported_but_does_not_fail_the_seed()
-    {
-        // Deliberately writes nothing: every referenced file is absent.
         DraftSeedResult result = DraftSeeder.SeedFromPublished(
             this.DraftsRoot, this.DataRoot, DraftSeederTests.BoardKey, DraftSeederTests.PublishedBoard());
 
         Assert.True(result.Created, result.Reason);
-        Assert.Contains("Commodore/C64/250407/Sheet1.png", result.FilesMissing);
-        Assert.Equal(0, result.FilesCopied);
+        Assert.Empty(BoardFiles.ReadDocument(result.WorkbookPath)!.Files);
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, result.BoardFolder, "Sheet1.png", DraftSeederTests.BoardKey));
     }
 
     // ###########################################################################################

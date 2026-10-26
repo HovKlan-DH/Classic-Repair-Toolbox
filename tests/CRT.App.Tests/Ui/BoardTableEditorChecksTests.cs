@@ -27,8 +27,9 @@ public sealed class BoardTableEditorChecksTests
 
     private static readonly BoardSchematicEntry Main = new() { SchematicName = "Main", SchematicImageFile = $"{Board}/main.png" };
 
+    // With a category - a component without one is a warning of its own (component.no_category).
     private static ComponentEntry Component(string label, string friendlyName = "") =>
-        new() { BoardLabel = label, FriendlyName = friendlyName };
+        new() { BoardLabel = label, FriendlyName = friendlyName, Category = "IC" };
 
     private static ComponentHighlightEntry Highlight(string schematic, string label) =>
         new() { SchematicName = schematic, BoardLabel = label, X = "1", Y = "1", Width = "10", Height = "10" };

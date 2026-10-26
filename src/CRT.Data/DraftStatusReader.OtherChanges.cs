@@ -160,6 +160,53 @@ namespace Handlers.DataHandling
             return changes;
         }
 
+        // ###########################################################################################
+        // A CRT 4.0 draft's changed files (2026-10-24): its board file's list against its base's -
+        // or, with no base, the published board's - each name with other bytes or one the base does
+        // not have; and each new file lying in the folder, not yet taken in, unless it is what the
+        // list already says. A file the draft dropped shows in its rows.
+        // ###########################################################################################
+        private static int ChangedListedFiles(DraftStatus status, string folder, DraftBase? based)
+        {
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? draft = DraftFiles.ListedIn(status.WorkbookPath);
+
+            if (draft is null)
+                return 0;
+
+            Dictionary<string, string> before = based is not null
+                ? based.Files
+                    .GroupBy(file => file.Path, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => group.First().Sha256, StringComparer.OrdinalIgnoreCase)
+                : (DraftFiles.ListedIn(status.PublishedWorkbookPath) ?? new Dictionary<string, BoardDocument.StoredFileRow>())
+                    .ToDictionary(pair => pair.Key, pair => pair.Value.Sha256, StringComparer.OrdinalIgnoreCase);
+
+            int changed = draft.Values.Count(file =>
+                !before.TryGetValue(file.Name, out string? sha) || !string.Equals(sha, file.Sha256, StringComparison.OrdinalIgnoreCase));
+
+            foreach (string path in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+            {
+                string relative = Path.GetRelativePath(folder, path).Replace('\\', '/');
+
+                if ((DataTreeLayout.IsBoardFile(relative) && !relative.Contains('/')) ||
+                    relative.StartsWith(DataTreeLayout.FilesFolder + "/", StringComparison.OrdinalIgnoreCase) ||
+                    DraftFingerprint.IsBookkeeping(Path.GetFileName(path)) ||
+                    DraftFolderLayout.IsInBookkeepingFolder(relative))
+                {
+                    continue;
+                }
+
+                if (draft.TryGetValue(relative, out BoardDocument.StoredFileRow? listed) &&
+                    string.Equals(DraftFingerprint.CachedFileHash(path), listed.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                changed++;
+            }
+
+            return changed;
+        }
+
         private static DraftOtherChanges CountOtherChanges(DraftStatus status, string draftsRoot, string folder, string? publishedFolder)
         {
             DraftBase? based = status.HasBase ? DraftBaseStore.Load(draftsRoot, status.BoardKey) : null;
@@ -183,6 +230,9 @@ namespace Handlers.DataHandling
 
         private static int ChangedFiles(DraftStatus status, string folder, string? publishedFolder, DraftBase? based)
         {
+            if (DataTreeLayout.IsBoardFile(status.WorkbookPath))
+                return DraftStatusReader.ChangedListedFiles(status, folder, based);
+
             string workbook = Path.GetFullPath(status.WorkbookPath);
             string sidecar = Path.GetFullPath(BoardComponentHighlightStorage.GetJsonPath(workbook));
 

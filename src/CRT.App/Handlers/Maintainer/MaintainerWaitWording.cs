@@ -47,7 +47,7 @@ namespace Handlers.MaintainerHandling
         public const string ChangingEmail = "Changing your email address...";
         public const string ChangingPassword = "Changing your password...";
 
-        public const string CheckingUnusedFiles = "Checking every file against every workbook...";
+        public const string CheckingUnusedFiles = "Checking every file against every board file...";
 
         // Rebuilding dataChecksums.json for both trees (2026-10-01): the server hashes every file
         // in each one, so this is seconds rather than instant.

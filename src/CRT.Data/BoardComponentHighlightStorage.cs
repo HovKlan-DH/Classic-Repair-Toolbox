@@ -49,8 +49,28 @@ namespace Handlers.DataHandling
         // Loads component highlights from the board JSON file and flattens the nested JSON shape
         // into the existing runtime list model used elsewhere in the application.
         // ###########################################################################################
+        // ###########################################################################################
+        // *** A CRT 4.0 BOARD FILE KEEPS ALL THREE PARTS ITSELF (2026-10-24). *** Every loader below
+        // reads them out of a board.json when handed one (its "sidecar" is the file itself -
+        // GetJsonPath of a board.json is the board.json), and every saver writes back through
+        // BoardSidecarWriter, which writes into it - so a calibration or a label saved on a 4.0
+        // draft lands in its board file by the same calls as before. Null for an Excel workbook.
+        // ###########################################################################################
+        private static BoardContent? FromBoardFile(string excelPath)
+        {
+            string jsonPath = GetJsonPath(excelPath);
+
+            if (!DataTreeLayout.IsBoardFile(jsonPath))
+                return null;
+
+            return BoardFiles.ReadContent(jsonPath) ?? new BoardContent(new BoardData(), [], []);
+        }
+
         public static List<ComponentHighlightEntry> LoadComponentHighlights(string excelPath)
         {
+            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+                return boardFile.Board.ComponentHighlights.ToList();
+
             string jsonPath = GetJsonPath(excelPath);
             if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
             {
@@ -178,6 +198,9 @@ namespace Handlers.DataHandling
         // Every KiCad calibration in the sidecar, whatever schematic it names, in name order.
         internal static List<KiCadCalibrationEntry> LoadAllKiCadCalibrations(string excelPath)
         {
+            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+                return boardFile.Calibrations.OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase).ToList();
+
             string jsonPath = GetJsonPath(excelPath);
 
             if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
@@ -223,6 +246,22 @@ namespace Handlers.DataHandling
             scaleY = 1.0;
             mirrorX = false;
             mirrorY = false;
+
+            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+            {
+                string wanted = schematicName?.Trim() ?? string.Empty;
+
+                if (wanted.Length == 0 ||
+                    BoardComponentHighlightStorage.CalibrationNamed(boardFile.Calibrations, wanted) is not KiCadCalibrationEntry found)
+                {
+                    return false;
+                }
+
+                (cadName, offsetX, offsetY, scaleX, scaleY, mirrorX, mirrorY) =
+                    (found.CadName, found.OffsetX, found.OffsetY, found.ScaleX, found.ScaleY, found.MirrorX, found.MirrorY);
+
+                return true;
+            }
 
             string jsonPath = GetJsonPath(excelPath);
             if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
@@ -281,6 +320,11 @@ namespace Handlers.DataHandling
         public static List<KiCadCalibrationEntry> LoadKiCadCalibrations(string excelPath, IEnumerable<string?> schematicNames)
         {
             var result = new List<KiCadCalibrationEntry>();
+
+            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+            {
+                return BoardComponentHighlightStorage.CalibrationsNamed(boardFile.Calibrations, schematicNames);
+            }
 
             string jsonPath = GetJsonPath(excelPath);
             if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
@@ -360,6 +404,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static List<SchematicRenameRecord> LoadSchematicRenames(string excelPath)
         {
+            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+                return boardFile.Renames.Where(rename => rename.From.Trim().Length > 0 && rename.To.Trim().Length > 0).ToList();
+
             var result = new List<SchematicRenameRecord>();
 
             string jsonPath = GetJsonPath(excelPath);
@@ -412,6 +459,32 @@ namespace Handlers.DataHandling
         // "top" to "Top" (its Name box, a table cell, Excel) kept its highlights and silently lost
         // its KiCad calibration. Null when there is none.
         // ###########################################################################################
+        // A board file's calibration for a schematic, by CalibrationKeyOf's rule: the exact name, or
+        // else the name in other capitals.
+        // ###########################################################################################
+        // LoadKiCadCalibrations' answer from a 4.0 board file's calibrations already read - for a
+        // caller holding the file (the server's approval reads it once - PublishedBoardRead).
+        // ###########################################################################################
+        public static List<KiCadCalibrationEntry> CalibrationsNamed(IReadOnlyList<KiCadCalibrationEntry> calibrations, IEnumerable<string?> schematicNames)
+        {
+            ArgumentNullException.ThrowIfNull(calibrations);
+            ArgumentNullException.ThrowIfNull(schematicNames);
+
+            var result = new List<KiCadCalibrationEntry>();
+
+            foreach (string schematicName in schematicNames.Select(name => name?.Trim() ?? string.Empty).Where(name => name.Length > 0))
+            {
+                if (BoardComponentHighlightStorage.CalibrationNamed(calibrations, schematicName) is KiCadCalibrationEntry found)
+                    result.Add(found.WithSchematicName(schematicName));
+            }
+
+            return result;
+        }
+
+        private static KiCadCalibrationEntry? CalibrationNamed(IReadOnlyList<KiCadCalibrationEntry> calibrations, string schematicName) =>
+            calibrations.FirstOrDefault(entry => string.Equals(entry.SchematicName, schematicName, StringComparison.Ordinal)) ??
+            calibrations.FirstOrDefault(entry => string.Equals(entry.SchematicName?.Trim(), schematicName, StringComparison.OrdinalIgnoreCase));
+
         private static string? CalibrationKeyOf(JsonObject? calibrationRoot, string schematicName)
         {
             if (calibrationRoot is null)
@@ -465,26 +538,25 @@ namespace Handlers.DataHandling
 
             BoardComponentHighlightStorage.EnsureReadableInFull(jsonPath);
 
-            List<KiCadCalibrationEntry> calibrations = LoadAllKiCadCalibrations(excelPath)
-                .Where(entry => !string.Equals(entry.SchematicName?.Trim(), normalizedSchematicName, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            calibrations.Add(new KiCadCalibrationEntry
-            {
-                SchematicName = normalizedSchematicName,
-                CadName = cadName?.Trim() ?? string.Empty,
-                OffsetX = offsetX,
-                OffsetY = offsetY,
-                ScaleX = scaleX,
-                ScaleY = scaleY,
-                MirrorX = mirrorX,
-                MirrorY = mirrorY,
-            });
+            // The rule is KiCadCalibrationList's, shared with the draft held in memory.
+            List<KiCadCalibrationEntry> calibrations = KiCadCalibrationList.With(
+                LoadAllKiCadCalibrations(excelPath),
+                new KiCadCalibrationEntry
+                {
+                    SchematicName = normalizedSchematicName,
+                    CadName = cadName ?? string.Empty,
+                    OffsetX = offsetX,
+                    OffsetY = offsetY,
+                    ScaleX = scaleX,
+                    ScaleY = scaleY,
+                    MirrorX = mirrorX,
+                    MirrorY = mirrorY,
+                });
 
             BoardSidecarWriter.Write(
                 excelPath,
                 LoadComponentHighlights(excelPath),
-                calibrations.OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase).ToList(),
+                calibrations,
                 LoadSchematicRenames(excelPath));
         }
 
@@ -502,6 +574,13 @@ namespace Handlers.DataHandling
         {
             if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
             {
+                return;
+            }
+
+            // A board file is read in full by its own rule - it throws as this does.
+            if (DataTreeLayout.IsBoardFile(jsonPath))
+            {
+                _ = BoardFiles.ReadInFull(jsonPath);
                 return;
             }
 

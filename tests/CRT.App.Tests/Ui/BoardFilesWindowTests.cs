@@ -347,7 +347,7 @@ public sealed class BoardFilesWindowTests : IDisposable
         0x42, 0x60, 0x82
     };
 
-    private const string BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx";
+    private const string BoardKey = "Commodore/C64/250407/board.json";
 
     // Creates a real drafted board holding one schematic row, and optionally the image file that
     // row names. Goes through DraftSeeder and DraftWorkbookStore rather than hand-writing files, so
@@ -369,13 +369,11 @@ public sealed class BoardFilesWindowTests : IDisposable
             board =>
             {
                 // ###########################################################################
-                // *** STORED DATA-ROOT RELATIVE, exactly as the application writes it. ***
-                //
-                // These tests originally stored a BARE FILE NAME, and passed against a
-                // LoadThumbnail that combined the draft folder with the stored value by hand -
-                // which on real data produces a doubled path and showed "No preview" for every
-                // image. An unrealistic fixture hid a real defect, so the prefix here is
-                // load-bearing, not decoration.
+                // *** STORED AS THE APPLICATION WRITES IT. *** In CRT 4.0 (2026-10-24) a row
+                // names a file of its board ("top.png"), never a path from the data root - the
+                // Excel generations' "Commodore/C64/250407/top.png" once hid a defect here
+                // (a preview combined by hand from the draft folder and the stored value), so
+                // the fixture follows the real format, whatever it is.
                 // ###########################################################################
                 board.Schematics.Add(new BoardSchematicEntry
                 {
@@ -397,10 +395,8 @@ public sealed class BoardFilesWindowTests : IDisposable
         }
     }
 
-    // The value a board workbook really holds: relative to the DATA ROOT, forward slashes, and
-    // therefore already carrying the board's own three folder segments.
-    private static string StoredImagePath(string fileName) =>
-        "Commodore/C64/250407/" + fileName;
+    // The value a 4.0 board file really holds: the board's own name for the file.
+    private static string StoredImagePath(string fileName) => fileName;
 
     // The window shows ONE section per opening (the Drafts tab has a button for each), and loads
     // only that section's data - so every test names the section it is about.
@@ -975,6 +971,74 @@ public sealed class BoardFilesWindowTests : IDisposable
             Assert.Contains("Removed [Pages/vic.kicad_sch]", window.StatusTextForTests, StringComparison.Ordinal);
             Assert.True(window.ChangedTheDraft);
         });
+    }
+
+    // ###########################################################################################
+    // *** THE KiCad COPY IS NEVER MADE ON THE UI THREAD (code review, 2026-10-25). *** The KiCad data
+    // window made the board's KiCad copy - tens of megabytes on a large board - on the UI thread,
+    // twice per refresh, so the window froze with its "please wait" unable to paint. Opening, an
+    // import and a removal now each read it once, on the pool.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_KiCad_data_window_reads_the_boards_KiCad_files_off_the_UI_thread()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+        this.WriteKiCadFiles("Open128.kicad_pcb", "Pages/vic.kicad_sch");
+
+        var readOnUiThread = new List<bool>();
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow { ReadingKiCadForTests = () => readOnUiThread.Add(Dispatcher.UIThread.CheckAccess()) };
+
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>(), BoardFilesSection.KiCadData);
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            Assert.Equal(2, window.KiCadFiles.Count);
+
+            await window.RemoveKiCadFileAsync(window.KiCadFiles.Single(row => row.RelativePath == "Pages/vic.kicad_sch"));
+
+            Assert.Single(window.KiCadFiles);
+        });
+
+        Assert.Equal([false, false], readOnUiThread);
+    }
+
+    // ###########################################################################################
+    // *** REMOVE ON A PUBLISHED KiCad FILE THE CONTRIBUTOR IMPORTED AGAIN BRINGS THE PUBLISHED ONE
+    // BACK (code review, 2026-10-25). *** It took the name off the draft's list, so the board lost
+    // the file at the next submission; now the draft lists the published file again, the row leaves
+    // the list of imports, and the status line says the published file is used.
+    // ###########################################################################################
+    [Fact]
+    public async Task Removing_a_published_KiCad_file_imported_again_brings_the_published_one_back()
+    {
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", BoardFilesWindowTests.MinimalPcb);
+        StoredFiles.WriteBoard(
+            DraftBoardSource.PublishedPathOf(dataRoot, BoardFilesWindowTests.BoardKey),
+            new BoardData { Components = [new ComponentEntry { BoardLabel = "U1" }] },
+            pcb);
+        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, BoardFilesWindowTests.BoardKey).Created);
+
+        // The contributor's own copy of the same file, with other bytes, lying in the draft folder.
+        this.WriteKiCadFiles("board.kicad_pcb");
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow { DataRootOverrideForTests = dataRoot };
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"], BoardFilesSection.KiCadData);
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            await window.RemoveKiCadFileAsync(Assert.Single(window.KiCadFiles));
+
+            Assert.Empty(window.KiCadFiles);
+            Assert.Contains("the published file is used again", window.StatusTextForTests, StringComparison.Ordinal);
+        });
+
+        string draftBoardFile = Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), DataTreeLayout.BoardFileName);
+        BoardDocument.StoredFileRow listed = Assert.Single(BoardFiles.ReadDocument(draftBoardFile)!.Files, file => file.Name == "KiCad data/board.kicad_pcb");
+        Assert.Equal(pcb.Sha256, listed.Sha256);
     }
 
     // Removing the last file puts the window back where it was before any import.
@@ -2648,6 +2712,35 @@ public sealed class BoardFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** THROUGH THE DRAFT HELD IN MEMORY (CRT 4.0 step 1, 2026-10-25). *** Each change the window
+    // makes is one step of the draft's history, named for what it did - so the Drafts tab's table,
+    // open behind the window, shows it at once, and its Ctrl+Z takes it back.
+    // ###########################################################################################
+    [Fact]
+    public void Each_change_the_window_makes_is_one_step_of_the_drafts_history()
+    {
+        this.SeedBoardWithSchematics(FiveViews);
+
+        UiTest.Run(() =>
+        {
+            BoardFilesWindow window = this.ShowOnSeededBoard();
+
+            TypeName(window, 0, "PCB top side");
+            Press(window, Avalonia.Input.Key.Enter, Avalonia.Input.PhysicalKey.Enter);
+            WaitForChanges(window);
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey)!;
+            Assert.Equal(DraftStepWording.SchematicRenamed("PCB; Top", "PCB top side"), session.UndoDescription);
+            Assert.False(session.HasUnsavedChanges);
+
+            Assert.True(session.Undo());
+            Assert.Equal("PCB; Top", session.Content.Board.Schematics[0].SchematicName);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // *** A NAME THAT CANNOT BE SAVED KEEPS THE WINDOW OPEN, WITH THE REASON. *** Closed with a name
     // another image has, the window used to close and drop the name - its reason shown on a status
     // line nobody saw. Closed again, with nothing left to save, it goes.
@@ -2682,35 +2775,33 @@ public sealed class BoardFilesWindowTests : IDisposable
     // The name was fine - the file could not be written, as when Excel holds it - yet the box showed
     // the old name again: after closing Excel the name had to be typed again, and closing the window
     // a second time went through without it. Now it stays, and the next close saves it. The write is
-    // stopped by a folder where the draft's JSON sidecar goes, which stops it on every system.
+    // stopped by holding the draft's board file open (CRT 4.0's one file), which Windows enforces.
     // ###########################################################################################
     [Fact]
     public void A_name_that_could_not_be_written_stays_in_its_box_and_is_saved_once_the_file_is_free()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
         this.SeedBoardWithSchematics(FiveViews);
 
         UiTest.Run(() =>
         {
             BoardFilesWindow window = this.ShowOnSeededBoard();
 
-            // The JSON beside the workbook (CRT.Data's storage class is not visible here).
-            string sidecar = Path.ChangeExtension(
-                DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey), ".json");
-            string aside = sidecar + ".aside";
-            File.Move(sidecar, aside);
-            Directory.CreateDirectory(sidecar);
+            string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFilesWindowTests.BoardKey);
 
-            TypeName(window, 0, "PCB top side");
-            window.Close();
-            WaitForChanges(window);
+            // Readable, but not replaceable - as when another program holds the file.
+            using (new FileStream(boardFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                TypeName(window, 0, "PCB top side");
+                window.Close();
+                WaitForChanges(window);
+            }
 
             Assert.True(window.IsVisible);
             Assert.Equal(BoardFilesWindow.NameNotWritten, window.StatusTextForTests);
             Assert.Equal("PCB top side", NameBoxOf(window, 0).Text);
             Assert.Equal(FiveViews, DraftOrder());
-
-            Directory.Delete(sidecar);
-            File.Move(aside, sidecar);
 
             window.Close();
             WaitForChanges(window);
@@ -2843,20 +2934,55 @@ public sealed class BoardFilesWindowTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** AN IMPORTED KiCad PROJECT IS LISTED IN THE DRAFT AT ONCE (code review, 2026-10-25). ***
+    // Submit sends the KiCad files the draft's board file lists; left lying in "KiCad data" until
+    // some other edit wrote the draft, a project imported last was drawn and counted but not sent.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_imported_KiCad_project_is_listed_in_the_drafts_board_file_at_once()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+        Directory.CreateDirectory(Path.Combine(source, "Pages"));
+        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(source, "Pages", "b.kicad_sch"), "(kicad_sch (version 20230121))");
+
+        await UiTest.RunAsync(async () =>
+        {
+            BoardFilesWindow window = this.OpenOnSeededBoard(BoardFilesSection.KiCadData);
+
+            await window.ImportKiCadFolderAsync(source);
+        });
+
+        string draftFolder = DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey);
+        BoardDocument? draft = BoardFiles.ReadDocument(Path.Combine(draftFolder, DataTreeLayout.BoardFileName));
+
+        Assert.NotNull(draft);
+        Assert.Equal(
+            ["KiCad data/Pages/b.kicad_sch", "KiCad data/a.kicad_pcb"],
+            draft.Files.Where(Handlers.DataHandling.DraftFiles.IsKiCad).Select(file => file.Name).Order(StringComparer.Ordinal));
+        Assert.Empty(Handlers.DataHandling.DraftFiles.ArrivedKiCadNames(draftFolder));
+    }
+
+    // ###########################################################################################
     // *** THE KiCad REPORT READS THE PUBLISHED KiCad DATA TOO. *** Like the Schematics tab, which
     // draws the traces from the published board's files and the draft's. Read from the draft's
     // alone, a component or net only the published files have was reported as "will NOT light up".
     // The draft's own list still lists only the draft's files - those are what Remove takes.
     // ###########################################################################################
+    // In CRT 4.0 (2026-10-24) the draft's board file names the published KiCad files it was copied
+    // with - so the report reads them through the draft, and they are not the draft's imports.
     [Fact]
     public void The_KiCad_report_reads_the_published_KiCad_data_too()
     {
-        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
-
         string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
-        string published = Path.Combine(dataRoot, "Commodore", "C64", "250407", "KiCad data");
-        Directory.CreateDirectory(published);
-        File.WriteAllText(Path.Combine(published, "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", BoardFilesWindowTests.MinimalPcb);
+        StoredFiles.WriteBoard(
+            DraftBoardSource.PublishedPathOf(dataRoot, BoardFilesWindowTests.BoardKey),
+            new BoardData { Components = [new ComponentEntry { BoardLabel = "U1" }] },
+            pcb);
+        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, BoardFilesWindowTests.BoardKey).Created);
 
         UiTest.Run(() =>
         {

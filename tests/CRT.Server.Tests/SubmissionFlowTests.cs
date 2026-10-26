@@ -55,16 +55,24 @@ namespace CRT.Server.Tests
 
         private string BoardFolder() => Path.Combine(this.thisRoot, "board");
 
-        // The published tree under BoardFolder(), read the way the running service reads it.
-        private PublishedTreeView? Tree() => PublishedTreeProbe.For(this.BoardFolder());
+        private const string BoardId = "Commodore/C64/250407";
 
-        // Puts a file into the published tree at a data-root-relative path.
-        private void Publish(string relativePath, string content)
+        // The published board under BoardFolder(), read the way the running service reads it.
+        private PublishedTreeView? Tree() => PublishedTreeProbe.For(this.BoardFolder(), SubmissionFlowTests.BoardId);
+
+        // What the published board lists so far - Publish adds to it.
+        private readonly Dictionary<string, string> thisPublished = new(StringComparer.Ordinal);
+
+        // Puts a file into the published board under its name (the CRT 4.0 tree, 2026-10-25): the
+        // board file lists it, its bytes stored under their checksum.
+        private void Publish(string name, string content)
         {
-            string path = Path.Combine(this.BoardFolder(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            this.thisPublished[name] = content;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllBytes(path, SubmissionFlowTests.Bytes(content));
+            DataTreeBuilder.BoardWithBytes(
+                this.BoardFolder(),
+                SubmissionFlowTests.BoardId,
+                this.thisPublished.Select(file => (file.Key, SubmissionFlowTests.Bytes(file.Value))).ToArray());
         }
 
         // Contributing requires no account - the ordinary submitter is anonymous with a contact
@@ -83,10 +91,9 @@ namespace CRT.Server.Tests
         private static byte[] Bytes(string content) =>
             [.. SubmissionFlowTests.PngSignature, .. Encoding.UTF8.GetBytes(content)];
 
-        // Where the fixture's schematic image lives - data-root-relative, inside the board's own
-        // folder, the shape every real submitted path has. A bare "main.png" is now refused as
-        // belonging to no board this submission may change.
-        private const string MainPath = "Commodore/C64/250407/main.png";
+        // The board's name for the fixture's schematic image - in the CRT 4.0 tree (2026-10-25) a
+        // submitted file is named as its board names it, never by a path in the tree.
+        private const string MainPath = "main.png";
 
         private static string HashOf(string content) =>
             Convert.ToHexStringLower(SHA256.HashData(SubmissionFlowTests.Bytes(content)));
@@ -134,7 +141,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
             BlobStore blobs = this.Blobs();
 
-            const string KiCadPath = "Commodore/C64/250407/KiCad data/board.kicad_pcb";
+            const string KiCadPath = "KiCad data/board.kicad_pcb";
             byte[] kiCadBytes = Encoding.UTF8.GetBytes("(kicad_pcb (version 20240108))");
 
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
@@ -226,7 +233,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             manifest.Files.Add(new SubmissionFile
             {
-                Path = "Commodore/C64/250407/KiCad data/board.kicad_pcb",
+                Path = "KiCad data/board.kicad_pcb",
                 Sha256 = Convert.ToHexStringLower(SHA256.HashData(notKiCad)),
                 SizeBytes = notKiCad.Length
             });
@@ -283,7 +290,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             manifest.Files.Add(new SubmissionFile
             {
-                Path = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                Path = "KiCad data/root.kicad_sch",
                 Sha256 = Convert.ToHexStringLower(SHA256.HashData(schematic)),
                 SizeBytes = schematic.Length
             });
@@ -328,7 +335,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             manifest.Files.Add(new SubmissionFile
             {
-                Path = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                Path = "KiCad data/root.kicad_sch",
                 Sha256 = Convert.ToHexStringLower(SHA256.HashData(schematic)),
                 SizeBytes = schematic.Length
             });
@@ -445,6 +452,47 @@ namespace CRT.Server.Tests
                 "findings: " + string.Join("; ", result.Findings.Select(finding => finding.Code)));
         }
 
+        // ###########################################################################################
+        // *** AN UNTOUCHED KiCad STRAGGLER DOES NOT STOP THE SUBMISSION AT FINALISE (code review,
+        // 2026-10-25). *** The converted trees keep a few files nothing reads in a board's "KiCad
+        // data" folder (a generated KiCad-traces.json, a legacy .sch), and a submission carries every
+        // KiCad name its board lists. Create admits one only as the bytes the published board already
+        // has under that name - but finalise then checked its bytes against a type no content rule
+        // knows, and refused: no submission of such a board, nor a maintainer's edit of it, could pass.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("KiCad data/KiCad-traces.json")]
+        [InlineData("KiCad data/Issue 4.sch")]
+        public async Task An_untouched_KiCad_straggler_of_the_published_board_passes_finalise(string straggler)
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
+            this.Publish(straggler, "generated, read by nothing");
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest("PNGDATA");
+            manifest.Files.Add(new SubmissionFile
+            {
+                Path = straggler,
+                Sha256 = SubmissionFlowTests.HashOf("generated, read by nothing"),
+                SizeBytes = SubmissionFlowTests.Bytes("generated, read by nothing").Length
+            });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
+            Assert.Equal(2, created.Negotiation!.AlreadyHeldCount);
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(
+                created.Negotiation.SubmissionId, created.Negotiation.UploadToken,
+                store, blobs, SubmissionFlowTests.Now);
+
+            Assert.True(result.IsAccepted, "findings: " + string.Join("; ", result.Findings.Select(finding => finding.Code)));
+        }
+
         // The file the contributor actually changed is still asked for - "unchanged" is decided by
         // the bytes at that path, never by the path being published at all.
         [Fact]
@@ -498,40 +546,54 @@ namespace CRT.Server.Tests
             Assert.False(blobs.Contains(manifest.Files[0].Sha256));
         }
 
-        // Without a view of the tree nothing is taken from it: "could not be consulted" is not
-        // "unchanged", and an upload is the safe answer.
+        // ###########################################################################################
+        // In the Excel tree, without a view of the tree nothing was taken from it: "could not be
+        // consulted" is not "unchanged". In the CRT 4.0 tree (2026-10-25) bytes are found by their
+        // CHECKSUM in the tree's own store, not by what a view says lies at a path - and the import
+        // hashes what it copies - so bytes the tree stores are taken from it with no view of the
+        // board at all, and only bytes it stores.
+        // ###########################################################################################
         [Fact]
-        public async Task Without_a_view_of_the_published_tree_nothing_is_taken_from_it()
+        public async Task Bytes_the_tree_stores_are_taken_from_it_even_without_a_view_of_the_board()
         {
             var store = new FakeSubmissionStore();
 
             this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
 
-            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+            SubmissionCreationOutcome stored = await SubmissionFlows.CreateAsync(
                 SubmissionFlowTests.Manifest("PNGDATA"), SubmissionFlowTests.Contributor(), this.BoardFolder(),
                 store, this.Blobs(), SubmissionFlowTests.Now);
 
-            Assert.Single(created.Negotiation!.MissingHashes);
+            Assert.Empty(stored.Negotiation!.MissingHashes);
+            Assert.Equal(0, store.Created[stored.Negotiation.SubmissionId].BytesToUpload);
+
+            SubmissionCreationOutcome other = await SubmissionFlows.CreateAsync(
+                SubmissionFlowTests.Manifest("NOT STORED"), SubmissionFlowTests.Contributor("other@example.com"), this.BoardFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now);
+
+            Assert.Single(other.Negotiation!.MissingHashes);
         }
 
         // ###########################################################################################
         // WHETHER A SUBMISSION CHANGES SHARED FILES IS DECIDED AT CREATE AND STORED ON THE ROW
-        // (Phase 6 roles, 2026-09-25) - it is what routes it to the administrator rather than to
-        // the board's maintainers, and the queue reads it without loading the payload.
+        // (Phase 6 roles, 2026-09-25) - it routed one to the administrator rather than to the
+        // board's maintainers. In the CRT 4.0 tree (2026-10-25) a file is the board's own by name,
+        // so nothing a submission carries is shared - not even under a folder named like the Excel
+        // tree's shared ones.
         // ###########################################################################################
         [Fact]
-        public async Task A_submission_adding_a_SHARED_file_is_recorded_as_touching_shared_files()
+        public async Task No_submission_is_recorded_as_touching_shared_files_in_the_4_0_tree()
         {
             var store = new FakeSubmissionStore();
 
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             manifest.Files.Add(new SubmissionFile
             {
-                Path = "Commodore/Shared files/74LS08.png",
+                Path = "Shared files/74LS08.png",
                 Sha256 = SubmissionFlowTests.HashOf("shared"),
                 SizeBytes = SubmissionFlowTests.Bytes("shared").Length
             });
-            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = "Commodore/Shared files/74LS08.png" });
+            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = "Shared files/74LS08.png" });
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
                 manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
@@ -540,7 +602,7 @@ namespace CRT.Server.Tests
             Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Message)));
 
             SubmissionRecord? record = await store.FindAsync(created.Negotiation!.SubmissionId);
-            Assert.True(record!.TouchesSharedFiles);
+            Assert.False(record!.TouchesSharedFiles);
         }
 
         [Fact]
@@ -1248,17 +1310,17 @@ namespace CRT.Server.Tests
         [Fact]
         public void Only_a_file_byte_identical_to_the_published_tree_is_recorded_as_left_as_published()
         {
-            var same = new SubmissionFile { Path = "Commodore/C64/250407/same.png", Sha256 = new string('a', 64), SizeBytes = 1 };
-            var changed = new SubmissionFile { Path = "Commodore/C64/250407/changed.png", Sha256 = new string('b', 64), SizeBytes = 1 };
-            var added = new SubmissionFile { Path = "Commodore/C64/250407/new.png", Sha256 = new string('c', 64), SizeBytes = 1 };
+            var same = new SubmissionFile { Path = "same.png", Sha256 = new string('a', 64), SizeBytes = 1 };
+            var changed = new SubmissionFile { Path = "changed.png", Sha256 = new string('b', 64), SizeBytes = 1 };
+            var added = new SubmissionFile { Path = "new.png", Sha256 = new string('c', 64), SizeBytes = 1 };
 
             var manifest = new SubmissionManifest { Files = [same, changed, added] };
 
             var tree = new PublishedTreeView(
                 path => path switch
                 {
-                    "Commodore/C64/250407/same.png" => new string('a', 64),
-                    "Commodore/C64/250407/changed.png" => new string('d', 64),
+                    "same.png" => new string('a', 64),
+                    "changed.png" => new string('d', 64),
                     _ => null
                 },
                 _ => null);
@@ -1277,7 +1339,7 @@ namespace CRT.Server.Tests
         public void A_file_byte_identical_to_the_stable_source_is_recorded_as_left_as_published_too()
         {
             var fromStable = new SubmissionFile { Path = "Commodore/Shared files/pinout.png", Sha256 = new string('a', 64), SizeBytes = 1 };
-            var changed = new SubmissionFile { Path = "Commodore/C64/250407/changed.png", Sha256 = new string('b', 64), SizeBytes = 1 };
+            var changed = new SubmissionFile { Path = "changed.png", Sha256 = new string('b', 64), SizeBytes = 1 };
 
             var manifest = new SubmissionManifest { Files = [fromStable, changed] };
 
@@ -1523,19 +1585,23 @@ namespace CRT.Server.Tests
             Assert.Single(store.Submissions);
         }
 
+        // ###########################################################################################
         // THE finding the review opened with: a submission to one board carrying another board's
-        // file. Refused at create, before a single byte is uploaded.
+        // file. In the CRT 4.0 tree (2026-10-25) a file is named as its board names it, so the only
+        // way to reach another board is a name climbing out of this one - refused at create, before
+        // a single byte is uploaded.
+        // ###########################################################################################
         [Fact]
-        public async Task A_submission_carrying_ANOTHER_boards_file_is_refused_before_any_upload()
+        public async Task A_submission_naming_a_file_of_ANOTHER_board_is_refused_before_any_upload()
         {
             var store = new FakeSubmissionStore();
 
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
-            manifest.Files[0].Path = "Commodore/C64/250425/main.png";
+            manifest.Files[0].Path = "../250425/main.png";
             manifest.Rows.Schematics[0] = new BoardSchematicEntry
             {
                 SchematicName = "Main",
-                SchematicImageFile = "Commodore/C64/250425/main.png"
+                SchematicImageFile = "../250425/main.png"
             };
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
@@ -1543,7 +1609,7 @@ namespace CRT.Server.Tests
                 store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, PublishedTreeView.Empty);
 
             Assert.False(outcome.IsAccepted);
-            Assert.Contains(outcome.Findings, finding => finding.Code == "file.other_board");
+            Assert.Contains(outcome.Findings, finding => finding.Code == "path.rejected");
             Assert.Empty(store.Submissions);
         }
 
@@ -1556,7 +1622,7 @@ namespace CRT.Server.Tests
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
             manifest.Files.Add(new SubmissionFile
             {
-                Path = "Commodore/C64/250407/hidden.png",
+                Path = "hidden.png",
                 Sha256 = SubmissionFlowTests.HashOf("hidden"),
                 SizeBytes = 10
             });
@@ -1787,7 +1853,7 @@ namespace CRT.Server.Tests
                 "hash", "r0", "Earlier.", 1, [], SubmissionFlowTests.Now.AddHours(-1), SubmissionFlowTests.Now,
                 SubmissionRateLimitPolicy.MaxUploadBytesPerAddress - 5));
 
-            const string second = "Commodore/C64/250407/second.png";
+            const string second = "second.png";
             this.Publish(SubmissionFlowTests.MainPath, "PNGDATA");
             this.Publish(second, "NOT WHAT THE TREE SAID");
 
@@ -1898,7 +1964,7 @@ namespace CRT.Server.Tests
                 {
                     Severity = ValidationSeverity.Error,
                     Code = "file.content_mismatch",
-                    Subject = "Commodore/C64/250407/KiCad data/root.kicad_sch",
+                    Subject = "KiCad data/root.kicad_sch",
                     Message = new string('一', 70_000)
                 }
             ]));

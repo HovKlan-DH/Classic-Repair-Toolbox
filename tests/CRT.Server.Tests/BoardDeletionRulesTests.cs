@@ -88,23 +88,5 @@ namespace CRT.Server.Tests
             Assert.All(changed, fingerprint => Assert.NotEqual(shown, fingerprint));
             Assert.Equal(changed.Length, changed.Distinct(StringComparer.Ordinal).Count());
         }
-
-        // One file is named alone; many are counted after the first five.
-        [Fact]
-        public void Files_another_board_uses_are_named_and_the_rest_counted()
-        {
-            string one = BoardDeletionRules.UsedElsewhereMessage("BETA", ["Commodore/C64/999999/a.png"]);
-
-            Assert.Contains("uses a file in this board's folder", one, StringComparison.Ordinal);
-            Assert.Contains("[Commodore/C64/999999/a.png]", one, StringComparison.Ordinal);
-
-            string many = BoardDeletionRules.UsedElsewhereMessage(
-                "stable", [.. Enumerable.Range(1, 7).Select(number => $"Commodore/C64/999999/{number}.png")]);
-
-            Assert.Contains("uses 7 files in this board's folder", many, StringComparison.Ordinal);
-            Assert.Contains("[Commodore/C64/999999/5.png] and 2 more", many, StringComparison.Ordinal);
-            Assert.DoesNotContain("6.png", many, StringComparison.Ordinal);
-            Assert.Contains("in the stable data", many, StringComparison.Ordinal);
-        }
     }
 }

@@ -48,7 +48,7 @@ namespace CRT
         // sync) comes back alone.
         // ###########################################################################################
         private const string MainExcelRequiresAppUpdateText =
-            "Newer main Excel data file is available, but requires a newer application version, due to breaking changes - please update the application. No more data updates will be given for this application version, and worst-case is that future data update will break UI or functionality. Consider yourself informed 😁";
+            "Newer main data file is available, but requires a newer application version, due to breaking changes - please update the application. No more data updates will be given for this application version, and worst-case is that future data update will break UI or functionality. Consider yourself informed 😁";
 
         private string? thisMainExcelUpdateReason;
         private string? thisSubmissionsUpdateReason;
@@ -290,10 +290,6 @@ namespace CRT
                 started = true;
 
                 int changed = await this.SyncRemainingFilesAsync();
-
-                // Rebuilt from the data just synced, for the orphan cleanup below - which must not
-                // delete these files.
-                DataManager.LoadProtectedContributionStateForCurrentData();
 
                 this.FinishDataCheck(changed, atLaunch: true);
 

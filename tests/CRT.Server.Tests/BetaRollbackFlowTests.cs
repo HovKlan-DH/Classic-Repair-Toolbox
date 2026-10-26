@@ -14,7 +14,9 @@ namespace CRT.Server.Tests
     // the queue (owner decision, 2026-09-27) - the production window's "push back to queue".
     //
     // Asserted on the DISK, like ProductionPromotionFlowTests: the point of a rollback is what the
-    // BETA tree holds afterwards, and the only honest way to test it is to look.
+    // BETA tree holds afterwards, and the only honest way to test it is to look. The trees are CRT
+    // 4.0 ones (2026-10-25): a board is its board file and the stored files it lists, so "BETA
+    // holds production's sheet" is read through BETA's board file (BetaHolds).
     //
     // *** THE TWO FACTS THAT MAKE IT POSSIBLE *** are pinned elsewhere and named here so a reader
     // knows where to look: a MERGED submission keeps its blobs (SubmissionCollectionStates.Live
@@ -28,7 +30,9 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
         private const string BoardId = "Commodore/C64/250407";
-        private const string Sheet = "Commodore/C64/250407/Images/sheet1.png";
+        private const string OtherBoardId = "Commodore/C128/310378";
+        private const string Sheet = "Images/sheet1.png";
+        private const string NewImage = "Images/new.png";
 
         private readonly string thisRoot;
         private readonly string thisBeta;
@@ -46,7 +50,7 @@ namespace CRT.Server.Tests
             Directory.CreateDirectory(this.thisProduction);
             Directory.CreateDirectory(this.thisBlobRoot);
 
-            File.WriteAllText(Path.Combine(this.thisBeta, "Classic-Repair-Toolbox.v2.0.0.xlsx"), "master v2");
+            DataTreeBuilder.Master(this.thisBeta, BetaRollbackFlowTests.BoardId);
         }
 
         public void Dispose()
@@ -90,14 +94,42 @@ namespace CRT.Server.Tests
         private string InBeta(string relative) =>
             Path.Combine(this.thisBeta, relative.Replace('/', Path.DirectorySeparatorChar));
 
-        private string InProduction(string relative) =>
-            Path.Combine(this.thisProduction, relative.Replace('/', Path.DirectorySeparatorChar));
+        // Each tree's copy of the board: its board file listing these files, their bytes stored.
+        private void Production(params (string Name, string Content)[] files) =>
+            DataTreeBuilder.Board(this.thisProduction, BetaRollbackFlowTests.BoardId, files);
 
-        private static void Write(string path, string content)
+        private void Beta(params (string Name, string Content)[] files) =>
+            DataTreeBuilder.Board(this.thisBeta, BetaRollbackFlowTests.BoardId, files);
+
+        // The usual case: production holds the published sheet; BETA the submitted one and, when
+        // `withNewImage`, an image the submission added.
+        private void BetaAheadOfProduction(bool withNewImage = false)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, content);
+            this.Production((BetaRollbackFlowTests.Sheet, "PUBLISHED"));
+
+            if (withNewImage)
+                this.Beta((BetaRollbackFlowTests.Sheet, "SUBMITTED"), (BetaRollbackFlowTests.NewImage, "ONLY IN BETA"));
+            else
+                this.Beta((BetaRollbackFlowTests.Sheet, "SUBMITTED"));
         }
+
+        // What BETA's board file says `name` holds, read through its stored bytes - null when it
+        // lists no such file, or its bytes are not stored.
+        private string? BetaHolds(string name)
+        {
+            BoardDocument? document = BoardFiles.ReadDocument(this.InBeta(DataTreeLayout.BoardFilePath(BetaRollbackFlowTests.BoardId)));
+            BoardDocument.StoredFileRow? row = document?.Files.FirstOrDefault(file => string.Equals(file.Name, name, StringComparison.Ordinal));
+
+            if (row is null)
+                return null;
+
+            string stored = this.InBeta(DataTreeLayout.StoredFilePath(row.Sha256, row.Name));
+
+            return File.Exists(stored) ? File.ReadAllText(stored) : null;
+        }
+
+        private bool StoredInBeta(string content, string name) =>
+            File.Exists(this.InBeta(DataTreeBuilder.Stored(content, name)));
 
         // ###########################################################################################
         // A board whose BETA state is ahead of production, with one merged submission behind it.
@@ -150,19 +182,16 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // *** PRODUCTION'S BYTES GO BACK, AND THE SUBMISSION'S OWN FILE LEAVES. *** Both halves
-        // matter: restoring alone would leave the file the rolled-back submission ADDED sitting in
-        // BETA, cited by nothing and still served to every BETA user.
+        // *** PRODUCTION'S BOARD GOES BACK, AND WHAT ONLY THE SUBMISSIONS ADDED LEAVES. *** Both
+        // halves matter: restoring alone would leave the bytes the rolled-back submission ADDED
+        // sitting in BETA, listed by nothing and still served to every BETA user.
         // ###########################################################################################
         [Fact]
-        public async Task A_rollback_puts_productions_files_back_and_removes_the_submissions_own()
+        public async Task A_rollback_puts_productions_board_back_and_removes_what_only_the_submissions_added()
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "THE PUBLISHED SHEET");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE SUBMITTED SHEET");
-            BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
+            this.BetaAheadOfProduction(withNewImage: true);
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "The U8 pinout is wrong.",
@@ -170,14 +199,20 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsDone, outcome.Error);
 
-            Assert.Equal("THE PUBLISHED SHEET", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
-            Assert.False(File.Exists(this.InBeta("Commodore/C64/250407/Images/new.png")));
+            Assert.Equal("PUBLISHED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
+            Assert.Null(this.BetaHolds(BetaRollbackFlowTests.NewImage));
+            Assert.Equal(
+                File.ReadAllBytes(Path.Combine(this.thisProduction, "Commodore", "C64", "250407", "board.json")),
+                File.ReadAllBytes(this.InBeta(DataTreeLayout.BoardFilePath(BetaRollbackFlowTests.BoardId))));
+
+            Assert.False(this.StoredInBeta("SUBMITTED", BetaRollbackFlowTests.Sheet));
+            Assert.False(this.StoredInBeta("ONLY IN BETA", BetaRollbackFlowTests.NewImage));
         }
 
         // ###########################################################################################
         // *** EVERY SUBMISSION MERGED SINCE THE LAST PROMOTION GOES BACK TO THE QUEUE (owner
-        // decision). *** A rollback is per BOARD - the board's workbook holds all of them - so
-        // picking one out is impossible. All of them return to `pending` with the reason.
+        // decision). *** A rollback is per BOARD - the board's file holds all of them - so picking
+        // one out is impossible. All of them return to `pending` with the reason.
         // ###########################################################################################
         [Fact]
         public async Task Every_merged_submission_goes_back_to_the_queue_with_the_reason()
@@ -185,9 +220,7 @@ namespace CRT.Server.Tests
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             long first = await this.MergedSubmissionAsync(store, "one@example.com");
             long second = await this.MergedSubmissionAsync(store, "two@example.com");
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Needs the revision date.",
@@ -224,10 +257,7 @@ namespace CRT.Server.Tests
             long first = await this.MergedSubmissionAsync(store, "one@example.com");
             long second = await this.MergedSubmissionAsync(store, "two@example.com");
             var accounts = new FakeAccountStore();
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
-            BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
+            this.BetaAheadOfProduction(withNewImage: true);
 
             BetaRollbackOutcome outcome = await this.Flow(store, accounts).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not what this board needs.",
@@ -236,8 +266,8 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsDone, outcome.Error);
             Assert.True(outcome.Rejected);
 
-            Assert.Equal("PUBLISHED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
-            Assert.False(File.Exists(this.InBeta("Commodore/C64/250407/Images/new.png")));
+            Assert.Equal("PUBLISHED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
+            Assert.False(this.StoredInBeta("ONLY IN BETA", BetaRollbackFlowTests.NewImage));
             Assert.Equal(("2026-May-14", "production-hash"), store.BetaStates[BetaRollbackFlowTests.BoardId]);
 
             foreach (long id in new[] { first, second })
@@ -262,9 +292,7 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             long id = await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, " ",
@@ -272,7 +300,7 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsDone);
             Assert.Contains("why this is being rejected", outcome.Error, StringComparison.Ordinal);
-            Assert.Equal("SUBMITTED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.Equal("SUBMITTED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
             Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
         }
 
@@ -287,9 +315,7 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
@@ -315,8 +341,7 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction(everPromoted: false);
             await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE NEW BOARD");
+            this.Beta((BetaRollbackFlowTests.Sheet, "THE NEW BOARD"));
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not ready.",
@@ -325,7 +350,8 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsDone, outcome.Error);
             Assert.Equal(BetaRollbackKind.RemoveFromBeta, outcome.Plan!.Kind);
 
-            Assert.False(File.Exists(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.False(File.Exists(this.InBeta(DataTreeLayout.BoardFilePath(BetaRollbackFlowTests.BoardId))));
+            Assert.False(this.StoredInBeta("THE NEW BOARD", BetaRollbackFlowTests.Sheet));
 
             // The emptied folder goes too, so the tree does not keep a husk of a board.
             Assert.False(Directory.Exists(this.InBeta("Commodore/C64/250407")));
@@ -337,7 +363,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A PROMOTED BOARD WHOSE PRODUCTION FOLDER IS GONE IS REFUSED, NOT REMOVED (code review,
+        // *** A PROMOTED BOARD WHOSE PRODUCTION COPY IS GONE IS REFUSED, NOT REMOVED (code review,
         // 2026-09-27). *** An empty production listing used to mean "never promoted", so a mount
         // that was down or a folder renamed by hand wiped a board that IS in production out of
         // BETA. The record decides now: the plan is refused, and BETA is not touched.
@@ -348,8 +374,8 @@ namespace CRT.Server.Tests
             FakeSubmissionStore store = this.StoreAheadOfProduction(everPromoted: true);
             long id = await this.MergedSubmissionAsync(store);
 
-            // BETA has the board; production's folder for it does not exist at all.
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE BOARD");
+            // BETA has the board; production holds no board file of it at all.
+            this.Beta((BetaRollbackFlowTests.Sheet, "THE BOARD"));
 
             BetaRollbackOutcome planned = await this.Flow(store).PlanAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options());
@@ -363,7 +389,7 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsConflict);
             Assert.False(outcome.IsDone);
-            Assert.True(File.Exists(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.Equal("THE BOARD", this.BetaHolds(BetaRollbackFlowTests.Sheet));
             Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
         }
 
@@ -378,14 +404,11 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store);
+            this.BetaAheadOfProduction(withNewImage: true);
 
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
-            BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
-
-            // What the publish left: a manifest naming the submitted bytes and the new file.
+            // What the publish left: a manifest naming the submitted bytes and the new image.
             DataChecksumManifest.Write(this.thisBeta, this.Options().PublicDataBaseUrl!, this.BetaManifest);
-            Assert.Contains("new.png", File.ReadAllText(this.BetaManifest), StringComparison.Ordinal);
+            Assert.Contains(BetaRollbackFlowTests.Sha("ONLY IN BETA"), File.ReadAllText(this.BetaManifest), StringComparison.OrdinalIgnoreCase);
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
@@ -395,16 +418,16 @@ namespace CRT.Server.Tests
 
             string manifest = File.ReadAllText(this.BetaManifest);
 
-            Assert.DoesNotContain("new.png", manifest, StringComparison.Ordinal);
+            Assert.DoesNotContain(BetaRollbackFlowTests.Sha("ONLY IN BETA"), manifest, StringComparison.OrdinalIgnoreCase);
             Assert.Contains(BetaRollbackFlowTests.Sha("PUBLISHED"), manifest, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(BetaRollbackFlowTests.Sha("SUBMITTED"), manifest, StringComparison.OrdinalIgnoreCase);
         }
 
         // ###########################################################################################
         // *** A RETURNED SUBMISSION STARTS ITS REVIEW AGAIN WITH NO APPROVALS (code review,
-        // 2026-09-27). *** Left in place, a shared-file submission approved by BOTH roles was
-        // republished by ONE approval, and an administrator who had approved an ordinary one was
-        // answered "you have already approved" and could never approve it again.
+        // 2026-09-27). *** Left in place, a submission approved by BOTH roles was republished by ONE
+        // approval, and an administrator who had approved an ordinary one was answered "you have
+        // already approved" and could never approve it again.
         // ###########################################################################################
         [Fact]
         public async Task A_returned_submissions_earlier_approvals_are_cleared()
@@ -415,8 +438,7 @@ namespace CRT.Server.Tests
             await store.AddApprovalAsync(id, ApproverRole.Maintainer, 5, "M", BetaRollbackFlowTests.Now.AddDays(-2), CancellationToken.None);
             await store.AddApprovalAsync(id, ApproverRole.Administrator, 1, "A", BetaRollbackFlowTests.Now.AddDays(-1), CancellationToken.None);
 
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Needs another look.",
@@ -437,9 +459,7 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             long id = await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             store.FailRollbackRecord = true;
 
@@ -451,7 +471,7 @@ namespace CRT.Server.Tests
             Assert.Equal(BetaRollbackFlow.NotRecordedMessage, first.Error);
 
             // The tree moved; the database did not, at all.
-            Assert.Equal("PUBLISHED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.Equal("PUBLISHED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
             Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
 
             store.FailRollbackRecord = false;
@@ -467,127 +487,61 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // Shared files (code review, 2026-09-27)
+        // Bytes stored once for several boards (CRT 4.0 tree, 2026-10-25)
         // -----------------------------------------------------------------------------------
 
-        private const string SharedChip = "Commodore/Shared files/6526.png";
-
         // ###########################################################################################
-        // *** A SHARED FILE THE SUBMISSION CHANGED GOES BACK TOO. *** Left in BETA it leaked: the
-        // next promotion of ANY board citing it carried the un-reviewed bytes to production while
-        // the submission that introduced them sat in the queue.
+        // *** BYTES ANOTHER BETA BOARD LISTS STAY. *** In the 4.0 tree a file's bytes are stored once
+        // for every board naming them, so what the rolled-back submission added may be another
+        // board's file too. Only bytes no BETA board lists once production's board file is back go.
         // ###########################################################################################
         [Fact]
-        public async Task A_shared_file_the_submission_changed_is_put_back_to_productions_bytes()
+        public async Task Bytes_another_BETA_board_lists_stay_when_the_board_is_rolled_back()
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
+            await this.MergedSubmissionAsync(store);
+            this.BetaAheadOfProduction(withNewImage: true);
 
-            await this.MergedSubmissionAsync(
-                store,
-                files: new SubmissionFile { Path = BetaRollbackFlowTests.SharedChip, Sha256 = BetaRollbackFlowTests.Sha("CHANGED CHIP"), SizeBytes = 12 });
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.SharedChip), "OLD CHIP");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.SharedChip), "CHANGED CHIP");
+            DataTreeBuilder.Master(this.thisBeta, BetaRollbackFlowTests.BoardId, BetaRollbackFlowTests.OtherBoardId);
+            DataTreeBuilder.Board(this.thisBeta, BetaRollbackFlowTests.OtherBoardId, ("Images/the same picture.png", "ONLY IN BETA"));
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong chip picture.",
+                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong picture.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
-            Assert.Equal([BetaRollbackFlowTests.SharedChip], outcome.Plan!.SharedRestored);
-            Assert.Equal("OLD CHIP", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.SharedChip)));
+            Assert.Null(this.BetaHolds(BetaRollbackFlowTests.NewImage));
+            Assert.True(this.StoredInBeta("ONLY IN BETA", BetaRollbackFlowTests.NewImage));
+            Assert.False(this.StoredInBeta("SUBMITTED", BetaRollbackFlowTests.Sheet));
+
+            // Nothing in the 4.0 tree is a shared file.
+            Assert.Empty(outcome.Plan!.SharedRestored);
+            Assert.False(outcome.Plan.TouchesSharedFiles);
         }
 
         // ###########################################################################################
-        // *** WRITTEN AGAIN SINCE - SOMEBODY ELSE'S, LEFT ALONE. *** BETA no longer holds the bytes
-        // this submission carried, so a later publish owns the current version; reverting it would
-        // discard that other board's accepted change.
+        // *** A TREE THAT CANNOT BE READ COMPLETELY KEEPS EVERY STORED FILE. *** Whether another board
+        // lists the bytes is then not known, so none are removed - failing closed, as every writer
+        // does. The board itself is still put back.
         // ###########################################################################################
         [Fact]
-        public async Task A_shared_file_written_again_by_somebody_since_is_left_alone()
+        public async Task A_BETA_tree_that_cannot_be_read_completely_keeps_the_stored_files_and_still_restores_the_board()
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
+            await this.MergedSubmissionAsync(store);
+            this.BetaAheadOfProduction(withNewImage: true);
 
-            await this.MergedSubmissionAsync(
-                store,
-                files: new SubmissionFile { Path = BetaRollbackFlowTests.SharedChip, Sha256 = BetaRollbackFlowTests.Sha("CHANGED CHIP"), SizeBytes = 12 });
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.SharedChip), "OLD CHIP");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.SharedChip), "ANOTHER BOARD'S NEWER CHIP");
+            DataTreeBuilder.Master(this.thisBeta, BetaRollbackFlowTests.BoardId, BetaRollbackFlowTests.OtherBoardId);
+            File.WriteAllText(DataTreeBuilder.Full(this.thisBeta, DataTreeLayout.BoardFilePath(BetaRollbackFlowTests.OtherBoardId)), "{ not a board file");
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong data.",
                 this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsDone, outcome.Error);
-            Assert.Empty(outcome.Plan!.SharedRestored);
-            Assert.Equal("ANOTHER BOARD'S NEWER CHIP", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.SharedChip)));
-        }
-
-        // ###########################################################################################
-        // A shared file the submission ADDED goes - through UnusedFileRemover, which re-reads the
-        // tree once the board is back to production's workbook and removes it only when nothing
-        // cites it. A real tree (DataTreeBuilder), because an unreadable one removes nothing.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_shared_file_the_submission_added_STAYS_even_when_nothing_cites_it()
-        {
-            const string Added = "Generic shared files/Datasheets/new.pdf";
-
-            FakeSubmissionStore store = this.StoreAheadOfProduction();
-
-            await this.MergedSubmissionAsync(
-                store,
-                files: new SubmissionFile { Path = Added, Sha256 = BetaRollbackFlowTests.Sha("bytes of " + Added), SizeBytes = 10 });
-
-            // BETA: the board cites the new datasheet. Production: the board as it was, citing nothing.
-            DataTreeBuilder.Master(this.thisBeta, DataTreeBuilder.Workbook);
-            DataTreeBuilder.Board(this.thisBeta, DataTreeBuilder.Workbook, Added);
-            DataTreeBuilder.Files(this.thisBeta, Added);
-            DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook);
-
-            BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "That datasheet is the wrong chip.",
-                this.Options(), BetaRollbackFlowTests.Now);
-
-            // Nothing outside the board's own folder is removed automatically (owner decision,
-            // 2026-09-27): the datasheet stays, unused, for Account > Unused files.
-            Assert.True(outcome.IsDone, outcome.Error);
-            Assert.True(File.Exists(this.InBeta(Added)));
-            Assert.False(outcome.Plan!.TouchesSharedFiles);
-        }
-
-        // ...and one ANOTHER board has started citing since stays too - offered to nobody for
-        // removal, so there is nothing to explain as kept.
-        [Fact]
-        public async Task A_shared_file_another_board_now_cites_stays_and_is_never_a_candidate()
-        {
-            const string Added = "Generic shared files/Datasheets/new.pdf";
-            const string OtherWorkbook = "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx";
-
-            FakeSubmissionStore store = this.StoreAheadOfProduction();
-
-            await this.MergedSubmissionAsync(
-                store,
-                files: new SubmissionFile { Path = Added, Sha256 = BetaRollbackFlowTests.Sha("bytes of " + Added), SizeBytes = 10 });
-
-            DataTreeBuilder.Master(this.thisBeta, DataTreeBuilder.Workbook, OtherWorkbook);
-            DataTreeBuilder.Board(this.thisBeta, DataTreeBuilder.Workbook, Added);
-            DataTreeBuilder.Board(this.thisBeta, OtherWorkbook, Added);
-            DataTreeBuilder.Files(this.thisBeta, Added);
-            DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook);
-
-            BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
-                BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Wrong chip.",
-                this.Options(), BetaRollbackFlowTests.Now);
-
-            Assert.True(outcome.IsDone, outcome.Error);
-            Assert.True(File.Exists(this.InBeta(Added)));
-            Assert.False(outcome.Plan!.TouchesSharedFiles);
+            Assert.Equal("PUBLISHED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
+            Assert.True(this.StoredInBeta("SUBMITTED", BetaRollbackFlowTests.Sheet));
+            Assert.True(this.StoredInBeta("ONLY IN BETA", BetaRollbackFlowTests.NewImage));
         }
 
         // -----------------------------------------------------------------------------------
@@ -604,9 +558,7 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "   ",
@@ -616,7 +568,7 @@ namespace CRT.Server.Tests
             Assert.Contains("Say why", outcome.Error, StringComparison.Ordinal);
 
             // BETA is untouched - the only honest test of a refusal.
-            Assert.Equal("SUBMITTED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.Equal("SUBMITTED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
         }
 
         // Someone who does not maintain this board cannot roll it back, exactly as they cannot
@@ -626,9 +578,7 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store);
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             ReviewAccess outsider = ReviewAccess.For(BetaRollbackFlowTests.Account(2, administrator: false));
 
@@ -636,7 +586,7 @@ namespace CRT.Server.Tests
                 outsider, BetaRollbackFlowTests.BoardId, "Not mine.", this.Options(), BetaRollbackFlowTests.Now);
 
             Assert.True(outcome.IsForbidden);
-            Assert.Equal("SUBMITTED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.Equal("SUBMITTED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
         }
 
         // A board already level with production has nothing to roll back - the same question
@@ -673,22 +623,26 @@ namespace CRT.Server.Tests
         {
             FakeSubmissionStore store = this.StoreAheadOfProduction();
             await this.MergedSubmissionAsync(store, "hest@mailscan.dk");
-
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
-            BetaRollbackFlowTests.Write(this.InBeta("Commodore/C64/250407/Images/new.png"), "ONLY IN BETA");
+            this.BetaAheadOfProduction(withNewImage: true);
 
             BetaRollbackOutcome outcome = await this.Flow(store).PlanAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options());
 
             Assert.True(outcome.IsPlanned, outcome.Error);
             Assert.Equal(BetaRollbackKind.RestoreFromProduction, outcome.Plan!.Kind);
-            Assert.Contains(BetaRollbackFlowTests.Sheet, outcome.Plan.Restored);
-            Assert.Contains("Commodore/C64/250407/Images/new.png", outcome.Plan.Removed);
+
+            // Production's board file and the published sheet's bytes go back - the bytes first, so
+            // BETA never holds a board file naming bytes it lacks.
+            Assert.Equal(
+                [DataTreeBuilder.Stored("PUBLISHED", BetaRollbackFlowTests.Sheet), DataTreeLayout.BoardFilePath(BetaRollbackFlowTests.BoardId)],
+                outcome.Plan.Restored);
+
+            Assert.Contains(DataTreeBuilder.Stored("ONLY IN BETA", BetaRollbackFlowTests.NewImage), outcome.Plan.Removed);
+            Assert.Contains(DataTreeBuilder.Stored("SUBMITTED", BetaRollbackFlowTests.Sheet), outcome.Plan.Removed);
             Assert.Equal("hest@mailscan.dk", Assert.Single(outcome.Plan.Returning).ContactEmail);
 
             // A plan writes nothing.
-            Assert.Equal("SUBMITTED", File.ReadAllText(this.InBeta(BetaRollbackFlowTests.Sheet)));
+            Assert.Equal("SUBMITTED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
         }
 
         // ###########################################################################################
@@ -714,8 +668,7 @@ namespace CRT.Server.Tests
                 CancellationToken.None);
             await store.SetStateAsync(id, SubmissionState.Merged, BetaRollbackFlowTests.Now.AddDays(-1), CancellationToken.None);
 
-            BetaRollbackFlowTests.Write(this.InProduction(BetaRollbackFlowTests.Sheet), "PUBLISHED");
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "SUBMITTED");
+            this.BetaAheadOfProduction();
 
             BetaRollbackOutcome outcome = await this.Flow(store, accounts).PlanAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options());
@@ -733,14 +686,15 @@ namespace CRT.Server.Tests
         public async Task A_board_never_promoted_is_taken_out_of_BETAs_list_and_keeps_its_placement()
         {
             MasterListingRow other = ApprovePublishFlowTests.OtherListedBoard;
-            MasterListingRow listed = new("Commodore 64", "250407", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", string.Empty);
+            MasterListingRow listed = new("Commodore 64", "250407", DataTreeBuilder.BoardFile, string.Empty);
             DataTreeBuilder.ListingMaster(this.thisBeta, other, listed);
+            DataTreeBuilder.Board(this.thisBeta, other.BoardId);
 
             FakeSubmissionStore store = this.StoreAheadOfProduction(everPromoted: false);
             await this.MergedSubmissionAsync(store);
             await store.SetPlacementAsync(BetaRollbackFlowTests.BoardId, ApprovePublishFlowTests.Placement(), 1, BetaRollbackFlowTests.Now, CancellationToken.None);
 
-            BetaRollbackFlowTests.Write(this.InBeta(BetaRollbackFlowTests.Sheet), "THE NEW BOARD");
+            this.Beta((BetaRollbackFlowTests.Sheet, "THE NEW BOARD"));
 
             BetaRollbackOutcome outcome = await this.Flow(store).RollBackAsync(
                 BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, "Not ready.",

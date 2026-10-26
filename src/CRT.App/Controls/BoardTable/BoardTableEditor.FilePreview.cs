@@ -12,7 +12,7 @@ namespace CRT
     // ###########################################################################################
     // HOVERING A FILE CELL SHOWS THE FILE (owner request, 2026-09-26) - the picture, the published
     // and the new picture side by side when it changed, or a link that opens a PDF. The same in the
-    // Drafts tab and in the Maintainer tab, which is why it is here and not in either.
+    // Contribute tab and in the Maintainer tab, which is why it is here and not in either.
     //
     // *** AT ONCE, BOTH WAYS (owner request, 2026-09-26: "show image/tooltip instantly, instead of
     // the small delay ... and likewise instantly NOT show the helper when moving mouse outside"). ***
@@ -31,7 +31,7 @@ namespace CRT
     // under a still pointer). A file column's text tooltip ("Published value: ...") gives way to the
     // card, which shows both paths anyway.
     //
-    // Nothing happens until the host sets FileSource - which is how each host (the Drafts tab, the
+    // Nothing happens until the host sets FileSource - which is how each host (the Contribute tab, the
     // Maintainer tab) supplies the bytes (IBoardTableFileSource).
     // ###########################################################################################
     public partial class BoardTableEditor

@@ -6,7 +6,7 @@
 	<Application.Resources>
 		<ResourceDictionary>
 
-			<!-- The table editor's own colours, shared by the Drafts tab and the Maintainer tab (Controls/BoardTable). -->
+			<!-- The table editor's own colours, shared by the Contribute tab and the Maintainer tab (Controls/BoardTable). -->
 			<ResourceDictionary.MergedDictionaries>
 				<ResourceInclude Source="avares://Classic-Repair-Toolbox/Controls/BoardTable/BoardTableColors.axaml" />
 			</ResourceDictionary.MergedDictionaries>
@@ -103,7 +103,7 @@
 					<SolidColorBrush x:Key="Text_Warning_Fg">#965A00</SolidColorBrush>
 
 					<!-- Light, Main -->
-					<!-- The Drafts tab's title: a draft is temporary, so its tab stands out in the
+					<!-- The Contribute tab's title: a draft is temporary, so its tab stands out in the
 					     same IndianRed the selected-tab underline uses (owner request, 2026-09-25). -->
 					<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_TabUnderline_Selected">IndianRed</SolidColorBrush>
@@ -710,7 +710,7 @@
 		<!-- Give the ColorPicker in "Schematics" tab its visual layout -->
         <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
-		<!-- Give the Drafts tab's table editor (ProDataGrid, an MIT fork of Avalonia's own
+		<!-- Give the Contribute tab's table editor (ProDataGrid, an MIT fork of Avalonia's own
 		     DataGrid, whose assembly keeps the original name) its visual layout. -->
 		<StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml" />
 

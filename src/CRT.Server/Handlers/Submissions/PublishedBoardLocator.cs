@@ -6,8 +6,8 @@ namespace CRT.Server.Handlers.Submissions
     // WHICH file holds a board's published board (NewContributeStrategy.md Phase 5, task 3).
     //
     // Split out of PublishedBoardReader because this is the part worth testing: resolving a
-    // board folder from untrusted identity values, picking the right workbook GENERATION, and
-    // deciding what "there is no board" means. The reader around it only opens the file.
+    // board folder from untrusted identity values, and deciding what "there is no board" means.
+    // The reader around it only opens the file.
     //
     // *** THE IDENTITY IS UNTRUSTED, EVEN HERE. *** Manufacturer/Hardware/Board arrive in a
     // submission, and a manufacturer of "../.." would otherwise relocate the board folder
@@ -15,9 +15,11 @@ namespace CRT.Server.Handlers.Submissions
     // maintainer, and would make this endpoint a file-disclosure hole rather than a review screen.
     // So every part goes through SubmissionPathRules exactly as the write paths do.
     //
-    // *** IT PICKS THE NEWEST GENERATION, the same rule publishing writes with. *** Reading an
-    // older, frozen generation would show the maintainer a diff against a board no current build
-    // uses, and the generation gap would appear as changes the contributor never made.
+    // *** IN THE CRT 4.0 TREE A BOARD IS ITS BOARD FILE (2026-10-25). *** "<board id>/board.json"
+    // (DataTreeLayout.BoardFilePath), always that name - no generations to choose between, no
+    // workbook names that differ from the folder's. `WorkbookPath` is that file: the shared readers
+    // and writers read and write a board.json as a 4.0 board (DataTreeLayout.IsBoardFile), so every
+    // caller that used to hand them the workbook hands them this.
     // ###########################################################################################
     public static class PublishedBoardLocator
     {
@@ -56,53 +58,38 @@ namespace CRT.Server.Handlers.Submissions
             if (string.IsNullOrWhiteSpace(dataTreeRoot))
                 return PublishedBoardLocation.None;
 
-            string relative = string.Join('/',
-                new[] { manufacturer, hardware, board }
-                    .Where(part => !string.IsNullOrWhiteSpace(part)));
-
-            if (string.IsNullOrWhiteSpace(relative))
-                return PublishedBoardLocation.None;
-
-            if (!SubmissionPathRules.TryResolve(dataTreeRoot, relative, out string boardFolder, out _))
-                return PublishedBoardLocation.None;
-
-            if (!Directory.Exists(boardFolder))
-                return PublishedBoardLocation.None;
-
-            // Only the workbooks, and only their names - the generation lives in the file name.
-            string[] fileNames = Directory
-                .EnumerateFiles(boardFolder, "*" + DataGenerationRules.WorkbookExtension)
-                .Select(Path.GetFileName)
-                .Where(name => !string.IsNullOrEmpty(name))
-                .Select(name => name!)
+            string[] parts = new[] { manufacturer, hardware, board }
+                .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!)
                 .ToArray();
 
-            if (fileNames.Length == 0)
+            if (parts.Length != 3)
                 return PublishedBoardLocation.None;
 
-            Version? generation = DataGenerationRules.ResolveNewestGeneration(fileNames);
+            // The tree's own folders are never a board's (DataTreeLayout.ReservedTopFolders).
+            if (DataTreeLayout.ReservedTopFolders.Contains(parts[0], StringComparer.OrdinalIgnoreCase))
+                return PublishedBoardLocation.None;
 
-            // The board file's stem does not follow the folder names mechanically
-            // ("Data C128DCR 250477" lives under C128/250477), so it is READ off the files that
-            // are there rather than rebuilt from the identity. Any workbook of the target
-            // generation answers it, since they all share one stem per board.
-            string? match = fileNames.FirstOrDefault(name =>
-                DataGenerationRules.TryReadGeneration(name) == generation);
+            string relative = string.Join('/', parts);
 
-            if (match is null)
+            if (!SubmissionPathRules.TryResolve(dataTreeRoot, DataTreeLayout.BoardFilePath(relative), out string boardFile, out _))
+                return PublishedBoardLocation.None;
+
+            if (!File.Exists(boardFile))
                 return PublishedBoardLocation.None;
 
             return new PublishedBoardLocation(
-                Path.Combine(boardFolder, match),
-                boardFolder,
-                generation,
+                boardFile,
+                Path.GetDirectoryName(boardFile)!,
+                Generation: null,
                 Exists: true);
         }
     }
 
     // ###########################################################################################
     // Where a published board is - or that there is none, which is a NEW BOARD and a first-class
-    // answer rather than a failure.
+    // answer rather than a failure. `WorkbookPath` is the board file ("<board id>/board.json");
+    // Generation is the Excel trees' and always null in the 4.0 tree.
     // ###########################################################################################
     public sealed record PublishedBoardLocation(
         string WorkbookPath,

@@ -121,6 +121,11 @@ namespace Handlers.DataHandling
         // "Data C64 250407 (draft).xlsx" would announce itself as something else - it would also
         // break BoardDataReader's cache key, which is the ExcelDataFile identity.
         // ###########################################################################################
+        //
+        // *** IN CRT 4.0 IT IS THE DRAFT'S BOARD FILE (2026-10-24). *** Whatever file name the board's
+        // identity carries ("Data C64 250407.xlsx" from before 4.0, or "board.json"), a draft keeps
+        // its board in "board.json" in its folder - DataTreeLayout.BoardFileFor - and every path a
+        // draft writer reads or writes goes through here. The name stays for the many callers.
         public static string GetWorkbookPath(string draftsRoot, string excelDataFile)
         {
             string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
@@ -129,9 +134,9 @@ namespace Handlers.DataHandling
                 return string.Empty;
             }
 
-            string fileName = DraftFolderLayout.FileNameOf(excelDataFile);
-
-            return fileName.Length == 0 ? string.Empty : Path.Combine(folder, fileName);
+            return DraftFolderLayout.FileNameOf(excelDataFile).Length == 0
+                ? string.Empty
+                : Path.Combine(folder, DataTreeLayout.BoardFileName);
         }
 
         // ###########################################################################################
@@ -284,6 +289,19 @@ namespace Handlers.DataHandling
             // from ever being retired).
             return name.StartsWith(DraftFolderLayout.BookkeepingPrefix, StringComparison.OrdinalIgnoreCase)
                 || name.EndsWith(DraftFolderLayout.LegacyWritingSuffix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // Whether a path inside a draft folder ("/"-separated, relative to it) lies in one of CRT's
+        // own folders - one whose name starts ".crt-", such as the Excel-era originals a conversion
+        // sets aside (DraftConversion.OriginalsFolder). Nothing in one is the contributor's file.
+        // ###########################################################################################
+        public static bool IsInBookkeepingFolder(string? relativePath)
+        {
+            string[] segments = (relativePath ?? string.Empty).Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            return segments[..Math.Max(0, segments.Length - 1)]
+                .Any(segment => segment.StartsWith(DraftFolderLayout.BookkeepingPrefix, StringComparison.OrdinalIgnoreCase));
         }
 
         // Where a draft keeps its base (see DraftBaseFileName); "" when the board has no folder.

@@ -1585,6 +1585,53 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(0, deletedWith!.Highlights);
     }
 
+    // ###########################################################################################
+    // CRT 4.0's pins and replacement parts (2026-10-25) go with a deleted component too - and, filed
+    // by region as images are, a regional variant deleted beside its twin takes only its region's.
+    // ###########################################################################################
+    [Fact]
+    public void A_deleted_component_takes_its_pins_and_replacements_and_a_variant_only_its_regions()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Region = "PAL", FriendlyName = "VIC", TechnicalNameOrValue = "6569" },
+                new ComponentEntry { BoardLabel = "U8", Region = "NTSC", FriendlyName = "VIC", TechnicalNameOrValue = "6567" },
+                new ComponentEntry { BoardLabel = "U9", FriendlyName = "SID", TechnicalNameOrValue = "6581" }
+            ],
+            ComponentPins =
+            [
+                new ComponentPinEntry { BoardLabel = "U8", Region = "PAL", Pin = "1", Name = "D6" },
+                new ComponentPinEntry { BoardLabel = "U8", Pin = "40", Name = "VDD" },
+                new ComponentPinEntry { BoardLabel = "U9", Pin = "1", Name = "CAP1A" }
+            ],
+            ComponentReplacements =
+            [
+                new ComponentReplacementEntry { BoardLabel = "U8", Region = "PAL", PartNumber = "8565" },
+                new ComponentReplacementEntry { BoardLabel = "U9", PartNumber = "8580", Kind = "Needs changes" }
+            ]
+        };
+
+        BoardTableDocument variant = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(variant);
+        components.DeleteRow(components.Rows.Single(row => components.CellText(row, BoardWorkbookSchema.ColRegion) == "PAL"));
+
+        BoardData afterVariant = variant.ApplyTo(board);
+        Assert.Equal(["U8 VDD", "U9 CAP1A"], afterVariant.ComponentPins.Select(pin => $"{pin.BoardLabel} {pin.Name}"));
+        Assert.Equal("U9", Assert.Single(afterVariant.ComponentReplacements).BoardLabel);
+
+        BoardTableDocument whole = BoardTableDocument.Create(board, board);
+        Assert.True(Components(whole).DeleteRow(Row(Components(whole), "U9"), out BoardTableDeletedWith? deletedWith));
+
+        BoardData afterWhole = whole.ApplyTo(board);
+        Assert.DoesNotContain(afterWhole.ComponentPins, pin => pin.BoardLabel == "U9");
+        Assert.DoesNotContain(afterWhole.ComponentReplacements, replacement => replacement.BoardLabel == "U9");
+        Assert.Equal(
+            [BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.SheetComponentReplacements],
+            deletedWith!.Rows.Select(count => count.Sheet));
+    }
+
     // Deleting a row that is only a duplicate of another with the same label takes nothing else.
     [Fact]
     public void Deleting_a_duplicate_row_takes_nothing_else()
@@ -1669,7 +1716,7 @@ public sealed class BoardTableDocumentTests
 
         Assert.Equal(
             "Also deleted with U8 and U9: 2 rows on Component images, 1 on Component local files and 1 on Component links. " +
-            "Their 3 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            "Their 3 highlights on the schematics go too. Undo (Ctrl+Z) brings it all back.",
             deletedWith!.Describe());
 
         Assert.Equal(1, document.History.UndoCount);
@@ -1927,5 +1974,186 @@ public sealed class BoardTableDocumentTests
         Assert.True(document.ErrorRowCount > 0 && document.DeletedCount > 0, "the test needs an error and a deleted row");
 
         Assert.Throws<ArgumentOutOfRangeException>(() => document.CountOf(BoardTableRowKinds.Added | BoardTableRowKinds.Deleted));
+    }
+
+    // ------------------------------------------------------------------ Find & replace (CRT 4.0, 2026-10-25)
+
+    private static readonly Func<BoardTableRow, bool> EveryRow = _ => true;
+
+    [Fact]
+    public void Replace_all_replaces_every_occurrence_ignoring_capitals_and_counts_them()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            null,
+            Board(Component("U1", "6510 cpu, cpu socket"), Component("U2", "CPU card"), Component("U3", "SID")));
+        BoardTableSheet sheet = Components(document);
+
+        BoardTableReplaceResult result = document.ReplaceAll("cpu", "MPU", [sheet], EveryRow);
+
+        Assert.Equal("6510 MPU, MPU socket", Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal("MPU card", Cell(Row(sheet, "U2"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal("SID", Cell(Row(sheet, "U3"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal(new BoardTableReplaceResult(3, 2, 1), result);
+    }
+
+    // What changes is what can be seen: the table's own view (a pill, a search) is handed in.
+    [Fact]
+    public void Replace_all_touches_only_the_rows_shown_and_never_a_red_row()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1", "CPU"), Component("U2", "CPU"), Component("U3", "CPU")),
+            Board(Component("U1", "CPU"), Component("U3", "CPU")));
+        BoardTableSheet sheet = Components(document);
+
+        BoardTableReplaceResult result = document.ReplaceAll("CPU", "MPU", [sheet], row => Label(row) != "U3");
+
+        Assert.Equal("MPU", Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal("CPU", Cell(Row(sheet, "U2", deleted: true), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal("CPU", Cell(Row(sheet, "U3"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal(1, result.Cells);
+    }
+
+    // "On every sheet": the component's name and its datasheet's name and file - and one Ctrl+Z
+    // puts all of it back.
+    [Fact]
+    public void Replace_all_on_every_sheet_is_one_undo_step()
+    {
+        BoardData draft = Board(Component("U1", "CPU 6510"));
+        draft.ComponentLocalFiles.Add(new ComponentLocalFileEntry { BoardLabel = "U1", Name = "6510 datasheet", File = "Component local files/6510.pdf" });
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet files = document.FindSheet(BoardWorkbookSchema.SheetComponentLocalFiles)!;
+
+        BoardTableReplaceResult result = document.ReplaceAll("6510", "6510A", document.Sheets, EveryRow);
+
+        Assert.Equal(new BoardTableReplaceResult(3, 3, 2), result);
+        Assert.Equal("CPU 6510A", Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal("Component local files/6510A.pdf", Cell(files.Rows[0], BoardWorkbookSchema.ColFile).Text);
+        Assert.Equal(1, document.History.UndoCount);
+
+        document.History.Undo();
+
+        Assert.Equal("CPU 6510", Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).Text);
+        Assert.Equal("6510 datasheet", Cell(files.Rows[0], BoardWorkbookSchema.ColName).Text);
+        Assert.Equal("Component local files/6510.pdf", Cell(files.Rows[0], BoardWorkbookSchema.ColFile).Text);
+        Assert.False(document.HasUnsavedChanges);
+    }
+
+    // Nothing found, or only the same text in other capitals: nothing counted, no undo step - and
+    // the history is not left grouping, so the next edit is a step of its own.
+    [Fact]
+    public void Replace_all_finding_nothing_to_change_leaves_no_undo_step()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(null, Board(Component("U1", "CPU")));
+        BoardTableSheet sheet = Components(document);
+
+        Assert.Equal(new BoardTableReplaceResult(0, 0, 0), document.ReplaceAll("VIC", "VIC II", [sheet], EveryRow));
+        Assert.Equal(new BoardTableReplaceResult(0, 0, 0), document.ReplaceAll("cpu", "CPU", [sheet], EveryRow));
+        Assert.Equal(new BoardTableReplaceResult(0, 0, 0), document.ReplaceAll("", "x", [sheet], EveryRow));
+        Assert.Equal(new BoardTableReplaceResult(0, 0, 0), document.ReplaceAll("CPU", "x", [], EveryRow));
+        Assert.False(document.History.CanUndo);
+
+        Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColFriendlyName).Text = "CPU 6510";
+        Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColBoardLabel).Text = "U7";
+        Assert.Equal(2, document.History.UndoCount);
+    }
+
+    // ------------------------------------------------------------------ The table's change as a draft edit (2026-10-25)
+
+    // ###########################################################################################
+    // *** THE DRAFTS TAB'S TABLE HANDS ITS CHANGE TO THE DRAFT HELD IN MEMORY (TakeSessionEdit). ***
+    // The session's content with the table's rows, the calibrations and renames carried along; a
+    // component deleted here takes its highlights. A change that leaves every row as it was is
+    // null - "nothing to do" - so no empty step lands in the draft's history.
+    // ###########################################################################################
+    [Fact]
+    public void The_tables_change_is_the_drafts_content_with_its_rows_and_what_hangs_on_them_carried()
+    {
+        var draft = new BoardData
+        {
+            Components = [Component("U1", "CPU"), Component("U2", "VIC")],
+            ComponentHighlights =
+            [
+                new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" },
+                new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U2", X = "5", Y = "6", Width = "7", Height = "8" },
+            ],
+        };
+        var content = new BoardContent(
+            draft,
+            [new KiCadCalibrationEntry { SchematicName = "Top", CadName = "PCB" }],
+            [new SchematicRenameRecord("Front", "Top", "top.png", "2026-10-01")]);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet sheet = Components(document);
+
+        Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColFriendlyName).Text = "CPU 6510";
+        Assert.True(sheet.DeleteRow(Row(sheet, "U2")));
+
+        BoardContent? edited = document.TakeSessionEdit()(content);
+
+        Assert.NotNull(edited);
+        Assert.Equal(["U1"], edited.Board.Components.Select(component => component.BoardLabel));
+        Assert.Equal("CPU 6510", edited.Board.Components[0].FriendlyName);
+        Assert.Equal("U1", Assert.Single(edited.Board.ComponentHighlights).BoardLabel);
+        Assert.Same(content.Calibrations, edited.Calibrations);
+        Assert.Same(content.Renames, edited.Renames);
+    }
+
+    [Fact]
+    public void A_change_that_leaves_every_row_as_it_was_is_nothing_to_do()
+    {
+        BoardData draft = Board(Component("U1", "CPU"));
+        var content = new BoardContent(draft, [], []);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet sheet = Components(document);
+
+        // An empty row inserted - a save leaves it out - and a value typed back to what it was.
+        sheet.InsertRow(Row(sheet, "U1"));
+        Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColFriendlyName).Text = "CPU 6510";
+        Cell(Row(sheet, "U1"), BoardWorkbookSchema.ColFriendlyName).Text = "CPU";
+
+        Assert.True(document.HasUnsavedChanges);
+        Assert.Null(document.TakeSessionEdit()(content));
+    }
+
+    // ###########################################################################################
+    // *** ONLY THE SHEETS CHANGED SINCE THE LAST HAND-OVER ARE WORKED ON (code review, 2026-10-26). ***
+    // Every settled cell edit built and compared all nine sheets, three times over, on the UI thread -
+    // a lag on the largest boards. A sheet nobody touched since the last hand-over is the draft's
+    // already (the table is built again after any other change), so it is left as the draft has it -
+    // its very rows - and only the changed sheets are built, put in and compared. After a hand-over
+    // the next change starts from nothing changed again.
+    // ###########################################################################################
+    [Fact]
+    public void Only_the_sheets_changed_since_the_last_hand_over_are_put_into_the_draft()
+    {
+        var draft = new BoardData
+        {
+            Components = [Component("U1", "CPU")],
+            Credits = [new CreditEntry { Category = "Data", NameOrHandle = "Anna" }],
+            BoardLinks = [new BoardLinkEntry { Category = "Forum", Name = "Lemon64", Url = "https://lemon64.com" }],
+        };
+        var content = new BoardContent(draft, [], []);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColFriendlyName).Text = "CPU 6510";
+
+        BoardContent edited = document.TakeSessionEdit()(content)!;
+
+        Assert.Equal("CPU 6510", edited.Board.Components.Single().FriendlyName);
+        Assert.Same(draft.Credits, edited.Board.Credits);
+        Assert.Same(draft.BoardLinks, edited.Board.BoardLinks);
+        Assert.Same(draft.Schematics, edited.Board.Schematics);
+
+        // Handed over: the Components sheet is the draft's again - a change on Credits only puts in Credits.
+        document.MarkSaved();
+        BoardTableSheet credits = document.Sheets.Single(sheet => sheet.Name == BoardWorkbookSchema.SheetCredits);
+        Cell(credits.Rows.First(row => !row.IsDeleted), BoardWorkbookSchema.ColNameOrHandle).Text = "Anna K";
+
+        BoardContent again = document.TakeSessionEdit()(edited)!;
+
+        Assert.Equal("Anna K", again.Board.Credits.Single().NameOrHandle);
+        Assert.Same(edited.Board.Components, again.Board.Components);
     }
 }

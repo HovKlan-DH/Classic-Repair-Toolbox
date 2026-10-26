@@ -16,30 +16,34 @@ using System.Windows.Input;
 namespace CRT
 {
     // ###########################################################################################
-    // THE DRAFTS TAB (NewContributeStrategy.md Phase 2, session 2b) - lists every hardware/board
-    // board with a local, unpublished draft, and lets the user discard one. Hidden entirely when
-    // there are none - see Main.ApplyDraftsTabVisibility, the same conditional-tab pattern
-    // WorkbooksTabItem/OscilloscopeTabItem already use.
+    // THE CONTRIBUTE TAB - the class keeps the Drafts tab's name (CRT 4.0 step 2, 2026-10-25 - the
+    // plan: "One tab instead of Contribute and Drafts"). It is about the board shown in CRT's
+    // drop-down lists: its draft's header (or what it is, with none), its parts and components on
+    // the left, and the table view, a component or a start panel on the right (TabDrafts.Workspace.cs). "My
+    // drafts" lists every board with a local, unpublished draft (`Drafts`, which Main also reads for
+    // the drop-downs' chips and the tab's title) and shows the one picked. Always on screen.
     //
-    // Deliberately simple: no per-row detail beyond a row count, no editing. Session 2c
-    // ("Authoring into drafts") is what actually lets a contributor CREATE a draft through the
-    // app; until then this tab can only show and discard whatever a draft.json already contains
-    // (hand-written, or from a future submission "request changes" round-trip in a later phase).
+    // *** TABLE MODE (2026-09-24). *** "Table view" opens the board's draft as editable sheets
+    // (BoardTableEditor) on the right; the header shows the draft the table is open on.
     //
-    // *** TABLE MODE (2026-09-24). *** "Edit in table format" on a row opens that draft's workbook
-    // as editable sheets (BoardTableEditor) directly below it, and hides every other row while it
-    // is open. `Drafts` itself is NOT filtered for that - Main reads its count to decide whether
-    // this tab is shown at all - so the list is hidden and the open draft's row is shown on its
-    // own, in OpenDraftRow (ApplyTableMode; the markup explains why it cannot be the list itself).
-    //
-    // Anything that would lose or bypass the table's unsaved edits asks first
-    // (ConfirmLeavingTableAsync): closing the table, discarding the draft, managing its files,
+    // The table saves itself (CRT 4.0 step 1, 2026-10-25). Anything that acts on the draft's file
+    // first saves what is still waiting, and asks only when that save cannot be made
+    // (ConfirmLeavingTableAsync, SettleTableEditsAsync): closing the table, managing its files,
     // submitting it (a submission must include what is on screen), and quitting the application
-    // (Main.OnWindowClosing).
+    // (Main.OnWindowClosing). Discarding the draft throws the table away with it.
     //
     // FILE MAP:
-    //   TabDrafts.axaml.cs  - the list, its row actions (discard, files, drift, submit), the badge
-    //   TabDrafts.Table.cs  - table mode: opening/closing the table, and the unsaved-edits prompts
+    //   TabDrafts.axaml.cs  - the drafts' rows and their actions (discard, files, drift, submit), the badge
+    //   TabDrafts.Workspace.cs - the board the tab is about: its header, the left column (its parts,
+    //                         its components, "Add component", "Table view") and "My drafts"
+    //   TabDrafts.Table.cs  - table mode: opening/closing the table on its draft's session, saving
+    //                         it (and the component pane) before the draft's file is acted on, and the
+    //                         question when that fails
+    //   TabDrafts.Component.cs - the component pane on the right (ComponentPane): opening, closing,
+    //                         and what follows its changes
+    //   TabDrafts.Header.cs - the draft's header on its row: save state, Undo/Redo, Try again,
+    //                         "Review changes" with "Undo changes to <component>", and the summary
+    //                         the Submit and Discard draft dialogs show
     //   TabDrafts.OutsideChanges.cs - reading the list again when the tab is shown or CRT's window
     //                         comes back to the front, so a draft edited in Excel shows its new numbers
     //   TabDrafts.UpdateRequired.cs - "CRT has to be updated" over the whole tab, when the server
@@ -91,14 +95,15 @@ namespace CRT
         {
             this.InitializeComponent();
 
-            this.DraftsItemsControl.ItemsSource = this.Drafts;
+            this.MyDraftsComboBox.ItemsSource = this.Drafts;
 
             this.TableEditor.Saved += this.OnTableSaved;
 
-            // A reload because Excel (say) changed the draft needs the same refreshes as a save.
+            // The table reading its draft again, because something outside it changed the file,
+            // needs the same refreshes as a save.
             this.TableEditor.ReloadedFromOutside += this.OnTableSaved;
 
-            this.TableEditor.ConfirmRemovingSchematics = this.ConfirmRemovingSchematicsAsync;
+            this.WireComponentPane();
         }
 
         // ###########################################################################################
@@ -107,6 +112,10 @@ namespace CRT
         internal void Initialize(Main mainWindow)
         {
             this.thisMainWindow = mainWindow;
+
+            // Every draft no editor holds, saved when due (TabDrafts.Table.cs) - for the run, from here:
+            // a tab a test builds has no Main and no timer.
+            this.StartDraftSaveTimer();
         }
 
         // ###########################################################################################
@@ -180,44 +189,29 @@ namespace CRT
                         DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
                     ResolveDriftState(entry, status),
                     this.DiscardAsync,
-                    this.ManageFilesAsync,
                     this.ViewDriftAsync,
                     this.SubmitAsync,
                     isTableOpen: this.IsTableOpenFor(entry),
-                    this.ToggleTableAsync,
                     lastSubmission,
                     TabDrafts.IsAlreadySent(entry, status, lastSubmission),
 
                     // What is not a row - files and KiCad calibrations (code review, 2026-10-13): a
                     // draft whose only work is a calibration or a picture is something to send.
-                    otherChanges: DraftStatusReader.CountOtherChangesCached(status, DraftManager.DraftsRoot)));
+                    otherChanges: DraftStatusReader.CountOtherChangesCached(status, DraftManager.DraftsRoot),
+
+                    // The draft's header - its save state and Undo/Redo, kept for the run (TabDrafts.Header.cs).
+                    header: this.HeaderFor(entry),
+                    headerActions: this.HeaderActions));
             }
+
+            this.ForgetHeadersExcept(this.thisDraftedBoards);
 
             TabDrafts.KeepUnchangedRows(this.Drafts, fresh);
 
             this.ApplyTableMode();
 
-            bool hasAnyDrafts = this.Drafts.Count > 0;
-
-            // In table mode the list gives way to the open draft's own row - see ApplyTableMode.
-            this.DraftsScrollViewer.IsVisible = hasAnyDrafts && !this.IsTableOpen;
-            this.EmptyStateText.IsVisible = !hasAnyDrafts;
-
-            // *** THE EMPTY STATE HAS TO EXPLAIN WHY THE TAB IS EVEN HERE. *** With no drafts this
-            // tab is normally hidden, so the one case it appears empty is when unread maintainer
-            // feedback is holding it open (Main.ApplyDraftsTabVisibility). "No local drafts yet"
-            // would then be a true sentence that answers the wrong question, and the contributor
-            // would have no idea a maintainer had written to them.
-            if (!hasAnyDrafts)
-            {
-                int unread = this.UnreadCommentCountOverrideForTests
-                    ?? SubmissionReceiptStore.UnreadCommentCount();
-
-                this.EmptyStateText.Text = unread > 0
-                    ? "A maintainer has replied to something you sent. Open \"My submissions\" above to read it."
-                    : "No local drafts yet. A draft is made the first time you change a board - in the Contribute tab, " +
-                      "in the label editor, by calibrating KiCad traces, or with \"Add a new board\" on the Contribute tab.";
-            }
+            // The header, the left column and "My drafts" follow (TabDrafts.Workspace.cs).
+            this.ShowWorkspace();
         }
 
         // ###########################################################################################
@@ -252,8 +246,11 @@ namespace CRT
             // "sent from this draft" is judged against the draft's own creation time.
             IReadOnlyList<SubmissionReceipt> unfinished = TabDrafts.UnfinishedSubmissionsOf(entry);
 
+            // What goes, listed - the draft's summary in "Review changes"' words, a dozen lines at most.
+            DraftChangeSummary lost = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
+
             var confirmWindow = new DiscardDraftWindow();
-            confirmWindow.Initialize(entry.ToString(), unfinished);
+            confirmWindow.Initialize(entry.ToString(), unfinished, lost.AsLines(max: 12));
 
             bool? confirmed = await confirmWindow.ShowDialog<bool?>(ownerWindow);
             if (confirmed != true)
@@ -296,6 +293,11 @@ namespace CRT
                 this.CloseTableWithoutAsking();
             }
 
+            if (this.IsComponentOpenFor(entry))
+            {
+                this.ForgetComponent();
+            }
+
             this.ShowDiscardFailure(null);
 
             // *** A FAILED DELETE IS REPORTED, AND THE REFRESH BELOW STILL RUNS. *** The usual cause
@@ -333,7 +335,7 @@ namespace CRT
             }
 
             this.RefreshDrafts();
-            this.thisMainWindow?.ApplyDraftsTabVisibility();
+            this.thisMainWindow?.ApplyContributeTabState();
             this.thisMainWindow?.RefreshHardwareAndBoardSelectionsAfterDraftChange();
         }
 
@@ -348,8 +350,7 @@ namespace CRT
             this.DiscardFailedText.Text = boardDisplayName is null
                 ? string.Empty
                 : $"Part of the draft for {boardDisplayName} could not be deleted. This usually means one of its " +
-                  "files is open in another program, such as its workbook in Excel. Close it there and press " +
-                  "Discard again.";
+                  "files is open in another program. Close it there and press Discard draft again.";
         }
 
         // Lets a headless test read the line without reaching into the named control.
@@ -435,7 +436,7 @@ namespace CRT
                 () => Task.Run(() => DraftChangeReport.For(status, draftsRoot, publishedPath)));
 
             var window = new DraftDriftWindow();
-            window.Initialize(entry.ToString(), entry.ExcelDataFile, report, this.SavingBlockedFor);
+            window.Initialize(entry.ToString(), entry.ExcelDataFile, report);
             await window.ShowDialog(ownerWindow);
 
             // Brought up to date: the board on screen is this draft's, read again.
@@ -463,8 +464,9 @@ namespace CRT
                 return;
             }
 
-            // Importing an image or KiCad data writes the draft's workbook, which the open table
-            // could then never save over - so its edits are settled first.
+            // The table's changes are saved first: every change the window makes is saved with what
+            // the draft holds, so one the table could not save would refuse each of them too - asked
+            // about here, once, rather than behind every click in the window.
             if (!await this.SettleTableEditsAsync(entry))
             {
                 return;
@@ -497,9 +499,10 @@ namespace CRT
         // After "Schematic images" or "KiCad data" closes - and ONLY when it changed the draft
         // (owner report, 2026-10-10: closing it refreshed the detached schematic thumbnails although
         // nothing had changed; the board on screen was reloaded every time). Then the row's count
-        // follows, the board on screen is read again if it is this one - a new or moved image is a
-        // new thumbnail list, a picked CAD name or new KiCad files new traces - and an open table
-        // catches up with the rows the window wrote.
+        // follows, and the board on screen is read again if it is this one - a new or moved image is
+        // a new thumbnail list, a picked CAD name or new KiCad files new traces. An open table needs
+        // nothing: it showed each change as the window made it (the draft held in memory, CRT 4.0
+        // step 1).
         // ###########################################################################################
         internal void CatchUpAfterBoardFiles(HardwareBoardEntry entry, bool changedTheDraft)
         {
@@ -518,18 +521,13 @@ namespace CRT
             {
                 this.thisMainWindow?.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
             }
-
-            if (this.IsTableOpenFor(entry))
-            {
-                this.TableEditor.CheckDraftFile();
-            }
         }
 
         // Stands in for Main's reload of the board on screen in a test, which has no Main.
         internal Action<string>? ReloadBoardOverrideForTests { get; set; }
 
         // ###########################################################################################
-        // Sends one drafted board for review (Phase 4) - the point of the whole Drafts tab.
+        // Sends one drafted board for review (Phase 4) - the point of the whole Contribute tab.
         //
         // WHAT IS SUBMITTED IS THE DRAFT WORKBOOK AS IT IS ON DISK - the board's complete intended
         // state (BoardToSendAsync). The server compares it with the board as published NOW, so a
@@ -680,6 +678,9 @@ namespace CRT
                 CreatedUtc = DateTimeOffset.UtcNow
             };
 
+            // What the draft changes, in words - "Review changes"' summary, shown before anything is sent.
+            DraftChangeSummary changes = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
+
             var window = this.SubmitWindowFactoryForTests?.Invoke() ?? new SubmitDraftWindow();
 
             window.Initialize(
@@ -701,7 +702,8 @@ namespace CRT
 
                 // A signed-in maintainer sends with the account (2026-10-01) - see UseMaintainerAccount.
                 this.thisMaintainerAccount,
-                draftFingerprint);
+                draftFingerprint,
+                changes);
 
             await window.ShowDialog(ownerWindow);
 
@@ -775,7 +777,7 @@ namespace CRT
         private static int CountErrors(HardwareBoardEntry entry, BoardData board) =>
             BoardDataChecks.Check(
                     BoardCheckRows.From(board),
-                    new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                    new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile), entry.ExcelDataFile),
                     BoardCheckScope.Everything)
                 .Count(problem => problem.Level == BoardProblemLevel.Error);
 
@@ -857,7 +859,7 @@ namespace CRT
                 //
                 // *** AND THROUGH RETIREMENT FIRST (code review, 2026-09-25). *** The window's Refresh
                 // can move a submission to "published", and nothing retired its draft until the next
-                // launch. RetirePublishedDraftsAsync ends in ApplyDraftsTabVisibility, which calls
+                // launch. RetirePublishedDraftsAsync ends in ApplyContributeTabState, which calls
                 // RefreshDrafts (and so the badge) on its way through.
                 if (this.thisMainWindow is not null)
                 {
@@ -925,7 +927,8 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // One row of the Drafts tab's list - a board with a local draft, plus how many rows it has
+    // One draft of the Contribute tab - its header, and an entry of "My drafts" - a board with a
+    // local draft, plus how many rows it has
     // changed in total (across every BoardData section, not just Components) so a user can tell a
     // typo fix from a whole new board's worth of edits at a glance.
     // ###########################################################################################
@@ -935,6 +938,9 @@ namespace CRT
 
         // The board this row acts on - its buttons are bound to it (see ShowsTheSameAs).
         private readonly HardwareBoardEntry thisEntry;
+
+        // The same board, for "My drafts", which shows the board picked (TabDrafts.Workspace.cs).
+        internal HardwareBoardEntry Entry => this.thisEntry;
 
         // ###########################################################################################
         // Whether this row draws exactly what `other` would, for the same board - TabDrafts
@@ -970,21 +976,27 @@ namespace CRT
         // refresh has rebuilt every item.
         public string ExcelDataFile { get; }
 
-        // "Edit in table format" / "Close table" (2026-09-24). A row is rebuilt rather than
-        // changed when the table opens or closes, the same way every other value on it is.
+        // Whether the table view is open on this draft - its save state is then the table's to say.
+        // A row is rebuilt rather than changed when the table opens or closes, the same way every
+        // other value on it is. The table, the pictures and the KiCad data are opened from the left
+        // of the Contribute tab since CRT 4.0 step 2, not from the row.
         public bool IsTableOpen { get; }
-        public string TableButtonText { get; }
-        public string TableButtonTooltip { get; }
-        public ICommand EditTableCommand { get; }
         public string RowSummary { get; }
         public ICommand DiscardCommand { get; }
-
-        // One per button - "Schematic images" and "KiCad data" each open BoardFilesWindow on its
-        // own section (owner request, 2026-09-24).
-        public ICommand ManageSchematicImagesCommand { get; }
-        public ICommand ManageKiCadDataCommand { get; }
         public ICommand ViewDriftCommand { get; }
         public ICommand SubmitCommand { get; }
+
+        // ###########################################################################################
+        // THE DRAFT'S HEADER (CRT 4.0 step 1's last slice, 2026-10-25): its save state, Undo and Redo,
+        // Try again after a save that could not be made, and "Review changes". The live part is
+        // `Header`, one per draft for the run (TabDrafts.Header.cs) - compared by reference, so a row
+        // rebuilt while the draft saves is still the same row.
+        // ###########################################################################################
+        public DraftHeaderState Header { get; }
+        public ICommand UndoCommand { get; }
+        public ICommand RedoCommand { get; }
+        public ICommand TryAgainCommand { get; }
+        public ICommand ReviewChangesCommand { get; }
 
         // Whether this draft can be sent at all, and why not when it cannot. Disabled rather than
         // hidden - see the markup's own comment.
@@ -1017,16 +1029,24 @@ namespace CRT
             BoardProblemCounts problems,
             DraftDriftState driftState,
             Func<HardwareBoardEntry, Task> discard,
-            Func<HardwareBoardEntry, BoardFilesSection, Task> manageFiles,
             Func<HardwareBoardEntry, Task> viewDrift,
             Func<HardwareBoardEntry, Task> submit,
             bool isTableOpen,
-            Func<HardwareBoardEntry, Task> toggleTable,
             SubmissionReceipt? lastSubmission,
             bool alreadySent = false,
-            DraftOtherChanges otherChanges = default)
+            DraftOtherChanges otherChanges = default,
+            DraftHeaderState? header = null,
+            DraftRowHeaderActions? headerActions = null)
         {
             this.thisEntry = entry;
+
+            this.Header = header ?? new DraftHeaderState();
+
+            DraftRowHeaderActions actions = headerActions ?? DraftRowHeaderActions.None;
+            this.UndoCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => actions.Undo(entry)));
+            this.RedoCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => actions.Redo(entry)));
+            this.TryAgainCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => actions.TryAgain(entry)));
+            this.ReviewChangesCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => actions.ReviewChanges(entry)));
             this.DisplayName = entry.ToString();
             this.ExcelDataFile = entry.ExcelDataFile;
 
@@ -1056,12 +1076,6 @@ namespace CRT
             this.WarningsText = problems.Warnings == 1 ? "1 warning" : $"{problems.Warnings} warnings";
 
             this.IsTableOpen = isTableOpen;
-            this.TableButtonText = isTableOpen ? "Close table" : "Edit in table format";
-            this.TableButtonTooltip = isTableOpen
-                ? "Close the table. You are asked first if it has edits that are not saved."
-                : "Edit this draft's data as sheets and rows, like its Excel file - with every " +
-                  "difference from the published data coloured in";
-            this.EditTableCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => toggleTable(entry)));
 
             int rowCount = changeCount;
 
@@ -1134,12 +1148,19 @@ namespace CRT
                 : this.CanSubmit ? string.Empty : this.SubmitTooltip;
 
             this.DiscardCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => discard(entry)));
-            this.ManageSchematicImagesCommand = new ActionCommand(() =>
-                Dispatcher.UIThread.InvokeAsync(() => manageFiles(entry, BoardFilesSection.SchematicImages)));
-            this.ManageKiCadDataCommand = new ActionCommand(() =>
-                Dispatcher.UIThread.InvokeAsync(() => manageFiles(entry, BoardFilesSection.KiCadData)));
             this.ViewDriftCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => viewDrift(entry)));
             this.SubmitCommand = new ActionCommand(() => Dispatcher.UIThread.InvokeAsync(() => submit(entry)));
         }
+    }
+
+    // What the header's buttons do for a draft - TabDrafts.Header.cs. None does nothing.
+    public sealed record DraftRowHeaderActions(
+        Func<HardwareBoardEntry, Task> Undo,
+        Func<HardwareBoardEntry, Task> Redo,
+        Func<HardwareBoardEntry, Task> TryAgain,
+        Func<HardwareBoardEntry, Task> ReviewChanges)
+    {
+        public static DraftRowHeaderActions None { get; } =
+            new(_ => Task.CompletedTask, _ => Task.CompletedTask, _ => Task.CompletedTask, _ => Task.CompletedTask);
     }
 }

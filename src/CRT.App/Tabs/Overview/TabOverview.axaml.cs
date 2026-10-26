@@ -346,20 +346,23 @@ namespace CRT
                 return (link.Target, null);
             }
 
-            string draftBoardFolder = this._mainWindow?.GetCurrentBoardEntry() is { } entry
+            HardwareBoardEntry? entry = this._mainWindow?.GetCurrentBoardEntry();
+            string draftBoardFolder = entry is not null
                 ? DraftManager.GetViewedBoardFolder(entry.ExcelDataFile)
                 : string.Empty;
 
-            return TabOverview.ResolveLocalFileTarget(DataManager.DataRoot, draftBoardFolder, link.Target);
+            return TabOverview.ResolveLocalFileTarget(DataManager.DataRoot, draftBoardFolder, link.Target, entry?.ExcelDataFile);
         }
 
         // Pure apart from File.Exists, so the root pairing is testable without a window.
+        // `boardIdentity`: the board whose published file lists the names a row cites.
         internal static (string Target, string? Root) ResolveLocalFileTarget(
             string dataRoot,
             string draftBoardFolder,
-            string storedFile)
+            string storedFile,
+            string? boardIdentity = null)
         {
-            DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, storedFile);
+            DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, storedFile, boardIdentity);
 
             return resolved is not null
                 ? (resolved.FullPath, resolved.Root)

@@ -285,7 +285,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The board's published "KiCad data" folder: beside its published workbook, under the data
-        // root - where Main.GetCurrentBoardKiCadRawPaths reads it. Empty when there is no data root:
+        // root - where Main.KiCadRawPathsFor reads it. Empty when there is no data root:
         // a relative path would be read against whatever folder CRT happened to start in.
         // ###########################################################################################
         public static string PublishedKiCadFolderOf(string dataRoot, string excelDataFile)
@@ -338,21 +338,25 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The published workbook's absolute path for a board.
+        // The published board's absolute path - in CRT 4.0 its board file, "board.json" in the
+        // board's folder of the data tree, whatever file name the identity carries
+        // (DataTreeLayout.BoardFileFor; 2026-10-24).
         //
         // Splits on '/' because ExcelDataFile uses the sync manifest's separator rather than the
         // platform's - the same conversion every other consumer of this identity makes.
         // ###########################################################################################
         public static string PublishedPathOf(string dataRoot, string excelDataFile)
         {
-            if (string.IsNullOrWhiteSpace(dataRoot) || string.IsNullOrWhiteSpace(excelDataFile))
+            string boardFile = DataTreeLayout.BoardFileFor(excelDataFile);
+
+            if (string.IsNullOrWhiteSpace(dataRoot) || boardFile.Length == 0)
             {
                 return string.Empty;
             }
 
             return Path.Combine(
                 dataRoot,
-                excelDataFile.Replace('/', Path.DirectorySeparatorChar));
+                boardFile.Replace('/', Path.DirectorySeparatorChar));
         }
     }
 }

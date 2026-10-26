@@ -47,15 +47,18 @@ namespace Handlers.DataHandling
         };
 
         // ###########################################################################################
-        // The ExcelDataFile identity for a new board:
-        // "<Manufacturer>/<Hardware>/<Board>/Data <Hardware> <Board>.xlsx".
+        // The ExcelDataFile identity for a new board: "<Manufacturer>/<Hardware>/<Board>/board.json"
+        // - in CRT 4.0 (2026-10-24) the identity every board has, its board file in the tree
+        // (DataTreeLayout.BoardFilePath), so a new board's draft and the board it becomes once
+        // published are one identity. (CRT 3.x named a workbook here, "Data <Hardware> <Board>.xlsx";
+        // drafts made then keep theirs, which works the same - only its folders are read.)
         //
         // Always "/" as the separator, never Path.DirectorySeparatorChar - ExcelDataFile follows the
         // sync manifest's own convention (see DataManager), and a "\" here would not match the split
         // in DraftManager.GetBoardFolder or HardwareBoardEntry.ShortHardwareBoardLabel on Windows.
         //
         // Returns an empty string when any segment is blank, so a caller that skipped validation
-        // cannot silently produce a half-formed key like "Commodore//250407/Data  250407.xlsx".
+        // cannot silently produce a half-formed key like "Commodore//250407/board.json".
         // ###########################################################################################
         public static string BuildExcelDataFile(string manufacturer, string hardware, string board)
         {
@@ -68,7 +71,7 @@ namespace Handlers.DataHandling
                 return string.Empty;
             }
 
-            return $"{cleanManufacturer}/{cleanHardware}/{cleanBoard}/Data {cleanHardware} {cleanBoard}.xlsx";
+            return DataTreeLayout.BoardFilePath($"{cleanManufacturer}/{cleanHardware}/{cleanBoard}");
         }
 
         // ###########################################################################################

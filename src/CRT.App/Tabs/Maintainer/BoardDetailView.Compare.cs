@@ -215,12 +215,12 @@ namespace CRT
         private static PublishedTableBaseline? StableFilesBaseline(BoardTableAnswer? stable) =>
             stable is null
                 ? null
-                : new PublishedTableBaseline(stable.ProductionDataUrl, BoardSections.StableTreeName, BoardSections.StableSourceSide, BoardSections.BetaSourceSide);
+                : new PublishedTableBaseline(stable.ProductionDataUrl, BoardSections.StableTreeName, BoardSections.StableSourceSide, BoardSections.BetaSourceSide, stable.FilePlaces);
 
         private static PublishedTableBaseline? BetaFilesBaseline(BoardTableAnswer? beta) =>
             beta is null
                 ? null
-                : new PublishedTableBaseline(beta.BetaDataUrl, BoardSections.BetaTreeName, BoardSections.BetaSourceSide, BoardSections.StableSourceSide);
+                : new PublishedTableBaseline(beta.BetaDataUrl, BoardSections.BetaTreeName, BoardSections.BetaSourceSide, BoardSections.StableSourceSide, beta.FilePlaces);
 
         // What each table was built against, and the box - for tests.
         internal BoardTableAnswer? TableComparedWithForTests => this.thisTableComparedWith;

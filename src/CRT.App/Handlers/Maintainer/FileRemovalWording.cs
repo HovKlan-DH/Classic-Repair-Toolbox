@@ -19,10 +19,30 @@ namespace Handlers.MaintainerHandling
     public static class FileRemovalWording
     {
         // ###########################################################################################
-        // The line above the list. `target` names the data: "the BETA data", "production". Null
-        // when the server said nothing (an older server, which removed nothing).
+        // *** A REPLACED FILE'S EARLIER BYTES ARE NOT "A FILE NOTHING USES" (CRT 4.0 tree,
+        // 2026-10-25). *** A board lists its files by name, each one's bytes stored under their
+        // checksum, so a file replaced under its own name leaves its earlier bytes for the publish to
+        // remove - under that same name. Said as a removal, "manual.pdf - nothing uses it any more"
+        // read as the manual going when it is only replaced, and the note beside the button pointed
+        // at a removed row the tree never shows (the tree shows it changed). `kept` is the names the
+        // board lists afterwards; a removal under one of them is part of replacing it, and is left
+        // out here. The list sent back with the approval is the whole one (preview.Files).
         // ###########################################################################################
-        public static string? Headline(FileRemovalPreview? preview, string target)
+        public static IReadOnlyList<string> Unused(FileRemovalPreview? preview, IEnumerable<string>? kept = null)
+        {
+            if (preview is null)
+                return [];
+
+            var stays = new HashSet<string>(kept ?? [], StringComparer.OrdinalIgnoreCase);
+
+            return preview.FileNames().Where(name => !stays.Contains(name)).ToList();
+        }
+
+        // ###########################################################################################
+        // The line above the list. `target` names the data: "the BETA data", "production". Null
+        // when the server said nothing (an older server, which removed nothing). `kept` - see Unused.
+        // ###########################################################################################
+        public static string? Headline(FileRemovalPreview? preview, string target, IEnumerable<string>? kept = null)
         {
             if (preview is null)
                 return null;
@@ -30,11 +50,13 @@ namespace Handlers.MaintainerHandling
             if (preview.IsBlocked)
                 return preview.BlockedBecause;
 
-            return preview.Files.Count switch
+            int count = FileRemovalWording.Unused(preview, kept).Count;
+
+            return count switch
             {
                 0 => $"No files are removed from {target}.",
                 1 => $"Publishing REMOVES 1 file from {target} - nothing uses it any more:",
-                _ => $"Publishing REMOVES {preview.Files.Count.ToString("N0", CultureInfo.InvariantCulture)} files from {target} - nothing uses them any more:"
+                _ => $"Publishing REMOVES {count.ToString("N0", CultureInfo.InvariantCulture)} files from {target} - nothing uses them any more:"
             };
         }
 
@@ -42,11 +64,11 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // The line beside the Approve / Publish button, so the removal is in front of the maintainer
-        // at the moment they press it. Null when nothing is removed.
+        // at the moment they press it. Null when nothing is removed. `kept` - see Unused.
         // ###########################################################################################
-        public static string? ApproveNote(FileRemovalPreview? preview)
+        public static string? ApproveNote(FileRemovalPreview? preview, IEnumerable<string>? kept = null)
         {
-            int count = preview?.Files.Count ?? 0;
+            int count = FileRemovalWording.Unused(preview, kept).Count;
 
             return count switch
             {

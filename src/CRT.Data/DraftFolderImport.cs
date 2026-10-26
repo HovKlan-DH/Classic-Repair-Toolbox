@@ -7,8 +7,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // A board the application already knows about, as the import needs to see it: its identity,
-    // and whether the MAIN workbook lists it (published) or only a local source does - a legacy
-    // "_UserContribution" workbook, say, whose board lives in Data/ but has never been published.
+    // and whether the main file lists it (published) or only a local source does.
     // ###########################################################################################
     public sealed record KnownDraftBoard(string ExcelDataFile, bool IsPublished);
 
@@ -16,7 +15,7 @@ namespace Handlers.DataHandling
     {
         NotImported,
 
-        // A copy of a board the main workbook lists - an ordinary draft over the published board.
+        // A copy of a board the main file lists - an ordinary draft over the published board.
         DraftOfPublishedBoard,
 
         // Anything else - a board with nothing published, exactly as "Add a new board" makes one.
@@ -25,8 +24,8 @@ namespace Handlers.DataHandling
 
     // ###########################################################################################
     // What the import did with one board folder, so the caller can log it. Reason says why a
-    // folder was NOT imported; RenamedFrom names the workbook's original file when it had to be
-    // renamed to the name the known board uses.
+    // folder was NOT imported; ConvertedFromWorkbook names the Excel workbook an Excel-era copy
+    // was converted from.
     // ###########################################################################################
     public sealed class DraftFolderImportOutcome
     {
@@ -38,7 +37,7 @@ namespace Handlers.DataHandling
 
         public bool Imported => this.Kind != DraftFolderImportKind.NotImported;
 
-        public string RenamedFrom { get; init; } = string.Empty;
+        public string ConvertedFromWorkbook { get; init; } = string.Empty;
 
         public string Reason { get; init; } = string.Empty;
     }
@@ -58,36 +57,46 @@ namespace Handlers.DataHandling
     // there is no second notion of "draft" to keep in step.
     //
     // WHAT IS A BOARD FOLDER: exactly three levels down (Manufacturer/Hardware/Board, the layout
-    // Data/ uses and DraftManager.EnumerateDraftOnlyBoards walks), holding an .xlsx directly. The
-    // two SHARED folders are skipped by name at either upper level - a "Shared files/Board local
-    // files" folder can hold an .xlsx datasheet, and taking that for a board would put a board
-    // called "Shared files" in the lists.
+    // the data tree uses and DraftManager.EnumerateDraftOnlyBoards walks), holding a board file
+    // (board.json) or a board workbook (.xlsx) directly. The two SHARED folders are skipped by name
+    // at either upper level - a "Shared files/Board local files" folder can hold an .xlsx
+    // datasheet, and taking that for a board would put a board called "Shared files" in the lists.
+    //
+    // *** IN CRT 4.0 THE FOLDER IS TAKEN IN AS A 4.0 DRAFT (2026-10-24). *** Two shapes arrive:
+    //   - a 4.0 board folder (a board.json, copied from another machine's drafts, say): it gets its
+    //     marker and nothing else changes;
+    //   - an Excel-era board folder (ONE workbook, under whatever name - a copy from the old data
+    //     folder or from a 3.x draft): it gets an Excel-era marker and is then converted in place
+    //     like every 3.x draft at the first 4.0 launch (DraftConversion) - its files named as the
+    //     published board names them, its Excel files kept in ".crt-pre-4.0". A folder the
+    //     conversion refuses is left as it was, marker and all taken away again, and says why.
     //
     // WHICH KIND OF DRAFT, decided by the known boards and nothing else:
-    //   - the main workbook lists this folder: a draft of that PUBLISHED board. Its base revision is
+    //   - the main file lists this folder: a draft of that PUBLISHED board. Its base revision is
     //     the one written inside the copy itself, which is the honest answer to "what were these
     //     edits made on top of" - the published board may have moved on since the copy was taken,
     //     and the drift warning then says so;
     //   - anything else: a NEW board, registered under its FOLDER names. Those have to be the
     //     folder names and never a display name from a workbook: a submission sends the
     //     registration's names as the board's parts and the server rebuilds the board id from
-    //     them (the identity.board_id_mismatch of 2026-09-23). A folder a legacy
-    //     "_UserContribution" workbook lists is one of these - it has never been published.
-    //
-    // A KNOWN board's workbook must carry the name that board uses, because every draft lookup
-    // builds the workbook path from it. A folder holding ONE workbook under another name (a copy
-    // from an older data generation, say) has it renamed, with its JSON sidecar; with several and
-    // none of them right, nothing is guessed.
+    //     them (the identity.board_id_mismatch of 2026-09-23).
     //
     // Only UNMARKED folders are touched, so running this on every load is harmless: a folder is
     // imported once and is an ordinary draft from then on. Nothing is ever deleted or overwritten.
     // ###########################################################################################
     public static class DraftFolderImport
     {
+        // ###########################################################################################
+        // `oldDataRoot`: the Excel data folder an Excel-era copy's rows may cite shared files from
+        // (CRT 3.x's, when it is still there); `treeContentRoot`: the 4.0 tree, whose published
+        // board names the files. Either may be empty - the files are then named afresh.
+        // ###########################################################################################
         public static IReadOnlyList<DraftFolderImportOutcome> ImportUnmarkedFolders(
             string draftsRoot,
             IEnumerable<KnownDraftBoard>? knownBoards,
-            DateTimeOffset nowUtc)
+            DateTimeOffset nowUtc,
+            string oldDataRoot = "",
+            string treeContentRoot = "")
         {
             var outcomes = new List<DraftFolderImportOutcome>();
 
@@ -96,7 +105,9 @@ namespace Handlers.DataHandling
                 return outcomes;
             }
 
-            Dictionary<string, KnownDraftBoard> knownById = DraftFolderImport.IndexByBoardId(knownBoards);
+            List<KnownDraftBoard> known = (knownBoards ?? []).ToList();
+            Dictionary<string, KnownDraftBoard> knownById = DraftFolderImport.IndexByBoardId(known);
+            IReadOnlyCollection<string> boardIds = knownById.Where(pair => pair.Value.IsPublished).Select(pair => pair.Key).ToList();
 
             foreach (string boardFolder in DraftFolderImport.EnumerateBoardFolders(draftsRoot))
             {
@@ -106,7 +117,7 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                outcomes.Add(DraftFolderImport.ImportOne(boardFolder, knownById, nowUtc));
+                outcomes.Add(DraftFolderImport.ImportOne(boardFolder, knownById, boardIds, nowUtc, oldDataRoot, treeContentRoot));
             }
 
             return outcomes;
@@ -115,7 +126,10 @@ namespace Handlers.DataHandling
         private static DraftFolderImportOutcome ImportOne(
             string boardFolder,
             Dictionary<string, KnownDraftBoard> knownById,
-            DateTimeOffset nowUtc)
+            IReadOnlyCollection<string> boardIds,
+            DateTimeOffset nowUtc,
+            string oldDataRoot,
+            string treeContentRoot)
         {
             string board = Path.GetFileName(boardFolder);
             string hardwareFolder = Path.GetDirectoryName(boardFolder) ?? string.Empty;
@@ -123,13 +137,17 @@ namespace Handlers.DataHandling
             string manufacturer = Path.GetFileName(Path.GetDirectoryName(hardwareFolder) ?? string.Empty);
 
             string boardId = $"{manufacturer}/{hardware}/{board}";
+            string markerPath = Path.Combine(boardFolder, DraftFolderLayout.DraftMarkerFileName);
 
             try
             {
-                List<string> workbooks = DraftFolderImport.BoardWorkbooksIn(boardFolder);
-                if (workbooks.Count == 0)
+                string boardFile = Path.Combine(boardFolder, DataTreeLayout.BoardFileName);
+                bool isBoardFile = File.Exists(boardFile);
+                List<string> workbooks = isBoardFile ? [] : DraftFolderImport.BoardWorkbooksIn(boardFolder);
+
+                if (!isBoardFile && workbooks.Count == 0)
                 {
-                    return DraftFolderImport.NotImported(boardFolder, "it holds no board workbook (.xlsx)");
+                    return DraftFolderImport.NotImported(boardFolder, "it holds no board file (board.json) and no board workbook (.xlsx)");
                 }
 
                 knownById.TryGetValue(boardId, out KnownDraftBoard? known);
@@ -154,90 +172,110 @@ namespace Handlers.DataHandling
                     return DraftFolderImport.NotImported(boardFolder, identityReason);
                 }
 
-                string? wantedName = known is not null
-                    ? known.ExcelDataFile.Split('/', StringSplitOptions.RemoveEmptyEntries)[^1]
-                    : workbooks.Count == 1 ? Path.GetFileName(workbooks[0]) : null;
-
-                if (wantedName is null)
+                if (workbooks.Count > 1)
                 {
                     return DraftFolderImport.NotImported(
                         boardFolder,
                         $"it holds {workbooks.Count} workbooks and it cannot tell which is the board - keep only the board's own");
                 }
 
-                string workbookPath = Path.Combine(boardFolder, wantedName);
-                string renamedFrom = string.Empty;
-
-                if (!workbooks.Any(path => string.Equals(Path.GetFileName(path), wantedName, StringComparison.Ordinal)))
-                {
-                    if (workbooks.Count != 1)
-                    {
-                        return DraftFolderImport.NotImported(
-                            boardFolder,
-                            $"none of its {workbooks.Count} workbooks is named [{wantedName}], the name this board uses");
-                    }
-
-                    renamedFrom = Path.GetFileName(workbooks[0]);
-                    DraftFolderImport.RenameWorkbook(workbooks[0], workbookPath);
-                }
-
-                string excelDataFile = known?.ExcelDataFile ?? $"{boardId}/{wantedName}";
+                bool isPublished = known?.IsPublished == true;
+                string excelDataFile = known?.ExcelDataFile ?? DataTreeLayout.BoardFilePath(boardId);
                 string createdUtc = nowUtc.ToUniversalTime().ToString("o");
 
-                bool isPublished = known?.IsPublished == true;
+                // An Excel-era copy is marked under its workbook's own path - the identity its rows'
+                // paths are relative to - and converted from there.
+                string markedAs = isBoardFile ? excelDataFile : $"{boardId}/{Path.GetFileName(workbooks[0])}";
+                string baseRevision = !isPublished
+                    ? string.Empty
+                    : isBoardFile
+                        ? BoardDataReader.ReadRevisionDateOnly(boardFile).Trim()
+                        : BoardDataReader.ReadRevisionDateOnly(workbooks[0]).Trim();
 
                 DraftMarkerStore.Save(
-                    Path.Combine(boardFolder, DraftFolderLayout.DraftMarkerFileName),
-                    isPublished
-                        ? new DraftMarker
-                        {
-                            BoardKey = excelDataFile,
-                            BaseRevision = BoardDataReader.ReadRevisionDateOnly(workbookPath).Trim(),
-                            CreatedUtc = createdUtc,
-                        }
-                        : new DraftMarker
-                        {
-                            BoardKey = excelDataFile,
-                            BaseRevision = string.Empty,
-                            CreatedUtc = createdUtc,
-                            NewBoard = new NewBoardRegistration
+                    markerPath,
+                    new DraftMarker
+                    {
+                        BoardKey = markedAs,
+                        BaseRevision = baseRevision,
+                        CreatedUtc = createdUtc,
+                        NewBoard = isPublished
+                            ? null
+                            : new NewBoardRegistration
                             {
                                 HardwareName = hardware,
                                 BoardName = board,
                                 ExcelDataFile = excelDataFile,
                                 CreatedUtc = createdUtc,
                             },
-                        });
+                    });
+
+                if (!isBoardFile)
+                {
+                    DraftConversionResult converted = DraftConversion.Convert(boardFolder, boardId, oldDataRoot, treeContentRoot, boardIds);
+
+                    if (!converted.Converted)
+                    {
+                        File.Delete(markerPath);
+                        return DraftFolderImport.NotImported(boardFolder, converted.Failure ?? "it could not be converted into a CRT 4.0 draft");
+                    }
+
+                    foreach (string note in converted.Notes)
+                    {
+                        CrtLog.Info($"Taking in [{boardFolder}] as a draft - {note}");
+                    }
+                }
 
                 return new DraftFolderImportOutcome
                 {
                     BoardFolder = boardFolder,
                     ExcelDataFile = excelDataFile,
                     Kind = isPublished ? DraftFolderImportKind.DraftOfPublishedBoard : DraftFolderImportKind.NewBoard,
-                    RenamedFrom = renamedFrom,
+                    ConvertedFromWorkbook = isBoardFile ? string.Empty : Path.GetFileName(workbooks[0]),
                 };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Most likely the workbook is open in Excel and could not be renamed. Nothing was
-                // written, so the next load simply tries again.
+                // Most likely a file of it is open in another program. Nothing stays written, so
+                // the next load simply tries again.
+                DraftFolderImport.TryDelete(markerPath);
                 return DraftFolderImport.NotImported(boardFolder, ex.Message);
             }
             catch (Exception ex)
             {
                 // ###########################################################################################
                 // *** ANYTHING ELSE IS THIS FOLDER'S, NOT THE LOAD'S (code review, 2026-09-27). *** The
-                // import runs inside DataManager's loading of the main workbook, before the board list
+                // import runs inside DataManager's loading of the main file, before the board list
                 // is set - so an exception escaping here left the application with NO boards at all,
                 // for an optional convenience. It costs this one folder, and says why.
                 // ###########################################################################################
                 CrtLog.Warning($"Taking in [{boardFolder}] as a draft failed - [{ex}]");
+                DraftFolderImport.TryDelete(markerPath);
                 return DraftFolderImport.NotImported(boardFolder, ex.Message);
             }
         }
 
-        // Every Manufacturer/Hardware/Board folder, skipping the two shared folders by name.
-        private static IEnumerable<string> EnumerateBoardFolders(string draftsRoot)
+        private static void TryDelete(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Warning($"Could not remove [{path}] after a failed import - [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // Every Manufacturer/Hardware/Board folder, skipping the two shared folders by name - and
+        // CRT's own ".crt-" folders at every level (a board being carried in by LocalDataMigration
+        // is copied through one, and must not be taken in half-copied).
+        // ###########################################################################################
+        internal static IEnumerable<string> EnumerateBoardFolders(string draftsRoot)
         {
             foreach (string manufacturerFolder in DraftFolderImport.SafeDirectories(draftsRoot))
             {
@@ -266,7 +304,9 @@ namespace Handlers.DataHandling
         {
             try
             {
-                return Directory.GetDirectories(folder);
+                return Directory.GetDirectories(folder)
+                    .Where(path => !Path.GetFileName(path).StartsWith(DraftFolderLayout.BookkeepingPrefix, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -314,35 +354,6 @@ namespace Handlers.DataHandling
 
             reason = string.Empty;
             return true;
-        }
-
-        // ###########################################################################################
-        // Renames the workbook and its JSON sidecar together. The sidecar goes FIRST and is put
-        // back if the workbook then cannot move (open in Excel), so a failure never leaves the
-        // highlights beside a workbook name that does not exist.
-        // ###########################################################################################
-        private static void RenameWorkbook(string from, string to)
-        {
-            string fromSidecar = BoardComponentHighlightStorage.GetJsonPath(from);
-            string toSidecar = BoardComponentHighlightStorage.GetJsonPath(to);
-
-            bool sidecarMoved = false;
-
-            if (File.Exists(fromSidecar) && !File.Exists(toSidecar))
-            {
-                File.Move(fromSidecar, toSidecar);
-                sidecarMoved = true;
-            }
-
-            try
-            {
-                File.Move(from, to);
-            }
-            catch (Exception) when (sidecarMoved)
-            {
-                File.Move(toSidecar, fromSidecar);
-                throw;
-            }
         }
 
         // One entry per board id, and a PUBLISHED listing wins over a local one for the same

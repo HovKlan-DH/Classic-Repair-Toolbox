@@ -10,23 +10,35 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The component editor's "File location" drop-down on a board that exists ONLY as a draft.
+// The component editor's file rows on a CRT 4.0 board: what its "File location" drop-down offers,
+// what "Save to draft" refuses, where a picked file is filed, and how an existing file is shown.
 //
-// *** REPORTED 2026-09-24. *** A board created with "Add a new board" gets its own empty
-// "Scope baseline" folder (DraftSeeder.CreateNewBoard), but the editor's drop-down was built from
-// the data root alone - so that folder was never offered, and a baseline image could not be filed
-// where published boards keep theirs.
+// *** IN 4.0 A ROW NAMES A FILE OF ITS BOARD (2026-10-25). *** "Component images/U6.png" is the
+// board's name for the file; its bytes lie in a store laid out by checksum. The editor used to work
+// in the Excel tree's terms - the drop-down listed the data and drafts trees' folders, a file picked
+// from the data folder took that folder as its location, and an existing image was looked for as a
+// path under the data root - and in a 4.0 tree each of those lost a file or showed nothing.
 //
-// End to end on purpose: the board is created by the real seeder, and the list is read off a real
-// file row the window built, which is exactly what the drop-down's ItemsSource binds to. If the
-// seeder and the window ever disagree about where that folder is, this fails.
+// Read off the real rows the window builds, which is what the drop-down's ItemsSource binds to.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class ComponentContributionFileLocationTests : IDisposable
 {
-    private const string Manufacturer = "Test Manu4";
-    private const string Hardware = "HW4";
-    private const string Board = "Board4";
+    private const string BoardIdentity = "Commodore/C64/250407/board.json";
+
+    // A minimal valid 1x1 PNG (the same bytes SchematicThumbnailSetTests uses).
+    private static readonly byte[] OnePixelPng =
+    {
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41,
+        0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82
+    };
 
     private readonly TempWorkspace thisWorkspace = new();
 
@@ -48,83 +60,21 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
         this.thisWorkspace.Dispose();
     }
 
+    // ###########################################################################################
+    // *** THE DROP-DOWN OFFERS THE BOARD'S OWN FOLDERS, NOT THE DATA TREE'S. *** The data and
+    // drafts trees hold the store's checksum folders and CRT's bookkeeping in 4.0, and the old list
+    // was built from them; none may be offered. The board's own "Truth tables" folder is, beside the
+    // four every board keeps its files in.
+    // ###########################################################################################
     [Fact]
-    public void A_NEW_boards_Scope_baseline_folder_is_offered_in_a_file_rows_drop_down()
+    public void The_drop_down_offers_the_boards_own_folders_and_never_the_data_trees()
     {
-        // A published board and a shared folder, so the data tree is not empty and the test proves
-        // the draft folder is ADDED to it rather than replacing it. The shared folder is the data
-        // tree's half that is still offered: since 2026-09-25 another board's folders are not
-        // (ContributionFileLocations.WritableBy).
-        Directory.CreateDirectory(Path.Combine(this.DataRoot, "Commodore", "C64", "250407", "Scope baseline"));
-        Directory.CreateDirectory(Path.Combine(this.DataRoot, "Generic shared files", "Component images"));
-
-        string excelDataFile = NewBoardIdentity.BuildExcelDataFile(
-            ComponentContributionFileLocationTests.Manufacturer,
-            ComponentContributionFileLocationTests.Hardware,
-            ComponentContributionFileLocationTests.Board);
-
-        DraftSeedResult created = DraftSeeder.CreateNewBoard(this.DraftsRoot, new NewBoardRegistration
-        {
-            HardwareName = ComponentContributionFileLocationTests.Hardware,
-            BoardName = ComponentContributionFileLocationTests.Board,
-            ExcelDataFile = excelDataFile,
-        });
-
-        Assert.True(created.Created, created.Reason);
-
-        // One component with one image row and no file picked yet - the state the report was made
-        // from, where the drop-down is the thing about to be used.
-        var board = new BoardData
-        {
-            Components = { new ComponentEntry { BoardLabel = "C1", Region = "PAL" } },
-            ComponentImages = { new ComponentImageEntry { BoardLabel = "C1", Region = "PAL", Pin = "1" } },
-        };
+        this.CreateFolders(this.DataRoot, "Files/ab", "Commodore/C64/250407", "MiniPro/IC tests");
+        this.CreateFolders(this.DraftsRoot, "Commodore/C64/250407/Files/cd", "Commodore/C64/250407/.crt-pre-4.0");
 
         UiTest.Run(() =>
         {
-            var window = new ComponentContributionWindow();
-
-            window.LoadComponent(
-                board,
-                this.DataRoot,
-                ComponentContributionFileLocationTests.Hardware,
-                ComponentContributionFileLocationTests.Board,
-                "PAL",
-                "C1",
-                excelDataFile);
-
-            ContributionComponentImageRow row = Assert.Single(
-                ComponentContributionFileLocationTests.ImageRowsOf(window));
-
-            Assert.Contains("Test Manu4/HW4/Board4/Scope baseline", row.AvailableFileLocations);
-            Assert.Contains("Generic shared files/Component images", row.AvailableFileLocations);
-
-            // Another board's folder: a new file filed there is refused by the server.
-            Assert.DoesNotContain("Commodore/C64/250407/Scope baseline", row.AvailableFileLocations);
-        });
-    }
-
-    // ###########################################################################################
-    // *** THE OWNER'S LIST, AS THE WINDOW SHOWS IT (2026-09-25). *** The drop-down offered every
-    // folder of every board of every manufacturer. It now offers this board's own folders, this
-    // manufacturer's "Shared files" folders and the "Generic shared files" folders - read off a real
-    // row, which is what the drop-down's ItemsSource binds to.
-    // ###########################################################################################
-    [Fact]
-    public void The_drop_down_offers_this_boards_folders_and_the_shared_ones_only()
-    {
-        this.CreateDataFolders(
-            "Commodore/C64/250407/Scope baseline",
-            "Commodore/C128/310378/Scope baseline",
-            "Commodore/Shared files/Component images",
-            "Amstrad/Shared files/Component images",
-            "Generic shared files/Component images");
-
-        UiTest.Run(() =>
-        {
-            // One image row with no file yet, so its list holds the offered folders and nothing of
-            // its own.
-            ComponentContributionWindow window = this.OpenC64Component(imageFile: string.Empty);
+            ComponentContributionWindow window = this.OpenC64Component(imageFile: "Truth tables/7400.png");
 
             ContributionComponentImageRow row = Assert.Single(
                 ComponentContributionFileLocationTests.ImageRowsOf(window));
@@ -132,26 +82,43 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
             Assert.Equal(
                 new[]
                 {
-                    "Commodore/C64/250407",
-                    "Commodore/C64/250407/Scope baseline",
-                    "Commodore/Shared files/Component images",
-                    "Generic shared files/Component images",
+                    "Board local files",
+                    "Component images",
+                    "Component local files",
+                    "Scope baseline",
+                    "Truth tables",
                 },
                 row.AvailableFileLocations);
         });
     }
 
     // ###########################################################################################
+    // *** REPORTED 2026-09-24, STILL HELD. *** A board created with "Add a new board" exists only
+    // as a draft and has no files yet - and must still offer "Scope baseline", where every board
+    // keeps its baselines, so the first one can be filed there.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_board_with_no_files_offers_the_Scope_baseline_folder()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentContributionWindow window = this.OpenC64Component(imageFile: string.Empty);
+
+            ContributionComponentImageRow row = Assert.Single(
+                ComponentContributionFileLocationTests.ImageRowsOf(window));
+
+            Assert.Contains("Scope baseline", row.AvailableFileLocations);
+        });
+    }
+
+    // ###########################################################################################
     // *** THE REPORT (2026-09-25). *** A picture picked from outside the data folder, saved with
-    // the "File location" box left empty, was stored as the bare "HotCPU.png" - and the server
-    // refused the whole submission later: "[HotCPU.png] belongs to another board". "Save to draft"
-    // now refuses it on the spot, marks the row, and lets go the moment a folder is chosen.
+    // the "File location" box left empty, was stored as the bare "HotCPU.png". "Save to draft"
+    // refuses it on the spot, marks the row, and lets go the moment a folder is chosen.
     // ###########################################################################################
     [Fact]
     public void A_picked_picture_with_no_file_location_is_refused_and_its_row_marked()
     {
-        this.CreateDataFolders("Commodore/Shared files/Component images");
-
         UiTest.Run(() =>
         {
             ComponentContributionWindow window = this.OpenC64Component();
@@ -167,7 +134,7 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
             Assert.Equal("Choose a file location", row.FileErrorText);
 
             // Choosing a folder answers it at once, before the next save.
-            row.FileLocation = "Commodore/Shared files/Component images";
+            row.FileLocation = "Component images";
 
             Assert.False(row.HasLocationError);
             Assert.False(row.HasFileError);
@@ -176,15 +143,20 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
         });
     }
 
-    // Through the real "Save to draft" handler, so the check is proven to be on the save path and
-    // not only callable. Refused before anything is written, with the message on the status line.
+    // ###########################################################################################
+    // *** "SAVE TO DRAFT" FILES A PICKED PICTURE WITH NO FOLDER IN THE USUAL ONE (CRT 4.0 step 1,
+    // 2026-10-25 - "Unfinished work is fine. Only Submit asks for problems to be fixed"). *** It used
+    // to refuse the save; the owner's report (2026-09-25) was the file stored as a bare name at the
+    // top of the board, which this still never does. Through the real handler, so the filling is
+    // proven to be on the save path: the row then names "Component images", and nothing is refused.
+    // ###########################################################################################
     [Fact]
-    public void Save_to_draft_refuses_a_picked_picture_with_no_file_location()
+    public void Save_to_draft_files_a_picked_picture_with_no_file_location_in_the_usual_folder()
     {
         UiTest.Run(() =>
         {
             ComponentContributionWindow window = this.OpenC64Component();
-            this.AddPickedImageRow(window, fileLocation: string.Empty);
+            ContributionComponentImageRow row = this.AddPickedImageRow(window, fileLocation: string.Empty);
 
             typeof(ComponentContributionWindow)
                 .GetMethod("OnSubmitClick", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -192,59 +164,90 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
 
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Contains(
-                "Component image #1 [HotCPU.png] has no file location",
-                window.FindControl<TextBlock>("StatusTextBlock")!.Text);
-
-            Assert.False(
-                Directory.Exists(Path.Combine(this.DraftsRoot, "Commodore")),
-                "the refused save wrote a draft");
+            Assert.Equal("Component images", row.FileLocation);
+            Assert.False(row.HasLocationError);
+            Assert.DoesNotContain("no file location", window.FindControl<TextBlock>("StatusTextBlock")!.Text ?? string.Empty);
         });
     }
 
-    // The same refusal the server gives, for a folder that belongs to another board.
+    // The usual folder of each kind of row (ContributionFileLocations.DefaultFolderFor) - a scope
+    // baseline's is its own.
+    [Theory]
+    [InlineData("ComponentPicture", "Component images")]
+    [InlineData("ScopeBaseline", "Scope baseline")]
+    [InlineData("ComponentFile", "Component local files")]
+    [InlineData("BoardFile", "Board local files")]
+    public void Each_kind_of_file_row_has_a_usual_folder_the_drop_down_offers(string kind, string folder)
+    {
+        Assert.Equal(folder, ContributionFileLocations.DefaultFolderFor(Enum.Parse<ContributionFileLocations.FileRowKind>(kind)));
+        Assert.Contains(folder, ContributionFileLocations.UsualFolders);
+        Assert.True(ContributionFileLocations.IsWritableFolder(folder));
+    }
+
+    // A folder that cannot hold a file of the board - the store - is refused with its name.
     [Fact]
-    public void A_picked_picture_filed_in_another_boards_folder_is_refused()
+    public void A_picked_picture_filed_in_the_store_is_refused()
     {
         UiTest.Run(() =>
         {
             ComponentContributionWindow window = this.OpenC64Component();
-            ContributionComponentImageRow row = this.AddPickedImageRow(window, "Commodore/C128/310378/Scope baseline");
+            ContributionComponentImageRow row = this.AddPickedImageRow(window, "Files/ab");
 
             string? message = ComponentContributionFileLocationTests.ValidateLocations(window);
 
             Assert.NotNull(message);
-            Assert.Contains("[Commodore/C128/310378/Scope baseline]", message);
-            Assert.Contains("not one of this board's folders", message);
+            Assert.Contains("[Files/ab]", message);
+            Assert.Contains("cannot hold a file of the board", message);
             Assert.True(row.HasLocationError);
+            Assert.Equal("Choose another file location", row.FileErrorText);
         });
     }
 
-    // A file picked FROM another board's folder and left there is the published copy itself -
-    // citing it unchanged is allowed, here as on the server.
+    // ###########################################################################################
+    // *** A FILE PICKED FROM INSIDE THE DATA FOLDER KEEPS THE ROW'S FOLDER (changed 2026-10-25). ***
+    // It used to take the data-tree folder it was picked from as its location - the published copy,
+    // cited where it lay. In 4.0 that folder is the store's ("Files/ab"): the file was copied into
+    // the draft under a name no draft write lists, and lost. Now it is the board's new file, filed
+    // where the row says - and a row that says nothing files it in the pictures' usual folder (CRT
+    // 4.0 step 1, 2026-10-25: unfinished work is fine, and a picked file is never a bare name).
+    // ###########################################################################################
     [Fact]
-    public void Another_boards_published_file_left_where_it_is_is_accepted()
+    public void A_file_picked_from_inside_the_data_folder_is_filed_where_the_row_says()
     {
+        BoardDocument.StoredFileRow stored = StoredFiles.Put(this.DataRoot, "Component images/U6.png", ComponentContributionFileLocationTests.OnePixelPng);
+        string picked = StoredFiles.PathOf(this.DataRoot, stored);
+
         UiTest.Run(() =>
         {
             ComponentContributionWindow window = this.OpenC64Component();
-            ContributionComponentImageRow row = this.AddPickedImageRow(window, "Commodore/C128/310378/Scope baseline");
-            row.OriginalFilePath = Path.Combine(this.DataRoot, "Commodore", "C128", "310378", "Scope baseline", "HotCPU.png");
+            ContributionComponentImageRow row = this.AddPickedImageRow(window, "Component images");
 
+            ComponentContributionFileLocationTests.Pick(window, row, picked);
+
+            Assert.Equal("Component images", row.FileLocation);
+            Assert.Equal(picked, row.OriginalFilePath);
+            Assert.DoesNotContain(row.AvailableFileLocations, folder => folder.StartsWith("Files", StringComparison.OrdinalIgnoreCase));
             Assert.Null(ComponentContributionFileLocationTests.ValidateLocations(window));
-            Assert.False(row.HasLocationError);
+
+            // Picked into a row with no folder, it is not "used where it lies" any more: it goes in
+            // the pictures' usual folder.
+            row.FileLocation = string.Empty;
+            ComponentContributionFileLocationTests.Pick(window, row, picked);
+
+            Assert.Equal("Component images", row.FileLocation);
+            Assert.Null(ComponentContributionFileLocationTests.ValidateLocations(window));
         });
     }
 
-    // A row loaded from the board keeps the path it is stored under, which this window does not
-    // move, so its location is not the contributor's to fix here.
+    // A row loaded from the board keeps the name it is stored under, which this window does not
+    // move, so its location is not the contributor's to fix here - even one a new file could not
+    // be filed in.
     [Fact]
     public void A_row_loaded_from_the_board_is_not_checked()
     {
         UiTest.Run(() =>
         {
-            ComponentContributionWindow window = this.OpenC64Component(
-                imageFile: "Commodore/C128/310378/Scope baseline/U1 pin 1.png");
+            ComponentContributionWindow window = this.OpenC64Component(imageFile: "Files/ab/U1 pin 1.png");
 
             Assert.Null(ComponentContributionFileLocationTests.ValidateLocations(window));
             Assert.False(Assert.Single(ComponentContributionFileLocationTests.ImageRowsOf(window)).HasLocationError);
@@ -272,6 +275,42 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
             Assert.NotNull(message);
             Assert.Contains("Board file #1 [Service manual.pdf]", message);
             Assert.True(row.HasLocationError);
+        });
+    }
+
+    // ###########################################################################################
+    // *** AN EXISTING IMAGE IS SHOWN BY ITS NAME (2026-10-25). *** The preview looked for the name
+    // as a path under the data root, where a 4.0 tree has nothing - its bytes lie under their
+    // checksum - so no existing image of any board was previewed. Found through the published
+    // board's file list, as the component popup finds it.
+    // ###########################################################################################
+    [Fact]
+    public void An_existing_image_is_previewed_through_the_published_boards_file_list()
+    {
+        BoardDocument.StoredFileRow stored = StoredFiles.Put(this.DataRoot, "Component images/U6.png", ComponentContributionFileLocationTests.OnePixelPng);
+
+        var board = new BoardData
+        {
+            Components = { new ComponentEntry { BoardLabel = "U6", Region = "PAL" } },
+            ComponentImages = { new ComponentImageEntry { BoardLabel = "U6", Region = "PAL", File = stored.Name } },
+        };
+
+        StoredFiles.WriteBoard(
+            Path.Combine(this.DataRoot, "Commodore", "C64", "250407", DataTreeLayout.BoardFileName),
+            board,
+            stored);
+
+        UiTest.Run(() =>
+        {
+            var window = new ComponentContributionWindow();
+            window.LoadComponent(board, this.DataRoot, "Commodore 64", "250407", "PAL", "U6", ComponentContributionFileLocationTests.BoardIdentity);
+
+            ContributionComponentImageRow row = Assert.Single(ComponentContributionFileLocationTests.ImageRowsOf(window));
+
+            Assert.Equal("Component images", row.FileLocation);
+            Assert.NotNull(row.PreviewImage);
+
+            window.Close();
         });
     }
 
@@ -309,16 +348,16 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
         });
     }
 
-    private void CreateDataFolders(params string[] relativeFolders)
+    private void CreateFolders(string root, params string[] relativeFolders)
     {
         foreach (string relative in relativeFolders)
         {
-            Directory.CreateDirectory(Path.Combine(this.DataRoot, relative.Replace('/', Path.DirectorySeparatorChar)));
+            Directory.CreateDirectory(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)));
         }
     }
 
     // The component editor opened on U6 of the C64 250407, as from the component list. With
-    // `imageFile`, U6 carries one image row stored at that path.
+    // `imageFile`, U6 carries one image row naming that file.
     private ComponentContributionWindow OpenC64Component(string? imageFile = null)
     {
         var board = new BoardData
@@ -340,7 +379,7 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
             "250407",
             "PAL",
             "U6",
-            "Commodore/C64/250407/Data C64 250407.xlsx");
+            ComponentContributionFileLocationTests.BoardIdentity);
 
         return window;
     }
@@ -361,6 +400,14 @@ public sealed class ComponentContributionFileLocationTests : IDisposable
         ComponentContributionFileLocationTests.ImageRowsOf(window).Add(row);
 
         return row;
+    }
+
+    // What the file picker does with the file it was given - the window's own step after the dialog.
+    private static void Pick(ComponentContributionWindow window, IContributionFileRow row, string path)
+    {
+        typeof(ComponentContributionWindow)
+            .GetMethod("ApplySelectedFilePathToRow", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(window, new object?[] { row, path });
     }
 
     // The status-line message of the first row ValidateNewFileLocations refuses, or null.

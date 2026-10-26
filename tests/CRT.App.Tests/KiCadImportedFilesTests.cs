@@ -203,4 +203,20 @@ public sealed class KiCadImportedFilesTests : IDisposable
         Assert.Contains("published KiCad data - your draft has none of its own", KiCadImportedFiles.ReportSourceLine(publishedFiles: 2, draftFiles: 0));
         Assert.Contains("published KiCad data together with your draft's", KiCadImportedFiles.ReportSourceLine(publishedFiles: 2, draftFiles: 1));
     }
+
+    // After Remove: a file the published board has is back to the published one, and says so; a
+    // file only the draft had is gone, and importing it again brings it back (code review, 2026-10-25).
+    [Fact]
+    public void The_line_after_Remove_says_whether_the_published_file_is_used_again()
+    {
+        string back = KiCadImportedFiles.RemovedLine("Pages/vic.kicad_sch", backToPublished: true);
+        string gone = KiCadImportedFiles.RemovedLine("Pages/vic.kicad_sch", backToPublished: false);
+
+        Assert.Contains("[Pages/vic.kicad_sch]", back, StringComparison.Ordinal);
+        Assert.Contains("the published file is used again", back, StringComparison.Ordinal);
+        Assert.DoesNotContain("import it again", back, StringComparison.Ordinal);
+
+        Assert.Contains("[Pages/vic.kicad_sch]", gone, StringComparison.Ordinal);
+        Assert.Contains("import it again to get the file back", gone, StringComparison.Ordinal);
+    }
 }

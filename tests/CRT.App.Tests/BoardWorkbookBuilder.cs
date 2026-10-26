@@ -1,3 +1,4 @@
+using Handlers.DataHandling;
 using OfficeOpenXml;
 
 namespace ClassicRepairToolbox.Tests;
@@ -104,9 +105,19 @@ internal sealed class BoardWorkbookBuilder
     public static readonly string[] CreditsHeaders = { "Category", "Sub-category", "Name or handle", "Contact (email or web page)" };
     public static readonly string[] ImportantSignalsHeaders = { "Display name", "KiCad net name" };
 
-    /// <summary>A workbook with every sheet the reader looks for, populated with one row each.</summary>
+    /// <summary>
+    /// A board with every section the reader looks for, populated with one row each - a workbook
+    /// for an Excel path, and for a CRT 4.0 board file ("board.json") the same board as one.
+    /// </summary>
     public static string WriteCompleteBoard(string path, string revisionDate = "2026-01-15")
     {
+        if (DataTreeLayout.IsBoardFile(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            BoardWorkbookWriter.Write(path, BoardWorkbookBuilder.CompleteBoard(revisionDate));
+            return path;
+        }
+
         return new BoardWorkbookBuilder()
             .SheetWithLeadingRows(
                 "Board schematics",
@@ -132,4 +143,45 @@ internal sealed class BoardWorkbookBuilder
                 new[] { "Clock", "/Sheet1/CLK" })
             .SaveTo(path);
     }
+
+    // The complete board's rows, as the workbook above holds them.
+    public static BoardData CompleteBoard(string revisionDate = "2026-01-15") => new()
+    {
+        RevisionDate = revisionDate,
+        Schematics =
+        [
+            new BoardSchematicEntry
+            {
+                SchematicName = "Sheet 1", CadName = "board.kicad_pcb", SchematicImageFile = "sheet1.png",
+                SchematicHighlightColor = "#FF0000", SchematicHighlightOpacity = "0.5",
+                OppositeTraceHighlightColor = "#00FF00", ThumbnailHighlightColor = "#0000FF", ThumbnailHighlightOpacity = "0.25",
+            },
+        ],
+        Components =
+        [
+            new ComponentEntry
+            {
+                BoardLabel = "U1", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "906114",
+                Category = "IC", Region = "PAL", Description = "Programmable logic array",
+            },
+            new ComponentEntry
+            {
+                BoardLabel = "C1", FriendlyName = "Filter cap", TechnicalNameOrValue = "100nF", Category = "Capacitor", Description = "Decoupling",
+            },
+        ],
+        ComponentImages =
+        [
+            new ComponentImageEntry
+            {
+                BoardLabel = "U1", Region = "PAL", Pin = "1", Name = "Clock in", ExpectedOscilloscopeReading = "1MHz square",
+                File = "u1-pin1.png", Note = "note", TimeDiv = "5ms", VoltsDiv = "500mV", TriggerLevelVolts = "1.65V",
+            },
+        ],
+        ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Datasheet", File = "906114.pdf" }],
+        ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U1", Name = "Reference", Url = "https://example.org/pla" }],
+        BoardLocalFiles = [new BoardLocalFileEntry { Category = "Schematics", Name = "Service manual", File = "manual.pdf" }],
+        BoardLinks = [new BoardLinkEntry { Category = "Forums", Name = "Thread", Url = "https://example.org/thread" }],
+        Credits = [new CreditEntry { Category = "Data", SubCategory = "Schematics", NameOrHandle = "Someone", Contact = "someone@example.org" }],
+        KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "Clock", KiCadNetName = "/Sheet1/CLK" }],
+    };
 }

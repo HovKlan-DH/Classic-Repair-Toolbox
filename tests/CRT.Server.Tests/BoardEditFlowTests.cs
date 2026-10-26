@@ -24,9 +24,14 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Now = new(2026, 10, 3, 12, 0, 0, TimeSpan.Zero);
         private const string BoardId = "Commodore/C64/250407";
-        private const string Manual = "Commodore/C64/250407/manual.pdf";
-        private const string Shared = "Commodore/Shared files/74LS08.pdf";
-        private const string Sheet = "Commodore/C64/250407/sheet-1.png";
+        // The board's names for its files (the CRT 4.0 tree, 2026-10-25).
+        private const string Manual = "manual.pdf";
+        private const string Shared = "Datasheets/74LS08.pdf";
+        private const string Sheet = "sheet-1.png";
+
+        private static readonly byte[] ManualBytes = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4\n% manual\n");
+        private static readonly byte[] SharedBytes = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4\n% 74LS08\n");
+        private static readonly byte[] SheetBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. new byte[32]];
 
         private readonly string thisRoot = Path.Combine(Path.GetTempPath(), "crt-board-edit", Guid.NewGuid().ToString("N"));
         private readonly string thisData;
@@ -39,26 +44,30 @@ namespace CRT.Server.Tests
             Directory.CreateDirectory(this.thisData);
             Directory.CreateDirectory(this.thisBlobs);
 
-            // BETA's board: one schematic and one component, citing the manual and a shared datasheet,
-            // with a highlight and a KiCad calibration in its highlight file.
-            BoardWorkbookWriter.Write(this.WorkbookPath, new BoardData
-            {
-                RevisionDate = "2026-August-21",
-                Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = BoardEditFlowTests.Sheet }],
-                Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" }],
-                BoardLocalFiles =
+            // BETA's board: one schematic and one component, citing the manual and a datasheet,
+            // with a highlight and a KiCad calibration - all in its board file, each file's bytes
+            // stored under their checksum - and the main file listing it, so the tree reads whole
+            // (a tree read incompletely removes nothing).
+            DataTreeBuilder.Master(this.thisData, BoardEditFlowTests.BoardId);
+            DataTreeBuilder.Board(
+                this.thisData,
+                BoardEditFlowTests.BoardId,
+                new BoardData
+                {
+                    RevisionDate = "2026-August-21",
+                    Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = BoardEditFlowTests.Sheet }],
+                    Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" }],
+                    BoardLocalFiles =
+                    [
+                        new BoardLocalFileEntry { Category = "Service", Name = "Manual", File = BoardEditFlowTests.Manual },
+                        new BoardLocalFileEntry { Category = "Service", Name = "74LS08", File = BoardEditFlowTests.Shared }
+                    ]
+                },
                 [
-                    new BoardLocalFileEntry { Category = "Service", Name = "Manual", File = BoardEditFlowTests.Manual },
-                    new BoardLocalFileEntry { Category = "Service", Name = "74LS08", File = BoardEditFlowTests.Shared }
-                ]
-            });
-
-            foreach (string path in new[] { BoardEditFlowTests.Manual, BoardEditFlowTests.Shared })
-                File.WriteAllText(DataTreeBuilder.Full(this.thisData, path), "%PDF-1.4\n% " + path + "\n");
-
-            File.WriteAllBytes(
-                DataTreeBuilder.Full(this.thisData, BoardEditFlowTests.Sheet),
-                [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, .. new byte[32]]);
+                    (BoardEditFlowTests.Manual, BoardEditFlowTests.ManualBytes),
+                    (BoardEditFlowTests.Shared, BoardEditFlowTests.SharedBytes),
+                    (BoardEditFlowTests.Sheet, BoardEditFlowTests.SheetBytes)
+                ]);
 
             BoardSidecarWriter.Write(
                 this.WorkbookPath,
@@ -78,7 +87,8 @@ namespace CRT.Server.Tests
             }
         }
 
-        private string WorkbookPath => DataTreeBuilder.Full(this.thisData, DataTreeBuilder.Workbook);
+        // BETA's board file.
+        private string WorkbookPath => DataTreeBuilder.Full(this.thisData, DataTreeBuilder.BoardFile);
 
         private BlobStore Blobs() => new(this.thisBlobs, NullLogger<BlobStore>.Instance);
 
@@ -226,6 +236,53 @@ namespace CRT.Server.Tests
             Assert.Equal(BoardEditFlow.ClosedMessage, table.MayNotEditReason);
 
             Assert.True((await this.PublishAsync(store, request)).IsForbidden);
+        }
+
+        // ###########################################################################################
+        // *** THE TABLE SAYS WHERE EACH OF ITS FILES LIES (CRT 4.0 tree, 2026-10-25). *** A row
+        // names a file as the board does; its bytes are stored under their checksum, so the answer
+        // carries each name's place for the Maintainer tab to open it from (BoardTableAnswer
+        // .FilePlaces) - every file the board lists, and nothing else.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_table_says_where_each_file_the_board_lists_lies()
+        {
+            BoardTableAnswer table = (await this.ReadAsync(new FakeSubmissionStore())).Answer!;
+
+            Assert.Equal(
+                new Dictionary<string, string>
+                {
+                    [BoardEditFlowTests.Manual] = DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(BoardEditFlowTests.ManualBytes), BoardEditFlowTests.Manual),
+                    [BoardEditFlowTests.Shared] = DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(BoardEditFlowTests.SharedBytes), BoardEditFlowTests.Shared),
+                    [BoardEditFlowTests.Sheet] = DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(BoardEditFlowTests.SheetBytes), BoardEditFlowTests.Sheet)
+                },
+                table.FilePlaces);
+        }
+
+        // ###########################################################################################
+        // *** THE BOARD'S KiCad DATA GOES ALONG AS BETA HAS IT (2026-10-25). *** No row cites a KiCad
+        // file and the table does not show one, so an edit carries every one BETA's board lists,
+        // unchanged - left out, publishing a part number would drop the board's traces.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_boards_KiCad_data_goes_along_with_an_edit_and_stays_listed()
+        {
+            const string KiCad = "KiCad data/board.kicad_pcb";
+            byte[] pcb = System.Text.Encoding.UTF8.GetBytes("(kicad_pcb (version 20240108))");
+            string sha = DataTreeBuilder.Sha(pcb);
+
+            File.WriteAllBytes(DataTreeBuilder.Full(this.thisData, DataTreeLayout.StoredFilePath(sha, KiCad)), pcb);
+            BoardFiles.Change(this.WorkbookPath, document => document.Files.Add(new BoardDocument.StoredFileRow { Name = KiCad, Sha256 = sha, Size = pcb.Length }));
+
+            var store = new FakeSubmissionStore();
+            BoardEditOutcome sent = await this.PublishAsync(store, await this.EditedAsync(store));
+
+            Assert.True(sent.IsPublished, sent.FullError + sent.NotPublishedReason);
+
+            SubmissionManifest payload = (await store.LoadPayloadAsync(sent.SubmissionId, CancellationToken.None))!;
+            Assert.Contains(payload.Files, file => file.Path == KiCad && file.Sha256 == sha);
+            Assert.Contains(BoardFiles.ReadDocument(this.WorkbookPath)!.Files, file => file.Name == KiCad && file.Sha256 == sha);
+            Assert.Empty(sent.Removals);
         }
 
         // ###########################################################################################
@@ -427,7 +484,7 @@ namespace CRT.Server.Tests
         public async Task The_check_names_what_the_change_removes_and_only_that_list_is_published()
         {
             var store = new FakeSubmissionStore();
-            string manual = DataTreeBuilder.Full(this.thisData, BoardEditFlowTests.Manual);
+            string manual = DataTreeBuilder.Full(this.thisData, DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(BoardEditFlowTests.ManualBytes), BoardEditFlowTests.Manual));
 
             void DropTheManual(SubmissionRows rows) => rows.BoardLocalFiles.RemoveAll(file => file.Name == "Manual");
 

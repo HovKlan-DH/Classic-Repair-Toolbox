@@ -81,8 +81,9 @@ namespace CRT
         internal void AllowApiRevisionQuestionForTests() => this.AllowApiRevisionQuestion();
 
         // ###########################################################################################
-        // The revision asked the first time the Drafts tab is shown or the Maintainer tab turned on -
-        // called from StartAsync and from both tabs' Apply...Visibility. Nothing before StartAsync,
+        // The revision asked the first time contributing is in use (a draft, or unread feedback) or
+        // the Maintainer tab turned on - called from StartAsync, ApplyContributeTabState and the
+        // Maintainer tab's ApplyMaintainerTabVisibility. Nothing before StartAsync,
         // and nothing more once asked: a refusal asks again by itself (ReportApiOutdated).
         // ###########################################################################################
         private void AskApiRevisionOnceInUse()
@@ -90,7 +91,9 @@ namespace CRT
             if (!this.thisMayAskApiRevision || this.thisAskedApiRevisionInUse)
                 return;
 
-            if (!AppUpdateRequirement.AsksServer(this.DraftsTabItem?.IsVisible == true, UserSettings.EnableMaintainerTab))
+            // "In use" is a draft or unread feedback - what the Drafts tab's visibility was before it
+            // became part of the always-shown Contribute tab (ApplyContributeTabState).
+            if (!AppUpdateRequirement.AsksServer(this.thisContributionInUse, UserSettings.EnableMaintainerTab))
                 return;
 
             this.thisAskedApiRevisionInUse = true;
@@ -99,13 +102,14 @@ namespace CRT
 
         // ###########################################################################################
         // *** BEFORE THE FIRST DRAFT, THE REVISION IS ASKED - AND WAITED FOR (code review,
-        // 2026-10-10). *** "Edit board as draft" and "Add a new board" make nothing while the Drafts
-        // tab is covered. But on a machine with no drafts and the Maintainer tab off nothing had
-        // asked yet (AsksServer), so their guard could not fire: the draft was made, the tab
-        // appeared, its first showing asked - and the answer covered the table just opened. So the
-        // two ask first, under the window's "please wait", when nothing has asked in this run. It
-        // is the question the tab's first showing asks anyway, only sooner: no extra request. No
-        // answer is not a refusal - the draft is made as before. Nothing before StartAsync.
+        // 2026-10-10). *** A board's first draft (EnsureDraftAsync, Main.FirstDraft.cs) and "Add a
+        // new board" make nothing while the Contribute tab is covered. But on a machine with no
+        // drafts and the Maintainer tab off nothing had asked yet (AsksServer), so their guard could
+        // not fire: the draft was made, and the answer to the question that followed covered the
+        // table just opened. So the two ask first, under the window's "please wait", when nothing
+        // has asked in this run. It is the question the first draft makes CRT ask anyway, only
+        // sooner: no extra request. No answer is not a refusal - the draft is made as before.
+        // Nothing before StartAsync.
         // ###########################################################################################
         internal async Task AskApiRevisionBeforeFirstDraftAsync()
         {

@@ -44,14 +44,31 @@ namespace Handlers.DataHandling
         // or deleted after it was added, and telling someone their file is invalid when it is
         // merely absent sends them looking in the wrong place.
         // ###########################################################################################
+        //
+        // *** A CRT 4.0 BOARD NAMES ITS FILES (2026-10-25). *** A row's file is then the board's
+        // name for it, found as DraftFileResolver finds every file on screen: a new file lying in the
+        // draft folder, the draft's board file (its store, then the tree's), the published board's
+        // (`boardIdentity`). A name is still a path the app combines with a folder, so it must be
+        // SHAPED safely (SubmissionPathRules) before anything looks - a name climbing out of its
+        // folder is refused, never read. An Excel-era path keeps the two-root rule below.
         public static bool TryLocate(
             string dataRoot,
             string draftBoardFolder,
             string relativePath,
             out string absolutePath,
-            out string reason)
+            out string reason,
+            string? boardIdentity = null,
+            BoardFileListings? listings = null)
         {
             absolutePath = string.Empty;
+
+            if (SubmissionPathRules.IsSafelyShaped(relativePath, out _) &&
+                DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, relativePath, boardIdentity, listings) is DraftFileResolution resolved)
+            {
+                absolutePath = resolved.FullPath;
+                reason = string.Empty;
+                return true;
+            }
 
             bool anyRootChecked = false;
             string refusalReason = string.Empty;

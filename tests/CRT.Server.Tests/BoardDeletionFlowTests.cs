@@ -26,10 +26,17 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 10, 3, 12, 0, 0, TimeSpan.Zero);
 
         private const string BoardId = "Commodore/C64/999999";
-        private const string Workbook = "Commodore/C64/999999/Data C64 999999 v2.0.0.xlsx";
-        private const string Image = "Commodore/C64/999999/Images/sheet.png";
-        private const string Shared = "Commodore/Shared files/Manual.pdf";
+        private const string BoardFile = "Commodore/C64/999999/board.json";
+        private const string ImageName = "Images/sheet.png";
+        private const string ImageContent = "the sheet image";
+        private const string SharedName = "Manual.pdf";
+        private const string SharedContent = "the manual both boards list";
         private const string OtherBoard = "Commodore/C64/250407";
+
+        // Where the two files' bytes are stored ("Files/<ab>/<sha256>.<ext>"): the image only this
+        // board lists, the manual both boards list.
+        private static readonly string Image = DataTreeBuilder.Stored(BoardDeletionFlowTests.ImageContent, BoardDeletionFlowTests.ImageName);
+        private static readonly string Shared = DataTreeBuilder.Stored(BoardDeletionFlowTests.SharedContent, BoardDeletionFlowTests.SharedName);
 
         private readonly string thisRoot;
         private readonly string thisBeta;
@@ -122,25 +129,36 @@ namespace CRT.Server.Tests
             Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
 
         // ###########################################################################################
-        // Both trees as a published board leaves them: the main Excel data file listing the board
-        // that stays and (when `listed`) this one, both workbooks, this one citing its own image and
-        // a SHARED file.
+        // Both trees as a published board leaves them (CRT 4.0, 2026-10-25): the main file listing
+        // the board that stays and (when `listed`) this one, both board files - this one listing its
+        // own image and a manual the board that stays lists too, so its bytes are stored once for
+        // both.
         // ###########################################################################################
         private void BothTrees(bool listed = true)
         {
             foreach (string root in new[] { this.thisBeta, this.thisProduction })
             {
-                var rows = new List<MasterListingRow> { new("C64", "250407", DataTreeBuilder.Workbook, string.Empty) };
+                var rows = new List<MasterListingRow> { new("C64", "250407", DataTreeBuilder.BoardFile, string.Empty) };
 
                 if (listed)
-                    rows.Add(new MasterListingRow("C64", "999999", BoardDeletionFlowTests.Workbook, string.Empty));
+                    rows.Add(new MasterListingRow("C64", "999999", BoardDeletionFlowTests.BoardFile, string.Empty));
 
                 DataTreeBuilder.ListingMaster(root, [.. rows]);
-                DataTreeBuilder.Board(root, DataTreeBuilder.Workbook);
-                DataTreeBuilder.Board(root, BoardDeletionFlowTests.Workbook, BoardDeletionFlowTests.Image, BoardDeletionFlowTests.Shared);
-                DataTreeBuilder.Files(root, BoardDeletionFlowTests.Image, BoardDeletionFlowTests.Shared);
+                DataTreeBuilder.Board(root, DataTreeBuilder.BoardId, (BoardDeletionFlowTests.SharedName, BoardDeletionFlowTests.SharedContent));
+                this.ThisBoard(root);
             }
         }
+
+        // This board's file in `root`, listing its image, the shared manual and `more`.
+        private void ThisBoard(string root, params (string Name, string Content)[] more) =>
+            DataTreeBuilder.Board(
+                root,
+                BoardDeletionFlowTests.BoardId,
+                [
+                    (BoardDeletionFlowTests.ImageName, BoardDeletionFlowTests.ImageContent),
+                    (BoardDeletionFlowTests.SharedName, BoardDeletionFlowTests.SharedContent),
+                    .. more
+                ]);
 
         // A submission of `boardId`, then set to `state` at `decided` (left as sent when null).
         private static async Task<long> SubmissionAsync(
@@ -236,7 +254,8 @@ namespace CRT.Server.Tests
             foreach (string root in new[] { this.thisBeta, this.thisProduction })
             {
                 Assert.False(Directory.Exists(this.In(root, BoardDeletionFlowTests.BoardId)));
-                Assert.True(File.Exists(this.In(root, DataTreeBuilder.Workbook)));
+                Assert.False(File.Exists(this.In(root, BoardDeletionFlowTests.Image)));
+                Assert.True(File.Exists(this.In(root, DataTreeBuilder.BoardFile)));
 
                 MasterListingRow row = Assert.Single(DataTreeBuilder.ListedIn(root));
                 Assert.Equal(BoardDeletionFlowTests.OtherBoard, row.BoardId);
@@ -244,12 +263,12 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** SHARED FILES STAY (owner decision, 2026-09-27 - AutomaticRemovalScope). *** Nothing
-        // outside the board's own folder is removed automatically; a shared file it cited becomes
-        // an unused file for Account > Unused files.
+        // *** BYTES ANOTHER BOARD LISTS STAY (CRT 4.0, 2026-10-25). *** A file's bytes are stored
+        // once for every board naming them: the manual the board that stays lists too is still its
+        // manual afterwards, in both trees.
         // ###########################################################################################
         [Fact]
-        public async Task A_shared_file_the_board_cited_stays_in_both_trees()
+        public async Task Stored_bytes_another_board_also_lists_stay_in_both_trees()
         {
             this.BothTrees();
             Fixture fixture = this.Make();
@@ -261,12 +280,37 @@ namespace CRT.Server.Tests
             Assert.True(File.Exists(this.In(this.thisProduction, BoardDeletionFlowTests.Shared)));
         }
 
+        // ###########################################################################################
+        // Each tree is asked on its own: bytes the board that stays lists in the STABLE tree only
+        // stay there, and go from BETA, where nothing else lists them.
+        // ###########################################################################################
+        [Fact]
+        public async Task Bytes_another_board_lists_in_one_tree_stay_there_and_go_from_the_other()
+        {
+            this.BothTrees();
+            DataTreeBuilder.Board(
+                this.thisProduction,
+                DataTreeBuilder.BoardId,
+                (BoardDeletionFlowTests.SharedName, BoardDeletionFlowTests.SharedContent),
+                ("sheet.png", BoardDeletionFlowTests.ImageContent));
+
+            Fixture fixture = this.Make();
+
+            BoardDeletionOutcome outcome = await this.PlanAndDeleteAsync(fixture);
+
+            Assert.True(outcome.IsDone, outcome.Error);
+            Assert.Equal(2, outcome.BetaFilesRemoved);
+            Assert.Equal(1, outcome.ProductionFilesRemoved);
+            Assert.False(File.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.Image)));
+            Assert.True(File.Exists(this.In(this.thisProduction, BoardDeletionFlowTests.Image)));
+        }
+
         // The hardware folder stays while another board is in it, and the manufacturer's with it.
         [Fact]
         public async Task An_emptied_folder_goes_but_one_still_holding_another_board_stays()
         {
             this.BothTrees();
-            DataTreeBuilder.Files(this.thisBeta, "Commodore/C64/999999/Docs/Old/notes.txt");
+            File.WriteAllText(DataTreeBuilder.Full(this.thisBeta, "Commodore/C64/999999/Docs/Old/notes.txt"), "notes");
             Fixture fixture = this.Make();
 
             BoardDeletionOutcome outcome = await this.PlanAndDeleteAsync(fixture);
@@ -332,7 +376,7 @@ namespace CRT.Server.Tests
 
             DataChecksumManifest.Entry master = Assert.Single(
                 DataChecksumManifest.Scan(this.thisProduction, "https://example.com/app-data/Data"),
-                entry => DataTreeUsage.IsMasterFileName(Path.GetFileName(entry.File)));
+                entry => string.Equals(Path.GetFileName(entry.File), DataTreeLayout.MainFileName, StringComparison.Ordinal));
             Assert.Contains(master.Checksum, File.ReadAllText(this.ProductionManifest), StringComparison.Ordinal);
         }
 
@@ -523,7 +567,7 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsDone);
             Assert.Equal(BoardDeletionRules.ReasonRequiredMessage, outcome.Error);
-            Assert.True(File.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.Workbook)));
+            Assert.True(File.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.BoardFile)));
             Assert.Equal(2, DataTreeBuilder.ListedIn(this.thisProduction).Count);
             Assert.NotNull(await fixture.Store.FindBoardAsync(BoardDeletionFlowTests.BoardId));
             Assert.Empty(fixture.Mail.Sent);
@@ -611,7 +655,8 @@ namespace CRT.Server.Tests
 
             BoardDeletionOutcome planned = await this.PlanAsync(fixture);
 
-            DataTreeBuilder.Files(this.thisBeta, "Commodore/C64/999999/Images/new.png");
+            // A publish since: the board lists one more file.
+            this.ThisBoard(this.thisBeta, ("Images/new.png", "a new image"));
 
             BoardDeletionOutcome outcome = await fixture.Flow.DeleteAsync(
                 BoardDeletionFlowTests.Admin(), BoardDeletionFlowTests.BoardId, planned.Plan!.Fingerprint, "Test.",
@@ -619,7 +664,7 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsConflict);
             Assert.Equal(BoardDeletionRules.ChangedMessage, outcome.Error);
-            Assert.True(File.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.Workbook)));
+            Assert.True(File.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.BoardFile)));
             Assert.NotNull(await fixture.Store.FindBoardAsync(BoardDeletionFlowTests.BoardId));
         }
 
@@ -646,78 +691,69 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
-        // *** AN OLDER MAIN EXCEL DATA FILE IS FROZEN, SO A BOARD IT LISTS STAYS. *** It serves older
-        // CRT versions, and a master naming a missing workbook makes DataTreeUsage incomplete - which
-        // would stop every publish's removals and Account > Unused files for good. The plan says why,
-        // and the delete is refused with nothing moved.
+        // A main file that cannot be read says nothing about whether it lists the board: refused,
+        // with nothing moved, never a guess.
         // ###########################################################################################
         [Fact]
-        public async Task A_board_an_older_main_Excel_data_file_lists_cannot_be_deleted()
+        public async Task A_main_file_that_cannot_be_read_stops_the_delete()
         {
             this.BothTrees();
-            File.Copy(
-                this.In(this.thisBeta, "Classic-Repair-Toolbox.v2.0.0.xlsx"),
-                this.In(this.thisBeta, "Classic-Repair-Toolbox.xlsx"));
+            File.WriteAllText(this.In(this.thisProduction, DataTreeLayout.MainFileName), "{ not json");
 
             Fixture fixture = this.Make();
 
             BoardDeletionOutcome planned = await this.PlanAsync(fixture);
 
             Assert.True(planned.IsPlanned, planned.Error);
-            Assert.Equal(
-                BoardDeletionRules.OlderListingMessage(BoardDeletionRules.BetaTreeName, "Classic-Repair-Toolbox.xlsx"),
-                planned.Plan!.BlockedBecause);
+            Assert.StartsWith($"[{DataTreeLayout.MainFileName}] in the stable data could not be read", planned.Plan!.BlockedBecause, StringComparison.Ordinal);
 
             BoardDeletionOutcome outcome = await fixture.Flow.DeleteAsync(
                 BoardDeletionFlowTests.Admin(), BoardDeletionFlowTests.BoardId, planned.Plan.Fingerprint, "Test.",
                 this.Options(), BoardDeletionFlowTests.Now, canWriteFolder: _ => true);
 
             Assert.True(outcome.IsConflict);
-            Assert.True(File.Exists(this.In(this.thisProduction, BoardDeletionFlowTests.Workbook)));
-            Assert.Equal(2, DataTreeBuilder.ListedIn(this.thisProduction).Count);
+            Assert.True(File.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.BoardFile)));
+            Assert.Equal(2, DataTreeBuilder.ListedIn(this.thisBeta).Count);
         }
 
         // ###########################################################################################
-        // *** ANOTHER BOARD USING A FILE IN ITS FOLDER STOPS IT. *** Deleting the folder would break
-        // that board. The file is named, so the administrator can see which.
+        // Its KiCad data and anything else in its folder are the board's, and go with it: the board
+        // file, the stored bytes only it lists (the image and the KiCad file) and the folder's note.
         // ###########################################################################################
         [Fact]
-        public async Task A_board_whose_folder_holds_a_file_another_board_uses_cannot_be_deleted()
+        public async Task Its_own_KiCad_data_and_whatever_its_folder_holds_go_with_it()
         {
             this.BothTrees();
-            DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook, BoardDeletionFlowTests.Image);
-
-            Fixture fixture = this.Make();
-
-            BoardDeletionOutcome planned = await this.PlanAsync(fixture);
-
-            Assert.True(planned.IsPlanned, planned.Error);
-            Assert.Equal(
-                BoardDeletionRules.UsedElsewhereMessage(BoardDeletionRules.ProductionTreeName, [BoardDeletionFlowTests.Image]),
-                planned.Plan!.BlockedBecause);
-        }
-
-        // ###########################################################################################
-        // Its OWN highlight file, KiCad data and "!" documentation are the board's - not a file
-        // "another board uses" - so they do not stop the delete, and they go with the folder.
-        // ###########################################################################################
-        [Fact]
-        public async Task Its_own_highlight_file_KiCad_data_and_documentation_go_with_it()
-        {
-            this.BothTrees();
-            DataTreeBuilder.Files(
-                this.thisBeta,
-                "Commodore/C64/999999/Data C64 999999 v2.0.0.json",
-                "Commodore/C64/999999/KiCad data/board.kicad_pcb",
-                "Commodore/C64/999999/!README.txt");
+            this.ThisBoard(this.thisBeta, ("KiCad data/board.kicad_pcb", "(kicad_pcb)"));
+            File.WriteAllText(DataTreeBuilder.Full(this.thisBeta, "Commodore/C64/999999/!README.txt"), "read me");
 
             Fixture fixture = this.Make();
 
             BoardDeletionOutcome outcome = await this.PlanAndDeleteAsync(fixture);
 
             Assert.True(outcome.IsDone, outcome.Error);
-            Assert.Equal(5, outcome.BetaFilesRemoved);
+            Assert.Equal(4, outcome.BetaFilesRemoved);
             Assert.False(Directory.Exists(this.In(this.thisBeta, BoardDeletionFlowTests.BoardId)));
+            Assert.False(File.Exists(this.In(this.thisBeta, DataTreeBuilder.Stored("(kicad_pcb)", "KiCad data/board.kicad_pcb"))));
+        }
+
+        // A symbolic link on the way to a stored file it lists: deleting through it could reach
+        // outside the tree.
+        [Fact]
+        public async Task A_link_on_the_way_to_a_stored_file_stops_the_delete()
+        {
+            this.BothTrees();
+            string link = this.In(this.thisBeta, BoardDeletionFlowTests.Image);
+
+            Fixture fixture = this.Make();
+
+            BoardDeletionOutcome planned = await fixture.Flow.PlanAsync(
+                BoardDeletionFlowTests.Admin(), BoardDeletionFlowTests.BoardId, this.Options(), BoardDeletionFlowTests.Now,
+                isLink: path => string.Equals(path, link, StringComparison.Ordinal));
+
+            Assert.Equal(
+                BoardDeletionRules.LinkMessage(BoardDeletionRules.BetaTreeName, this.thisBeta, link),
+                planned.Plan!.BlockedBecause);
         }
 
         // A symbolic link anywhere in the folder: deleting through it could reach outside the tree.
@@ -725,6 +761,7 @@ namespace CRT.Server.Tests
         public async Task A_link_in_its_folder_stops_the_delete()
         {
             this.BothTrees();
+            File.WriteAllText(DataTreeBuilder.Full(this.thisBeta, "Commodore/C64/999999/Images/notes.txt"), "notes");
             string link = this.In(this.thisBeta, "Commodore/C64/999999/Images");
 
             Fixture fixture = this.Make();
@@ -755,13 +792,15 @@ namespace CRT.Server.Tests
             Fixture fixture = this.Make();
             await BoardDeletionFlowTests.SubmissionAsync(fixture.Store, SubmissionState.Rejected);
 
-            string refusing = this.In(this.thisProduction, "Commodore/C64/999999/Images");
+            // The folder the image's bytes are stored in ("Files/<ab>").
+            string storedFolder = BoardDeletionFlowTests.Image[..BoardDeletionFlowTests.Image.LastIndexOf('/')];
+            string refusing = this.In(this.thisProduction, storedFolder);
 
             BoardDeletionOutcome outcome = await this.PlanAndDeleteAsync(
                 fixture, canWriteFolder: folder => !string.Equals(folder, refusing, StringComparison.Ordinal));
 
             Assert.False(outcome.IsDone);
-            Assert.Contains("Commodore/C64/999999/Images", outcome.Error, StringComparison.Ordinal);
+            Assert.Contains(storedFolder, outcome.Error, StringComparison.Ordinal);
 
             foreach (string root in new[] { this.thisBeta, this.thisProduction })
             {

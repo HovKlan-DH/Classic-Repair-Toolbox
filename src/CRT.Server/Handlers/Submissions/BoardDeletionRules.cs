@@ -15,9 +15,6 @@ namespace CRT.Server.Handlers.Submissions
         public const string BetaTreeName = "BETA";
         public const string ProductionTreeName = "stable";
 
-        // How many paths a refusal names before it counts the rest.
-        public const int NamedPaths = 5;
-
         // ###########################################################################################
         // *** STILL IN PLAY: the submissions whose contributors are mailed (owner decision,
         // 2026-10-03: "Delete them and mail the contributors"). *** Waiting for review (pending, or
@@ -85,40 +82,18 @@ namespace CRT.Server.Handlers.Submissions
         public static string NoSuchBoardMessage(string boardId) =>
             $"There is no board [{boardId}] - nothing of it is in the BETA data, the stable data or the database.";
 
-        // ###########################################################################################
-        // *** AN OLDER MAIN EXCEL DATA FILE IS FROZEN (DataGenerationRules), SO WHAT IT LISTS STAYS. ***
-        // It serves CRT versions older than the newest generation, which would offer the board and
-        // fail to load it - and DataTreeUsage reads a master listing a missing workbook as an
-        // INCOMPLETE tree, which would stop Account > Unused files and every publish's removals for good.
-        // ###########################################################################################
-        public static string OlderListingMessage(string treeName, string masterName) =>
-            $"[{masterName}] in the {treeName} data lists this board. That older main Excel data file serves older CRT " +
-            "versions and is never changed, so a board it lists cannot be deleted.";
-
+        // In the CRT 4.0 tree (2026-10-25) there is no older main file in the tree and nothing
+        // another board uses lies in a board's folder - bytes are stored once for every board
+        // naming them, and those another board lists stay (BoardDeletionFiles) - so the Excel
+        // tree's "an older main Excel data file lists it" and "another board uses a file in its
+        // folder" refusals are gone.
         public static string UnreadableMasterMessage(string treeName, string masterName, string why) =>
             $"[{masterName}] in the {treeName} data could not be read ({why.Trim().TrimEnd('.')}), so whether it lists this " +
             "board is not known. Nothing can be deleted until it can be read.";
 
-        public static string UsedElsewhereMessage(string treeName, IReadOnlyList<string> paths)
-        {
-            ArgumentNullException.ThrowIfNull(paths);
-
-            string named = string.Join(", ", paths.Take(BoardDeletionRules.NamedPaths).Select(path => $"[{path}]"));
-            int more = paths.Count - BoardDeletionRules.NamedPaths;
-
-            if (more > 0)
-                named += $" and {more} more";
-
-            return paths.Count == 1
-                ? $"Another board in the {treeName} data uses a file in this board's folder, so deleting the folder would " +
-                  $"break that board: {named}. Nothing can be deleted while another board uses it."
-                : $"Another board in the {treeName} data uses {paths.Count} files in this board's folder, so deleting the " +
-                  $"folder would break it: {named}. Nothing can be deleted while another board uses them.";
-        }
-
         public static string IncompleteTreeMessage(string treeName, IEnumerable<string> problems) =>
-            $"The {treeName} data could not be read completely, so whether another board uses a file in this board's " +
-            $"folder is not known. Nothing can be deleted until it can: {string.Join(" ", problems ?? [])}".TrimEnd();
+            $"The {treeName} data could not be read completely, so whether another board uses a file this board lists " +
+            $"is not known. Nothing can be deleted until it can: {string.Join(" ", problems ?? [])}".TrimEnd();
 
         // The link named from the tree's root, never as the server's own path (code review, 2026-10-13).
         public static string LinkMessage(string treeName, string root, string link) =>

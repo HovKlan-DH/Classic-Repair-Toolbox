@@ -204,5 +204,91 @@ namespace CRT.Data.Tests
             Assert.Equal(entries.Select(entry => entry.Path), sized.Select(entry => entry.Path));
             Assert.Empty(BoardFileEntries.WithSizes(null, _ => 1));
         }
+
+        // ---- the CRT 4.0 tree (2026-10-25) --------------------------------------------------------
+
+        // A file shown by its board name is fetched from where its bytes lie; one with no other
+        // place lies at its name.
+        [Fact]
+        public void An_entry_is_fetched_from_its_tree_path_when_it_has_one()
+        {
+            Assert.Equal("Files/3f/3f7a.png", new BoardFileEntry("Images/u8.png", BoardFileChange.Unchanged, BoardFileSource.Beta, TreePath: "Files/3f/3f7a.png").PlaceInTree);
+            Assert.Equal("Images/u8.png", new BoardFileEntry("Images/u8.png", BoardFileChange.Unchanged, BoardFileSource.Beta).PlaceInTree);
+        }
+
+        // The place is worked out by each end from Path and TreePath, so it is no field on the wire
+        // - the API carries the two it is made from.
+        [Fact]
+        public void An_entrys_place_in_its_tree_is_not_sent_on_the_wire()
+        {
+            string json = System.Text.Json.JsonSerializer.Serialize(
+                new BoardFileEntry("Images/u8.png", BoardFileChange.Unchanged, BoardFileSource.Beta, TreePath: "Files/3f/3f7a.png"),
+                ReviewApiContract.WireSettings);
+
+            Assert.Contains("\"treePath\":\"Files/3f/3f7a.png\"", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("placeInTree", json, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void WithTreePaths_gives_each_entry_its_place_and_leaves_the_rest()
+        {
+            IReadOnlyList<BoardFileEntry> entries = BoardFileEntries.ForBoard(["board.json", "u8.png", "u9.png"], null);
+
+            IReadOnlyList<BoardFileEntry> placed = BoardFileEntries.WithTreePaths(entries, entry => entry.Path switch
+            {
+                "u8.png" => "Files/aa/aa.png",
+                "board.json" => "board.json",
+                _ => null
+            });
+
+            Assert.Equal([null, "Files/aa/aa.png", null], placed.Select(entry => entry.TreePath));
+        }
+
+        // ###########################################################################################
+        // *** A PROMOTION OF A 4.0 BOARD IS DRAWN BY ITS NAMES. *** The plan copies stored files,
+        // whose paths are checksums; the tree shows each under the board's name, opened from its
+        // place - and a name whose old bytes leave production while its new ones arrive is ONE file
+        // changed, not one removed beside one added.
+        // ###########################################################################################
+        [Fact]
+        public void A_promotion_of_a_4_0_board_is_shown_by_name_with_a_replaced_file_changed()
+        {
+            var names = new Dictionary<string, string>
+            {
+                ["Files/aa/new.png"] = "Images/u8.png",
+                ["Files/bb/old.png"] = "Images/u8.png",
+                ["Files/cc/same.pdf"] = "manual.pdf",
+                ["Commodore/C64/250407/board.json"] = "board.json"
+            };
+
+            IReadOnlyList<BoardFileEntry> entries = BoardFileEntries.ForPromotion(
+                [
+                    new PromotionFile("Files/aa/new.png", "aa", PromotionChange.Added, PromotionStage.Content, false, "Images/u8.png"),
+                    new PromotionFile("Commodore/C64/250407/board.json", "11", PromotionChange.Replaced, PromotionStage.Board, false, "board.json")
+                ],
+                removals: ["Files/bb/old.png"],
+                unchanged: ["Files/cc/same.pdf"],
+                names);
+
+            Assert.Equal(["Images/u8.png", "board.json", "manual.pdf"], entries.Select(entry => entry.Path));
+
+            BoardFileEntry u8 = entries[0];
+            Assert.Equal(BoardFileChange.Changed, u8.Change);
+            Assert.Equal("Files/aa/new.png", u8.PlaceInTree);
+            Assert.Equal(BoardFileSource.Beta, u8.OpenFrom);
+
+            Assert.Equal("Files/cc/same.pdf", entries[2].PlaceInTree);
+        }
+
+        // The board file holds everything; it is not "the highlight file" an Excel board had.
+        [Theory]
+        [InlineData("Commodore/C64/250407/Data C64 250407 v2.0.0.json", true)]
+        [InlineData("Commodore/C64/250407/board.json", false)]
+        [InlineData("board.json", false)]
+        [InlineData("x.png", false)]
+        public void Only_an_Excel_boards_sidecar_is_a_highlight_file(string path, bool expected)
+        {
+            Assert.Equal(expected, BoardFileEntries.IsHighlightFile(path));
+        }
     }
 }

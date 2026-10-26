@@ -1,0 +1,334 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.ComponentPane">
+
+	<!-- THE COMPONENT PANE (CRT 4.0 step 2, 2026-10-25 - the plan: "A component opens in a pane, never
+	     in a maximized window"). On the right of the Contribute tab; every change goes into the draft
+	     as it is made (ComponentPane.axaml.cs). -->
+	<UserControl.Styles>
+		<Style Selector="TextBlock.PaneHeading">
+			<Setter Property="FontSize" Value="14" />
+			<Setter Property="FontWeight" Value="Bold" />
+		</Style>
+
+		<Style Selector="TextBlock.PaneIntro">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Opacity" Value="0.75" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+			<Setter Property="Margin" Value="0,0,0,6" />
+		</Style>
+
+		<Style Selector="TextBlock.FieldLabel">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Margin" Value="0,6,0,2" />
+		</Style>
+
+		<Style Selector="TextBlock.EmptyLine">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Opacity" Value="0.75" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+
+		<!-- The counter under the short description - the warning colour once it is over the limit. -->
+		<Style Selector="TextBlock.Counter">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Opacity" Value="0.75" />
+			<Setter Property="HorizontalAlignment" Value="Right" />
+		</Style>
+
+		<Style Selector="TextBlock.Counter.over">
+			<Setter Property="Opacity" Value="1" />
+			<Setter Property="Foreground" Value="{DynamicResource Text_Warning_Fg}" />
+		</Style>
+	</UserControl.Styles>
+
+	<Grid RowDefinitions="Auto,*">
+
+		<!-- What is open, whether the draft changed it, and the ways out. -->
+		<Border Grid.Row="0"
+				BorderBrush="{DynamicResource Table_BorderRowLine}"
+				BorderThickness="0,0,0,1"
+				Padding="4,0,0,8">
+			<Grid ColumnDefinitions="*,Auto">
+				<StackPanel Grid.Column="0" Spacing="2">
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<TextBlock x:Name="TitleText"
+								   FontSize="16"
+								   FontWeight="Bold"
+								   TextWrapping="Wrap"
+								   VerticalAlignment="Center" />
+
+						<!-- The draft holds a change to this component - the published board reads otherwise. -->
+						<Border x:Name="ChangedMark"
+								IsVisible="False"
+								Background="{DynamicResource Draft_Chip_Bg}"
+								BorderBrush="{DynamicResource Draft_Chip_Border}"
+								BorderThickness="1"
+								CornerRadius="3"
+								Padding="5,1"
+								VerticalAlignment="Center"
+								ToolTip.Tip="Your draft changes this component - the published board reads otherwise until your draft is submitted and published">
+							<TextBlock Text="Changed" FontSize="11" Foreground="{DynamicResource Draft_Chip_Fg}" />
+						</Border>
+					</StackPanel>
+					<TextBlock x:Name="RegionText"
+							   FontSize="11"
+							   Opacity="0.75"
+							   TextWrapping="Wrap" />
+				</StackPanel>
+
+				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+					<!-- One component back as published - one step, so Undo brings the changes back. -->
+					<Button x:Name="UndoChangesButton"
+							Classes="Danger"
+							IsVisible="False"
+							ToolTip.Tip="Put this component back as it is published - every change your draft makes to it. Undo brings them back."
+							Click="OnUndoChangesClick" />
+					<Button x:Name="CloseButton"
+							Content="Close"
+							ToolTip.Tip="Close the component - every change is in your draft already"
+							Click="OnCloseClick" />
+				</StackPanel>
+			</Grid>
+		</Border>
+
+		<!-- The component is gone from the draft - an undo took away the change that added it. -->
+		<StackPanel Grid.Row="1" x:Name="GonePanel" IsVisible="False" Margin="4,12,0,0" Spacing="6">
+			<TextBlock x:Name="GoneText" TextWrapping="Wrap" />
+		</StackPanel>
+
+		<!-- The sections take the room there is, up to a readable width, from the left: a star column
+		     with a MaxWidth (a left-aligned panel would shrink to its widest content). -->
+		<ScrollViewer Grid.Row="1" x:Name="SectionsScrollViewer" HorizontalScrollBarVisibility="Disabled">
+			<Grid>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*" MaxWidth="980" />
+					<ColumnDefinition Width="0.001*" />
+				</Grid.ColumnDefinitions>
+			<StackPanel x:Name="SectionsPanel" Grid.Column="0" Spacing="18" Margin="4,12,12,12">
+
+				<!-- ==== Basics ==== -->
+				<StackPanel>
+					<TextBlock Classes="PaneHeading" Text="Basics" />
+					<TextBlock Classes="PaneIntro"
+							   Text="What the component is. The popup on the board shows these when the component is pointed at." />
+
+					<Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto,Auto">
+						<StackPanel Grid.Row="0" Grid.Column="0">
+							<TextBlock Classes="FieldLabel" Text="Friendly name" />
+							<TextBox x:Name="FriendlyNameBox" Watermark="VIC-II, SID, Kernal ROM" />
+						</StackPanel>
+						<StackPanel Grid.Row="0" Grid.Column="2">
+							<TextBlock Classes="FieldLabel" Text="Technical name or value" />
+							<TextBox x:Name="TechnicalNameBox" Watermark="6569, 74LS08, 10uF" />
+						</StackPanel>
+						<StackPanel Grid.Row="1" Grid.Column="0">
+							<TextBlock Classes="FieldLabel" Text="Part number" />
+							<TextBox x:Name="PartNumberBox" Watermark="The number printed on it" />
+						</StackPanel>
+						<StackPanel Grid.Row="1" Grid.Column="2">
+							<TextBlock Classes="FieldLabel" Text="Category" />
+							<!-- The board's own categories as you type - the component list groups by the exact
+							     word, so "Capacitors" beside "Capacitor" would split one group in two. -->
+							<AutoCompleteBox x:Name="CategoryBox"
+											 FilterMode="Contains"
+											 MinimumPrefixLength="0"
+											 IsTextCompletionEnabled="False"
+											 PlaceholderText="Capacitor, IC, Resistor"
+											 HorizontalAlignment="Stretch" />
+						</StackPanel>
+						<StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
+							<TextBlock Classes="FieldLabel" Text="Short description" />
+							<TextBox x:Name="DescriptionBox"
+									 Watermark="One line - what the popup shows first" />
+							<TextBlock x:Name="DescriptionCounter" Classes="Counter" />
+						</StackPanel>
+						<StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3">
+							<TextBlock Classes="FieldLabel" Text="Repair notes" />
+							<TextBox x:Name="RepairNotesBox"
+									 AcceptsReturn="True"
+									 TextWrapping="Wrap"
+									 MinHeight="80"
+									 Watermark="What usually goes wrong with it, how to test it, what to look out for - links are fine" />
+						</StackPanel>
+					</Grid>
+				</StackPanel>
+
+				<!-- ==== Pinout ==== -->
+				<StackPanel>
+					<TextBlock Classes="PaneHeading" Text="Pinout" />
+					<TextBlock Classes="PaneIntro"
+							   Text="The case and what each pin is for. Pick the case, and CRT draws it from above, notch at the top." />
+
+					<StackPanel Orientation="Horizontal" Spacing="8">
+						<StackPanel Width="200">
+							<TextBlock Classes="FieldLabel" Text="Package" />
+							<AutoCompleteBox x:Name="PackageBox"
+											 FilterMode="Contains"
+											 MinimumPrefixLength="0"
+											 IsTextCompletionEnabled="False"
+											 PlaceholderText="DIP-40, TO-92"
+											 HorizontalAlignment="Stretch" />
+						</StackPanel>
+						<!-- Every pin number of the case not listed yet, added - offered once a case with
+						     a known count is picked and some of its pins are missing. -->
+						<Button x:Name="AddCasePinsButton"
+								Classes="Accept"
+								VerticalAlignment="Bottom"
+								IsVisible="False"
+								Click="OnAddCasePinsClick" />
+					</StackPanel>
+
+					<Grid ColumnDefinitions="Auto,*" Margin="0,10,0,0">
+						<local:PinoutDrawing x:Name="PinoutPicture"
+											 Grid.Column="0"
+											 Margin="0,0,16,0"
+											 VerticalAlignment="Top"
+											 IsVisible="False" />
+
+						<StackPanel Grid.Column="1" Spacing="4">
+							<TextBlock x:Name="NoPinsText"
+									   Classes="EmptyLine"
+									   Text="No pins yet. Pick the case above and add its pins, or add them one by one." />
+
+							<Grid x:Name="PinsHeading" ColumnDefinitions="60,8,*,8,140,8,Auto">
+								<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Pin" />
+								<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Signal name" />
+								<TextBlock Grid.Column="4" Classes="FieldLabel" Text="Direction" />
+							</Grid>
+
+							<ItemsControl x:Name="PinsItemsControl">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:ComponentPanePinRow">
+										<Grid ColumnDefinitions="60,8,*,8,140,8,Auto" Margin="0,0,0,4">
+											<TextBox Grid.Column="0" Text="{Binding Pin, Mode=TwoWay}" />
+											<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="VCC, A0, ~RESET" />
+											<ComboBox Grid.Column="4"
+													  HorizontalAlignment="Stretch"
+													  ItemsSource="{Binding DirectionChoices}"
+													  SelectedItem="{Binding Direction, Mode=TwoWay}"
+													  PlaceholderText="Direction" />
+											<Button Grid.Column="6"
+													Classes="Danger"
+													Content="Remove"
+													Tag="{Binding}"
+													ToolTip.Tip="Remove this pin"
+													Click="OnRemovePinClick" />
+										</Grid>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+
+							<Button x:Name="AddPinButton"
+									Classes="Accept"
+									Content="Add pin"
+									HorizontalAlignment="Left"
+									Click="OnAddPinClick" />
+						</StackPanel>
+					</Grid>
+				</StackPanel>
+
+				<!-- ==== Replacement parts ==== -->
+				<StackPanel Spacing="4">
+					<TextBlock Classes="PaneHeading" Text="Replacement parts" />
+					<TextBlock Classes="PaneIntro"
+							   Text="Parts that can stand in for this one - and what has to change for one that does not simply drop in." />
+
+					<TextBlock x:Name="NoReplacementsText" Classes="EmptyLine" Text="No replacement parts yet." />
+
+					<ItemsControl x:Name="ReplacementsItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:ComponentPaneReplacementRow">
+								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+										BorderThickness="0,0,0,1"
+										Padding="0,0,0,8"
+										Margin="0,0,0,8">
+									<Grid ColumnDefinitions="*,8,160,8,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+										<TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Part number" />
+										<TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PartNumber, Mode=TwoWay}" />
+										<TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Kind" />
+										<ComboBox Grid.Row="1" Grid.Column="2"
+												  HorizontalAlignment="Stretch"
+												  ItemsSource="{Binding KindChoices}"
+												  SelectedItem="{Binding Kind, Mode=TwoWay}"
+												  PlaceholderText="Kind" />
+										<Button Grid.Row="1" Grid.Column="4"
+												Classes="Danger"
+												Content="Remove"
+												Tag="{Binding}"
+												ToolTip.Tip="Remove this replacement part"
+												Click="OnRemoveReplacementClick" />
+										<Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" ColumnDefinitions="*,8,*">
+											<TextBlock Grid.Column="0" Classes="FieldLabel" Text="What to change" />
+											<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Where the advice comes from" />
+										</Grid>
+										<Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5" ColumnDefinitions="*,8,*">
+											<TextBox Grid.Column="0" Text="{Binding Changes, Mode=TwoWay}" Watermark="Nothing, for a drop-in" />
+											<TextBox Grid.Column="2" Text="{Binding Source, Mode=TwoWay}" Watermark="A forum thread, a magazine, tried on my own board" />
+										</Grid>
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+
+					<Button x:Name="AddReplacementButton"
+							Classes="Accept"
+							Content="Add replacement part"
+							HorizontalAlignment="Left"
+							Click="OnAddReplacementClick" />
+				</StackPanel>
+
+				<!-- ==== Links ==== -->
+				<StackPanel Spacing="4">
+					<TextBlock Classes="PaneHeading" Text="Links" />
+					<TextBlock Classes="PaneIntro"
+							   Text="Pages about this component - a datasheet online, a forum thread, a video." />
+
+					<TextBlock x:Name="NoLinksText" Classes="EmptyLine" Text="No links yet." />
+
+					<Grid x:Name="LinksHeading" ColumnDefinitions="*,8,2*,8,Auto">
+						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name" />
+						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Address" />
+					</Grid>
+
+					<ItemsControl x:Name="LinksItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:ComponentPaneLinkRow">
+								<Grid ColumnDefinitions="*,8,2*,8,Auto" Margin="0,0,0,4">
+									<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
+									<TextBox Grid.Column="2" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" />
+									<Button Grid.Column="4"
+											Classes="Danger"
+											Content="Remove"
+											Tag="{Binding}"
+											ToolTip.Tip="Remove this link"
+											Click="OnRemoveLinkClick" />
+								</Grid>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+
+					<Button x:Name="AddLinkButton"
+							Classes="Accept"
+							Content="Add link"
+							HorizontalAlignment="Left"
+							Click="OnAddLinkClick" />
+				</StackPanel>
+
+				<!-- ==== Not in the pane yet ==== -->
+				<StackPanel Spacing="4">
+					<TextBlock Classes="PaneHeading" Text="Pictures, scope baselines and files" />
+					<TextBlock x:Name="ElsewhereText" Classes="PaneIntro" />
+					<Button x:Name="ComponentEditorButton"
+							Content="Edit them in the component editor"
+							HorizontalAlignment="Left"
+							ToolTip.Tip="Open the component editor on this component - its pictures, scope baselines and files are edited there until they move into this pane"
+							Click="OnComponentEditorClick" />
+				</StackPanel>
+			</StackPanel>
+			</Grid>
+		</ScrollViewer>
+	</Grid>
+</UserControl>

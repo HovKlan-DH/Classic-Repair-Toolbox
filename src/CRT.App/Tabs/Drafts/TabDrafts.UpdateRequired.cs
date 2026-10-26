@@ -9,36 +9,22 @@ namespace CRT
     // AppUpdateRequirement) and what the button does; the overlay (UpdateRequiredOverlay) covers the
     // whole tab and cannot be closed.
     //
-    // Nothing on disk is touched: the drafts stay as they are, an open table keeps its unsaved
-    // edits, and quitting CRT - or installing the update from the overlay (code review, 2026-10-09;
-    // Main.ConfirmLeavingTablesAsync) - still asks about them. Its Save works with the tab covered,
-    // since it needs no server.
+    // Nothing on disk is touched: the drafts stay as they are, and an open table goes on saving
+    // itself under the cover, since saving needs no server; a change it could not save is still
+    // asked about when quitting CRT or installing the update from the overlay (code review,
+    // 2026-10-09; Main.ConfirmLeavingTablesAsync).
     //
-    // *** NOTHING NEW IS SENT TO A COVERED TAB (code review, 2026-10-09). *** The Contribute tab's
-    // "Edit board as draft" and "Add a new board" exist to work in this tab, so they make nothing
-    // while it is covered and say why (Main.EditBoardAsDraft.cs, Main.NewBoard.cs). Another
-    // editor's "Save to draft" still saves - its work is done already - but one held back by this
-    // table's unsaved edits is told what settles them now that this tab cannot (SavingBlockedFor).
+    // *** NOTHING NEW IS MADE UNDER A COVERED TAB (code review, 2026-10-09). *** A board's first
+    // draft and "Add a new board" exist to work in this tab, so they make nothing while it is
+    // covered and say why (Main.FirstDraft.cs, Main.NewBoard.cs). Since CRT 4.0 step 2 the cover
+    // lies over the whole Contribute tab, its component list included. Another editor's "Save to
+    // draft" still saves - its work is done already - onto the draft held in memory, the table's
+    // changes included (CRT 4.0 step 1).
     // ###########################################################################################
     public partial class TabDrafts
     {
         // Covers the tab, or - covered already - says `view` instead.
         internal void ShowUpdateRequired(AppUpdateRequiredView view) => this.UpdateRequired.Show(view);
-
-        // ###########################################################################################
-        // Whether another editor's save into the draft of `excelDataFile` must wait, and which notice
-        // says so - null when it may go ahead. The table open on that draft with unsaved edits holds
-        // it back (HasUnsavedTableEditsFor); covered, the notice says how they get settled instead.
-        // ###########################################################################################
-        internal UnsavedTableEditsPrompt? SavingBlockedFor(string? excelDataFile)
-        {
-            if (!this.HasUnsavedTableEditsFor(excelDataFile))
-                return null;
-
-            return this.IsUpdateRequiredShown
-                ? UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired
-                : UnsavedTableEditsPrompt.SavingElsewhere;
-        }
 
         internal bool IsUpdateRequiredShown => this.UpdateRequired.IsShown;
 

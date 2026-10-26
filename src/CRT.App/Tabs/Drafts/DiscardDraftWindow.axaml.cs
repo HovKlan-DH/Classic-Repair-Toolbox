@@ -33,15 +33,38 @@ namespace CRT
         // `unfinished` are this board's submissions still with the maintainers
         // (DraftDiscardContract.WhichToReport). When there are any, the window says what discarding
         // means for them - see NoticeFor.
+        //
+        // `lost` lists what the draft changes (DraftChangeSummary.AsLines) - what goes with it (CRT 4.0
+        // step 1's last slice, 2026-10-25: "Discard draft - everything, after listing what will be lost").
         // ###########################################################################################
-        public void Initialize(string boardDisplayName, IReadOnlyList<SubmissionReceipt>? unfinished = null)
+        public void Initialize(
+            string boardDisplayName,
+            IReadOnlyList<SubmissionReceipt>? unfinished = null,
+            IReadOnlyList<string>? lost = null)
         {
             this.BoardNameText.Text = boardDisplayName;
 
             string? notice = DiscardDraftWindow.NoticeFor(unfinished);
             this.SubmissionNoticeText.Text = notice ?? string.Empty;
             this.SubmissionNoticeText.IsVisible = notice is not null;
+
+            this.LostPanel.Children.Clear();
+
+            foreach (string line in lost ?? [])
+            {
+                this.LostPanel.Children.Add(new TextBlock { Text = "- " + line, TextWrapping = Avalonia.Media.TextWrapping.Wrap });
+            }
+
+            bool listed = this.LostPanel.Children.Count > 0;
+            this.LostHeading.IsVisible = listed;
+            this.LostBorder.IsVisible = listed;
         }
+
+        // The lines "What will be lost" shows - for tests.
+        internal IReadOnlyList<string> LostForTests =>
+            this.LostBorder.IsVisible
+                ? this.LostPanel.Children.OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToList()
+                : [];
 
         // ###########################################################################################
         // *** THE CONTRIBUTOR IS TOLD THE MAINTAINERS WILL KNOW (owner request, 2026-09-28). *** A

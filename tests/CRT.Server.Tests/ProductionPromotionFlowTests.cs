@@ -15,7 +15,12 @@ namespace CRT.Server.Tests
     // exactly as the Approve button does, and then promoted into a temp production tree.
     //
     // Asserted on the DISK, like ApprovePublishFlowTests: production is what every user downloads,
-    // and the only honest way to test a refusal is to check nothing arrived there.
+    // and the only honest way to test a refusal is to check nothing arrived there. The trees are
+    // CRT 4.0 ones (2026-10-25): a board arrives as its board file and the stored bytes it lists.
+    //
+    // There are no shared files in that tree, so a promotion never needs a second approval; the
+    // two-approval cases this class had for a shared-file replacement went with them (ApprovalRules
+    // keeps its own tests).
     // ###########################################################################################
     [Collection("BoardFiles")]
     public sealed class ProductionPromotionFlowTests : IDisposable
@@ -104,7 +109,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         private async Task<FakeSubmissionStore> PublishToBetaAsync(
             FakeSubmissionStore? store = null,
-            string image = "Commodore/C64/250407/Images/sheet1.png",
+            string image = ProductionPromotionFlowTests.SheetName,
             string marker = "SHEET1",
             DateTimeOffset? when = null)
         {
@@ -130,7 +135,7 @@ namespace CRT.Server.Tests
         // A pending one-image submission of the fixture's board, placed in the drop-down lists.
         private async Task<long> PendingAsync(
             FakeSubmissionStore store,
-            string image = "Commodore/C64/250407/Images/sheet1.png",
+            string image = ProductionPromotionFlowTests.SheetName,
             string marker = "SHEET1")
         {
             byte[] bytes = ProductionPromotionFlowTests.Png(marker);
@@ -190,6 +195,15 @@ namespace CRT.Server.Tests
         private string InProduction(string relative) =>
             Path.Combine(this.thisProduction, relative.Replace('/', Path.DirectorySeparatorChar));
 
+        // The board's file, and where the bytes of the image a submission carries are stored.
+        private const string BoardFile = "Commodore/C64/250407/board.json";
+        private const string SheetName = "Images/sheet1.png";
+
+        private static string StoredOf(string marker, string name) =>
+            DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(ProductionPromotionFlowTests.Png(marker)), name);
+
+        private static readonly string Sheet = ProductionPromotionFlowTests.StoredOf("SHEET1", ProductionPromotionFlowTests.SheetName);
+
         // -----------------------------------------------------------------------------------
         // The happy path
         // -----------------------------------------------------------------------------------
@@ -208,17 +222,19 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
 
-            // The image, the workbook and the sidecar - the whole board. No system.json: retired.
-            Assert.True(File.Exists(this.InProduction("Commodore/C64/250407/Images/sheet1.png")));
-            Assert.True(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx")));
-            Assert.True(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.json")));
+            // The board file and the image's stored bytes - the whole board. No system.json: retired.
+            Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
+            Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.BoardFile)));
             Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/system.json")));
 
             // And the board READS BACK from production through the ordinary reader.
             BoardData? board = await BoardDataReader.LoadAsync(
-                this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx"), "promote-" + Guid.NewGuid().ToString("N"));
+                this.InProduction(ProductionPromotionFlowTests.BoardFile), "promote-" + Guid.NewGuid().ToString("N"));
 
             Assert.Equal("U8", Assert.Single(board!.Components).BoardLabel);
+            Assert.Equal(
+                ProductionPromotionFlowTests.SheetName,
+                Assert.Single(BoardFiles.ReadDocument(this.InProduction(ProductionPromotionFlowTests.BoardFile))!.Files).Name);
 
             // Recorded, so it is no longer waiting.
             Assert.Equal(ProductionPromotionFlowTests.BetaHashOf(store), store.ProductionBoards[ProductionPromotionFlowTests.BoardId].ContentHash);
@@ -271,14 +287,43 @@ namespace CRT.Server.Tests
                 ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
 
             // A second submission to the same board adds one image.
-            await this.PublishToBetaAsync(store, "Commodore/C64/250407/Images/sheet2.png", "SHEET2", ProductionPromotionFlowTests.Now.AddHours(1));
+            await this.PublishToBetaAsync(store, "Images/sheet2.png", "SHEET2", ProductionPromotionFlowTests.Now.AddHours(1));
 
             PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
                 ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, this.Options());
 
             Assert.Null(plan.Refusal);
-            Assert.Contains(plan.Plan!.Files, file => file.Path.EndsWith("sheet2.png", StringComparison.Ordinal) && file.Change == PromotionChange.Added);
-            Assert.DoesNotContain(plan.Plan.Files, file => file.Path.EndsWith("sheet1.png", StringComparison.Ordinal));
+            Assert.Contains(plan.Plan!.Files, file =>
+                file.Path == ProductionPromotionFlowTests.StoredOf("SHEET2", "Images/sheet2.png") &&
+                file.Name == "Images/sheet2.png" &&
+                file.Change == PromotionChange.Added);
+            Assert.DoesNotContain(plan.Plan.Files, file => file.Name == ProductionPromotionFlowTests.SheetName);
+        }
+
+        // ###########################################################################################
+        // *** BYTES STABLE ALREADY STORES ARE NOT COPIED AGAIN (CRT 4.0 tree, 2026-10-25). *** A
+        // file's bytes are stored once for every board naming them: the image another stable board
+        // already lists is there, so only the board file arrives - and the board still reads whole.
+        // ###########################################################################################
+        [Fact]
+        public async Task Bytes_the_stable_source_already_stores_are_not_copied_again()
+        {
+            FakeSubmissionStore store = await this.PublishToBetaAsync();
+            DataTreeBuilder.BoardWithBytes(this.thisProduction, "Commodore/C128/310378", ("the same sheet.png", ProductionPromotionFlowTests.Png("SHEET1")));
+            DateTime before = File.GetLastWriteTimeUtc(this.InProduction(ProductionPromotionFlowTests.Sheet));
+
+            PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, this.Options());
+
+            Assert.Equal([ProductionPromotionFlowTests.BoardFile], plan.Plan!.Files.Select(file => file.Path));
+
+            PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId,
+                ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.BoardFile)));
+            Assert.Equal(before, File.GetLastWriteTimeUtc(this.InProduction(ProductionPromotionFlowTests.Sheet)));
         }
 
         // -----------------------------------------------------------------------------------
@@ -294,7 +339,7 @@ namespace CRT.Server.Tests
             FakeSubmissionStore store = await this.PublishToBetaAsync();
             string checkedHash = ProductionPromotionFlowTests.BetaHashOf(store);
 
-            await this.PublishToBetaAsync(store, "Commodore/C64/250407/Images/sheet2.png", "SHEET2", ProductionPromotionFlowTests.Now.AddHours(1));
+            await this.PublishToBetaAsync(store, "Images/sheet2.png", "SHEET2", ProductionPromotionFlowTests.Now.AddHours(1));
 
             PromotionOutcome outcome = await this.Flow(store).PromoteAsync(
                 ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, checkedHash,
@@ -304,6 +349,7 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsConflict);
             Assert.Contains("changed in BETA", outcome.Error, StringComparison.Ordinal);
             Assert.False(Directory.Exists(this.InProduction("Commodore")));
+            Assert.False(Directory.Exists(this.InProduction(DataTreeLayout.FilesFolder)));
         }
 
         [Fact]
@@ -351,91 +397,32 @@ namespace CRT.Server.Tests
             return accounts;
         }
 
+        // ###########################################################################################
+        // *** ONE APPROVAL PUBLISHES (CRT 4.0 tree, 2026-10-25). *** A shared file replaced was the
+        // one case that needed the board's maintainer AND the administrator (owner decision,
+        // 2026-09-25); in the 4.0 tree no file is shared - bytes another board also lists are stored
+        // once and never change - so the maintainer alone publishes, even beside such bytes.
+        // ###########################################################################################
         [Fact]
-        public async Task A_promotion_REPLACING_a_SHARED_file_needs_the_maintainer_AND_the_administrator()
-        {
-            // The project owner's rule for production as for BETA (2026-09-25) - since 2026-09-27 for
-            // a REPLACEMENT only: production already has the shared file, differently. The first
-            // approval is recorded and NOTHING is copied; the second publishes.
-            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
-            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
-            string hash = ProductionPromotionFlowTests.BetaHashOf(store);
-
-            PromotionOutcome byMaintainer = await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.BoardId),
-                ProductionPromotionFlowTests.BoardId, hash, this.Options(), ProductionPromotionFlowTests.Now);
-
-            Assert.False(byMaintainer.IsPublished);
-            Assert.True(byMaintainer.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Administrator], byMaintainer.WaitingFor);
-            Assert.Equal("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
-
-            PromotionOutcome byAdmin = await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, hash, this.Options(), ProductionPromotionFlowTests.Now);
-
-            Assert.True(byAdmin.IsPublished, byAdmin.Error);
-            Assert.NotEqual("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
-        }
-
-        // A NEW shared file reaches no board that did not ask for it - the maintainer alone promotes
-        // it (owner decision, 2026-09-27).
-        [Fact]
-        public async Task A_promotion_ADDING_a_new_shared_file_is_published_by_the_maintainer_alone()
-        {
-            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-
-            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer()).PromoteAsync(
-                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.BoardId),
-                ProductionPromotionFlowTests.BoardId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
-
-            Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.True(File.Exists(this.InProduction("Commodore/Shared files/74LS08.png")));
-        }
-
-        // Writes a file into the production tree, folders and all.
-        private void WriteInProduction(string relative, string text)
-        {
-            string full = this.InProduction(relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            File.WriteAllText(full, text);
-        }
-
-        [Fact]
-        public async Task A_production_approval_does_NOT_carry_over_once_BETA_has_changed()
-        {
-            // The maintainer approved one BETA state; another publish landed in BETA since. The
-            // administrator's approval now starts again - nobody approved the new state twice. (A
-            // REPLACEMENT of production's shared file, the kind that needs two.)
-            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
-            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
-
-            await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.BoardId),
-                ProductionPromotionFlowTests.BoardId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
-
-            await this.PublishToBetaAsync(store, "Commodore/Shared files/74LS08.png", "SHARED-2", ProductionPromotionFlowTests.Now.AddHours(1));
-
-            PromotionOutcome byAdmin = await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId,
-                ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now.AddHours(2));
-
-            Assert.True(byAdmin.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Maintainer], byAdmin.WaitingFor);
-            Assert.Equal("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
-        }
-
-        [Fact]
-        public async Task A_promotion_with_NO_shared_change_is_published_by_the_maintainer_alone()
+        public async Task A_promotion_is_published_by_the_maintainer_alone_even_beside_bytes_another_board_lists()
         {
             FakeSubmissionStore store = await this.PublishToBetaAsync();
+            DataTreeBuilder.BoardWithBytes(this.thisProduction, "Commodore/C128/310378", ("the same sheet.png", ProductionPromotionFlowTests.Png("SHEET1")));
+            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
 
-            PromotionOutcome outcome = await this.Flow(store, ProductionPromotionFlowTests.AccountsWithAMaintainer()).PromoteAsync(
+            PromotionPlanOutcome plan = await this.Flow(store, accounts).PlanAsync(
+                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.BoardId),
+                ProductionPromotionFlowTests.BoardId, this.Options());
+
+            Assert.False(plan.Plan!.TouchesSharedFiles);
+            Assert.True(plan.Approval!.ApprovalPublishes);
+
+            PromotionOutcome outcome = await this.Flow(store, accounts).PromoteAsync(
                 ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.BoardId),
                 ProductionPromotionFlowTests.BoardId, ProductionPromotionFlowTests.BetaHashOf(store), this.Options(), ProductionPromotionFlowTests.Now);
 
             Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.BoardFile)));
         }
 
         // ###########################################################################################
@@ -505,7 +492,7 @@ namespace CRT.Server.Tests
                 options: this.Options(),
                 production: this.Flow(store, accounts));
 
-            long second = await this.PendingAsync(store, "Commodore/C64/250407/Images/sheet2.png", "SHEET2");
+            long second = await this.PendingAsync(store, "Images/sheet2.png", "SHEET2");
 
             // Still genuinely waiting: refused, as the rule says.
             ApproveOutcome refused = await approvals.ApproveAsync(
@@ -602,19 +589,30 @@ namespace CRT.Server.Tests
             Assert.True((await this.Flow(store).PlanAsync(
                 ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, this.Options(configured: false))).IsNotConfigured);
         }
+
         // ###########################################################################################
         // WHAT A PROMOTION REMOVES FROM PRODUCTION (owner decisions, 2026-09-25: no orphan
         // files, and the list shown BEFORE anyone approves). Production holds the older board,
-        // which cites a manual the BETA board no longer does.
+        // which lists a manual the BETA board no longer does - the sheet the same bytes as BETA's.
+        // In the CRT 4.0 tree what goes is the manual's STORED file; the maintainer is shown it by
+        // the name the board knew it by (FileRemovalPreview.Names).
         // ###########################################################################################
-        private const string OldManual = "Commodore/C64/250407/old-manual.pdf";
-        private const string Sheet = "Commodore/C64/250407/Images/sheet1.png";
+        private const string OldManualName = "old-manual.pdf";
+        private const string OldManualContent = "the old manual";
 
-        private void ProductionHasTheOlderBoard()
+        private static readonly string OldManual = DataTreeBuilder.Stored(ProductionPromotionFlowTests.OldManualContent, ProductionPromotionFlowTests.OldManualName);
+
+        private void ProductionHasTheOlderBoard(params (string Name, byte[] Bytes)[] more)
         {
-            DataTreeBuilder.Master(this.thisProduction, DataTreeBuilder.Workbook);
-            DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook, ProductionPromotionFlowTests.Sheet, ProductionPromotionFlowTests.OldManual);
-            DataTreeBuilder.Files(this.thisProduction, ProductionPromotionFlowTests.OldManual);
+            DataTreeBuilder.Master(this.thisProduction, ProductionPromotionFlowTests.BoardId);
+            DataTreeBuilder.BoardWithBytes(
+                this.thisProduction,
+                ProductionPromotionFlowTests.BoardId,
+                [
+                    (ProductionPromotionFlowTests.SheetName, ProductionPromotionFlowTests.Png("SHEET1")),
+                    (ProductionPromotionFlowTests.OldManualName, System.Text.Encoding.UTF8.GetBytes(ProductionPromotionFlowTests.OldManualContent)),
+                    .. more
+                ]);
         }
 
         [Fact]
@@ -628,23 +626,24 @@ namespace CRT.Server.Tests
 
             Assert.False(plan.Removals.IsBlocked, plan.Removals.BlockedBecause);
             Assert.Equal([ProductionPromotionFlowTests.OldManual], plan.Removals.Files);
+            Assert.Equal(ProductionPromotionFlowTests.OldManualName, plan.Removals.NameOf(ProductionPromotionFlowTests.OldManual));
         }
 
         // ###########################################################################################
-        // *** PRODUCTION TOO REMOVES ONLY INSIDE THE BOARD'S OWN FOLDER (owner decision, 2026-09-27).
-        // *** The older production board also cited a shared datasheet nothing else uses; the BETA
-        // board does not. It stays in production, unused, for Account > Unused files - and is not on
-        // the list the maintainer is shown.
+        // *** BYTES ANOTHER STABLE BOARD LISTS STAY (CRT 4.0 tree, 2026-10-25). *** The older board
+        // also listed a datasheet another stable board lists too - stored once for both. It is not
+        // on the list the maintainer is shown, and stays.
         // ###########################################################################################
         [Fact]
-        public async Task A_shared_file_the_board_stops_using_is_not_removed_from_production()
+        public async Task Bytes_another_stable_board_lists_are_not_removed_from_production()
         {
-            const string shared = "Commodore/Shared files/Datasheets/old-chip.pdf";
+            byte[] datasheet = System.Text.Encoding.UTF8.GetBytes("the 6526 datasheet");
+            string stored = DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(datasheet), "6526.pdf");
 
             FakeSubmissionStore store = await this.PublishToBetaAsync();
-            DataTreeBuilder.Master(this.thisProduction, DataTreeBuilder.Workbook);
-            DataTreeBuilder.Board(this.thisProduction, DataTreeBuilder.Workbook, ProductionPromotionFlowTests.Sheet, ProductionPromotionFlowTests.OldManual, shared);
-            DataTreeBuilder.Files(this.thisProduction, ProductionPromotionFlowTests.OldManual, shared);
+            this.ProductionHasTheOlderBoard(("6526.pdf", datasheet));
+            DataTreeBuilder.Master(this.thisProduction, ProductionPromotionFlowTests.BoardId, "Commodore/C128/310378");
+            DataTreeBuilder.BoardWithBytes(this.thisProduction, "Commodore/C128/310378", ("Datasheets/6526.pdf", datasheet));
 
             PromotionPlanOutcome plan = await this.Flow(store).PlanAsync(
                 ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, this.Options());
@@ -662,7 +661,7 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
             Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.OldManual)));
-            Assert.True(File.Exists(this.InProduction(shared)));
+            Assert.True(File.Exists(this.InProduction(stored)));
         }
 
         [Fact]
@@ -681,9 +680,11 @@ namespace CRT.Server.Tests
                 CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal([ProductionPromotionFlowTests.OldManual], outcome.RemovedFiles);
+            // Said by the name the board knew it by.
+            Assert.Equal([ProductionPromotionFlowTests.OldManualName], outcome.RemovedFiles);
             Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.OldManual)));
             Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
+            Assert.False(this.ProductionStillListsTheOldManual());
         }
 
         // Nothing is copied and nothing removed when the list the maintainer saw is not the list the
@@ -707,8 +708,13 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsConflict);
             Assert.Equal(ProductionPromotionFlow.RemovalsChangedMessage, outcome.Error);
             Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.OldManual)));
-            Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
+            Assert.True(this.ProductionStillListsTheOldManual());
         }
+
+        // Production's board file is still the older one - nothing of BETA's arrived.
+        private bool ProductionStillListsTheOldManual() =>
+            BoardFiles.ReadDocument(this.InProduction(ProductionPromotionFlowTests.BoardFile))!.Files
+                .Any(file => file.Name == ProductionPromotionFlowTests.OldManualName);
 
         // ###########################################################################################
         // *** NO LIST AT ALL IS AN OLDER MAINTAINER APPLICATION, NOT A CHANGED ONE (code review,
@@ -735,7 +741,7 @@ namespace CRT.Server.Tests
             Assert.False(outcome.IsConflict);
             Assert.Equal(ApprovePublishFlow.RemovalsNotSentMessage, outcome.Error);
             Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.OldManual)));
-            Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
+            Assert.True(this.ProductionStillListsTheOldManual());
         }
 
         // -----------------------------------------------------------------------------------
@@ -746,7 +752,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Promoting_a_NEW_board_adds_its_row_to_productions_list_after_the_same_neighbour()
         {
-            MasterListingRow first = new("Commodore VIC-20", "324003", "Commodore/VIC-20/324003/Data VIC20 324003 v2.0.0.xlsx", string.Empty);
+            MasterListingRow first = new("Commodore VIC-20", "324003", "Commodore/VIC-20/324003/board.json", string.Empty);
             DataTreeBuilder.ListingMaster(this.thisProduction, first, ApprovePublishFlowTests.OtherListedBoard);
 
             FakeSubmissionStore store = await this.PublishToBetaAsync();
@@ -772,7 +778,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_board_production_lists_another_board_under_the_names_of_is_refused_before_anything_is_copied()
         {
-            MasterListingRow sameNames = new("Commodore 64", "250407", "Commodore/C64/326298/Data C64 326298 v2.0.0.xlsx", string.Empty);
+            MasterListingRow sameNames = new("Commodore 64", "250407", "Commodore/C64/326298/board.json", string.Empty);
             DataTreeBuilder.ListingMaster(this.thisProduction, ApprovePublishFlowTests.OtherListedBoard, sameNames);
 
             FakeSubmissionStore store = await this.PublishToBetaAsync();
@@ -790,7 +796,7 @@ namespace CRT.Server.Tests
                 ProductionPromotionFlowTests.Now);
 
             Assert.False(outcome.IsPublished);
-            Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx")));
+            Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.BoardFile)));
         }
 
         // ###########################################################################################
@@ -819,7 +825,7 @@ namespace CRT.Server.Tests
                 ProductionPromotionFlowTests.Now);
 
             Assert.False(outcome.IsPublished);
-            Assert.False(File.Exists(this.InProduction("Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx")));
+            Assert.False(File.Exists(this.InProduction(ProductionPromotionFlowTests.BoardFile)));
         }
 
         // ###########################################################################################
@@ -871,82 +877,6 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
             Assert.True(File.Exists(this.InProduction(ProductionPromotionFlowTests.Sheet)));
-        }
-
-        // ###########################################################################################
-        // A REPLACED shared file normally needs the board's maintainer AND the administrator. With
-        // the maintainer shut out of the publish, asking for their half would leave the
-        // administrator's approval waiting for ever - so the administrator's alone publishes.
-        // ###########################################################################################
-        [Fact]
-        public async Task While_only_administrators_publish_a_shared_file_replacement_needs_the_administrator_alone()
-        {
-            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
-            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
-
-            PromotionPlanOutcome plan = await this.Flow(store, accounts).PlanAsync(
-                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, this.Options(administratorsOnly: true));
-
-            Assert.True(plan.Plan!.TouchesSharedFiles);
-            Assert.True(plan.Approval!.ApprovalPublishes);
-
-            // Still SAID to be a shared-file replacement: Required is what CRT's "Replaces a shared
-            // file other boards may use" line is written from, and a stable publish cannot be undone.
-            // Collapsing it to "any one approval" took that warning off the administrator's screen
-            // (code review, 2026-10-05).
-            Assert.Equal([ApproverRole.Administrator], plan.Approval.Required);
-
-            // And the maintainer is not offered a publish they cannot make: the administrator's
-            // approval is the one needed, theirs is not asked for.
-            PromotionPlanOutcome maintainers = await this.Flow(store, accounts).PlanAsync(
-                ProductionPromotionFlowTests.MaintainerOf(ProductionPromotionFlowTests.BoardId),
-                ProductionPromotionFlowTests.BoardId, this.Options(administratorsOnly: true));
-
-            Assert.False(maintainers.Approval!.CanApprove);
-            Assert.Equal([ApproverRole.Administrator], maintainers.Approval.WaitingFor);
-
-            PromotionOutcome outcome = await this.Flow(store, accounts).PromoteAsync(
-                ProductionPromotionFlowTests.Admin(),
-                ProductionPromotionFlowTests.BoardId, ProductionPromotionFlowTests.BetaHashOf(store),
-                this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
-
-            Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.NotEqual("OLD", File.ReadAllText(this.InProduction("Commodore/Shared files/74LS08.png")));
-        }
-
-        // ###########################################################################################
-        // *** AN APPROVAL GIVEN BEFORE THE SETTING WAS SWITCHED ON (code review, 2026-10-05). *** The
-        // administrator gave the first of two approvals on a shared-file replacement; with only
-        // administrators publishing, nothing else is asked for, so their next press publishes. The
-        // list must say so: "you approved, so it is with the other approver" left the board dimmed
-        // and off the administrator's badge, with nobody prompted to finish it.
-        // ###########################################################################################
-        [Fact]
-        public async Task An_administrators_approval_given_before_only_administrators_published_still_leaves_the_board_awaiting_them()
-        {
-            FakeSubmissionStore store = await this.PublishToBetaAsync(image: "Commodore/Shared files/74LS08.png", marker: "SHARED");
-            this.WriteInProduction("Commodore/Shared files/74LS08.png", "OLD");
-            FakeAccountStore accounts = ProductionPromotionFlowTests.AccountsWithAMaintainer();
-            ProductionPromotionFlow flow = this.Flow(store, accounts);
-            string hash = ProductionPromotionFlowTests.BetaHashOf(store);
-
-            PromotionOutcome first = await flow.PromoteAsync(
-                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, hash,
-                this.Options(administratorsOnly: false), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
-
-            Assert.True(first.IsAwaitingApproval);
-
-            ProductionListEntry entry = Assert.Single(await flow.ListEntriesAsync(
-                ProductionPromotionFlowTests.Admin(), this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now));
-
-            Assert.True(entry.AwaitsYou);
-
-            PromotionOutcome second = await flow.PromoteAsync(
-                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, hash,
-                this.Options(administratorsOnly: true), ProductionPromotionFlowTests.Now, [], CancellationToken.None);
-
-            Assert.True(second.IsPublished, second.Error);
         }
 
         // ###########################################################################################

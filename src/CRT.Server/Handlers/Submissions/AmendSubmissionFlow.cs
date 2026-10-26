@@ -23,15 +23,13 @@ namespace CRT.Server.Handlers.Submissions
     //                  (SubmissionRowsBoard.WithTableSections); highlights, calibrations and the
     //                  revision date always stay as submitted.
     //   5. FILES     - rebuilt from what the rows cite. A file the submission carries is kept; a
-    //                  file already PUBLISHED at that path is taken from the published tree (the
+    //                  name the PUBLISHED board lists is taken from the published tree (the
     //                  server's own copy, imported like a new submission's unchanged files); a
     //                  row citing anything else is refused - a maintainer edits rows, and cannot
     //                  bring in a file nobody has sent.
     //   6. VALIDATE  - the same path, file and row rules a new submission passes.
-    //   7. STORE     - the store keeps what is replaced (the contributor's original first), clears
-    //                  the approvals already given - they were given to other content - and
-    //                  re-decides whether shared files change, so the two-person rule follows the
-    //                  content actually being published.
+    //   7. STORE     - the store keeps what is replaced (the contributor's original first) and
+    //                  clears the approvals already given - they were given to other content.
     //
     // An audit row records who amended what. The contributor is told in the decision mail and in
     // CRT's "My submissions" (the status answer carries `amendedByMaintainer`).
@@ -104,7 +102,13 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionRows amendedRows = SubmissionRowsBoard.WithTableSections(current.Rows ?? new SubmissionRows(), rows);
 
             // ---- 5. Files ----------------------------------------------------------------------
-            PublishedTreeView? tree = PublishedTreeProbe.For(dataTreeRoot);
+            //
+            // In the CRT 4.0 tree (2026-10-25) a row cites a file by the board's name, so "already
+            // published" is a name the published board lists - its bytes the stored file of its
+            // checksum (PublishedBoardFiles).
+            PublishedTreeView? tree = PublishedTreeProbe.For(dataTreeRoot, current);
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow> listed =
+                PublishedBoardFiles.ByName(dataTreeRoot, current.BoardId) ?? new Dictionary<string, BoardDocument.StoredFileRow>();
             var findings = new List<ValidationFinding>();
             var files = new List<SubmissionFile>();
             var imports = new List<(SubmissionFile File, string Source)>();
@@ -119,14 +123,12 @@ namespace CRT.Server.Handlers.Submissions
                     continue;
                 }
 
-                string? hash = tree?.HashOf(path);
-
-                if (hash is not null &&
-                    SubmissionPathRules.TryResolve(dataTreeRoot, path, out string resolved, out _) &&
+                if (listed.TryGetValue(path, out BoardDocument.StoredFileRow? file) &&
+                    PublishedBoardFiles.StoredPath(dataTreeRoot, file.Sha256, file.Name) is { Length: > 0 } resolved &&
                     PublishPathSafety.FindLinkOnPath(dataTreeRoot, resolved, PublishPathSafety.IsLink) is null &&
                     File.Exists(resolved))
                 {
-                    var published = new SubmissionFile { Path = path, Sha256 = hash, SizeBytes = new FileInfo(resolved).Length };
+                    var published = new SubmissionFile { Path = path, Sha256 = file.Sha256.ToLowerInvariant(), SizeBytes = new FileInfo(resolved).Length };
                     files.Add(published);
                     imports.Add((published, resolved));
                     continue;
@@ -151,7 +153,7 @@ namespace CRT.Server.Handlers.Submissions
             // ###########################################################################################
             foreach (SubmissionFile file in current.Files)
             {
-                if (SubmissionKiCadFiles.IsSubmittable(current, file.Path) &&
+                if (SubmissionKiCadFiles.IsInKiCadFolder(file.Path) &&
                     !files.Any(kept => string.Equals(kept.Path, file.Path, StringComparison.Ordinal)))
                 {
                     files.Add(file);
@@ -210,7 +212,8 @@ namespace CRT.Server.Handlers.Submissions
                     submissionId,
                     expectedVersion,
                     amended,
-                    SubmissionSharedFiles.TouchesSharedFiles(amended, tree),
+                    // No shared files in the CRT 4.0 tree (ApprovePublishFlow.TouchesSharedFilesNowAsync).
+                    false,
                     access!.Account.Id,
                     ApprovePublishFlow.Label(access),
                     nowUtc,

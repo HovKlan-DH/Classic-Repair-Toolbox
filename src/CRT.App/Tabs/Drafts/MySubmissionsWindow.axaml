@@ -279,7 +279,7 @@
 				   TextWrapping="Wrap"
 				   VerticalAlignment="Top"
 				   IsVisible="False"
-				   Text="Nothing has been sent from this computer yet. When you submit a draft from the Drafts tab, it appears here so you can see how it is getting on." />
+				   Text="Nothing has been sent from this computer yet. When you submit a draft from the Contribute tab, it appears here so you can see how it is getting on." />
 
 		<StackPanel Grid.Row="3"
 					Orientation="Horizontal"

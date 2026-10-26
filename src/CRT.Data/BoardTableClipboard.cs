@@ -1,18 +1,21 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // ONE CELL TO AND FROM THE CLIPBOARD, the way Excel reads and writes it - for the table
-    // editor's Ctrl+C / Ctrl+V on a selected cell (owner request, 2026-09-24).
+    // CELLS TO AND FROM THE CLIPBOARD, the way Excel, LibreOffice and Google Sheets read and write
+    // them - for the table editor's Ctrl+C / Ctrl+V (owner request, 2026-09-24).
     //
-    // *** ONE CELL AT A TIME, DELIBERATELY. *** The project owner asked for the simple version first:
-    // insert a row, then copy cells across one by one. So a clipboard holding a BLOCK of cells
-    // (tabs or line breaks - what Excel puts there for more than one cell) is refused rather than
-    // squeezed into one cell or spread across several. Pasting a block is a later feature with
-    // rules of its own (where it lands, whether it adds rows), not something to half-do here.
+    // *** ONE CELL AT A TIME UNTIL CRT 4.0 (2026-10-25). *** The project owner asked for the simple
+    // version first, and a clipboard holding a BLOCK of cells was refused. With the board data out
+    // of Excel, the table is where every edit is made, so a block is read (ReadBlock) and written
+    // (ForCells) too - "without these, dropping Excel would be a step backwards" (the 4.0 plan,
+    // step 0). Where a block lands is BoardTableSheet.PasteBlock's rule.
     //
-    // Excel's clipboard text, which is what these rules follow:
+    // A spreadsheet's clipboard text, which is what these rules follow:
     //   - every copied cell, even a single one, is followed by a line break;
     //   - cells are separated by tabs and rows by line breaks;
     //   - a cell whose text contains a tab, a line break or a double quote is wrapped in double
@@ -20,6 +23,162 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class BoardTableClipboard
     {
+        // ###########################################################################################
+        // The clipboard's cells, row by row - one cell for a single cell (TryReadSingleCell's rule),
+        // nothing for an empty clipboard. A row may hold fewer cells than another; a paste then
+        // writes only the cells it has.
+        //
+        // A cell starting with a quote is a QUOTED cell only when its closing quote is followed by
+        // a tab, a line break or the end - the way a spreadsheet writes one. Anything else
+        // ("5.25" drive, typed in a text editor) is taken as it is, quotes and all.
+        // ###########################################################################################
+        public static IReadOnlyList<IReadOnlyList<string>> ReadBlock(string? clipboardText)
+        {
+            if (BoardTableClipboard.TryReadSingleCell(clipboardText, out string single))
+            {
+                return [[single]];
+            }
+
+            if (string.IsNullOrEmpty(clipboardText))
+            {
+                return [];
+            }
+
+            string text = BoardTableClipboard.WithoutOneTrailingLineBreak(clipboardText);
+            var rows = new List<IReadOnlyList<string>>();
+            var row = new List<string>();
+            int at = 0;
+
+            while (true)
+            {
+                string cell;
+
+                if (at < text.Length && text[at] == '"' && BoardTableClipboard.TryReadQuoted(text, at, out string quoted, out int next))
+                {
+                    cell = quoted;
+                    at = next;
+                }
+                else
+                {
+                    int end = text.IndexOfAny(['\t', '\r', '\n'], at);
+                    end = end < 0 ? text.Length : end;
+                    cell = text[at..end];
+                    at = end;
+                }
+
+                row.Add(cell);
+
+                if (at >= text.Length)
+                {
+                    rows.Add(row);
+                    return rows;
+                }
+
+                if (text[at] == '\t')
+                {
+                    at++;
+                    continue;
+                }
+
+                // A line break - "\r\n", "\n" or "\r" - ends the row.
+                at += text[at] == '\r' && at + 1 < text.Length && text[at + 1] == '\n' ? 2 : 1;
+                rows.Add(row);
+                row = new List<string>();
+            }
+        }
+
+        // ###########################################################################################
+        // The clipboard text for the selected cells: one cell as ForSingleCell writes it; several as
+        // a block, in the order `rowOrder` shows the rows and the columns' own order. Only the rows
+        // and the columns holding a selected cell are written, and a cell of them that is not
+        // selected is written empty - so a rectangle (the usual selection) comes out as it is, and
+        // cells picked one by one with Ctrl+click keep their places without the rows between them.
+        // ###########################################################################################
+        public static string ForCells(IReadOnlyList<BoardTableCell> cells, IReadOnlyList<BoardTableRow> rowOrder)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+            ArgumentNullException.ThrowIfNull(rowOrder);
+
+            if (cells.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            if (cells.Count == 1)
+            {
+                return BoardTableClipboard.ForSingleCell(cells[0].Text);
+            }
+
+            var position = new Dictionary<BoardTableRow, int>(ReferenceEqualityComparer.Instance);
+            for (int i = 0; i < rowOrder.Count; i++)
+            {
+                position.TryAdd(rowOrder[i], i);
+            }
+
+            List<BoardTableRow> rows = cells
+                .Select(cell => cell.Row)
+                .Distinct(ReferenceEqualityComparer.Instance)
+                .Cast<BoardTableRow>()
+                .OrderBy(row => position.TryGetValue(row, out int at) ? at : int.MaxValue)
+                .ToList();
+
+            List<int> columns = cells.Select(cell => cell.ColumnIndex).Distinct().Order().ToList();
+            var selected = new HashSet<BoardTableCell>(cells, ReferenceEqualityComparer.Instance);
+
+            return BoardTableClipboard.ForBlock(rows
+                .Select(row => (IReadOnlyList<string>)columns
+                    .Select(column => column < row.Cells.Count && selected.Contains(row.Cells[column]) ? row.Cells[column].Text : string.Empty)
+                    .ToList())
+                .ToList());
+        }
+
+        // A block as a spreadsheet reads it: cells quoted as ForSingleCell quotes them, tabs between
+        // cells, "\r\n" between rows - and no line break after the last, for ForSingleCell's reason.
+        public static string ForBlock(IReadOnlyList<IReadOnlyList<string>> rows)
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+
+            return string.Join("\r\n", rows.Select(row => string.Join('\t', row.Select(BoardTableClipboard.ForSingleCell))));
+        }
+
+        // One quoted cell starting at `start`, unquoted, and where the text goes on after it - or
+        // false when the quotes do not close the cell the way a spreadsheet writes one.
+        private static bool TryReadQuoted(string text, int start, out string cell, out int next)
+        {
+            var value = new StringBuilder();
+
+            for (int at = start + 1; at < text.Length; at++)
+            {
+                if (text[at] != '"')
+                {
+                    value.Append(text[at]);
+                    continue;
+                }
+
+                if (at + 1 < text.Length && text[at + 1] == '"')
+                {
+                    value.Append('"');
+                    at++;
+                    continue;
+                }
+
+                int after = at + 1;
+
+                if (after == text.Length || text[after] is '\t' or '\r' or '\n')
+                {
+                    cell = value.ToString();
+                    next = after;
+                    return true;
+                }
+
+                break;
+            }
+
+            cell = string.Empty;
+            next = start;
+            return false;
+        }
+
         // ###########################################################################################
         // What to put in a cell for the given clipboard text. Returns false - and an empty string -
         // when the clipboard holds more than one cell, or nothing at all.

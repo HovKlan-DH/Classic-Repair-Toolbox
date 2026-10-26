@@ -27,6 +27,23 @@
 		<TextBlock TextWrapping="Wrap"
 				   Text="Everything you have changed locally for this board - components, highlights, files and links - will be lost. The published data is not affected." />
 
+		<!-- WHAT WILL BE LOST, listed (CRT 4.0 step 1's last slice, 2026-10-25 - the plan: "Discard
+		     draft - everything, after listing what will be lost"): the draft's summary, as "Review
+		     changes" words it, a dozen lines at most. Set from code (Initialize). -->
+		<TextBlock x:Name="LostHeading"
+				   Text="What will be lost:"
+				   FontWeight="Bold"
+				   Margin="0,10,0,2"
+				   IsVisible="False" />
+		<Border x:Name="LostBorder"
+				BorderBrush="{DynamicResource Form_Border}"
+				BorderThickness="1"
+				CornerRadius="3"
+				Padding="10,6"
+				IsVisible="False">
+			<StackPanel x:Name="LostPanel" Spacing="2" />
+		</Border>
+
 		<!-- Only when this board was sent for review and that review is not finished (owner request,
 		     2026-09-28): says the maintainers are told, and that nothing is withdrawn. Set from code
 		     (Initialize). -->

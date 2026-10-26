@@ -20,8 +20,9 @@ namespace CRT.Server.Tests
     {
         private static readonly DateTimeOffset Now = new(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
         private const string BoardId = "Commodore/C64/250407";
-        private const string Manual = "Commodore/C64/250407/manual.pdf";
-        private const string SheetImage = "Commodore/C64/250407/sheet-1.png";
+        // The board's names for its files (the CRT 4.0 tree, 2026-10-25).
+        private const string Manual = "manual.pdf";
+        private const string SheetImage = "sheet-1.png";
 
         private readonly string thisRoot = Path.Combine(Path.GetTempPath(), "crt-amend", Guid.NewGuid().ToString("N"));
         private readonly string thisData;
@@ -126,7 +127,7 @@ namespace CRT.Server.Tests
         {
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
 
-            const string KiCadPath = AmendSubmissionFlowTests.BoardId + "/KiCad data/board.kicad_pcb";
+            const string KiCadPath = "KiCad data/board.kicad_pcb";
 
             // Into the submission's FILE RECORDS, where the store rebuilds a payload's files from -
             // the fake's LoadPayloadAsync models the real store's join, not the saved object.
@@ -344,13 +345,14 @@ namespace CRT.Server.Tests
                 (await store.LoadPayloadAsync(id, CancellationToken.None))!.Files.Select(file => file.Path));
         }
 
-        // A maintainer may point a row at a file that is already PUBLISHED - the server takes its own
-        // copy, the way a new submission's unchanged files are taken.
+        // A maintainer may point a row at a file the published board already LISTS (the CRT 4.0
+        // tree, 2026-10-25) - the server takes its own copy of the stored bytes, the way a new
+        // submission's unchanged files are taken.
         [Fact]
         public async Task A_row_may_cite_a_file_already_published_and_the_server_takes_its_own_copy()
         {
-            const string sheet = "Commodore/C64/250407/sheet1.png";
-            DataTreeBuilder.Files(this.thisData, sheet);
+            const string sheet = "sheet1.png";
+            DataTreeBuilder.Board(this.thisData, DataTreeBuilder.BoardId, (sheet, "published sheet"));
 
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
             SubmissionRows rows = await AmendSubmissionFlowTests.EditedRowsAsync(store, id, edit: rows =>
@@ -369,7 +371,7 @@ namespace CRT.Server.Tests
         {
             (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
             SubmissionRows rows = await AmendSubmissionFlowTests.EditedRowsAsync(store, id, edit: rows =>
-                rows.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Service", Name = "X", File = "Commodore/C64/250407/nowhere.pdf" }));
+                rows.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Service", Name = "X", File = "nowhere.pdf" }));
 
             AmendOutcome outcome = await this.AmendAsync(store, id, rows);
 

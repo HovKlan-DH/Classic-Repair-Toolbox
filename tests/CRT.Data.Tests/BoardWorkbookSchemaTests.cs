@@ -207,6 +207,9 @@ public sealed class BoardWorkbookSchemaTests
     // table editor's sheet tabs disagreed with the workbook the project owner knows (reported), and
     // every workbook the app wrote ended in "Important signals". AllSheets is also the WRITE order
     // (BoardWorkbookWriter), which is what this pins for the file side.
+    //
+    // CRT 4.0's two sheets (2026-10-25) follow the component sheets, so one component's rows sit
+    // together; the published workbooks' own sheets keep their order around them.
     // ###########################################################################################
     [Fact]
     public void The_sheets_are_in_the_published_workbooks_order_with_Credits_last()
@@ -218,6 +221,8 @@ public sealed class BoardWorkbookSchemaTests
                 BoardWorkbookSchema.SheetComponentImages,
                 BoardWorkbookSchema.SheetComponentLocalFiles,
                 BoardWorkbookSchema.SheetComponentLinks,
+                BoardWorkbookSchema.SheetComponentPins,
+                BoardWorkbookSchema.SheetComponentReplacements,
                 BoardWorkbookSchema.SheetBoardLocalFiles,
                 BoardWorkbookSchema.SheetBoardLinks,
                 BoardWorkbookSchema.SheetKiCadImportantSignals,

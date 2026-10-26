@@ -146,7 +146,7 @@ public sealed class NewBoardWindowTests : IDisposable
 
             Fill(window, "Commodore", "C64", "250407");
 
-            Assert.Contains("Commodore/C64/250407/Data C64 250407.xlsx", window.PreviewTextForTests);
+            Assert.Contains("Commodore/C64/250407/board.json", window.PreviewTextForTests);
         });
     }
 
@@ -166,7 +166,7 @@ public sealed class NewBoardWindowTests : IDisposable
             Assert.Equal("C64", registration!.HardwareName);
             Assert.Equal("250407", registration.BoardName);
             Assert.Equal("My own notes", registration.HardwareNotes);
-            Assert.Equal("Commodore/C64/250407/Data C64 250407.xlsx", registration.ExcelDataFile);
+            Assert.Equal("Commodore/C64/250407/board.json", registration.ExcelDataFile);
             Assert.NotEqual(string.Empty, registration.CreatedUtc);
         });
     }
@@ -411,7 +411,7 @@ public sealed class NewBoardWindowTests : IDisposable
             NewBoardRegistration? result = await window.ConfirmAndCloseAsync();
 
             Assert.NotNull(result);
-            Assert.Equal("Commodore/C64/250407/Data C64 250407.xlsx", result!.ExcelDataFile);
+            Assert.Equal("Commodore/C64/250407/board.json", result!.ExcelDataFile);
             Assert.False(window.IsVisible);
         });
     }

@@ -50,18 +50,18 @@ namespace Handlers.MaintainerHandling
         // It is still a CONSTANT rather than hardcoded at the call site so that a test, or a future
         // staging box, can override it in one place.
         //
-        // *** IT CARRIES NO "/api" SUFFIX, and that is not the same as AppConfig.CrtServerBaseUrl. ***
+        // *** IT CARRIES NO "/api" SUFFIX, and that is not the same as AppConfig.ContributionServerBaseUrl. ***
         // Every method here appends the full path itself ("/api/review/queue"), so a base ending
         // in "/api" would produce "/api/api/review/queue" - a 404 on the very first request, from
         // an address that looks right in the source.
         //
-        // AppConfig.CrtServerBaseUrl DOES include it, because SubmissionClient appends only
-        // "/submissions". Both are built from the one host, AppConfig.CrtServerRootUrl (since the
-        // maintainer application became CRT's Maintainer tab, 2026-09-29), so they cannot point at
-        // two different servers - but they still differ on purpose. Caught by the route test
-        // rather than by a first launch against the live server.
+        // AppConfig.ContributionServerBaseUrl DOES include it, because SubmissionClient appends only
+        // "/submissions". Both are built from the one host, AppConfig.ContributionServerRootUrl -
+        // the TEST instance while CRT 4.0 is in pre-release (2026-10-25) - so the Maintainer tab and
+        // the submissions never talk to two different services, but they still differ on purpose.
+        // Caught by the route test rather than by a first launch against the live server.
         // ###########################################################################################
-        public const string DefaultBaseAddress = AppConfig.CrtServerRootUrl;
+        public const string DefaultBaseAddress = AppConfig.ContributionServerRootUrl;
 
         // Signing out. Revokes the ONE session presented, never the whole account - so signing out
         // on a laptop does not sign the project owner out at the bench.

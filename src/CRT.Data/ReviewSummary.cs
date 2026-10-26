@@ -350,7 +350,9 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColPartNumber, entry.PartNumber),
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColRegion, entry.Region),
-                new(BoardWorkbookSchema.ColDescription, entry.Description)
+                new(BoardWorkbookSchema.ColDescription, entry.Description),
+                new(BoardWorkbookSchema.ColPackage, entry.Package),
+                new(BoardWorkbookSchema.ColRepairNotes, entry.RepairNotes)
             ],
             ComponentImageEntry entry =>
             [
@@ -363,7 +365,26 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColNote, entry.Note),
                 new(BoardWorkbookSchema.ColTimeDiv, entry.TimeDiv),
                 new(BoardWorkbookSchema.ColVoltsDiv, entry.VoltsDiv),
-                new(BoardWorkbookSchema.ColTriggerLevelVolts, entry.TriggerLevelVolts)
+                new(BoardWorkbookSchema.ColTriggerLevelVolts, entry.TriggerLevelVolts),
+                new(BoardWorkbookSchema.ColMachineState, entry.MachineState),
+                new(BoardWorkbookSchema.ColSource, entry.Source)
+            ],
+            ComponentPinEntry entry =>
+            [
+                new(BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
+                new(BoardWorkbookSchema.ColRegion, entry.Region),
+                new(BoardWorkbookSchema.ColPin, entry.Pin),
+                new(BoardWorkbookSchema.ColName, entry.Name),
+                new(BoardWorkbookSchema.ColDirection, entry.Direction)
+            ],
+            ComponentReplacementEntry entry =>
+            [
+                new(BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
+                new(BoardWorkbookSchema.ColRegion, entry.Region),
+                new(BoardWorkbookSchema.ColPartNumber, entry.PartNumber),
+                new(BoardWorkbookSchema.ColKind, entry.Kind),
+                new(BoardWorkbookSchema.ColChanges, entry.Changes),
+                new(BoardWorkbookSchema.ColSource, entry.Source)
             ],
             // The coordinates are STRINGS here, like every other BoardData field - they are
             // parsed invariant-culture where they are used, not on the way in. So they compare as
@@ -547,6 +568,8 @@ namespace Handlers.DataHandling
             new(ReviewSummary.SectionComponentHighlights, data => data.ComponentHighlights.Cast<object>()),
             new(BoardWorkbookSchema.SheetComponentLocalFiles, data => data.ComponentLocalFiles.Cast<object>()),
             new(BoardWorkbookSchema.SheetComponentLinks, data => data.ComponentLinks.Cast<object>()),
+            new(BoardWorkbookSchema.SheetComponentPins, data => data.ComponentPins.Cast<object>()),
+            new(BoardWorkbookSchema.SheetComponentReplacements, data => data.ComponentReplacements.Cast<object>()),
             new(BoardWorkbookSchema.SheetBoardLocalFiles, data => data.BoardLocalFiles.Cast<object>()),
             new(BoardWorkbookSchema.SheetBoardLinks, data => data.BoardLinks.Cast<object>()),
             new(BoardWorkbookSchema.SheetCredits, data => data.Credits.Cast<object>()),

@@ -7,8 +7,9 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // Covers SubmissionFileTreeFlow - a submission's files as the BETA data will hold them after
-    // approving it (owner request, 2026-09-28), against a real temp tree: the folder listing, the
-    // publish plan and the highlight-file check are all real.
+    // approving it (owner request, 2026-09-28), against a real temp tree: the published board, the
+    // publish plan and the removal preview are all real. In the CRT 4.0 tree (2026-10-25) the tree
+    // is the board's NAMES - its board file and every file it lists.
     // ###########################################################################################
     [Collection("BoardFiles")]
     public sealed class SubmissionFileTreeFlowTests : IDisposable
@@ -16,6 +17,8 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
 
         private const string Board = "Commodore/C64/250407";
+
+        private static readonly byte[] ManualBytes = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4 the manual");
 
         private readonly string thisRoot;
         private readonly string thisDataTree;
@@ -26,9 +29,7 @@ namespace CRT.Server.Tests
             this.thisDataTree = Path.Combine(this.thisRoot, "app-data-BETA");
             Directory.CreateDirectory(this.thisDataTree);
 
-            // The masters are the generations a new board's workbook is named after - see
-            // ApprovePublishFlowTests.
-            File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.xlsx"), "master");
+            // The main file a new board's publish adds its row to - see ApprovePublishFlowTests.
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard);
         }
 
@@ -43,9 +44,6 @@ namespace CRT.Server.Tests
                 // A leftover temp folder is harmless.
             }
         }
-
-        private string InTree(string relative) =>
-            Path.Combine(this.thisDataTree, relative.Replace('/', Path.DirectorySeparatorChar));
 
         private static SubmissionManifest Manifest(string summary, params SubmissionFile[] files)
         {
@@ -75,6 +73,25 @@ namespace CRT.Server.Tests
             return manifest;
         }
 
+        private static SubmissionFile Manual() => new()
+        {
+            Path = "manual.pdf",
+            Sha256 = DataTreeBuilder.Sha(SubmissionFileTreeFlowTests.ManualBytes),
+            SizeBytes = SubmissionFileTreeFlowTests.ManualBytes.Length
+        };
+
+        // BETA's board as `before` publishes it, listing the manual and `more`; the main file lists
+        // only it, so the tree reads whole and a removal can be shown.
+        private void Published(SubmissionManifest before, params (string Name, byte[] Bytes)[] more)
+        {
+            DataTreeBuilder.Master(this.thisDataTree, SubmissionFileTreeFlowTests.Board);
+            DataTreeBuilder.Board(
+                this.thisDataTree,
+                SubmissionFileTreeFlowTests.Board,
+                PublishMerge.Build(before, null),
+                [("manual.pdf", SubmissionFileTreeFlowTests.ManualBytes), .. more]);
+        }
+
         private Task<IReadOnlyList<BoardFileEntry>> BuildAsync(SubmissionManifest manifest) =>
             SubmissionFileTreeFlow.BuildAsync(
                 this.thisDataTree, manifest, new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance), SubmissionFileTreeFlowTests.Now);
@@ -84,127 +101,90 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // A NEW BOARD "should just show how the new file-system will look like": its file new, and
-        // the workbook and highlight file the approval writes new too, with nothing to open yet.
+        // the board file the approval writes new too, with nothing to open yet.
         // ###########################################################################################
         [Fact]
         public async Task A_new_boards_tree_is_all_new()
         {
             IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest(
                 "b",
-                new SubmissionFile { Path = $"{SubmissionFileTreeFlowTests.Board}/manual.pdf", Sha256 = new string('a', 64), SizeBytes = 10 }));
+                new SubmissionFile { Path = "manual.pdf", Sha256 = new string('a', 64), SizeBytes = 10 }));
 
             Assert.All(entries, entry => Assert.Equal(BoardFileChange.Added, entry.Change));
-            Assert.Equal(BoardFileSource.Submission, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").OpenFrom);
+            Assert.Equal(BoardFileSource.Submission, Of(entries, "manual.pdf").OpenFrom);
 
-            BoardFileEntry workbook = Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx");
-            Assert.True(workbook.WrittenOnApproval);
-            Assert.Equal(BoardFileSource.NotWrittenYet, workbook.OpenFrom);
+            BoardFileEntry boardFile = Of(entries, DataTreeLayout.BoardFileName);
+            Assert.True(boardFile.WrittenOnApproval);
+            Assert.Equal(BoardFileSource.NotWrittenYet, boardFile.OpenFrom);
+            Assert.Equal(DataTreeLayout.BoardFilePath(SubmissionFileTreeFlowTests.Board), boardFile.PlaceInTree);
 
             // Sizes (owner request, 2026-10-04): the upload's, from the manifest; none for a file
             // with nothing to open yet.
-            Assert.Equal(10, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").SizeBytes);
-            Assert.Null(workbook.SizeBytes);
-            Assert.Equal(BoardFileSource.NotWrittenYet, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").OpenFrom);
+            Assert.Equal(10, Of(entries, "manual.pdf").SizeBytes);
+            Assert.Null(boardFile.SizeBytes);
         }
 
         // ###########################################################################################
-        // *** THE REPORTED CASE (2026-09-28): only a one-liner changed. *** The workbook is written
-        // again, the highlight file is NOT - its content is the same - and the rest of the board's
-        // folder is there around them, unchanged: an older generation's workbook, a file nothing
-        // cites, hidden and retired files left out.
+        // *** THE REPORTED CASE (2026-09-28): only a one-liner changed. *** The board file is written
+        // again - it carries the rows - and the manual the board lists, carried unchanged, is there
+        // beside it as BETA holds it: opened from where its bytes lie, sized from there.
         // ###########################################################################################
         [Fact]
-        public async Task A_rows_only_change_shows_only_the_workbook_changing_among_the_whole_folder()
+        public async Task A_rows_only_change_shows_only_the_board_file_changing()
         {
-            SubmissionManifest before = SubmissionFileTreeFlowTests.Manifest("a");
-            string workbook = this.InTree($"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx");
+            this.Published(SubmissionFileTreeFlowTests.Manifest("a", SubmissionFileTreeFlowTests.Manual()));
 
-            Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
-            BoardWorkbookWriter.Write(workbook, PublishMerge.Build(before, null));
-            BoardSidecarWriter.Write(workbook, before.Rows.ComponentHighlights, [], []);
-
-            File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Data C64 250407.xlsx"), "older generation");
-            Directory.CreateDirectory(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Images"));
-            File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/Images/loose.png"), "x");
-            File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/.Data.json.1234.writing.tmp"), "temporary");
-            File.WriteAllText(this.InTree($"{SubmissionFileTreeFlowTests.Board}/{BoardDescriptorStore.FileName}"), "{}");
-
-            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest("b"));
+            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(
+                SubmissionFileTreeFlowTests.Manifest("b", SubmissionFileTreeFlowTests.Manual()));
 
             Assert.Equal(
-                [$"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx"],
+                [DataTreeLayout.BoardFileName],
                 entries.Where(entry => entry.Change != BoardFileChange.Unchanged).Select(entry => entry.Path));
 
-            Assert.Equal(BoardFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
-            Assert.Equal(BoardFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407.xlsx").Change);
-            Assert.Equal(BoardFileChange.Unchanged, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Images/loose.png").Change);
-
-            Assert.DoesNotContain(entries, entry => entry.Path.Contains("/.", StringComparison.Ordinal));
-            Assert.DoesNotContain(entries, entry => entry.Path.EndsWith(BoardDescriptorStore.FileName, StringComparison.Ordinal));
-        }
-
-        // A moved highlight is a changed highlight file.
-        [Fact]
-        public async Task A_moved_highlight_changes_the_highlight_file()
-        {
-            SubmissionManifest before = SubmissionFileTreeFlowTests.Manifest("a");
-            string workbook = this.InTree($"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.xlsx");
-
-            Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
-            BoardWorkbookWriter.Write(workbook, PublishMerge.Build(before, null));
-            BoardSidecarWriter.Write(workbook, before.Rows.ComponentHighlights, [], []);
-
-            SubmissionManifest moved = SubmissionFileTreeFlowTests.Manifest("a");
-            moved.Rows.ComponentHighlights[0] = new ComponentHighlightEntry
-            {
-                SchematicName = "Sheet 1",
-                BoardLabel = "U8",
-                X = "101",
-                Y = "200",
-                Width = "40",
-                Height = "20"
-            };
-
-            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(moved);
-
-            Assert.Equal(BoardFileChange.Changed, Of(entries, $"{SubmissionFileTreeFlowTests.Board}/Data C64 250407 v2.0.0.json").Change);
+            BoardFileEntry manual = Of(entries, "manual.pdf");
+            Assert.Equal(BoardFileChange.Unchanged, manual.Change);
+            Assert.Equal(BoardFileSource.Beta, manual.OpenFrom);
+            Assert.Equal(DataTreeBuilder.Stored("%PDF-1.4 the manual", "manual.pdf"), manual.PlaceInTree);
+            Assert.Equal(SubmissionFileTreeFlowTests.ManualBytes.Length, manual.SizeBytes);
         }
 
         // ###########################################################################################
-        // *** A REPLACED SHARED FILE NAMES THE OTHER BOARDS IT REACHES (code review, 2026-10-13). ***
-        // The replacement needs two approvals because every board citing the file gets the new bytes,
-        // and the approvers were never told which boards. Not the submission's own board, and nothing
-        // on a file that is not a replaced shared one.
+        // A file the board stops listing is shown REMOVED, by the name the board knew it by - the
+        // same list the approval is sent back - and opened from where its bytes still lie.
         // ###########################################################################################
         [Fact]
-        public async Task A_replaced_shared_file_names_the_other_boards_that_cite_it()
+        public async Task A_file_the_board_stops_listing_is_shown_removed_by_its_name()
         {
-            const string shared = "Commodore/Shared files/Board local files/pinout.pdf";
-            File.WriteAllText(DataTreeBuilder.Full(this.thisDataTree, shared), "%PDF-1.4 the pinout as published");
+            byte[] old = System.Text.Encoding.UTF8.GetBytes("%PDF-1.4 the old pinout");
+            this.Published(SubmissionFileTreeFlowTests.Manifest("a", SubmissionFileTreeFlowTests.Manual()), ("Pinouts/old.pdf", old));
 
-            // Two other boards cite it, one does not.
-            foreach ((string board, bool cites) in new[] { ("Commodore/C128/310378", true), ("Commodore/VIC-20/250403", true), ("Commodore/PET/320349", false) })
-            {
-                string[] parts = board.Split('/');
+            IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(
+                SubmissionFileTreeFlowTests.Manifest("a", SubmissionFileTreeFlowTests.Manual()));
 
-                BoardWorkbookWriter.Write(
-                    DataTreeBuilder.Full(this.thisDataTree, $"{board}/Data {parts[1]} {parts[2]} v2.0.0.xlsx"),
-                    new BoardData
-                    {
-                        BoardLocalFiles = cites ? [new BoardLocalFileEntry { Category = "Service", Name = "Pinout", File = shared }] : []
-                    });
-            }
+            BoardFileEntry removed = Of(entries, "Pinouts/old.pdf");
+            Assert.Equal(BoardFileChange.Removed, removed.Change);
+            Assert.Equal(DataTreeLayout.StoredFilePath(DataTreeBuilder.Sha(old), "Pinouts/old.pdf"), removed.PlaceInTree);
+        }
+
+        // ###########################################################################################
+        // A file of the board carried with other bytes is CHANGED under its name - and, the file
+        // being the board's own, it names no other board: in the 4.0 tree nothing is shared
+        // (BoardFileEntry.AlsoUsedBy stays empty).
+        // ###########################################################################################
+        [Fact]
+        public async Task A_replaced_file_is_changed_under_its_name_and_names_no_other_board()
+        {
+            this.Published(SubmissionFileTreeFlowTests.Manifest("a", SubmissionFileTreeFlowTests.Manual()));
+            DataTreeBuilder.BoardWithBytes(this.thisDataTree, "Commodore/C128/310378", ("manual.pdf", SubmissionFileTreeFlowTests.ManualBytes));
 
             IReadOnlyList<BoardFileEntry> entries = await this.BuildAsync(SubmissionFileTreeFlowTests.Manifest(
-                "a better pinout",
-                new SubmissionFile { Path = shared, Sha256 = new string('b', 64), SizeBytes = 20 },
-                new SubmissionFile { Path = $"{SubmissionFileTreeFlowTests.Board}/manual.pdf", Sha256 = new string('a', 64), SizeBytes = 10 }));
+                "a better manual",
+                new SubmissionFile { Path = "manual.pdf", Sha256 = new string('b', 64), SizeBytes = 20 }));
 
-            BoardFileEntry replaced = Of(entries, shared);
+            BoardFileEntry replaced = Of(entries, "manual.pdf");
 
             Assert.Equal(BoardFileChange.Changed, replaced.Change);
-            Assert.Equal(["Commodore / C128 / 310378", "Commodore / VIC-20 / 250403"], replaced.AlsoUsedBy);
-            Assert.Null(Of(entries, $"{SubmissionFileTreeFlowTests.Board}/manual.pdf").AlsoUsedBy);
+            Assert.Null(replaced.AlsoUsedBy);
         }
     }
 }

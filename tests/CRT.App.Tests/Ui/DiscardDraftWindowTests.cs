@@ -152,4 +152,34 @@ public sealed class DiscardDraftWindowTests
             Assert.False(window.FindControl<TextBlock>("SubmissionNoticeText")!.IsVisible);
         });
     }
+
+    // ###########################################################################################
+    // "Discard draft - everything, after listing what will be lost" (CRT 4.0 step 1, 2026-10-25):
+    // the lines it is handed, as they are - and no list when there are none.
+    // ###########################################################################################
+    [Fact]
+    public void The_dialog_lists_what_will_be_lost()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new DiscardDraftWindow();
+            window.Initialize("Commodore 128 - 310378", [], ["U8 - CPU: Description changed", "U9 - VIC: New component"]);
+
+            Assert.Equal(["- U8 - CPU: Description changed", "- U9 - VIC: New component"], window.LostForTests);
+            Assert.True(window.FindControl<TextBlock>("LostHeading")!.IsVisible);
+        });
+    }
+
+    [Fact]
+    public void With_nothing_listed_the_dialog_shows_no_list()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new DiscardDraftWindow();
+            window.Initialize("Commodore 128 - 310378", [], []);
+
+            Assert.Empty(window.LostForTests);
+            Assert.False(window.FindControl<TextBlock>("LostHeading")!.IsVisible);
+        });
+    }
 }

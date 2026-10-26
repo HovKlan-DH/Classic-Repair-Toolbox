@@ -37,6 +37,12 @@ namespace CRT.Server.Handlers.Submissions
     // published workbook, which this service wrote, but they are still resolved through
     // SubmissionPathRules rather than combined directly - a workbook published before this service
     // existed is not something this code should trust to be well-formed.
+    //
+    // *** IN THE CRT 4.0 TREE (2026-10-25) A PUBLISHED FILE'S HASH IS READ OFF ITS BOARD'S LIST ***
+    // (PublishedBoardFiles - the board file names every file with its SHA-256, and the bytes are
+    // stored under it), so nothing here is hashed for a submission any more: the service calls only
+    // TryHash, for a BOARD FILE itself (the promotion's "is stable's board file BETA's?").
+    // ComputeAsync is no longer called; it stays with its tests until it is retired.
     // ###########################################################################################
     public static class PublishedFileHashes
     {

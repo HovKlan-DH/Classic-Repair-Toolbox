@@ -16,12 +16,15 @@ public sealed class NewBoardIdentityTests
 {
     // --------------------------------------------------------------- BuildExcelDataFile
 
+    // In CRT 4.0 a new board is named as every board is - its board file in the tree (2026-10-24) -
+    // so its draft and the board it becomes once published are one identity.
     [Fact]
-    public void The_identity_is_three_folder_segments_plus_a_data_file_name()
+    public void The_identity_is_three_folder_segments_plus_the_board_file_name()
     {
         string result = NewBoardIdentity.BuildExcelDataFile("Commodore", "C64", "250407");
 
-        Assert.Equal("Commodore/C64/250407/Data C64 250407.xlsx", result);
+        Assert.Equal("Commodore/C64/250407/board.json", result);
+        Assert.Equal(DataTreeLayout.BoardFilePath("Commodore/C64/250407"), result);
     }
 
     // Always "/", never the platform separator - ExcelDataFile follows the sync manifest's own
@@ -45,8 +48,8 @@ public sealed class NewBoardIdentityTests
         Assert.Equal(4, result.Split('/').Length);
     }
 
-    // No version suffix, unlike a real board's "Data C64 250407 v2.0.0.xlsx" - keeping a version in
-    // step with the resolved main workbook by hand is one of the burdens task 9 removes.
+    // No version suffix, unlike an Excel-era board's "Data C64 250407 v2.0.0.xlsx" - keeping a
+    // version in step with the resolved main workbook by hand is one of the burdens task 9 removes.
     [Fact]
     public void The_identity_carries_no_version_suffix()
     {
@@ -71,7 +74,7 @@ public sealed class NewBoardIdentityTests
     {
         string result = NewBoardIdentity.BuildExcelDataFile("  Commodore ", " C64", "250407  ");
 
-        Assert.Equal("Commodore/C64/250407/Data C64 250407.xlsx", result);
+        Assert.Equal("Commodore/C64/250407/board.json", result);
     }
 
     // ------------------------------------------------------------------ SanitizePathSegment

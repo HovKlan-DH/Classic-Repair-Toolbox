@@ -20,17 +20,17 @@ using System.Threading.Tasks;
 namespace CRT
 {
     // ###########################################################################################
-    // "EDIT IN TABLE FORMAT" - a draft's workbook as editable sheets, inline on the Drafts tab
+    // "EDIT IN TABLE FORMAT" - a draft's workbook as editable sheets, inline on the Contribute tab
     // (owner request, 2026-09-24).
     //
     // *** THIS CONTROL ONLY PAINTS. *** What a cell is, whether it differs from the published data,
     // where a deleted row goes and what a save writes are all decided in CRT.Data -
-    // BoardTableDocument, BoardTableSheet and DraftTableSession - because the project owner wants the
+    // BoardTableDocument, BoardTableSheet and DraftSession - because the project owner wants the
     // same table in the Maintainer tab later. Keep it that way: logic added here is logic the
     // maintainer's copy would have to duplicate, and logic no test without a display can reach.
     //
-    // It deliberately knows nothing of Main or DataManager either: it is handed a drafts folder, a
-    // board and the published board to compare with, and raises Saved. TabDrafts does the wiring.
+    // It deliberately knows nothing of Main or DataManager either: it is handed a draft's session (or
+    // a document) and the published board to compare with, and raises Saved. TabDrafts does the wiring.
     //
     // THE GRID is ProDataGrid, an MIT-licensed fork of Avalonia's own DataGrid (which is deprecated
     // from Avalonia 12, while the maintained alternative, TreeDataGrid, needs a paid licence that
@@ -43,10 +43,16 @@ namespace CRT
     // itself - anything that set a cell's colour directly would paint the wrong row the moment a
     // container was reused.
     //
-    // Editing is one cell at a time, as the project owner asked. Copy and paste work inside a cell
-    // being edited (it is an ordinary text box) and on the current cell via Ctrl+C / Ctrl+V
-    // (BoardTableClipboard). Pasting blocks of cells is a later feature. Several ROWS can be selected
-    // and deleted at once (2026-10-02). Ctrl+Z and Ctrl+Y undo and redo through the model's own
+    // *** IN THE DRAFTS TAB THE TABLE IS A VIEW OF THE DRAFT HELD IN MEMORY (CRT 4.0 step 1,
+    // 2026-10-25). *** Its changes go into the draft's DraftSession, which saves itself; undo and redo
+    // are the session's; there is no Save and no Reload - BoardTableEditor.DraftSession.cs. The
+    // Maintainer tab's tables are documents (Open) and keep their explicit Save.
+    //
+    // A cell is typed into one at a time, as the project owner asked. Copy and paste work inside a
+    // cell being edited (it is an ordinary text box), and on the selection via Ctrl+C / Ctrl+V -
+    // blocks of cells since CRT 4.0, with fill down and find & replace (2026-10-25,
+    // BoardTableEditor.BlockEdits.cs). Several ROWS can be selected and deleted at once (2026-10-02).
+    // Ctrl+Z and Ctrl+Y undo and redo through the draft's session, or - a document - the model's own
     // history (BoardTableHistory).
     //
     // FILE MAP: this file (loading, sheets, toolbar, keys, columns),
@@ -54,28 +60,25 @@ namespace CRT
     // BoardTableEditor.CellColours.cs (each cell's background and tooltip - its state's wash and
     // its problem's corner mark),
     // BoardTableEditor.Selection.cs (several rows selected, "Delete row" on all of them),
+    // BoardTableEditor.BlockEdits.cs (copying and pasting blocks, fill down, the replace bar),
     // BoardTableEditor.Search.cs (the search box, and the search handed to BoardTableCellText),
     // BoardTableEditor.TextWrap.cs (cells that always wrap, columns dragged wider than they size
     // themselves, and a double-click on a heading's edge fitting a column to its text),
     // BoardTableEditor.RowDrag.cs (dragging a row by its grip, with the worklog-style placeholder),
-    // BoardTableEditor.FileWatch.cs (noticing the draft being changed, or open, in Excel) and
+    // BoardTableEditor.DraftSession.cs (the Contribute tab's table on the draft held in memory: its
+    // changes handed over, saving by itself, undo and redo, the file changed outside it) and
     // BoardTableEditor.FilePreview.cs (the hover card on a file cell - its content is
     // BoardTableFilePreview, its bytes the host's IBoardTableFileSource).
     // ###########################################################################################
     public partial class BoardTableEditor : UserControl
     {
-        // The table on screen, and - in the Drafts tab only - the draft FILE behind it. In document
-        // mode (the Maintainer tab, Open(BoardTableDocument)) there is no session: Save raises
-        // SaveRequested for the host to save, and Reload and the file notices do not apply.
+        // The table on screen, and - in the Contribute tab only - the draft behind it (thisDraftSession,
+        // BoardTableEditor.DraftSession.cs). In document mode (the Maintainer tab,
+        // Open(BoardTableDocument)) there is no session: Save raises SaveRequested for the host.
         private BoardTableDocument? thisDocument;
-        private DraftTableSession? thisSession;
         private BoardTableSheet? thisCurrentSheet;
         private BoardData? thisPublished;
-        private string thisDraftsRoot = string.Empty;
         private string thisExcelDataFile = string.Empty;
-
-        // The downloaded data, so the checks can look for the files a row names (DraftTableSession).
-        private string thisDataRoot = string.Empty;
 
         // What a changed cell's tooltip calls the published value - the host's, kept for re-reads.
         private string? thisBaselineLabel;
@@ -127,13 +130,16 @@ namespace CRT
 
             this.TableGrid.LoadingRow += this.OnLoadingRow;
             this.TableGrid.BeginningEdit += BoardTableEditor.OnBeginningEdit;
-            this.WireDraftFileWatching();
+            this.WireDraftSession();
             this.TableGrid.CurrentCellChanged += (_, _) => this.UpdateToolbar();
 
             // Several rows selected and deleted at once (BoardTableEditor.Selection.cs), and the
             // search box (BoardTableEditor.Search.cs).
             this.WireSelection();
             this.WireSearch();
+
+            // Block copy and paste, fill down, find & replace (BoardTableEditor.BlockEdits.cs).
+            this.WireBlockEdits();
 
             // Columns dragged wider than they size themselves, and fitted to their text by a
             // double-click on a heading's edge (BoardTableEditor.TextWrap.cs).
@@ -155,11 +161,17 @@ namespace CRT
             this.UpdateToolbar();
         }
 
-        // Raised after a save has written the draft - TabDrafts refreshes its row count and the
-        // board on screen from it.
+        // Raised after the draft saved itself with a change of the table's in it - TabDrafts
+        // refreshes its row count and the board on screen from it.
         public event EventHandler? Saved;
 
-        public bool HasUnsavedChanges => this.thisDocument?.HasUnsavedChanges == true;
+        // ###########################################################################################
+        // Whether something on screen is not in the file yet: a change the table has not handed to
+        // its draft yet, or the draft's own save still to come or failed (DraftSession). A document's
+        // edits until the host saves them.
+        // ###########################################################################################
+        public bool HasUnsavedChanges =>
+            this.thisDocument?.HasUnsavedChanges == true || this.thisDraftSession?.HasUnsavedChanges == true;
 
         // ###########################################################################################
         // Raised when HasUnsavedChanges turns true or false - an edit, an undo back to the save, a
@@ -188,8 +200,8 @@ namespace CRT
         // DOCUMENT MODE - the Maintainer tab's table (2026-09-25). Shows `document` with no
         // draft file behind it: "Save changes" raises SaveRequested, and the host saves it however
         // it saves (the Maintainer tab sends it to the server as an amendment), then calls
-        // Open again with the saved state, or ShowMessage to say why not. Reload and the notices
-        // about a draft file being changed or open in Excel do not apply and stay hidden.
+        // Open again with the saved state, or ShowMessage to say why not. A draft's save state and
+        // its notices do not apply and stay hidden.
         // ###########################################################################################
         public void Open(BoardTableDocument document, string? message = null, string? preferredSheet = null)
         {
@@ -204,11 +216,8 @@ namespace CRT
                 ?? preferredSheet
                 ?? document.Sheets.FirstOrDefault(sheet => sheet.ChangeCount > 0)?.Name;
 
-            this.thisSession = null;
-            this.thisDraftsRoot = string.Empty;
             this.thisExcelDataFile = string.Empty;
             this.thisPublished = null;
-            this.thisDataRoot = string.Empty;
             this.thisBaselineLabel = null;
 
             this.Attach(document, session: null, keepSheet);
@@ -223,7 +232,7 @@ namespace CRT
         // account may not change. The table is there to look at - sheets, search, the colour key,
         // copying a cell, the file cards - but nothing in it can be typed, pasted, moved, inserted
         // or deleted, and there is no "Save changes": an edit that could never be sent is worse than
-        // none. The host says why (ShowMessage). Off by default; the Drafts tab never sets it.
+        // none. The host says why (ShowMessage). Off by default; the Contribute tab never sets it.
         // ###########################################################################################
         public bool IsReadOnly
         {
@@ -240,8 +249,8 @@ namespace CRT
 
         private bool thisIsReadOnly;
 
-        // Whether a draft FILE is behind the table (the Drafts tab) or only a document (review).
-        public bool IsFileBacked => this.thisSession is not null;
+        // Whether a draft FILE is behind the table (the Contribute tab) or only a document (review).
+        public bool IsFileBacked => this.thisDraftSession is not null;
 
         // The document on screen, with any cell still in its editor committed into it first - what
         // the host reads when it saves in document mode.
@@ -268,64 +277,18 @@ namespace CRT
         // A message under the toolbar, for the host in document mode ("Saved.", "Not saved: ...").
         public void ShowMessage(string message) => this.ShowStatus(message ?? string.Empty);
 
-        // Whether the draft file changed after this table read it - in which case a save would be
-        // refused, so nothing should offer one. Reads the file, so it is a method, not a property.
-        internal bool HasDraftChangedOnDisk() => this.thisSession?.HasChangedOnDisk() == true;
-
         public string ExcelDataFile => this.thisExcelDataFile;
-
-        internal DraftTableSession? SessionForTests => this.thisSession;
 
         internal BoardTableSheet? CurrentSheet => this.thisCurrentSheet;
 
-        // ###########################################################################################
-        // Opens a draft as a table. `published` is what differences are coloured against - null
-        // for a board with nothing published. Returns false when the draft cannot be read.
-        // ###########################################################################################
-        //
-        // `dataRoot` is the downloaded data, where the checks look for the files a row names after
-        // the draft's own folder (owner request, 2026-10-02) - the host's to hand over, since this
-        // control knows nothing of DataManager. Empty: files are not looked for.
-        //
-        // `baselineLabel` names the published side in a changed cell's tooltip - the data source it
-        // came from, which only the host knows (BoardTableDocument.SourceBaselineLabel).
-        public bool Load(string draftsRoot, string excelDataFile, BoardData? published, string dataRoot = "", string? baselineLabel = null)
-        {
-            DraftTableSession? session = DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot, baselineLabel);
-            if (session is null)
-            {
-                return false;
-            }
-
-            // Another draft starts with an empty search (agreed, 2026-10-02); the same one - read
-            // again - keeps it.
-            if (!string.Equals(excelDataFile, this.thisExcelDataFile, StringComparison.OrdinalIgnoreCase))
-            {
-                this.thisSearchText = string.Empty;
-                this.SearchBox.Text = string.Empty;
-            }
-
-            this.thisDraftsRoot = draftsRoot;
-            this.thisExcelDataFile = excelDataFile;
-            this.thisPublished = published;
-            this.thisDataRoot = dataRoot ?? string.Empty;
-            this.thisBaselineLabel = baselineLabel;
-
-            this.Attach(session.Document, session, keepSheet: null);
-            this.ShowStatus(session.Document.HasBaseline
-                ? string.Empty
-                : "Nothing of this board is published yet, so no row is marked as added, changed or deleted - every row is your own.");
-
-            return true;
-        }
-
-        // Closes the table. Unsaved edits are dropped - the caller asks first (TabDrafts).
+        // Closes the table. What is not saved is dropped - the caller saves first (TabDrafts,
+        // SaveNowAsync). The draft's session stays with its host, saved.
         public void Clear()
         {
             this.Detach();
 
             this.thisDocument = null;
-            this.thisSession = null;
+            this.UseDraftSession(null);
             this.thisCurrentSheet = null;
             this.thisPublished = null;
             this.thisBaselineLabel = null;
@@ -338,224 +301,7 @@ namespace CRT
 
             // A closed table's search goes with it (agreed, 2026-10-02).
             this.SearchText = string.Empty;
-            this.OpenElsewhereBar.IsVisible = false;
-            this.SetChangedOnDisk(false);
-            this.UpdateFileWatching();
             this.NoteUnsavedState();
-        }
-
-        // ###########################################################################################
-        // Writes the table into the draft and re-reads it, so what is on screen afterwards is
-        // exactly what the file now holds (a blank row is gone, for instance). Refused - and said
-        // why - when the file changed since it was read; see DraftTableSession for why the table may
-        // never write over such a change.
-        //
-        // This one is synchronous, all on the calling thread - what the tests drive. "Save changes"
-        // and the unsaved-edits prompts use SaveAsync.
-        // ###########################################################################################
-        public DraftWorkbookEditOutcome Save()
-        {
-            if (this.thisSession is null)
-            {
-                return DraftWorkbookEditOutcome.NoDraft;
-            }
-
-            // A cell still in its editor has not reached the model yet.
-            this.TableGrid.CommitEdit();
-
-            // Asked BEFORE saving: a save reloads the table, and the reloaded rows are no longer
-            // "inserted this sitting".
-            bool placesNewComponents = this.thisSession.Document.Sheets.Any(sheet => sheet.HasRowsToPlaceOnSave);
-
-            DraftWorkbookEditOutcome outcome = this.thisSession.Save();
-            this.AfterSave(outcome, placesNewComponents, reread: null);
-
-            return outcome;
-        }
-
-        // ###########################################################################################
-        // *** THE SAME SAVE, UNDER "PLEASE WAIT" (owner question, 2026-09-30: "When in "Draft" and I
-        // have changed something in the table and I click the button "Save changes", shouldn't it
-        // then show that standard "Wait" thing?"). *** Measured: the largest shipped board (C128
-        // 310378) takes about two seconds the first time and 0.6-1 s after - read, write, read
-        // back - and ran ON the UI thread, so the window froze with nothing drawn. The overlay
-        // could not have shown then even had it been asked to.
-        //
-        // So the table's rows are taken on the UI thread (DraftTableSession.PrepareSave), and the
-        // workbook work - and the re-read the table reopens on - runs on the pool under the window's
-        // overlay (BusyOverlay.RunLocalAsync: local work that cannot be stopped halfway). The file
-        // watch leaves the file alone meanwhile (thisSaveInFlight): the save's own write would
-        // read as a change from outside.
-        // ###########################################################################################
-        public async Task<DraftWorkbookEditOutcome> SaveAsync()
-        {
-            if (this.thisSession is not DraftTableSession session)
-            {
-                return DraftWorkbookEditOutcome.NoDraft;
-            }
-
-            this.TableGrid.CommitEdit();
-
-            // ###########################################################################################
-            // *** A SAVE THAT REMOVES SCHEMATIC IMAGES ASKS FIRST (code review, 2026-10-11). *** The
-            // save drops what is drawn on an image it removes - its highlights and KiCad calibration -
-            // and a row deleted here took them without a word, where Remove in "Schematic images"
-            // asks. The host asks (ConfirmRemovingSchematics); a no writes nothing.
-            // ###########################################################################################
-            if (this.ConfirmRemovingSchematics is { } confirm &&
-                session.SchematicsLostBySave() is { Count: > 0 } lost &&
-                !await confirm(lost))
-            {
-                if (ReferenceEquals(this.thisSession, session))
-                {
-                    this.ShowStatus(BoardTableEditor.NotSavedKeptSchematics);
-                }
-
-                return DraftWorkbookEditOutcome.Cancelled;
-            }
-
-            // Closed, or another table opened, while it asked.
-            if (!ReferenceEquals(this.thisSession, session))
-            {
-                return DraftWorkbookEditOutcome.Cancelled;
-            }
-
-            bool placesNewComponents = session.Document.Sheets.Any(sheet => sheet.HasRowsToPlaceOnSave);
-
-            Func<DraftWorkbookEditOutcome> write = session.PrepareSave();
-            string draftsRoot = this.thisDraftsRoot;
-            string excelDataFile = this.thisExcelDataFile;
-            BoardData? published = this.thisPublished;
-            string dataRoot = this.thisDataRoot;
-            string? baselineLabel = this.thisBaselineLabel;
-
-            (DraftWorkbookEditOutcome Outcome, DraftTableSession? Reread) result;
-            this.thisSaveInFlight = true;
-
-            // ###########################################################################################
-            // *** PAST THE LIMIT THE TABLE IS LOCKED, NOT LEFT LIVE (code review, 2026-10-01). ***
-            // RunLocalAsync lifts the overlay when the write is still going after two minutes and
-            // carries on waiting - which unblocks the keyboard and mouse over a grid that still holds
-            // the pre-save document. A contributor who then typed had those edits thrown away
-            // without a word when the save finished and the table reopened on the re-read file.
-            // `stillRunning` is told at exactly that moment, so the editor is disabled until the
-            // write ends: nothing can be typed that the save would then discard.
-            // ###########################################################################################
-            bool wasEnabled = this.IsEnabled;
-            bool lockedForSave = false;
-
-            try
-            {
-                result = await BusyOverlay.RunLocalAsync(this, BoardTableEditor.SavingWait, () => Task.Run(() =>
-                {
-                    DraftWorkbookEditOutcome outcome = write();
-
-                    return (outcome, outcome == DraftWorkbookEditOutcome.Saved
-                        ? DraftTableSession.Open(draftsRoot, excelDataFile, published, dataRoot, baselineLabel)
-                        : null);
-                }), stillRunning: () =>
-                {
-                    lockedForSave = true;
-                    this.IsEnabled = false;
-                    this.ShowStatus(BoardTableEditor.StillSaving);
-                    this.LockedForSaveForTests?.Invoke();
-                });
-            }
-            finally
-            {
-                this.thisSaveInFlight = false;
-
-                if (lockedForSave)
-                    this.IsEnabled = wasEnabled;
-            }
-
-            // Another table opened, or this one closed, while it saved: nothing of it to update.
-            if (!ReferenceEquals(this.thisSession, session))
-            {
-                return result.Outcome;
-            }
-
-            // The re-read already hashed the saved file on the pool - no second hash here, on the UI
-            // thread (DraftTableSession.CompleteSave).
-            session.CompleteSave(result.Outcome, result.Reread?.Fingerprint);
-            this.AfterSave(result.Outcome, placesNewComponents, result.Reread);
-
-            return result.Outcome;
-        }
-
-        public const string SavingWait = "Saving the table into your draft...";
-
-        // Said when the contributor kept the schematic images a save would have removed.
-        public const string NotSavedKeptSchematics = "Not saved. Ctrl+Z brings back a row you deleted.";
-
-        // ###########################################################################################
-        // Asked before a save that would take schematic images off the draft together with what is
-        // drawn on them (DraftTableSession.SchematicsLostBySave) - true to save anyway. The host
-        // asks: the Drafts tab, with RemoveSchematicWindow. With none set the save goes ahead - so
-        // does Save(), the synchronous save the tests drive.
-        // ###########################################################################################
-        public Func<IReadOnlyList<SchematicDrop>, Task<bool>>? ConfirmRemovingSchematics { get; set; }
-
-        // Said while the table is locked past the wait limit - see SaveAsync.
-        public const string StillSaving =
-            "Still saving - the table is locked until the write finishes, so nothing you type is lost.";
-
-        // Told, for a test, at the moment the table is locked (the editor is disabled by then).
-        internal Action? LockedForSaveForTests { get; set; }
-
-        // True while SaveAsync is writing the draft.
-        private bool thisSaveInFlight;
-
-        // What a save leaves on screen - the table read again, and a sentence saying how it went.
-        private void AfterSave(DraftWorkbookEditOutcome outcome, bool placesNewComponents, DraftTableSession? reread)
-        {
-            switch (outcome)
-            {
-                case DraftWorkbookEditOutcome.Saved:
-                    this.ReloadKeepingPlace(reread);
-                    this.ShowStatus(placesNewComponents
-                        ? "Saved. New components were put into their category, in label order - move them if you want them elsewhere."
-                        : "Saved.");
-                    this.Saved?.Invoke(this, EventArgs.Empty);
-                    break;
-
-                case DraftWorkbookEditOutcome.ChangedOnDisk:
-                    this.SetChangedOnDisk(true);
-                    this.ShowStatus(
-                        "Not saved: the draft was changed outside this table after it was opened - in Excel, " +
-                        "or elsewhere in the application. Press \"Reload\" to see the current version. " +
-                        "Edits made here since the last save will be lost.");
-                    break;
-
-                case DraftWorkbookEditOutcome.WriteFailed:
-                    this.ShowStatus(
-                        "Not saved: the draft file could not be written. If it is open in Excel, close it there " +
-                        "and try again.");
-                    break;
-
-                default:
-                    this.ShowStatus("Not saved: this draft no longer exists.");
-                    break;
-            }
-
-            this.UpdateToolbar();
-        }
-
-        // ###########################################################################################
-        // Re-reads the draft from its file, dropping any unsaved edits. The caller confirms first
-        // when there are some.
-        // ###########################################################################################
-        public bool Reload()
-        {
-            if (this.thisExcelDataFile.Length == 0)
-            {
-                return false;
-            }
-
-            bool reloaded = this.ReloadKeepingPlace();
-            this.ShowStatus(reloaded ? string.Empty : "The draft could not be read again.");
-
-            return reloaded;
         }
 
         internal void SelectSheet(BoardTableSheet sheet)
@@ -580,6 +326,19 @@ namespace CRT
             this.UpdateSheetTabs();
             this.UpdateToolbar();
             this.UpdateSearchMarks();
+        }
+
+        // The sheet of that name shown - for a host that opens the table on one of the board's parts
+        // (the Contribute tab's left column). False when the table holds no such sheet.
+        internal bool SelectSheetNamed(string sheetName)
+        {
+            if (this.thisDocument?.FindSheet(sheetName) is not BoardTableSheet sheet)
+            {
+                return false;
+            }
+
+            this.SelectSheet(sheet);
+            return true;
         }
 
         // The cell the grid's cursor is on, or null (no cell, or the marker column).
@@ -745,36 +504,7 @@ namespace CRT
             this.UpdateToolbar();
         }
 
-        // ###########################################################################################
-        // Ctrl+V on a selected cell: the clipboard's text, if it is ONE cell, replaces the cell's.
-        // A block of cells is refused with a word of explanation rather than squeezed into one
-        // cell - see BoardTableClipboard.
-        // ###########################################################################################
-        internal bool PasteIntoCurrentCell(string? clipboardText)
-        {
-            if (this.thisIsReadOnly || this.CurrentCell is not { } cell || cell.Row.IsDeleted)
-            {
-                return false;
-            }
-
-            if (!BoardTableClipboard.TryReadSingleCell(clipboardText, out string text))
-            {
-                if (!string.IsNullOrEmpty(clipboardText))
-                {
-                    this.ShowStatus("The clipboard holds several cells. For now the table pastes one cell at a time - copy a single cell and try again.");
-                }
-
-                return false;
-            }
-
-            cell.Text = text;
-            this.ShowStatus(string.Empty);
-
-            return true;
-        }
-
-        internal string? CopyTextOfCurrentCell() =>
-            this.CurrentCell is { } cell ? BoardTableClipboard.ForSingleCell(cell.Text) : null;
+        // Ctrl+C, Ctrl+V and Ctrl+D act on the selection - BoardTableEditor.BlockEdits.cs.
 
         private async void OnGridKeyDown(object? sender, KeyEventArgs e)
         {
@@ -803,6 +533,14 @@ namespace CRT
                 return;
             }
 
+            // Ctrl+D fills down, as in a spreadsheet.
+            if (BoardTableEditor.IsCommand(e, Key.D))
+            {
+                e.Handled = true;
+                this.FillDown();
+                return;
+            }
+
             bool isCopy = BoardTableEditor.Matches(e, hotkeys => hotkeys.Copy);
             bool isPaste = BoardTableEditor.Matches(e, hotkeys => hotkeys.Paste);
 
@@ -823,11 +561,11 @@ namespace CRT
             {
                 if (isCopy)
                 {
-                    await clipboard.SetTextAsync(this.CopyTextOfCurrentCell() ?? string.Empty);
+                    await clipboard.SetTextAsync(this.CopySelectionText() ?? string.Empty);
                 }
                 else
                 {
-                    this.PasteIntoCurrentCell(await clipboard.TryGetTextAsync());
+                    this.Paste(await clipboard.TryGetTextAsync());
                 }
             }
             catch (Exception ex)
@@ -861,6 +599,24 @@ namespace CRT
         // ###########################################################################################
         private void OnEditorKeyDown(object? sender, KeyEventArgs e)
         {
+            // Ctrl+F to the search box and Ctrl+H to the replace bar from anywhere in the table, a
+            // cell being typed in too - it is committed first (BoardTableEditor.BlockEdits.cs).
+            if (BoardTableEditor.IsCommand(e, Key.F))
+            {
+                e.Handled = true;
+                this.TableGrid.CommitEdit();
+                this.SearchBox.Focus();
+                this.SearchBox.SelectAll();
+                return;
+            }
+
+            if (BoardTableEditor.IsCommand(e, Key.H) && !this.thisIsReadOnly && this.thisDocument is not null)
+            {
+                e.Handled = true;
+                this.OpenReplaceBar();
+                return;
+            }
+
             if (e.Source is TextBox)
             {
                 return;
@@ -878,9 +634,29 @@ namespace CRT
             }
         }
 
-        internal void Undo() => this.StepHistory(history => history.Undo());
+        // A draft's undo and redo are its session's, across every editor of it; a document's, the
+        // table's own history.
+        internal void Undo()
+        {
+            if (this.thisDraftSession is not null)
+            {
+                this.StepDraftSession(undo: true);
+                return;
+            }
 
-        internal void Redo() => this.StepHistory(history => history.Redo());
+            this.StepHistory(history => history.Undo());
+        }
+
+        internal void Redo()
+        {
+            if (this.thisDraftSession is not null)
+            {
+                this.StepDraftSession(undo: false);
+                return;
+            }
+
+            this.StepHistory(history => history.Redo());
+        }
 
         // Takes one step and puts the cursor where it happened - switching sheet first when the
         // change was on another one - so the contributor sees what was just undone.
@@ -933,60 +709,15 @@ namespace CRT
             this.FocusGrid();
         }
 
-        private async void OnSaveClick(object? sender, RoutedEventArgs e)
+        // "Save changes" is a document's only (the Maintainer tab) - a draft saves itself. The host
+        // saves - see Open.
+        private void OnSaveClick(object? sender, RoutedEventArgs e)
         {
-            try
+            if (this.thisDraftSession is null && this.thisDocument is not null)
             {
-                // Document mode: the host saves - see Open.
-                if (this.thisSession is null && this.thisDocument is not null)
-                {
-                    this.TableGrid.CommitEdit();
-                    this.SaveRequested?.Invoke(this, EventArgs.Empty);
-                    return;
-                }
-
-                await this.SaveAsync();
+                this.TableGrid.CommitEdit();
+                this.SaveRequested?.Invoke(this, EventArgs.Empty);
             }
-            catch (Exception ex)
-            {
-                // Nothing may leave an async void handler: App lets such an exception end CRT
-                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
-                CrtLog.Critical($"OnSaveClick failed - [{ex}]");
-            }
-        }
-
-        private async void OnReloadClick(object? sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (this.HasUnsavedChanges && !await this.ConfirmDiscardAsync())
-                {
-                    return;
-                }
-
-                this.Reload();
-            }
-            catch (Exception ex)
-            {
-                // Nothing may leave an async void handler: App lets such an exception end CRT
-                // (code review, 2026-10-13 - AsyncVoidHandlersGuardTests).
-                CrtLog.Critical($"OnReloadClick failed - [{ex}]");
-            }
-        }
-
-        // Reload throws away what is on screen, so it asks first - with no "Save" choice, since the
-        // usual reason to reload is that saving has just been refused.
-        private async Task<bool> ConfirmDiscardAsync()
-        {
-            if (TopLevel.GetTopLevel(this) is not Window owner)
-            {
-                return false;
-            }
-
-            var window = new UnsavedTableEditsWindow();
-            window.Initialize(UnsavedTableEditsPrompt.Reloading);
-
-            return await window.ShowDialog<UnsavedTableEditsChoice?>(owner) == UnsavedTableEditsChoice.Discard;
         }
 
         // A deleted row is a picture of what was published, not something to type into.
@@ -1007,12 +738,12 @@ namespace CRT
             e.Row.Classes.Set(BoardTableEditor.DropPlaceholderClass, this.IsDropPlaceholder(e.Row.DataContext));
         }
 
-        private void Attach(BoardTableDocument document, DraftTableSession? session, string? keepSheet)
+        private void Attach(BoardTableDocument document, DraftSession? session, string? keepSheet)
         {
             this.Detach();
 
             this.thisDocument = document;
-            this.thisSession = session;
+            this.UseDraftSession(session);
             document.Changed += this.OnDocumentChanged;
 
             foreach (BoardTableSheet sheet in document.Sheets)
@@ -1039,20 +770,7 @@ namespace CRT
             // The sheet asked for, unless the filter or the search hides its tab
             // (BoardTableDocument.SheetToShow).
             this.SelectSheet(document.SheetToShow(keepSheet, filter, this.thisSearch));
-
-            // A fresh read of the file: whatever the warning bar said is no longer true.
-            this.SetChangedOnDisk(false);
-
-            if (session is not null)
-            {
-                this.ShowWhetherOpenElsewhere(session);
-            }
-            else
-            {
-                this.OpenElsewhereBar.IsVisible = false;
-            }
-
-            this.UpdateFileWatching();
+            this.ShowSaveState();
 
             // With nothing published there is nothing to be added, changed or deleted against, so
             // only the Errors and Warnings pills stay - a duplicate is a duplicate either way.
@@ -1078,43 +796,6 @@ namespace CRT
             {
                 sheet.CellEdited -= this.OnCellEdited;
             }
-        }
-
-        // Re-opens the draft on the same sheet, with the cursor back on (roughly) the same row.
-        // `reread` is the draft already read again off the UI thread (SaveAsync); without one it is
-        // read here.
-        private bool ReloadKeepingPlace(DraftTableSession? reread = null)
-        {
-            string? sheetName = this.thisCurrentSheet?.Name;
-            int rowIndex = this.thisCurrentSheet is null || this.CurrentRow is null
-                ? -1
-                : this.thisCurrentSheet.Rows.IndexOf(this.CurrentRow);
-            int column = this.CurrentCell?.ColumnIndex ?? 0;
-
-            // The row itself, by content: a save can MOVE a new component into its category, and
-            // the cursor should follow it there - so the contributor sees where it went rather than
-            // finding a different row under the cursor.
-            List<string>? currentValues = this.CurrentRow?.Cells.Select(cell => cell.Text).ToList();
-
-            DraftTableSession? session = reread ?? DraftTableSession.Open(this.thisDraftsRoot, this.thisExcelDataFile, this.thisPublished, this.thisDataRoot, this.thisBaselineLabel);
-            if (session is null)
-            {
-                return false;
-            }
-
-            this.Attach(session.Document, session, sheetName);
-
-            if (rowIndex >= 0 && this.thisCurrentSheet is { Rows.Count: > 0 } sheet)
-            {
-                BoardTableRow? same = currentValues is null
-                    ? null
-                    : sheet.Rows.FirstOrDefault(candidate =>
-                        !candidate.IsDeleted && candidate.Cells.Select(cell => cell.Text).SequenceEqual(currentValues));
-
-                this.SelectCell(same ?? sheet.Rows[Math.Min(rowIndex, sheet.Rows.Count - 1)], column);
-            }
-
-            return true;
         }
 
         private void OnCellEdited(object? sender, BoardTableCell cell)
@@ -1160,6 +841,10 @@ namespace CRT
         {
             this.UpdateSheetTabs();
             this.UpdateToolbar();
+
+            // A draft's change goes into its session as soon as it has settled.
+            this.SchedulePush();
+            this.ShowSaveState();
 
             // A row whose last change was just reverted - or whose last error was just fixed - drops
             // out of the filter, and a newly changed one joins it: the view only re-reads states
@@ -1289,7 +974,7 @@ namespace CRT
         // Gives the grid keyboard focus, putting the cursor on the first cell when there is none
         // yet - so typing goes into the table rather than into the always-on component filter on
         // the left. That filter pulls focus back after every click elsewhere in the window; it
-        // leaves the Drafts tab alone while a table is open (Main.ShouldReturnFocusToComponentSearch),
+        // leaves the Contribute tab alone (Main.ShouldReturnFocusToComponentSearch),
         // and this is what puts focus here in the first place.
         // ###########################################################################################
         internal void FocusGrid()
@@ -1322,11 +1007,14 @@ namespace CRT
         {
             this.InsertRowBelowButton.IsEnabled = this.thisCurrentSheet is not null;
             this.UpdateDeleteButton();
+            this.UpdateBlockEditButtons();
 
             // A read-only table offers nothing that changes it (see IsReadOnly).
             this.InsertRowBelowButton.IsVisible = !this.thisIsReadOnly;
             this.DeleteRowButton.IsVisible = !this.thisIsReadOnly;
-            this.SaveButton.IsVisible = !this.thisIsReadOnly;
+            // A draft saves itself and says how that goes instead (SaveStatePanel); a document is
+            // saved by its host.
+            this.SaveButton.IsVisible = !this.thisIsReadOnly && this.thisDraftSession is null;
 
             // *** THE COLOUR KEY COUNTS THE WHOLE DRAFT (owner decision, 2026-10-02: "Added,
             // Modified and Deleted should work per system like Error and Warning"). *** Every
@@ -1384,12 +1072,7 @@ namespace CRT
             string? nothingFound = this.thisDocument is null ? null : this.thisSearch.NothingFoundLine(this.thisDocument, this.thisFilter);
             this.NoSearchMatchText.Text = nothingFound ?? string.Empty;
             this.NoSearchMatchText.IsVisible = nothingFound is not null;
-            // Reload re-reads the draft FILE, so it exists only when there is one.
-            this.ReloadButton.IsEnabled = this.thisSession is not null;
-            this.ReloadButton.IsVisible = this.thisSession is not null || this.thisDocument is null;
-            // Off while the draft has changed underneath the table (that save would be refused) or is
-            // held open in Excel (it would fail) - see BoardTableEditor.FileWatch.cs.
-            this.SaveButton.IsEnabled = this.HasUnsavedChanges && !this.thisDraftChangedOnDisk && !this.thisDraftHeldElsewhere;
+            this.SaveButton.IsEnabled = this.HasUnsavedChanges;
             this.NoteUnsavedState();
         }
 

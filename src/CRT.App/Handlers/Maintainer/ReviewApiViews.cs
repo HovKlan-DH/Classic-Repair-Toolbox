@@ -96,7 +96,11 @@ namespace Handlers.MaintainerHandling
 
         // Every file's size, by path (2026-10-04) - null from an older server, whose tree then shows
         // no sizes.
-        IReadOnlyDictionary<string, long>? FileSizes = null);
+        IReadOnlyDictionary<string, long>? FileSizes = null,
+
+        // The board's name for each path (2026-10-25) - a CRT 4.0 tree's stored files are shown by
+        // name. Null from an older server, whose tree then shows its paths.
+        IReadOnlyDictionary<string, string>? FileNames = null);
 
     // State "awaiting" is a recorded approval that published nothing - the first of two.
     // ###########################################################################################

@@ -269,4 +269,70 @@ public sealed class PublishMergeTests
 
         Assert.Same(merged, captioned);
     }
+
+    // -----------------------------------------------------------------------------------------
+    // CRT 4.0's pins and replacement parts (2026-10-25).
+    // -----------------------------------------------------------------------------------------
+
+    private static BoardData PublishedWithPins() => new()
+    {
+        Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA" }],
+        ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "FE" }],
+        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "PLAnkton", Kind = "Drop-in" }],
+    };
+
+    // ###########################################################################################
+    // *** NOT SENT KEEPS WHAT IS PUBLISHED. *** A client that does not know the two sections omits
+    // them; read as "none", every pin a newer CRT had published would be deleted by the approval.
+    // ###########################################################################################
+    [Fact]
+    public void Pins_and_replacements_not_sent_keep_the_published_ones()
+    {
+        SubmissionManifest manifest = PublishMergeTests.Manifest();
+        Assert.Null(manifest.Rows.ComponentPins);
+
+        BoardData merged = PublishMerge.Build(manifest, PublishMergeTests.PublishedWithPins());
+
+        Assert.Equal("FE", Assert.Single(merged.ComponentPins).Name);
+        Assert.Equal("PLAnkton", Assert.Single(merged.ComponentReplacements).PartNumber);
+    }
+
+    // Sent, they replace the published ones like every other section - an empty list included,
+    // which is the contributor removing them.
+    [Fact]
+    public void Pins_and_replacements_sent_replace_the_published_ones_even_when_empty()
+    {
+        SubmissionManifest manifest = PublishMergeTests.Manifest();
+        manifest.Rows.ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "28", Name = "VCC", Direction = "Power" }];
+        manifest.Rows.ComponentReplacements = [];
+
+        BoardData merged = PublishMerge.Build(manifest, PublishMergeTests.PublishedWithPins());
+
+        Assert.Equal("VCC", Assert.Single(merged.ComponentPins).Name);
+        Assert.Empty(merged.ComponentReplacements);
+    }
+
+    // A new board with none sent has none.
+    [Fact]
+    public void A_new_board_with_no_pins_sent_has_none()
+    {
+        BoardData merged = PublishMerge.Build(PublishMergeTests.Manifest(), published: null);
+
+        Assert.Empty(merged.ComponentPins);
+        Assert.Empty(merged.ComponentReplacements);
+    }
+
+    // On the wire a list never sent stays "not sent" - the JSON leaves it out, and it reads back null.
+    [Fact]
+    public void A_submission_that_never_had_the_sections_reads_them_as_not_sent()
+    {
+        string json = System.Text.Json.JsonSerializer.Serialize(new { components = new[] { new { boardLabel = "U8" } } });
+
+        SubmissionRows? rows = System.Text.Json.JsonSerializer.Deserialize<SubmissionRows>(
+            json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        Assert.Null(rows!.ComponentPins);
+        Assert.Null(rows.ComponentReplacements);
+    }
 }

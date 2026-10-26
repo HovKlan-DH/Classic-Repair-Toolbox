@@ -126,6 +126,8 @@ namespace Handlers.DataHandling
                 ComponentHighlights = DraftRebase.MergeSection("Component highlights", based.ComponentHighlights, draft.ComponentHighlights, published.ComponentHighlights, AllValues, state, pairRenames: false),
                 ComponentLocalFiles = DraftRebase.MergeSection("Component local files", based.ComponentLocalFiles, draft.ComponentLocalFiles, published.ComponentLocalFiles, NaturalKey, state),
                 ComponentLinks = DraftRebase.MergeSection("Component links", based.ComponentLinks, draft.ComponentLinks, published.ComponentLinks, NaturalKey, state),
+                ComponentPins = DraftRebase.MergeSection(BoardWorkbookSchema.SheetComponentPins, based.ComponentPins, draft.ComponentPins, published.ComponentPins, NaturalKey, state),
+                ComponentReplacements = DraftRebase.MergeSection(BoardWorkbookSchema.SheetComponentReplacements, based.ComponentReplacements, draft.ComponentReplacements, published.ComponentReplacements, NaturalKey, state),
                 BoardLocalFiles = DraftRebase.MergeSection("Board local files", based.BoardLocalFiles, draft.BoardLocalFiles, published.BoardLocalFiles, NaturalKey, state),
                 BoardLinks = DraftRebase.MergeSection("Board links", based.BoardLinks, draft.BoardLinks, published.BoardLinks, NaturalKey, state),
                 Credits = DraftRebase.MergeSection("Credits", based.Credits, draft.Credits, published.Credits, NaturalKey, state),

@@ -12,261 +12,165 @@ namespace CRT.Data.Tests
     //
     // Production is what every user downloads, so the refusals matter as much as the copies: a
     // board promoted while pointing at a file Production does not have is a broken board on every
-    // machine, and a shared file changed by a maintainer reaches boards nobody asked them about.
+    // machine. In the CRT 4.0 tree (2026-10-25) a board is its board file and the stored files it
+    // lists ("Files/<ab>/<sha256>.<ext>") - so those are what is compared and copied.
     // ###########################################################################################
     public sealed class ProductionPromotionPlanTests
     {
-        private const string Folder = "Commodore/C64/250407";
+        private const string BoardFile = "Commodore/C64/250407/board.json";
 
-        private static PublishedTreeView Tree(params (string Path, string Sha256)[] files)
-        {
-            var hashes = files.ToDictionary(file => file.Path, file => file.Sha256, StringComparer.Ordinal);
+        private static readonly string ShaA = new('a', 64);
+        private static readonly string ShaB = new('b', 64);
+        private static readonly string BoardSha = new('1', 64);
+        private static readonly string OldBoardSha = new('2', 64);
 
-            return new PublishedTreeView(
-                path => hashes.TryGetValue(path, out string? sha) ? sha : null,
-                folder =>
-                {
-                    string prefix = folder.Length == 0 ? string.Empty : folder + "/";
+        private static BoardDocument.StoredFileRow Row(string name, string sha) => new() { Name = name, Sha256 = sha, Size = 10 };
 
-                    var names = hashes.Keys
-                        .Where(path => path.StartsWith(prefix, StringComparison.Ordinal))
-                        .Select(path => path[prefix.Length..].Split('/')[0])
-                        .Distinct(StringComparer.Ordinal)
-                        .ToList();
-
-                    return names.Count == 0 ? null : names;
-                });
-        }
+        private static string Stored(string sha, string name) => DataTreeLayout.StoredFilePath(sha, name);
 
         private static ProductionPromotionResult Plan(
-            IEnumerable<string> own,
-            IEnumerable<string> cited,
-            PublishedTreeView beta,
-            PublishedTreeView production) =>
-            ProductionPromotionPlan.Build("Commodore", "C64", "250407", own, cited, beta, production);
+            IReadOnlyList<BoardDocument.StoredFileRow>? beta,
+            IEnumerable<string>? inBeta = null,
+            IEnumerable<string>? inProduction = null,
+            string? betaBoardFile = null,
+            string? productionBoardFile = null,
+            Func<string, string?>? productionVariant = null)
+        {
+            var betaHolds = new HashSet<string>(inBeta ?? [], StringComparer.Ordinal);
+            var productionHolds = new HashSet<string>(inProduction ?? [], StringComparer.Ordinal);
 
-        private static string P(string rest) => $"{ProductionPromotionPlanTests.Folder}/{rest}";
+            return ProductionPromotionPlan.Build(
+                "Commodore", "C64", "250407",
+                beta,
+                beta is null ? null : betaBoardFile ?? ProductionPromotionPlanTests.BoardSha,
+                productionBoardFile,
+                betaHolds.Contains,
+                productionHolds.Contains,
+                productionVariant);
+        }
 
         // -----------------------------------------------------------------------------------
         // What is copied
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void Only_files_that_DIFFER_from_production_are_copied()
+        public void Only_stored_files_production_lacks_and_a_changed_board_file_are_copied()
         {
-            // A typo fix changes the workbook and system.json; the 1,200 images are identical and
-            // must not be rewritten on every user's machine for nothing.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("Data C64 250407 v2.0.0.xlsx"), "new-workbook"),
-                (P("Data C64 250407 v2.0.0.json"), "new-sidecar"),
-                (P("main.png"), "same"));
-
-            PublishedTreeView production = ProductionPromotionPlanTests.Tree(
-                (P("Data C64 250407 v2.0.0.xlsx"), "old-workbook"),
-                (P("Data C64 250407 v2.0.0.json"), "old-sidecar"),
-                (P("main.png"), "same"));
+            // A typo fix changes the board file; the 1,200 images are stored already and must not be
+            // copied to every user's machine for nothing.
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
+            string b = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaB, "b.png");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("Data C64 250407 v2.0.0.xlsx"), P("Data C64 250407 v2.0.0.json"), P("main.png")], [P("main.png")], beta, production);
+                [ProductionPromotionPlanTests.Row("a.png", ProductionPromotionPlanTests.ShaA), ProductionPromotionPlanTests.Row("b.png", ProductionPromotionPlanTests.ShaB)],
+                inBeta: [a, b],
+                inProduction: [a],
+                productionBoardFile: ProductionPromotionPlanTests.OldBoardSha);
 
             Assert.True(result.CanPromote);
-            Assert.Equal([P("Data C64 250407 v2.0.0.json"), P("Data C64 250407 v2.0.0.xlsx")], result.Files.Select(file => file.Path));
-            Assert.All(result.Files, file => Assert.Equal(PromotionChange.Replaced, file.Change));
+            Assert.Equal([b, ProductionPromotionPlanTests.BoardFile], result.Files.Select(file => file.Path));
+            Assert.Equal(PromotionChange.Added, result.Files[0].Change);
+            Assert.Equal(PromotionChange.Replaced, result.Files[1].Change);
+            Assert.Equal([a], result.Unchanged);
             Assert.Equal(1, result.UnchangedCount);
         }
 
-        // ###########################################################################################
-        // *** WHAT IS ALREADY THE SAME IS NAMED, NOT ONLY COUNTED (owner request, 2026-09-28). *** The
-        // maintainer's file tree draws production after the publish from the copies, the removals
-        // and these - own files and shared ones alike - so the count and the list must agree.
-        // ###########################################################################################
         [Fact]
-        public void The_files_already_the_same_are_listed_as_well_as_counted()
+        public void A_stored_files_checksum_is_the_one_its_name_carries()
         {
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("Data C64 250407 v2.0.0.xlsx"), "new"),
-                (P("Images/b.png"), "same-b"),
-                (P("Images/a.png"), "same-a"),
-                ("Commodore/Shared files/manual.pdf", "same-manual"));
-
-            PublishedTreeView production = ProductionPromotionPlanTests.Tree(
-                (P("Data C64 250407 v2.0.0.xlsx"), "old"),
-                (P("Images/b.png"), "same-b"),
-                (P("Images/a.png"), "same-a"),
-                ("Commodore/Shared files/manual.pdf", "same-manual"));
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("Data C64 250407 v2.0.0.xlsx"), P("Images/b.png"), P("Images/a.png")],
-                [P("Images/a.png"), "Commodore/Shared files/manual.pdf"],
-                beta,
-                production);
+                [ProductionPromotionPlanTests.Row("Images/a.png", ProductionPromotionPlanTests.ShaA)], inBeta: [a]);
 
-            Assert.Equal(
-                ["Commodore/C64/250407/Images/a.png", "Commodore/C64/250407/Images/b.png", "Commodore/Shared files/manual.pdf"],
-                result.Unchanged);
-            Assert.Equal(result.Unchanged!.Count, result.UnchangedCount);
+            PromotionFile file = result.Files.First(copy => copy.Stage == PromotionStage.Content);
+
+            Assert.Equal(ProductionPromotionPlanTests.ShaA, file.Sha256);
+            Assert.Equal("Images/a.png", file.Name);
         }
 
         [Fact]
-        public void A_file_production_does_not_have_is_ADDED()
+        public void The_copies_are_in_WRITE_ORDER_content_then_the_board_file()
         {
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree((P("new.png"), "n"));
+            // The publish's order and for its reason: an interrupted promotion must leave a board
+            // that loads - a board file never points at bytes that have not arrived yet.
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
+            string b = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaB, "z.pdf");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("new.png")], [], beta, ProductionPromotionPlanTests.Tree());
+                [ProductionPromotionPlanTests.Row("z.pdf", ProductionPromotionPlanTests.ShaB), ProductionPromotionPlanTests.Row("a.png", ProductionPromotionPlanTests.ShaA)],
+                inBeta: [a, b]);
+
+            Assert.Equal(PromotionStage.Board, result.Files[^1].Stage);
+            Assert.Equal(ProductionPromotionPlanTests.BoardFile, result.Files[^1].Path);
+            Assert.All(result.Files.Take(result.Files.Count - 1), file => Assert.Equal(PromotionStage.Content, file.Stage));
+        }
+
+        [Fact]
+        public void A_board_production_does_not_have_adds_its_board_file()
+        {
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan([]);
 
             PromotionFile file = Assert.Single(result.Files);
             Assert.Equal(PromotionChange.Added, file.Change);
-            Assert.Equal("n", file.Sha256);
+            Assert.Equal(ProductionPromotionPlanTests.BoardSha, file.Sha256);
+            Assert.Equal(DataTreeLayout.BoardFileName, file.Name);
         }
 
         [Fact]
-        public void The_copies_are_in_WRITE_ORDER_content_then_the_board()
+        public void Two_names_of_the_same_bytes_are_copied_once()
         {
-            // The publish's order and for its reason: an interrupted promotion must leave a board
-            // that loads - a workbook never points at a file that has not arrived yet.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("Data C64 250407 v2.0.0.xlsx"), "w"),
-                (P("Data C64 250407 v2.0.0.json"), "s"),
-                (P("Images/a.png"), "a"),
-                (P("z.pdf"), "z"));
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("Data C64 250407 v2.0.0.xlsx"), P("Data C64 250407 v2.0.0.json"), P("Images/a.png"), P("z.pdf")],
-                [],
-                beta,
-                ProductionPromotionPlanTests.Tree());
+                [ProductionPromotionPlanTests.Row("a.png", ProductionPromotionPlanTests.ShaA), ProductionPromotionPlanTests.Row("copy of a.png", ProductionPromotionPlanTests.ShaA)],
+                inBeta: [a]);
 
-            Assert.Equal(
-                [P("Images/a.png"), P("z.pdf"), P("Data C64 250407 v2.0.0.json"), P("Data C64 250407 v2.0.0.xlsx")],
-                result.Files.Select(file => file.Path));
-
-            Assert.Equal(PromotionStage.Board, result.Files[^1].Stage);
-        }
-
-        [Fact]
-        public void A_board_json_left_in_BETA_by_an_earlier_build_is_NEVER_promoted()
-        {
-            // Retired by the project owner (2026-09-25): it is not relevant to users and must not be
-            // downloaded by them. One still in BETA is left behind, not carried to production.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("system.json"), "d"),
-                (P("main.png"), "m"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("system.json"), P("main.png")], [], beta, ProductionPromotionPlanTests.Tree());
-
-            Assert.Equal([P("main.png")], result.Files.Select(file => file.Path));
-        }
-
-        [Fact]
-        public void An_xlsx_BELOW_the_folders_top_level_is_content_not_the_board()
-        {
-            Assert.Equal(PromotionStage.Content, ProductionPromotionPlan.StageOf(ProductionPromotionPlanTests.Folder, P("KiCad data/x.json")));
-            Assert.Equal(PromotionStage.Board, ProductionPromotionPlan.StageOf(ProductionPromotionPlanTests.Folder, P("Data C64 250407.xlsx")));
-        }
-
-        [Fact]
-        public void Hidden_files_are_never_promoted()
-        {
-            // A publish writes ".<name>.crt-publish-<guid>.tmp" beside its target; one left by a
-            // crash must not travel to every user.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P(".main.png.crt-publish-abc.tmp"), "t"),
-                (P("main.png"), "m"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P(".main.png.crt-publish-abc.tmp"), P("main.png")], [], beta, ProductionPromotionPlanTests.Tree());
-
-            Assert.Equal([P("main.png")], result.Files.Select(file => file.Path));
+            Assert.Single(result.Files, file => file.Path == a);
         }
 
         [Fact]
         public void Nothing_to_copy_is_still_a_promotion_that_records_the_revision()
         {
-            // The case where BETA and Production were brought level by hand before this existed:
-            // promoting copies nothing and marks the board as in production.
-            PublishedTreeView tree = ProductionPromotionPlanTests.Tree((P("main.png"), "m"));
+            // BETA and production brought level by hand: promoting copies nothing and marks the
+            // board as in production.
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
 
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan([P("main.png")], [], tree, tree);
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
+                [ProductionPromotionPlanTests.Row("a.png", ProductionPromotionPlanTests.ShaA)],
+                inBeta: [a],
+                inProduction: [a],
+                productionBoardFile: ProductionPromotionPlanTests.BoardSha);
 
             Assert.True(result.CanPromote);
             Assert.Empty(result.Files);
-            Assert.Equal(1, result.UnchangedCount);
+            Assert.Equal([ProductionPromotionPlanTests.BoardFile, a], result.Unchanged);
         }
 
-        // -----------------------------------------------------------------------------------
-        // Shared files
-        // -----------------------------------------------------------------------------------
-
         [Fact]
-        public void A_CHANGED_shared_file_is_copied_and_marks_the_promotion_as_touching_shared_files()
+        public void Nothing_waits_for_the_administrator_any_more()
         {
-            // It reaches every board that cites it, which is what makes it the administrator's.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/Shared files/74LS08.png", "new"));
-
-            PublishedTreeView production = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/Shared files/74LS08.png", "old"));
+            // No shared files in the 4.0 tree: a promotion never changes another board's file.
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], ["Commodore/Shared files/74LS08.png"], beta, production);
-
-            Assert.True(result.TouchesSharedFiles);
-            PromotionFile shared = Assert.Single(result.Files);
-            Assert.True(shared.IsShared);
-            Assert.Equal("Commodore/Shared files/74LS08.png", shared.Path);
-        }
-
-        // A NEW shared file is copied like any other, but reaches no board that did not ask for it -
-        // so it does not make the promotion the administrator's too (owner decision, 2026-09-27).
-        [Fact]
-        public void A_NEW_shared_file_is_copied_but_does_not_need_the_administrator()
-        {
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/Shared files/74LS08.png", "new"));
-
-            PublishedTreeView production = ProductionPromotionPlanTests.Tree((P("main.png"), "m"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], ["Commodore/Shared files/74LS08.png"], beta, production);
+                [ProductionPromotionPlanTests.Row("a.png", ProductionPromotionPlanTests.ShaA)], inBeta: [a]);
 
             Assert.False(result.TouchesSharedFiles);
-            PromotionFile shared = Assert.Single(result.Files);
-            Assert.True(shared.IsShared);
-            Assert.Equal(PromotionChange.Added, shared.Change);
+            Assert.All(result.Files, file => Assert.False(file.IsShared));
         }
 
         [Fact]
-        public void A_shared_file_used_UNCHANGED_does_not_touch_shared_files()
+        public void The_plan_names_every_path_by_the_boards_own_name()
         {
-            PublishedTreeView tree = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Generic shared files/7400.png", "same"));
+            // What the Maintainer tab draws the tree with - a stored file's path is its checksum.
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], ["Generic shared files/7400.png"], tree, tree);
+                [ProductionPromotionPlanTests.Row("Images/a.png", ProductionPromotionPlanTests.ShaA)], inBeta: [a]);
 
-            Assert.False(result.TouchesSharedFiles);
-            Assert.Empty(result.Files);
-        }
-
-        [Fact]
-        public void Shared_files_the_board_does_NOT_cite_are_left_alone()
-        {
-            // Another board's shared image changed in BETA is that board's promotion, not this one.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/Shared files/other.png", "new"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], [], beta, ProductionPromotionPlanTests.Tree((P("main.png"), "m")));
-
-            Assert.Empty(result.Files);
-            Assert.False(result.TouchesSharedFiles);
+            Assert.Equal("Images/a.png", result.Names![a]);
+            Assert.Equal(DataTreeLayout.BoardFileName, result.Names[ProductionPromotionPlanTests.BoardFile]);
         }
 
         // -----------------------------------------------------------------------------------
@@ -274,59 +178,32 @@ namespace CRT.Data.Tests
         // -----------------------------------------------------------------------------------
 
         [Fact]
-        public void Another_boards_file_NOT_yet_in_production_refuses_the_whole_promotion()
-        {
-            // C128DCR 250477 cites texts in the C128 310378 folder. If those changed in BETA and
-            // were never promoted, this board would go out pointing at the old ones.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/C128/310378/scope.txt", "new"));
-
-            PublishedTreeView production = ProductionPromotionPlanTests.Tree(
-                ("Commodore/C128/310378/scope.txt", "old"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], ["Commodore/C128/310378/scope.txt"], beta, production);
-
-            Assert.False(result.CanPromote);
-            Assert.Empty(result.Files);
-            Assert.Equal("promote.foreign_not_in_production", Assert.Single(result.Problems).Code);
-        }
-
-        [Fact]
-        public void Another_boards_file_ALREADY_identical_in_production_is_fine_and_never_copied()
-        {
-            PublishedTreeView tree = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/C128/310378/scope.txt", "same"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], ["Commodore/C128/310378/scope.txt"], tree, tree);
-
-            Assert.True(result.CanPromote);
-            Assert.Empty(result.Files);
-        }
-
-        [Fact]
-        public void A_cited_file_BETA_itself_does_not_have_refuses_the_promotion()
+        public void A_listed_file_BETA_itself_does_not_have_refuses_the_promotion()
         {
             // The BETA board is broken; a broken board does not go to everyone.
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree((P("main.png"), "m"));
-
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], [P("gone.png"), "Commodore/Shared files/gone.png"], beta, ProductionPromotionPlanTests.Tree());
+                [ProductionPromotionPlanTests.Row("gone.png", ProductionPromotionPlanTests.ShaA)]);
 
             Assert.False(result.CanPromote);
-            Assert.Equal(2, result.Problems.Count(problem => problem.Code == "promote.cited_missing_in_beta"));
+            Assert.Equal("promote.cited_missing_in_beta", Assert.Single(result.Problems).Code);
         }
 
         [Fact]
-        public void A_path_that_differs_from_production_only_by_CASE_is_refused()
+        public void A_listed_file_without_a_usable_checksum_refuses_the_promotion()
         {
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree((P("Main.png"), "m"));
-            PublishedTreeView production = ProductionPromotionPlanTests.Tree((P("main.png"), "old"));
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
+                [ProductionPromotionPlanTests.Row("a.png", "not-a-hash")]);
 
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan([P("Main.png")], [], beta, production);
+            Assert.False(result.CanPromote);
+            Assert.Equal("promote.unreadable_in_beta", Assert.Single(result.Problems).Code);
+        }
+
+        [Fact]
+        public void A_board_folder_that_differs_from_productions_only_by_CASE_is_refused()
+        {
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
+                [],
+                productionVariant: folder => folder == "Commodore/C64/250407" ? "commodore/C64/250407" : null);
 
             Assert.False(result.CanPromote);
             Assert.Equal("promote.case_collision", Assert.Single(result.Problems).Code);
@@ -335,34 +212,20 @@ namespace CRT.Data.Tests
         [Fact]
         public void A_board_with_NOTHING_in_BETA_is_refused()
         {
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [], [], ProductionPromotionPlanTests.Tree(), ProductionPromotionPlanTests.Tree());
+            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(null);
 
             Assert.False(result.CanPromote);
             Assert.Equal("promote.not_in_beta", Assert.Single(result.Problems).Code);
         }
 
         [Fact]
-        public void A_walked_file_OUTSIDE_the_board_folder_is_refused()
-        {
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree(
-                (P("main.png"), "m"),
-                ("Commodore/C64/250425/main.png", "x"));
-
-            ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png"), "Commodore/C64/250425/main.png"], [], beta, ProductionPromotionPlanTests.Tree());
-
-            Assert.False(result.CanPromote);
-            Assert.Equal("promote.outside_board", Assert.Single(result.Problems).Code);
-        }
-
-        [Fact]
         public void A_refused_plan_carries_NO_files_so_nothing_can_be_half_copied_from_it()
         {
-            PublishedTreeView beta = ProductionPromotionPlanTests.Tree((P("main.png"), "m"));
+            string a = ProductionPromotionPlanTests.Stored(ProductionPromotionPlanTests.ShaA, "a.png");
 
             ProductionPromotionResult result = ProductionPromotionPlanTests.Plan(
-                [P("main.png")], [P("gone.png")], beta, ProductionPromotionPlanTests.Tree());
+                [ProductionPromotionPlanTests.Row("a.png", ProductionPromotionPlanTests.ShaA), ProductionPromotionPlanTests.Row("gone.png", ProductionPromotionPlanTests.ShaB)],
+                inBeta: [a]);
 
             Assert.False(result.CanPromote);
             Assert.Empty(result.Files);

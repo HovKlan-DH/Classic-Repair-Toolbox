@@ -27,6 +27,19 @@ namespace Handlers.DataHandling
         WriteFailed,
     }
 
+    // What a rename decided (SchematicRename.Plan): the outcome, and for Renamed the board renamed,
+    // the one rename for the draft's write to follow, and the names from and to.
+    public sealed record SchematicRenamePlan(
+        SchematicRenameOutcome Outcome,
+        BoardData? Board,
+        IReadOnlyDictionary<string, string?> Follow,
+        string From,
+        string To)
+    {
+        public static SchematicRenamePlan Refused(SchematicRenameOutcome outcome) =>
+            new(outcome, null, new Dictionary<string, string?>(), string.Empty, string.Empty);
+    }
+
     // ###########################################################################################
     // RENAMING A SCHEMATIC IMAGE (owner request, 2026-10-10: "add management of the name of the
     // schematic image also" - the "Schematic name" column of the "Board schematics" sheet).
@@ -109,6 +122,50 @@ namespace Handlers.DataHandling
                 .ToList();
 
             return (board.WithSchematics(schematics).WithComponentHighlights(highlights), true);
+        }
+
+        // ###########################################################################################
+        // THE WHOLE RENAME DECIDED ON A BOARD - the row found by its name AND its image file
+        // (SchematicRows), refused when blank or taken, nothing when the name is the one it has - and
+        // the board renamed with `Follow`, the one rename to hand the draft's write (what hangs on the
+        // old name moves only when it moved here, see Apply). Board is null for every outcome but
+        // Renamed. Shared by the draft file's write (DraftWorkbookStore.RenameSchematic) and the
+        // draft held in memory ("Schematic images" through DraftSession, 2026-10-25).
+        // ###########################################################################################
+        public static SchematicRenamePlan Plan(BoardData current, SchematicRowRef row, string? newName)
+        {
+            ArgumentNullException.ThrowIfNull(current);
+            ArgumentNullException.ThrowIfNull(row);
+
+            string wanted = newName?.Trim() ?? string.Empty;
+            int index = SchematicRows.IndexOf(current.Schematics, row);
+
+            if (index < 0)
+            {
+                return SchematicRenamePlan.Refused(SchematicRenameOutcome.NotFound);
+            }
+
+            if (string.Equals(current.Schematics[index].SchematicName?.Trim(), wanted, StringComparison.Ordinal))
+            {
+                return SchematicRenamePlan.Refused(SchematicRenameOutcome.Unchanged);
+            }
+
+            if (SchematicRename.Problem(wanted, current.Schematics.Where((_, other) => other != index).Select(entry => entry.SchematicName)) is not null)
+            {
+                return SchematicRenamePlan.Refused(wanted.Length == 0 ? SchematicRenameOutcome.Blank : SchematicRenameOutcome.NameTaken);
+            }
+
+            string renamedFrom = current.Schematics[index].SchematicName ?? string.Empty;
+            (BoardData renamed, bool moved) = SchematicRename.Apply(current, index, wanted);
+
+            var follow = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+            if (moved)
+            {
+                follow[renamedFrom] = wanted;
+            }
+
+            return new SchematicRenamePlan(SchematicRenameOutcome.Renamed, renamed, follow, renamedFrom, wanted);
         }
 
         // ###########################################################################################

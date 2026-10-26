@@ -12,8 +12,8 @@ Classic Repair Toolbox (CRT) is a cross-platform (Windows/Linux/macOS) Avalonia 
 hardware enthusiasts diagnose and repair vintage computers. It presents schematics, component data,
 oscilloscope baselines, and interactive KiCad traces for a curated set of hardware (mostly Commodore,
 plus Amstrad and ZX Spectrum boards). It also drives real test equipment: SCPI oscilloscopes over TCP
-and a MiniPro USB IC programmer/tester. Users improve the data from inside CRT (Contribute and Drafts
-tabs); maintainers review it in CRT's Maintainer tab, and the contribution service (CRT.Server)
+and a MiniPro USB IC programmer/tester. Users improve the data from inside CRT (the Contribute
+tab); maintainers review it in CRT's Maintainer tab, and the contribution service (CRT.Server)
 publishes it to the BETA data and then to the stable data.
 
 ## One change, every side of it
@@ -21,7 +21,7 @@ publishes it to the BETA data and then to the stable data.
 **This is one system in four parts, and a change to shared behaviour is not done until every
 part that shares it has been changed in the SAME session.** The parts are the CRT desktop app
 (`src/CRT.App/`, including the Maintainer tab and, in `src/CRT.App/Controls/`, the controls the
-Drafts and Maintainer tabs share), the contribution service (`src/CRT.Server/`), the shared library
+Contribute and Maintainer tabs share), the contribution service (`src/CRT.Server/`), the shared library
 they both reference (`src/CRT.Data/`), and the board DATA itself (`Assets/Data/`, and the published
 trees the server writes).
 
@@ -418,8 +418,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   `ServerWait` turns it into `ReviewApiFailure.TimedOut`); local work uses `RunLocalAsync`. Several
   steps are one wait through `HoldAsync`. `BusyOverlayHostsTests` guards the hosts. **Not under it**:
   background work nobody pressed for, board switching, the Submit dialog's upload (own progress), the
-  MiniPro test, the scope's live output, and the synchronous table LOAD. The table's SAVE is under it
-  (`BoardTableEditor.SaveAsync`: rows taken on the UI thread, file work on the pool).
+  MiniPro test, the scope's live output, the synchronous table LOAD, and a draft saving itself (the
+  Drafts table's session, a second after a change). Waiting for that save because the contributor
+  pressed something - closing the table, submitting, quitting - IS under it (`TabDrafts.SaveTableNowAsync`).
 - **User-visible punctuation is plain ASCII** (hyphens, straight quotes) unless an app label already
   has a character such as "·".
 - Biggest files, for context budgeting: `Tabs/Contribute/ComponentContribution.axaml.cs`,
@@ -443,23 +444,82 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 
 ### Tabs (`Tabs/`)
 
-One folder per tab - `About`, `Configuration`, `Contribute`, `Drafts`, `Feedback`, `Maintainer`,
-`Oscilloscope`, `Overview`, `Resources`, `Schematics`, `Workbooks` - each a `UserControl` with its
-logic in code-behind. `Worklog/` holds the worklog's dialog windows. **Conditional tabs:**
+One folder per tab - `About`, `Configuration`, `Drafts` (the Contribute tab), `Feedback`,
+`Maintainer`, `Oscilloscope`, `Overview`, `Resources`, `Schematics`, `Workbooks` - each a
+`UserControl` with its logic in code-behind. `Contribute/` holds the component editor window
+(`ComponentContribution`), `Worklog/` the worklog's dialog windows. **Conditional tabs:**
 Oscilloscope (`ApplyOscilloscopeTabVisibility`), Workbooks with the worklog bar
-(`ApplyWorklogBarVisibility`), Drafts (shown once a draft exists), Maintainer (`EnableMaintainerTab`,
-off by default). Hiding a selected tab moves the selection to the first visible one.
+(`ApplyWorklogBarVisibility`), Maintainer (`EnableMaintainerTab`, off by default). Hiding a selected
+tab moves the selection to the first visible one.
 
-#### Drafts (`Tabs/Drafts/`) - local-first contributing
+#### The Contribute tab (`Tabs/Drafts/`, class `TabDrafts`) - local-first contributing
 
-A contributor edits a board locally (the Contribute tab's component editor, the label editor, its
-"Edit board as draft" for the whole board in table form, or "Create board" for a new board), sees how
-the draft differs from the published copy, and submits.
+**One tab replaced the Contribute and Drafts tabs** (CRT 4.0 step 2, 2026-10-25 - the plan: "One tab
+instead of Contribute and Drafts"); the class and folder keep the Drafts name. It is ALWAYS on screen,
+its title IndianRed while a draft exists (`ContributeTabTitle`/`hasDrafts` in Main.axaml, set by
+`Main.ApplyContributeTabState`), and it is about the board shown in CRT: Main hands it every board
+it shows (`Main.ShowBoardInContributeTab` -> `TabDrafts.ShowBoard`, `TabDrafts.Workspace.cs`). From
+top to bottom: "My drafts" (a drop-down list that SELECTS that board in CRT and goes back to its
+placeholder), "My submissions", "Add a new board"; the shown board's draft header - or, with no draft,
+a line saying the first change makes one; then a left column of the board's parts with counts
+(`ContributeBoardParts` - Pictures and KiCad data open their windows, Important signals, Files and
+links and Credits open the table on their sheet), the component list with its own search, "Add
+component" and "Table view"; and on the right ONE of the table, the component pane or a start panel.
+**The table and the pane are views of the board SHOWN** - showing another board closes them
+(`CloseTableForAnotherBoard`, `CloseComponent`), and the left column reads the draft as they
+left it (`BoardForList`, the pane's "Changed" marks in `thisChangedHere` until Main shows the board
+again). **That close cannot be called off and asks nothing** (code review, 2026-10-26: Cancel left
+the table on the previous board's draft under the new board's header): what the table holds goes
+into its draft and a save starts; one that fails waits in memory for its board or quitting.
+**Closing the table settles ITS board's draft only** (`CloseTableAsync` -> `SettleTableEditsAsync`);
+`ConfirmLeavingTableAsync` - every draft - is quitting's. **One timer saves every draft no editor
+holds** (`SaveDueDraftsNoEditorHoldsAsync` over `DraftSessions.Due`, started by `Initialize`); the
+table and the pane save their own, whose Saved events the row and the board on screen follow. Every
+pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
 
-- **"Edit board as draft"** (Contribute tab, between "Add new component" and "Add a new board"; owner
-  request 2026-10-09; `Main.EditBoardAsDraft.cs`): no draft yet - seeded from the published FILE
-  (`DraftSeeder.SeedFromPublishedFile`) and opened in the Drafts tab's table; a draft already - nothing
-  written, `DraftExistsWindow` says a board has ONE draft and offers it.
+- **A component opens in the COMPONENT PANE** (CRT 4.0 step 2's slice 3a, 2026-10-25;
+  `ComponentPane`, `TabDrafts.Component.cs`; the plan: "A component opens in a pane, never in a
+  maximized window"): Basics (friendly name, technical name, part number, category, package, the
+  short description with its counter to `ShortDescriptionLimit`, repair notes), Pinout (the pins,
+  "Add the N pins of DIP-40" from `ComponentVocabulary.PinCountOf`, the case drawn from above -
+  `PinoutDrawing`, every position `PinoutGeometry`), replacement parts and links. **Every change is a
+  transform of the draft held in memory** (`ComponentPaneEdits` - the component AS SHOWN, the region
+  CRT shows by the component list's rule; the other region's rows and every other component's are
+  carried across in place; a change that changes nothing returns the SAME board, so no step): a box
+  when it is left, Enter pressed or typing paused a second, a row when its box is left or its list
+  picked - each one named step (`DraftStepWording.ComponentField`/`ComponentPins`/...). **The pane
+  saves the draft itself** a second later, off the UI thread, as the table does; the header says
+  Saved/Saving/Could not save. **Another change lands on top of what the pane holds** (ChangeComing
+  commits it first) and the pane reads the component again after any change but its OWN EDIT - an
+  undo or redo carries the mark of the step it moves, the pane's own included (`IsOwnEdit`). A drop-down
+  list's empty write is never a clear (`ComponentPanePinRow.Direction`). **A row's label in other
+  capitals is no change** (code review, 2026-10-26: compared exactly, every commit rewrote a component's
+  "u8" links, pins and replacements under "U8"); a real change keeps the spelling they use. Closing, another board,
+  opening the table and leaving the tab hand over and save; submitting, managing files, quitting and
+  installing an update save first and ask only when that fails (`SaveDraftEditorsNowAsync`,
+  `SettleTableEditsAsync` - the prompt is said of the draft, not the table); a discard or a retirement
+  lets go WITHOUT saving (`ComponentPane.Forget`). **Quitting saves EVERY draft held in memory with a
+  change not saved** (`TabDrafts.OtherUnsavedDrafts`, the current drafts folder's) - a save the pane
+  started as it closed can fail, and only an open pane or table was asked about. **Nothing reads the
+  draft's file while the pane's close-save replaces it**: closing refreshes from memory and the row
+  follows the save (`OnComponentPaneSaved`); opening the table awaits `ComponentPane.LastSave`, under
+  the BusyOverlay. **Submit and "Manage files" save the draft held in memory itself too** - a change
+  neither the table nor the pane shows (a close-save refused, the header's Undo with nothing open) was
+  left out of the submission (code review, 2026-10-26; `SettleTableEditsAsync` - only that board's
+  draft is saved, asked about or discarded). **The pane takes the session's `Changed` on the UI thread**
+  (`OnSessionChanged` posts itself there, as the table does): a direct write (`WriteFileDirectly` - the
+  KiCad data window's Remove) raises it on the pool, and the pane threw. Pictures, scope baselines and files are still the
+  component editor window's - its button opens it on the draft AS THE PANE LEFT IT
+  (`Main.OpenComponentContributionWindow(label, board)`: Main's board may not have caught up, and a
+  window opened on that would save it back). "Add component" still opens that window too.
+
+- **No action asks whether to make a draft - it is made** (`Main.EnsureDraftAsync`, `Main.FirstDraft.cs`;
+  "Edit board as draft" and `DraftExistsWindow` are gone): seeded from the published FILE
+  (`DraftSeeder.SeedFromPublishedFile`) under the BusyOverlay, after the API revision is asked
+  (`AskApiRevisionBeforeFirstDraftAsync`); a covered tab, or a seed that fails, makes nothing and says
+  why on the tab's problem line (`TabDrafts.ShowDraftProblem`). A draft made meanwhile counts as made.
+- **"Contribution in use"** (`Main.thisContributionInUse` - a draft, or unread news on something sent)
+  is what the Drafts tab's visibility used to be: it decides whether CRT asks the API revision.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
 `SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `BoardFilesWindow`,
 `DiscardDraftWindow`, `ForgetSubmissionWindow`, `RemoveSchematicWindow`).
@@ -472,9 +532,10 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   PLACE** (`BoardSchematicRow.ApplyCadNameChoices`, `InPlaceList.Sync`) - a replaced ItemsSource lets go
   of the selection and the binding writes "nothing" back over the image's CAD name.
 - **Every change "Schematic images" and "KiCad data" make to the draft is ONE queued change**
-  (code review, 2026-10-10; `BoardFilesWindow.DraftChanges.cs`): written off the UI thread under the
-  window's BusyOverlay, each after the one before it (a click whose press came before the overlay
-  still lands - two writes of one workbook would lose one), reading the rows only when it runs.
+  (code review, 2026-10-10; `BoardFilesWindow.DraftChanges.cs`): applied to the draft held in memory
+  and saved off the UI thread under the window's BusyOverlay (`ApplyToDraftAsync`), each after the
+  one before it (a click whose press came before the overlay still lands), reading the rows only when
+  it runs.
   **Closing waits for the queue and saves a typed name; a name that cannot be saved keeps the window
   open with the reason.** A test waits for `DraftChanging`. **A row is found by its name AND its image
   file** (`SchematicRows`, `SchematicOrder`) - two rows can share a name, and by name alone a change
@@ -484,7 +545,8 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   `DraftWorkbookStore.EditCore`): the sidecar files highlights and the KiCad calibration by schematic
   name, so a rename moves them and a deletion drops them - the server's own rule for a table edit
   (`SubmissionRowsBoard.FollowSchematics`: same image file, new name = a rename). The Name box
-  (`RenameSchematic`) names its rename outright. A KiCad calibration is looked up without regard to
+  names its rename outright (`SchematicRename.Plan`, decided on the draft held in memory and handed in
+  by `DraftSession.ApplyWithFollow`). A KiCad calibration is looked up without regard to
   capitals (`BoardComponentHighlightStorage`), like every other schematic name, and a write reads the
   sidecar's calibrations ONCE (`LoadKiCadCalibrations` - it parsed the file once per schematic, twice).
 - **A renamed schematic image is followed by every user's own data** (owner decisions, 2026-10-10:
@@ -511,7 +573,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
 - **The badge** (`Main.SubmissionChecks.cs`): `SubmissionReceiptStore.UnreadCommentCount`, the same
   number as "My submissions". Sent submissions are asked about at launch and every minute while the
   window is not minimised and something is open; each check is followed by the launch path (retire
-  drafts, then `ApplyDraftsTabVisibility`) on `onFinished`, never `onChanged`.
+  drafts, then `ApplyContributeTabState`) on `onFinished`, never `onChanged`.
 - **What was just sent cannot be sent again**: the receipt keeps CRT.Data's `DraftFingerprint` (the
   workbook's VALUES, the sidecar's bytes, every draft file by path and content). While the draft
   matches its LATEST submission, Submit is greyed out with the reason - unless that submission never
@@ -525,7 +587,44 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
 - **A submission the server no longer knows reads "No longer on the server"** (404 after a board
   deletion or the data reset; `SubmissionReceipt.NotFoundUtc`): neutral colour, never blocks Submit,
   no BETA try, not reported on a discard.
-- **"Save to draft" in the component editor lands on the Drafts tab**, only after a successful save.
+- **"Save to draft" in the component editor lands on the Contribute tab**, only after a successful save.
+- **The draft's header** (CRT 4.0 step 1's last slice, 2026-10-25, at the top of the Contribute tab
+  since step 2; `TabDrafts.Header.cs`,
+  `DraftHeaderState`): the save state (Saved / Saving... / "Could not save - <reason>" with Try again),
+  Undo and Redo naming their step in the tooltip, "Review changes", and "Discard draft". **One
+  `DraftHeaderState` per draft for the run**, compared by reference (`DraftListItem.ShowsTheSameAs`), so
+  a save never rebuilds the row; every refresh reads it again (`Follow`). **The row's Undo and Redo are
+  the SESSION's**: table closed, the step is SAVED at once and the board on screen reads again
+  (`AfterDraftChanged`); table open, they are the table's. **Try again on a file changed somewhere else
+  opens the table** (its bar offers both versions) - tried again it is refused for ever. The header's
+  save state hides while the table is open; the table's own line says it.
+- **"Review changes" and "Undo changes to [U8]"** (`ReviewChangesWindow`; CRT.Data's `DraftChangeSummary`,
+  read by `DraftChangeSummaryReader` - the session's content, else the board file, against the published
+  board file with both file lists): one group per component, plus "The board". Each COMPONENT group
+  has a red "Undo changes to [U8]" (`ComponentRevert`: every row of the label, all regions, back as
+  published - a relabel back to its old label, an added component removed) as ONE step
+  (`DraftEdits.UndoComponentChangesAsync`), which the row's Undo takes back; the board's group has none.
+  **A file of the component replaced under its own name is a change, and goes back too** (code review,
+  2026-10-26; `ComponentRevert.ReplacedFiles` against both lists - the pane reads the draft's from
+  `DraftSession.ListedFiles`, never the file): put back by the draft's file list after the rows
+  (`DraftEdits.PutBackPublishedFilesAsync` -> `RemoveFiles`), a write the row's Undo does not take back.
+  Rows already as published are no step (`ComponentRevert.RowsToPublished`). **The highlights go back
+  under the draft's names for their schematics** - an image the draft renamed keeps its new name
+  (`SubmissionRowsBoard.FollowSchematics`; code review, 2026-10-26: under the published name they were
+  refused at Submit, fixable nowhere in the table), and the rename alone is no change of the component.
+  **The Submit dialog shows the same summary** ("Your changes") and **Discard draft lists what is lost**
+  (`AsLines(max: 12)`) - the words are `DraftChangeSummary`'s, nowhere else.
+- **The component editor saves unfinished work** (`ComponentContribution.UnfinishedWork.cs`; the plan:
+  "Only Submit asks for problems to be fixed"): only a board label error, a file location CRT cannot
+  write to, or a label already taken stops "Save to draft". A missing category, an image row with
+  neither file nor note, a picture CRT cannot show are left to the table's checks. A picked file with no
+  folder goes in its kind's usual one (`ContributionFileLocations.DefaultFolderFor`). **A save not made
+  takes its copied files back** (`DraftPickedFiles` - a file a copy replaced is set aside in
+  `.crt-set-aside` and put back; code review, 2026-10-26): left lying in the draft folder, the next
+  write by ANY editor took them in after "could not be saved". A file replaced under the name its row
+  cites changes no row, so the draft is written anyway (`ApplyAndSaveAsync(takeInNewFiles)`). Its own "Undo
+  changes to [U8]" shows while the component differs from the published board, and shows the component
+  again from the session after - or closes, for a component the published board lacks.
 - **A NEW DRAFT IS SEEDED FROM THE PUBLISHED FILE AS IT IS ON DISK** (`DraftSeeder.SeedFromPublishedFile`),
   never from `BoardDataReader`'s cache - an Excel edit made while CRT ran would be lost.
 - **A draft keeps its BASE** (code review, 2026-10-13): `.crt-base.json` (`DraftBase`) - the published
@@ -541,9 +640,26 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   the merged board no longer cites, and follows the update's own renames (`FollowUpdateRenames`). Files named `.crt-*` are bookkeeping
   (`DraftFolderLayout.IsDraftOnlyFile`). Files and calibrations count for Submit (`DraftOtherChanges`,
   measured against the base); only row ORDER does not.
-- **No other editor writes a draft under a table with unsaved edits**: the Contribute window and the
-  label editor ask `TabDrafts.HasUnsavedTableEditsFor(excelDataFile)` and, if so, save NOTHING and show
-  the `SavingElsewhere` notice (Cancel alone; the owner rejected "save the table first" from there).
+- **Every editor changes the ONE draft held in memory** (CRT 4.0 step 1, 2026-10-25; `DraftEdits`):
+  the component editor, the label editor, the KiCad calibration and "Schematic images" hand their
+  change to the draft's `DraftSession` and save it at once. **Only handing over what the table holds
+  and applying the result run on the UI thread** (code review, 2026-10-25): the session is opened,
+  the file asked about (`FileChangedOutside`) and the edit worked out with what follows it
+  (`DraftSession.Prepare`) on the pool, then applied (`ApplyPrepared` - worked out again when the
+  draft moved meanwhile). **A save that cannot be made is taken back out** (`DraftSession.TakeBack`,
+  by the rebase's three-way merge when the table pushed a change after it - the later change stays,
+  and no undo brings the taken-back one back) and the editor says why
+  (`DraftSaveWording.EditNotSaved`) - an explicit save either happens or changes nothing. A transform
+  returning the board it was handed is no step at all. Before any
+  change the table hands over what it holds (`ChangeComing`), so the change lands on top and one save
+  writes both; **nothing holds another editor's save back** - the `SavingElsewhere` notices and
+  `TabDrafts.SavingBlockedFor` are gone. Each change is ONE named step of the draft's history
+  (`DraftStepWording`), so the table's Ctrl+Z takes it back. A write that is MORE than the content -
+  "Bring my draft up to date", Remove of a KiCad file - goes through `DraftEdits.WriteFileDirectlyAsync`
+  (held changes collected on the UI thread, saved first, the file read back; bringing up to date
+  clears the history, measured against the old base); a KiCad import takes its files in with
+  `TakeInNewFilesAsync`. "Schematic images" still has the table saved before it opens
+  (`SettleTableEditsAsync`), so a table that cannot save is asked about once, not behind every click.
 - **Each draft's row counts problems too** (`DraftStatusReader.CountProblemsCached`), and the list is
   read again when the tab is shown or CRT's window is activated - when an Excel edit arrives.
   **That read keeps every unchanged row** (`TabDrafts.KeepUnchangedRows` - `InPlaceList.KeepUnchanged` -
@@ -552,21 +668,24 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   rebuilt row threw the pressed button away ("I need to click it twice", 2026-10-10).
 - **Retiring a published draft** (`PublishedDraftRetirer`, CRT.Data's `DraftRetirement`): a draft whose
   work reached the STABLE source is deleted (BETA alone is not enough - a push-back can undo it), after
-  every launch status check and when "My submissions" closes; never one with unsaved table edits.
+  every launch status check and when "My submissions" closes; never one holding a change not saved
+  yet (`TabDrafts.HasUnsavedTableEditsFor`, `DraftManager.HasUnsavedChanges`).
   **A receipt names its board by ID; the drafts flow is keyed by WORKBOOK path** -
   `DraftStatusReader.ResolveForBoard` maps one to the other. A new board's draft is retired once its
   published board is on the machine. A user on the BETA source is told once, when their work reaches
-  stable, to switch back (`Main.SourceSwitchNotice.cs`).
+  stable, to switch back (`Main.SourceSwitchNotice.cs`). **Nothing is retired while CRT talks to the
+  test instance** (`ContributionServer.RetiresPublishedDrafts`; code review, 2026-10-25): its stable
+  data is replaced on release day, so the draft is the work's only lasting copy.
 
-#### The board table editor (`Controls/BoardTable/`, shown by the Drafts and Maintainer tabs)
+#### The board table editor (`Controls/BoardTable/`, shown by the Contribute and Maintainer tabs)
 
-"Edit in table format" opens a draft's workbook as editable sheets below its row
-(`TabDrafts.Table.cs` owns table mode; `BoardTableEditor` the control; `UnsavedTableEditsWindow` the
-prompt; colours in `BoardTableColors.axaml`). Colours are the owner's: green added, orange the changed
-CELL (published value in its tooltip), red + strike-through deleted, shown where the row used to be.
+"Table view" opens the shown board's draft as editable sheets on the right of the Contribute tab
+(`TabDrafts.Table.cs` owns table mode; `BoardTableEditor` the control; `UnsavedTableEditsWindow` the prompt; colours in
+`BoardTableColors.axaml`). Colours are the owner's: green added, orange the changed CELL (published
+value in its tooltip), red + strike-through deleted, shown where the row used to be.
 
 - **The control only paints.** Every rule is in CRT.Data (`BoardTableDocument`/`BoardTableSheet`,
-  `DraftTableSession`, `BoardTableClipboard`, `BoardTableHistory`, `BoardTableRowDrag`,
+  `DraftSession`, `BoardTableClipboard`, `BoardTableHistory`, `BoardTableRowDrag`,
   `BoardTableSearch`, `BoardTableRowFilter`), because the Maintainer tab shows the same table.
 - **Pairing is `BoardDataDiffer`'s rule** (`BoardDraftNaturalKeys`; keys case-insensitive, values
   trimmed + ordinal, first row per key wins), so the tabs' counts equal the draft row's "N rows
@@ -574,18 +693,32 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
   owner decision 2026-10-04 - used by the table, the differ and the server's `ReviewSummary`); a key
   AND another cell changed is an add plus a deleted ghost. **A component's identity is its label
   PLUS its region**; **an important signal's is its display name PLUS its KiCad net**.
-- **A save replaces all nine sheets, so it may only land on the file it was read from**
-  (`DraftWorkbookStore.EditIfUnchanged`, a SHA-256 taken before the read). Never route it through plain
-  `Edit`.
-- **While on screen it watches its draft file** (`BoardTableEditor.FileWatch.cs`, every 2 s, judged
-  against the session's CURRENT fingerprint): changed and nothing unsaved - reload (raising
-  `ReloadedFromOutside`, answered like `Saved`); changed with unsaved edits - the `ChangedOnDiskBar`
-  and Save off. Never reloads under a cell being typed in or a row dragged. `OpenElsewhereBar` shows
-  while Excel's or LibreOffice's lock file exists; Save is off only while the workbook is REALLY held
-  open (`DraftTableSession.IsHeldOpen`), since a crashed Excel leaves its lock file behind.
-- **The unsaved-edits prompt has wordings** (`UnsavedTableEditsPrompt`): Leaving (Save/Discard/Cancel),
-  Reloading, DraftChangedOnDisk and DraftOpenElsewhere (no Save - it would be refused), SavingElsewhere,
-  LeavingBoard (the Maintainer tab's Boards screen).
+- **In the Contribute tab the table is a view of the draft held in memory** (CRT 4.0 step 1, 2026-10-25;
+  `BoardTableEditor.DraftSession.cs`, the plan: "What goes away: every Save button in drafts, the
+  'unsaved table edits' prompts ... and the table's file watch with its Excel bar"). It works on the
+  draft's `DraftSession` from `DraftManager.Sessions` (kept for the run - a draft discarded or retired
+  takes its own, `DraftManager.DiscardDraft`). **Every settled change is pushed into the session as
+  ONE step** (`BoardTableDocument.TakeSessionEdit` - null, so no step, when no row changed) carrying
+  where it was (`BoardTableHistory.Latest`, `BoardTableSessionEdit`); never while a cell is typed in or
+  a row dragged. **Only the sheets changed since the last push are built, put in and compared** (code
+  review, 2026-10-26 - all nine, three times over, on the UI thread at every edit): every change a sheet
+  makes calls `BoardTableDocument.MarkDirty(sheet)`, and a sheet not named there is left as the session
+  has it, its very rows - a new kind of change MUST call it too. **The session saves itself** a second after a change, off the UI thread (the save
+  timer, `DraftSession.IsSaveDueNow`); where "Save changes" was the table says Saved / Saving... /
+  "Could not save - <reason>" with Try again (`DraftSaveWording`). **Undo and redo are the session's**,
+  and the table is BUILT AGAIN from it after each (`ShowSessionContent`) - so row and cell objects do
+  not survive an undo; look them up again. **A file changed outside the table** is read again when CRT
+  wrote it (`ReadDraftFileAgain`, an undoable step) and caught by any save after it: `ChangedOnDiskBar`
+  offers "Use the saved version" (undoable) or "Keep the table's version" (`Save(overwrite)`) - nothing
+  thrown away unasked. **New components stay where they were typed** while the table is open and are
+  saved into their category (`BuildRows`), said once. **What goes with a change is said once made**
+  (`BoardTableSessionWording.WentWith` - the save-time "Remove schematic image?" question is gone).
+  The Maintainer tab's tables are documents (`Open`) and keep their explicit Save.
+- **The unsaved-edits prompt has wordings** (`UnsavedTableEditsPrompt`): LeavingSubmission and
+  LeavingBoard (the Maintainer tab - Save/Discard/Cancel), LeavingUpdateRequired, DraftChangedOnDisk and
+  DraftNotWritten (a draft's table whose save just failed - Discard/Cancel, no Save). A draft's table
+  asks only after its save failed: closing it, submitting, managing files and quitting save first
+  (`TabDrafts.SaveTableNowAsync`).
 - **The grid is ProDataGrid** (MIT fork of Avalonia's DataGrid; theme included as
   `avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml`). Traps, each found the hard way:
   - Cell colours come from a per-column `CellTheme` whose `Background` BINDS to the cell's state -
@@ -603,19 +736,21 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
     presenter spans it (`Grid.ColumnSpan`, through the `HeaderStyled` trigger). Headings wrap, the
     heading row sizes itself (no `ColumnHeaderHeight`), and a fit to a heading measures the NAME
     (`ColumnAutoFitGeometry.HeadingWidth`: the space before it repeated after it).
-  - The table must never sit inside a ScrollViewer (it would realise every row) - `DraftsBodyGrid`
-    holds list and table as siblings; `ApplyTableMode` changes row `Height`s in place (assigning a new
-    `RowDefinitions` drew the open row at zero height).
+  - The table must never sit inside a ScrollViewer (it would realise every row) - the Contribute
+    tab's `WorkspaceGrid` holds the table and the start panel as siblings in a `*` cell, and
+    `ApplyTableMode` only switches which is visible. A Grid's `RowDefinitions` are never replaced
+    (assigning new ones drew the open row at zero height).
   - Every key the table's markup names must resolve in CRT's App.axaml (`SharedTableColourKeysTests`);
     a missing `DynamicResource` draws nothing, silently.
-- **The table owns the keyboard while open**: the component filter backs off
-  (`Main.ShouldReturnFocusToComponentSearch`), and `TabDrafts.FocusTableIfOpen` puts focus in the grid.
+- **The table owns the keyboard while open**: the component filter backs off on the whole Contribute
+  tab (`Main.ShouldReturnFocusToComponentSearch`), and `TabDrafts.FocusTableIfOpen` puts focus in the grid.
   Tab/Shift+Tab move along and wrap (tunnel route); Enter moves down. Buttons hand focus back to the
   grid (`ThenFocusGrid`) - a disabled focused button drops focus to nothing.
-- **Undo/redo (Ctrl+Z / Ctrl+Y) live in the model** (`BoardTableHistory`): each step is a snapshot of
-  one sheet's live rows taken just before the change, back to the last save. **A new kind of change is
-  undoable only if it calls `History.Record` before it mutates.** Inside a cell being edited, Ctrl+Z
-  is the text box's. Undoing back to the saved state clears "unsaved".
+- **Undo/redo (Ctrl+Z / Ctrl+Y)**: a draft's are its session's (above); a document's live in the model
+  (`BoardTableHistory`): each step is a snapshot of one sheet's live rows taken just before the change,
+  back to the last save. **A new kind of change records `History.Record` before it mutates** - a
+  document's undo needs it, and a draft's step takes where the change was from it. Inside a cell being
+  edited, Ctrl+Z is the text box's. Undoing back to the saved state clears "unsaved".
 - **Rows move by the editor's own drag** (`BoardTableEditor.RowDrag.cs`; ProDataGrid's row drag is
   off): the row moves LIVE with a dashed placeholder, the target read off a FROZEN layout
   (`CaptureRowSlots`) - hit-testing the live grid made the row run away near the bottom edge. A red
@@ -631,7 +766,9 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
   rule is a warning. A problem cell gets a corner triangle drawn as ONE background brush; a problem in
   no row is a line above the table. Duplicates and rows a save drops are WARNINGS (owner decision
   2026-10-03), marked on every row of the set. Submit on a draft with errors sends nothing and opens
-  its table on them.
+  its table on them. Two warnings are the table's alone (the Everything scope, never the server's;
+  2026-10-25, since the component editor saves unfinished work): `component.no_category` (it is not in
+  the component list without one) and `image.not_displayable`.
 - **The search box** (`BoardTableSearch`, the Workbooks tab's `WorklogSearchQuery` grammar, every
   cell): decided ONCE when typed; a search finding nothing anywhere keeps only the current sheet with
   `NothingFoundLine`. **The marks are the table's own, NOT ProDataGrid's**: every data column is a
@@ -643,6 +780,18 @@ CELL (published value in its tooltip), red + strike-through deleted, shown where
   "Delete row" calls `BoardTableSheet.DeleteRows` - one undo step, and a component's rows on other
   sheets go with it (`BoardTableDocument.DeleteRowsOfComponent`; highlights at save). A RENAME keeps
   them. `SelectCell` makes its cell the whole selection. ONE "Insert row" button.
+- **Blocks are copied and pasted, with fill down and find & replace** (CRT 4.0, 2026-10-25 - step 0
+  of the plan, so the table does what Excel was used for; `BoardTableEditor.BlockEdits.cs`, the rules
+  `BoardTableSheet.PasteBlock`/`PasteIntoCells`/`FillDown` and `BoardTableDocument.ReplaceAll`, the
+  words `BoardTableEditWording`). Ctrl+C copies the selected cells as a spreadsheet block
+  (`BoardTableClipboard.ForCells`). Ctrl+V lands a block from the selection's top-left cell down the
+  rows SHOWN - red rows passed over, rows added at the end unless a pill or search narrows the table,
+  columns past the last and a pasted heading row left out, each said on the status line; ONE value
+  onto several selected cells fills them all. Ctrl+D / "Fill down": each column's top selected cell
+  into the rest - on one row, the row shown above into it. Ctrl+H / "Replace": capitals ignored, the
+  rows shown, this sheet or every sheet. Ctrl+F: the search box. **Each is ONE undo step**
+  (`BoardTableSheet.AsOneChange`, a history group ended whatever happens - left open, every later
+  edit joined it); a read-only table offers none of them, copying aside.
 - **Row order is what the user sees, and new components are PLACED** (`ComponentPlacement`: a new
   component goes into its category in natural label order, a new category last, an edited one stays
   put; a regional twin straight after its twin). **Order is NOT a change `BoardDataDiffer` counts** -
@@ -755,7 +904,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 2026-09-29.
 
 - **Shown only when "Enable Maintainer tab" is ticked** (`UserSettings.EnableMaintainerTab`, default
-  off), between Drafts and Configuration. `Main.Maintainer.cs` owns visibility and layout: while
+  off), between Contribute and Configuration. `Main.Maintainer.cs` owns visibility and layout: while
   selected, the sidebar and the worklog bar collapse; `LeftPanelWidth` is never saved as 0. "Hide
   the Maintainer tab while no work is waiting for me" shows it only while its badge counts something
   (`MaintainerModes.TabIsShown`) - never taken away while it is on screen, holds unsaved edits, or
@@ -831,6 +980,8 @@ quick card). **Find the right partial here before grepping** (the map is repeate
   the stable table against BETA's (`BoardTableDocument.Create(otherSource, thisSource, ...)`), the
   tooltip naming "Stable source value" / "BETA source value"; file cards read the other side from the
   other source's address (`PublishedTableFileSource.Baseline`). Both tables are read when compared.
+  **A file cell's place is looked up ignoring capitals** - JSON hands `FilePlaces` over without the
+  server's comparer, so the source copies it into one that ignores them (code review, 2026-10-26).
   **It is off while BETA's table holds an unsaved change** (the editor's `UnsavedChangesChanged`):
   comparing rebuilds the table. A cell still in its editor counts - the box commits it first
   (`BoardTableEditor.CommitCellEdit`), and nothing rebuilds BETA's table under `IsEditingCell`. A save
@@ -847,7 +998,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
   pointed at written above the plot (a drawn readout, not a tooltip - see the tooltip rule). Colours
   `Chart_*` in both themes, validated against CRT's grounds.
 - **Quitting CRT asks about unsaved table edits** of both tables (`HasUnsavedTableEdits`), after the
-  Drafts tab's, in one continuation. The tab has no `BusyOverlay` of its own. The component filter
+  Contribute tab's, in one continuation. The tab has no `BusyOverlay` of its own. The component filter
   never takes focus over it. The server address is `AppConfig.CrtServerRootUrl` (no "/api");
   `CrtServerBaseUrl` adds "/api" for `SubmissionClient`.
 
@@ -894,6 +1045,221 @@ hardware/boards and oscilloscope SCPI command sets; each board has its own workb
 CRT syncs it from `classic-repair-toolbox.dk` by SHA-256 manifest, independent of app releases. **There
 are two generations**: each master names its own generation of board files, and `DataManager` picks
 the master by version (highest at or below the app's own); the server writes only the newest.
+
+### The CRT 4.0 data tree (CRT reads it since 2026-10-24; the server publishes it since 2026-10-25)
+
+Owner decisions of 2026-10-24: in CRT 4.0 board data is JSON only and every edit is made in CRT;
+the Excel generations are FROZEN at the 4.0 release (2.x/3.x keep their data, and are told to update
+to contribute); every board OWNS its files by name, while each file's bytes are stored ONCE under
+their checksum; all existing data is migrated. **The app switched on 2026-10-24** ("Yes, do switch
+now"): CRT reads and writes only 4.0 boards and drafts. **The server followed on 2026-10-25**
+(server 4.0.0, API revision 2 - every 3.x CRT is told to update to contribute): it publishes ONLY
+into 4.0 trees, so it is deployed on the release day, not before (INSTALLING.md, "Switching the
+service to the 4.0 trees"). CRT reads a main file only at or below its own version, so running it on
+4.0 data needs `InformationalVersion` 4.0.0-something.
+
+- **Layout** (`DataTreeLayout`): a tree of its own (`public_html/app-data-v4`, `app-data-v4-BETA` -
+  an installed 3.x downloads every file its manifest lists, so 4.0's files never go beside the Excel
+  generations). `Data/Classic-Repair-Toolbox.v4.0.0.json` (`MainDocument`), `Data/<board id>/board.json`
+  (`BoardDocument`: the nine sheets, the sidecar's three roots, the board's `files` by name + SHA-256),
+  `Data/Files/<ab>/<sha256>.<ext>`, `Data/MiniPro/IC tests/`.
+- **A board's identity is its board file, "<id>/board.json"** (`DataTreeLayout.BoardFilePath` - the
+  main file's entries, a converted draft's marker, `NewBoardIdentity.BuildExcelDataFile`). The name
+  `ExcelDataFile` stays in code for now. **Only the folder of an identity matters**: a 3.x draft whose
+  identity names a workbook ("…/Data X.xlsx") reads the same `<folder>/board.json`
+  (`DataTreeLayout.BoardFileFor`), so every identity of one folder is one board - the draft-only merge
+  skips a draft whose FOLDER is listed (`DataManager.MergeDraftOnlyBoards`). The shared readers read
+  a `board.json` as a 4.0 board and anything else as Excel (`DataTreeLayout.IsBoardFile`) - the
+  converter and the server still read Excel through them.
+- **CRT's data folder is "Data v4"** (`AppConfig.DataFolderName`), beside 3.x's "Data", which is left
+  as it was (a new folder is seeded from the install package; `DataManager.FindLegacyDataRoot` lets a
+  hand-placed Excel-era draft find 3.x's shared files while it is converted). The manifest is
+  `app-data-v4`'s. The launch syncs the main file, then the listed board files; everything else (the
+  store, the MiniPro tests) syncs in the background (`DataManager.IsListFile`). The orphan cleanup maps
+  the main file, its boards and the stored files they name - and fails closed as before.
+- **A row names a file of its board; `DraftFileResolver` finds it** - a new file lying in the draft
+  folder under its name, then the draft's board file (its store, then the tree's), then the published
+  board file (pass the board identity), then an Excel-era data-root path. Every caller that opens what
+  it finds passes the ROOT it was found under to `ExternalTargetLauncher` (the Resources tab too).
+- **KiCad files are copied under their names** into a cache (`BoardKiCadFolder`,
+  `AppConfig.KiCadCacheFolder`) - a project's sheets name each other. A board shown with a draft reads
+  only the draft's (the draft lists the published ones too). The "KiCad data" window's "imported"
+  files are the draft's own (`BoardKiCadFolder.ImportedNames`); Remove takes a name off the draft's
+  list (`DraftWorkbookStore.RemoveFiles`) - **or, for a name the published board has, puts the
+  published file back** (code review, 2026-10-25: dropped, the board lost it at the next submission).
+  **A listed name can say anything** (a hand-placed draft's "KiCad data/../../x"): Remove deletes a
+  copy only where `DraftFiles.TryArrivedPath` finds it, and of the store only the removed entries'
+  bytes - never the rest, which the session may still cite (code review, 2026-10-26).
+  **The copy is NEVER made on the UI thread** (code review,
+  2026-10-25: the first showing of a large board froze the window, and every KiCad render and hover
+  asked again): `Main.KiCadRawPathsFor` runs on the pool while the thumbnails decode, and the
+  Schematics tab keeps the paths its load used (`thisCurrentKiCadRawPaths`) - never ask for them
+  per render; the KiCad data window reads its list and its report from one read on the pool
+  (`BoardFilesWindow.ReadKiCadAsync`). **A replaced copy gets a LATER write time than the one it
+  replaced** (`BoardKiCadFolder.Copy`): `KiCadProjectLoader` keeps its parse by path and write time,
+  File.Copy keeps the source's, and two sources written in one clock tick served the old parse.
+  Only the types the loaders read are copied, the cache is in the user's OWN app data
+  folder (never the shared temp folder - the copy deletes what it does not want), and nothing is
+  written or deleted through a folder that links elsewhere (`FolderLinks`). **An import is listed by
+  a write at once, and Submit carries KiCad files not listed yet too** (`DraftFiles.ArrivedKiCadNames`,
+  `SubmissionKiCadFiles.Collect`) - a project imported last was drawn, counted and not sent.
+- **The files are written by `DataTreeJson` only**: the same content is always the same bytes (one row
+  per line, fixed field order, "\n", no BOM); a field this CRT does not know is KEPT and written back -
+  **on every row too**: every writer that rebuilds a board file from BoardData hands
+  `BoardDocumentUnknowns.CarryOver` the file as it was (the draft write, the workbook writer, the
+  seeder, the publish - which reads it IN FULL or stops); a new writer does the same. A higher
+  `formatVersion` is refused. A row cites a file by the board's NAME (`BoardFileNames`), never a tree
+  path. The checksum the store names bytes by is `DataTreeLayout.Sha256Of`, the one helper. **A
+  highlight's coordinates are whole pixels, a fraction ROUNDED away from zero** (`BoardDocumentMapping
+  .WholeNumber`, as the Excel-era writer rounded) - the label editor hands over real geometry, and
+  refused, every rectangle drawn or moved in a 4.0 draft failed to save (code review, 2026-10-26); what
+  is no number stops the write. **The main file's list is read ONE way** (`MainFileListing.Rows`: names
+  trimmed, a blank hardware name the row above's) - CRT's drop-downs and the server's checks alike.
+- **"Component images" is split** into pictures and scope baselines by `ComponentImageKinds` - the one
+  rule, which the app's `ComponentImageQueries.IsOscilloscopeImage` asks too.
+- **The converter fails closed** (`DataTreeConversion`): whatever CRT's forgiving readers would quietly
+  drop (an unknown sheet or column, a value under no heading, a sidecar entry the reader skips, a
+  missing cited file, an unlisted newest-generation board) is a PROBLEM, and a plan with one is not
+  written. It writes only into an empty folder or a tree it wrote, never into or around the source.
+  Run as `CRT.Server convert-data-tree` (INSTALLING.md, "Converting a data tree for CRT 4.0").
+- **`DataTreeConversionShippedDataTests` is the proof** the release day's conversion rests on: every
+  shipped board's board file holds exactly what CRT reads from its workbook today, file by file as the
+  same bytes. A new column on a BoardData row type must be carried by `BoardDocumentMapping`
+  (`BoardDocumentMappingTests` counts them). `Assets/Data` is still the Excel tree until the release.
+- **A 4.0 draft** is its board's folder laid out like the tree: `board.json` (the complete board, the
+  published KiCad files included), `Files/` holding only bytes the tree lacks, `.crt-draft.json` naming
+  the board by its board file, `.crt-base.json` as a BoardDocument. Seeding copies the published board
+  file and NO bytes (`DraftSeeder`). **A newly picked file lies in the draft folder under its name and
+  leaves it only once a write has listed it** (`DraftFiles.ListFor` copies it into the store,
+  `RemoveArrived` after the write) - moved first, a failed write would orphan it. **Only a name that
+  resolves INSIDE the draft folder, through no linked folder, is such a file** (`DraftFiles.TryArrivedPath`,
+  asked by `DraftFileResolver` too; code review, 2026-10-25): the file is DELETED from where it lay,
+  and a File cell holding a full path, or "../", had the user's own file deleted at the next save. Folders named
+  `.crt-*` are CRT's (`DraftFolderLayout.IsInBookkeepingFolder`) - never the contributor's work, never
+  a reason to keep a draft. The fingerprint is the board file's CONTENT plus the folder's other files
+  ("v2:"). Retirement compares stored bytes with the tree's store and arrived files with the published
+  board's file of that name - **stored bytes the draft's board file does not list are no work**, while
+  a draft that lost its board file counts them all. **The draft held in memory keeps the bytes of every
+  file it has seen listed** (`DraftFileMemory`, code review 2026-10-26): its history holds rows, not the
+  list, and a save dropped a removed row's file and deleted its bytes, so Undo brought the row back
+  citing nothing; a cited name the list lost takes the remembered entry (never a KiCad file), and the
+  next run's first save tidies. A listed name is looked up as `BoardFileNames.Normalise` spells it -
+  kept by its own spelling ("KiCad data/./x"), it was never found and went with its bytes at the next
+  save. "Bring my draft up to date" merges the file lists three ways
+  (`DraftRebaseFiles`): a file the contributor replaced is theirs AND so are the rows citing it.
+- **Excel-era drafts are converted, not read**: `DraftConversion` converts one IN PLACE (names agree
+  with the published board's - same bytes, or the base's bytes at that path for a replaced file - the
+  old draft kept whole in `.crt-pre-4.0/`, an interrupted run resumes, an odd draft converted with
+  notes), and `DraftFolderImport` runs it on an Excel-era folder put into Drafts/ by hand (a 4.0
+  folder only gets its marker). The base's checksums are UPPER-case hex, the 4.0 files' lower-case.
+  Tests make Excel-era drafts with `LegacyDrafts` (CRT.Data.Tests), 3.1.0's seeder.
+- **A user's own scope models** (rows added to their copy of the main Excel file) are found by
+  `OwnOscilloscopeModels`; a published model they changed is kept as "<model> (my version)".
+- **What 3.x left is taken over at every launch** (`LocalDataMigration`, run by
+  `DraftManager.ImportHandPlacedFolders` before its import): every Excel-era draft is converted (one
+  that cannot be yet is tried again next start); every board a 3.x "_UserContribution" workbook
+  listed is copied into Drafts/ ONCE (`.crt-carried-from-3x.json` in the drafts folder - a discarded
+  one never comes back), through a `.crt-` folder the import's walk skips, for the import to take in
+  as a new board; a board the main file lists, or one with a draft folder, is left. The user's own
+  scope models live in `Classic-Repair-Toolbox.own-oscilloscopes.json` beside the settings
+  (`OwnOscilloscopeFile`), made ONCE from 3.x's main workbook (even empty) and listed after the
+  published models - **never while that workbook cannot be opened** (held by another program, or
+  broken: code review, 2026-10-25 - the empty file stopped every later search), then it is looked
+  for again at the next start. 3.x's data folder is only read. Settings are keyed by board NAMES and receipts by
+  board ID, so neither needs remapping; a remembered schematic image whose file is not found falls
+  back to its name (`SchematicRenameLog.Resolver`). A test's `DataManager.LoadFrom` reads neither the
+  3.x folder nor the own-models file.
+- **The server publishes by NAME** (2026-10-25). A submitted file's `Path` is the board's name for it
+  ("Images/sheet1.png"), never a tree path; the server decides where its bytes lie. `PublishPlan`
+  stores each file once (`PlannedFile.StoredPath`, "Files/<ab>/<sha256>.<ext>"; bytes the tree already
+  holds are `UnchangedFiles`), and `PublishExecutor` writes the stored files, THEN the board file
+  (`BoardDocumentMapping.ToDocument`, keeping the published file's unknown fields), THEN the main
+  file's row - a board file never names bytes that are not there. `PublishedBoardFiles` reads a
+  published board's names; `PublishedTreeProbe.For(root, board)` is a view of ONE board. A submission
+  takes bytes the tree stores by CHECKSUM, whatever name they were published under. **An approval reads
+  the published board file ONCE** (`PublishedBoardRead`, handed to the plan, the removals, the summary,
+  the rename log and the executor; code review, 2026-10-26 - some five parses under the publish lock).
+- **Nothing is shared in the 4.0 tree**: a file is a board's own by name, and bytes another board
+  lists too are stored once for both. So `TouchesSharedFiles` is always false (an older row's flag is
+  cleared at its approval) and no publish needs two approvals; `ApprovalRules` stays for the record.
+- **What a publish, a promotion, a push-back or a deletion removes is a STORED file no board of
+  that tree lists afterwards** (`DataTreeUsage`'s JSON branch, `AutomaticRemovalScope.IsStoredFile`) -
+  bytes another board lists always stay; a board's folder holds only its board file. The list matched
+  is of stored paths (`FileRemovalPreview.Files`); people read each by the board's name for it
+  (`FileRemovalPreview.Names`, `NameOf`). A replaced file's earlier bytes are removed under the very
+  name it keeps - the Maintainer tab counts and words that as the replacement, not as a file nothing
+  uses (`FileRemovalWording.Unused`). Every entry fetched from a tree carries where its bytes lie
+  (`BoardFileEntry.TreePath`/`PlaceInTree`, `BoardTableAnswer.FilePlaces`, `ProductionPlanAnswer
+  .FileNames`) - the public data is laid out by checksum.
+- **The component editor files a picked file under the board's own names** (2026-10-25;
+  `ContributionFileLocations.ForBoard`): "File location" offers the folders the board's names
+  already use plus the four every converted board keeps its files in (`UsualFolders`) - never the
+  data or drafts tree's folders, which in 4.0 are the store's checksum folders and CRT's bookkeeping.
+  A name under `Files/` or `.crt-` is never listed by a draft write (`DraftFiles`), so a file filed
+  there was copied in and lost; and no folder may have a segment starting with a dot
+  (`IsWritableFolder`) - the server refuses every such name (`file.hidden_name`), so it was refused
+  only at Submit. A file picked from inside the data folder keeps the row's folder (no
+  "used where it lies" any more); an existing file is previewed by its name through
+  `DraftFileResolver`, as the popup finds it. The drafts flow's words name no Excel: the lock-file
+  check stays, worded "open in another program".
+- **CRT 4.0's pre-releases talk to a TEST INSTANCE of the service** (owner decision, 2026-10-25: "We
+  need the test server"): its own program folder, settings, database (`crt_review_test`) and port
+  (5198), at `https://classic-repair-toolbox.dk/crt-test/api/`, publishing into the 4.0 trees, with a
+  shipped unit of its own (`crt-server-test.service` - every line the live unit's but the five naming
+  the instance, `TestInstanceUnitTests`); set up as INSTALLING.md's "A test instance for CRT 4.0's
+  pre-releases". **Only the contribution service moves**: submissions, the Maintainer tab and the
+  health check use `AppConfig.ContributionServerRootUrl` (the test instance now), while the check-in,
+  feedback and board views stay on `CrtServerRootUrl`, the live service - the usage numbers and the
+  feedback mail. What CRT remembers of a service is kept per service (`ContributionServer.FileNameFor`:
+  `maintainer-session-test.json`, `submissions-test.json`) - shared with the files CRT 3.x reads, a
+  pre-release would send the live token to the test instance and forget it on the 401, signing 3.x
+  out. The sign-in screen and the Submit dialog say it is the test server. **On release day
+  `ContributionServerRootUrl` goes back to `CrtServerRootUrl`** - `ContributionServerTests` fails a
+  release version still naming the test instance, which stops the release workflow.
+- **Step 1's foundation, `DraftSession`** (2026-10-25, CRT.Data - used by the Contribute tab's table and,
+  through `DraftEdits`, by every other draft editor since the same day): a
+  draft held once in memory for every editor. `Apply(description, transform, origin)` edits it in
+  memory and raises `Changed`; ONE history for every editor (`Undo`/`Redo`, whole-content snapshots,
+  `MaxSteps`); it saves itself - the host's timer asks `IsSaveDue` (a second after the last change)
+  and calls `Save` off the UI thread; "saved" is by content, so undoing back to the file's is Saved; a
+  file changed outside is never written over unasked (`ChangedOnDisk`, then `ReloadFromFile` - an
+  undoable step - or `Save(overwriteOutsideChange)`); a change made during a save stays pending. One
+  per draft FOLDER (`DraftSessions`). What follows an edit is `DraftEditRules`, shared with
+  `DraftWorkbookStore.EditCore` - never a second copy; an edit that knows its schematic renames only
+  once it sees the draft hands them in with it (`ApplyWithFollow`). **`ChangeComing` is raised before
+  every change, on the UI thread** (an edit, undo, redo, take-back, the file read again,
+  `CollectHeldChanges`) so whoever holds a change hands it over first; `TakeBack(origin)` removes an
+  editor's step when its save failed - the latest, or one with steps after it by a three-way merge
+  (`TakeBackEarlier`, the later snapshots rewritten) - not redoable, and also when a change handed
+  over as the take-back is said becomes the latest (code review, 2026-10-26); `Save(evenUnchanged)` writes the file
+  anyway, to take in new files; `WriteFileDirectly` runs a write that is more than the content under
+  the session's lock (saved first - else `DraftNotSavedException` - the file read back after).
+  **Asking whether the file changed looks at its stamp first** (`FileMoved`): once seen unchanged with
+  a SETTLED stamp, the same stamp is the same file and the board file is not hashed again - it was, on
+  the UI thread, at every switch to the Contribute tab and every component opened. **And never while a
+  write of its own runs** (another thread holds `thisWriting`: no answer, the next ask judges; code
+  review, 2026-10-26 - its own save, not yet taken as its own, was read back as an outside change).
+- **CRT 4.0's new component data** (step 2's first slice, 2026-10-25): a component's `Package` and
+  `RepairNotes`, a scope baseline's `MachineState` and `Source`, and two sheets of their own after the
+  component sheets - "Component pins" (`ComponentPinEntry`: label, region, pin, name, direction) and
+  "Component replacements" (`ComponentReplacementEntry`: label, region, part number, kind, what to
+  change, source). **Stored as WORDS, not codes** (`ComponentVocabulary` - rewording one changes the
+  published data). A board file writes each new row field only when filled, so a board without them
+  keeps its rows line for line. **A submission that does not carry the two lists keeps the published
+  ones** (`SubmissionRows.ComponentPins` null - `PublishMerge`); an empty list is "none". Every rule
+  about them is a table WARNING (`BoardDataChecks.CheckCrt4Data`; the short description's limit is
+  `ComponentVocabulary.ShortDescriptionLimit`, 100). The component editor keeps what it cannot edit
+  from the row it replaces (`ComponentBoardWriter`); a deleted component - editor or table - takes its
+  pins and replacements, a regional variant only its region's. **Every hand-made BoardData that
+  carries the board's sections names EVERY property** (`BoardDataCaptionTests
+  .Every_copy_of_a_board_names_every_section`) - a section a copy leaves out is dropped silently. The
+  board-level "how the baselines were measured" waits for the baseline editor (no row the differ, the
+  summary or the merges could carry yet); the popup and the Overview tab show the new data from the
+  component pane's slice on.
+- **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
+  empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
+  files by their Excel-tree paths), and the Wiki's 4.0 pages (step 5 - `Assets/Wiki/` still describes
+  3.x, Excel included, on purpose until the release).
 
 ### External integrations (`Handlers/`)
 
@@ -967,6 +1333,7 @@ Load-bearing, and easy to undo by accident:
   administrator, for BETA and again for stable; adding a new shared file needs one. `ApprovalRules`
   (CRT.Data) is the rule and its `ApprovalStatus` travels to the Maintainer tab, so the button cannot
   promise a publish the server would not do. It is decided from the tree as it is NOW, not the stored flag.
+  **The CRT 4.0 tree has no shared files**, so there it never applies (see "The CRT 4.0 data tree").
 - **Publishing is TWO stages**: Approve writes BETA; "Publish to stable" copies a BOARD from BETA
   (`ProductionPromotionPlan`/`ProductionPromoter`/`ProductionPromotionFlow`), only bytes already in
   BETA, refused if BETA moved since the maintainer looked. Both stages take the one `PublishLock`. Off
@@ -987,21 +1354,30 @@ Load-bearing, and easy to undo by accident:
 - **A maintainer's edit of a BOARD goes straight to BETA through the ordinary approval**
   (`BoardEditFlow`: a submission from the account, then `ApprovePublishFlow.ApproveAsync`). **Do not
   give it a path that writes BETA by itself** - the approval keeps every rule.
-- **Automatic removal stays inside the board's own folder** (`AutomaticRemovalScope`); a removal is
-  always from a list the approver was shown (`FileRemovalPreview`, 409 if it differs). `DataTreeUsage`
-  is the one rule for what a tree uses - a change may only make it keep MORE; a folder CRT reads by
-  name must be in `FoldersReadByName`; a board workbook is read at its spelling ON DISK.
+- **Automatic removal stays inside the board's own folder** (`AutomaticRemovalScope`) - and, in the
+  CRT 4.0 tree, takes the stored files (`Files/...`) no board lists any more; a removal is always from
+  a list the approver was shown (`FileRemovalPreview`, 409 if it differs). `DataTreeUsage` is the one
+  rule for what a tree uses - a change may only make it keep MORE; a folder CRT reads by name must be
+  in `FoldersReadByName`; a board workbook is read at its spelling ON DISK; a main file listing a
+  board whose board file is missing makes the tree INCOMPLETE, and an incomplete tree removes nothing.
 - **A served file is REPLACED, never opened for writing, and every folder is checked FIRST**
   (`FileReplacer`, `VerifiedFileCopy`, `TreeWriteAccess`) - the project owner copies data in as root.
+  `FileReplacer` tries the rename again for a moment while the target is held open (Windows refuses
+  it; CRT reads drafts on the UI thread while they save off it) - `MoveOver`, 8 tries 25 ms apart.
   The highlight file is written only when its CONTENT changes. Every blob is re-verified before a
   publish writes anything.
 - **The revision date and the "# Hardware:"/"# Board:" caption are the SERVER's** at both stages
   (`PublishMerge`); `BoardDataCaptionTests` fails on a `new BoardData { ... }` naming neither. Do not
   make the client stamp a date.
 - **WHICH files a submission may carry is `SubmissionFileRules`**, run at create AND in `PublishPlan`;
-  `SubmissionRulesShippedDataTests` runs every rule over all of `Assets/Data` - do not loosen a rule
-  to pass it. KiCad data travels by `SubmissionKiCadFiles`. "Already held" includes the published tree
-  at the same path (imported at create).
+  `SubmissionRulesShippedDataTests` runs every rule and the publish plan over every shipped board as
+  the 4.0 converter writes it - do not loosen a rule to pass it. KiCad data travels by `SubmissionKiCadFiles` (in 4.0: the names under "KiCad data/" a
+  board lists). "Already held" includes bytes the published tree stores (imported at create - in 4.0
+  found by checksum, `PublishedBoardFiles.FindStored`). **A KiCad STRAGGLER** (a type CRT does not
+  read, in "KiCad data" - the converted trees' `KiCad-traces.json` and one `.sch`) is admitted only as
+  the published board's own bytes, so finalise's content check passes it (`SubmissionKiCadFiles
+  .IsStraggler`, in `MatchesWholeFile`; code review, 2026-10-25 - those boards could not be changed at
+  all); the shipped-data test content-checks every KiCad file a submission carries, not only cited ones.
 - **A newer submission from the same contributor replaces the older one** (`withdrawn`, only if still
   pending and never amended). **One that stays - amended, or with the first of two approvals - is
   named on its queue row and detail** (`ReviewQueueEntry.NewerSubmissionId`/`NewerSubmissionUtc`,
@@ -1098,14 +1474,14 @@ upload - held by their own contract tests)? No: change it freely. Yes:
   up. Raise it by hand for what the surface cannot see (a new meaning, a newly required field). Each
   raise is a MAJOR server bump. `GET /api/health` and Account > "Server version" show both revisions.
 - **CRT shows the server's words** (`ApiRefusal.Read`; `ReviewApiClient.WithServersWords`).
-- **An outdated CRT gets "CRT has to be updated" over the Drafts and Maintainer tabs, which cannot
+- **An outdated CRT gets "CRT has to be updated" over the Contribute and Maintainer tabs, which cannot
   be closed** (owner request, 2026-10-09; `Main.UpdateRequired.cs`, `AppUpdateRequirement`,
-  `UpdateRequiredOverlay` in `Controls/`). Once either tab is in use - the Drafts tab shown or the
-  Maintainer tab on (`AppUpdateRequirement.AsksServer`), at launch or later - CRT asks `/api/health`'s
-  `ApiRevision` once: a higher one covers BOTH tabs. Nobody using neither is asked - but "Edit board
-  as draft" and "Add a new board" ask it FIRST, awaited, when nothing has yet
-  (`AskApiRevisionBeforeFirstDraftAsync`), or a machine's first draft opens under the cover that
-  follows. **Whether a tab is covered has ONE record each**: the Maintainer tab reads its overlay
+  `UpdateRequiredOverlay` in `Controls/`). Once either is in use - contribution in use (a draft, or
+  unread news on something sent) or the Maintainer tab on (`AppUpdateRequirement.AsksServer`), at
+  launch or later - CRT asks `/api/health`'s `ApiRevision` once: a higher one covers BOTH tabs. Nobody
+  using neither is asked - but a board's first draft (`Main.EnsureDraftAsync`) and "Add a new board"
+  ask it FIRST, awaited, when nothing has yet (`AskApiRevisionBeforeFirstDraftAsync`), or a machine's
+  first draft opens under the cover that follows. **Whether a tab is covered has ONE record each**: the Maintainer tab reads its overlay
   (`IsUpdateRequiredShown`), and the minute submission check stops on `AppUpdateRequirement`'s Drafts
   reason - never a flag of their own beside it. Any 426 either
   client meets raises `ApiOutdatedSignal` (in `SubmissionClient.SignalIfOutdated` - every refusal it
@@ -1117,8 +1493,8 @@ upload - held by their own contract tests)? No: change it freely. Yes:
   fade and take keys through `OverlayCover`. **Installing an update asks about unsaved table edits
   first** (`Main.ConfirmLeavingTablesAsync`, shared with quitting): Velopack's restart exits without a
   Closing event. A covered Maintainer tab asks without a Save (`LeavingUpdateRequired`); a covered
-  Drafts tab gets nothing new - "Edit board as draft" and "Add a new board" make nothing - and another
-  editor held back by its table is told what settles it (`TabDrafts.SavingBlockedFor`).
+  Contribute tab gets nothing new - no first draft is made, and "Add a new board" makes nothing - while
+  another editor's "Save to draft" still saves, onto the draft held in memory (`DraftEdits`).
 - **When CRT.App's `InformationalVersion` is a release (no `-`), the surface must be frozen as
   `crt-<version>.txt`**: the first test run writes it and fails once - commit it with the release.
   **Never edit a `crt-*.txt`**; put the field or route back instead. A break the owner decided on goes

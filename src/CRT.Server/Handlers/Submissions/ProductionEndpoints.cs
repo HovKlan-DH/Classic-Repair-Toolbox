@@ -157,7 +157,22 @@ namespace CRT.Server.Handlers.Submissions
                     options.ProductionDataTreeRoot,
                     plan.Files.Select(file => file.Path),
                     plan.Unchanged,
-                    outcome.Removals?.Files)));
+                    outcome.Removals?.Files),
+
+                // The board's name for each of those paths (2026-10-25) - see the record.
+                FileNames: ProductionEndpoints.NamesOf(plan, outcome.Removals)));
+        }
+
+        // The board's name for every path the plan's tree shows: BETA's names for what it copies or
+        // finds the same, production's for what it removes.
+        internal static IReadOnlyDictionary<string, string> NamesOf(ProductionPromotionResult plan, FileRemovalPreview? removals)
+        {
+            var names = new Dictionary<string, string>(plan.Names ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+
+            foreach ((string path, string name) in removals?.Names ?? new Dictionary<string, string>())
+                names.TryAdd(path, name);
+
+            return names;
         }
 
         // ###########################################################################################

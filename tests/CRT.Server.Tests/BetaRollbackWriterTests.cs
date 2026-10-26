@@ -244,15 +244,31 @@ namespace CRT.Server.Tests
             Assert.Equal(hash, hash!.ToLowerInvariant());
         }
 
-        // A dot-file beside the board is a copy in progress (VerifiedFileCopy's temporary name), not
-        // part of it - never restored over, never removed.
+        // ###########################################################################################
+        // A board in the CRT 4.0 tree is its board file and the stored files it lists (2026-10-25):
+        // what the tree holds of those, and nothing else - not a copy in progress beside the board
+        // file (VerifiedFileCopy's dot-name), not bytes another board lists only, and not a listed
+        // name whose bytes the tree lacks.
+        // ###########################################################################################
         [Fact]
-        public void A_hidden_temporary_file_is_not_part_of_the_board()
+        public void A_board_is_its_board_file_and_the_stored_files_it_lists()
         {
-            File.WriteAllText(this.In(this.thisBeta, "Commodore/C64/250407/Images/.sheet1.png.crt-publish-1.tmp"), "HALF");
-            File.WriteAllText(this.In(this.thisBeta, BetaRollbackWriterTests.Sheet), "WHOLE");
+            DataTreeBuilder.Board(this.thisBeta, "Commodore/C64/250407", ("Images/sheet1.png", "WHOLE"), ("Images/gone.png", "GONE"));
+            DataTreeBuilder.Board(this.thisBeta, "Commodore/C128/310378", ("other.png", "ANOTHER BOARD'S"));
+            File.WriteAllText(this.In(this.thisBeta, "Commodore/C64/250407/.board.json.crt-publish-1.tmp"), "HALF");
+            File.Delete(this.In(this.thisBeta, DataTreeBuilder.Stored("GONE", "Images/gone.png")));
 
-            Assert.Equal([BetaRollbackWriterTests.Sheet], BetaRollbackFiles.FilesUnder(this.thisBeta, "Commodore/C64/250407"));
+            Assert.Equal(
+                ["Commodore/C64/250407/board.json", DataTreeBuilder.Stored("WHOLE", "Images/sheet1.png")],
+                BetaRollbackFiles.FilesOfBoard(this.thisBeta, BetaRollbackWriterTests.Board()));
+        }
+
+        // A tree holding no board file of it holds nothing of it - production, for a board never
+        // promoted.
+        [Fact]
+        public void A_tree_without_the_board_file_holds_nothing_of_the_board()
+        {
+            Assert.Empty(BetaRollbackFiles.FilesOfBoard(this.thisProduction, BetaRollbackWriterTests.Board()));
         }
     }
 }

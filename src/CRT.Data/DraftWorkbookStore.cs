@@ -35,6 +35,98 @@ namespace Handlers.DataHandling
     public static class DraftWorkbookStore
     {
         // ###########################################################################################
+        // Drops files from the draft's list - the KiCad data window's Remove, which a draft whose
+        // list carries the published board's KiCad files cannot do by deleting a copy (there is
+        // none). Matched ignoring capitals; a copy still lying in the draft folder goes too.
+        //
+        // *** A FILE THE PUBLISHED BOARD HAS GOES BACK TO THE PUBLISHED ONE (code review, 2026-10-25).
+        // *** The window lists a published KiCad file the contributor imported again with other bytes
+        // as their own, and Remove means "not my copy" - as deleting the draft's copy did in 3.x, and
+        // as the status line says ("import it again to get the file back"). Dropped from the list, the
+        // board lost the file at the next submission. So a name `publishedBoardFile` lists is put back
+        // as the published board lists it (its bytes are the tree's), and only the others are dropped.
+        //
+        // *** A NAME IN THE LIST CAN SAY ANYTHING (code review, 2026-10-26). *** A draft folder put into
+        // Drafts by hand, or shared, can list "KiCad data/../../../x", and the window offers it for
+        // Remove - which deleted whatever that name climbs to, outside the draft. A copy lying in the
+        // folder is deleted only where DraftFiles.TryArrivedPath finds it (inside the folder, through
+        // no linked folder, never the store or CRT's bookkeeping); a listed name is matched as
+        // Normalise spells it, so an odd spelling still comes off the list.
+        //
+        // *** ONLY ITS OWN BYTES GO. *** The stored bytes of the entries it removes, unless an entry it
+        // keeps names the same - never the rest of the store: the draft held in memory keeps bytes no
+        // row cites while its undo could bring the row back (DraftFileMemory), and the tidying of a
+        // whole write would delete them under it.
+        // ###########################################################################################
+        public static bool RemoveFiles(string draftsRoot, string excelDataFile, IReadOnlyCollection<string> names, string? publishedBoardFile = null)
+        {
+            ArgumentNullException.ThrowIfNull(names);
+
+            string boardFile = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
+
+            if (!DataTreeLayout.IsBoardFile(boardFile) || !File.Exists(boardFile))
+                return false;
+
+            var gone = new HashSet<string>(names.Select(BoardFileNames.Normalise), StringComparer.OrdinalIgnoreCase);
+            string folder = Path.GetDirectoryName(boardFile)!;
+
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow> published =
+                DraftFiles.ListedIn(publishedBoardFile) ?? new Dictionary<string, BoardDocument.StoredFileRow>();
+
+            try
+            {
+                foreach (string name in gone)
+                {
+                    if (DraftFiles.TryArrivedPath(folder, name, out string copy) && File.Exists(copy))
+                        File.Delete(copy);
+                }
+
+                BoardDocument document = BoardFiles.ReadInFull(boardFile) ?? new BoardDocument();
+
+                List<BoardDocument.StoredFileRow> removed = document.Files.Where(file => gone.Contains(BoardFileNames.Normalise(file.Name))).ToList();
+                List<BoardDocument.StoredFileRow> kept = document.Files.Except(removed).ToList();
+
+                foreach (string name in gone)
+                {
+                    if (published.TryGetValue(name, out BoardDocument.StoredFileRow? theirs))
+                        kept.Add(new BoardDocument.StoredFileRow { Name = theirs.Name, Sha256 = theirs.Sha256, Size = theirs.Size });
+                }
+
+                document.Files = kept.OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+                BoardFiles.Write(boardFile, document);
+                DraftWorkbookStore.DeleteStoredBytes(folder, removed, document.Files);
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                CrtLog.Warning($"Could not remove files from the draft [{boardFile}] - [{ex.Message}]");
+                return false;
+            }
+        }
+
+        // The stored bytes of `removed` in the draft's store, unless an entry of `kept` names the same
+        // bytes - see RemoveFiles. A failure is untidy, never a failed remove: the list is written.
+        private static void DeleteStoredBytes(string draftFolder, IReadOnlyList<BoardDocument.StoredFileRow> removed, IReadOnlyList<BoardDocument.StoredFileRow> kept)
+        {
+            HashSet<string> stillListed = DraftFiles.StoredPaths(draftFolder, kept);
+
+            foreach (string stored in DraftFiles.StoredPaths(draftFolder, removed).Where(path => !stillListed.Contains(path)))
+            {
+                try
+                {
+                    if (File.Exists(stored))
+                        File.Delete(stored);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    CrtLog.Warning($"Could not delete the stored file [{stored}] of a file removed from the draft - [{ex.Message}]");
+                }
+            }
+        }
+
+        // ###########################################################################################
         // The board a draft currently holds, or null when there is no draft (or its workbook cannot
         // be parsed).
         //
@@ -194,42 +286,22 @@ namespace Handlers.DataHandling
             }
 
             // ###########################################################################################
-            // *** WHAT HANGS ON A SCHEMATIC'S NAME FOLLOWS IT (owner request, 2026-10-10: renaming an
-            // image - "And fix all"). *** The sidecar files every highlight and the KiCad calibration
-            // under a schematic's NAME. An edit that renamed a schematic - its "Board schematics" row
-            // in the table, or its Name box - used to leave the highlights on the old name (an error
-            // the checks refuse at submit, and nothing in the table can fix) and drop the calibration
-            // (collected under the names AFTER the edit). One that deleted a schematic - in the table,
-            // or with Remove - left its highlights behind, the same error.
+            // *** WHAT HANGS ON A SCHEMATIC'S NAME, OR A COMPONENT'S LABEL, FOLLOWS IT (owner request,
+            // 2026-10-10; code review, 2026-10-13). *** The highlights and the KiCad calibration are
+            // filed under a schematic's NAME, and a highlight under a component's label; an edit that
+            // renamed or deleted one used to leave them behind - an error the checks refuse at submit,
+            // and nothing in the table can fix. The rules are DraftEditRules', shared with the draft
+            // held in memory (DraftSession); RenameSchematic says outright what it renamed (`followFor`).
             //
-            // Now every edit follows them, with the server's own rule for a table edit
-            // (SubmissionRowsBoard.FollowSchematics: a removed name and an added one on the same image
-            // file are a rename; a removed name with no such twin was deleted). A rename moves them,
-            // a deletion drops them. RenameSchematic says outright what it renamed (`followFor`).
+            // The calibrations are read BEFORE the board is replaced, from ONE read of the file (code
+            // review, 2026-10-10: it was parsed once per schematic, twice over, on every save).
             // ###########################################################################################
-            IReadOnlyDictionary<string, string?> follow =
-                followFor?.Invoke(current, updated) ??
-                SubmissionRowsBoard.FollowSchematics(current.Schematics, updated.Schematics);
+            List<KiCadCalibrationEntry> filed = BoardComponentHighlightStorage.LoadKiCadCalibrations(
+                workbook,
+                DraftEditRules.NamesBeforeAndAfter(current, updated));
 
-            if (follow.Count > 0)
-            {
-                updated = updated.WithComponentHighlights(SchematicRename.FollowHighlights(updated.ComponentHighlights, follow));
-            }
-
-            // *** AND WHAT HANGS ON A COMPONENT'S LABEL FOLLOWS IT (code review, 2026-10-13). *** A
-            // label fixed in the table ("U8" -> "U08", nothing else changed) left its rectangles on
-            // the old label. The rule is the count's (ComponentRelabel - BoardDataDiffer's pairing),
-            // and the server's amendment follows it the same way.
-            IReadOnlyDictionary<string, string> relabels = ComponentRelabel.Between(current.Components, updated.Components);
-
-            if (relabels.Count > 0)
-            {
-                updated = updated.WithComponentHighlights(ComponentRelabel.FollowHighlights(updated.ComponentHighlights, relabels));
-            }
-
-            // Read BEFORE the workbook is replaced: the sidecar still files the calibrations under
-            // the names the board had.
-            List<KiCadCalibrationEntry> calibrations = DraftWorkbookStore.CalibrationsAfter(workbook, current, updated, follow);
+            (updated, List<KiCadCalibrationEntry> calibrations) =
+                DraftEditRules.Follow(current, updated, filed, followFor?.Invoke(current, updated));
 
             // The board's published renames, as the draft's copy has them - passed on as they
             // are. A draft does not add to them: the server records a rename when it publishes
@@ -246,12 +318,57 @@ namespace Handlers.DataHandling
         // it was put back when the sidecar cannot be written. Shared by every edit (EditCore) and by
         // bringing a draft up to date (ReplaceIfUnchanged), so there is one way a draft is written.
         // ###########################################################################################
+        //
+        // `files`: the file list the board's should be built from instead of the one it holds now -
+        // bringing a 4.0 draft up to date hands over the merged one (DraftRebaseFiles).
+        //
+        // `memory`: what the draft held in memory has seen listed (DraftFileMemory) - an entry it
+        // remembers is taken again by a row citing its name, its bytes are kept in the store, and
+        // the list written is noted in it.
         private static DraftWorkbookEditOutcome WriteDraft(
             string workbook,
             BoardData updated,
             IReadOnlyList<KiCadCalibrationEntry> calibrations,
-            IReadOnlyList<SchematicRenameRecord> renameLog)
+            IReadOnlyList<SchematicRenameRecord> renameLog,
+            IReadOnlyList<BoardDocument.StoredFileRow>? files = null,
+            DraftFileMemory? memory = null)
         {
+            // ###########################################################################################
+            // *** A CRT 4.0 DRAFT IS ONE BOARD FILE (2026-10-24). *** Rows, highlights, calibrations,
+            // renames and the list of the board's files, written together in one replace - so there
+            // is no second file to fail half-way, and nothing to put back. The list follows the rows,
+            // and a new file lying in the draft folder under its name is taken into the draft's store
+            // on the way (DraftFiles). Fields of the board file this CRT does not know are kept.
+            // ###########################################################################################
+            if (DataTreeLayout.IsBoardFile(workbook))
+            {
+                try
+                {
+                    BoardDocument previous = BoardFiles.ReadInFull(workbook) ?? new BoardDocument();
+                    IReadOnlyCollection<BoardDocument.StoredFileRow> remembered = memory?.Files ?? [];
+                    List<BoardDocument.StoredFileRow> listed = DraftFiles.ListFor(workbook, updated, files ?? previous.Files, out List<string> arrived, remembered);
+
+                    BoardDocument document = BoardDocumentMapping.ToDocument(
+                        new BoardContent(updated, calibrations, renameLog),
+                        name => name,
+                        listed);
+
+                    BoardDocumentUnknowns.CarryOver(previous, document);
+
+                    BoardFiles.Write(workbook, document);
+                    memory?.Note(listed);
+                    DraftFiles.RemoveArrived(workbook, arrived);
+                    DraftFiles.RemoveUnlisted(workbook, listed, remembered);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or FormatException)
+                {
+                    CrtLog.Warning($"Could not write the draft [{workbook}] - [{ex.Message}]");
+                    return DraftWorkbookEditOutcome.WriteFailed;
+                }
+
+                return DraftWorkbookEditOutcome.Saved;
+            }
+
             // A name CRT's bookkeeping check knows (code review, 2026-10-13): "<workbook>.writing.tmp"
             // stranded by a crash between the write and the move counted as the contributor's work.
             string temporary = DraftFolderLayout.TemporaryPathFor(workbook);
@@ -344,45 +461,6 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The calibrations a write keeps: the sidecar's, collected under the names the board had
-        // BEFORE the edit and moved or dropped with their schematic (`follow`) - plus any filed under
-        // a name the edit brought in that the board did not have, which a collection of the old
-        // names alone would not see (what Edit always wrote).
-        //
-        // Both sets come from ONE read of the sidecar (code review, 2026-10-10): it was parsed once
-        // per schematic, twice over, on every save.
-        // ###########################################################################################
-        private static List<KiCadCalibrationEntry> CalibrationsAfter(
-            string workbook,
-            BoardData current,
-            BoardData updated,
-            IReadOnlyDictionary<string, string?> follow)
-        {
-            HashSet<string> NamesOf(BoardData board) => new(
-                board.Schematics.Select(entry => entry.SchematicName?.Trim() ?? string.Empty).Where(name => name.Length > 0),
-                StringComparer.OrdinalIgnoreCase);
-
-            HashSet<string> before = NamesOf(current);
-            HashSet<string> after = NamesOf(updated);
-
-            List<KiCadCalibrationEntry> filed = BoardComponentHighlightStorage.LoadKiCadCalibrations(
-                workbook,
-                before.Concat(after.Where(name => !before.Contains(name))));
-
-            List<KiCadCalibrationEntry> kept = SchematicRename.FollowCalibrations(
-                filed.Where(entry => before.Contains(entry.SchematicName)).OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase),
-                follow);
-
-            var named = new HashSet<string>(kept.Select(entry => entry.SchematicName.Trim()), StringComparer.OrdinalIgnoreCase);
-
-            kept.AddRange(filed
-                .Where(entry => after.Contains(entry.SchematicName) && !named.Contains(entry.SchematicName))
-                .OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase));
-
-            return kept;
-        }
-
-        // ###########################################################################################
         // Renames one schematic image of the draft - its "Board schematics" row, the highlights
         // drawn on it and its KiCad calibration together, in ONE write (SchematicRename has the
         // rules; owner request, 2026-10-10).
@@ -406,10 +484,8 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(row);
 
-            string wanted = newName?.Trim() ?? string.Empty;
-            SchematicRenameOutcome outcome = SchematicRenameOutcome.Renamed;
-            bool moved = false;
-            string renamedFrom = string.Empty;
+            // The rules are SchematicRename.Plan's, shared with the draft held in memory.
+            SchematicRenamePlan plan = SchematicRenamePlan.Refused(SchematicRenameOutcome.NotFound);
 
             DraftWorkbookEditOutcome written = DraftWorkbookStore.EditCore(
                 draftsRoot,
@@ -417,53 +493,15 @@ namespace Handlers.DataHandling
                 expectedFingerprint: null,
                 current =>
                 {
-                    int index = SchematicRows.IndexOf(current.Schematics, row);
-
-                    if (index < 0)
-                    {
-                        outcome = SchematicRenameOutcome.NotFound;
-                        return null!;
-                    }
-
-                    if (string.Equals(current.Schematics[index].SchematicName?.Trim(), wanted, StringComparison.Ordinal))
-                    {
-                        outcome = SchematicRenameOutcome.Unchanged;
-                        return null!;
-                    }
-
-                    string? problem = SchematicRename.Problem(
-                        wanted,
-                        current.Schematics.Where((_, other) => other != index).Select(entry => entry.SchematicName));
-
-                    if (problem is not null)
-                    {
-                        outcome = wanted.Length == 0 ? SchematicRenameOutcome.Blank : SchematicRenameOutcome.NameTaken;
-                        return null!;
-                    }
-
-                    renamedFrom = current.Schematics[index].SchematicName ?? string.Empty;
-
-                    (BoardData renamed, bool movedItsData) = SchematicRename.Apply(current, index, wanted);
-                    moved = movedItsData;
-
-                    return renamed;
+                    plan = SchematicRename.Plan(current, row, newName);
+                    return plan.Board!;
                 },
-                (_, _) =>
-                {
-                    var follow = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-
-                    if (moved)
-                    {
-                        follow[renamedFrom] = wanted;
-                    }
-
-                    return follow;
-                });
+                (_, _) => plan.Follow);
 
             return written switch
             {
                 DraftWorkbookEditOutcome.NoDraft => SchematicRenameOutcome.NoDraft,
-                DraftWorkbookEditOutcome.Saved => outcome,
+                DraftWorkbookEditOutcome.Saved => plan.Outcome,
                 _ => SchematicRenameOutcome.WriteFailed,
             };
         }
@@ -473,7 +511,7 @@ namespace Handlers.DataHandling
         // workbook is still exactly what the caller read (`expectedFingerprint`, Fingerprint's value).
         // For bringing a draft up to date (DraftRebaser), which computes a new board from the one it
         // read and must not write over an edit made meanwhile in Excel. Written by WriteDraft, the
-        // one way a draft is written.
+        // one way a draft is written (`memory`: the draft held in memory's - see WriteDraft).
         // ###########################################################################################
         internal static DraftWorkbookEditOutcome ReplaceIfUnchanged(
             string draftsRoot,
@@ -481,7 +519,9 @@ namespace Handlers.DataHandling
             string expectedFingerprint,
             BoardData board,
             IReadOnlyList<KiCadCalibrationEntry> calibrations,
-            IReadOnlyList<SchematicRenameRecord> renames)
+            IReadOnlyList<SchematicRenameRecord> renames,
+            IReadOnlyList<BoardDocument.StoredFileRow>? files = null,
+            DraftFileMemory? memory = null)
         {
             ArgumentNullException.ThrowIfNull(expectedFingerprint);
             ArgumentNullException.ThrowIfNull(board);
@@ -498,11 +538,11 @@ namespace Handlers.DataHandling
 
             if (!string.Equals(actual, expectedFingerprint, StringComparison.Ordinal))
             {
-                CrtLog.Info($"Not bringing the draft for [{excelDataFile}] up to date - its workbook changed since it was read");
+                CrtLog.Info($"Not writing the draft for [{excelDataFile}] - its board file changed since it was read");
                 return DraftWorkbookEditOutcome.ChangedOnDisk;
             }
 
-            return DraftWorkbookStore.WriteDraft(workbook, board, calibrations ?? [], renames ?? []);
+            return DraftWorkbookStore.WriteDraft(workbook, board, calibrations ?? [], renames ?? [], files, memory);
         }
 
         // ###########################################################################################

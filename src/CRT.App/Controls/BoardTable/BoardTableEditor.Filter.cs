@@ -64,7 +64,7 @@ namespace CRT
         // The user's PICK changed - so a host can remember it (CRT's Maintainer tab does). Raised
         // HERE ONLY, where the pick changes: Attach and ApplyFilter change what the grid SHOWS
         // alone. Raising it from those would write "nothing picked" back as the user's choice every
-        // time a table with no such rows opened unfiltered. The Drafts tab does not listen.
+        // time a table with no such rows opened unfiltered. The Contribute tab does not listen.
         // ###########################################################################################
         internal event EventHandler? FilterWantedChanged;
 

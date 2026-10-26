@@ -184,7 +184,7 @@ public class ComponentContributionValidationTests
             rows.Add(new ContributionComponentImageRow());
 
             // The section is collapsed by default, so its rows are not built until it is opened -
-            // which is exactly why RevealComponentImageRow expands it before scrolling.
+            // which is exactly why RevealRow expands it before scrolling.
             window.Show();
             window.FindControl<Expander>("ComponentImagesExpander")!.IsExpanded = true;
             PumpLayout(window);

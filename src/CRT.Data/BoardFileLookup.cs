@@ -110,9 +110,16 @@ namespace Handlers.DataHandling
     {
         private readonly string thisDataRoot;
         private readonly string thisDraftBoardFolder;
+        private readonly string? thisBoardIdentity;
         private readonly HashSet<string> thisFound = new(StringComparer.Ordinal);
         private readonly HashSet<string> thisAskedAndMissed = new(StringComparer.Ordinal);
         private readonly Dictionary<string, (DateTime Written, DateTime ReadAt, string[] Names)> thisListings = new(StringComparer.Ordinal);
+
+        // The board files this lookup read, each read once while its stamp stays (code review,
+        // 2026-10-25 - right after a save every file looked up parsed the whole board file again).
+        private readonly BoardFileListings thisBoardFiles = new();
+
+        internal BoardFileListings BoardFilesForTests => this.thisBoardFiles;
 
         // ###########################################################################################
         // *** A WRITE TIME ONLY PROVES SOMETHING ONCE IT IS OLDER THAN ITS OWN RESOLUTION (2026-10-05).
@@ -125,11 +132,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         internal static readonly TimeSpan WriteTimeResolution = TimeSpan.FromSeconds(2);
 
-        // `draftBoardFolder` is empty for the downloaded data alone (the launch log).
-        public DiskFileLookup(string dataRoot, string draftBoardFolder)
+        // `draftBoardFolder` is empty for the downloaded data alone (the launch log). `boardIdentity`
+        // is the board CRT identifies the files for (2026-10-25) - a CRT 4.0 board names its files,
+        // and a board without a draft is found in its published board file (DraftFileResolver).
+        public DiskFileLookup(string dataRoot, string draftBoardFolder, string? boardIdentity = null)
         {
             this.thisDataRoot = dataRoot ?? string.Empty;
             this.thisDraftBoardFolder = draftBoardFolder ?? string.Empty;
+            this.thisBoardIdentity = boardIdentity;
         }
 
         public string Where => "on this computer";
@@ -158,7 +168,7 @@ namespace Handlers.DataHandling
         private BoardFileLookupResult Resolve(string path, bool again)
         {
             bool located = SubmissionFileLocator.TryLocate(
-                this.thisDataRoot, this.thisDraftBoardFolder, path, out string absolute, out _);
+                this.thisDataRoot, this.thisDraftBoardFolder, path, out string absolute, out _, this.thisBoardIdentity, this.thisBoardFiles);
 
             if (located && !this.IsUnderDataRoot(absolute))
                 return BoardFileLookupResult.Found;

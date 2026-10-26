@@ -22,17 +22,19 @@ namespace CRT.Server.Tests
         private readonly string thisData;
         private readonly string thisManifest;
 
-        private const string Cited = "Commodore/C64/250407/sheet1.png";
-        private const string Orphan = "Generic shared files/Component images/7408.jpg";
+        // A CRT 4.0 tree (2026-10-25): the board lists "sheet1.png"; a stored file no board lists
+        // lies beside it.
+        private static readonly string Cited = DataTreeBuilder.Stored("sheet", "sheet1.png");
+        private static readonly string Orphan = DataTreeBuilder.Stored("7408 picture", "7408.jpg");
 
         public UnusedFileFlowsTests()
         {
-            this.thisData = Path.Combine(this.thisRoot, "app-data-BETA", "Data");
-            this.thisManifest = Path.Combine(this.thisRoot, "app-data-BETA", "dataChecksums.json");
+            this.thisData = Path.Combine(this.thisRoot, "app-data-v4-BETA", "Data");
+            this.thisManifest = Path.Combine(this.thisRoot, "app-data-v4-BETA", "dataChecksums.json");
 
-            DataTreeBuilder.Master(this.thisData, DataTreeBuilder.Workbook);
-            DataTreeBuilder.Board(this.thisData, DataTreeBuilder.Workbook, UnusedFileFlowsTests.Cited);
-            DataTreeBuilder.Files(this.thisData, UnusedFileFlowsTests.Cited, UnusedFileFlowsTests.Orphan);
+            DataTreeBuilder.Master(this.thisData, DataTreeBuilder.BoardId);
+            DataTreeBuilder.Board(this.thisData, DataTreeBuilder.BoardId, ("sheet1.png", "sheet"));
+            DataTreeBuilder.StoreOnly(this.thisData, "7408.jpg", "7408 picture");
         }
 
         public void Dispose()
@@ -63,7 +65,7 @@ namespace CRT.Server.Tests
             ReviewAccess.For(
                 new AccountRecord(1, "a@example.com", "a@example.com", "hash", "A",
                     IsVerified: true, IsAdministrator: administrator, IsLocked: false, UnusedFileFlowsTests.Now, null),
-                administrator ? [] : [DataTreeBuilder.BoardFolder]);
+                administrator ? [] : [DataTreeBuilder.BoardId]);
 
         [Fact]
         public async Task A_maintainer_cannot_remove_unused_files_and_nothing_is_touched()
@@ -111,8 +113,8 @@ namespace CRT.Server.Tests
             Assert.False(File.Exists(DataTreeBuilder.Full(this.thisData, UnusedFileFlowsTests.Orphan)));
 
             string manifest = File.ReadAllText(this.thisManifest);
-            Assert.Contains("sheet1.png", manifest, StringComparison.Ordinal);
-            Assert.DoesNotContain("7408.jpg", manifest, StringComparison.Ordinal);
+            Assert.Contains(UnusedFileFlowsTests.Cited, manifest, StringComparison.Ordinal);
+            Assert.DoesNotContain(UnusedFileFlowsTests.Orphan, manifest, StringComparison.Ordinal);
 
             AuditEntry audit = Assert.Single(accounts.Audit);
             Assert.Equal(UnusedFileFlows.RemovedAction, audit.Action);

@@ -18,14 +18,14 @@ namespace CRT
     // *** THE SAME NUMBER AS THE "MY SUBMISSIONS" BUTTON INSIDE THE TAB. *** Both are
     // SubmissionReceiptStore.UnreadCommentCount - submissions with a decision or a comment the
     // contributor has not seen - so the tab says what opening it will show, and reading the news in
-    // "My submissions" clears both. It is drawn from ApplyDraftsTabVisibility, the one place every
+    // "My submissions" clears both. It is drawn from ApplyContributeTabState, the one place every
     // change to drafts or receipts already ends up (after a status check, after "My submissions"
     // closes, after a draft is retired or discarded) - which is also what brings the tab itself
     // back for news about a submission whose draft is gone.
     //
     // *** THE CHECK IS THE LAUNCH CHECK, AGAIN (SubmissionStatusRefresh). *** Only still-open
     // submissions are asked about, failures are silent, and the launch check's own follow-up runs
-    // after it: retire what is now published, then ApplyDraftsTabVisibility. How often, and when not
+    // after it: retire what is now published, then ApplyContributeTabState. How often, and when not
     // at all, is SubmissionStatusRefresh.PeriodicInterval / ChecksPeriodically.
     //
     // *** onFinished, NOT onChanged - THE LAUNCH CHECK'S RULE (code review, 2026-10-01). *** This
@@ -75,17 +75,17 @@ namespace CRT
         internal bool SubmissionChecksOutdatedForTests => this.SubmissionChecksStopped;
 
         // The count, or no badge at all for nothing unread.
-        private void ShowDraftsTabBadge(int unread)
+        private void ShowContributeTabBadge(int unread)
         {
             string? text = TabBadge.Text(unread);
 
-            this.DraftsTabBadgeText.Text = text ?? string.Empty;
-            this.DraftsTabBadge.IsVisible = text is not null;
+            this.ContributeTabBadgeText.Text = text ?? string.Empty;
+            this.ContributeTabBadge.IsVisible = text is not null;
         }
 
         // The badge as drawn, or null when none is - for tests.
-        internal string? DraftsTabBadgeForTests =>
-            this.DraftsTabBadge.IsVisible ? this.DraftsTabBadgeText.Text : null;
+        internal string? ContributeTabBadgeForTests =>
+            this.ContributeTabBadge.IsVisible ? this.ContributeTabBadgeText.Text : null;
 
         // Started once the window is up and the launch check has been started (StartAsync).
         private void StartSubmissionChecks()

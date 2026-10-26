@@ -41,6 +41,20 @@ public sealed class TempWorkspace : IDisposable
 
     public string ReadFile(string relativePath) => File.ReadAllText(this.Path_(relativePath));
 
+    /// <summary>Removes a folder link itself, never what it links to - best effort, before Dispose's
+    /// recursive delete could follow it.</summary>
+    public static void RemoveLink(string link)
+    {
+        try
+        {
+            Directory.Delete(link);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A link left in a folder about to be abandoned is not worth failing a test over.
+        }
+    }
+
     public void Dispose()
     {
         try

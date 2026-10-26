@@ -23,8 +23,11 @@ namespace Handlers.DataHandling
     // A sheet is a few thousand rows at most and a snapshot shares the strings rather than copying
     // them, so a step costs little; MaxSteps bounds the total all the same.
     //
-    // *** IT REACHES BACK TO THE LAST SAVE, NOT FURTHER. *** A save reloads the table from the file
-    // (DraftTableSession, BoardTableEditor.Save), which makes a new document with a new history.
+    // *** IN THE DRAFTS TAB IT IS NOT THE UNDO (CRT 4.0 step 1, 2026-10-25). *** There every change
+    // goes into the draft's session, whose history undoes across every editor; the table is built
+    // again after each undo, with a new document and a new history. This one says where each
+    // change was (Latest) for that, and is the undo of the Maintainer tab's tables, back to their
+    // last save.
     //
     // *** A STEP CAN SPAN SHEETS (2026-09-25). *** Deleting a component also deletes its rows on the
     // other component sheets (BoardTableDocument.DeleteRowsOfComponent), and one Ctrl+Z must bring
@@ -131,6 +134,17 @@ namespace Handlers.DataHandling
         internal void MarkSaved() => this.thisSavedDepth = this.thisUndo.Count;
 
         // ###########################################################################################
+        // Where the latest change was - its sheet, the row it was about (or the row now where it was)
+        // and its column - without taking it back. The Drafts tab's table hands it to the draft's
+        // session with each change (DraftSession), so an undo there puts the cursor on it. Null with
+        // nothing recorded.
+        // ###########################################################################################
+        public BoardTableHistoryResult? Latest =>
+            this.thisUndo.Count == 0
+                ? null
+                : new BoardTableHistoryResult(this.thisUndo[^1].Sheet, BoardTableHistory.FocusRowAfter(this.thisUndo[^1]), this.thisUndo[^1].FocusColumn);
+
+        // ###########################################################################################
         // Starts a group: every change until EndGroup is ONE undo step (a whole row drag).
         // ###########################################################################################
         internal void BeginGroup()
@@ -209,6 +223,9 @@ namespace Handlers.DataHandling
                     foreach (SheetState state in step.Sheets)
                     {
                         state.Sheet.RestoreSnapshot(state.Snapshot);
+
+                        // A sheet put back is a changed sheet (BoardTableDocument.TakeSessionEdit).
+                        this.thisDocument.NoteSheetChanged(state.Sheet);
                     }
                 }
             }

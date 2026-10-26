@@ -51,6 +51,8 @@ namespace Handlers.DataHandling
         private static readonly string[] BoardLinksHeaders = [.. BoardWorkbookSchema.BoardLinks.RequiredHeaders];
         private static readonly string[] CreditsHeaders = [.. BoardWorkbookSchema.Credits.RequiredHeaders];
         private static readonly string[] KiCadImportantSignalsHeaders = [.. BoardWorkbookSchema.KiCadImportantSignals.RequiredHeaders];
+        private static readonly string[] ComponentPinsHeaders = [.. BoardWorkbookSchema.ComponentPins.RequiredHeaders];
+        private static readonly string[] ComponentReplacementsHeaders = [.. BoardWorkbookSchema.ComponentReplacements.RequiredHeaders];
 
         // Concurrent on purpose: LoadAsync writes this from inside Task.Run while the UI thread
         // reads it, and DataValidator's startup walk loads every board from a background task in
@@ -182,6 +184,19 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static BoardData? ParseWorkbook(string excelPath, string logKey)
         {
+            // *** A CRT 4.0 BOARD FILE IS READ AS ONE (2026-10-24). *** Its rows, highlights and all,
+            // with every file named by the board (BoardDocumentMapping) - the app reads the 4.0 tree,
+            // the server still the Excel generations, through this one reader.
+            if (DataTreeLayout.IsBoardFile(excelPath))
+            {
+                BoardData? board = BoardFiles.ReadContent(excelPath)?.Board;
+
+                if (board is null)
+                    CrtLog.Critical($"Failed to load board file [{logKey}]");
+
+                return board;
+            }
+
             EpplusLicense.Ensure();
 
             try
@@ -204,6 +219,11 @@ namespace Handlers.DataHandling
                     BoardLinks = BoardWorkbookSchema.MapBoardLinks(ReadSheetRows(package, logKey, SheetBoardLinks, BoardLinksHeaders)),
                     Credits = BoardWorkbookSchema.MapCredits(ReadSheetRows(package, logKey, SheetCredits, CreditsHeaders)),
                     KiCadImportantSignals = BoardWorkbookSchema.MapKiCadImportantSignals(ReadSheetRows(package, logKey, SheetKiCadImportantSignals, KiCadImportantSignalsHeaders)),
+
+                    // CRT 4.0's own sheets, which no Excel generation has - read so a workbook a
+                    // test writes reads back whole, and never logged as missing.
+                    ComponentPins = BoardWorkbookSchema.MapComponentPins(ReadSheetRows(package, logKey, BoardWorkbookSchema.SheetComponentPins, ComponentPinsHeaders)),
+                    ComponentReplacements = BoardWorkbookSchema.MapComponentReplacements(ReadSheetRows(package, logKey, BoardWorkbookSchema.SheetComponentReplacements, ComponentReplacementsHeaders)),
                 };
             }
             catch (Exception ex)
@@ -250,7 +270,9 @@ namespace Handlers.DataHandling
 
             if (sheet == null)
             {
-                CrtLog.Warning($"Sheet [{sheetName}] missing in [{workbookDisplayPath}]");
+                if (!BoardWorkbookSchema.IsCrt4Sheet(sheetName))
+                    CrtLog.Warning($"Sheet [{sheetName}] missing in [{workbookDisplayPath}]");
+
                 return rows;
             }
 
@@ -444,6 +466,18 @@ namespace Handlers.DataHandling
                 return remembered.Revision;
             }
 
+            if (DataTreeLayout.IsBoardFile(excelPath))
+            {
+                string date = BoardFiles.ReadDocument(excelPath)?.RevisionDate ?? string.Empty;
+
+                if (BoardDataReader.FileStamp(excelPath) == stamp)
+                {
+                    RevisionOnlyCache[excelPath] = (stamp, date);
+                }
+
+                return date;
+            }
+
             EpplusLicense.Ensure();
 
             try
@@ -535,6 +569,23 @@ namespace Handlers.DataHandling
 
             if (string.IsNullOrWhiteSpace(excelPath) || !File.Exists(excelPath))
             {
+                return true;
+            }
+
+            // A 4.0 board names its files; what it uses under the data root is where their bytes are
+            // stored (DataTreeLayout.StoredFilePath).
+            if (DataTreeLayout.IsBoardFile(excelPath))
+            {
+                if (BoardFiles.ReadDocument(excelPath) is not BoardDocument document)
+                {
+                    return false;
+                }
+
+                foreach (BoardDocument.StoredFileRow file in document.Files.Where(file => DataTreeLayout.IsSha256(file.Sha256)))
+                {
+                    files.Add(DataTreeLayout.StoredFilePath(file.Sha256, file.Name));
+                }
+
                 return true;
             }
 

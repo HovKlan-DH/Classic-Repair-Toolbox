@@ -59,6 +59,12 @@ namespace Handlers.DataHandling
     // the new bytes, which is why the replacement needs two approvals, and the two approvers used to
     // decide without being told which boards those were. Null for any other file, and from an older
     // server.
+    //
+    // `TreePath` (2026-10-25): where the file lies in its data tree, when that is not Path. In the
+    // CRT 4.0 tree Path is the board's NAME for a file ("Component images/7406.png") and its bytes
+    // are stored under their checksum ("Files/3f/3f7a...e1.png"), so a file opened from the BETA or
+    // stable data is fetched from there. Null for the board file itself, whose name is its place,
+    // and from an older server.
     public sealed record BoardFileEntry(
         string Path,
         BoardFileChange Change,
@@ -66,7 +72,14 @@ namespace Handlers.DataHandling
         string? Sha256 = null,
         bool WrittenOnApproval = false,
         long? SizeBytes = null,
-        IReadOnlyList<string>? AlsoUsedBy = null);
+        IReadOnlyList<string>? AlsoUsedBy = null,
+        string? TreePath = null)
+    {
+        // Where to fetch the file in its tree - TreePath when it has one, else Path. Worked out by
+        // each end from the two, so it is no field on the wire.
+        [JsonIgnore]
+        public string PlaceInTree => string.IsNullOrWhiteSpace(this.TreePath) ? this.Path : this.TreePath;
+    }
 
     // A file the approval generates: where, whether BETA has it now, and whether writing it would
     // change it.
@@ -80,25 +93,45 @@ namespace Handlers.DataHandling
         // promotion is BETA's bytes, so that is where it opens from; a removed file only exists in
         // production now.
         // ###########################################################################################
+        //
+        // `names` (2026-10-25): the board's name for each tree path, when the plan sends them - a 4.0
+        // tree's stored files are shown by name, and fetched from their place (TreePath).
         public static IReadOnlyList<BoardFileEntry> ForPromotion(
             IReadOnlyList<PromotionFile>? copies,
             IReadOnlyCollection<string>? removals,
-            IReadOnlyCollection<string>? unchanged)
+            IReadOnlyCollection<string>? unchanged,
+            IReadOnlyDictionary<string, string>? names = null)
         {
             var entries = new Dictionary<string, BoardFileEntry>(StringComparer.Ordinal);
 
+            BoardFileEntry Entry(string path, BoardFileChange change, BoardFileSource source) =>
+                names is not null && names.TryGetValue(path, out string? name) && !string.IsNullOrWhiteSpace(name) && name != path
+                    ? new BoardFileEntry(name, change, source, TreePath: path)
+                    : new BoardFileEntry(path, change, source);
+
             foreach (string path in unchanged ?? [])
-                BoardFileEntries.Put(entries, new BoardFileEntry(path, BoardFileChange.Unchanged, BoardFileSource.Beta));
+                BoardFileEntries.Put(entries, Entry(path, BoardFileChange.Unchanged, BoardFileSource.Beta));
 
             foreach (string path in removals ?? [])
-                BoardFileEntries.Put(entries, new BoardFileEntry(path, BoardFileChange.Removed, BoardFileSource.Production));
+                BoardFileEntries.Put(entries, Entry(path, BoardFileChange.Removed, BoardFileSource.Production));
 
             foreach (PromotionFile file in copies ?? [])
             {
-                BoardFileEntries.Put(entries, new BoardFileEntry(
+                BoardFileEntry entry = Entry(
                     file.Path,
                     file.Change == PromotionChange.Added ? BoardFileChange.Added : BoardFileChange.Changed,
-                    BoardFileSource.Beta));
+                    BoardFileSource.Beta);
+
+                // A name whose old bytes go and whose new bytes come is ONE file changed - the 4.0
+                // tree stores the two apart, under their checksums.
+                if (entry.Change == BoardFileChange.Added &&
+                    entries.TryGetValue(entry.Path, out BoardFileEntry? before) &&
+                    before.Change == BoardFileChange.Removed)
+                {
+                    entry = entry with { Change = BoardFileChange.Changed };
+                }
+
+                BoardFileEntries.Put(entries, entry);
             }
 
             return BoardFileEntries.Ordered(entries);
@@ -216,7 +249,25 @@ namespace Handlers.DataHandling
         // never left guessing from a path.
         // ###########################################################################################
         public static bool IsHighlightFile(string? path) =>
-            !string.IsNullOrEmpty(path) && path.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+            !string.IsNullOrEmpty(path) &&
+            path.EndsWith(".json", StringComparison.OrdinalIgnoreCase) &&
+            !DataTreeLayout.IsBoardFile(path);
+
+        // ###########################################################################################
+        // The entries with where each lies in its tree (2026-10-25): `treePathOf` answers an entry's
+        // place, or null to leave it at its Path - see BoardFileEntry.TreePath. The builders above say
+        // what each file becomes; where its bytes are stored only the server can see.
+        // ###########################################################################################
+        public static IReadOnlyList<BoardFileEntry> WithTreePaths(
+            IReadOnlyList<BoardFileEntry>? entries,
+            Func<BoardFileEntry, string?> treePathOf)
+        {
+            ArgumentNullException.ThrowIfNull(treePathOf);
+
+            return (entries ?? [])
+                .Select(entry => treePathOf(entry) is { Length: > 0 } place && place != entry.Path ? entry with { TreePath = place } : entry)
+                .ToList();
+        }
 
         private static void Put(Dictionary<string, BoardFileEntry> entries, BoardFileEntry entry)
         {

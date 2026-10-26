@@ -10,8 +10,8 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
 // The Submit dialog's own side of "the board's KiCad data travels" (owner decision, 2026-09-26):
-// the window collects the draft's "KiCad data" folder (SubmitDraftWindow.CollectKiCadFiles - the
-// same helper the submission itself sends through) and says so in the "what will be sent" panel.
+// the window collects the draft's KiCad files (SubmitDraftWindow.CollectKiCadFiles - the same
+// helper the submission itself sends through) and says so in the "what will be sent" panel.
 // Without this wire-up the pure rules all pass while the client still sends nothing, which is the
 // exact one-side gap the KiCad data sat in until today.
 //
@@ -54,14 +54,27 @@ public sealed class SubmitDraftWindowKiCadTests : System.IDisposable
             .Select(text => text.Text ?? string.Empty)
             .ToList();
 
+    // ###########################################################################################
+    // In CRT 4.0 (2026-10-25) the draft's board file LISTS its KiCad files by name, its stored
+    // copies beside it - what the window counts; another file it lists is not KiCad data. A file
+    // lying in the draft's "KiCad data" folder that no write has listed yet IS counted and sent
+    // (code review, 2026-10-25): it is an import the next write takes in, the Schematics tab draws
+    // it, and left out it was never submitted.
+    // ###########################################################################################
     [Fact]
     public void A_drafts_KiCad_data_is_counted_in_what_will_be_sent()
     {
         string draft = this.thisWorkspace.Path_("draft");
-        string kiCad = Path.Combine(draft, "KiCad data", "Pages");
-        Directory.CreateDirectory(kiCad);
-        File.WriteAllText(Path.Combine(kiCad, "vic.kicad_sch"), "(kicad_sch)");
-        File.WriteAllText(Path.Combine(draft, "KiCad data", "board.kicad_pcb"), "(kicad_pcb)");
+
+        StoredFiles.WriteBoard(
+            Path.Combine(draft, DataTreeLayout.BoardFileName),
+            new BoardData(),
+            StoredFiles.Put(draft, "KiCad data/Pages/vic.kicad_sch", "(kicad_sch)"),
+            StoredFiles.Put(draft, "KiCad data/board.kicad_pcb", "(kicad_pcb)"),
+            StoredFiles.Put(draft, "Images/sheet.png", "an image"));
+
+        Directory.CreateDirectory(Path.Combine(draft, "KiCad data"));
+        File.WriteAllText(Path.Combine(draft, "KiCad data", "not-listed.kicad_sch"), "(kicad_sch)");
 
         UiTest.Run(() =>
         {
@@ -69,7 +82,7 @@ public sealed class SubmitDraftWindowKiCadTests : System.IDisposable
 
             int label = texts.ToList().IndexOf("KiCad files:");
             Assert.True(label >= 0, string.Join(" | ", texts));
-            Assert.Equal("2", texts[label + 1]);
+            Assert.Equal("3", texts[label + 1]);
         });
     }
 

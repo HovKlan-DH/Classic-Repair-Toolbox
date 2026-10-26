@@ -48,6 +48,31 @@ public sealed class DraftRebaseTests
     private static string DescriptionOf(BoardData board, string label) =>
         board.Components.Single(c => c.BoardLabel == label).Description;
 
+    // ###########################################################################################
+    // CRT 4.0's pins and replacement parts (2026-10-25) merge three ways like every other section:
+    // the contributor's pin edit stays, the pin and replacement the update added arrive.
+    // ###########################################################################################
+    [Fact]
+    public void Pins_and_replacements_merge_three_ways()
+    {
+        BoardData based = Board(components: [Component("U8")]);
+        based.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" });
+
+        BoardData draft = Board(components: [Component("U8")]);
+        draft.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "GND" });
+
+        BoardData published = Board(components: [Component("U8")], revision: "2026-10-01");
+        published.ComponentPins.AddRange([
+            new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" },
+            new ComponentPinEntry { BoardLabel = "U8", Pin = "2", Name = "PA0" }]);
+        published.ComponentReplacements.Add(new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A" });
+
+        DraftRebaseResult result = Merge(based, draft, published);
+
+        Assert.Equal(["1 GND", "2 PA0"], result.Board.ComponentPins.Select(pin => $"{pin.Pin} {pin.Name}"));
+        Assert.Equal("6526A", Assert.Single(result.Board.ComponentReplacements).PartNumber);
+    }
+
     [Fact]
     public void A_stale_draft_with_one_change_keeps_everything_published_since()
     {

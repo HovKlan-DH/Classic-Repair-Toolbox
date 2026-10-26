@@ -7,7 +7,9 @@ using CRT;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The "Unsaved edits" prompt of the Drafts tab's table editor (2026-09-24).
+// The "Unsaved edits" prompt of the table editor (2026-09-24) - leaving a Maintainer tab table, and
+// since CRT 4.0 step 1 (2026-10-25, a draft saves itself) leaving the Drafts tab's table only after
+// its save was refused or failed.
 //
 // "Discard edits" throws away work that exists nowhere but in memory, so like the discard and
 // delete dialogs this is a modal where Enter must NOT confirm: Enter and Escape both CANCEL.
@@ -36,7 +38,7 @@ public sealed class UnsavedTableEditsWindowTests
     {
         UiTest.Run(() =>
         {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.Leaving);
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.LeavingSubmission);
 
             Button discard = ButtonWithContent(window, "Discard edits");
             bool discarded = false;
@@ -55,7 +57,7 @@ public sealed class UnsavedTableEditsWindowTests
     {
         UiTest.Run(() =>
         {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.Leaving);
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.LeavingSubmission);
 
             bool discarded = false;
             ButtonWithContent(window, "Discard edits").Click += (_, _) => discarded = true;
@@ -68,11 +70,11 @@ public sealed class UnsavedTableEditsWindowTests
     }
 
     [Fact]
-    public void Leaving_the_table_offers_Save_Discard_and_Cancel()
+    public void Leaving_a_submissions_table_offers_Save_Discard_and_Cancel()
     {
         UiTest.Run(() =>
         {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.Leaving);
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.LeavingSubmission);
 
             Assert.True(ButtonWithContent(window, "Save changes").IsVisible);
             Assert.True(ButtonWithContent(window, "Discard edits").IsVisible);
@@ -101,24 +103,14 @@ public sealed class UnsavedTableEditsWindowTests
         });
     }
 
+    // ###########################################################################################
+    // A DRAFT'S TABLE IS ASKED ABOUT ONLY WHEN ITS SAVE COULD NOT BE MADE - it saves itself, and the
+    // save was just tried - so there is no Save to offer: Discard or Cancel, and why. Offering one
+    // made "Close table" a loop (reported, 2026-09-24).
+    // ###########################################################################################
     [Fact]
-    public void Reloading_offers_NO_Save_since_saving_is_what_was_just_refused()
+    public void Leaving_a_drafts_table_whose_save_was_refused_offers_NO_Save_and_says_why()
     {
-        UiTest.Run(() =>
-        {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.Reloading);
-
-            Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
-            Assert.Contains("Reloading", window.GetControl<TextBlock>("MessageText").Text);
-
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public void Leaving_a_table_whose_draft_changed_on_disk_offers_NO_Save_and_says_why()
-    {
-        // A save there is refused, so offering one made "Close table" a loop (reported).
         UiTest.Run(() =>
         {
             UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.DraftChangedOnDisk);
@@ -126,45 +118,29 @@ public sealed class UnsavedTableEditsWindowTests
             Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
             Assert.True(ButtonWithContent(window, "Discard edits").IsVisible);
             Assert.True(ButtonWithContent(window, "Cancel").IsVisible);
-            Assert.Contains("changed outside this table", window.GetControl<TextBlock>("MessageText").Text);
-            Assert.Contains("Save to draft", window.GetControl<TextBlock>("MessageText").Text);
+            // Said of the draft, not of the table (CRT 4.0 step 2): the component pane asks it too.
+            Assert.Equal("Changes not saved", window.GetControl<TextBlock>("HeadingText").Text);
+            Assert.Contains("changed somewhere else", window.GetControl<TextBlock>("MessageText").Text);
+            Assert.Contains("use the saved version or to keep yours", window.GetControl<TextBlock>("MessageText").Text);
 
             window.Close();
         });
     }
 
     [Fact]
-    public void Saving_elsewhere_is_a_notice_with_Cancel_alone_that_sends_you_to_the_Drafts_tab()
+    public void Leaving_a_drafts_table_whose_save_failed_offers_NO_Save_and_says_why()
     {
-        // Owner's design (2026-09-24): from another tab you may not remember what you did in
-        // the table, so nothing about it is decided here - no Save, no Discard.
+        // That save just failed, and offering it again would loop as the refused one once did. In
+        // CRT 4.0 the draft is a board file no spreadsheet program edits, so the words name none.
         UiTest.Run(() =>
         {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.SavingElsewhere);
-
-            Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
-            Assert.False(ButtonWithContent(window, "Discard edits").IsVisible);
-            Assert.True(ButtonWithContent(window, "Cancel").IsVisible);
-
-            Assert.Equal("Unsaved table edits in the Drafts tab", window.Title);
-            Assert.Equal("Unsaved table edits in the Drafts tab", window.GetControl<TextBlock>("HeadingText").Text);
-            Assert.Contains("Go to the Drafts tab, save or discard the table's edits", window.GetControl<TextBlock>("MessageText").Text);
-
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public void Leaving_a_table_whose_draft_is_held_open_in_Excel_offers_NO_Save_and_says_why()
-    {
-        // That save would fail, and offering it would loop as the changed-on-disk one once did.
-        UiTest.Run(() =>
-        {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.DraftOpenElsewhere);
+            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.DraftNotWritten);
 
             Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
             Assert.True(ButtonWithContent(window, "Discard edits").IsVisible);
-            Assert.Contains("open in Excel", window.GetControl<TextBlock>("MessageText").Text);
+            Assert.Contains("could not be written", window.GetControl<TextBlock>("MessageText").Text);
+            Assert.Contains("Try again", window.GetControl<TextBlock>("MessageText").Text);
+            Assert.DoesNotContain("Excel", window.GetControl<TextBlock>("MessageText").Text);
 
             window.Close();
         });
@@ -173,8 +149,9 @@ public sealed class UnsavedTableEditsWindowTests
     // ###########################################################################################
     // *** UNDER "CRT HAS TO BE UPDATED" (code review, 2026-10-09). *** A Maintainer tab table's Save
     // sends to the server, which turns this CRT away - so leaving one offers Discard or Cancel and
-    // says why; and the notice for another editor's save cannot send the contributor to a covered
-    // Drafts tab, so it says what settles the table there instead.
+    // says why. (The notices that held another editor's save back - "SavingElsewhere", and its form
+    // under a covered Drafts tab - went with CRT 4.0 step 1: every editor changes the one draft held
+    // in memory, so nothing is held back.)
     // ###########################################################################################
     [Fact]
     public void Leaving_a_Maintainer_table_while_CRT_has_to_be_updated_offers_NO_Save_and_says_why()
@@ -192,24 +169,4 @@ public sealed class UnsavedTableEditsWindowTests
         });
     }
 
-    [Fact]
-    public void Saving_elsewhere_under_a_covered_Drafts_tab_is_a_notice_naming_what_settles_the_table()
-    {
-        UiTest.Run(() =>
-        {
-            UnsavedTableEditsWindow window = BuildWindow(UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired);
-
-            Assert.False(ButtonWithContent(window, "Save changes").IsVisible);
-            Assert.False(ButtonWithContent(window, "Discard edits").IsVisible);
-            Assert.True(ButtonWithContent(window, "Cancel").IsVisible);
-
-            Assert.Equal("Unsaved table edits in the Drafts tab", window.Title);
-            string message = window.GetControl<TextBlock>("MessageText").Text!;
-            Assert.Contains("cannot be used until CRT is updated", message);
-            Assert.Contains("Updating CRT - or quitting it - asks first", message);
-            Assert.DoesNotContain("Go to the Drafts tab", message);
-
-            window.Close();
-        });
-    }
 }

@@ -36,6 +36,37 @@ namespace Handlers.DataHandling
         public const string ColSeriesOrModel = "Series or model";
         public const string ColPort = "Port";
 
+        // The sheet's other columns - every one CRT reads (DataManager.LoadMainExcel), named here
+        // since 2026-10-24 so the CRT 4.0 data converter carries exactly the same set.
+        public const string ColDebounceTime = "Debounce-Time";
+        public const string ColIdentify = "Identify";
+        public const string ColDrainErrorQueue = "DrainErrorQueue";
+        public const string ColOperationComplete = "Operation-Complete";
+        public const string ColClearStatistics = "Clear-Statistics";
+        public const string ColQueryActiveTrigger = "QueryActiveTrigger";
+        public const string ColStop = "Stop";
+        public const string ColSingle = "Single";
+        public const string ColRun = "Run";
+        public const string ColQueryTriggerMode = "QueryTriggerMode";
+        public const string ColQueryTriggerLevel = "QueryTriggerLevel";
+        public const string ColSetTriggerLevel = "SetTriggerLevel";
+        public const string ColQueryTimeDiv = "QueryTimeDiv";
+        public const string ColSetTimeDiv = "SetTimeDiv";
+        public const string ColQueryVoltsDiv = "QueryVoltsDiv";
+        public const string ColSetVoltsDiv = "SetVoltsDiv";
+        public const string ColDumpImage = "DumpImage";
+        public const string ColTimeDivList = "TIME/DIV";
+        public const string ColVoltsDivList = "VOLTS/DIV";
+
+        // Every column of the sheet, in its order.
+        public static readonly IReadOnlyList<string> OscilloscopeColumns =
+        [
+            ColBrand, ColSeriesOrModel, ColPort, ColDebounceTime, ColIdentify, ColDrainErrorQueue,
+            ColOperationComplete, ColClearStatistics, ColQueryActiveTrigger, ColStop, ColSingle, ColRun,
+            ColQueryTriggerMode, ColQueryTriggerLevel, ColSetTriggerLevel, ColQueryTimeDiv, ColSetTimeDiv,
+            ColQueryVoltsDiv, ColSetVoltsDiv, ColDumpImage, ColTimeDivList, ColVoltsDivList,
+        ];
+
         // ###########################################################################################
         // The preamble's date line on both sheets - "# Revision date: 2026-October-4" (owner request,
         // 2026-10-04: "make sure to update the date in the 'Revision date:'"). Found by this prefix in
@@ -103,9 +134,19 @@ namespace Handlers.DataHandling
     {
         // ###########################################################################################
         // The newest-generation master in a data root, or null when there is none to write.
+        //
+        // *** A CRT 4.0 TREE'S MAIN FILE FIRST (2026-10-25). *** "Classic-Repair-Toolbox.v4.0.0.json"
+        // at the top of the root is the one a 4.0 tree has, and every edit below is made on it as on
+        // the Excel file (MainFileListing). An Excel-era tree - what the converter and the first
+        // launch's migration read - has none, and keeps the rule it always had.
         // ###########################################################################################
         public static string? NewestMasterPath(string? dataRoot)
         {
+            if (!string.IsNullOrWhiteSpace(dataRoot) && File.Exists(Path.Combine(dataRoot, DataTreeLayout.MainFileName)))
+            {
+                return Path.Combine(dataRoot, DataTreeLayout.MainFileName);
+            }
+
             Version? generation = DataGenerationRules.ResolveNewestGenerationFromTree(dataRoot);
             if (generation is null)
             {
@@ -125,6 +166,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static bool TryRead(string masterPath, out IReadOnlyList<MasterListingRow> rows, out string why)
         {
+            if (MainFileListing.IsMainFile(masterPath))
+            {
+                return MainFileListing.TryRead(masterPath, out rows, out why);
+            }
+
             rows = [];
 
             if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out why))
@@ -211,6 +257,11 @@ namespace Handlers.DataHandling
         public static MasterListingEdit Insert(string masterPath, MasterListingRow row, string? afterExcelDataFile, DateTimeOffset? nowUtc = null)
         {
             ArgumentNullException.ThrowIfNull(row);
+
+            if (MainFileListing.IsMainFile(masterPath))
+            {
+                return MainFileListing.Insert(masterPath, row, afterExcelDataFile, nowUtc);
+            }
 
             if (!MasterListing.IsWritableRow(row, out string rowProblem))
             {
@@ -315,6 +366,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static MasterListingEdit Remove(string masterPath, string boardId, DateTimeOffset? nowUtc = null)
         {
+            if (MainFileListing.IsMainFile(masterPath))
+            {
+                return MainFileListing.Remove(masterPath, boardId, nowUtc);
+            }
+
             if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out string why))
             {
                 return MasterListingEdit.Failed($"The main Excel data file could not be opened: {why}");
@@ -474,6 +530,11 @@ namespace Handlers.DataHandling
         public static MasterListingEdit Reorder(string masterPath, IReadOnlyList<string> boardIdsInOrder, DateTimeOffset? nowUtc = null)
         {
             ArgumentNullException.ThrowIfNull(boardIdsInOrder);
+
+            if (MainFileListing.IsMainFile(masterPath))
+            {
+                return MainFileListing.Reorder(masterPath, boardIdsInOrder, nowUtc);
+            }
 
             if (!MasterListing.TryOpen(masterPath, out ExcelPackage? package, out string why))
             {

@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-    THE TABLE EDITOR'S OWN COLOURS, merged by App.axaml, so the Drafts tab's table and
+    THE TABLE EDITOR'S OWN COLOURS, merged by App.axaml, so the Contribute tab's table and
     the Maintainer tab's table cannot drift apart. Moved here from App.axaml (2026-09-25); a user's own theme colours still
     override them, because the app writes those into its top-level resources, which win over a
     merged dictionary.

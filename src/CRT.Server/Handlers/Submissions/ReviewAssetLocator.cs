@@ -92,47 +92,26 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // Where a PUBLISHED file for this board is, if the request may have it at all.
         //
-        // Returns false for anything unsafe, anything the submission does not reference, and
+        // Returns false for anything unsafe, anything the published board does not list, and
         // anything that is not there - the caller turns all three into one 404. They are
         // deliberately indistinguishable to the client: letting a caller tell "refused" from
         // "absent" lets the tree be probed for what exists.
         //
-        // ###########################################################################################
-        // *** THE PATH IS RESOLVED AGAINST THE DATA ROOT, NOT THE BOARD FOLDER (fixed
-        // 2026-09-23). ***
-        //
-        // A board stores its file references RELATIVE TO THE DATA TREE ROOT - "Commodore/C64/250407/
-        // Board Layout 250407 NTSC.png" - which is how the desktop app resolves them too
-        // (Main.BoardSelection.cs combines DataManager.DataRoot with the stored value). Resolving
-        // against the board folder therefore looked for
-        // "<root>/Commodore/C64/250407/Commodore/C64/250407/Board Layout 250407 NTSC.png",
-        // which never exists, and every published image answered 404. The maintainer saw "No
-        // published file at this path" beside a picture that is in fact published.
-        //
-        // It also could not have worked for SHARED files: "Commodore/Shared files/Component
-        // images/6526.png" lives outside the board folder by design, so a board-relative base
-        // excludes an entire legitimate category of board reference.
-        //
-        // *** CONTAINMENT IS NOT WEAKENED, AND THE SCOPE IS NOW STRICTER THAN IT WAS. *** The
-        // resolve still refuses anything escaping the root, and the request must additionally name
-        // a file THIS SUBMISSION'S OWN BOARD REFERENCES (the check below). The board folder was
-        // serving as a crude scope limit; naming the referenced files is the real one, and unlike
-        // the folder it cannot be satisfied by an unrelated file that happens to sit nearby.
-        // ###########################################################################################
-        //
-        // *** OR A FILE THE PUBLISHED BOARD CITES (owner request, 2026-09-26). *** A row changed to
-        // another picture, or deleted, leaves its OLD file cited by the published board alone - and
-        // the old picture is exactly the "before" side of the comparison, in the change summary and
-        // in the table's hover card. Scoped to this submission's own board still: the published
-        // board is the one the submission would replace. `publishedBoardFiles` is asked only when
-        // the submission does not cite the path itself, so the ordinary request never reads it.
+        // *** IN THE CRT 4.0 TREE A FILE IS ASKED FOR BY THE BOARD'S NAME (2026-10-25). *** The
+        // request names a file as the board does ("Component images/7406.png") - never a place in the
+        // tree - and only a name the PUBLISHED board of this submission lists is answered: the old
+        // picture of a row that was changed or deleted is exactly the "before" side of the
+        // comparison (owner request, 2026-09-26). Scoped to this submission's own board, the one it
+        // would replace, so the route cannot be used to read another board's files or anything else
+        // out of the data tree. The bytes are the stored file the name points at, found from its
+        // checksum and contained to the tree like every other place in it.
         // ###########################################################################################
         public static bool TryLocatePublishedFile(
             string? dataTreeRoot,
             SubmissionManifest? manifest,
-            string? relativePath,
+            string? name,
             out string resolvedPath,
-            Func<IReadOnlyCollection<string>>? publishedBoardFiles = null)
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? publishedFiles)
         {
             resolvedPath = string.Empty;
 
@@ -142,102 +121,20 @@ namespace CRT.Server.Handlers.Submissions
             if (string.IsNullOrWhiteSpace(dataTreeRoot))
                 return false;
 
-            if (string.IsNullOrWhiteSpace(relativePath))
+            if (string.IsNullOrWhiteSpace(name))
                 return false;
 
-            // THE SCOPE. Only a file this submission's board - or the published board it would
-            // replace - actually references may be fetched, so the route cannot be used to read
-            // arbitrary files out of the data tree.
-            if (!ReviewAssetLocator.IsReferencedByBoard(manifest, relativePath) &&
-                !ReviewAssetLocator.IsListed(publishedBoardFiles?.Invoke(), relativePath))
-            {
-                return false;
-            }
-
-            // THE CONTAINMENT. Resolved against the data tree root, which is the base the stored
-            // paths are written against; escaping the root is still refused.
-            if (!SubmissionPathRules.TryResolve(dataTreeRoot, relativePath, out string candidate, out _))
+            // THE SCOPE: a name the published board lists.
+            if (publishedFiles is null || !publishedFiles.TryGetValue(name.Replace('\\', '/').Trim(), out BoardDocument.StoredFileRow? file))
                 return false;
 
-            if (!File.Exists(candidate))
+            // THE CONTAINMENT: the stored file of its checksum, inside the tree.
+            string candidate = PublishedBoardFiles.StoredPath(dataTreeRoot, file.Sha256, file.Name);
+
+            if (candidate.Length == 0 || !File.Exists(candidate))
                 return false;
 
             resolvedPath = candidate;
-            return true;
-        }
-
-        // ###########################################################################################
-        // Whether the submission's own board references this exact path.
-        //
-        // Ordinal, like every other path comparison against this tree: the server's filesystem is
-        // Linux and the data tree is case-sensitive, so folding case here would admit a path the
-        // board does not actually name.
-        //
-        // The submitted rows are used rather than the published board because they are what the
-        // manifest carries, and the two agree on every file the comparison offers - the Maintainer tab
-        // only ever asks for a path that appeared in one of the two lists it was given.
-        // ###########################################################################################
-        private static bool IsReferencedByBoard(SubmissionManifest manifest, string relativePath)
-        {
-            string wanted = relativePath.Replace('\\', '/').Trim();
-
-            if (wanted.Length == 0)
-                return false;
-
-            foreach (string candidate in ReviewAssetLocator.BoardFilePaths(manifest))
-            {
-                if (string.Equals(candidate, wanted, StringComparison.Ordinal))
-                    return true;
-            }
-
-            return false;
-        }
-
-        // Whether a path is in a list of board file paths. Ordinal, for the reason IsReferencedByBoard
-        // gives.
-        private static bool IsListed(IReadOnlyCollection<string>? paths, string relativePath)
-        {
-            string wanted = relativePath.Replace('\\', '/').Trim();
-
-            return wanted.Length > 0 &&
-                   paths is not null &&
-                   paths.Any(candidate => string.Equals(candidate, wanted, StringComparison.Ordinal));
-        }
-
-        // Every file path the submitted rows name, through the SHARED collector - the same one the
-        // submission and the published-file list both use, so a new file source cannot become
-        // unfetchable here while working everywhere else.
-        private static IEnumerable<string> BoardFilePaths(SubmissionManifest manifest)
-        {
-            // Built against no published board, so the result is the submission's OWN rows -
-            // exactly the set the Maintainer tab was handed and can ask about.
-            BoardData board = PublishMerge.Build(manifest, published: null);
-
-            return SubmissionManifestBuilder.CollectReferencedFiles(board);
-        }
-
-        // ###########################################################################################
-        // The board's own folder inside the data tree, resolved through the same rules that guard
-        // every other use of these three untrusted values.
-        // ###########################################################################################
-        private static bool TryResolveBoardFolder(
-            string dataTreeRoot,
-            SubmissionManifest manifest,
-            out string boardFolder)
-        {
-            boardFolder = string.Empty;
-
-            string relative = string.Join('/',
-                new[] { manifest.Manufacturer, manifest.Hardware, manifest.Board }
-                    .Where(part => !string.IsNullOrWhiteSpace(part)));
-
-            if (string.IsNullOrWhiteSpace(relative))
-                return false;
-
-            if (!SubmissionPathRules.TryResolve(dataTreeRoot, relative, out string resolved, out _))
-                return false;
-
-            boardFolder = resolved;
             return true;
         }
 

@@ -13,7 +13,7 @@ namespace CRT
     // Main.axaml.cs for the file map of the whole partial class.
     //
     // WHICH ENTRIES are decided by DraftBadgeSet (pure, unit tested), built from the boards the
-    // Drafts tab lists. WHEN is ApplyDraftsTabVisibility, which already runs whenever the set of
+    // Drafts tab lists. WHEN is ApplyContributeTabState, which already runs whenever the set of
     // drafts can change - startup, a save that creates a draft, a new board, a discard, a
     // retirement - so the chips follow the Drafts tab in the same pass rather than on a schedule
     // of their own.
@@ -36,7 +36,7 @@ namespace CRT
 
         // ###########################################################################################
         // Rebuilds the chip set from the Drafts tab's current list and re-templates both drop-downs.
-        // Called from ApplyDraftsTabVisibility, AFTER TabDrafts.RefreshDrafts has produced that list.
+        // Called from ApplyContributeTabState, AFTER TabDrafts.RefreshDrafts has produced that list.
         // ###########################################################################################
         internal void ApplyDraftBadges()
         {

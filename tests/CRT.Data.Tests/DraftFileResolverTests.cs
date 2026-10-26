@@ -293,4 +293,113 @@ public sealed class DraftFileResolverTests : IDisposable
 
         Assert.Equal(Path.Combine(this.DraftBoardFolder, "Sub", "Folder", "U8.pdf"), destination);
     }
+
+    // ------------------------------------------------------------------------ CRT 4.0: names
+
+    // In a 4.0 tree a row names a file of its board ("Datasheets/U8.pdf"); the board file gives
+    // the name its checksum and the bytes sit in the store under it (2026-10-24).
+    private const string Identity = "Commodore/C64/250407/board.json";
+
+    private string PublishedBoardFile => Path.Combine(this.DataRoot, "Commodore", "C64", "250407", DataTreeLayout.BoardFileName);
+    private string DraftBoardFile => Path.Combine(this.DraftBoardFolder, DataTreeLayout.BoardFileName);
+
+    private string StoredUnder(string root, BoardDocument.StoredFileRow file) =>
+        Path.Combine(root, DataTreeLayout.StoredFilePath(file.Sha256, file.Name).Replace('/', Path.DirectorySeparatorChar));
+
+    [Fact]
+    public void A_name_is_found_through_the_published_boards_file_list_when_the_board_is_given()
+    {
+        BoardDocument.StoredFileRow file = StoredFiles.Put(this.DataRoot, "Datasheets/U8.pdf", "published");
+        StoredFiles.WriteBoard(this.PublishedBoardFile, file);
+
+        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(this.DataRoot, string.Empty, "Datasheets/U8.pdf", Identity);
+
+        Assert.NotNull(resolved);
+        Assert.Equal(this.StoredUnder(this.DataRoot, file), resolved!.FullPath);
+        Assert.Equal(this.DataRoot, resolved.Root);
+        Assert.False(resolved.IsDrafted);
+    }
+
+    [Fact]
+    public void Without_the_board_a_published_name_is_not_found()
+    {
+        StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "Datasheets/U8.pdf", "published"));
+
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, string.Empty, "Datasheets/U8.pdf"));
+    }
+
+    // The draft keeps the bytes the tree does not hold - a replaced datasheet - in its own store,
+    // and the launcher must be handed the draft folder as the root it was found under.
+    [Fact]
+    public void A_name_the_draft_lists_resolves_to_the_drafts_own_store_first()
+    {
+        StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "Datasheets/U8.pdf", "published"));
+        BoardDocument.StoredFileRow replaced = StoredFiles.Put(this.DraftBoardFolder, "Datasheets/U8.pdf", "replaced in the draft");
+        StoredFiles.WriteBoard(this.DraftBoardFile, replaced);
+
+        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftBoardFolder, "Datasheets/U8.pdf", Identity);
+
+        Assert.Equal(this.StoredUnder(this.DraftBoardFolder, replaced), resolved!.FullPath);
+        Assert.Equal(this.DraftBoardFolder, resolved.Root);
+        Assert.True(resolved.IsDrafted);
+    }
+
+    // A seeded draft lists every published file, whose bytes stay in the tree's store.
+    [Fact]
+    public void A_name_the_draft_lists_with_bytes_only_in_the_tree_resolves_to_the_tree()
+    {
+        BoardDocument.StoredFileRow file = StoredFiles.Put(this.DataRoot, "Datasheets/U8.pdf", "published");
+        StoredFiles.WriteBoard(this.DraftBoardFile, file);
+
+        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftBoardFolder, "Datasheets/U8.pdf", Identity);
+
+        Assert.Equal(this.StoredUnder(this.DataRoot, file), resolved!.FullPath);
+        Assert.Equal(this.DataRoot, resolved.Root);
+    }
+
+    // A file just picked in an editor lies in the draft folder under its name until the draft's
+    // next write takes it into the store - it must show at once.
+    [Fact]
+    public void A_new_file_lying_in_the_draft_folder_under_its_name_is_found_there_first()
+    {
+        StoredFiles.WriteBoard(this.DraftBoardFile, StoredFiles.Put(this.DataRoot, "Datasheets/U8.pdf", "published"));
+        string arrived = this.thisWorkspace.WriteFile(Path.Combine(this.DraftBoardFolder, "Datasheets", "U8.pdf"), "just picked");
+
+        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(this.DataRoot, this.DraftBoardFolder, "Datasheets/U8.pdf", Identity);
+
+        Assert.Equal(arrived, resolved!.FullPath);
+        Assert.True(resolved.IsDrafted);
+    }
+
+    // A draft is the whole board: a name it no longer lists (the row was removed) is not found
+    // in the published board behind its back.
+    [Fact]
+    public void A_name_the_draft_does_not_list_is_not_taken_from_the_published_board()
+    {
+        StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "Datasheets/U8.pdf", "published"));
+        StoredFiles.WriteBoard(this.DraftBoardFile);
+
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Datasheets/U8.pdf", Identity));
+    }
+
+    // A name pointing into a store is never a file arriving in the draft folder.
+    [Fact]
+    public void A_name_pointing_into_the_store_is_not_taken_as_an_arrived_file()
+    {
+        StoredFiles.WriteBoard(this.DraftBoardFile);
+        this.thisWorkspace.WriteFile(Path.Combine(this.DraftBoardFolder, "Files", "ab", "x.pdf"), "stored bytes");
+
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "Files/ab/x.pdf", Identity));
+    }
+
+    // A name climbing out of the draft folder is never a file arriving in it - the rule a draft
+    // write takes a new file in by (DraftFiles.TryArrivedPath), so what is shown is what is sent.
+    [Fact]
+    public void A_name_climbing_out_of_the_draft_folder_is_not_taken_as_an_arrived_file()
+    {
+        StoredFiles.WriteBoard(this.DraftBoardFile);
+        this.thisWorkspace.WriteFile(Path.Combine(this.thisWorkspace.Root, "Drafts", "Commodore", "C64", "250469", "Datasheets", "U8.pdf"), "the next board's");
+
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, "../250469/Datasheets/U8.pdf", Identity));
+    }
 }

@@ -292,23 +292,29 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.True(DraftRetirement.IsRetirable(this.Status()));
     }
 
+    // ###########################################################################################
+    // *** IN CRT 4.0 THE FILES ARE NAMED BY THE BOARD AND STORED BY CHECKSUM (2026-10-24). *** A
+    // draft's own bytes are in its store ("Files/<ab>/<sha>"), and a file just picked lies in the
+    // folder under its name until the next write takes it in. Each must be the published board's
+    // for the draft to retire: stored bytes the tree's store holds, a file of a name the published
+    // board lists with the same bytes.
+    // ###########################################################################################
     [Fact]
     public void A_draft_file_REPLACED_under_the_same_name_is_NOT_retirable()
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.Publish("Sheet1.png", "the original scan");
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
-        this.WriteFile(this.PublishedFolder, "Sheet1.png", "the original scan");
         this.WriteFile(this.DraftFolder, "Sheet1.png", "a corrected scan");
 
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
     }
 
     [Fact]
-    public void A_draft_file_the_published_tree_does_NOT_have_is_NOT_retirable()
+    public void A_draft_file_the_published_board_does_NOT_have_is_NOT_retirable()
     {
-        // A new file not yet published - or an Excel lock file, because the workbook is open
-        // right now. Either way the folder is not a duplicate of anything.
+        // A KiCad project imported and not yet published. The folder is not a duplicate of anything.
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
@@ -317,46 +323,77 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
     }
 
-    // ###########################################################################################
-    // *** A SHARED FILE THE CONTRIBUTOR ATTACHED is compared with where it is PUBLISHED - the
-    // shared folder - not with a copy inside the board's folder (2026-09-25). *** Such a file sits
-    // in the draft under its whole path ("Commodore/Shared files/Component images/HotCPU.png").
-    // Compared against the board's published folder it could never match, so a draft holding one
-    // would never be retired after its work was published.
-    // ###########################################################################################
+    // The contributor's new picture, stored in the draft - and now in the tree's store, because
+    // the submission carrying it was published.
     [Fact]
-    public void A_drafted_SHARED_file_that_is_now_published_is_retirable()
+    public void A_drafts_stored_file_that_is_now_published_is_retirable()
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.Publish("Component images/HotCPU.png", "the new image");
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
-        string shared = Path.Combine("Commodore", "Shared files", "Component images", "HotCPU.png");
-        this.WriteFile(this.DataRoot, shared, "the new image");
-        this.WriteFile(this.DraftFolder, shared, "the new image");
+        this.ListInDraft(StoredFiles.Put(this.DraftFolder, "Component images/HotCPU.png", "the new image"));
 
         Assert.True(DraftRetirement.IsRetirable(this.Status()));
     }
 
     [Fact]
-    public void A_drafted_SHARED_file_that_is_not_published_yet_is_NOT_retirable()
+    public void A_drafts_stored_file_that_is_not_published_yet_is_NOT_retirable()
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
-        this.WriteFile(this.DraftFolder, Path.Combine("Generic shared files", "Component images", "7408.jpg"), "new");
+        this.ListInDraft(StoredFiles.Put(this.DraftFolder, "Component images/7408.jpg", "new"));
 
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // ###########################################################################################
+    // Bytes the draft's board file no longer lists are no work of the contributor's (code review,
+    // 2026-10-26): the draft held in memory keeps them in the store while its history could bring a
+    // row back citing them, and the next run's first save tidies them - a run that ended without one
+    // must not keep a published draft for ever.
+    // ###########################################################################################
+    [Fact]
+    public void Stored_bytes_the_drafts_board_file_does_not_list_do_not_keep_it()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        StoredFiles.Put(this.DraftFolder, "Component images/7408.jpg", "a picture added and removed again");
+
+        Assert.True(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // Lists `file` in the draft's board file, as a write of the draft does once a row cites it.
+    private void ListInDraft(BoardDocument.StoredFileRow file)
+    {
+        BoardFiles.Change(this.DraftWorkbook, document => document.Files.Add(file));
+        BoardDataReader.ClearCache(this.DraftWorkbook);
     }
 
     [Fact]
     public void A_draft_whose_files_are_BYTE_IDENTICAL_to_the_published_ones_is_retirable()
     {
-        // What seeding produces: every referenced file copied across unchanged.
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.Publish("Images/Sheet1.png", "same bytes");
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        this.WriteFile(this.DraftFolder, Path.Combine("Images", "Sheet1.png"), "same bytes");
+
+        Assert.True(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // A converted draft keeps its Excel-era files in a folder of CRT's own - never the
+    // contributor's work, and never a reason to keep the draft.
+    [Fact]
+    public void The_Excel_era_files_a_conversion_set_aside_do_not_keep_a_draft()
+    {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
 
-        this.WriteFile(this.PublishedFolder, Path.Combine("Images", "Sheet1.png"), "same bytes");
-        this.WriteFile(this.DraftFolder, Path.Combine("Images", "Sheet1.png"), "same bytes");
+        this.WriteFile(this.DraftFolder, Path.Combine(DraftConversion.OriginalsFolder, "Data C64 250407.xlsx"), "the old workbook");
+        this.WriteFile(this.DraftFolder, Path.Combine(DraftConversion.OriginalsFolder, "Issue 4.B.png"), "an old copy");
 
         Assert.True(DraftRetirement.IsRetirable(this.Status()));
     }
@@ -370,7 +407,8 @@ public sealed class DraftRetirementTests : IDisposable
     // three images byte-identical to stable. With no workbook to compare, every later check refused
     // it, so it stayed - "0 rows changed", with the drift bar up - for good. The delete order is
     // fixed (DraftWorkbookStore.Discard); these are the rule that clears a draft ALREADY in that
-    // state: retired when nothing left in its folder differs from the published board.
+    // state: retired when nothing left in its folder differs from the published board. (A 4.0
+    // draft has no separate highlights file to leave behind - its board file holds them.)
     // ###########################################################################################
 
     // Case 1.
@@ -378,10 +416,11 @@ public sealed class DraftRetirementTests : IDisposable
     public void A_published_draft_that_lost_its_workbook_and_holds_only_files_identical_to_stable_is_retired()
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
-        this.WriteFile(this.PublishedFolder, "Issue 4.B.png", "the published scan");
+        this.Publish("Issue 4.B.png", "the published scan");
 
         this.WriteDraftThatLostItsWorkbook();
         this.WriteFile(this.DraftFolder, "Issue 4.B.png", "the published scan");
+        StoredFiles.Put(this.DraftFolder, "Issue 4.B.png", "the published scan");
 
         RetirableDraft found = Assert.Single(DraftRetirement.FindRetirableDrafts(
             [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published")],
@@ -397,7 +436,7 @@ public sealed class DraftRetirementTests : IDisposable
     public void A_draft_that_lost_its_workbook_is_kept_when_an_image_differs_from_stable()
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
-        this.WriteFile(this.PublishedFolder, "Issue 4.B.png", "the published scan");
+        this.Publish("Issue 4.B.png", "the published scan");
 
         this.WriteDraftThatLostItsWorkbook();
         this.WriteFile(this.DraftFolder, "Issue 4.B.png", "a corrected scan");
@@ -417,30 +456,19 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
     }
 
-    // Case 3, first half: the highlights file was left behind, and it is stable's own.
-    [Fact]
-    public void A_draft_that_lost_its_workbook_is_retired_when_its_highlights_file_is_identical_to_stable()
+    // Case 3: the draft's store was left behind - stable's bytes, or the contributor's own.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_draft_that_lost_its_workbook_is_retired_only_when_its_stored_bytes_are_in_stable(bool published)
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
-        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.PublishedWorkbook), "{ \"highlights\": 1 }");
+        this.Publish("Issue 4.B.png", "the published scan");
 
         this.WriteDraftThatLostItsWorkbook();
-        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.DraftWorkbook), "{ \"highlights\": 1 }");
+        StoredFiles.Put(this.DraftFolder, "Issue 4.B.png", published ? "the published scan" : "the contributor's own scan");
 
-        Assert.True(DraftRetirement.IsRetirable(this.Status()));
-    }
-
-    // Case 3, second half: a highlights file that differs may hold the contributor's own marking.
-    [Fact]
-    public void A_draft_that_lost_its_workbook_is_kept_when_its_highlights_file_differs_from_stable()
-    {
-        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
-        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.PublishedWorkbook), "{ \"highlights\": 1 }");
-
-        this.WriteDraftThatLostItsWorkbook();
-        File.WriteAllText(BoardComponentHighlightStorage.GetJsonPath(this.DraftWorkbook), "{ \"highlights\": 2 }");
-
-        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+        Assert.Equal(published, DraftRetirement.IsRetirable(this.Status()));
     }
 
     // Case 4: the submission is still pending, or only in BETA.
@@ -471,7 +499,7 @@ public sealed class DraftRetirementTests : IDisposable
     public void A_draft_that_still_has_its_workbook_is_judged_by_its_rows_as_before()
     {
         this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
-        this.WriteFile(this.PublishedFolder, "Issue 4.B.png", "the published scan");
+        this.Publish("Issue 4.B.png", "the published scan");
 
         this.WriteDraft(DraftRetirementTests.BoardWith("CPU, edited after submitting"));
         this.WriteFile(this.DraftFolder, "Issue 4.B.png", "the published scan");
@@ -873,7 +901,13 @@ public sealed class DraftRetirementTests : IDisposable
 
     private string DraftFolder => Path.GetDirectoryName(this.DraftWorkbook)!;
 
-    private string PublishedFolder => Path.GetDirectoryName(this.PublishedWorkbook)!;
+    // A file of the published board: its bytes in the tree's store, its name in the board file.
+    private void Publish(string name, string content)
+    {
+        BoardDocument.StoredFileRow file = StoredFiles.Put(this.DataRoot, name, content);
+        BoardFiles.Change(this.PublishedWorkbook, document => document.Files.Add(file));
+        BoardDataReader.ClearCache(this.PublishedWorkbook);
+    }
 
     private void WriteFile(string folder, string relative, string content)
     {

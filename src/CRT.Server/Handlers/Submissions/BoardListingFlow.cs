@@ -169,7 +169,7 @@ namespace CRT.Server.Handlers.Submissions
                 return SetPlacementOutcome.Conflict(BoardListingRules.NoMasterMessage);
 
             if (!MasterListing.TryRead(master, out IReadOnlyList<MasterListingRow> rows, out string why))
-                return SetPlacementOutcome.Conflict($"The main Excel data file could not be read: {why}");
+                return SetPlacementOutcome.Conflict($"BETA's main data file could not be read: {why}");
 
             if (MasterListing.IndexOfBoard(rows, boardId) >= 0)
                 return SetPlacementOutcome.Conflict(BoardListingRules.AlreadyListedMessage);
@@ -178,7 +178,7 @@ namespace CRT.Server.Handlers.Submissions
                 return SetPlacementOutcome.Conflict(MasterListing.NamesTakenMessage(taken));
 
             if (!BoardListingRules.AfterIsListed(rows, placement.AfterExcelDataFile))
-                return SetPlacementOutcome.BadRequest($"[{placement.AfterExcelDataFile}] is not in the list. Reload the Boards screen and place it again.");
+                return SetPlacementOutcome.BadRequest($"[{BoardDescriptorRules.BoardIdFromExcelDataFile(placement.AfterExcelDataFile)}] is not in the list. Reload the Boards screen and place it again.");
 
             BoardRecord? boardRecord = await this.thisStore.FindBoardAsync(boardId, cancellationToken);
             PublishedBoardLocation board = PublishedBoardLocator.LocateBoard(betaRoot, boardId);
@@ -248,7 +248,7 @@ namespace CRT.Server.Handlers.Submissions
     public static class BoardListingRules
     {
         public const string NoMasterMessage =
-            "BETA has no versioned main Excel data file to add the board to. Create it on the server first.";
+            "BETA has no main data file to add the board to. Create it on the server first.";
 
         public const string AlreadyListedMessage =
             "This board is already in the drop-down lists. Only a board not listed yet can be placed.";
@@ -327,13 +327,28 @@ namespace CRT.Server.Handlers.Submissions
                 after.Length == 0 ? null : after);
 
             return MasterListing.IsWritableRow(
-                new MasterListingRow(placement.HardwareName, placement.BoardName, boardId + "/x.xlsx", placement.Notes),
+                new MasterListingRow(placement.HardwareName, placement.BoardName, DataTreeLayout.BoardFilePath(boardId), placement.Notes),
                 out problem);
         }
 
-        public static bool AfterIsListed(IReadOnlyList<MasterListingRow> rows, string? afterExcelDataFile) =>
-            string.IsNullOrWhiteSpace(afterExcelDataFile) ||
-            rows.Any(row => string.Equals(row.ExcelDataFile, afterExcelDataFile.Trim(), StringComparison.OrdinalIgnoreCase));
+        // ###########################################################################################
+        // Whether the row a board is placed after is still listed - by its file, or by the board it
+        // names: a placement saved before the CRT 4.0 tree names that board's WORKBOOK
+        // ("…/Data C64 250407 v3.0.0.xlsx"), and the 4.0 list names its board file (2026-10-25). The
+        // main file's insert finds it the same way (MasterListing).
+        // ###########################################################################################
+        public static bool AfterIsListed(IReadOnlyList<MasterListingRow> rows, string? afterExcelDataFile)
+        {
+            if (string.IsNullOrWhiteSpace(afterExcelDataFile))
+                return true;
+
+            string after = afterExcelDataFile.Trim();
+            string afterBoard = BoardDescriptorRules.BoardIdFromExcelDataFile(after);
+
+            return rows.Any(row =>
+                string.Equals(row.ExcelDataFile, after, StringComparison.OrdinalIgnoreCase) ||
+                (afterBoard.Length > 0 && string.Equals(row.BoardId, afterBoard, StringComparison.OrdinalIgnoreCase)));
+        }
 
         // The row a placement becomes, naming the board workbook by its path from the data root.
         public static MasterListingRow RowFor(BoardPlacement placement, string dataRoot, string workbookPath)

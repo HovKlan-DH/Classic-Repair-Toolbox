@@ -38,8 +38,9 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Each entry's size, where its bytes are: BETA's tree, production's, or the submission's
-        // upload (`submitted`, path -> bytes, from its manifest).
+        // Each entry's size, where its bytes are: BETA's tree, production's (at the entry's place in
+        // it - a 4.0 tree's stored file, BoardFileEntry.TreePath), or the submission's upload
+        // (`submitted`, name -> bytes, from its manifest).
         // ###########################################################################################
         public static IReadOnlyList<BoardFileEntry> Attach(
             IReadOnlyList<BoardFileEntry> entries,
@@ -48,8 +49,8 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyDictionary<string, long>? submitted = null) =>
             BoardFileEntries.WithSizes(entries, entry => entry.OpenFrom switch
             {
-                BoardFileSource.Beta => TreeFileSizes.Of(betaRoot, entry.Path),
-                BoardFileSource.Production => TreeFileSizes.Of(productionRoot, entry.Path),
+                BoardFileSource.Beta => TreeFileSizes.Of(betaRoot, entry.PlaceInTree),
+                BoardFileSource.Production => TreeFileSizes.Of(productionRoot, entry.PlaceInTree),
                 BoardFileSource.Submission => submitted is not null && submitted.TryGetValue(entry.Path, out long size) ? size : null,
                 _ => null
             });

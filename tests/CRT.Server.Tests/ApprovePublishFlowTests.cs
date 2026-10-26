@@ -41,21 +41,17 @@ namespace CRT.Server.Tests
             Directory.CreateDirectory(this.thisDataTree);
             Directory.CreateDirectory(this.thisBlobRoot);
 
-            // *** THE TREE'S MASTER WORKBOOKS, because they ARE the generations. *** A real tree
-            // carries both: the unversioned original serving every pre-2.0.0 build, and the v2.0.0
-            // one serving 2.0.0 and newer. A NEW board has no files of its own to read a
-            // generation from, so it takes the newest of these - without them a publish is refused
-            // rather than writing the frozen unversioned tree.
-            //
-            // The v2.0.0 one is a REAL workbook listing one other board (2026-09-27): a NEW board's
-            // publish adds its row to it (MasterListing), and a placeholder text file cannot take one.
-            File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.xlsx"), "master");
+            // *** THE TREE'S MAIN FILE (CRT 4.0, 2026-10-25), listing one other board. *** A NEW
+            // board's publish adds its row to it (MasterListing, 2026-09-27); without it a new board
+            // is refused, since it could never be listed. The other board's own file is not there,
+            // so a removal preview reads this tree as incomplete - the tests of removals write a
+            // complete one (UseRealTree).
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard);
         }
 
         // The board the fixture master lists - somewhere for a new board to be placed after.
         internal static readonly MasterListingRow OtherListedBoard =
-            new("Amstrad CPC 664", "MC0005A", "Amstrad/CPC 664/MC0005A/Data CPC 664 MC0005A v2.0.0.xlsx", string.Empty);
+            new("Amstrad CPC 664", "MC0005A", "Amstrad/CPC 664/MC0005A/board.json", string.Empty);
 
         // Where the fixture places its new board - after the one other board.
         internal static BoardPlacement Placement(string hardware = "Commodore 64", string board = "250407") =>
@@ -84,8 +80,8 @@ namespace CRT.Server.Tests
                 accounts ?? new FakeAccountStore(),
                 NullLogger<ApprovePublishFlow>.Instance);
 
-        // An account store in which the board HAS a maintainer - which is what makes a shared-file
-        // change need two approvals rather than the administrator's alone.
+        // An account store in which the board HAS a maintainer - which made a shared-file change
+        // need two approvals in the Excel tree; in the 4.0 tree one approval still publishes.
         private static FakeAccountStore AccountsWithAMaintainer()
         {
             // The pool row AND its account: the store drops a row whose account is missing, as
@@ -221,7 +217,7 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsPublished, outcome.Error);
 
             string workbook = Path.Combine(
-                this.thisDataTree, "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx");
+                this.thisDataTree, "Commodore", "C64", "250407", "board.json");
 
             Assert.True(File.Exists(workbook));
 
@@ -244,7 +240,7 @@ namespace CRT.Server.Tests
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             string workbook = Path.Combine(
-                this.thisDataTree, "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx");
+                this.thisDataTree, "Commodore", "C64", "250407", "board.json");
 
             ComponentHighlightEntry highlight = Assert.Single(
                 BoardComponentHighlightStorage.LoadComponentHighlights(workbook));
@@ -293,11 +289,11 @@ namespace CRT.Server.Tests
             string hash = await this.PutBlobAsync(image);
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
-                // Data-root-relative, which is the only shape a real board produces - see
-                // PublishPlan's header for what the old "Images/sheet1.png" shape concealed.
+                // The board's NAME for the file (CRT 4.0 tree, 2026-10-25) - the tree decides
+                // where its bytes lie.
                 ApprovePublishFlowTests.Manifest(new SubmissionFile
                 {
-                    Path = "Commodore/C64/250407/Images/sheet1.png",
+                    Path = "Images/sheet1.png",
                     Sha256 = hash,
                     SizeBytes = image.LongLength
                 }));
@@ -308,9 +304,16 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
 
-            Assert.Equal(image, await File.ReadAllBytesAsync(Path.Combine(
-                this.thisDataTree, "Commodore", "C64", "250407", "Images", "sheet1.png")));
+            // Stored once under its checksum, and listed by the board under its name.
+            Assert.Equal(image, await File.ReadAllBytesAsync(DataTreeBuilder.Full(
+                this.thisDataTree, DataTreeLayout.StoredFilePath(hash, "Images/sheet1.png"))));
+            Assert.Equal("Images/sheet1.png", this.PublishedListing().Single().Name);
+            Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Images")));
         }
+
+        // What the published board file lists.
+        private IReadOnlyList<BoardDocument.StoredFileRow> PublishedListing() =>
+            BoardFiles.ReadDocument(DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.BoardFile))!.Files;
 
         // ###########################################################################################
         // *** A RENAME THAT IS PUBLISHED IS LISTED IN THE BOARD'S .json (owner decision, 2026-10-10:
@@ -325,7 +328,7 @@ namespace CRT.Server.Tests
         {
             byte[] image = PublishExecutorTests.Png("PNGDATA");
             string hash = await this.PutBlobAsync(image);
-            var file = new SubmissionFile { Path = "Commodore/C64/250407/Images/top.png", Sha256 = hash, SizeBytes = image.LongLength };
+            var file = new SubmissionFile { Path = "Images/top.png", Sha256 = hash, SizeBytes = image.LongLength };
 
             SubmissionManifest Named(string name)
             {
@@ -356,7 +359,7 @@ namespace CRT.Server.Tests
             ApproveOutcome published = await flow.ApproveAsync(first, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
             Assert.True(published.IsPublished, published.Error);
 
-            string workbook = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx");
+            string workbook = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "board.json");
             Assert.Empty(BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
 
             long second = await PendingWithAsync(store, Named("PCB top side"), "renamer@example.com");
@@ -400,7 +403,7 @@ namespace CRT.Server.Tests
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
                 ApprovePublishFlowTests.Manifest(new SubmissionFile
                 {
-                    Path = "Commodore/C64/250407/Images/sheet1.png",
+                    Path = "Images/sheet1.png",
                     Sha256 = hash,
                     SizeBytes = image.LongLength
                 }));
@@ -415,7 +418,7 @@ namespace CRT.Server.Tests
 
             Assert.True(changes.IsNewBoard);
             Assert.Equal(1, changes.Sections.Single(section => section.Section == BoardWorkbookSchema.SheetComponents).AddedCount);
-            Assert.Equal(["Commodore/C64/250407/Images/sheet1.png"], changes.Files.Added);
+            Assert.Equal(["Images/sheet1.png"], changes.Files.Added);
             Assert.Empty(changes.Files.Replaced);
         }
 
@@ -456,7 +459,7 @@ namespace CRT.Server.Tests
             string stable = Path.Combine(this.thisRoot, "app-data", "Data");
             string stableBoard = Path.Combine(stable, "Commodore", "C64", "250407");
             Directory.CreateDirectory(stableBoard);
-            File.WriteAllText(Path.Combine(stableBoard, "Data C64 250407 v2.0.0.xlsx"), "the stable copy");
+            File.WriteAllText(Path.Combine(stableBoard, "board.json"), "the stable copy");
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -483,7 +486,7 @@ namespace CRT.Server.Tests
             string stable = Path.Combine(this.thisRoot, "app-data", "Data");
             string stableBoard = Path.Combine(stable, "Commodore", "C64", "250407");
             Directory.CreateDirectory(stableBoard);
-            File.WriteAllText(Path.Combine(stableBoard, "Data C64 250407 v2.0.0.xlsx"), "the stable copy");
+            File.WriteAllText(Path.Combine(stableBoard, "board.json"), "the stable copy");
 
             SubmissionManifest manifest = ApprovePublishFlowTests.Manifest();
 
@@ -715,276 +718,73 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A FILE THE CONTRIBUTOR LEFT ALONE IS NOT REVERTED. *** S1 cites a shared file exactly as
+        // *** A FILE THE CONTRIBUTOR LEFT ALONE IS NOT REVERTED. *** S1 lists a file exactly as
         // published; S2 replaces it and is published; S1 is approved later. S1's copy of the OLD
-        // bytes used to go back over S2's - for every board citing the file - because a manifest
-        // carries every file the board cites. What S1 left as published at create is recorded, and
-        // the approval leaves it as it is published now.
+        // bytes used to go back over S2's, because a manifest carries every file the board lists.
+        // What S1 left as published at create is recorded, and the approval leaves it as it is
+        // published now. In the CRT 4.0 tree (2026-10-25) a file is the board's NAME for it.
         // ###########################################################################################
         [Fact]
-        public async Task A_shared_file_a_submission_left_unchanged_keeps_the_bytes_a_later_publish_gave_it()
+        public async Task A_file_a_submission_left_unchanged_keeps_the_bytes_a_later_publish_gave_it()
         {
-            const string shared = "Commodore/Shared files/Board local files/pinout.txt";
-            string onDisk = DataTreeBuilder.Full(this.thisDataTree, shared);
+            const string name = "pinout.txt";
+            this.UseRealTree();
 
-            // S1 is created while the shared file is as published, and cites it unchanged.
+            // S1 is created while the file is as published, and lists it unchanged.
             byte[] asPublished = Encoding.UTF8.GetBytes("the pinout as published when S1 was made");
-            File.WriteAllBytes(onDisk, asPublished);
+            DataTreeBuilder.BoardWithBytes(this.thisDataTree, ApprovePublishFlowTests.BoardId, (name, asPublished));
             string oldHash = await this.PutBlobAsync(asPublished);
 
-            var cited = new SubmissionFile { Path = shared, Sha256 = oldHash, SizeBytes = asPublished.Length };
+            var cited = new SubmissionFile { Path = name, Sha256 = oldHash, SizeBytes = asPublished.Length };
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
                 ApprovePublishFlowTests.Manifest(cited),
                 leftAsPublished: [cited]);
 
-            // S2 replaces the shared file and is published.
-            File.WriteAllText(onDisk, "the corrected pinout S2 published");
-
-            // S1 is approved - on ONE approval: nothing of it replaces a shared file any more.
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal("the corrected pinout S2 published", File.ReadAllText(onDisk));
-        }
-
-        // A file the contributor CHANGED is no such file: its bytes are published as before.
-        [Fact]
-        public async Task A_file_the_submission_changed_is_still_published_whatever_the_record_says_of_others()
-        {
-            const string shared = "Commodore/Shared files/Board local files/pinout.txt";
-            string onDisk = DataTreeBuilder.Full(this.thisDataTree, shared);
-            File.WriteAllText(onDisk, "the pinout as published");
-
-            byte[] better = Encoding.UTF8.GetBytes("the contributor's better pinout");
-            string hash = await this.PutBlobAsync(better);
-
-            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
-                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = shared, Sha256 = hash, SizeBytes = better.Length }),
-                leftAsPublished: []);
+            // S2 replaces the file and is published.
+            DataTreeBuilder.Board(this.thisDataTree, ApprovePublishFlowTests.BoardId, (name, "the corrected pinout S2 published"));
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree,
                 ApprovePublishFlowTests.Now, CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal("the contributor's better pinout", File.ReadAllText(onDisk));
+            Assert.Equal("the corrected pinout S2 published", this.PublishedContentOf(name));
         }
 
-        // -----------------------------------------------------------------------------------
-        // REPLACING a shared file needs the board's maintainer AND the administrator (2026-09-25;
-        // since 2026-09-27 only a replacement - adding a new shared file needs one approval).
-        // -----------------------------------------------------------------------------------
-
-        private const string PublishedSharedFile = "Commodore/Shared files/Board local files/manual.txt";
-        private const string PublishedSharedText = "the manual as published";
-
-        // A submission that REPLACES a shared file the tree already has with different bytes - the
-        // one kind that still needs the administrator. The flag is what the create path stores.
-        private async Task<(FakeSubmissionStore Store, long Id)> SharedPendingAsync()
+        // A file the contributor CHANGED is no such file: its bytes are published as before.
+        [Fact]
+        public async Task A_file_the_submission_changed_is_still_published_whatever_the_record_says_of_others()
         {
-            File.WriteAllText(DataTreeBuilder.Full(this.thisDataTree, ApprovePublishFlowTests.PublishedSharedFile), ApprovePublishFlowTests.PublishedSharedText);
+            const string name = "pinout.txt";
+            this.UseRealTree();
+            DataTreeBuilder.Board(this.thisDataTree, ApprovePublishFlowTests.BoardId, (name, "the pinout as published"));
 
-            byte[] better = Encoding.UTF8.GetBytes("a better manual");
+            byte[] better = Encoding.UTF8.GetBytes("the contributor's better pinout");
             string hash = await this.PutBlobAsync(better);
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
-                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = ApprovePublishFlowTests.PublishedSharedFile, Sha256 = hash, SizeBytes = better.Length }));
+                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = name, Sha256 = hash, SizeBytes = better.Length }),
+                leftAsPublished: []);
 
-            store.Submissions[id] = store.Submissions[id] with { TouchesSharedFiles = true };
-            return (store, id);
-        }
-
-        // Nothing of the board written, and the shared file still as published.
-        private void AssertNothingPublished()
-        {
-            Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore", "C64")));
-            Assert.Equal(ApprovePublishFlowTests.PublishedSharedText, File.ReadAllText(DataTreeBuilder.Full(this.thisDataTree, ApprovePublishFlowTests.PublishedSharedFile)));
-        }
-
-        [Fact]
-        public async Task The_MAINTAINERS_approval_of_a_shared_change_alone_publishes_NOTHING()
-        {
-            // *** THE PROJECT OWNER'S RULE, asserted on the DISK. *** The maintainer's approval is
-            // recorded and the submission waits - in the queue, as 'approved' - for the
-            // administrator's.
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.False(outcome.IsPublished);
-            Assert.True(outcome.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Administrator], outcome.WaitingFor);
-
-            this.AssertNothingPublished();
-            Assert.Equal(SubmissionState.Approved, (await store.FindAsync(id, CancellationToken.None))!.State);
-            Assert.Equal(ApproverRole.Maintainer, Assert.Single(await store.GetApprovalsAsync(id)).Role);
-            Assert.Contains(await store.GetQueueAsync(100), record => record.Id == id);
-        }
-
-        [Fact]
-        public async Task The_ADMINISTRATORS_approval_after_the_maintainers_publishes_it()
-        {
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
-
-            await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
-                ApprovePublishFlowTests.Now.AddMinutes(5), CancellationToken.None);
-
-            Assert.True(second.IsPublished, second.Error);
-            Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
-            Assert.Equal(
-                [ApproverRole.Maintainer, ApproverRole.Administrator],
-                (await store.GetApprovalsAsync(id)).Select(approval => approval.Role));
-        }
-
-        [Fact]
-        public async Task Either_may_go_FIRST_the_administrator_then_the_maintainer_publishes_too()
-        {
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
-
-            ApproveOutcome first = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.True(first.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Maintainer], first.WaitingFor);
-
-            ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now.AddMinutes(5), CancellationToken.None);
-
-            Assert.True(second.IsPublished, second.Error);
-        }
-
-        [Fact]
-        public async Task The_same_role_approving_TWICE_is_refused_and_still_publishes_nothing()
-        {
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
-
-            await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            ApproveOutcome again = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now.AddMinutes(1), CancellationToken.None);
-
-            Assert.True(again.IsConflict);
-            Assert.Contains("already approved", again.Error, StringComparison.Ordinal);
-            this.AssertNothingPublished();
-        }
-
-        // ###########################################################################################
-        // *** A BOARD'S SECOND MAINTAINER IS TOLD WHO APPROVED - NOT "YOU HAVE" (code review,
-        // 2026-09-25). *** The maintainer half is done either way, so the refusal stands; what was
-        // wrong was the sentence, which named the wrong person.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_SECOND_maintainer_of_the_board_is_told_a_colleague_approved_rather_than_that_they_did()
-        {
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
-
-            await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            ReviewAccess colleague = ReviewAccess.For(
-                ApprovePublishFlowTests.AccountRecord(administrator: false) with { Id = 8, Email = "bo@example.com", DisplayName = "Bo" },
-                [ApprovePublishFlowTests.BoardId]);
-
-            ApproveOutcome refused = await this.Flow(store, accounts).ApproveAsync(
-                id, colleague, this.thisDataTree, ApprovePublishFlowTests.Now.AddMinutes(1), CancellationToken.None);
-
-            Assert.True(refused.IsConflict);
-            Assert.DoesNotContain("You have", refused.Error, StringComparison.Ordinal);
-            Assert.Contains("Maintainer (maintainer@example.com) has already approved", refused.Error, StringComparison.Ordinal);
-            Assert.Contains("waiting for the administrator", refused.Error, StringComparison.Ordinal);
-            this.AssertNothingPublished();
-        }
-
-        // ###########################################################################################
-        // *** A POOL ROW THAT CANNOT GIVE THE MAINTAINER HALF DOES NOT COUNT (code review,
-        // 2026-09-25). *** An account granted a pool and later made administrator by hand keeps its
-        // row but approves as the administrator; a locked or unverified one cannot approve at all.
-        // Counted as "the board has a maintainer", each made a shared-file change wait for ever for a
-        // maintainer approval nobody could give.
-        // ###########################################################################################
-        [Theory]
-        [InlineData("administrator")]
-        [InlineData("locked")]
-        [InlineData("unverified")]
-        public async Task A_pool_row_that_cannot_approve_as_a_maintainer_leaves_the_administrator_to_decide_alone(string kind)
-        {
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-
-            Handlers.Accounts.AccountRecord member = ApprovePublishFlowTests.AccountRecord(administrator: false) with { Id = 9 };
-
-            member = kind switch
-            {
-                "administrator" => member with { IsAdministrator = true },
-                "locked" => member with { IsLocked = true },
-                _ => member with { IsVerified = false }
-            };
-
-            var accounts = new FakeAccountStore();
-            accounts.Accounts[9] = member;
-            accounts.Maintainers.Add((ApprovePublishFlowTests.BoardId, 9));
-
-            ApproveOutcome outcome = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
+            // The bytes it replaces are listed by nothing afterwards, so they go - shown first.
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
+                [DataTreeBuilder.Stored("the pinout as published", name)], CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal("the contributor's better pinout", this.PublishedContentOf(name));
         }
 
-        // ###########################################################################################
-        // *** WHETHER A SHARED FILE CHANGES IS DECIDED AGAINST THE TREE AS IT IS NOW (code review,
-        // 2026-09-25). *** The flag was frozen at create: a submission citing a shared file
-        // UNCHANGED was an ordinary one-approval item for ever. Once another publish changed that
-        // file, this submission's old bytes would REVERT it for every board - on one maintainer's
-        // approval, with the administrator never asked.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_shared_file_whose_published_copy_CHANGED_since_the_submission_arrived_needs_both_approvals()
+        // What the published board file lists under `name`, read through its stored bytes.
+        private string? PublishedContentOf(string name)
         {
-            const string shared = "Commodore/Shared files/Board local files/notes.txt";
-            string onDisk = DataTreeBuilder.Full(this.thisDataTree, shared);
+            BoardDocument? document = BoardFiles.ReadDocument(DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.BoardFile));
+            BoardDocument.StoredFileRow? row = document?.Files.FirstOrDefault(file => string.Equals(file.Name, name, StringComparison.Ordinal));
 
-            // The submission arrived citing the shared file as it was then - unchanged, so not a
-            // shared change at the time...
-            byte[] oldBytes = Encoding.UTF8.GetBytes("the notes as they were");
-            string oldHash = await this.PutBlobAsync(oldBytes);
-
-            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
-                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = shared, Sha256 = oldHash, SizeBytes = oldBytes.Length }));
-
-            Assert.False(store.Submissions[id].TouchesSharedFiles);
-
-            // ...and another publish has changed the shared file since.
-            File.WriteAllText(onDisk, "the notes as another publish left them");
-
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.False(outcome.IsPublished);
-            Assert.True(outcome.IsAwaitingApproval);
-            Assert.Equal([ApproverRole.Administrator], outcome.WaitingFor);
-            Assert.Equal("the notes as another publish left them", File.ReadAllText(onDisk));
-
-            // Recorded, so the queue shows it as the administrator's too.
-            Assert.True(store.Submissions[id].TouchesSharedFiles);
+            return row is null
+                ? null
+                : File.ReadAllText(DataTreeBuilder.Full(this.thisDataTree, DataTreeLayout.StoredFilePath(row.Sha256, row.Name)));
         }
 
         // ###########################################################################################
@@ -993,6 +793,11 @@ namespace CRT.Server.Tests
         // mailed that their approval was needed - before the payload was read or the plan built,
         // so a submission the plan refuses was only refused at the SECOND approval, in the hands of
         // the person who had just been asked to give it.
+        //
+        // In the CRT 4.0 tree (2026-10-25) nothing is shared, so no submission needs two approvals
+        // any more; the shared-file approval cases this class had went with the shared files
+        // (ApprovalRules keeps its own tests). This one stays: a submission flagged under the old
+        // rule is still refused by its plan before anything of it is recorded.
         // ###########################################################################################
         [Fact]
         public async Task A_submission_the_plan_refuses_is_refused_BEFORE_its_first_approval_is_recorded()
@@ -1000,7 +805,7 @@ namespace CRT.Server.Tests
             // A file no row cites: the publish plan refuses it.
             SubmissionManifest manifest = ApprovePublishFlowTests.Manifest(new SubmissionFile
             {
-                Path = "Commodore/C64/250407/notes.txt", Sha256 = new string('b', 64), SizeBytes = 3
+                Path = "notes.txt", Sha256 = new string('b', 64), SizeBytes = 3
             });
             manifest.Rows.BoardLocalFiles.Clear();
 
@@ -1016,45 +821,6 @@ namespace CRT.Server.Tests
             Assert.Contains("cannot be published", outcome.Error, StringComparison.Ordinal);
             Assert.Empty(await store.GetApprovalsAsync(id));
             Assert.Equal(SubmissionState.Pending, (await store.FindAsync(id, CancellationToken.None))!.State);
-        }
-
-        // ###########################################################################################
-        // *** THE REQUIREMENT SHRINKING AFTER THE FIRST APPROVAL DOES NOT STRAND THE ITEM (code
-        // review, 2026-09-25). *** The administrator approves first; the board's only maintainer then
-        // leaves its pool, so the change needs the administrator alone - who was refused as
-        // "already approved" while nobody else could approve. See ApprovalRules.Status.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_shared_change_whose_maintainer_LEAVES_after_the_administrator_approved_is_then_published_by_the_administrator()
-        {
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-            FakeAccountStore accounts = ApprovePublishFlowTests.AccountsWithAMaintainer();
-
-            ApproveOutcome first = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.True(first.IsAwaitingApproval);
-
-            accounts.Maintainers.Clear();
-
-            ApproveOutcome second = await this.Flow(store, accounts).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree,
-                ApprovePublishFlowTests.Now.AddMinutes(5), CancellationToken.None);
-
-            Assert.True(second.IsPublished, second.Error);
-            Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
-        }
-
-        [Fact]
-        public async Task A_shared_change_on_a_board_with_NO_maintainers_is_published_by_the_administrator_alone()
-        {
-            // Nobody to ask for the other half.
-            (FakeSubmissionStore store, long id) = await this.SharedPendingAsync();
-
-            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.True(outcome.IsPublished, outcome.Error);
         }
 
         [Fact]
@@ -1125,7 +891,7 @@ namespace CRT.Server.Tests
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
                 ApprovePublishFlowTests.Manifest(new SubmissionFile
                 {
-                    Path = "Commodore/C64/250407/Images/missing.png", Sha256 = new string('a', 64), SizeBytes = 10
+                    Path = "Images/missing.png", Sha256 = new string('a', 64), SizeBytes = 10
                 }));
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
@@ -1152,18 +918,14 @@ namespace CRT.Server.Tests
             Assert.False(outcome.IsPublished);
         }
 
+        // ###########################################################################################
+        // *** A BOARD IS PUBLISHED AS ITS BOARD FILE, AND NOTHING EXCEL (CRT 4.0, 2026-10-25). *** The
+        // Excel generations are frozen for older CRTs in trees of their own; this tree holds the
+        // board file and the bytes it lists, nothing else in the board's folder.
+        // ###########################################################################################
         [Fact]
-        public async Task A_NEW_BOARD_publishes_into_the_NEWEST_generation_and_never_the_frozen_one()
+        public async Task A_NEW_board_is_published_as_its_board_file_alone()
         {
-            // *** THE PROJECT OWNER'S RULE, and the bug that writing these tests caught. *** A new
-            // board's folder is EMPTY, so the generation cannot be read from it - and the first
-            // version of this flow fell back to "no version", publishing
-            // "Data C64 250407.xlsx". That is the frozen file serving every pre-2.0.0 build, the
-            // one file the project owner said must never be written.
-            //
-            // The generation now comes from the TREE's master workbooks instead. Asserted by the
-            // ABSENCE of the unversioned file as well as the presence of the versioned one: only
-            // checking the latter would pass against a flow that wrote both.
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
@@ -1174,17 +936,17 @@ namespace CRT.Server.Tests
 
             string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
 
-            Assert.True(File.Exists(Path.Combine(folder, "Data C64 250407 v2.0.0.xlsx")));
-            Assert.False(File.Exists(Path.Combine(folder, "Data C64 250407.xlsx")));
+            Assert.Equal(["board.json"], Directory.GetFiles(folder, "*", SearchOption.AllDirectories).Select(Path.GetFileName));
         }
 
+        // ###########################################################################################
+        // A tree with no main file - a fresh or half-set-up one - cannot list a new board, so the
+        // publish is refused outright rather than writing a board nobody could choose.
+        // ###########################################################################################
         [Fact]
-        public async Task A_tree_with_NO_versioned_master_REFUSES_rather_than_writing_the_frozen_file()
+        public async Task A_tree_with_NO_main_file_refuses_a_new_board_and_writes_nothing()
         {
-            // The other half of the rule. With no generation to be found anywhere, publishing
-            // would have to write the unversioned file - so it is refused outright rather than
-            // guessed at. This is the case a fresh or half-set-up tree presents.
-            File.Delete(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx"));
+            File.Delete(Path.Combine(this.thisDataTree, DataTreeLayout.MainFileName));
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -1194,17 +956,30 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsPublished);
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
+            Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, DataTreeLayout.FilesFolder)));
         }
 
+        // ###########################################################################################
+        // An EXISTING board's file is replaced with the submission's rows - and a field a newer CRT
+        // wrote into it that this server does not know is KEPT (DataTreeJson: a field is never
+        // dropped by a reader that does not know it).
+        // ###########################################################################################
         [Fact]
-        public async Task An_EXISTING_board_keeps_publishing_into_its_own_generation()
+        public async Task An_EXISTING_boards_file_is_replaced_and_keeps_the_fields_this_server_does_not_know()
         {
-            // The anti-vacuity half: the tree-level fallback must only apply when the board's own
-            // folder says nothing. A board already on v2.0.0 reads its generation from its own
-            // files, as it always did.
-            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
-            Directory.CreateDirectory(folder);
-            await File.WriteAllTextAsync(Path.Combine(folder, "Data C64 250407 v2.0.0.xlsx"), "placeholder");
+            DataTreeBuilder.Board(
+                this.thisDataTree,
+                ApprovePublishFlowTests.BoardId,
+                new BoardData { RevisionDate = "2026-August-21", Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU" }] },
+                []);
+
+            string boardFile = DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.BoardFile);
+            BoardDocument existing = BoardFiles.ReadDocument(boardFile)!;
+            existing.Unknown = new Dictionary<string, System.Text.Json.JsonElement>
+            {
+                ["aFieldFromANewerCrt"] = System.Text.Json.JsonDocument.Parse("7").RootElement.Clone()
+            };
+            BoardFiles.Write(boardFile, existing);
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -1214,11 +989,11 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
 
-            BoardData? published = await BoardDataReader.LoadAsync(
-                Path.Combine(folder, "Data C64 250407 v2.0.0.xlsx"),
-                "existing-" + Guid.NewGuid().ToString("N"));
-
+            BoardData? published = await BoardDataReader.LoadAsync(boardFile, "existing-" + Guid.NewGuid().ToString("N"));
             Assert.Equal("U8", Assert.Single(published!.Components).BoardLabel);
+
+            BoardDocument written = BoardFiles.ReadDocument(boardFile)!;
+            Assert.Equal(7, written.Unknown!["aFieldFromANewerCrt"].GetInt32());
         }
 
         [Fact]
@@ -1255,7 +1030,7 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsPublished, outcome.Error);
 
             string workbook = Path.Combine(
-                this.thisDataTree, "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx");
+                this.thisDataTree, "Commodore", "C64", "250407", "board.json");
 
             Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(
                 workbook, "Sheet 1",
@@ -1327,34 +1102,40 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsPublished, outcome.Error);
 
             BoardData? published = await BoardDataReader.LoadAsync(
-                Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx"),
+                Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "board.json"),
                 "approve2-" + Guid.NewGuid().ToString("N"));
 
             Assert.Equal("U9", Assert.Single(published!.Components).BoardLabel);
         }
+
         // ###########################################################################################
         // FILES THE BOARD NO LONGER USES ARE REMOVED - AND ONLY THOSE THE MAINTAINER WAS SHOWN
         // (owner decisions, 2026-09-25: "there must be no orphan files", and the list "must be
         // visible BEFORE the maintainer/admin approves it").
         //
-        // These need a REAL master: the placeholder the constructor writes makes the tree
-        // unreadable, and an unreadable tree removes nothing.
+        // In the CRT 4.0 tree (2026-10-25) what goes is a STORED file ("Files/<ab>/<sha256>.<ext>")
+        // no board lists any more; the list matched is of those, and the maintainer reads each by
+        // the name the board knew it by (FileRemovalPreview.Names, ApproveOutcome.RemovedFiles).
+        //
+        // These need a COMPLETE tree: the constructor's main file lists a board whose file is not
+        // there, and a tree that cannot be read completely removes nothing.
         // ###########################################################################################
-        private void UseRealTree(params string[] alsoListed)
-        {
-            File.Delete(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.xlsx"));
-            DataTreeBuilder.Master(this.thisDataTree, [DataTreeBuilder.Workbook, .. alsoListed]);
-        }
+        private void UseRealTree(params string[] alsoListed) =>
+            DataTreeBuilder.Master(this.thisDataTree, [ApprovePublishFlowTests.BoardId, .. alsoListed]);
 
-        private const string OldManual = "Commodore/C64/250407/old-manual.pdf";
+        private const string OldManualName = "old-manual.pdf";
+        private const string OldManualContent = "the old manual";
 
-        // The published board cites a manual; the submission (rows only) no longer does.
-        private async Task<(FakeSubmissionStore Store, long Id, SubmissionManifest Manifest)> DroppingTheManualAsync(params string[] alsoCited)
+        private static readonly string OldManual = DataTreeBuilder.Stored(ApprovePublishFlowTests.OldManualContent, ApprovePublishFlowTests.OldManualName);
+
+        // The published board lists a manual; the submission (rows only) no longer does.
+        private async Task<(FakeSubmissionStore Store, long Id, SubmissionManifest Manifest)> DroppingTheManualAsync(params (string Name, string Content)[] alsoListed)
         {
             this.UseRealTree();
-            DataTreeBuilder.Board(this.thisDataTree, DataTreeBuilder.Workbook, [ApprovePublishFlowTests.OldManual, .. alsoCited]);
-            DataTreeBuilder.Files(this.thisDataTree, ApprovePublishFlowTests.OldManual);
-            DataTreeBuilder.Files(this.thisDataTree, alsoCited);
+            DataTreeBuilder.Board(
+                this.thisDataTree,
+                ApprovePublishFlowTests.BoardId,
+                [(ApprovePublishFlowTests.OldManualName, ApprovePublishFlowTests.OldManualContent), .. alsoListed]);
 
             SubmissionManifest manifest = ApprovePublishFlowTests.Manifest();
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(manifest);
@@ -1373,6 +1154,7 @@ namespace CRT.Server.Tests
 
             Assert.False(preview.IsBlocked, preview.BlockedBecause);
             Assert.Equal([ApprovePublishFlowTests.OldManual], preview.Files);
+            Assert.Equal(ApprovePublishFlowTests.OldManualName, preview.NameOf(ApprovePublishFlowTests.OldManual));
         }
 
         [Fact]
@@ -1385,8 +1167,10 @@ namespace CRT.Server.Tests
                 [ApprovePublishFlowTests.OldManual], CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal([ApprovePublishFlowTests.OldManual], outcome.RemovedFiles);
+            Assert.Equal([ApprovePublishFlowTests.OldManualName], outcome.RemovedFiles);
             Assert.False(File.Exists(DataTreeBuilder.Full(this.thisDataTree, ApprovePublishFlowTests.OldManual)));
+            // The board's history says it by name too.
+            Assert.Equal([ApprovePublishFlowTests.OldManualName], store.Changes[id].Files.Removed);
         }
 
         // What is removed is what was on screen. A maintainer shown a different list - here an empty
@@ -1395,8 +1179,8 @@ namespace CRT.Server.Tests
         public async Task Approving_with_a_different_list_is_refused_and_nothing_is_written()
         {
             (FakeSubmissionStore store, long id, _) = await this.DroppingTheManualAsync();
-            string workbook = DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.Workbook);
-            byte[] before = File.ReadAllBytes(workbook);
+            string boardFile = DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.BoardFile);
+            byte[] before = File.ReadAllBytes(boardFile);
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
@@ -1405,7 +1189,7 @@ namespace CRT.Server.Tests
             Assert.False(outcome.IsPublished);
             Assert.True(outcome.IsConflict);
             Assert.Equal(ApprovePublishFlow.RemovalsChangedMessage, outcome.Error);
-            Assert.Equal(before, File.ReadAllBytes(workbook));
+            Assert.Equal(before, File.ReadAllBytes(boardFile));
             Assert.True(File.Exists(DataTreeBuilder.Full(this.thisDataTree, ApprovePublishFlowTests.OldManual)));
             Assert.Equal(SubmissionState.Pending, (await store.FindAsync(id, CancellationToken.None))!.State);
         }
@@ -1421,8 +1205,8 @@ namespace CRT.Server.Tests
         public async Task A_review_application_that_sends_no_list_is_told_to_update_and_nothing_is_written()
         {
             (FakeSubmissionStore store, long id, _) = await this.DroppingTheManualAsync();
-            string workbook = DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.Workbook);
-            byte[] before = File.ReadAllBytes(workbook);
+            string boardFile = DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.BoardFile);
+            byte[] before = File.ReadAllBytes(boardFile);
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
@@ -1436,7 +1220,7 @@ namespace CRT.Server.Tests
             // used to name was folded into CRT on 2026-09-29.
             Assert.Contains("Update CRT,", outcome.Error, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", outcome.Error, StringComparison.Ordinal);
-            Assert.Equal(before, File.ReadAllBytes(workbook));
+            Assert.Equal(before, File.ReadAllBytes(boardFile));
             Assert.Equal(SubmissionState.Pending, (await store.FindAsync(id, CancellationToken.None))!.State);
         }
 
@@ -1454,40 +1238,19 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsPublished, outcome.Error);
         }
 
-        // A shared file one board stops citing stays while another board still cites it - it is
-        // not even on the list.
-        [Fact]
-        public async Task A_shared_file_another_board_still_uses_is_neither_listed_nor_removed()
-        {
-            const string shared = "Commodore/Shared files/Board local files/manual.pdf";
-            const string other = "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx";
-
-            (FakeSubmissionStore store, long id, _) = await this.DroppingTheManualAsync(shared);
-            DataTreeBuilder.Master(this.thisDataTree, DataTreeBuilder.Workbook, other);
-            DataTreeBuilder.Board(this.thisDataTree, other, shared);
-
-            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
-                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
-                [ApprovePublishFlowTests.OldManual], CancellationToken.None);
-
-            Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal([ApprovePublishFlowTests.OldManual], outcome.RemovedFiles);
-            Assert.True(File.Exists(DataTreeBuilder.Full(this.thisDataTree, shared)));
-        }
-
         // ###########################################################################################
-        // *** A PUBLISH REMOVES ONLY INSIDE THE BOARD'S OWN FOLDER (owner decision, 2026-09-27). ***
-        // The board stops citing its own old manual, a shared manual and a file of another board's;
-        // nothing else uses any of them. Only its own file goes - the other two stay, unused, for
-        // Account > Unused files - and only its own file is on the list the maintainer is shown.
+        // *** BYTES ANOTHER BOARD LISTS ARE NEITHER LISTED NOR REMOVED (CRT 4.0 tree, 2026-10-25). ***
+        // A file's bytes are stored once for every board naming them: the manual this board stops
+        // listing that another board lists too is still that board's manual.
         // ###########################################################################################
         [Fact]
-        public async Task A_publish_removes_only_files_inside_the_boards_own_folder()
+        public async Task Bytes_another_board_still_lists_are_neither_listed_nor_removed()
         {
-            const string shared = "Commodore/Shared files/Board local files/manual.pdf";
-            const string otherBoards = "Commodore/C128/310378/borrowed.pdf";
+            const string other = "Commodore/C128/310378";
 
-            (FakeSubmissionStore store, long id, SubmissionManifest manifest) = await this.DroppingTheManualAsync(shared, otherBoards);
+            (FakeSubmissionStore store, long id, SubmissionManifest manifest) = await this.DroppingTheManualAsync(("manual.pdf", "the shared manual"));
+            this.UseRealTree(other);
+            DataTreeBuilder.Board(this.thisDataTree, other, ("Manuals/the same manual.pdf", "the shared manual"));
 
             BoardData? published = await new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance)
                 .TryReadAsync(this.thisDataTree, manifest);
@@ -1501,47 +1264,24 @@ namespace CRT.Server.Tests
                 [ApprovePublishFlowTests.OldManual], CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal([ApprovePublishFlowTests.OldManual], outcome.RemovedFiles);
-            Assert.False(File.Exists(DataTreeBuilder.Full(this.thisDataTree, ApprovePublishFlowTests.OldManual)));
-            Assert.True(File.Exists(DataTreeBuilder.Full(this.thisDataTree, shared)));
-            Assert.True(File.Exists(DataTreeBuilder.Full(this.thisDataTree, otherBoards)));
+            Assert.Equal([ApprovePublishFlowTests.OldManualName], outcome.RemovedFiles);
+            Assert.True(File.Exists(DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.Stored("the shared manual", "manual.pdf"))));
         }
 
         // ###########################################################################################
-        // *** ADDING A NEW SHARED FILE NEEDS ONE APPROVAL (owner decision, 2026-09-27). *** No other
-        // board cites it yet, so it changes nothing anybody else sees - the maintainer's approval
-        // alone publishes it, on a board that has a maintainer.
+        // A submission queued under an older rule as touching shared files (TouchesSharedFiles). The
+        // approval asks what it would do NOW - and in the CRT 4.0 tree nothing is shared - so it
+        // needs one approval, and the flag comes down, so the queue stops saying it needs the
+        // administrator.
         // ###########################################################################################
         [Fact]
-        public async Task Adding_a_NEW_shared_file_is_published_on_the_maintainers_approval_alone()
+        public async Task A_submission_flagged_as_touching_shared_files_needs_one_approval_and_the_flag_comes_down()
         {
-            const string shared = "Commodore/Shared files/Board local files/new-manual.txt";
             byte[] bytes = Encoding.UTF8.GetBytes("a new manual");
             string hash = await this.PutBlobAsync(bytes);
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
-                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = shared, Sha256 = hash, SizeBytes = bytes.Length }));
-
-            ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
-                id, ApprovePublishFlowTests.MaintainerOf(ApprovePublishFlowTests.BoardId), this.thisDataTree,
-                ApprovePublishFlowTests.Now, CancellationToken.None);
-
-            Assert.True(outcome.IsPublished, outcome.Error);
-            Assert.Equal("a new manual", File.ReadAllText(DataTreeBuilder.Full(this.thisDataTree, shared)));
-        }
-
-        // A submission queued under the OLD rule was flagged for merely adding a shared file. The
-        // approval asks what it would do NOW, so it needs one approval - and the flag comes down, so
-        // the queue stops saying it needs the administrator.
-        [Fact]
-        public async Task A_submission_flagged_under_the_old_rule_for_only_ADDING_a_shared_file_needs_one_approval()
-        {
-            const string shared = "Commodore/Shared files/Board local files/new-manual.txt";
-            byte[] bytes = Encoding.UTF8.GetBytes("a new manual");
-            string hash = await this.PutBlobAsync(bytes);
-
-            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
-                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = shared, Sha256 = hash, SizeBytes = bytes.Length }));
+                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = "new-manual.txt", Sha256 = hash, SizeBytes = bytes.Length }));
             store.Submissions[id] = store.Submissions[id] with { TouchesSharedFiles = true };
 
             ApproveOutcome outcome = await this.Flow(store, ApprovePublishFlowTests.AccountsWithAMaintainer()).ApproveAsync(
@@ -1550,6 +1290,7 @@ namespace CRT.Server.Tests
 
             Assert.True(outcome.IsPublished, outcome.Error);
             Assert.False(store.Submissions[id].TouchesSharedFiles);
+            Assert.Equal("a new manual", File.ReadAllText(DataTreeBuilder.Full(this.thisDataTree, DataTreeLayout.StoredFilePath(hash, "new-manual.txt"))));
         }
 
         // A tree that cannot be read completely removes nothing - and says so on the list, which
@@ -1558,7 +1299,9 @@ namespace CRT.Server.Tests
         public async Task An_unreadable_tree_removes_nothing_and_the_publish_still_goes_through()
         {
             (FakeSubmissionStore store, long id, SubmissionManifest manifest) = await this.DroppingTheManualAsync();
-            DataTreeBuilder.Master(this.thisDataTree, DataTreeBuilder.Workbook, "Amstrad/CPC/464/Data CPC 464 v2.0.0.xlsx");
+
+            // The main file lists a board whose board file is not there.
+            this.UseRealTree("Amstrad/CPC/464");
 
             BoardData? published = await new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance)
                 .TryReadAsync(this.thisDataTree, manifest);
@@ -1604,7 +1347,6 @@ namespace CRT.Server.Tests
             PublishPlanResult result = ApprovePublishFlow.BuildPlan(
                 this.thisDataTree,
                 manifest,
-                published: null,
                 ApprovePublishFlowTests.Now);
 
             Assert.True(
@@ -1636,7 +1378,6 @@ namespace CRT.Server.Tests
             PublishPlanResult result = ApprovePublishFlow.BuildPlan(
                 this.thisDataTree,
                 manifest,
-                published: null,
                 ApprovePublishFlowTests.Now);
 
             Assert.True(result.IsPlanned);
@@ -1651,13 +1392,13 @@ namespace CRT.Server.Tests
         // drop-down lists. This must be done before it can be pushed to BETA."
         // -----------------------------------------------------------------------------------
 
-        private const string PublishedWorkbook = "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx";
+        private const string PublishedWorkbook = "Commodore/C64/250407/board.json";
 
         [Fact]
         public async Task A_NEW_board_nobody_has_PLACED_is_refused_and_nothing_is_written()
         {
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(placed: false);
-            byte[] masterBefore = File.ReadAllBytes(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx"));
+            byte[] masterBefore = File.ReadAllBytes(Path.Combine(this.thisDataTree, DataTreeLayout.MainFileName));
 
             ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
                 id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
@@ -1667,7 +1408,7 @@ namespace CRT.Server.Tests
             Assert.Equal(BoardListingRules.NotPlacedMessage, outcome.Error);
 
             Assert.False(Directory.Exists(Path.Combine(this.thisDataTree, "Commodore")));
-            Assert.Equal(masterBefore, File.ReadAllBytes(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx")));
+            Assert.Equal(masterBefore, File.ReadAllBytes(Path.Combine(this.thisDataTree, DataTreeLayout.MainFileName)));
             Assert.Equal(SubmissionState.Pending, (await store.FindAsync(id, CancellationToken.None))!.State);
 
             // And no approval was recorded for something that could not be published.
@@ -1794,8 +1535,8 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task With_no_readable_list_a_board_already_in_the_tree_still_publishes()
         {
-            File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx"), "not a workbook");
-            DataTreeBuilder.Board(this.thisDataTree, ApprovePublishFlowTests.PublishedWorkbook);
+            File.WriteAllText(Path.Combine(this.thisDataTree, DataTreeLayout.MainFileName), "not a workbook");
+            DataTreeBuilder.Board(this.thisDataTree, ApprovePublishFlowTests.BoardId);
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(placed: false);
 
@@ -1808,7 +1549,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task With_no_readable_list_a_NEW_board_is_refused()
         {
-            File.WriteAllText(Path.Combine(this.thisDataTree, "Classic-Repair-Toolbox.v2.0.0.xlsx"), "not a workbook");
+            File.WriteAllText(Path.Combine(this.thisDataTree, DataTreeLayout.MainFileName), "not a workbook");
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
 
@@ -1825,7 +1566,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_board_whose_names_were_taken_since_it_was_placed_is_refused_before_anything_is_written()
         {
-            MasterListingRow sameNames = new("Commodore 64", "250407", "Commodore/C64/326298/Data C64 326298 v2.0.0.xlsx", string.Empty);
+            MasterListingRow sameNames = new("Commodore 64", "250407", "Commodore/C64/326298/board.json", string.Empty);
             DataTreeBuilder.ListingMaster(this.thisDataTree, ApprovePublishFlowTests.OtherListedBoard, sameNames);
 
             (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync();
@@ -1848,7 +1589,7 @@ namespace CRT.Server.Tests
 
             await store.SetPlacementAsync(
                 ApprovePublishFlowTests.BoardId,
-                ApprovePublishFlowTests.Placement() with { AfterExcelDataFile = "Commodore/VIC-20/999999/Data VIC20 999999 v2.0.0.xlsx" },
+                ApprovePublishFlowTests.Placement() with { AfterExcelDataFile = "Commodore/VIC-20/999999/board.json" },
                 1,
                 ApprovePublishFlowTests.Now,
                 CancellationToken.None);
@@ -1953,6 +1694,41 @@ namespace CRT.Server.Tests
                 second, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now.AddMinutes(1), CancellationToken.None);
 
             Assert.True(outcome.IsPublished, outcome.Error);
+        }
+
+        // ###########################################################################################
+        // The review screen's shortcut (code review, 2026-10-25 - looked up by name now, not every
+        // published file against every submitted one): nothing can go only while EVERY published file
+        // is still sent with the same bytes. Names and checksums ignore capitals, as they always did;
+        // a name sent twice counts with either checksum.
+        // ###########################################################################################
+        [Fact]
+        public void Nothing_can_go_only_while_every_published_file_is_still_sent_with_the_same_bytes()
+        {
+            string a = new('a', 64);
+            string b = new('b', 64);
+
+            var published = new Dictionary<string, BoardDocument.StoredFileRow>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Images/top.png"] = new() { Name = "Images/top.png", Sha256 = a },
+                ["KiCad data/board.kicad_pcb"] = new() { Name = "KiCad data/board.kicad_pcb", Sha256 = b },
+            };
+
+            static SubmissionFile Sent(string path, string sha) => new() { Path = path, Sha256 = sha };
+
+            Assert.True(ApprovePublishFlow.EveryPublishedFileStillSent(published,
+                [Sent("images/TOP.png", a.ToUpperInvariant()), Sent("KiCad data/board.kicad_pcb", b), Sent("Images/new.png", a)]));
+
+            // One changed, one missing.
+            Assert.False(ApprovePublishFlow.EveryPublishedFileStillSent(published,
+                [Sent("Images/top.png", b), Sent("KiCad data/board.kicad_pcb", b)]));
+            Assert.False(ApprovePublishFlow.EveryPublishedFileStillSent(published, [Sent("Images/top.png", a)]));
+
+            // A name sent twice, once with the published bytes.
+            Assert.True(ApprovePublishFlow.EveryPublishedFileStillSent(published,
+                [Sent("Images/top.png", b), Sent("Images/top.png", a), Sent("KiCad data/board.kicad_pcb", b)]));
+
+            Assert.True(ApprovePublishFlow.EveryPublishedFileStillSent(new Dictionary<string, BoardDocument.StoredFileRow>(), []));
         }
     }
 }

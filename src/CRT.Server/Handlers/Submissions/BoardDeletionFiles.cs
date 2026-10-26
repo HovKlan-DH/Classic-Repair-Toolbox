@@ -7,25 +7,16 @@ namespace CRT.Server.Handlers.Submissions
     // it, whether that may go, and taking it out. BoardDeletionFlow sequences it; the rules and
     // the sentences are BoardDeletionRules'.
     //
-    // *** WHAT GOES: THE BOARD'S OWN FOLDER, WHOLE, AND ITS ROW IN THE NEWEST MAIN EXCEL DATA
-    // FILE. *** Nothing outside <Manufacturer>/<Hardware>/<Board>/ is ever touched - a shared file
-    // the board cited STAYS, and becomes an unused file for Account > Unused files if nothing else
-    // cites it (owner decision, 2026-09-27: AutomaticRemovalScope - automatic removal never leaves
-    // a board's own folder). Hidden files in the folder go too: the folder is going.
+    // *** WHAT GOES, IN THE CRT 4.0 TREE (2026-10-25): THE BOARD'S OWN FOLDER, WHOLE, THE STORED
+    // FILES ONLY IT LISTS, AND ITS ROW IN THE MAIN FILE. *** A board's folder holds its board file;
+    // its files' bytes are stored once under their checksum ("Files/<ab>/<sha256>.<ext>") for every
+    // board naming them - so bytes another board lists STAY, and the rest go with the board
+    // (AutomaticRemovalScope - a board's own files). Hidden files in the folder go too: the folder is
+    // going. The Excel generations older CRTs read are trees of their own, never touched here.
     //
-    // *** REFUSED, NOT GUESSED, when the folder cannot simply go *** (Survey's BlockedBecause):
-    //
-    //   - an OLDER main Excel data file lists the board. It is frozen (DataGenerationRules) and
-    //     serves older CRT versions, and a master naming a missing workbook makes DataTreeUsage
-    //     incomplete - which would stop every publish's removals and Account > Unused files for good.
-    //   - ANOTHER BOARD uses a file inside this board's folder (the cross-board citations
-    //     SubmissionRulesShippedDataTests found in the shipped data are real). Worked out with
-    //     DataTreeUsage, the one rule for what a tree uses: the tree is previewed with this board's
-    //     workbooks citing NOTHING, and a file of the folder still used after that is used by
-    //     something else. Its own workbooks, their highlight files, its "KiCad data" folder and "!"
-    //     documentation are the board's own and are not asked about.
-    //   - a tree that cannot be read completely, a main Excel data file that cannot be read, or a
-    //     symbolic link anywhere on the way - the same fail-closed rules every other writer keeps.
+    // *** REFUSED, NOT GUESSED, when it cannot simply go *** (Survey's BlockedBecause): a tree that
+    // cannot be read completely, a main file or board file that cannot be read, or a symbolic link
+    // anywhere on the way - the same fail-closed rules every other writer keeps.
     // ###########################################################################################
     public static class BoardDeletionFiles
     {
@@ -60,41 +51,19 @@ namespace CRT.Server.Handlers.Submissions
             if (!SubmissionPathRules.TryResolve(fullRoot, boardId, out string folder, out string why))
                 return BoardTreeSurvey.Blocked(treeName, fullRoot, $"[{boardId}] cannot be a folder in the {treeName} data: {why}");
 
-            // ---- 1. The drop-down lists: the newest may be edited, an older one may not -----------
+            // ---- 1. The drop-down lists: the tree's main file ------------------------------------
+            //
+            // The CRT 4.0 tree has ONE main file (DataTreeLayout.MainFileName) - the Excel generations
+            // older CRTs read are trees of their own, never touched here.
             string? newest = MasterListing.NewestMasterPath(fullRoot);
-            string? newestName = newest is null ? null : Path.GetFileName(newest);
             bool listed = false;
-            var listedWorkbooks = new List<string>();
-            IReadOnlyList<string> masters;
 
-            try
+            if (newest is not null)
             {
-                masters = BoardDeletionFiles.Masters(fullRoot);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableFolderMessage(treeName, BoardDeletionFiles.LoggedOnly(ex)));
-            }
+                if (!MasterListing.TryRead(newest, out IReadOnlyList<MasterListingRow> rows, out string readWhy))
+                    return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableMasterMessage(treeName, Path.GetFileName(newest), readWhy));
 
-            foreach (string master in masters)
-            {
-                string name = Path.GetFileName(master);
-
-                if (!MasterListing.TryRead(master, out IReadOnlyList<MasterListingRow> rows, out string readWhy))
-                    return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableMasterMessage(treeName, name, readWhy));
-
-                List<MasterListingRow> ours = rows
-                    .Where(row => string.Equals(row.BoardId, boardId, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-
-                if (ours.Count == 0)
-                    continue;
-
-                if (!string.Equals(name, newestName, StringComparison.Ordinal))
-                    return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.OlderListingMessage(treeName, name));
-
-                listed = true;
-                listedWorkbooks.AddRange(ours.Select(row => DataTreeUsage.Normalise(row.ExcelDataFile)));
+                listed = MasterListing.IndexOfBoard(rows, boardId) >= 0;
             }
 
             // ---- 2. The folder, every file in it, no link anywhere -------------------------------
@@ -113,14 +82,32 @@ namespace CRT.Server.Handlers.Submissions
                 return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.UnreadableFolderMessage(treeName, BoardDeletionFiles.LoggedOnly(ex)));
             }
 
-            files.Sort(StringComparer.Ordinal);
+            // ---- 3. The stored files only this board lists -----------------------------------------
+            //
+            // In the CRT 4.0 tree a board's files' bytes are stored once under their checksum, for
+            // every board naming them. Those no OTHER board lists go with the board - left, they
+            // would be files every CRT downloads and nothing shows; those another board lists stay.
+            IReadOnlyList<string>? stored = null;
+            string? incomplete = null;
 
-            // ---- 3. Nothing else may use a file in it ---------------------------------------------
-            if (files.Count > 0 &&
-                BoardDeletionFiles.UsedElsewhere(treeName, fullRoot, boardId, files, listedWorkbooks) is string usedElsewhere)
+            if (files.Count > 0)
+                stored = BoardDeletionFiles.StoredOnlyHere(treeName, fullRoot, boardId, out incomplete);
+
+            if (incomplete is not null)
+                return BoardTreeSurvey.Blocked(treeName, fullRoot, incomplete);
+
+            foreach (string path in stored ?? [])
             {
-                return BoardTreeSurvey.Blocked(treeName, fullRoot, usedElsewhere);
+                if (!SubmissionPathRules.TryResolve(fullRoot, path, out string full, out _))
+                    continue;
+
+                if (PublishPathSafety.FindLinkOnPath(fullRoot, full, link) is string storedLink)
+                    return BoardTreeSurvey.Blocked(treeName, fullRoot, BoardDeletionRules.LinkMessage(treeName, fullRoot, storedLink));
+
+                files.Add(path);
             }
+
+            files.Sort(StringComparer.Ordinal);
 
             return new BoardTreeSurvey(treeName, fullRoot, folder, files, listed, listed ? newest : null, BlockedBecause: null);
         }
@@ -220,14 +207,6 @@ namespace CRT.Server.Handlers.Submissions
             return new BoardTreeRemoval(removed, left);
         }
 
-        // Every master workbook at the top of the tree, of every generation.
-        private static IReadOnlyList<string> Masters(string root) =>
-            Directory
-                .EnumerateFiles(root, DataGenerationRules.MasterStem + "*" + DataGenerationRules.WorkbookExtension)
-                .Where(path => DataTreeUsage.IsMasterFileName(Path.GetFileName(path)))
-                .Order(StringComparer.Ordinal)
-                .ToList();
-
         // ###########################################################################################
         // Every file under `directory`, data-root-relative with "/", or the first link met - which
         // is never followed. One level at a time rather than a recursive enumeration, so a link is
@@ -255,59 +234,58 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The refusal for files of this folder that something else uses, or null - see the class
-        // header. Its workbooks (in the folder, or listed by the newest master) are previewed as
-        // citing nothing; a listed workbook the folder lacks would otherwise make the tree read as
-        // incomplete.
+        // The stored files the board lists that no OTHER board of the tree lists - what goes with it.
+        // Worked out with DataTreeUsage, the one rule for what a tree uses: the tree is previewed
+        // with this board's file listing NOTHING, and its stored files then unused are its alone.
+        // Null, with the refusal in `incomplete`, when the tree cannot be read completely - failing
+        // closed, as every writer does; an empty list when the board file lists nothing.
         // ###########################################################################################
-        private static string? UsedElsewhere(
-            string treeName,
-            string root,
-            string boardId,
-            IReadOnlyList<string> files,
-            IReadOnlyList<string> listedWorkbooks)
+        private static IReadOnlyList<string>? StoredOnlyHere(string treeName, string root, string boardId, out string? incomplete)
         {
-            var own = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            incomplete = null;
 
-            foreach (string workbook in files.Where(DataTreeUsage.IsBoardFolderWorkbook).Concat(listedWorkbooks))
+            string boardFile = DataTreeLayout.BoardFilePath(boardId);
+            PublishedBoardLocation location = PublishedBoardLocator.LocateBoard(root, boardId);
+
+            if (!location.Exists)
+                return [];
+
+            BoardDocument? document = BoardFiles.ReadDocument(location.WorkbookPath);
+
+            if (document is null)
             {
-                if (workbook.Length > 0)
-                    own.Add(workbook);
+                incomplete = BoardDeletionRules.IncompleteTreeMessage(treeName, [$"The board file [{boardFile}] could not be read."]);
+                return null;
             }
 
-            var overrides = own.ToDictionary(
-                workbook => workbook,
-                IReadOnlyCollection<string> (_) => [],
-                StringComparer.OrdinalIgnoreCase);
+            List<string> listed = document.Files
+                .Select(PublishedBoardFiles.StoredRelative)
+                .Where(path => path.Length > 0)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (listed.Count == 0)
+                return [];
 
             DataTreeUsageResult usage;
 
             try
             {
-                usage = DataTreeUsage.Compute(root, overrides);
+                usage = DataTreeUsage.Compute(root, new Dictionary<string, IReadOnlyCollection<string>> { [boardFile] = [] });
             }
             catch (Exception ex)
             {
-                return BoardDeletionRules.IncompleteTreeMessage(treeName, [BoardDeletionFiles.LoggedOnly(ex)]);
+                incomplete = BoardDeletionRules.IncompleteTreeMessage(treeName, [BoardDeletionFiles.LoggedOnly(ex)]);
+                return null;
             }
 
             if (!usage.IsComplete)
-                return BoardDeletionRules.IncompleteTreeMessage(treeName, usage.Problems);
+            {
+                incomplete = BoardDeletionRules.IncompleteTreeMessage(treeName, usage.Problems);
+                return null;
+            }
 
-            var sidecars = new HashSet<string>(
-                own.Select(workbook => DataTreeUsage.Normalise(BoardComponentHighlightStorage.GetJsonPath(workbook))),
-                StringComparer.OrdinalIgnoreCase);
-
-            string kicad = $"{boardId}/{DataTreeUsage.KiCadFolderName}/";
-
-            List<string> usedElsewhere = files
-                .Where(path => !own.Contains(path) && !sidecars.Contains(path))
-                .Where(path => !path.StartsWith(kicad, StringComparison.OrdinalIgnoreCase))
-                .Where(path => !Path.GetFileName(path).StartsWith(DataTreeUsage.DocumentationPrefix, StringComparison.Ordinal))
-                .Where(usage.IsUsed)
-                .ToList();
-
-            return usedElsewhere.Count == 0 ? null : BoardDeletionRules.UsedElsewhereMessage(treeName, usedElsewhere);
+            return usage.RemovableFrom(listed);
         }
 
         // Bottom up: every empty folder inside the board's folder, the folder itself, then each

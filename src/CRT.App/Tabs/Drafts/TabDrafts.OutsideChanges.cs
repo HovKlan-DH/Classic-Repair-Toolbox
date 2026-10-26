@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
+using Handlers.DataHandling;
 
 namespace CRT
 {
@@ -19,11 +20,11 @@ namespace CRT
     // they come from (DraftStatusReader.CountChangesCached / CountProblemsCached), so a draft
     // nobody touched costs a few file-information reads, and only a changed one is read again.
     //
-    // The OPEN TABLE watches its own draft file (BoardTableEditor.FileWatch.cs), and its reload
-    // refreshes the list through ReloadedFromOutside. What it cannot see is a FILE the draft cites
-    // arriving on its own - a picture dropped into the draft folder - so at the same moments it is
-    // asked to run its checks again (RecheckFiles; code review, 2026-10-04): its "file missing"
-    // marks then agree with the draft's row.
+    // The OPEN TABLE reads its draft's file again at the same moments, when it changed and nothing
+    // of the table's waits to be saved (ReadDraftFileAgain, CRT 4.0 step 1), and that refreshes the
+    // list through ReloadedFromOutside. What it cannot see is a FILE the draft cites arriving on its
+    // own - a picture dropped into the draft folder - so it is asked to run its checks again too
+    // (RecheckFiles; code review, 2026-10-04): its "file missing" marks then agree with the draft's row.
     // ###########################################################################################
     public partial class TabDrafts
     {
@@ -53,6 +54,18 @@ namespace CRT
         {
             this.StopFollowingActivation();
 
+            // Leaving the tab: the board on screen catches up with what the table and the component
+            // pane saved meanwhile - once the pane's last change is saved too (its Saved catches up,
+            // the tab no longer being on screen).
+            if (this.IsComponentOpen && this.ComponentPane.HasHeldOrUnsavedChanges())
+            {
+                this.RunGuarded(this.ComponentPane.SaveNowAsync, "Saving the component pane on leaving the tab");
+            }
+            else
+            {
+                this.CatchUpBoardOnScreen();
+            }
+
             base.OnDetachedFromVisualTree(e);
         }
 
@@ -78,7 +91,15 @@ namespace CRT
 
                 if (this.IsTableOpen)
                 {
+                    this.TableEditor.ReadDraftFileAgain();
                     this.TableEditor.RecheckFiles();
+                }
+
+                // The component pane's draft, written outside meanwhile - read again (an undoable
+                // step), and the pane follows it.
+                if (this.IsComponentOpen)
+                {
+                    this.ComponentPane.Session?.ReadFileIfChanged(DraftSaveWording.ReadAgainStep);
                 }
             }
         }

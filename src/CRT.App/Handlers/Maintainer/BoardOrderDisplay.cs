@@ -11,7 +11,8 @@ namespace Handlers.MaintainerHandling
     // sources (BETA + stable) after my save").
     //
     // The administrator drags BETA's drop-down list into order and saves; the server writes that
-    // order into BETA's and the stable source's main Excel data files (CRT.Server's BoardOrderFlow).
+    // order into BETA's and the stable source's main data files (CRT.Server's BoardOrderFlow; the
+    // CRT 4.0 tree's main file since 2026-10-25).
     // Pure, so the words and the "has it moved" rule are tested; BoardOrderView only draws.
     // ###########################################################################################
     public static class BoardOrderDisplay
@@ -26,11 +27,11 @@ namespace Handlers.MaintainerHandling
 
         public const string Explanation =
             "The order CRT shows the hardware and boards in its drop-down lists. Drag a board up or down, then save - " +
-            "the order is written into the main Excel data file of BETA and of the stable source, and CRT downloads it " +
+            "the order is written into the main data file of BETA and of the stable source, and CRT downloads it " +
             "on its next launch.";
 
         public const string NoList =
-            "BETA has no versioned main Excel data file, so there is no list to put in order.";
+            "BETA has no versioned main data file, so there is no list to put in order.";
 
         public const string SaveButton = "Save the order";
 

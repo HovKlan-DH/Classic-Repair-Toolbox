@@ -67,46 +67,4 @@ public sealed class SchematicRemovalTests : IDisposable
         Assert.Equal(new SchematicRemovalLoss(2, true), SchematicRemoval.Read(workbook, "Top"));
         Assert.Equal(new SchematicRemovalLoss(1, false), SchematicRemoval.Read(workbook, "Bottom"));
     }
-
-    // ###########################################################################################
-    // *** A SAVE OF THE TABLE THAT REMOVES IMAGES ASKS THE SAME QUESTION (code review, 2026-10-11). ***
-    // A row deleted - or renamed with its image file changed in the same save, which reads as one
-    // image removed and another added - took what was drawn on it without a word. The question
-    // names every image, says what goes, and how a rename keeps them.
-    // ###########################################################################################
-    [Fact]
-    public void A_save_that_removes_one_image_says_what_goes_and_how_a_rename_keeps_it()
-    {
-        SchematicDrop[] drops = [new("PCB; Top", new SchematicRemovalLoss(3, true))];
-
-        Assert.Equal("Save, and remove [PCB; Top] from your draft?", SchematicRemoval.SaveQuestion(drops));
-
-        string whatGoes = SchematicRemoval.SaveWhatGoes(drops);
-        Assert.StartsWith(SchematicRemoval.WhatGoes(new SchematicRemovalLoss(3, true)), whatGoes);
-        Assert.Contains("Renamed it, not removed it?", whatGoes);
-        Assert.Contains("change the name and the file in two separate saves", whatGoes);
-        Assert.EndsWith("Cancel saves nothing, and Ctrl+Z in the table brings back a row you deleted.", whatGoes);
-    }
-
-    [Fact]
-    public void A_save_that_removes_several_images_names_each_and_what_goes_with_it()
-    {
-        SchematicDrop[] drops =
-        [
-            new("Top", new SchematicRemovalLoss(2, false)),
-            new("Bottom", new SchematicRemovalLoss(0, true)),
-            new("Clock", new SchematicRemovalLoss(1, true)),
-        ];
-
-        Assert.Equal("Save, and remove [Top], [Bottom] and [Clock] from your draft?", SchematicRemoval.SaveQuestion(drops));
-        Assert.Equal("Save, and remove [Top] and [Bottom] from your draft?", SchematicRemoval.SaveQuestion(drops[..2]));
-
-        string whatGoes = SchematicRemoval.SaveWhatGoes(drops);
-        Assert.StartsWith(
-            "[Top]: Its highlights for 2 components go with it. [Bottom]: Its KiCad calibration goes with it. " +
-            "[Clock]: Its highlights for 1 component and its KiCad calibration go with it. " +
-            "Adding the images again later does not bring any of it back",
-            whatGoes);
-        Assert.Contains("Renamed them, not removed them?", whatGoes);
-    }
 }

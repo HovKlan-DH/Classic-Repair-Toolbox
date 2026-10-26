@@ -43,7 +43,11 @@ namespace Handlers.DataHandling
                 BoardLocalFiles = [.. rows.BoardLocalFiles],
                 BoardLinks = [.. rows.BoardLinks],
                 Credits = [.. rows.Credits],
-                KiCadImportantSignals = [.. rows.KiCadImportantSignals]
+                KiCadImportantSignals = [.. rows.KiCadImportantSignals],
+
+                // Not sent reads as none here; the publish keeps the published ones (PublishMerge).
+                ComponentPins = [.. rows.ComponentPins ?? []],
+                ComponentReplacements = [.. rows.ComponentReplacements ?? []]
             };
         }
 
@@ -64,12 +68,14 @@ namespace Handlers.DataHandling
                 BoardLocalFiles = board.BoardLocalFiles.ToList(),
                 BoardLinks = board.BoardLinks.ToList(),
                 Credits = board.Credits.ToList(),
-                KiCadImportantSignals = board.KiCadImportantSignals.ToList()
+                KiCadImportantSignals = board.KiCadImportantSignals.ToList(),
+                ComponentPins = board.ComponentPins.ToList(),
+                ComponentReplacements = board.ComponentReplacements.ToList()
             };
         }
 
         // ###########################################################################################
-        // WHAT AN AMENDMENT MAY CHANGE: the table's nine sheets (BoardWorkbookSchema.AllSheets),
+        // WHAT AN AMENDMENT MAY CHANGE: the table's sheets (BoardWorkbookSchema.AllSheets),
         // and nothing else. The highlights, the KiCad calibrations and the revision date are not
         // in the table, so they are ALWAYS taken from the submission as it stands - whatever a
         // request carries for them. The server applies this, so a hand-made request cannot use the
@@ -131,7 +137,12 @@ namespace Handlers.DataHandling
                 BoardLocalFiles = edited.BoardLocalFiles.ToList(),
                 BoardLinks = edited.BoardLinks.ToList(),
                 Credits = edited.Credits.ToList(),
-                KiCadImportantSignals = edited.KiCadImportantSignals.ToList()
+                KiCadImportantSignals = edited.KiCadImportantSignals.ToList(),
+
+                // Table sheets too since CRT 4.0 (2026-10-25) - an edit that does not carry them
+                // leaves the submission's as they are.
+                ComponentPins = edited.ComponentPins?.ToList() ?? current.ComponentPins,
+                ComponentReplacements = edited.ComponentReplacements?.ToList() ?? current.ComponentReplacements
             };
         }
 

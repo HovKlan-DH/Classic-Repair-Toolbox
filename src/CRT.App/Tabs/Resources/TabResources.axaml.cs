@@ -45,23 +45,28 @@ namespace CRT
         public string Name { get; set; }
         public string Target { get; set; }
 
+        // The root a local file was found under (DraftFileResolution.Root) - a draft's file sits in
+        // the draft folder, not the data root. Null for a link, and for a file of the data root.
+        public string? Root { get; }
+
         public ICommand OpenCommand { get; }
 
-        public ResourceItem(string category, string name, string target)
+        public ResourceItem(string category, string name, string target, string? root = null)
         {
             this.Category = category;
             this.Name = name;
             this.Target = target;
+            this.Root = root;
             this.OpenCommand = new ActionCommand(this.OpenTarget);
         }
 
         // ###########################################################################################
         // Opens the specified target only after strict validation. URLs are limited to HTTP/HTTPS
-        // and local files must remain inside the configured data-root.
+        // and local files must remain inside the root they were found under.
         // ###########################################################################################
         private void OpenTarget()
         {
-            ExternalTargetLauncher.TryOpen(this.Target);
+            ExternalTargetLauncher.TryOpen(this.Target, this.Root);
         }
     }
 

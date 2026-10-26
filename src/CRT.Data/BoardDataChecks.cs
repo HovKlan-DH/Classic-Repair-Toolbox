@@ -82,6 +82,7 @@ namespace Handlers.DataHandling
                 BoardDataChecks.CheckHighlightCoverage(context);
                 BoardDataChecks.CheckPartNumbers(context);
                 BoardDataChecks.CheckDuplicateRows(context);
+                BoardDataChecks.CheckCrt4Data(context);
             }
 
             return context.Problems;
@@ -236,6 +237,27 @@ namespace Handlers.DataHandling
             if (context.Scope != BoardCheckScope.Everything)
                 return;
 
+            // ###########################################################################################
+            // *** A COMPONENT WITH NO CATEGORY IS NOT LISTED (CRT 4.0 step 1, 2026-10-25). *** The
+            // component editor refused to save one ("Unfinished work is fine. Only Submit asks for
+            // problems to be fixed" - the plan); it saves it now, and the table says what is left. A
+            // WARNING, as every new rule of the table's is: the server takes such a row, and the table
+            // always could make one.
+            // ###########################################################################################
+            for (int i = 0; i < context.Rows.Components.Count; i++)
+            {
+                ComponentEntry component = context.Rows.Components[i];
+
+                if (!string.IsNullOrWhiteSpace(component.BoardLabel) && string.IsNullOrWhiteSpace(component.Category))
+                {
+                    context.Warning(
+                        "component.no_category",
+                        component.BoardLabel.Trim(),
+                        $"[{component.BoardLabel.Trim()}] has no category, so it is not in the component list. Give it one.",
+                        sheet, i, BoardWorkbookSchema.ColCategory);
+                }
+            }
+
             foreach (int first in duplicated)
             {
                 ComponentEntry component = context.Rows.Components[first];
@@ -292,6 +314,23 @@ namespace Handlers.DataHandling
                         $"An image references component [{image.BoardLabel}], which is not in this " +
                         "submission. It will not be shown anywhere.",
                         sheet, i, BoardWorkbookSchema.ColBoardLabel);
+                }
+
+                // ###########################################################################################
+                // *** A PICTURE CRT CANNOT SHOW (CRT 4.0 step 1, 2026-10-25). *** The component editor
+                // refused to save a component with one; it saves it now (unfinished work is fine), and
+                // the table says so. A WARNING: the server takes the file, and the popup shows nothing.
+                // ###########################################################################################
+                if (context.Scope == BoardCheckScope.Everything &&
+                    !string.IsNullOrWhiteSpace(image.File) &&
+                    !ImageFileTypes.IsDisplayable(image.File))
+                {
+                    context.Warning(
+                        "image.not_displayable",
+                        image.File.Trim(),
+                        $"The component image [{image.File.Trim()}] for [{image.BoardLabel}] is not a picture CRT can show. " +
+                        $"Use one of: {string.Join(", ", ImageFileTypes.DisplayableExtensions)}.",
+                        sheet, i, BoardWorkbookSchema.ColFile);
                 }
             }
         }
@@ -658,6 +697,129 @@ namespace Handlers.DataHandling
             BoardDataChecks.WarnDuplicates(context, BoardWorkbookSchema.SheetBoardLinks, context.Rows.BoardLinks);
             BoardDataChecks.WarnDuplicates(context, BoardWorkbookSchema.SheetCredits, context.Rows.Credits ?? []);
             BoardDataChecks.WarnDuplicates(context, BoardWorkbookSchema.SheetKiCadImportantSignals, context.Rows.ImportantSignals ?? []);
+            BoardDataChecks.WarnDuplicates(context, BoardWorkbookSchema.SheetComponentPins, context.Rows.ComponentPins ?? []);
+            BoardDataChecks.WarnDuplicates(context, BoardWorkbookSchema.SheetComponentReplacements, context.Rows.ComponentReplacements ?? []);
+        }
+
+        // ###########################################################################################
+        // *** CRT 4.0's OWN DATA (step 2, 2026-10-25) - every rule a WARNING. *** The server knows
+        // none of these: a new local rule is a warning, and unfinished work is fine - so an empty
+        // value is never a problem, only one CRT will not understand, or a row that belongs nowhere.
+        //
+        //   - a short description longer than one popup line (ComponentVocabulary.ShortDescriptionLimit;
+        //     2 of the 539 published ones, 2026-10-25) - the rest belongs in the repair notes;
+        //   - a pin or replacement row for a component the board does not have, as files and links;
+        //   - a pin with no number, a replacement with no part number - nothing to show it by;
+        //   - a pin's direction, a baseline's source and a replacement's kind outside their words
+        //     (ComponentVocabulary).
+        // ###########################################################################################
+        private static void CheckCrt4Data(Context context)
+        {
+            HashSet<string> labels = context.ComponentLabels;
+
+            for (int i = 0; i < context.Rows.Components.Count; i++)
+            {
+                ComponentEntry component = context.Rows.Components[i];
+                string description = (component.Description ?? string.Empty).Trim();
+
+                if (description.Length > ComponentVocabulary.ShortDescriptionLimit)
+                {
+                    context.Warning(
+                        "component.long_description",
+                        (component.BoardLabel ?? string.Empty).Trim(),
+                        $"The short description of [{(component.BoardLabel ?? string.Empty).Trim()}] is {description.Length} characters; the popup has room for " +
+                        $"{ComponentVocabulary.ShortDescriptionLimit}. Shorten it, and put the rest in the repair notes.",
+                        BoardWorkbookSchema.SheetComponents, i, BoardWorkbookSchema.ColDescription);
+                }
+            }
+
+            for (int i = 0; i < context.Rows.ComponentImages.Count; i++)
+            {
+                string source = (context.Rows.ComponentImages[i].Source ?? string.Empty).Trim();
+
+                if (!ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.BaselineSources, source))
+                {
+                    context.Warning(
+                        "baseline.source",
+                        source,
+                        $"Source [{source}] is not one CRT knows. Use one of: {string.Join(", ", ComponentVocabulary.BaselineSources)}.",
+                        BoardWorkbookSchema.SheetComponentImages, i, BoardWorkbookSchema.ColSource);
+                }
+            }
+
+            IReadOnlyList<ComponentPinEntry> pins = context.Rows.ComponentPins ?? [];
+            const string pinSheet = BoardWorkbookSchema.SheetComponentPins;
+
+            for (int i = 0; i < pins.Count; i++)
+            {
+                ComponentPinEntry pin = pins[i];
+                string label = (pin.BoardLabel ?? string.Empty).Trim();
+                string direction = (pin.Direction ?? string.Empty).Trim();
+
+                if (label.Length > 0 && !labels.Contains(label))
+                {
+                    context.Warning(
+                        "pin.orphan",
+                        label,
+                        $"This pin is for component [{label}], which is not in the Components sheet. It will not be shown anywhere.",
+                        pinSheet, i, BoardWorkbookSchema.ColBoardLabel);
+                }
+
+                if (string.IsNullOrWhiteSpace(pin.Pin))
+                {
+                    context.Warning(
+                        "pin.unnumbered",
+                        label,
+                        $"A pin of [{label}] has no pin number, so it cannot be drawn on the pinout. Give it the number on the case.",
+                        pinSheet, i, BoardWorkbookSchema.ColPin);
+                }
+
+                if (!ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.PinDirections, direction))
+                {
+                    context.Warning(
+                        "pin.direction",
+                        direction,
+                        $"Direction [{direction}] is not one CRT knows. Use one of: {string.Join(", ", ComponentVocabulary.PinDirections)}.",
+                        pinSheet, i, BoardWorkbookSchema.ColDirection);
+                }
+            }
+
+            IReadOnlyList<ComponentReplacementEntry> replacements = context.Rows.ComponentReplacements ?? [];
+            const string replacementSheet = BoardWorkbookSchema.SheetComponentReplacements;
+
+            for (int i = 0; i < replacements.Count; i++)
+            {
+                ComponentReplacementEntry replacement = replacements[i];
+                string label = (replacement.BoardLabel ?? string.Empty).Trim();
+                string kind = (replacement.Kind ?? string.Empty).Trim();
+
+                if (label.Length > 0 && !labels.Contains(label))
+                {
+                    context.Warning(
+                        "replacement.orphan",
+                        label,
+                        $"This replacement part is for component [{label}], which is not in the Components sheet. It will not be shown anywhere.",
+                        replacementSheet, i, BoardWorkbookSchema.ColBoardLabel);
+                }
+
+                if (string.IsNullOrWhiteSpace(replacement.PartNumber))
+                {
+                    context.Warning(
+                        "replacement.no_part_number",
+                        label,
+                        $"A replacement part for [{label}] has no part number, so nobody can tell which part it is.",
+                        replacementSheet, i, BoardWorkbookSchema.ColPartNumber);
+                }
+
+                if (!ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, kind))
+                {
+                    context.Warning(
+                        "replacement.kind",
+                        kind,
+                        $"Kind [{kind}] is not one CRT knows. Use one of: {string.Join(", ", ComponentVocabulary.ReplacementKinds)}.",
+                        replacementSheet, i, BoardWorkbookSchema.ColKind);
+                }
+            }
         }
 
         private static void WarnDuplicates<T>(Context context, string sheet, IReadOnlyList<T> entries)
@@ -794,7 +956,8 @@ namespace Handlers.DataHandling
     //
     // Credits and Important signals are read by one local rule only - duplicate rows (2026-10-03)
     // - so they are optional, and a submission's rows (which the server checks in Submission,
-    // where that rule does not run) leave them out.
+    // where that rule does not run) leave them out. So are CRT 4.0's pins and replacement parts
+    // (2026-10-25), which only the local rules read.
     // ###########################################################################################
     public sealed record BoardCheckRows(
         IReadOnlyList<BoardSchematicEntry> Schematics,
@@ -806,7 +969,9 @@ namespace Handlers.DataHandling
         IReadOnlyList<ComponentLinkEntry> ComponentLinks,
         IReadOnlyList<BoardLinkEntry> BoardLinks,
         IReadOnlyList<CreditEntry>? Credits = null,
-        IReadOnlyList<KiCadImportantSignalEntry>? ImportantSignals = null)
+        IReadOnlyList<KiCadImportantSignalEntry>? ImportantSignals = null,
+        IReadOnlyList<ComponentPinEntry>? ComponentPins = null,
+        IReadOnlyList<ComponentReplacementEntry>? ComponentReplacements = null)
     {
         public static BoardCheckRows From(BoardData board)
         {
@@ -815,7 +980,7 @@ namespace Handlers.DataHandling
             return new BoardCheckRows(
                 board.Schematics, board.Components, board.ComponentImages, board.ComponentHighlights,
                 board.ComponentLocalFiles, board.BoardLocalFiles, board.ComponentLinks, board.BoardLinks,
-                board.Credits, board.KiCadImportantSignals);
+                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements);
         }
 
         public static BoardCheckRows From(SubmissionRows rows)

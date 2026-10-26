@@ -84,6 +84,26 @@ public sealed class ReviewSessionStoreTests : IDisposable
         Assert.Equal("{ \"stored\": \"before the rename\" }", File.ReadAllText(this.FilePath));
     }
 
+    // ###########################################################################################
+    // *** THE TEST INSTANCE'S FILE NEVER TAKES IT (2026-10-25). *** A session from before the
+    // rename is the live service's. While CRT talks to the test instance its sign-in has a file of
+    // its own (ContributionServer.FileNameFor), and moving the live credential into it would send
+    // it to the wrong service - and take it from CRT 3.x, which still reads the live file.
+    // ###########################################################################################
+    [Fact]
+    public void The_test_instances_session_file_never_takes_the_old_live_one()
+    {
+        string legacy = Path.Combine(this.thisFolder, ReviewSessionStore.LegacySessionFileName);
+        File.WriteAllText(legacy, "{ \"stored\": \"before the rename\" }");
+        string testFile = Path.Combine(this.thisFolder, Handlers.Online.ContributionServer.FileNameFor(ReviewSessionStore.SessionFileName, testServer: true));
+
+        ReviewSessionStore.InitialiseAt(testFile);
+
+        Assert.True(File.Exists(legacy));
+        Assert.False(File.Exists(testFile));
+        Assert.Equal("maintainer-session-test.json", Path.GetFileName(testFile));
+    }
+
     // Both present: the one under the new name is the newer, and the old credential is removed
     // rather than left readable beside it.
     [Fact]

@@ -61,9 +61,13 @@ namespace Handlers.MaintainerHandling
         // workbook and the highlight file, which the approval writes from the table (the Board data
         // view) and which the detail does not name.
         // ###########################################################################################
+        //
+        // The removals by NAME (FileRemovalPreview.FileNames), as the server's tree has them: in a
+        // CRT 4.0 tree a removed file is a stored file, and the bytes a replaced file leaves behind
+        // are removed under the very name the submission replaces - one file changing, not two.
         public static int ChangingFiles(IReadOnlyList<SubmittedFileFact>? submitted, FileRemovalPreview? removals) =>
             BoardFileEntries
-                .ForApproval(submitted, removals?.Files, ownInBeta: null, workbook: null, sidecar: null)
+                .ForApproval(submitted, removals?.FileNames(), ownInBeta: null, workbook: null, sidecar: null)
                 .Count(entry => entry.Change != BoardFileChange.Unchanged);
 
         // The button's count, or null for no badge: a submission that changes no file has nothing

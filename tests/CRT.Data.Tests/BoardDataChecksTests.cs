@@ -37,8 +37,10 @@ public sealed class BoardDataChecksTests
     // draw on it are not themselves an error.
     private static readonly BoardSchematicEntry MainSchematic = new() { SchematicName = "Main", SchematicImageFile = $"{Board}/main.png" };
 
+    // With a category: a component without one is a warning of its own (component.no_category), which
+    // only the tests about it want.
     private static ComponentEntry Component(string label, string region = "", string partNumber = "", string technicalName = "") =>
-        new() { BoardLabel = label, Region = region, PartNumber = partNumber, TechnicalNameOrValue = technicalName };
+        new() { BoardLabel = label, Category = "IC", Region = region, PartNumber = partNumber, TechnicalNameOrValue = technicalName };
 
     private static ComponentHighlightEntry Highlight(string schematic, string label) =>
         new() { SchematicName = schematic, BoardLabel = label, X = "1", Y = "1", Width = "10", Height = "10" };
@@ -391,7 +393,7 @@ public sealed class BoardDataChecksTests
         };
 
         HashSet<string> serverErrors = SubmissionValidator.Validate(manifest, carried)
-            .Concat(SubmissionFileRules.ValidateManifestFiles(manifest, tree: null))
+            .Concat(SubmissionFileRules.ValidateManifestFiles(manifest, board: null))
             .Where(finding => finding.Severity == ValidationSeverity.Error)
             .Select(finding => finding.Code)
             .ToHashSet(StringComparer.Ordinal);
@@ -581,5 +583,133 @@ public sealed class BoardDataChecksTests
         Assert.Equal(3, duplicates.Count);
         Assert.Contains("so a change in the others is not shown", duplicates[0].Message, StringComparison.Ordinal);
         Assert.Equal(LaterDuplicate, duplicates[2].Message);
+    }
+
+    // ------------------------------------------------------------------ Unfinished work (CRT 4.0 step 1)
+
+    // ###########################################################################################
+    // *** THE COMPONENT EDITOR SAVES UNFINISHED WORK, AND THE TABLE SAYS WHAT IS LEFT (2026-10-25).
+    // *** It refused a component with no category, and one with a picture CRT cannot show; it saves
+    // both now (the plan: "Unfinished work is fine. Only Submit asks for problems to be fixed"), and
+    // these warnings say what is left. Warnings, in the table only: the server takes both, so they
+    // must never become refusals (Every_error_the_table_finds_is_one_the_server_refuses).
+    // ###########################################################################################
+    [Fact]
+    public void A_component_with_no_category_is_a_warning_in_the_table_and_nothing_to_the_server()
+    {
+        BoardCheckRows rows = Rows(components: [new ComponentEntry { BoardLabel = "U1" }, Component("U2")]);
+
+        BoardDataProblem warning = Assert.Single(Everything(rows), problem => problem.Code == "component.no_category");
+
+        Assert.Equal(BoardProblemLevel.Warning, warning.Level);
+        Assert.Equal(BoardWorkbookSchema.SheetComponents, warning.Sheet);
+        Assert.Equal(0, warning.Index);
+        Assert.Equal(BoardWorkbookSchema.ColCategory, warning.Column);
+        Assert.Contains("[U1]", warning.Message, StringComparison.Ordinal);
+
+        Assert.DoesNotContain(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "component.no_category");
+    }
+
+    [Fact]
+    public void A_component_image_CRT_cannot_show_is_a_warning_in_the_table_and_nothing_to_the_server()
+    {
+        BoardCheckRows rows = Rows(
+            components: [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
+            images: [Image("U1", $"{Board}/U1.pdf"), Image("U1", $"{Board}/U1.png")]);
+
+        BoardDataProblem warning = Assert.Single(Everything(rows, $"{Board}/U1.pdf", $"{Board}/U1.png"), problem => problem.Code == "image.not_displayable");
+
+        Assert.Equal(BoardProblemLevel.Warning, warning.Level);
+        Assert.Equal(0, warning.Index);
+        Assert.Equal(BoardWorkbookSchema.ColFile, warning.Column);
+        Assert.Contains(".png", warning.Message, StringComparison.Ordinal);
+
+        Assert.DoesNotContain(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "image.not_displayable");
+    }
+
+    // ------------------------------------------------------------------ CRT 4.0's own data (2026-10-25)
+
+    private static BoardCheckRows Crt4Rows(
+        IReadOnlyList<ComponentEntry>? components = null,
+        IReadOnlyList<ComponentImageEntry>? images = null,
+        IReadOnlyList<ComponentPinEntry>? pins = null,
+        IReadOnlyList<ComponentReplacementEntry>? replacements = null) =>
+        Rows(components: components ?? [Component("U8")], images: images) with
+        {
+            ComponentPins = pins ?? [],
+            ComponentReplacements = replacements ?? [],
+        };
+
+    // ###########################################################################################
+    // Every rule about CRT 4.0's data is a WARNING in the table and nothing to the server - a new
+    // local rule always is, and unfinished work is fine. Each one, on the cell it is about.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("component.long_description", BoardWorkbookSchema.SheetComponents, BoardWorkbookSchema.ColDescription)]
+    [InlineData("baseline.source", BoardWorkbookSchema.SheetComponentImages, BoardWorkbookSchema.ColSource)]
+    [InlineData("pin.orphan", BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.ColBoardLabel)]
+    [InlineData("pin.unnumbered", BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.ColPin)]
+    [InlineData("pin.direction", BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.ColDirection)]
+    [InlineData("replacement.orphan", BoardWorkbookSchema.SheetComponentReplacements, BoardWorkbookSchema.ColBoardLabel)]
+    [InlineData("replacement.no_part_number", BoardWorkbookSchema.SheetComponentReplacements, BoardWorkbookSchema.ColPartNumber)]
+    [InlineData("replacement.kind", BoardWorkbookSchema.SheetComponentReplacements, BoardWorkbookSchema.ColKind)]
+    public void Each_rule_about_CRT_4_data_is_a_warning_on_its_cell_and_nothing_to_the_server(string code, string sheet, string column)
+    {
+        BoardCheckRows rows = Crt4Rows(
+            components: [new ComponentEntry { BoardLabel = "U8", Category = "IC", Description = new string('x', ComponentVocabulary.ShortDescriptionLimit + 1) }],
+            images: [new ComponentImageEntry { BoardLabel = "U8", Pin = "2", Name = "PA0", File = $"{Board}/U1.png", TimeDiv = "1mS", Source = "My cousin" }],
+            pins:
+            [
+                new ComponentPinEntry { BoardLabel = "U99", Pin = "1", Name = "VCC", Direction = "Power" },
+                new ComponentPinEntry { BoardLabel = "U8", Pin = "", Name = "RES", Direction = "Input" },
+                new ComponentPinEntry { BoardLabel = "U8", Pin = "3", Name = "PA1", Direction = "Sideways" },
+            ],
+            replacements:
+            [
+                new ComponentReplacementEntry { BoardLabel = "U99", PartNumber = "6526A", Kind = "Drop-in" },
+                new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "", Kind = "Drop-in" },
+                new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "8521", Kind = "Better" },
+            ]);
+
+        BoardDataProblem warning = Assert.Single(Everything(rows, $"{Board}/U1.png"), problem => problem.Code == code);
+
+        Assert.Equal(BoardProblemLevel.Warning, warning.Level);
+        Assert.Equal(sheet, warning.Sheet);
+        Assert.Equal(column, warning.Column);
+        Assert.DoesNotContain(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == code);
+    }
+
+    // Empty is fine everywhere - unfinished work - and the words compare ignoring capitals; a short
+    // description of exactly the limit fits.
+    [Fact]
+    public void Empty_or_known_values_and_a_description_at_the_limit_are_no_problem()
+    {
+        BoardCheckRows rows = Crt4Rows(
+            components: [new ComponentEntry { BoardLabel = "U8", Category = "IC", Description = new string('x', ComponentVocabulary.ShortDescriptionLimit) }],
+            images: [new ComponentImageEntry { BoardLabel = "U8", Pin = "2", Name = "PA0", File = $"{Board}/U1.png", TimeDiv = "1mS", Source = "datasheet" }],
+            pins: [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS", Direction = "" }, new ComponentPinEntry { BoardLabel = "u8", Pin = "2", Direction = "ground" }],
+            replacements: [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "" }]);
+
+        IReadOnlyList<BoardDataProblem> problems = Everything(rows, $"{Board}/U1.png");
+
+        Assert.DoesNotContain(problems, problem => problem.Code.StartsWith("pin.", StringComparison.Ordinal));
+        Assert.DoesNotContain(problems, problem => problem.Code.StartsWith("replacement.", StringComparison.Ordinal));
+        Assert.DoesNotContain(problems, problem => problem.Code is "baseline.source" or "component.long_description");
+    }
+
+    // Two pins with one number on one component are warned about, as any two rows of one identity.
+    [Fact]
+    public void Two_pins_with_one_number_are_a_duplicate_warning()
+    {
+        BoardCheckRows rows = Crt4Rows(pins:
+        [
+            new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" },
+            new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "GND" },
+        ]);
+
+        List<BoardDataProblem> duplicates = Duplicates(Everything(rows));
+
+        Assert.Equal(2, duplicates.Count);
+        Assert.All(duplicates, problem => Assert.Equal(BoardWorkbookSchema.SheetComponentPins, problem.Sheet));
     }
 }

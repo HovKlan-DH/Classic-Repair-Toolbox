@@ -65,16 +65,11 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Returns true when the entry carries an oscilloscope baseline: it must name a pin and
-        // supply at least one of the three scope settings.
+        // supply at least one of the three scope settings. CRT.Data's ComponentImageKinds holds the
+        // rule, because the board data converter splits the sheet by the same one.
         // ###########################################################################################
-        public static bool IsOscilloscopeImage(ComponentImageEntry? componentImageEntry)
-        {
-            return componentImageEntry != null &&
-                   !string.IsNullOrWhiteSpace(componentImageEntry.Pin) &&
-                   (!string.IsNullOrWhiteSpace(componentImageEntry.TimeDiv) ||
-                    !string.IsNullOrWhiteSpace(componentImageEntry.VoltsDiv) ||
-                    !string.IsNullOrWhiteSpace(componentImageEntry.TriggerLevelVolts));
-        }
+        public static bool IsOscilloscopeImage(ComponentImageEntry? componentImageEntry) =>
+            ComponentImageKinds.IsScopeBaseline(componentImageEntry);
 
         // ###########################################################################################
         // Selects the best-fit ComponentEntry for the given region:

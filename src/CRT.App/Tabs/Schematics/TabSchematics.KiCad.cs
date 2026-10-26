@@ -42,6 +42,11 @@ public partial class TabSchematics
 
     private string thisCurrentKiCadRuntimeCacheScopeKey = string.Empty;
 
+    // The raw KiCad files the current board's project was loaded from (Main.KiCadRawPathsFor, read
+    // off the UI thread by the caller) - what the runtime cache scope is keyed by. Kept here so a
+    // render or a hover never asks for them again: each ask copied the board's KiCad files.
+    private IReadOnlyList<string> thisCurrentKiCadRawPaths = [];
+
     private readonly LinkedList<string> thisKiCadRuntimeCacheScopeLru = new();
 
     private readonly Dictionary<string, KiCadRuntimeCacheScope> thisKiCadRuntimeCacheScopeByKey =
@@ -202,13 +207,18 @@ public partial class TabSchematics
     // Loads raw KiCad overlay data for the current board without blocking the initial board UI.
     // Establishes a persistent per-board runtime cache scope so revisiting the same KiCad project
     // can reuse already-built render and hover caches across board switches in this session.
+    //
+    // `rawPaths` are the board's KiCad files as Main.KiCadRawPathsFor copied them, ON THE POOL
+    // (code review, 2026-10-25): asked for here, on the UI thread, the first copy of a large board
+    // froze the window.
     // ###########################################################################################
-    public async Task LoadKiCadProjectForCurrentBoardAsync()
+    public async Task LoadKiCadProjectForCurrentBoardAsync(IReadOnlyList<string> rawPaths)
     {
         int loadVersion = unchecked(++this.thisKiCadProjectLoadVersion);
         string expectedBoardKey = this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
 
         this.thisKiCadProject = null;
+        this.thisCurrentKiCadRawPaths = rawPaths ?? [];
         this.thisCurrentKiCadRuntimeCacheScopeKey = this.BuildCurrentKiCadRuntimeCacheScopeKey();
         this.thisKiCadSchematicHoverHitTestCacheByKey.Clear();
 
@@ -251,8 +261,7 @@ public partial class TabSchematics
 
         this.RestoreBoardSettings(expectedBoardKey);
 
-        var rawPaths = this.MainWindow?.GetCurrentBoardKiCadRawPaths() ?? new List<string>();
-        if (rawPaths.Count == 0)
+        if (this.thisCurrentKiCadRawPaths.Count == 0)
         {
             this.SetKiCadInitializingIndicatorVisible(false);
             this.thisCurrentKiCadRuntimeCacheScopeKey = string.Empty;
@@ -278,8 +287,10 @@ public partial class TabSchematics
 
         try
         {
+            IReadOnlyList<string> paths = this.thisCurrentKiCadRawPaths;
+
             loadedProject = await Task.Run(async () =>
-                await KiCadProjectLoader.LoadRawAsync(rawPaths, hardwareName, boardName, loadCts.Token));
+                await KiCadProjectLoader.LoadRawAsync(paths, hardwareName, boardName, loadCts.Token));
         }
         catch (Exception ex)
         {
@@ -627,9 +638,7 @@ public partial class TabSchematics
     // ###########################################################################################
     private string BuildCurrentKiCadRuntimeCacheScopeKey()
     {
-        var rawPaths = this.MainWindow?.GetCurrentBoardKiCadRawPaths() ?? new List<string>();
-
-        var existingPaths = rawPaths
+        var existingPaths = this.thisCurrentKiCadRawPaths
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(System.IO.Path.GetFullPath)
             .Where(System.IO.File.Exists)

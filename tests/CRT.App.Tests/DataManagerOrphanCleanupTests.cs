@@ -1,6 +1,5 @@
 using Handlers.DataHandling;
 using Handlers.OnlineHandling;
-using OfficeOpenXml;
 
 namespace ClassicRepairToolbox.Tests;
 
@@ -12,10 +11,13 @@ namespace ClassicRepairToolbox.Tests;
 // The map has two sources, and losing either one silently must abort the cleanup:
 //   1. The online manifest snapshot - the authority on which files the server provides. With no
 //      snapshot (offline launch, DNS failure, server down) "orphan" cannot be determined at all.
-//   2. The workbook walk - main workbook, user-contribution sidecar, and board workbooks. A
-//      workbook that fails to read references nothing, so a corrupt or locked file must abort
-//      rather than count as "references nothing". This is the only protection user-contributed
-//      local-only files have - no re-sync can restore those.
+//   2. The walk of the lists - in CRT 4.0 (2026-10-24) the main file, the board files it lists,
+//      and the stored files each board file names. A list that fails to read references nothing,
+//      so a corrupt or locked file must abort rather than count as "references nothing".
+//
+// (CRT 3.x also walked a "_UserContribution" workbook naming the user's own boards in the data
+// folder. 4.0 has none: a board of the user's own is a draft, outside the data folder - which the
+// draft tests at the bottom hold.)
 //
 // The tests call the internal DeleteOrphanAndUnusedFilesAsync(manifestSnapshot) seam directly.
 // The public overload only adds the two UserSettings gates on top; going through it would force
@@ -29,15 +31,10 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
-    static DataManagerOrphanCleanupTests()
-    {
-        ExcelPackage.License.SetNonCommercialPersonal("Classic Repair Toolbox tests");
-    }
-
     public void Dispose()
     {
         // Leave the static lists empty so nothing later mistakes test data for real data.
-        DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.xlsx");
+        DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.json");
 
         // The draft-safety tests below point DraftManager's static root at a temp folder. Reset it
         // to the unloaded state so it never outlives this workspace - the same rule
@@ -52,35 +49,37 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
 
     // ------------------------------------------------------------------ fixture helpers
 
-    private const string MainExcelName = "master.xlsx";
+    private const string MainName = MainFiles.FileName;
 
-    private static readonly string[] HardwareHeaders =
+    private const string BoardId = "Commodore/C64/250407";
+
+    private static readonly string BoardFile = DataTreeLayout.BoardFilePath(BoardId);
+
+    // The main file listing the given boards, in `dataRoot` (the workspace by default).
+    private void WriteMain(string? dataRoot = null, params string[] boardIds) =>
+        MainFiles.Write(
+            dataRoot ?? this.thisWorkspace.Root,
+            boardIds.Select((id, index) => new MainFiles.Board(id, "C64", $"Board {index + 1}")).ToArray());
+
+    // A board file naming a schematic and a manual, their bytes in the tree's store - the stored
+    // paths, data-root relative.
+    private (string Schematic, string Manual) WriteBoard(string? dataRoot = null, string boardId = BoardId)
     {
-        "Hardware name in drop-down", "Board name in drop-down",
-        "Excel data file", "Hardware notes in \"Overview\" tab"
-    };
+        string root = dataRoot ?? this.thisWorkspace.Root;
+        BoardDocument.StoredFileRow schematic = StoredFiles.Put(root, "schematic.png", "png of " + boardId);
+        BoardDocument.StoredFileRow manual = StoredFiles.Put(root, "manual.pdf", "pdf of " + boardId);
 
-    /// <summary>Writes a master workbook listing the given board workbook paths (data-root relative).</summary>
-    private void WriteMasterWorkbook(string fileName, params string[] boardExcelFiles)
-    {
-        string?[][] rows = boardExcelFiles
-            .Select((file, index) => new string?[] { "C64", $"Board {index + 1}", file, "" })
-            .ToArray();
+        StoredFiles.WriteBoard(
+            Path.Combine(root, DataTreeLayout.BoardFilePath(boardId).Replace('/', Path.DirectorySeparatorChar)),
+            new BoardData
+            {
+                Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "schematic.png" }],
+                BoardLocalFiles = [new BoardLocalFileEntry { Category = "Schematics", Name = "Service manual", File = "manual.pdf" }],
+            },
+            schematic,
+            manual);
 
-        new BoardWorkbookBuilder()
-            .Sheet("Hardware & Board", HardwareHeaders, rows)
-            .SaveTo(this.thisWorkspace.Path_(fileName));
-    }
-
-    /// <summary>Writes a board workbook whose sheets reference the given data-root-relative files.</summary>
-    private void WriteBoardWorkbook(string relativePath, string schematicImage, string boardLocalFile)
-    {
-        new BoardWorkbookBuilder()
-            .Sheet("Board schematics", BoardWorkbookBuilder.SchematicsHeaders,
-                new[] { "uuid-1", "Sheet 1", "", schematicImage, "", "", "", "", "" })
-            .Sheet("Board local files", BoardWorkbookBuilder.BoardLocalFilesHeaders,
-                new[] { "Schematics", "Service manual", boardLocalFile })
-            .SaveTo(this.thisWorkspace.Path_(relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        return (DataTreeLayout.StoredFilePath(schematic.Sha256, schematic.Name), DataTreeLayout.StoredFilePath(manual.Sha256, manual.Name));
     }
 
     private static DataFileEntry ManifestEntry(string file) => new()
@@ -99,13 +98,13 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     public async Task Cleanup_without_a_manifest_snapshot_deletes_nothing()
     {
         // The offline-launch scenario: the manifest fetch failed, so the snapshot is null. The
-        // map would be missing every server-provided file that no workbook references (READMEs,
-        // other main-workbook versions' boards, ...), and all of them would be deleted.
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
+        // map would be missing every server-provided file that no board names (READMEs, other
+        // main files' boards, ...), and all of them would be deleted.
+        this.WriteMain(boardIds: BoardId);
+        this.WriteBoard();
         this.thisWorkspace.WriteFile("only-the-manifest-knows-me.txt", "server-provided file");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(manifestSnapshot: null);
 
@@ -119,11 +118,11 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     {
         // An empty snapshot carries the same problem as a missing one: it cannot vouch for
         // anything, so nothing may be deleted on its authority.
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
+        this.WriteMain(boardIds: BoardId);
+        this.WriteBoard();
         this.thisWorkspace.WriteFile("only-the-manifest-knows-me.txt", "server-provided file");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(new List<DataFileEntry>());
 
@@ -131,63 +130,59 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
         Assert.True(this.FileExists("only-the-manifest-knows-me.txt"));
     }
 
-    // ------------------------------------------- fail closed: incomplete workbook mapping
+    // ------------------------------------------- fail closed: incomplete mapping
 
     [Fact]
-    public async Task An_unreadable_board_workbook_aborts_the_cleanup()
+    public async Task An_unreadable_board_file_aborts_the_cleanup()
     {
-        // A board workbook that exists but cannot be parsed references an unknown set of files.
-        // Treating it as "references nothing" would delete every local-only asset of that board,
-        // so the whole cleanup must abort instead.
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.thisWorkspace.WriteFile("C64/Data.xlsx", "this is not an Excel file");
-        this.thisWorkspace.WriteFile("C64/photo.png", "asset of the unreadable board");
+        // A board file that exists but cannot be parsed names an unknown set of files. Treating
+        // it as "names nothing" would delete every stored file of that board, so the whole
+        // cleanup must abort instead.
+        this.WriteMain(boardIds: BoardId);
+        this.thisWorkspace.WriteFile(BoardFile, "this is not a board file");
+        this.thisWorkspace.WriteFile("Files/ab/stored.png", "bytes of the unreadable board");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry(MainExcelName) });
+            new List<DataFileEntry> { ManifestEntry(MainName) });
 
         Assert.Equal(0, deleted);
-        Assert.True(this.FileExists("C64/photo.png"),
-            "an unreadable board workbook must abort the cleanup, not orphan that board's files");
+        Assert.True(this.FileExists("Files/ab/stored.png"),
+            "an unreadable board file must abort the cleanup, not orphan that board's files");
     }
 
     [Fact]
-    public async Task A_missing_resolved_main_workbook_aborts_the_cleanup()
+    public async Task A_missing_resolved_main_file_aborts_the_cleanup()
     {
-        // With the resolved main workbook absent (e.g. a fresh data root where the download
-        // failed), the board list is unknown, so nothing can be classified as an orphan.
-        this.thisWorkspace.WriteFile("C64/photo.png", "board asset");
+        // With the resolved main file absent (e.g. a fresh data root where the download failed),
+        // the board list is unknown, so nothing can be classified as an orphan.
+        this.thisWorkspace.WriteFile("Files/ab/stored.png", "board bytes");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, "ghost.xlsx");
+        DataManager.LoadFrom(this.thisWorkspace.Root, "ghost.json");
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry("ghost.xlsx") });
+            new List<DataFileEntry> { ManifestEntry("ghost.json") });
 
         Assert.Equal(0, deleted);
-        Assert.True(this.FileExists("C64/photo.png"));
+        Assert.True(this.FileExists("Files/ab/stored.png"));
     }
 
     [Fact]
-    public async Task An_unreadable_user_contribution_sidecar_aborts_the_cleanup()
+    public async Task An_unreadable_main_file_aborts_the_cleanup()
     {
-        // The contribution sidecar names the user's OWN boards - files that exist nowhere but on
-        // this machine. If the sidecar is corrupt while the main workbook still reads fine, the
-        // contribution's files would be the ones deleted, and no re-sync could bring them back.
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
-        this.thisWorkspace.WriteFile("master_UserContribution.xlsx", "this is not an Excel file");
-        this.thisWorkspace.WriteFile("Contrib/photo.png", "user-contributed, local-only");
+        this.WriteMain(boardIds: BoardId);
+        (string schematic, _) = this.WriteBoard();
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        // Damaged after the load - the cleanup reads it again to build its map.
+        this.thisWorkspace.WriteFile(MainName, "{ not json");
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry(MainExcelName), ManifestEntry("C64/Data.xlsx") });
+            new List<DataFileEntry> { ManifestEntry(MainName) });
 
         Assert.Equal(0, deleted);
-        Assert.True(this.FileExists("Contrib/photo.png"),
-            "a corrupt contribution sidecar must abort the cleanup, not forfeit the user's own data");
+        Assert.True(this.FileExists(schematic));
     }
 
     // -------------------------------------------------- the intended behaviour still works
@@ -195,14 +190,14 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     [Fact]
     public async Task An_orphan_file_is_deleted_and_its_empty_folder_removed()
     {
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
+        this.WriteMain(boardIds: BoardId);
+        this.WriteBoard();
         this.thisWorkspace.WriteFile("Stale/orphan.bin", "in no manifest, referenced by nothing");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry(MainExcelName), ManifestEntry("C64/Data.xlsx") });
+            new List<DataFileEntry> { ManifestEntry(MainName), ManifestEntry(BoardFile) });
 
         Assert.Equal(1, deleted);
         Assert.False(this.FileExists("Stale/orphan.bin"));
@@ -220,13 +215,13 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     private string CaptureFolderBesideData => this.thisBesideData.Path_("Oscilloscope images");
 
     private List<DataFileEntry> MinimalManifest() =>
-        new() { ManifestEntry(MainExcelName), ManifestEntry("C64/Data.xlsx") };
+        new() { ManifestEntry(MainName), ManifestEntry(BoardFile) };
 
     private void WriteMinimalBoard()
     {
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        this.WriteMain(boardIds: BoardId);
+        this.WriteBoard();
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
     }
 
     [Fact]
@@ -346,67 +341,58 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     }
 
     [Fact]
-    public async Task A_file_listed_in_the_manifest_survives_even_when_no_workbook_references_it()
+    public async Task A_file_listed_in_the_manifest_survives_even_when_no_board_names_it()
     {
-        // README-style files are provided by the server but referenced by no workbook sheet;
-        // the manifest snapshot is what keeps them alive.
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
+        // README-style files are provided by the server but named by no board; the manifest
+        // snapshot is what keeps them alive.
+        this.WriteMain(boardIds: BoardId);
+        this.WriteBoard();
         this.thisWorkspace.WriteFile("!README.txt", "about this data");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry(MainExcelName), ManifestEntry("!README.txt") });
+            new List<DataFileEntry> { ManifestEntry(MainName), ManifestEntry("!README.txt") });
 
         Assert.Equal(0, deleted);
         Assert.True(this.FileExists("!README.txt"));
     }
 
+    // The stored bytes a board file names are kept by the walk alone - the manifest here lists
+    // nothing but the main file, as a manifest fetched before a publish would.
     [Fact]
-    public async Task Files_referenced_by_a_board_workbook_survive_the_cleanup()
+    public async Task The_stored_files_a_board_names_survive_the_cleanup()
     {
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
-        this.thisWorkspace.WriteFile("C64/schematic.png", "png");
-        this.thisWorkspace.WriteFile("C64/manual.pdf", "pdf");
-        // A file physically under the board's "KiCad data" folder is kept by the folder walk
-        // even though no workbook sheet names it.
-        this.thisWorkspace.WriteFile("C64/KiCad data/board.kicad_pcb", "kicad");
+        this.WriteMain(boardIds: BoardId);
+        (string schematic, string manual) = this.WriteBoard();
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry(MainExcelName) });
+            new List<DataFileEntry> { ManifestEntry(MainName) });
 
         Assert.Equal(0, deleted);
-        Assert.True(this.FileExists("C64/schematic.png"));
-        Assert.True(this.FileExists("C64/manual.pdf"));
-        Assert.True(this.FileExists("C64/KiCad data/board.kicad_pcb"));
+        Assert.True(this.FileExists(BoardFile));
+        Assert.True(this.FileExists(schematic));
+        Assert.True(this.FileExists(manual));
     }
 
+    // Bytes no board names any more - a picture replaced by a publish - go once the manifest no
+    // longer lists them either.
     [Fact]
-    public async Task A_user_contribution_sidecars_boards_and_assets_survive_the_cleanup()
+    public async Task Stored_bytes_no_board_names_any_more_are_deleted()
     {
-        // Contribution files are local-only, so they are never in the manifest; the sidecar
-        // workbook walk is their only protection.
-        this.WriteMasterWorkbook(MainExcelName, "C64/Data.xlsx");
-        this.WriteBoardWorkbook("C64/Data.xlsx", "C64/schematic.png", "C64/manual.pdf");
-        this.WriteMasterWorkbook("master_UserContribution.xlsx", "Contrib/Data.xlsx");
-        this.WriteBoardWorkbook("Contrib/Data.xlsx", "Contrib/schematic.png", "Contrib/manual.pdf");
-        this.thisWorkspace.WriteFile("Contrib/schematic.png", "png");
-        this.thisWorkspace.WriteFile("Contrib/manual.pdf", "pdf");
+        this.WriteMain(boardIds: BoardId);
+        this.WriteBoard();
+        BoardDocument.StoredFileRow replaced = StoredFiles.Put(this.thisWorkspace.Root, "schematic.png", "the old scan");
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MainExcelName);
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainName);
 
         int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(
-            new List<DataFileEntry> { ManifestEntry(MainExcelName), ManifestEntry("C64/Data.xlsx") });
+            new List<DataFileEntry> { ManifestEntry(MainName), ManifestEntry(BoardFile) });
 
-        Assert.Equal(0, deleted);
-        Assert.True(this.FileExists("master_UserContribution.xlsx"));
-        Assert.True(this.FileExists("Contrib/Data.xlsx"));
-        Assert.True(this.FileExists("Contrib/schematic.png"));
-        Assert.True(this.FileExists("Contrib/manual.pdf"));
+        Assert.Equal(1, deleted);
+        Assert.False(File.Exists(StoredFiles.PathOf(this.thisWorkspace.Root, replaced)));
     }
 
     // ------------------------------------------------- A sync never destroys a draft
@@ -416,15 +402,15 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     //
     // The property is structural rather than defensive, which is exactly why it is worth a test:
     // cleanup only ever enumerates inside the DATA root (and re-checks containment per file), and
-    // "Drafts/" is a SIBLING of "Data/" in AppData, never inside it. So no guard in the cleanup
-    // code mentions drafts at all - the safety comes entirely from that separation, and a future
-    // change that moved drafts under the data root, or widened the enumeration, would silently
-    // start deleting a contributor's unpublished work with nothing to restore it from. These tests
-    // fail the moment that separation stops holding.
+    // "Drafts/" is a SIBLING of the data folder in AppData, never inside it. So no guard in the
+    // cleanup code mentions drafts at all - the safety comes entirely from that separation, and a
+    // future change that moved drafts under the data root, or widened the enumeration, would
+    // silently start deleting a contributor's unpublished work with nothing to restore it from.
+    // These tests fail the moment that separation stops holding.
     //
-    // Deliberately run with a manifest snapshot that vouches for everything and NO workbook
-    // referencing the draft, which is the harshest case: every drafted file is, by the cleanup's
-    // own definition, unreferenced - and must still survive because it is out of scope entirely.
+    // Deliberately run with a manifest snapshot that vouches for everything and NO board naming
+    // the draft, which is the harshest case: every drafted file is, by the cleanup's own
+    // definition, unreferenced - and must still survive because it is out of scope entirely.
     private string SetUpDraftBesideDataRoot(string excelDataFile)
     {
         // Inside the workspace so it is cleaned up with it, but deliberately NOT inside the data
@@ -435,12 +421,8 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
 
         string draftFolder = DraftManager.GetBoardFolder(excelDataFile);
 
-        // *** A DRAFT IS A BOARD FOLDER SINCE PHASE 6 (2026-09-23). *** Written the way
-        // DraftSeeder would - a workbook plus the marker that makes the folder a draft - so what
-        // the cleanup is proven not to touch is the real thing rather than a stand-in.
-        string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
-        Directory.CreateDirectory(Path.GetDirectoryName(workbook)!);
-
+        // Written the way DraftSeeder would - a board file plus the marker that makes the folder a
+        // draft - so what the cleanup is proven not to touch is the real thing.
         var board = new BoardData { RevisionDate = "2026-01-15" };
         board.Components.Add(new ComponentEntry
         {
@@ -448,15 +430,15 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
             FriendlyName = "PLA (my correction)",
         });
 
-        CachedWorkbooks.Write(workbook, board);
+        CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile), board);
 
         DraftMarkerStore.Save(
             DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile),
             new DraftMarker { BoardKey = excelDataFile, BaseRevision = "2026-01-15" });
 
-        // A DRAFTED ATTACHMENT - bytes that exist in no other copy. The cleanup walks Data/ for
-        // files the manifest does not name; reaching into Drafts/ would destroy this one, and the
-        // contributor would have nothing to restore it from.
+        // A DRAFTED ATTACHMENT - bytes that exist in no other copy. The cleanup walks the data
+        // folder for files the manifest does not name; reaching into Drafts/ would destroy this
+        // one, and the contributor would have nothing to restore it from.
         string attachment = DraftFileResolver.BuildDraftFileDestination(draftFolder, "docs/datasheet.pdf");
         Directory.CreateDirectory(Path.GetDirectoryName(attachment)!);
         File.WriteAllText(attachment, "a datasheet the contributor attached");
@@ -468,25 +450,13 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     // inside it. The other tests in this class point DataManager at the workspace root itself,
     // which would put the drafts folder within the very tree the cleanup walks - inverting the
     // property under test.
-    private string SetUpDataRootWithBoard(string excelDataFile)
+    private string SetUpDataRootWithBoard()
     {
         string dataRoot = this.thisWorkspace.Path_("Data");
         Directory.CreateDirectory(dataRoot);
 
-        string?[][] rows = { new string?[] { "C64", "Board 1", excelDataFile, "" } };
-        new BoardWorkbookBuilder()
-            .Sheet("Hardware & Board", HardwareHeaders, rows)
-            .SaveTo(Path.Combine(dataRoot, MainExcelName));
-
-        string boardPath = Path.Combine(dataRoot, excelDataFile.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(boardPath)!);
-
-        new BoardWorkbookBuilder()
-            .Sheet("Board schematics", BoardWorkbookBuilder.SchematicsHeaders,
-                new[] { "uuid-1", "Sheet 1", "", "C64/schematic.png", "", "", "", "", "" })
-            .Sheet("Board local files", BoardWorkbookBuilder.BoardLocalFilesHeaders,
-                new[] { "Schematics", "Service manual", "C64/manual.pdf" })
-            .SaveTo(boardPath);
+        this.WriteMain(dataRoot, BoardId);
+        this.WriteBoard(dataRoot);
 
         return dataRoot;
     }
@@ -494,20 +464,18 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     [Fact]
     public async Task The_cleanup_never_touches_a_draft_or_its_attachments()
     {
-        const string ExcelDataFile = "C64/Data.xlsx";
-
-        string dataRoot = this.SetUpDataRootWithBoard(ExcelDataFile);
-        string draftFolder = this.SetUpDraftBesideDataRoot(ExcelDataFile);
+        string dataRoot = this.SetUpDataRootWithBoard();
+        string draftFolder = this.SetUpDraftBesideDataRoot(BoardFile);
 
         // An unreferenced file inside the data root, to prove the cleanup actually runs here.
         File.WriteAllText(Path.Combine(dataRoot, "stray-orphan.txt"), "not referenced by anything");
 
-        DataManager.LoadFrom(dataRoot, MainExcelName);
+        DataManager.LoadFrom(dataRoot, MainName);
 
         await DataManager.DeleteOrphanAndUnusedFilesAsync(new List<DataFileEntry>
         {
-            ManifestEntry(MainExcelName),
-            ManifestEntry(ExcelDataFile),
+            ManifestEntry(MainName),
+            ManifestEntry(BoardFile),
         });
 
         // Sanity: the cleanup really is ACTIVE in this setup rather than short-circuiting, so the
@@ -516,6 +484,10 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
         Assert.False(
             File.Exists(Path.Combine(dataRoot, "stray-orphan.txt")),
             "the cleanup deleted nothing at all here, so this test could not prove a draft survives it");
+
+        Assert.True(
+            File.Exists(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFile)),
+            "the cleanup deleted a draft's board file - a contributor's unpublished work, which nothing can restore");
 
         Assert.True(
             File.Exists(Path.Combine(draftFolder, DraftFolderLayout.DraftMarkerFileName)),
@@ -527,33 +499,31 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
     }
 
     // The draft's rows must still read back intact afterwards, not merely have a file left behind:
-    // a truncated or rewritten draft.json would pass a File.Exists check while having lost the work.
+    // a truncated or rewritten board file would pass a File.Exists check while having lost the work.
     [Fact]
     public async Task A_draft_still_reads_back_intact_after_a_cleanup()
     {
-        const string ExcelDataFile = "C64/Data.xlsx";
+        string dataRoot = this.SetUpDataRootWithBoard();
+        this.SetUpDraftBesideDataRoot(BoardFile);
 
-        string dataRoot = this.SetUpDataRootWithBoard(ExcelDataFile);
-        this.SetUpDraftBesideDataRoot(ExcelDataFile);
-
-        DataManager.LoadFrom(dataRoot, MainExcelName);
+        DataManager.LoadFrom(dataRoot, MainName);
 
         await DataManager.DeleteOrphanAndUnusedFilesAsync(new List<DataFileEntry>
         {
-            ManifestEntry(MainExcelName),
-            ManifestEntry(ExcelDataFile),
+            ManifestEntry(MainName),
+            ManifestEntry(BoardFile),
         });
 
         // The contributor's own work, still there. This is the guarantee the whole test exists
-        // for: the sync owns Data/, and a cleanup that reached into Drafts/ would destroy
+        // for: the sync owns the data folder, and a cleanup that reached into Drafts/ would destroy
         // unpublished work with no way to recover it.
-        BoardData? draftBoard = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, ExcelDataFile);
+        BoardData? draftBoard = DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, BoardFile);
 
         Assert.NotNull(draftBoard);
         Assert.Equal("PLA (my correction)", Assert.Single(draftBoard!.Components).FriendlyName);
 
         DraftMarker? marker = DraftMarkerStore.Load(
-            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, ExcelDataFile));
+            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, BoardFile));
 
         Assert.NotNull(marker);
         Assert.Equal("2026-01-15", marker!.BaseRevision);

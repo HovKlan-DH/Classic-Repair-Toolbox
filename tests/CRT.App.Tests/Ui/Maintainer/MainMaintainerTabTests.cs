@@ -226,7 +226,7 @@ public sealed class MainMaintainerTabTests : IDisposable
 
             int maintainer = items.IndexOf(window.MaintainerTabItem);
 
-            Assert.Equal(items.IndexOf(window.DraftsTabItem) + 1, maintainer);
+            Assert.Equal(items.IndexOf(window.ContributeTabItem) + 1, maintainer);
             Assert.Equal(items.IndexOf(window.ConfigurationTabItem) - 1, maintainer);
 
             // The header is a title and a badge since 2026-09-30, not a plain string.

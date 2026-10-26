@@ -7,7 +7,8 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // BoardFilesFlow - every file a board uses as BETA holds it, for the Boards screen's Files
-    // view (owner request, 2026-10-03: "just list all files"). Against a real temp tree.
+    // view (owner request, 2026-10-03: "just list all files"). Against a real temp tree - a CRT 4.0
+    // one (2026-10-25): the board file and every name it lists whose bytes are stored.
     // ###########################################################################################
     [Collection("BoardFiles")]
     public sealed class BoardFilesFlowTests : IDisposable
@@ -33,54 +34,41 @@ namespace CRT.Server.Tests
             }
         }
 
-        private Task<IReadOnlyList<BoardFileEntry>?> BuildAsync(string boardId = BoardFilesFlowTests.BoardId) =>
-            BoardFilesFlow.BuildAsync(this.thisRoot, boardId, new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance));
+        private Task<IReadOnlyList<BoardFileEntry>?> BuildAsync(string boardId = BoardFilesFlowTests.BoardId, BoardFileSource source = BoardFileSource.Beta) =>
+            BoardFilesFlow.BuildAsync(this.thisRoot, boardId, new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance), CancellationToken.None, source);
 
         // ###########################################################################################
-        // The board's own folder - workbook, KiCad data, a file nothing cites - and the shared file
-        // its board cites, all listed as they are. Another board's file and the shared file nobody
-        // here cites are not the board's; a cited file BETA does not hold is not listed as if it were.
+        // The board file and every name it lists, by the board's names, each fetched from where its
+        // bytes lie and sized from there. A listed name whose bytes the tree does not hold is not
+        // listed as if it were; another board's files are not this board's.
         // ###########################################################################################
         [Fact]
-        public async Task It_lists_the_boards_own_folder_and_the_shared_files_it_cites_and_nothing_else()
+        public async Task It_lists_the_board_file_and_every_stored_file_it_lists_by_name()
         {
-            DataTreeBuilder.Board(
-                this.thisRoot,
-                DataTreeBuilder.Workbook,
-                "Commodore/C64/250407/manual.pdf",
-                "Commodore/Shared files/74LS08.pdf",
-                "Commodore/Shared files/missing.pdf");
+            DataTreeBuilder.Board(this.thisRoot, BoardFilesFlowTests.BoardId,
+                ("manual.pdf", "manual"),
+                ("KiCad data/board.kicad_pcb", "(kicad_pcb)"),
+                ("missing.pdf", "gone"));
 
-            DataTreeBuilder.Files(
-                this.thisRoot,
-                "Commodore/C64/250407/manual.pdf",
-                "Commodore/C64/250407/KiCad data/board.kicad_pcb",
-                "Commodore/C64/250407/notes.txt",
-                "Commodore/Shared files/74LS08.pdf",
-                "Commodore/Shared files/7406.pdf",
-                "Commodore/C128/310378/other.pdf");
+            DataTreeBuilder.Board(this.thisRoot, "Commodore/C128/310378", ("other.pdf", "other"));
+
+            File.Delete(DataTreeBuilder.Full(this.thisRoot, DataTreeBuilder.Stored("gone", "missing.pdf")));
 
             IReadOnlyList<BoardFileEntry>? files = await this.BuildAsync();
 
             Assert.NotNull(files);
-            Assert.Equal(
-                new[]
-                {
-                    "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx",
-                    "Commodore/C64/250407/KiCad data/board.kicad_pcb",
-                    "Commodore/C64/250407/manual.pdf",
-                    "Commodore/C64/250407/notes.txt",
-                    "Commodore/Shared files/74LS08.pdf"
-                },
-                files!.Select(file => file.Path));
+            Assert.Equal(["KiCad data/board.kicad_pcb", "board.json", "manual.pdf"], files!.Select(file => file.Path));
 
-            Assert.All(files!, file =>
+            Assert.Equal("Commodore/C64/250407/board.json", files[1].PlaceInTree);
+            Assert.Equal(DataTreeBuilder.Stored("manual", "manual.pdf"), files[2].PlaceInTree);
+
+            Assert.All(files, file =>
             {
                 Assert.Equal(BoardFileChange.Unchanged, file.Change);
                 Assert.Equal(BoardFileSource.Beta, file.OpenFrom);
 
                 // Each with its size as BETA holds it (owner request, 2026-10-04).
-                Assert.Equal(new FileInfo(DataTreeBuilder.Full(this.thisRoot, file.Path)).Length, file.SizeBytes);
+                Assert.Equal(new FileInfo(DataTreeBuilder.Full(this.thisRoot, file.PlaceInTree)).Length, file.SizeBytes);
             });
         }
 
@@ -89,19 +77,16 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_stable_sources_files_open_from_the_stable_source()
         {
-            DataTreeBuilder.Board(this.thisRoot, DataTreeBuilder.Workbook, "Commodore/C64/250407/manual.pdf");
-            DataTreeBuilder.Files(this.thisRoot, "Commodore/C64/250407/manual.pdf");
+            DataTreeBuilder.Board(this.thisRoot, BoardFilesFlowTests.BoardId, ("manual.pdf", "manual"));
 
-            IReadOnlyList<BoardFileEntry>? files = await BoardFilesFlow.BuildAsync(
-                this.thisRoot, "Commodore/C64/250407", new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance),
-                CancellationToken.None, BoardFileSource.Production);
+            IReadOnlyList<BoardFileEntry>? files = await this.BuildAsync(source: BoardFileSource.Production);
 
             Assert.NotNull(files);
             Assert.NotEmpty(files!);
             Assert.All(files!, file =>
             {
                 Assert.Equal(BoardFileSource.Production, file.OpenFrom);
-                Assert.Equal(new FileInfo(DataTreeBuilder.Full(this.thisRoot, file.Path)).Length, file.SizeBytes);
+                Assert.Equal(new FileInfo(DataTreeBuilder.Full(this.thisRoot, file.PlaceInTree)).Length, file.SizeBytes);
             });
         }
 

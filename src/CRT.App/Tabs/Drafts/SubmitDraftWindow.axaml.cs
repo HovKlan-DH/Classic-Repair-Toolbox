@@ -62,22 +62,23 @@ namespace CRT
         private CancellationTokenSource? thisCancellation;
 
         // ###########################################################################################
-        // The board's KiCad data - the "KiCad data" folder's files, which no row cites and
-        // CollectReferencedFiles therefore cannot find (owner decision, 2026-09-26). The union of
-        // the draft's folder and the synced official one, the draft winning, which is the same
-        // draft-first rule the upload's own file resolution applies.
+        // The board's KiCad data - the "KiCad data" files, which no row cites and
+        // CollectReferencedFiles therefore cannot find (owner decision, 2026-09-26). In CRT 4.0
+        // (2026-10-25) the draft's board file lists them by name, the published board's as well as
+        // its own (SubmissionKiCadFiles.Collect) - and an import no write has listed yet goes too.
         // ###########################################################################################
         private IReadOnlyList<string> CollectKiCadFiles()
         {
-            if (this.thisIdentity is null)
+            if (this.thisIdentity is null || string.IsNullOrWhiteSpace(this.thisBoardFolder))
                 return [];
 
-            string officialFolder = string.IsNullOrWhiteSpace(this.thisDataRoot)
-                ? string.Empty
-                : Path.Combine(this.thisDataRoot, this.thisIdentity.BoardId.Replace('/', Path.DirectorySeparatorChar));
-
-            return SubmissionKiCadFiles.Collect(this.thisIdentity.BoardId, this.thisBoardFolder, officialFolder);
+            return SubmissionKiCadFiles.Collect(
+                BoardFiles.ReadDocument(Path.Combine(this.thisBoardFolder, DataTreeLayout.BoardFileName)),
+                DraftFiles.ArrivedKiCadNames(this.thisBoardFolder));
         }
+
+        // The board the files are named by - its board file (DataTreeLayout.BoardFilePath).
+        private string BoardIdentity => this.thisIdentity is null ? string.Empty : DataTreeLayout.BoardFilePath(this.thisIdentity.BoardId);
 
         // Set once the submission has been sent, so the caller can tell whether the draft should
         // be left alone (always, for now - see the Drafts tab) and what to show afterwards.
@@ -93,6 +94,16 @@ namespace CRT
             this.AddHandler(KeyDownEvent, this.OnWindowPreviewKeyDown, RoutingStrategies.Tunnel);
 
             this.Closing += this.OnWindowClosing;
+
+            this.ShowTestServerNote(AppConfig.UsesTestServer);
+        }
+
+        // The line saying a pre-release sends to the test instance (ContributionServer.SubmitNote);
+        // internal so a test can show both.
+        internal void ShowTestServerNote(bool usesTestServer)
+        {
+            this.TestServerSubmitText.Text = usesTestServer ? Handlers.Online.ContributionServer.SubmitNote : string.Empty;
+            this.TestServerSubmitText.IsVisible = usesTestServer;
         }
 
         // ###########################################################################################
@@ -118,7 +129,11 @@ namespace CRT
 
             // What the draft holds as it is sent (DraftFingerprint, 2026-10-03), kept on the
             // receipt so the Drafts tab can grey Submit out while the draft stays the same.
-            string draftFingerprint = "")
+            string draftFingerprint = "",
+
+            // What the draft changes, in words (DraftChangeSummary) - the summary "Review changes"
+            // shows, shown here too (CRT 4.0 step 1's last slice). Null shows none.
+            DraftChangeSummary? changes = null)
         {
             ArgumentNullException.ThrowIfNull(mergedData);
             ArgumentNullException.ThrowIfNull(identity);
@@ -169,9 +184,53 @@ namespace CRT
                 this.EmailTextBox.Text = address.Email;
             }
 
+            this.ShowChanges(changes);
             this.BuildSummary();
             this.UpdateSubmitEnabled();
         }
+
+        // ###########################################################################################
+        // "Your changes": each group's title, then its lines - what the contributor reads before
+        // sending, in the words "Review changes" uses.
+        // ###########################################################################################
+        private void ShowChanges(DraftChangeSummary? changes)
+        {
+            this.ChangesPanel.Children.Clear();
+
+            bool shown = changes is { IsEmpty: false };
+            this.ChangesHeading.IsVisible = shown;
+            this.ChangesBorder.IsVisible = shown;
+
+            if (!shown)
+                return;
+
+            foreach (DraftChangeGroup group in changes!.Groups)
+            {
+                this.ChangesPanel.Children.Add(new TextBlock
+                {
+                    Text = group.Title,
+                    FontWeight = FontWeight.SemiBold,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Avalonia.Thickness(0, this.ChangesPanel.Children.Count == 0 ? 0 : 4, 0, 0),
+                });
+
+                foreach (string line in group.Lines)
+                {
+                    this.ChangesPanel.Children.Add(new TextBlock
+                    {
+                        Text = "- " + line,
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Avalonia.Thickness(10, 0, 0, 0),
+                    });
+                }
+            }
+        }
+
+        // What "Your changes" shows, line by line - for tests.
+        internal IReadOnlyList<string> ChangesForTests =>
+            this.ChangesBorder.IsVisible
+                ? this.ChangesPanel.Children.OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToList()
+                : [];
 
         // ###########################################################################################
         // The "what will be sent" panel.
@@ -351,7 +410,7 @@ namespace CRT
             ];
 
             FileHashResult hashed = await SubmissionClient.HashFilesAsync(
-                this.thisDataRoot, this.thisBoardFolder, paths, progress, token);
+                this.thisDataRoot, this.thisBoardFolder, paths, progress, token, this.BoardIdentity);
 
             SubmissionIdentity identity = this.thisIdentity!;
 
@@ -424,7 +483,7 @@ namespace CRT
                 // disk between the two passes.
                 if (!SubmissionFileLocator.TryLocate(
                         this.thisDataRoot, this.thisBoardFolder, file.Path,
-                        out string absolute, out string reason))
+                        out string absolute, out string reason, this.BoardIdentity))
                 {
                     throw new SubmissionRejectedException(
                         0,

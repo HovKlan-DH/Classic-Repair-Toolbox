@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 
 namespace Handlers.DataHandling
 {
@@ -53,11 +54,40 @@ namespace Handlers.DataHandling
             try
             {
                 write(temporary);
-                File.Move(temporary, target, overwrite: true);
+                FileReplacer.MoveOver(temporary, target, (from, to) => File.Move(from, to, overwrite: true), Thread.Sleep);
             }
             finally
             {
                 FileReplacer.TryDelete(temporary);
+            }
+        }
+
+        // How often, and how far apart, the rename is tried while the target is held open.
+        internal const int MoveAttempts = 8;
+        internal static readonly TimeSpan MovePause = TimeSpan.FromMilliseconds(25);
+
+        // ###########################################################################################
+        // *** A TARGET HELD OPEN FOR A MOMENT IS WAITED FOR (2026-10-25). *** On Windows a file open
+        // for reading cannot be renamed over - "access denied", or "used by another process" - and a
+        // draft saves itself off the UI thread while CRT reads the drafts' files on it (the
+        // Contribute tab's list, CRT's window coming to the front); a virus scanner opens a new file
+        // too. So the rename is tried again, a few times a short moment apart, before it gives up
+        // with what it threw. A folder that may not be written fails the same way, a fifth of a
+        // second later.
+        // ###########################################################################################
+        internal static void MoveOver(string temporary, string target, Action<string, string> move, Action<TimeSpan> pause)
+        {
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    move(temporary, target);
+                    return;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < FileReplacer.MoveAttempts)
+                {
+                    pause(FileReplacer.MovePause);
+                }
             }
         }
 

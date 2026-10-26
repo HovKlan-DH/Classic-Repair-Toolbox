@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 namespace Handlers.DataHandling
@@ -10,57 +9,74 @@ namespace Handlers.DataHandling
     // submitting anything from his local PC, then I expect that it will send everything the server
     // does not already have").
     //
-    // The "KiCad data" folder is the one part of a board no row cites - CRT finds it by NAME
-    // (DataTreeUsage.KiCadFolderName) - so the rows-only manifest silently left it behind: a new
-    // board was published without its traces, and a re-calibrated project never reached anyone.
-    // This class is the ONE rule for which files that folder contributes:
+    // The "KiCad data" files are the one part of a board no row cites - CRT finds them by NAME
+    // (DataTreeUsage.KiCadFolderName) - so a rows-only manifest would leave them behind. In the CRT
+    // 4.0 tree (2026-10-25) a board names them in its own file list, "KiCad data/<...>"
+    // ("KiCad data/Open128.kicad_pcb", "KiCad data/Pages/vic.kicad_sch" - a project keeps its
+    // layout, KiCad's sheets name each other by it), and a submission carries every one the board
+    // lists. This class is the ONE rule for which of them a submission may carry:
     //
-    //   - ONLY the types CRT itself reads (ComponentListBuilder.IsSupportedKiCadRawFile:
-    //     .kicad_pcb, .kicad_sch, .kicad_pro) - the same filter the app's own "KiCad data" import
-    //     applies (KiCadRawFileScanner). The shipped trees carry two stragglers nothing reads (a
-    //     generated KiCad-traces.json report, one legacy .sch); they stay published (the folder is
-    //     never emptied by a publish) but are not what a submission carries, and .json stays off
-    //     the wire on purpose - see SubmissionFileRules.AllowedExtensions on why.
-    //   - ONLY inside the submission's OWN board folder. Another board's KiCad data is that
-    //     board's to change.
+    //   - a name under "KiCad data/" of a type CRT itself reads (ComponentListBuilder.
+    //     IsSupportedKiCadRawFile: .kicad_pcb, .kicad_sch, .kicad_pro) - the same filter the app's
+    //     own "KiCad data" import applies (KiCadRawFileScanner);
+    //   - OR any other name under "KiCad data/" the published board already lists with the same
+    //     bytes. The converted trees carry a few stragglers nothing reads (a generated
+    //     KiCad-traces.json, one legacy .sch); a board keeps them for as long as nobody changes
+    //     them, and a submission cannot bring a new one - .json stays off the wire on purpose (see
+    //     SubmissionFileRules.AllowedExtensions).
     //
     // IsSubmittable is that rule for the server (SubmissionFileRules, PublishPlan and
-    // AmendSubmissionFlow all ask it); Collect is the client's side of the same rule, gathering
-    // the paths a draft's submission should carry.
+    // AmendSubmissionFlow all ask it); Collect is the client's side, gathering the names a draft's
+    // submission carries.
     // ###########################################################################################
     public static class SubmissionKiCadFiles
     {
         // ###########################################################################################
-        // Is this path a KiCad file this submission may carry: inside the submission's own board
-        // folder, directly under "KiCad data" (sub-folders included - a multi-sheet project keeps
-        // its "Pages/vic.kicad_sch" layout), and of a type CRT reads?
-        //
-        // The folder name is compared case-insensitively, like every folder comparison
-        // (DataTreeUsage); the board prefix is SubmissionFileScopes' own ordinal rule.
+        // Is this name a KiCad file this submission may carry? `published` is the published board's
+        // file of the same name, when there is one - what lets an untouched straggler stay.
         // ###########################################################################################
-        public static bool IsSubmittable(SubmissionManifest manifest, string? path)
+        public static bool IsSubmittable(SubmissionManifest manifest, string? name, string? publishedSha256 = null, string? sha256 = null)
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
-            if (SubmissionFileScopes.Classify(manifest, path) != SubmissionFileScope.Own)
+            if (!SubmissionKiCadFiles.IsInKiCadFolder(name))
                 return false;
 
-            if (!ComponentListBuilder.IsSupportedKiCadRawFile(path ?? string.Empty))
-                return false;
+            if (ComponentListBuilder.IsSupportedKiCadRawFile(name!))
+                return true;
 
-            // Own scope guarantees the three board segments lead; the KiCad folder is the fourth,
-            // and the file (or its sub-folders) follow.
-            string[] segments = path!.Split('/');
-
-            return segments.Length >= 5 &&
-                   string.Equals(segments[3], DataTreeUsage.KiCadFolderName, StringComparison.OrdinalIgnoreCase);
+            return !string.IsNullOrWhiteSpace(publishedSha256) &&
+                   string.Equals(publishedSha256, sha256, StringComparison.OrdinalIgnoreCase);
         }
 
-        // The same question for a path already known to be somewhere in a data tree - what the
-        // Maintainer tab asks of a SubmittedFileFact, whose scope the server has already
-        // checked. The TYPE check matters here too: a row may cite an ordinary file that happens to
-        // sit inside a "KiCad data" folder, and counting it as KiCad data would overstate what the
-        // exemption actually admitted.
+        // ###########################################################################################
+        // A STRAGGLER: a name in the "KiCad data" folder of a type CRT does not read (a generated
+        // KiCad-traces.json, a legacy .sch). IsSubmittable admits one ONLY as the bytes the published
+        // board already lists under that name, so its content is the published file's - nothing new
+        // reaches the tree through it, and no content rule knows its type
+        // (SubmissionContentRules.MatchesWholeFile passes it; code review, 2026-10-25: finalise
+        // refused it, and with it every submission and maintainer edit of the board).
+        // ###########################################################################################
+        public static bool IsStraggler(string? name) =>
+            SubmissionKiCadFiles.IsInKiCadFolder(name) && !ComponentListBuilder.IsSupportedKiCadRawFile(name!);
+
+        // Whether a board's file name is inside its "KiCad data" folder - "KiCad data/x", with
+        // something after the folder. The folder is compared without regard to capitals, like every
+        // folder name (DataTreeUsage).
+        public static bool IsInKiCadFolder(string? name)
+        {
+            string normalised = (name ?? string.Empty).Replace('\\', '/').Trim().TrimStart('/');
+            string prefix = DataTreeUsage.KiCadFolderName + "/";
+
+            return normalised.Length > prefix.Length &&
+                   normalised.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // The same question for a name already known to be a board's file - what the Maintainer tab
+        // asks of a SubmittedFileFact. The TYPE check matters here too: counting an ordinary file
+        // that happens to sit in the folder as KiCad data would overstate what the rule admitted.
+        // ###########################################################################################
         public static bool IsKiCadDataPath(string? path) =>
             !string.IsNullOrWhiteSpace(path) &&
             ComponentListBuilder.IsSupportedKiCadRawFile(path) &&
@@ -68,68 +84,26 @@ namespace Handlers.DataHandling
                 string.Equals(segment, DataTreeUsage.KiCadFolderName, StringComparison.OrdinalIgnoreCase));
 
         // ###########################################################################################
-        // Every KiCad file the submission should carry, as data-root-relative paths
-        // ("Manu1/Hardware1/Board1/KiCad data/board.kicad_pcb"), sorted for a stable manifest.
+        // Every KiCad name a draft's submission carries - every file its board file lists under
+        // "KiCad data/" (DraftFiles.IsKiCad), sorted for a stable manifest. A draft's board file
+        // lists the published board's KiCad files as well as its own, so the complete set goes:
+        // the published ones travel as "already held" (the server takes their bytes from its own
+        // tree), never reading as removed.
         //
-        // THE UNION OF BOTH ROOTS, the draft's copy winning - the same two-roots-draft-first rule
-        // SubmissionFileLocator applies when the bytes are read, so what is listed here is what
-        // will be hashed and sent. The official copy is included because the manifest is the
-        // complete intended state: a published board's KiCad files travel as "already held" (the
-        // server imports them from its own tree, nothing uploads) rather than reading as absent.
-        //
-        // A root that does not exist contributes nothing - a draft-only board has no official
-        // folder, and most boards have no KiCad data at all.
+        // *** AND THE ONES NOT LISTED YET (code review, 2026-10-25). *** `arrived` is what lies in
+        // "<draft>/KiCad data" for the draft's next write to take in (DraftFiles.ArrivedKiCadNames):
+        // a project imported with no write after it was drawn by the Schematics tab and counted by
+        // the Drafts row, and then left out of the submission - whose fingerprint covered it, so
+        // Submit greyed out as "already sent".
         // ###########################################################################################
-        public static IReadOnlyList<string> Collect(
-            string boardId,
-            string? draftBoardFolder,
-            string? officialBoardFolder)
-        {
-            if (string.IsNullOrWhiteSpace(boardId))
-                return [];
-
-            // ###########################################################################################
-            // Relative path inside "KiCad data" -> its data-root-relative path; the DRAFT's copy
-            // wins, since a draft's files ARE the board's files.
-            //
-            // *** MATCHED CASE-INSENSITIVELY, BUT THE OFFICIAL SPELLING IS KEPT (code review,
-            // 2026-09-26). *** Windows and macOS fold "Board.kicad_pcb" and "board.kicad_pcb" into
-            // one file, so a draft copied from a published board can differ only in case - and
-            // sending the draft's spelling would publish a SECOND file beside the official one on
-            // the case-sensitive server (a publish never empties the folder), leaving CRT to read
-            // two near-identical projects. Keeping the published spelling means the file is
-            // replaced, which is what the contributor means. A file the server does not have yet
-            // keeps the draft's own spelling, which is then the only one there is.
-            //
-            // The same rule as SubmissionFileRules' case-variant refusal, applied before the paths
-            // are built rather than reported afterwards.
-            // ###########################################################################################
-            var byRelative = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            // The OFFICIAL folder is read first, so its spelling is the one in the dictionary; the
-            // draft then contributes only what the published board does not already hold.
-            foreach (string? root in new[] { officialBoardFolder, draftBoardFolder })
-            {
-                if (string.IsNullOrWhiteSpace(root))
-                    continue;
-
-                string folder = Path.Combine(root, DataTreeUsage.KiCadFolderName);
-
-                if (!Directory.Exists(folder))
-                    continue;
-
-                foreach (string file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
-                {
-                    if (!ComponentListBuilder.IsSupportedKiCadRawFile(file))
-                        continue;
-
-                    string relative = Path.GetRelativePath(folder, file).Replace(Path.DirectorySeparatorChar, '/');
-
-                    byRelative.TryAdd(relative, $"{boardId}/{DataTreeUsage.KiCadFolderName}/{relative}");
-                }
-            }
-
-            return byRelative.Values.Order(StringComparer.Ordinal).ToList();
-        }
+        public static IReadOnlyList<string> Collect(BoardDocument? board, IEnumerable<string>? arrived = null) =>
+            (board?.Files ?? [])
+                .Where(DraftFiles.IsKiCad)
+                .Select(file => file.Name)
+                .Concat((arrived ?? []).Where(SubmissionKiCadFiles.IsInKiCadFolder).Select(BoardFileNames.Normalise))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.Ordinal)
+                .ToList();
     }
 }

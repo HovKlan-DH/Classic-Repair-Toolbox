@@ -252,6 +252,53 @@ public sealed class DraftManagerTests : IDisposable
         Assert.False(Directory.Exists(folder));
     }
 
+    // ###########################################################################################
+    // *** THE DRAFT HELD IN MEMORY GOES WITH IT (CRT 4.0 step 1, 2026-10-25). *** A session left in
+    // DraftManager.Sessions would save the discarded draft back into place a second later, and
+    // hand its old content to the next table opened on that board.
+    // ###########################################################################################
+    [Fact]
+    public void DiscardDraft_lets_the_drafts_session_go()
+    {
+        DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
+        string excelDataFile = "Commodore/C64/250407/board.json";
+        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        BoardFiles.Write(boardFile, new BoardDocument());
+
+        Assert.NotNull(DraftManager.Sessions.Get(DraftManager.DraftsRoot, excelDataFile));
+
+        Assert.True(DraftManager.DiscardDraft(excelDataFile));
+
+        Assert.Null(DraftManager.Sessions.Find(DraftManager.DraftsRoot, excelDataFile));
+        Assert.False(File.Exists(boardFile));
+    }
+
+    // What the published-draft retirement asks before it deletes a draft: whether the draft held in
+    // memory has a change its file does not have yet - then the draft stays.
+    [Fact]
+    public void HasUnsavedChanges_is_true_only_while_the_drafts_session_holds_a_change_its_file_lacks()
+    {
+        DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
+        string excelDataFile = "Commodore/C64/250407/board.json";
+        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        BoardFiles.Write(boardFile, new BoardDocument());
+
+        Assert.False(DraftManager.HasUnsavedChanges(excelDataFile));
+
+        DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, excelDataFile)!;
+        Assert.False(DraftManager.HasUnsavedChanges(excelDataFile));
+
+        Assert.True(session.Apply("A change", content => content with { Board = content.Board.WithRevisionDate("2026-10-25") }));
+        Assert.True(DraftManager.HasUnsavedChanges(excelDataFile));
+
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+        Assert.False(DraftManager.HasUnsavedChanges(excelDataFile));
+
+        DraftManager.Sessions.Close(DraftManager.DraftsRoot, excelDataFile);
+    }
+
     [Fact]
     public void DiscardDraft_also_removes_a_file_that_is_not_draft_json_in_the_same_folder()
     {

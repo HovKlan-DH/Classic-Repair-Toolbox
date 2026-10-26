@@ -70,17 +70,32 @@ namespace Handlers.DataHandling
 
         // The draft's base, or null when it has none (a draft started before bases existed, a new
         // board, or a file that cannot be read - every caller then falls back to the old behaviour).
-        public static DraftBase? Load(string draftsRoot, string excelDataFile)
-        {
-            string path = DraftFolderLayout.GetBasePath(draftsRoot, excelDataFile);
+        public static DraftBase? Load(string draftsRoot, string excelDataFile) =>
+            DraftBaseStore.LoadFile(DraftFolderLayout.GetBasePath(draftsRoot, excelDataFile));
 
-            if (path.Length == 0 || !File.Exists(path))
+        // The base in the file at `path` - Load's rule, for a base not in a draft's own place (the
+        // CRT 4.0 draft conversion reads it from the folder the Excel-era draft was set aside in).
+        public static DraftBase? LoadFile(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                 return null;
 
             try
             {
-                DraftBase? loaded = JsonSerializer.Deserialize<DraftBase>(File.ReadAllText(path), DraftBaseStore.Json);
+                string json = File.ReadAllText(path);
+
+                // A CRT 4.0 draft keeps its base as a board file (SaveDocument).
+                if (DraftBaseStore.IsBoardDocument(json))
+                    return DraftBaseStore.FromDocument(DataTreeJson.ReadBoard(json));
+
+                DraftBase? loaded = JsonSerializer.Deserialize<DraftBase>(json, DraftBaseStore.Json);
                 return loaded is { Format: DraftBase.CurrentFormat } ? loaded : null;
+            }
+            catch (InvalidDataException ex)
+            {
+                CrtLog.Warning($"Could not read the draft base [{path}] - [{ex.Message}]; set aside");
+                DraftBaseStore.SetAside(path);
+                return null;
             }
             catch (Exception ex) when (ex is JsonException or NotSupportedException)
             {
@@ -112,6 +127,75 @@ namespace Handlers.DataHandling
             {
                 CrtLog.Warning($"Could not set aside the unreadable draft base [{path}] - [{ex.Message}]");
             }
+        }
+
+        // ###########################################################################################
+        // *** A CRT 4.0 DRAFT'S BASE IS THE PUBLISHED BOARD FILE AS IT WAS COPIED (2026-10-24). *** Kept
+        // as a board file (DataTreeJson's bytes), read back as a DraftBase for the code that merges and
+        // compares against it: its rows, calibrations, and each file by name with its checksum. The
+        // checksum is given in upper-case hex there, the form DraftFingerprint compares files by.
+        // ###########################################################################################
+        public static void SaveDocument(string draftsRoot, string excelDataFile, BoardDocument published)
+        {
+            ArgumentNullException.ThrowIfNull(published);
+
+            string path = DraftFolderLayout.GetBasePath(draftsRoot, excelDataFile);
+
+            if (path.Length == 0)
+                throw new IOException($"No draft folder for [{excelDataFile}].");
+
+            BoardFiles.Write(path, published);
+        }
+
+        // The base as the board file it was kept as, or null (no base, an Excel-era one, or unreadable).
+        public static BoardDocument? LoadDocument(string draftsRoot, string excelDataFile)
+        {
+            string path = DraftFolderLayout.GetBasePath(draftsRoot, excelDataFile);
+
+            if (path.Length == 0 || !File.Exists(path))
+                return null;
+
+            try
+            {
+                string json = File.ReadAllText(path);
+                return DraftBaseStore.IsBoardDocument(json) ? DataTreeJson.ReadBoard(json) : null;
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Warning($"Could not read the draft base [{path}] - [{ex.Message}]");
+                return null;
+            }
+        }
+
+        private static bool IsBoardDocument(string json)
+        {
+            try
+            {
+                using JsonDocument parsed = JsonDocument.Parse(json);
+                return parsed.RootElement.ValueKind == JsonValueKind.Object && parsed.RootElement.TryGetProperty("formatVersion", out _);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        private static DraftBase FromDocument(BoardDocument document)
+        {
+            BoardContent content = BoardDocumentMapping.ToContent(document);
+
+            return new DraftBase
+            {
+                Revision = document.RevisionDate,
+                Board = content.Board,
+                Calibrations = content.Calibrations.ToList(),
+                Files = document.Files.Select(file => new DraftBaseFile
+                {
+                    Path = file.Name,
+                    Sha256 = file.Sha256.ToUpperInvariant(),
+                    Length = file.Size,
+                }).ToList(),
+            };
         }
 
         // Whether the draft has a base, without reading it.

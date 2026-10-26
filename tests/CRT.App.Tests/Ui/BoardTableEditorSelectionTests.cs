@@ -359,24 +359,32 @@ public sealed class BoardTableEditorSelectionTests
         });
     }
 
-    // Case 9: copy and paste stay single-cell - with several rows selected they act on the cell with
-    // the dashed frame, the one clicked last, and on nothing else.
+    // ###########################################################################################
+    // Case 9, CHANGED with CRT 4.0 (2026-10-25). It was agreed that copy and paste stay single-cell,
+    // acting on the framed cell alone, while pasting blocks was a later feature. The 4.0 plan's step
+    // 0 made it the table's: with several cells selected, Ctrl+C copies them all and one value
+    // pasted onto them fills every one, as a spreadsheet does (BoardTableEditor.BlockEdits.cs).
+    // ###########################################################################################
     [Fact]
-    public void Copy_and_paste_with_several_rows_selected_act_on_the_framed_cell_only()
+    public void Copy_and_paste_with_several_rows_selected_act_on_every_selected_cell()
     {
         UiTest.Run(() =>
         {
             (Window window, BoardTableEditor editor) = ShownUnchanged();
+            BoardTableRow cr13 = Row(editor, "CR13");
+            BoardTableRow cr17 = Row(editor, "CR17");
 
-            ClickRow(window, editor, Row(editor, "CR13"));
-            ClickRow(window, editor, Row(editor, "CR17"), RawInputModifiers.Shift);
+            ClickRow(window, editor, cr13);
+            ClickRow(window, editor, cr17, RawInputModifiers.Shift);
             Assert.Equal(["CR13", "CR17"], Selected(editor));
 
-            Assert.Equal("CR17", editor.CopyTextOfCurrentCell());
+            Assert.Equal("CR13\r\nCR17", editor.CopySelectionText());
 
-            Assert.True(editor.PasteIntoCurrentCell("CR99"));
-            Assert.Equal("CR13", Label(editor.CurrentSheet!.Rows[0]));
-            Assert.Equal("CR99", Label(editor.CurrentSheet.Rows[1]));
+            // The two rows themselves - by position the sheet now shows published CR17 in red
+            // between them, as the second CR99 is a duplicate rather than CR17 renamed.
+            Assert.True(editor.Paste("CR99"));
+            Assert.Equal("CR99", Label(cr13));
+            Assert.Equal("CR99", Label(cr17));
 
             window.Close();
         });

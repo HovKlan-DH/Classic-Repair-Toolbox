@@ -140,6 +140,17 @@ namespace CRT
             text.IsVisible = note is not null;
         }
 
+        // The line above the sign-in saying it is the TEST instance's (ContributionServer.SignInNote)
+        // - from the constructor, with AppConfig's answer; internal so a test can show both.
+        internal void ShowTestServerNote(bool usesTestServer)
+        {
+            if (this.FindControl<TextBlock>("TestServerSignInText") is not TextBlock text)
+                return;
+
+            text.Text = usesTestServer ? Handlers.Online.ContributionServer.SignInNote : string.Empty;
+            text.IsVisible = usesTestServer;
+        }
+
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnAttachedToVisualTree(e);

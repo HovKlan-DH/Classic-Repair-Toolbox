@@ -172,4 +172,28 @@ public sealed class TabMaintainerSessionTests
             Assert.False(note.IsVisible);
         });
     }
+
+    // ###########################################################################################
+    // *** A PRE-RELEASE SIGNS IN TO THE TEST INSTANCE AND SAYS SO (2026-10-25). *** Its accounts are
+    // its own; a maintainer typing the live password would otherwise read the refusal as a broken
+    // account. Shown as CRT is built, and both ways through the seam.
+    // ###########################################################################################
+    [Fact]
+    public void Above_Sign_in_a_CRT_talking_to_the_test_instance_says_so()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabMaintainer();
+            TextBlock note = tab.FindControl<TextBlock>("TestServerSignInText")!;
+
+            Assert.Equal(AppConfig.UsesTestServer, note.IsVisible);
+
+            tab.ShowTestServerNote(usesTestServer: true);
+            Assert.True(note.IsVisible);
+            Assert.Equal(Handlers.Online.ContributionServer.SignInNote, note.Text);
+
+            tab.ShowTestServerNote(usesTestServer: false);
+            Assert.False(note.IsVisible);
+        });
+    }
 }

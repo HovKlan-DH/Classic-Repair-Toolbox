@@ -96,15 +96,28 @@ namespace Handlers.DataHandling
                 Components = ComponentPlacement.ReplaceComponent(
                     current.Components,
                     label,
-                    (componentRows ?? []).Select(row => new ComponentEntry
+                    (componentRows ?? []).Select(row =>
                     {
-                        BoardLabel = ComponentBoardWriter.Or(row.BoardLabel, label),
-                        FriendlyName = row.FriendlyName?.Trim() ?? string.Empty,
-                        TechnicalNameOrValue = row.TechnicalNameOrValue?.Trim() ?? string.Empty,
-                        PartNumber = row.PartNumber?.Trim() ?? string.Empty,
-                        Category = row.Category?.Trim() ?? string.Empty,
-                        Region = row.Region?.Trim() ?? string.Empty,
-                        Description = row.Description?.Trim() ?? string.Empty,
+                        // ###########################################################################################
+                        // *** WHAT THIS WINDOW CANNOT EDIT IS KEPT (CRT 4.0, 2026-10-25). *** A package and
+                        // repair notes are typed in the table (and in step 2's component pane), never
+                        // here - rebuilt from the window's fields alone, every "Save to draft" would
+                        // erase them. They come from the row this one replaces: same label, same region.
+                        // ###########################################################################################
+                        ComponentEntry? before = ComponentBoardWriter.RowBeingReplaced(current.Components, label, row.Region);
+
+                        return new ComponentEntry
+                        {
+                            BoardLabel = ComponentBoardWriter.Or(row.BoardLabel, label),
+                            FriendlyName = row.FriendlyName?.Trim() ?? string.Empty,
+                            TechnicalNameOrValue = row.TechnicalNameOrValue?.Trim() ?? string.Empty,
+                            PartNumber = row.PartNumber?.Trim() ?? string.Empty,
+                            Category = row.Category?.Trim() ?? string.Empty,
+                            Region = row.Region?.Trim() ?? string.Empty,
+                            Description = row.Description?.Trim() ?? string.Empty,
+                            Package = before?.Package ?? string.Empty,
+                            RepairNotes = before?.RepairNotes ?? string.Empty,
+                        };
                     }).ToList()),
 
                 // ###########################################################################################
@@ -131,18 +144,28 @@ namespace Handlers.DataHandling
                     region,
                     existing => existing.BoardLabel,
                     existing => existing.Region,
-                    (componentImageRows ?? []).Select(row => new ComponentImageEntry
+                    (componentImageRows ?? []).Select(row =>
                     {
-                        BoardLabel = ComponentBoardWriter.Or(row.BoardLabel, label),
-                        Region = row.Region?.Trim() ?? string.Empty,
-                        Pin = row.Pin?.Trim() ?? string.Empty,
-                        Name = row.Name?.Trim() ?? string.Empty,
-                        ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
-                        VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
-                        TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
-                        TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
-                        Note = row.Note?.Trim() ?? string.Empty,
-                        File = ComponentBoardWriter.JoinFilePath(row.FileLocation, row.File),
+                        // A baseline's machine state and source are not this window's either - kept
+                        // from the image row this one replaces (the same identity: label, region,
+                        // pin and name).
+                        ComponentImageEntry? before = ComponentBoardWriter.ImageBeingReplaced(current.ComponentImages, label, row);
+
+                        return new ComponentImageEntry
+                        {
+                            BoardLabel = ComponentBoardWriter.Or(row.BoardLabel, label),
+                            Region = row.Region?.Trim() ?? string.Empty,
+                            Pin = row.Pin?.Trim() ?? string.Empty,
+                            Name = row.Name?.Trim() ?? string.Empty,
+                            ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
+                            VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
+                            TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
+                            TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
+                            Note = row.Note?.Trim() ?? string.Empty,
+                            File = ComponentBoardWriter.JoinFilePath(row.FileLocation, row.File),
+                            MachineState = before?.MachineState ?? string.Empty,
+                            Source = before?.Source ?? string.Empty,
+                        };
                     })),
 
                 // ComponentHighlights are the LABEL EDITOR's business, never this window's. A
@@ -188,7 +211,32 @@ namespace Handlers.DataHandling
 
                 Credits = current.Credits,
                 KiCadImportantSignals = current.KiCadImportantSignals,
+
+                // Not this window's (CRT 4.0's own sheets) - carried as they are.
+                ComponentPins = current.ComponentPins,
+                ComponentReplacements = current.ComponentReplacements,
             };
+        }
+
+        // The component row a save replaces: the edited label's row in the same region, or none for
+        // a new component or a new region.
+        private static ComponentEntry? RowBeingReplaced(IEnumerable<ComponentEntry> current, string label, string? region) =>
+            current.FirstOrDefault(existing =>
+                string.Equals(existing.BoardLabel?.Trim(), label, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(existing.Region?.Trim() ?? string.Empty, region?.Trim() ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+
+        // The image row a save replaces: the edited label's row with the same region, pin and name.
+        private static ComponentImageEntry? ImageBeingReplaced(
+            IEnumerable<ComponentImageEntry> current,
+            string label,
+            ComponentDraftWriter.ComponentImageDraftRow row)
+        {
+            string key = BoardDraftNaturalKeys.ForComponentImage(label, row.Region ?? string.Empty, row.Pin ?? string.Empty, row.Name ?? string.Empty);
+
+            return current.FirstOrDefault(existing => string.Equals(
+                BoardDraftNaturalKeys.ForComponentImage(existing.BoardLabel, existing.Region, existing.Pin, existing.Name),
+                key,
+                StringComparison.OrdinalIgnoreCase));
         }
 
         // ###########################################################################################
@@ -234,6 +282,13 @@ namespace Handlers.DataHandling
 
                 ComponentLinks = ComponentBoardWriter.WithoutComponent(
                     current.ComponentLinks, label, existing => existing.BoardLabel),
+
+                // Its pins and replacement parts are the component's too (CRT 4.0, 2026-10-25).
+                ComponentPins = ComponentBoardWriter.WithoutComponent(
+                    current.ComponentPins, label, existing => existing.BoardLabel),
+
+                ComponentReplacements = ComponentBoardWriter.WithoutComponent(
+                    current.ComponentReplacements, label, existing => existing.BoardLabel),
 
                 BoardLocalFiles = current.BoardLocalFiles,
                 BoardLinks = current.BoardLinks,

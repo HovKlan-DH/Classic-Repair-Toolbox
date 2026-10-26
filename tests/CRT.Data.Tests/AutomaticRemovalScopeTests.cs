@@ -37,4 +37,21 @@ public sealed class AutomaticRemovalScopeTests
         Assert.Empty(AutomaticRemovalScope.Within("", ["Commodore/C64/250407/a.png"]));
         Assert.Empty(AutomaticRemovalScope.Within(C64, null));
     }
+
+    // ###########################################################################################
+    // *** A STORED FILE OF THE CRT 4.0 TREE MAY BE REMOVED (2026-10-25). *** A board's files' bytes
+    // lie under their checksum in "Files/", shared by every board naming them - and DataTreeUsage
+    // removes one only when no board of the tree lists it, so the rule still holds: nothing another
+    // board uses can go.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Files/3f/3f7a.png", true)]
+    [InlineData("Files", false)]
+    [InlineData("files/3f/3f7a.png", false)]
+    [InlineData("MiniPro/IC tests/Catalogue/74LS00.txt", false)]
+    public void A_stored_file_is_one_a_publish_may_remove(string path, bool stored)
+    {
+        Assert.Equal(stored, AutomaticRemovalScope.IsStoredFile(path));
+        Assert.Equal(stored, AutomaticRemovalScope.Within(C64, [path]).Count == 1);
+    }
 }

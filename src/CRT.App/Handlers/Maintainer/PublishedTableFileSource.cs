@@ -28,21 +28,60 @@ namespace Handlers.MaintainerHandling
         private readonly ConcurrentDictionary<(string? Url, string Path), Task<byte[]?>> thisFetches = new();
 
         // `dataUrl` is where the table's tree is published - BETA's, or the stable source's for its
-        // read-only table (2026-10-04), named `treeName` when a file is not there.
-        public PublishedTableFileSource(ReviewApiClient client, string? dataUrl, Func<string, Task<bool>> launch, string treeName = BoardSections.BetaTreeName)
+        // read-only table (2026-10-04), named `treeName` when a file is not there. `places` is where
+        // each file the board names lies in that tree (BoardTableAnswer.FilePlaces, 2026-10-25): a
+        // CRT 4.0 board's file is fetched from its stored place, never from its name.
+        public PublishedTableFileSource(
+            ReviewApiClient client,
+            string? dataUrl,
+            Func<string, Task<bool>> launch,
+            string treeName = BoardSections.BetaTreeName,
+            IReadOnlyDictionary<string, string>? places = null)
         {
             this.thisClient = client ?? throw new ArgumentNullException(nameof(client));
             this.thisDataUrl = dataUrl;
             this.thisTreeName = string.IsNullOrWhiteSpace(treeName) ? BoardSections.BetaTreeName : treeName;
             this.thisLaunch = launch ?? throw new ArgumentNullException(nameof(launch));
+            this.thisPlaces = PublishedTableFileSource.IgnoringCase(places);
         }
+
+        private readonly IReadOnlyDictionary<string, string>? thisPlaces;
+        private readonly IReadOnlyDictionary<string, string>? thisBaselinePlaces;
+        private readonly PublishedTableBaseline? thisBaseline;
 
         // ###########################################################################################
         // The source the table is coloured against, when it is the OTHER one: where its files are
         // published, what it is called when a file is not there, and the two pictures' headings.
         // Null - the ordinary table - reads both sides from `dataUrl`.
         // ###########################################################################################
-        public PublishedTableBaseline? Baseline { get; init; }
+        public PublishedTableBaseline? Baseline
+        {
+            get => this.thisBaseline;
+            init
+            {
+                this.thisBaseline = value;
+                this.thisBaselinePlaces = PublishedTableFileSource.IgnoringCase(value?.FilePlaces);
+            }
+        }
+
+        // ###########################################################################################
+        // A board's names are compared without regard to capitals (BoardFileNames), and the server
+        // builds the places so - but JSON hands them over as an ordinary dictionary (code review,
+        // 2026-10-26: a cell naming the file in other capitals was fetched by its name, which a 4.0
+        // tree never holds, and the card said the file was not there). The first of two spellings wins.
+        // ###########################################################################################
+        private static IReadOnlyDictionary<string, string>? IgnoringCase(IReadOnlyDictionary<string, string>? places)
+        {
+            if (places is null)
+                return null;
+
+            var ignoringCase = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach ((string name, string place) in places)
+                ignoringCase.TryAdd(name.Trim(), place);
+
+            return ignoringCase;
+        }
 
         // The two sides of a file cell the change replaced: BETA's, and the maintainer's - or, compared,
         // the two sources.
@@ -52,7 +91,7 @@ namespace Handlers.MaintainerHandling
 
         public async Task<byte[]?> ReadAsync(string path, CRT.BoardTableFileSide side)
         {
-            var key = (this.UrlFor(side), path ?? string.Empty);
+            var key = (this.UrlFor(side), this.PlaceFor(side, path ?? string.Empty));
             Task<byte[]?> fetch = this.thisFetches.GetOrAdd(key, this.FetchAsync);
             byte[]? bytes = await fetch;
 
@@ -87,6 +126,18 @@ namespace Handlers.MaintainerHandling
         internal string? UrlFor(CRT.BoardTableFileSide side) =>
             side == CRT.BoardTableFileSide.Published && this.Baseline is { } baseline ? baseline.DataUrl : this.thisDataUrl;
 
+        // Where a cell's file lies in that side's tree: its stored place when the side's answer says
+        // one (a 4.0 board's name), else the cell's text itself (an older server's path).
+        internal string PlaceFor(CRT.BoardTableFileSide side, string name)
+        {
+            IReadOnlyDictionary<string, string>? places =
+                side == CRT.BoardTableFileSide.Published && this.Baseline is not null ? this.thisBaselinePlaces : this.thisPlaces;
+
+            return places is not null && places.TryGetValue(name.Trim(), out string? place) && !string.IsNullOrWhiteSpace(place)
+                ? place
+                : name;
+        }
+
         private async Task<byte[]?> FetchAsync((string? Url, string Path) file)
         {
             try
@@ -103,5 +154,11 @@ namespace Handlers.MaintainerHandling
     }
 
     // The other source a compared table is coloured against - see PublishedTableFileSource.Baseline.
-    internal sealed record PublishedTableBaseline(string? DataUrl, string TreeName, string PublishedLabel, string CurrentLabel);
+    // `FilePlaces` is where that source's files lie in its tree (BoardTableAnswer.FilePlaces).
+    internal sealed record PublishedTableBaseline(
+        string? DataUrl,
+        string TreeName,
+        string PublishedLabel,
+        string CurrentLabel,
+        IReadOnlyDictionary<string, string>? FilePlaces = null);
 }

@@ -77,6 +77,8 @@ public sealed class BoardDataDifferAgreementTests
     [InlineData(typeof(CreditEntry))]
     [InlineData(typeof(KiCadImportantSignalEntry))]
     [InlineData(typeof(KiCadCalibrationEntry))]
+    [InlineData(typeof(ComponentPinEntry))]
+    [InlineData(typeof(ComponentReplacementEntry))]
     public void The_summary_compares_every_property_of_a_row(Type rowType)
     {
         object row = Activator.CreateInstance(rowType)!;

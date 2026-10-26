@@ -261,7 +261,7 @@ namespace CRT
 
             if (this.thisClient is ReviewApiClient client)
             {
-                editor.FileSource = new PublishedTableFileSource(client, table.ProductionDataUrl, this.LaunchFileAsync, BoardSections.StableTreeName)
+                editor.FileSource = new PublishedTableFileSource(client, table.ProductionDataUrl, this.LaunchFileAsync, BoardSections.StableTreeName, table.FilePlaces)
                 {
                     Baseline = BoardDetailView.BetaFilesBaseline(beta)
                 };

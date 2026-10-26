@@ -54,6 +54,61 @@ public sealed class BoardDataCaptionTests
         Assert.True(missing.Count == 0, "A BoardData built without its caption (HardwareName / BoardName): " + string.Join(", ", missing));
     }
 
+    // ###########################################################################################
+    // *** EVERY COPY OF A BOARD NAMES EVERY SECTION (CRT 4.0 step 2, 2026-10-25). *** The same way
+    // the caption was lost, a section added to BoardData is lost: twenty-odd places copy a board by
+    // listing its sections, and one that does not name the new list builds a board without it -
+    // the pins a contributor typed, gone at the next "Save to draft" or publish, with nothing
+    // thrown. So an initialiser that carries the board's sections (it names KiCadImportantSignals,
+    // the last of the Excel generations' sheets) must name every property BoardData has - even as
+    // `= []`, which makes leaving one out a decision written down.
+    // ###########################################################################################
+    [Fact]
+    public void Every_copy_of_a_board_names_every_section()
+    {
+        string[] properties = typeof(Handlers.DataHandling.BoardData)
+            .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Select(property => property.Name)
+            .ToArray();
+
+        var missing = new List<string>();
+        int copies = 0;
+
+        foreach (string file in Directory.EnumerateFiles(BoardDataCaptionTests.RepositoryPath("src"), "*.cs", SearchOption.AllDirectories))
+        {
+            string normalised = file.Replace('\\', '/');
+
+            if (normalised.Contains("/bin/", StringComparison.Ordinal) || normalised.Contains("/obj/", StringComparison.Ordinal))
+                continue;
+
+            string text = File.ReadAllText(file);
+            bool isBoardData = Path.GetFileName(file) == "BoardData.cs";
+
+            foreach (Match match in BoardDataCaptionTests.Starts(isBoardData).Matches(text))
+            {
+                string initializer = BoardDataCaptionTests.Block(text, match.Index + match.Length - 1);
+
+                if (!Regex.IsMatch(initializer, @"\bKiCadImportantSignals\s*="))
+                    continue;
+
+                copies++;
+
+                List<string> absent = properties
+                    .Where(property => !Regex.IsMatch(initializer, $@"\b{property}\s*="))
+                    .ToList();
+
+                if (absent.Count > 0)
+                {
+                    int line = text[..match.Index].Count(character => character == '\n') + 1;
+                    missing.Add($"{Path.GetRelativePath(BoardDataCaptionTests.RepositoryPath(""), file)}:{line} ({string.Join(", ", absent)})");
+                }
+            }
+        }
+
+        Assert.True(copies >= 15, $"Only {copies} board copies found - has the pattern stopped matching?");
+        Assert.True(missing.Count == 0, "A copy of a board that leaves sections out: " + string.Join("; ", missing));
+    }
+
     // `new BoardData {` anywhere; in BoardData.cs also its `=> new() {` copy methods, whose type is
     // the method's own.
     private static Regex Starts(bool isBoardData) => isBoardData

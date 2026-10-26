@@ -22,16 +22,17 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
 
         private const string BoardId = "Manu1/Hardware1/Board1";
-        private const string ImagePath = "Manu1/Hardware1/Board1/main.png";
+        // The board's name for its image (CRT 4.0 tree, 2026-10-25).
+        private const string ImagePath = "main.png";
 
         private readonly string thisRoot =
             Path.Combine(Path.GetTempPath(), "crt-replacement-tests", Guid.NewGuid().ToString("N"));
 
+        // The published board lists the image, its bytes stored - so a submission carrying it
+        // unchanged takes them from the tree rather than from an upload.
         public SubmissionReplacementTests()
         {
-            string image = Path.Combine(this.BoardFolder, ImagePath.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(image)!);
-            File.WriteAllBytes(image, SubmissionReplacementTests.ImageBytes);
+            DataTreeBuilder.BoardWithBytes(this.BoardFolder, BoardId, (ImagePath, SubmissionReplacementTests.ImageBytes));
         }
 
         public void Dispose()
@@ -84,7 +85,7 @@ namespace CRT.Server.Tests
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
                 SubmissionReplacementTests.Manifest(summary), Submitter.Anonymous(email, "192.0.2.1"), this.BoardFolder,
-                store, blobs, Now, CancellationToken.None, PublishedTreeProbe.For(this.BoardFolder));
+                store, blobs, Now, CancellationToken.None, PublishedTreeProbe.For(this.BoardFolder, BoardId));
 
             Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
 

@@ -5,12 +5,9 @@ using System.IO;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // What a seeding attempt did, so the caller can report it rather than guess.
-    //
-    // FilesCopied and FilesMissing are separate counts on purpose: a published board referencing a
-    // file that is not on disk is a real condition (a partial sync, a hand-deleted image), and it
-    // must not be reported as a seeding failure. The draft is still usable; that one row just
-    // points at nothing, exactly as it did before the draft existed.
+    // What a seeding attempt did, so the caller can report it rather than guess. (The Excel-era
+    // counts of files copied, missing and shared went with the copying, 2026-10-24: a 4.0 draft
+    // names the published board's files and copies none.)
     // ###########################################################################################
     public sealed class DraftSeedResult
     {
@@ -18,16 +15,8 @@ namespace Handlers.DataHandling
 
         public string BoardFolder { get; init; } = string.Empty;
 
+        // The draft's board file ("<draft>/board.json").
         public string WorkbookPath { get; init; } = string.Empty;
-
-        public int FilesCopied { get; init; }
-
-        // Referenced files the published tree does not actually hold. Reported, never fatal.
-        public IReadOnlyList<string> FilesMissing { get; init; } = [];
-
-        // Files left where they are because they belong to another board - a manufacturer's
-        // "Shared files" image, say. See DraftFolderLayout.GetReferencedFilePath.
-        public IReadOnlyList<string> FilesShared { get; init; } = [];
 
         // Why nothing happened, when Created is false. Empty on success.
         public string Reason { get; init; } = string.Empty;
@@ -39,58 +28,49 @@ namespace Handlers.DataHandling
     //
     // *** SEEDING IS A COMPLETE COPY, AND THAT IS LOAD-BEARING RATHER THAN GENEROUS. ***
     //
-    // The draft folder is what the contributor edits, in the app or in Excel, and what is compared
-    // against the published board to work out what they changed (BoardDataDiffer). That comparison
-    // reads an ABSENT row as a deletion. If a draft were seeded empty, or partially, then every
-    // row the contributor had not yet touched would read as deleted - the report would be noise,
-    // and a submission built from it would ask the server to delete most of the board.
+    // The draft folder is what the contributor edits and what is compared against the published
+    // board to work out what they changed (BoardDataDiffer). That comparison reads an ABSENT row as
+    // a deletion. If a draft were seeded empty, or partially, then every row the contributor had not
+    // yet touched would read as deleted - the report would be noise, and a submission built from it
+    // would ask the server to delete most of the board.
     //
     // So: complete copy, deletion means deletion. The project owner chose this over the cheaper
     // alternative explicitly ("I do believe it is the most transparent thing to do").
     //
-    // WHAT IS COPIED: the workbook, its JSON sidecar, and every file the board's own ROWS
-    // reference. Derived from the rows via SubmissionManifestBuilder.CollectReferencedFiles, never
-    // from a directory walk - the same rule and the same reason as a submission. A walk would
-    // sweep up editor backups, thumbnail caches and whatever else happens to sit in a board folder.
-    //
-    // WHAT IS NOT COPIED: a file belonging to a DIFFERENT board. Manufacturer "Shared files"
-    // images are referenced by many boards, and forking one into a draft would mean a later edit
-    // silently failed to reach the boards that share it. Those keep resolving against Data/.
+    // *** IN CRT 4.0 THE COPY IS THE BOARD FILE (2026-10-24). *** The published board.json becomes
+    // the draft's board.json - every row, highlight, calibration and rename, and the list of the
+    // board's files by name and checksum. No file's bytes are copied: they stay in the tree's store,
+    // where the draft's list finds them (DraftFileResolver), until the contributor replaces one. The
+    // same board file is kept as the draft's base (DraftBaseStore), what a later update is merged
+    // against (DraftRebase).
     // ###########################################################################################
     public static class DraftSeeder
     {
         // ###########################################################################################
-        // *** SEEDS FROM THE PUBLISHED WORKBOOK AS IT IS ON DISK RIGHT NOW (owner report,
-        // 2026-10-02). *** The project owner edited a published workbook in Excel while CRT was
-        // open, then saved a component in the Contribute tab - and the new draft held none of the
-        // Excel edits. The save paths passed BoardDataReader.LoadAsync's CACHED board, read when the
-        // board was first shown, which knows nothing of a later edit. A draft is a copy of the FILE;
-        // so it is read here, uncached, the rule DraftWorkbookStore already keeps for a draft. Every
-        // save path that seeds calls this, so none can pass a stale board again.
+        // *** SEEDS FROM THE PUBLISHED BOARD FILE AS IT IS ON DISK RIGHT NOW (owner report,
+        // 2026-10-02). *** A draft is a copy of the FILE, never of a cached board read earlier.
         // ###########################################################################################
         public static DraftSeedResult SeedFromPublishedFile(string draftsRoot, string dataRoot, string excelDataFile)
         {
             string publishedPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
-            BoardData? published = BoardDataReader.ReadWorkbookUncached(publishedPath);
+            BoardDocument? published = BoardFiles.ReadDocument(publishedPath);
 
             if (published is null)
             {
                 return new DraftSeedResult { Reason = "The published board could not be read to copy it into a draft." };
             }
 
-            return DraftSeeder.SeedFromPublished(draftsRoot, dataRoot, excelDataFile, published);
+            return DraftSeeder.Seed(draftsRoot, excelDataFile, published, published, publishedPath);
         }
 
         // ###########################################################################################
-        // Seeds the draft folder for a board that IS published, by copying it.
+        // Seeds the draft folder for a board that IS published, with `publishedBoard` as its rows -
+        // the board as read from the published file, or one built in memory by a test. The files it
+        // cites are the published board file's (so they resolve), when there is one.
         //
         // REFUSES TO OVERWRITE AN EXISTING DRAFT. Re-seeding would silently discard whatever the
         // contributor had already changed, which is the single most destructive thing this class
         // could do - so an existing marker means "leave it alone" and the caller is told why.
-        //
-        // publishedBoard is the board data as loaded from the published workbook; it is passed in
-        // rather than read here so this class does not depend on BoardDataReader's async cache and
-        // stays testable against a board built in memory.
         // ###########################################################################################
         public static DraftSeedResult SeedFromPublished(
             string draftsRoot,
@@ -100,6 +80,25 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(publishedBoard);
 
+            string publishedPath = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
+            BoardDocument? published = BoardFiles.ReadDocument(publishedPath);
+            BoardContent? publishedContent = published is null ? null : BoardDocumentMapping.ToContent(published);
+
+            BoardDocument document = BoardDocumentMapping.ToDocument(
+                new BoardContent(publishedBoard, publishedContent?.Calibrations ?? [], publishedContent?.Renames ?? []),
+                name => name,
+                published?.Files ?? []);
+
+            // What a later CRT wrote into the published file and this one does not know comes along.
+            BoardDocumentUnknowns.CarryOver(published, document);
+
+            return DraftSeeder.Seed(draftsRoot, excelDataFile, document, published ?? document, publishedPath);
+        }
+
+        // The draft's board file, its base and its marker - and nothing over an existing draft.
+        // `publishedPath` is the published board file, whose content the drift check compares with.
+        private static DraftSeedResult Seed(string draftsRoot, string excelDataFile, BoardDocument draft, BoardDocument published, string publishedPath)
+        {
             string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile);
             if (folder.Length == 0)
             {
@@ -116,61 +115,38 @@ namespace Handlers.DataHandling
                 };
             }
 
-            string workbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
+            string boardFile = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
 
             try
             {
                 Directory.CreateDirectory(folder);
 
-                // *** THE WORKBOOK IS WRITTEN, NOT FILE-COPIED. *** Copying the published .xlsx
-                // byte for byte would carry across whatever else that file holds - stale columns, a
-                // macro, a hand-added sheet - and the draft would then not round-trip through this
-                // application's own schema. Writing it through BoardWorkbookWriter guarantees the
-                // draft is exactly what CRT can read back, which is the promise being made to
-                // someone about to edit it in Excel.
-                BoardWorkbookWriter.Write(workbookPath, publishedBoard);
-
-                DraftSeeder.CopySidecar(dataRoot, excelDataFile, workbookPath);
-
-                DraftSeeder.CopyReferencedFiles(
-                    draftsRoot,
-                    dataRoot,
-                    excelDataFile,
-                    publishedBoard,
-                    out int copied,
-                    out List<string> missing,
-                    out List<string> shared);
+                BoardFiles.Write(boardFile, draft);
 
                 // ###########################################################################################
                 // *** AND WHAT IT WAS COPIED FROM (code review, 2026-10-13). *** The base - the
-                // published board as copied, its calibrations and the hashes of the files copied - is
-                // what lets this draft be brought up to date when somebody else's work is published
-                // later (DraftRebase), instead of sending that work back as removals. A base that
-                // cannot be written costs only that: the draft is still a draft, warned about drift
-                // the old way.
+                // published board as copied - is what lets this draft be brought up to date when
+                // somebody else's work is published later (DraftRebase), instead of sending that work
+                // back as removals. A base that cannot be written costs only that: the draft is still a
+                // draft, warned about drift the old way.
                 // ###########################################################################################
-                DraftSeeder.TryWriteBase(draftsRoot, dataRoot, excelDataFile, publishedBoard);
+                DraftSeeder.TryWriteBase(draftsRoot, excelDataFile, published);
 
                 DraftMarkerStore.Save(markerPath, new DraftMarker
                 {
                     BoardKey = excelDataFile,
-                    BaseRevision = publishedBoard.RevisionDate ?? string.Empty,
-                    BaseContentHash = DraftBaseStore.PublishedContentHash(DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile)),
+                    BaseRevision = published.RevisionDate ?? string.Empty,
+                    BaseContentHash = DraftBaseStore.PublishedContentHash(publishedPath),
                     CreatedUtc = DateTimeOffset.UtcNow.ToString("o"),
                 });
 
-                CrtLog.Info(
-                    $"Seeded draft for [{excelDataFile}] at [{folder}] - " +
-                    $"{copied} file(s) copied, {missing.Count} missing, {shared.Count} shared");
+                CrtLog.Info($"Seeded draft for [{excelDataFile}] at [{folder}] - {draft.Files.Count} file(s) named");
 
                 return new DraftSeedResult
                 {
                     Created = true,
                     BoardFolder = folder,
-                    WorkbookPath = workbookPath,
-                    FilesCopied = copied,
-                    FilesMissing = missing,
-                    FilesShared = shared,
+                    WorkbookPath = boardFile,
                 };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -188,19 +164,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Creates the folder for a board that exists ONLY as a draft - "Add a new board".
         //
-        // There is nothing to copy, so this writes an EMPTY board workbook (headers and sheet names
-        // only) plus the marker carrying the registration.
+        // There is nothing to copy, so this writes an EMPTY board file plus the marker carrying the
+        // registration. Every section empty, but the IDENTITY is carried through (fixed 2026-09-24):
+        // the board's caption is the registration's names - the only place they exist for a board
+        // that has never been published.
         //
-        // *** AN EMPTY WORKBOOK IS WRITTEN HERE, AND PHASE 2 EXPLICITLY REJECTED THAT. *** The old
-        // reasoning was sound at the time: an .xlsx sitting ALONGSIDE draft.json would have been a
-        // second mechanism for one job, with two places to look for the same rows. That is not this.
-        // The workbook REPLACES draft.json as the single source, so there is exactly one mechanism -
-        // and a new board with no workbook could not be opened in Excel at all, which is the whole
-        // point of the change.
-        //
-        // BaseRevision stays EMPTY: this board has no published counterpart, so there is no
-        // revision it is based on and inventing one would make a later drift check compare against
-        // something that never existed.
+        // BaseRevision stays EMPTY: this board has no published counterpart, so there is no revision
+        // it is based on and inventing one would make a later drift check compare against something
+        // that never existed.
         // ###########################################################################################
         public static DraftSeedResult CreateNewBoard(
             string draftsRoot,
@@ -226,40 +197,19 @@ namespace Handlers.DataHandling
                 };
             }
 
-            string workbookPath = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
+            string boardFile = DraftFolderLayout.GetWorkbookPath(draftsRoot, excelDataFile);
 
             try
             {
                 Directory.CreateDirectory(folder);
 
-                // ###########################################################################################
-                // *** AND AN EMPTY "Scope baseline" FOLDER BESIDE THE WORKBOOK (owner request,
-                // 2026-09-24). ***
-                //
-                // A new board has no baseline images yet, so there was no such folder - and a
-                // contributor referencing their first capture had to create it by hand, with the
-                // exact name published boards use, before they could pick it. Now it is simply there
-                // to choose. Only for a NEW board: a seeded draft gets the folder from the published
-                // board's own files when it has any.
-                //
-                // An empty folder is inert everywhere else - submissions are built from the rows,
-                // not by walking the folder (SubmissionManifestBuilder.CollectReferencedFiles).
-                // ###########################################################################################
+                // *** AND AN EMPTY "Scope baseline" FOLDER (owner request, 2026-09-24). *** A new
+                // board has no baseline images yet; the folder is there to file the first one in.
+                // An empty folder is inert everywhere else - a draft's files are what its board file
+                // lists (DraftFiles), never what a folder walk finds.
                 Directory.CreateDirectory(DraftFolderLayout.GetScopeBaselineFolder(draftsRoot, excelDataFile));
 
-                // ###########################################################################################
-                // Every section empty, but the IDENTITY is carried through (fixed 2026-09-24).
-                //
-                // BoardWorkbookWriter writes each sheet with its header row and preamble, which is
-                // what makes the file hand-editable from the moment it is created - and the
-                // preamble's first two lines are "# Hardware:" and "# Board:". Passing a bare
-                // `new BoardData()` left both blank, so a brand-new board opened in Excel with no
-                // caption at all while every published board had one. Reported with a screenshot.
-                //
-                // The registration is the only place those names exist for a board that has never
-                // been published, which is exactly why it is the thing being written here.
-                // ###########################################################################################
-                BoardWorkbookWriter.Write(workbookPath, new BoardData
+                BoardFiles.Write(boardFile, new BoardDocument
                 {
                     HardwareName = registration.HardwareName ?? string.Empty,
                     BoardName = registration.BoardName ?? string.Empty,
@@ -279,7 +229,7 @@ namespace Handlers.DataHandling
                 {
                     Created = true,
                     BoardFolder = folder,
-                    WorkbookPath = workbookPath,
+                    WorkbookPath = boardFile,
                 };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -294,114 +244,15 @@ namespace Handlers.DataHandling
             }
         }
 
-        private static void TryWriteBase(string draftsRoot, string dataRoot, string excelDataFile, BoardData publishedBoard)
+        private static void TryWriteBase(string draftsRoot, string excelDataFile, BoardDocument published)
         {
             try
             {
-                DraftBaseStore.Save(
-                    draftsRoot,
-                    excelDataFile,
-                    DraftBaseStore.Capture(dataRoot, excelDataFile, publishedBoard, draftsRoot, draftCopiesAreFresh: true));
+                DraftBaseStore.SaveDocument(draftsRoot, excelDataFile, published);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
                 CrtLog.Warning($"Could not keep the base of the draft for [{excelDataFile}] - [{ex.Message}]");
-            }
-        }
-
-        // ###########################################################################################
-        // Copies the published sidecar beside the draft workbook, when there is one.
-        //
-        // Byte-copied rather than rewritten, unlike the workbook - but note that the first edit of
-        // the draft rewrites it through BoardSidecarWriter, which writes the three roots CRT knows
-        // (highlights, "KiCad calibration points", "Schematic renames") and nothing else, so a root
-        // a future version adds would not survive a draft edit (code review, 2026-10-13: this comment
-        // used to claim the draft's writes preserved unknown roots; they do not).
-        //
-        // A missing sidecar is ordinary - plenty of boards have no highlights - so it is silent.
-        // ###########################################################################################
-        private static void CopySidecar(string dataRoot, string excelDataFile, string draftWorkbookPath)
-        {
-            if (string.IsNullOrWhiteSpace(dataRoot))
-            {
-                return;
-            }
-
-            string publishedWorkbook = Path.Combine(
-                dataRoot,
-                excelDataFile.Replace('/', Path.DirectorySeparatorChar));
-
-            string publishedSidecar = BoardComponentHighlightStorage.GetJsonPath(publishedWorkbook);
-            if (!File.Exists(publishedSidecar))
-            {
-                return;
-            }
-
-            File.Copy(
-                publishedSidecar,
-                BoardComponentHighlightStorage.GetJsonPath(draftWorkbookPath),
-                overwrite: true);
-        }
-
-        // ###########################################################################################
-        // Copies every file the board's rows reference into the draft folder.
-        //
-        // Three outcomes per file, all of them normal:
-        //   - copied: it belongs to this board and the published tree holds it;
-        //   - shared: it belongs to another board (a manufacturer "Shared files" image), so it is
-        //     left alone and keeps resolving against Data/ - see DraftFolderLayout;
-        //   - missing: the row names a file the published tree does not have. Reported, not fatal;
-        //     the draft is still perfectly usable and that row was already broken.
-        // ###########################################################################################
-        private static void CopyReferencedFiles(
-            string draftsRoot,
-            string dataRoot,
-            string excelDataFile,
-            BoardData board,
-            out int copied,
-            out List<string> missing,
-            out List<string> shared)
-        {
-            copied = 0;
-            missing = [];
-            shared = [];
-
-            if (string.IsNullOrWhiteSpace(dataRoot))
-            {
-                return;
-            }
-
-            foreach (string relative in SubmissionManifestBuilder.CollectReferencedFiles(board))
-            {
-                string destination = DraftFolderLayout.GetReferencedFilePath(
-                    draftsRoot,
-                    excelDataFile,
-                    relative);
-
-                if (destination.Length == 0)
-                {
-                    shared.Add(relative);
-                    continue;
-                }
-
-                string source = Path.Combine(
-                    dataRoot,
-                    relative.Replace('/', Path.DirectorySeparatorChar));
-
-                if (!File.Exists(source))
-                {
-                    missing.Add(relative);
-                    continue;
-                }
-
-                string? destinationFolder = Path.GetDirectoryName(destination);
-                if (!string.IsNullOrWhiteSpace(destinationFolder))
-                {
-                    Directory.CreateDirectory(destinationFolder);
-                }
-
-                File.Copy(source, destination, overwrite: true);
-                copied++;
             }
         }
     }

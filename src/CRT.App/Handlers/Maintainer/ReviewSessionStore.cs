@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CRT;
+using Handlers.Online;
 
 namespace Handlers.MaintainerHandling
 {
@@ -67,7 +68,9 @@ namespace Handlers.MaintainerHandling
 
                 Directory.CreateDirectory(directory);
 
-                ReviewSessionStore.InitialiseAt(Path.Combine(directory, ReviewSessionStore.SessionFileName));
+                // The test instance's sign-in in a file of its own while CRT talks to it - see
+                // ContributionServer (2026-10-25).
+                ReviewSessionStore.InitialiseAt(Path.Combine(directory, ContributionServer.FileNameFor(ReviewSessionStore.SessionFileName)));
             }
             catch (Exception)
             {
@@ -97,11 +100,17 @@ namespace Handlers.MaintainerHandling
         // ReviewSessionProtection's entropy deliberately kept its old value.
         //
         // Soft, like everything here: a file that cannot be moved costs one sign-in, never the app.
+        //
+        // ONLY INTO THE LIVE SERVICE'S FILE: a session remembered before the rename is the live
+        // service's, and the test instance's file (ContributionServer, 2026-10-25) must not take it.
         // ###########################################################################################
         private static void AdoptLegacyFile()
         {
-            if (string.IsNullOrWhiteSpace(ReviewSessionStore._path))
+            if (string.IsNullOrWhiteSpace(ReviewSessionStore._path) ||
+                !string.Equals(Path.GetFileName(ReviewSessionStore._path), ReviewSessionStore.SessionFileName, StringComparison.OrdinalIgnoreCase))
+            {
                 return;
+            }
 
             try
             {

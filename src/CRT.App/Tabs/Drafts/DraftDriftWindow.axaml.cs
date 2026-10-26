@@ -34,10 +34,6 @@ namespace CRT
         private string thisOfficialRevision = string.Empty;
         private bool thisCanBringUpToDate;
 
-        // Whether the Drafts tab's table holds unsaved edits of this draft - then nothing may write
-        // the draft (CLAUDE.md: "No other editor writes a draft under a table with unsaved edits").
-        private Func<string, UnsavedTableEditsPrompt?>? thisSavingBlockedFor;
-
         public ObservableCollection<DriftRowItem> AttentionRows { get; } = new();
         public ObservableCollection<DriftRowItem> OtherRows { get; } = new();
         public ObservableCollection<DriftRowItem> UpdateRows { get; } = new();
@@ -57,18 +53,13 @@ namespace CRT
             this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
         }
 
-        public void Initialize(
-            string displayName,
-            string excelDataFile,
-            DraftChangeReport report,
-            Func<string, UnsavedTableEditsPrompt?>? savingBlockedFor = null)
+        public void Initialize(string displayName, string excelDataFile, DraftChangeReport report)
         {
             ArgumentNullException.ThrowIfNull(report);
 
             this.thisExcelDataFile = excelDataFile;
             this.thisOfficialRevision = report.OfficialRevision;
             this.thisCanBringUpToDate = report.CanBringUpToDate;
-            this.thisSavingBlockedFor = savingBlockedFor;
 
             this.HeaderText.Text = displayName;
             this.SummaryText.Text = DraftDriftWording.Summary(report.State, report.CanBringUpToDate);
@@ -154,20 +145,34 @@ namespace CRT
                 return;
             }
 
-            if (this.thisSavingBlockedFor?.Invoke(this.thisExcelDataFile) is UnsavedTableEditsPrompt blocked)
-            {
-                await (this.ShowSavingBlockedOverrideForTests?.Invoke(blocked) ?? UnsavedTableEditsWindow.ShowSavingBlockedAsync(this, blocked));
-                return;
-            }
-
             string draftsRoot = DraftManager.DraftsRoot;
             string dataRoot = DataManager.DataRoot;
             string excelDataFile = this.thisExcelDataFile;
 
-            DraftRebaseReport report = await BusyOverlay.RunLocalAsync(
-                this,
-                CrtWaitWording.BringingDraftUpToDate,
-                () => Task.Run(() => DraftRebaser.Rebase(draftsRoot, dataRoot, excelDataFile)));
+            // *** UNDER THE DRAFT HELD IN MEMORY (CRT 4.0 step 1, 2026-10-25). *** It writes the board
+            // file, its base and its marker together, so it is no change of the content: what the draft
+            // holds is saved first, the rebase runs, and the draft is read back from the file
+            // (DraftEdits.WriteFileDirectly). The history goes - its steps were measured against the
+            // old base. It used to be held back while the Drafts tab's table had unsaved edits.
+            DraftRebaseReport report;
+
+            try
+            {
+                report = await BusyOverlay.RunLocalAsync(
+                    this,
+                    CrtWaitWording.BringingDraftUpToDate,
+                    () => DraftEdits.WriteFileDirectlyAsync(
+                        excelDataFile,
+                        () => DraftRebaser.Rebase(draftsRoot, dataRoot, excelDataFile),
+                        rebased => rebased.Outcome is DraftRebaseOutcome.BroughtUpToDate or DraftRebaseOutcome.NotNoted,
+                        DraftStepWording.BroughtUpToDate,
+                        clearHistory: true));
+            }
+            catch (DraftNotSavedException ex)
+            {
+                this.ShowStatus("Nothing was changed. " + DraftSaveWording.EditNotSaved(ex.Failure), isError: true);
+                return;
+            }
 
             bool success = DraftDriftWording.IsSuccess(report);
 
@@ -191,8 +196,6 @@ namespace CRT
             this.StatusText.Text = message;
             this.StatusText.Foreground = ThemeResources.ResolveBrush(isError ? "Text_Fail_Fg" : "Text_Success_Fg");
         }
-
-        internal Func<UnsavedTableEditsPrompt, Task>? ShowSavingBlockedOverrideForTests { get; set; }
 
         internal string StatusTextForTests => this.StatusText.Text ?? string.Empty;
 

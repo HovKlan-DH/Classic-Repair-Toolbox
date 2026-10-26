@@ -215,10 +215,10 @@ namespace CRT.Server.Handlers.Submissions
                 if (!edit.IsDone)
                 {
                     this.thisLogger.LogError(
-                        "Deleting {BoardId}: its row could not be taken out of the {Tree} data's main Excel data file: {Failure}",
+                        "Deleting {BoardId}: its row could not be taken out of the {Tree} data's main data file: {Failure}",
                         plan.BoardId, survey.TreeName, edit.Failure);
 
-                    // A main Excel data file already rewritten has a new checksum, and a manifest
+                    // A main data file already rewritten has a new checksum, and a manifest
                     // still naming the old one makes every CRT that downloads it throw it away
                     // (code review, 2026-10-04) - so the manifests follow even on this way out.
                     if (rowRemoved)

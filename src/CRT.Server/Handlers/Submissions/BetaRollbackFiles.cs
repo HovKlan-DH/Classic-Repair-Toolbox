@@ -6,8 +6,8 @@ namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
     // The DISK half of a BETA rollback (owner decision, 2026-09-27): listing each tree's copy of
-    // one board's folder, comparing files, and finding what the returning submissions did to the
-    // shared folders - so BetaRollbackPlan can stay pure.
+    // one board - its board file and the stored files it lists (the CRT 4.0 tree, 2026-10-25) - and
+    // comparing them, so BetaRollbackPlan can stay pure.
     //
     // *** CHEAP COMPARISONS FIRST (code review, 2026-09-27). *** The first version SHA-256'd both
     // trees' copy of EVERY production file, synchronously, and did it twice per rollback - once for
@@ -37,27 +37,30 @@ namespace CRT.Server.Handlers.Submissions
             string productionRoot,
             BoardRecord board,
             IReadOnlyList<CarriedSubmission> returning,
-            IReadOnlyList<SubmissionFileRecord> returningFiles,
             CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(betaRoot);
             ArgumentException.ThrowIfNullOrWhiteSpace(productionRoot);
             ArgumentNullException.ThrowIfNull(board);
-            ArgumentNullException.ThrowIfNull(returningFiles);
 
-            string folder = BetaRollbackFiles.BoardFolder(board);
-
-            IReadOnlyList<string> beta = BetaRollbackFiles.FilesUnder(betaRoot, folder);
-            IReadOnlyList<string> production = BetaRollbackFiles.FilesUnder(productionRoot, folder);
+            // ###########################################################################################
+            // *** A BOARD IN THE CRT 4.0 TREE (2026-10-25) is its board file and the stored files it
+            // lists *** ("Files/<ab>/<sha256>.<ext>", DataTreeLayout) - so those are each tree's
+            // "own files" here. A board file is compared by its bytes; a stored file by being there,
+            // since its name is its checksum. There are no shared files to put back any more.
+            // ###########################################################################################
+            IReadOnlyList<string> beta = BetaRollbackFiles.FilesOfBoard(betaRoot, board);
+            IReadOnlyList<string> production = BetaRollbackFiles.FilesOfBoard(productionRoot, board);
 
             // Worked out up front, asynchronously: BetaRollbackPlan asks through a plain delegate.
             var same = new Dictionary<string, bool>(StringComparer.Ordinal);
 
             foreach (string path in production)
-                same[path] = await BetaRollbackFiles.SameBytesAsync(betaRoot, productionRoot, path, cancellationToken);
-
-            IReadOnlyList<BetaRollbackSharedFile> shared = await BetaRollbackFiles.SharedFilesAsync(
-                betaRoot, productionRoot, board, returningFiles, cancellationToken);
+            {
+                same[path] = AutomaticRemovalScope.IsStoredFile(path)
+                    ? PublishedBoardFiles.IsStored(betaRoot, path)
+                    : await BetaRollbackFiles.SameBytesAsync(betaRoot, productionRoot, path, cancellationToken);
+            }
 
             // "Never promoted" is what the board's record says, never what an empty listing
             // suggests - a missing or unreadable production folder lists nothing too.
@@ -70,16 +73,23 @@ namespace CRT.Server.Handlers.Submissions
                 production,
                 path => same.TryGetValue(path, out bool isSame) && isSame,
                 returning,
-                shared,
+                sharedFiles: null,
                 promotedBefore);
 
-            // The production hash of each path the writer will copy - its verified copy's target.
+            plan = BetaRollbackFiles.InWriteOrder(BetaRollbackFiles.KeepingWhatOthersUse(plan, betaRoot, board, production));
+
+            // The production hash of each path the writer will copy - its verified copy's target: a
+            // stored file's checksum is its name; the board file is hashed.
             var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (string path in plan.AllRestored)
             {
-                if (SubmissionPathRules.TryResolve(productionRoot, path, out string full, out _) &&
-                    await BetaRollbackFiles.HashOfAsync(full, cancellationToken) is string hash)
+                if (BetaRollbackFiles.ChecksumInName(path) is string named)
+                {
+                    hashes[path] = named;
+                }
+                else if (SubmissionPathRules.TryResolve(productionRoot, path, out string full, out _) &&
+                         await BetaRollbackFiles.HashOfAsync(full, cancellationToken) is string hash)
                 {
                     hashes[path] = hash;
                 }
@@ -89,46 +99,105 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // *** ONLY THE BOARD'S OWN FOLDER is listed here. *** The shared folders are handled one
-        // file at a time, and only for files a returning submission carried - see SharedFilesAsync.
-        // Restoring a whole shared folder from production would revert every other board's change.
+        // The board's files in one tree: its board file, and every stored file it lists that the
+        // tree holds - data-root-relative. None when the tree has no board file of it (a board never
+        // promoted, in production); just the board file when it cannot be read - the plan then
+        // restores it whole, and the stored files it names are restored by the next push-back.
         // ###########################################################################################
+        public static IReadOnlyList<string> FilesOfBoard(string root, BoardRecord board)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            PublishedBoardLocation location = PublishedBoardLocator.LocateBoard(root, board.BoardId);
+
+            if (!location.Exists)
+                return [];
+
+            var files = new List<string> { DataTreeLayout.BoardFilePath(board.BoardId) };
+
+            foreach (BoardDocument.StoredFileRow file in BoardFiles.ReadDocument(location.WorkbookPath)?.Files ?? [])
+            {
+                string stored = PublishedBoardFiles.StoredRelative(file);
+
+                if (stored.Length > 0 && !files.Contains(stored, StringComparer.Ordinal) && PublishedBoardFiles.IsStored(root, stored))
+                    files.Add(stored);
+            }
+
+            return files;
+        }
+
+        // ###########################################################################################
+        // *** A STORED FILE ANOTHER BETA BOARD LISTS STAYS. *** The plan removes every stored file
+        // the rolled-back board lists that production's does not - but in the 4.0 tree bytes are
+        // stored once for every board naming them, so one may be another board's too. Only those no
+        // BETA board lists once the board is back as production has it (or gone, for a board never
+        // promoted) go - DataTreeUsage, failing closed: a tree that cannot be read completely keeps
+        // every stored file, and only the board file is removed.
+        // ###########################################################################################
+        private static BetaRollbackPlanResult KeepingWhatOthersUse(
+            BetaRollbackPlanResult plan,
+            string betaRoot,
+            BoardRecord board,
+            IReadOnlyList<string> production)
+        {
+            List<string> stored = plan.Removed.Where(AutomaticRemovalScope.IsStoredFile).ToList();
+
+            if (stored.Count == 0)
+                return plan;
+
+            List<string> after = plan.Kind == BetaRollbackKind.RemoveFromBeta
+                ? []
+                : production.Where(AutomaticRemovalScope.IsStoredFile).ToList();
+
+            IReadOnlyList<string> removable = DataTreeUsage
+                .Compute(betaRoot, new Dictionary<string, IReadOnlyCollection<string>> { [DataTreeLayout.BoardFilePath(board.BoardId)] = after })
+                .RemovableFrom(stored);
+
+            var keep = new HashSet<string>(removable, StringComparer.OrdinalIgnoreCase);
+
+            return plan with
+            {
+                Removed = plan.Removed.Where(path => !AutomaticRemovalScope.IsStoredFile(path) || keep.Contains(path)).ToList()
+            };
+        }
+
+        // ###########################################################################################
+        // The publish's order, for the same reason: the stored files a restored board file names go
+        // in BEFORE it, so BETA never holds a board file naming bytes that are not there yet; and a
+        // removed board file goes before the stored files nothing lists after it.
+        // ###########################################################################################
+        private static BetaRollbackPlanResult InWriteOrder(BetaRollbackPlanResult plan) => plan with
+        {
+            Restored = plan.Restored
+                .OrderBy(path => AutomaticRemovalScope.IsStoredFile(path) ? 0 : 1)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .ToList(),
+            Removed = plan.Removed
+                .OrderBy(path => AutomaticRemovalScope.IsStoredFile(path) ? 1 : 0)
+                .ThenBy(path => path, StringComparer.Ordinal)
+                .ToList()
+        };
+
+        // The SHA-256 a stored file's name is ("Files/3f/3f7a...e1.png"), or null for any other path.
+        private static string? ChecksumInName(string path)
+        {
+            if (!AutomaticRemovalScope.IsStoredFile(path))
+                return null;
+
+            string name = Path.GetFileName(path);
+            int dot = name.IndexOf('.');
+            string sha = dot < 0 ? name : name[..dot];
+
+            return DataTreeLayout.IsSha256(sha) ? sha : null;
+        }
+
+        // The board's folder in a tree ("Commodore/C64/250407") - where its board file lies, and what
+        // a board never promoted leaves behind once it is taken out of BETA.
         public static string BoardFolder(BoardRecord board)
         {
             ArgumentNullException.ThrowIfNull(board);
 
             return $"{board.Manufacturer.Trim()}/{board.Hardware.Trim()}/{board.Board.Trim()}";
-        }
-
-        // Every file under one folder of a tree, as data-root-relative forward-slashed paths.
-        // A folder that does not exist is no files, which is a real answer: production has none for
-        // a board never promoted.
-        public static IReadOnlyList<string> FilesUnder(string root, string folder)
-        {
-            if (!SubmissionPathRules.TryResolve(root, folder, out string resolved, out _))
-                return [];
-
-            if (!Directory.Exists(resolved))
-                return [];
-
-            var files = new List<string>();
-
-            foreach (string path in Directory.EnumerateFiles(resolved, "*", SearchOption.AllDirectories))
-            {
-                // A hidden temporary file beside a copy in progress (VerifiedFileCopy's dot-name) is
-                // not part of the board - the checksum manifest skips it for the same reason.
-                if (Path.GetFileName(path).StartsWith('.'))
-                    continue;
-
-                string relative = Path.GetRelativePath(root, path).Replace('\\', '/');
-
-                // A path that escapes the root cannot be acted on - the same fail-closed rule
-                // SubmissionPathRules exists for.
-                if (!relative.StartsWith("..", StringComparison.Ordinal))
-                    files.Add(relative);
-            }
-
-            return files;
         }
 
         // ###########################################################################################
@@ -172,58 +241,6 @@ namespace CRT.Server.Handlers.Submissions
 
             return betaHash is not null && string.Equals(betaHash, productionHash, StringComparison.Ordinal);
         }
-
-        // ###########################################################################################
-        // The shared files the returning submissions carried, and what each tree holds for them.
-        //
-        // "Carried" is the submission's own file list (submission_files), whose hashes are the
-        // bytes the submission put there. BETA still holding THOSE bytes is the proof the change is
-        // this rollback's to undo; anything else was written again since and belongs to somebody
-        // else - see BetaRollbackPlan's header.
-        // ###########################################################################################
-        public static async Task<IReadOnlyList<BetaRollbackSharedFile>> SharedFilesAsync(
-            string betaRoot,
-            string productionRoot,
-            BoardRecord board,
-            IReadOnlyList<SubmissionFileRecord> returningFiles,
-            CancellationToken cancellationToken = default)
-        {
-            var result = new List<BetaRollbackSharedFile>();
-
-            // One entry per path. Two returning submissions naming one shared file both count as
-            // "ours" if BETA holds EITHER one's bytes - both are being rolled back.
-            foreach (IGrouping<string, SubmissionFileRecord> byPath in returningFiles
-                .Where(file => BetaRollbackFiles.IsShared(board, file.Path))
-                .GroupBy(file => file.Path.Trim(), StringComparer.Ordinal))
-            {
-                string path = byPath.Key;
-
-                if (!SubmissionPathRules.TryResolve(betaRoot, path, out string beta, out _) ||
-                    !SubmissionPathRules.TryResolve(productionRoot, path, out string production, out _))
-                {
-                    continue;
-                }
-
-                string? betaHash = File.Exists(beta) ? await BetaRollbackFiles.HashOfAsync(beta, cancellationToken) : null;
-
-                bool ours = betaHash is not null && byPath.Any(file =>
-                    string.Equals(file.Sha256, betaHash, StringComparison.OrdinalIgnoreCase));
-
-                bool inProduction = File.Exists(production);
-
-                bool same = inProduction && ours &&
-                    await BetaRollbackFiles.SameBytesAsync(betaRoot, productionRoot, path, cancellationToken);
-
-                result.Add(new BetaRollbackSharedFile(path, ours, inProduction, same));
-            }
-
-            return result;
-        }
-
-        // Is this path in one of the two shared folders, for this board's manufacturer?
-        private static bool IsShared(BoardRecord board, string? path) =>
-            SubmissionFileScopes.Classify(board.Manufacturer, board.Hardware, board.Board, path) is
-                SubmissionFileScope.ManufacturerShared or SubmissionFileScope.GenericShared;
 
         // ###########################################################################################
         // A file's SHA-256, lower-case hex as VerifiedFileCopy compares it, once per file version.

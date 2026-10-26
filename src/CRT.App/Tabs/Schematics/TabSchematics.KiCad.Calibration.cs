@@ -314,8 +314,23 @@ public partial class TabSchematics
     // own header for why) and then exits calibration mode so the persisted transform becomes the
     // active transform immediately - ResolveEffectiveKiCadCalibration reads the draft's row back
     // out the moment RefreshKiCadOverlay below asks for it.
+    //
+    // Async since the save goes through the draft held in memory (2026-10-25), so guarded as a whole:
+    // an async void has no caller to catch for it.
     // ###########################################################################################
-    private void ApplyKiCadTraceCalibration()
+    private async void ApplyKiCadTraceCalibration()
+    {
+        try
+        {
+            await this.ApplyKiCadTraceCalibrationAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Critical($"Saving the KiCad calibration failed - [{ex}]");
+        }
+    }
+
+    private async Task ApplyKiCadTraceCalibrationAsync()
     {
         if (!this.thisIsKiCadTraceCalibrationMode || this.currentFullResBitmap == null)
         {
@@ -363,58 +378,57 @@ public partial class TabSchematics
         // The draft is seeded first when there is none, for the same reason the label editor's save
         // seeds: a draft is a complete copy of the published board, and starting an empty one would
         // read as "every published row deleted".
+        //
+        // *** THROUGH THE DRAFT HELD IN MEMORY (CRT 4.0 step 1, 2026-10-25 - DraftEdits). *** The
+        // calibration lands on the draft every editor shows, so the Drafts tab's table and its undo
+        // know of it, and a save that cannot be made is taken back out - calibration mode then stays
+        // on with the error, so nothing the user set up is lost. Under this window's overlay, so the
+        // box cannot be dragged on, nor Apply pressed again, while it saves.
         // ###########################################################################################
-        if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
+        var calibration = new KiCadCalibrationEntry
         {
-            // Read UNCACHED and synchronously rather than through the async cached load: this
-            // runs from a Click handler, and making it async void to await one rare seed would
-            // swallow any exception the rest of this method threw. The published FILE as it is
-            // now - DraftSeeder.SeedFromPublishedFile, which every seeding save path shares.
-            DraftSeedResult seeded = DraftSeeder.SeedFromPublishedFile(
-                DraftManager.DraftsRoot,
-                DataManager.DataRoot,
-                cacheKey);
+            SchematicName = schematicName,
+            CadName = cadName,
+            OffsetX = offsetX,
+            OffsetY = offsetY,
+            ScaleX = scaleX,
+            ScaleY = scaleY,
+            MirrorX = mirrorX,
+            MirrorY = mirrorY,
+        };
 
-            if (!seeded.Created)
+        string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingDraft, async () =>
+        {
+            if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
             {
-                Logger.Warning($"KiCad calibration save failed - could not seed a draft: [{seeded.Reason}]");
-                return;
+                // The published FILE as it is now - DraftSeeder.SeedFromPublishedFile, which every
+                // seeding save path shares.
+                string draftsRoot = DraftManager.DraftsRoot;
+                string dataRoot = DataManager.DataRoot;
+
+                DraftSeedResult seeded = await Task.Run(() => DraftSeeder.SeedFromPublishedFile(draftsRoot, dataRoot, cacheKey));
+
+                if (!seeded.Created)
+                {
+                    Logger.Warning($"KiCad calibration save failed - could not seed a draft: [{seeded.Reason}]");
+                    return "Could not create a draft to save into.";
+                }
             }
-        }
 
-        string calibrationTarget = DraftBoardSource.ResolveWritablePath(
-            DataManager.DataRoot,
-            DraftManager.DraftsRoot,
-            cacheKey);
+            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                cacheKey,
+                DraftStepWording.Calibration(schematicName),
+                content => content with { Calibrations = KiCadCalibrationList.With(content.Calibrations, calibration) });
 
-        if (string.IsNullOrWhiteSpace(calibrationTarget))
-        {
-            Logger.Warning("KiCad calibration save failed - could not resolve where to save it");
-            return;
-        }
+            return outcome == DraftWorkbookEditOutcome.Saved
+                ? null
+                : DraftSaveWording.EditNotSaved(outcome);
+        });
 
-        // *** A SIDECAR THAT CANNOT BE READ IN FULL REFUSES THE SAVE (code review, 2026-10-13). ***
-        // The save rebuilds the whole file, so one unreadable highlight used to cost every
-        // highlight on the board; it now refuses and leaves the file alone (EnsureReadableInFull).
-        // Said in the label editor's own error dialog, and calibration mode stays on, so nothing
-        // the user set up is lost.
-        try
+        if (failure is not null)
         {
-            BoardComponentHighlightStorage.SaveKiCadCalibration(
-                calibrationTarget,
-                schematicName,
-                cadName,
-                offsetX,
-                offsetY,
-                scaleX,
-                scaleY,
-                mirrorX,
-                mirrorY);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
-        {
-            Logger.Warning($"KiCad calibration save failed - [{ex.Message}]");
-            _ = this.ShowDialogAsync(this.BuildKiCadCalibrationSaveFailedDialog(ex.Message));
+            Logger.Warning($"KiCad calibration save failed - [{failure}]");
+            _ = this.ShowDialogAsync(this.BuildKiCadCalibrationSaveFailedDialog(failure));
             return;
         }
 
@@ -428,7 +442,7 @@ public partial class TabSchematics
         // than in BoardData, so this path deliberately refreshes its own overlay instead of
         // reloading the board. That saving is exactly why the tab was missed here.
         // ###########################################################################################
-        this.MainWindow?.ApplyDraftsTabVisibility();
+        this.MainWindow?.ApplyContributeTabState();
 
         this.ClearKiCadTraceCalibrationDragTransform();
 

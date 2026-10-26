@@ -33,6 +33,8 @@ public sealed class BoardDataTests
         BoardLinks = [new BoardLinkEntry { Name = "Forum" }],
         Credits = [new CreditEntry { NameOrHandle = "Someone" }],
         KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "9VAC" }],
+        ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "1" }],
+        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U1", PartNumber = "6526A" }],
     };
 
     [Fact]

@@ -56,6 +56,9 @@ namespace Handlers.DataHandling
                 if (string.IsNullOrWhiteSpace(workbookPath) || !File.Exists(workbookPath))
                     return string.Empty;
 
+                if (DataTreeLayout.IsBoardFile(workbookPath))
+                    return DraftFingerprint.ComputeForBoardFile(workbookPath, draftBoardFolder);
+
                 string? values = DraftFingerprint.WorkbookValuesHash(workbookPath);
                 if (values is null)
                     return string.Empty;
@@ -85,6 +88,50 @@ namespace Handlers.DataHandling
             }
         }
 
+        // ###########################################################################################
+        // A CRT 4.0 draft's fingerprint (2026-10-24): its board file's CONTENT - rows, highlights,
+        // calibrations, renames and file list, as CRT writes them (DataTreeJson), so a file
+        // rewritten with nothing changed keeps it - and every other file of the folder, which is
+        // the draft's store and the files just picked. "v2:", as it is computed another way than an
+        // Excel-era draft's, which it never matches.
+        // ###########################################################################################
+        private static string ComputeForBoardFile(string boardFile, string draftBoardFolder)
+        {
+            string? content = DraftFingerprint.BoardFileContentHash(boardFile);
+            if (content is null)
+                return string.Empty;
+
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+            DraftFingerprint.Add(hash, "board");
+            DraftFingerprint.Add(hash, content);
+
+            foreach ((string relative, string full) in DraftFingerprint.OwnFiles(draftBoardFolder, boardFile, boardFile))
+            {
+                DraftFingerprint.Add(hash, relative);
+                DraftFingerprint.Add(hash, DraftFingerprint.CachedFileHash(full));
+            }
+
+            return $"v2:{Convert.ToHexString(hash.GetHashAndReset())}";
+        }
+
+        // The board file's content as CRT writes it - null when it cannot be read.
+        private static string? BoardFileContentHash(string boardFile)
+        {
+            var info = new FileInfo(boardFile);
+
+            if (DraftFingerprint.WorkbookHashes.TryGetValue(info.FullName, out CachedHash cached) && cached.Matches(info))
+                return cached.Hash;
+
+            if (BoardFiles.ReadDocument(boardFile) is not BoardDocument document)
+                return null;
+
+            string content = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(DataTreeJson.Write(document))));
+            DraftFingerprint.WorkbookHashes[info.FullName] = new CachedHash(info.Length, info.LastWriteTimeUtc, content);
+
+            return content;
+        }
+
         // The draft folder's files the contributor put there, in a fixed order.
         private static IEnumerable<(string Relative, string Full)> OwnFiles(string folder, string workbookPath, string sidecar)
         {
@@ -100,6 +147,7 @@ namespace Handlers.DataHandling
                 .Where(full => !string.Equals(full, json, StringComparison.OrdinalIgnoreCase))
                 .Where(full => !DraftFingerprint.IsBookkeeping(Path.GetFileName(full)))
                 .Select(full => (Relative: Path.GetRelativePath(folder, full).Replace('\\', '/'), Full: full))
+                .Where(file => !DraftFolderLayout.IsInBookkeepingFolder(file.Relative))
                 .OrderBy(file => file.Relative, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(file => file.Relative, StringComparer.Ordinal)
                 .ToList();

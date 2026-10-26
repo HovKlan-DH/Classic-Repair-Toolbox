@@ -13,8 +13,8 @@ namespace CRT
     // cannot be selected again").
     //
     // A CAD name is the KiCad VIEW an image's traces are drawn from. The names on offer are read
-    // from the very files the Schematics tab draws this board's traces from - the published "KiCad
-    // data" folder and the draft's (KiCadRawFileScanner.ScanBoard) - and WITHOUT parsing a PCB
+    // from the very files the Schematics tab draws this board's traces from - the KiCad files the
+    // draft's board file names, copied under their names (BoardKiCadFolder) - and WITHOUT parsing a PCB
     // (KiCadRawProjectLoader.LoadViewDisplayNamesAsync), so reading them is quick. They are read
     // alongside the images while the window opens, under its "please wait" (Opening), so every row
     // shows its choices from the start. Which name each image may pick is SchematicCadNameChoices'.
@@ -42,12 +42,11 @@ namespace CRT
         {
             this.ShowCadNamesState("Reading the board's KiCad data for its CAD names...");
 
-            string publishedFolder = this.PublishedKiCadFolder;
-            string draftFolder = this.KiCadImportFolder;
-
             (int fileCount, List<string> names) = await Task.Run(async () =>
             {
-                List<string> files = KiCadRawFileScanner.ScanBoard(publishedFolder, draftFolder);
+                // The board's KiCad files as the draft has them - the files the Schematics tab
+                // draws from (BoardKiCadFolder).
+                List<string> files = KiCadRawFileScanner.Scan(this.BoardKiCadCopy());
 
                 return files.Count == 0
                     ? (0, new List<string>())
@@ -58,7 +57,7 @@ namespace CRT
 
             this.ShowCadNamesState(
                 fileCount == 0
-                    ? "This board has no KiCad data yet, so there is no CAD name to pick. Add it with \"KiCad data\" in the Drafts tab."
+                    ? "This board has no KiCad data yet, so there is no CAD name to pick. Add it with \"KiCad data\" on the Contribute tab."
                     : names.Count == 0
                         ? "The board's KiCad data has no views, so there is no CAD name to pick."
                         : string.Empty);
@@ -109,27 +108,27 @@ namespace CRT
                     return;
                 }
 
-                string draftsRoot = DraftManager.DraftsRoot;
-                string excelDataFile = this.thisExcelDataFile;
                 SchematicRowRef target = this.RefOf(row);
                 bool found = false;
 
-                bool saved = await this.WriteDraftAsync(CrtWaitWording.SavingCadName, () => DraftWorkbookStore.Edit(
-                    draftsRoot,
-                    excelDataFile,
+                DraftWorkbookEditOutcome outcome = await this.ApplyToDraftAsync(
+                    CrtWaitWording.SavingCadName,
+                    DraftStepWording.CadName(row.SchematicName),
                     board =>
                     {
                         (BoardData updated, bool wasFound) = SchematicRows.WithCadName(board, target, cadName);
                         found = wasFound;
                         return updated;
-                    }));
+                    });
+
+                bool saved = outcome == DraftWorkbookEditOutcome.Saved;
 
                 if (!saved || !found)
                 {
                     this.ShowStatus(
                         saved
                             ? $"[{row.SchematicName}] is no longer in the draft - it changed outside this window, so the list has been read again."
-                            : "The CAD name could not be saved. If this board's Excel file is open in Excel, close it there and try again.",
+                            : "The CAD name could not be saved. " + DraftSaveWording.EditNotSaved(outcome),
                         isError: true);
 
                     await this.ReloadSchematicsUnderOverlayAsync();

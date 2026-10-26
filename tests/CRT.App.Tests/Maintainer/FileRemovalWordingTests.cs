@@ -60,6 +60,39 @@ public sealed class FileRemovalWordingTests
         Assert.StartsWith("Approving also REMOVES 3 files", FileRemovalWording.ApproveNote(new FileRemovalPreview(["a", "b", "c"], null)));
     }
 
+    // ###########################################################################################
+    // *** A REPLACED FILE'S EARLIER BYTES ARE NO REMOVAL TO SPEAK OF (CRT 4.0 tree, 2026-10-25). ***
+    // The publish removes them - stored under their own checksum, nothing lists them afterwards -
+    // but under the very name the board keeps listing, so saying "manual.pdf - nothing uses it any
+    // more" would announce a file going that is only replaced. A removed file is named by the name
+    // the board knew it by, never by its stored path.
+    // ###########################################################################################
+    [Fact]
+    public void The_earlier_bytes_of_a_replaced_file_are_not_counted_or_listed_as_a_file_nothing_uses()
+    {
+        var preview = new FileRemovalPreview(
+            ["Files/3f/3f7a.pdf", "Files/9c/9c01.png"],
+            null,
+            new Dictionary<string, string> { ["Files/3f/3f7a.pdf"] = "manual.pdf", ["Files/9c/9c01.png"] = "Images/old.png" });
+
+        string[] kept = ["Manual.PDF", "Images/sheet.png"];
+
+        Assert.Equal(["Images/old.png"], FileRemovalWording.Unused(preview, kept));
+        Assert.Equal(
+            "Publishing REMOVES 1 file from the BETA data - nothing uses it any more:",
+            FileRemovalWording.Headline(preview, "the BETA data", kept));
+        Assert.StartsWith("Approving also REMOVES 1 file", FileRemovalWording.ApproveNote(preview, kept));
+
+        // Nothing kept: both are files nothing uses.
+        Assert.Equal(["manual.pdf", "Images/old.png"], FileRemovalWording.Unused(preview));
+
+        // Only a replacement: nothing is said to go.
+        var replacing = new FileRemovalPreview(["Files/3f/3f7a.pdf"], null, new Dictionary<string, string> { ["Files/3f/3f7a.pdf"] = "manual.pdf" });
+
+        Assert.Equal("No files are removed from the stable data.", FileRemovalWording.Headline(replacing, "the stable data", kept));
+        Assert.Null(FileRemovalWording.ApproveNote(replacing, kept));
+    }
+
     [Fact]
     public void What_was_removed_is_added_to_the_message_after_publishing()
     {

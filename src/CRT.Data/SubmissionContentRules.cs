@@ -118,10 +118,21 @@ namespace Handlers.DataHandling
         // `openText` opens the whole file as text, the way CRT reads a KiCad file, and is called
         // only when a rule reads past `head`. Null - the file has gone since its caller verified
         // it - passes that part: a publish verifies every file again before it writes anything.
+        //
+        // *** A KiCad STRAGGLER PASSES (code review, 2026-10-25). *** A name in "KiCad data" of a type
+        // CRT does not read is admitted only as the bytes the published board already lists under it
+        // (SubmissionKiCadFiles.IsStraggler) - there is nothing new to check, and the publish never
+        // writes it (its bytes are unchanged). Matches alone still refuses the type, for any caller
+        // judging a file that is not a submission's.
         // ###########################################################################################
         public static bool MatchesWholeFile(string? path, ReadOnlySpan<byte> head, Func<TextReader?> openText, out string reason)
         {
             ArgumentNullException.ThrowIfNull(openText);
+
+            reason = string.Empty;
+
+            if (SubmissionKiCadFiles.IsStraggler(path))
+                return true;
 
             if (!SubmissionContentRules.Matches(path, head, out reason))
                 return false;

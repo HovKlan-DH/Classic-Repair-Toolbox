@@ -55,13 +55,13 @@ namespace CRT.Server.Tests
                 Board = board
             };
 
-        private string BoardFolder(params string[] workbooks)
+        private string BoardFolder(params string[] files)
         {
             string folder = Path.Combine(this.thisRoot, "Commodore", "C64", "250407");
             Directory.CreateDirectory(folder);
 
-            foreach (string workbook in workbooks)
-                File.WriteAllText(Path.Combine(folder, workbook), "not a real workbook");
+            foreach (string file in files)
+                File.WriteAllText(Path.Combine(folder, file), "not a real board");
 
             return folder;
         }
@@ -70,31 +70,33 @@ namespace CRT.Server.Tests
         // Finding the board
         // -----------------------------------------------------------------------------------
 
+        // ###########################################################################################
+        // *** IN THE CRT 4.0 TREE A BOARD IS ITS BOARD FILE (2026-10-25). *** "<board id>/board.json",
+        // always that name - no generations to choose between. An Excel workbook left beside it is
+        // not the board, and is never chosen.
+        // ###########################################################################################
         [Fact]
-        public void The_NEWEST_generation_is_chosen()
+        public void The_board_file_is_chosen_and_never_a_workbook_beside_it()
         {
-            // *** THE SAME RULE PUBLISHING WRITES WITH. *** Reading an older, frozen generation
-            // would show the maintainer a diff against a board no current build uses, and every
-            // difference between the generations would appear as a change the contributor made.
-            this.BoardFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
+            this.BoardFolder("Data C64 250407 v2.0.0.xlsx", DataTreeLayout.BoardFileName);
 
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());
 
             Assert.True(location.Exists);
-            Assert.EndsWith("Data C64 250407 v2.0.0.xlsx", location.WorkbookPath);
-            Assert.Equal(Version.Parse("2.0.0"), location.Generation);
+            Assert.Equal(Path.Combine(this.thisRoot, "Commodore", "C64", "250407", DataTreeLayout.BoardFileName), location.WorkbookPath);
+            Assert.Null(location.Generation);
         }
 
         // ###########################################################################################
         // From a board ID - what the review QUEUE holds, which loads no manifest (2026-09-26: the
-        // "New board" badge). The same workbook as from the manifest, and nothing at all for an id
+        // "New board" badge). The same board file as from the manifest, and nothing at all for an id
         // that is not three well-formed parts - a traversal included.
         // ###########################################################################################
         [Fact]
         public void A_board_id_finds_the_same_board_as_its_manifest()
         {
-            this.BoardFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
+            this.BoardFolder(DataTreeLayout.BoardFileName);
 
             PublishedBoardLocation byId = PublishedBoardLocator.LocateBoard(this.thisRoot, "Commodore/C64/250407");
 
@@ -110,40 +112,34 @@ namespace CRT.Server.Tests
         [InlineData(null)]
         public void A_malformed_board_id_locates_nothing(string? boardId)
         {
-            this.BoardFolder("Data C64 250407.xlsx");
+            this.BoardFolder(DataTreeLayout.BoardFileName);
 
             Assert.False(PublishedBoardLocator.LocateBoard(this.thisRoot, boardId).Exists);
         }
 
+        // A folder holding only an Excel generation's workbook is no board of this tree - a tree
+        // the 4.0 converter has not been run over, or one copied wrongly by hand.
         [Fact]
-        public void A_tree_with_only_the_unversioned_original_finds_it()
+        public void A_folder_holding_only_an_Excel_workbook_is_no_board()
         {
-            this.BoardFolder("Data C64 250407.xlsx");
+            this.BoardFolder("Data C64 250407.xlsx", "Data C64 250407 v2.0.0.xlsx");
 
-            PublishedBoardLocation location =
-                PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());
-
-            Assert.True(location.Exists);
-            Assert.Null(location.Generation);
+            Assert.False(PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest()).Exists);
         }
 
-        [Fact]
-        public void The_board_stem_is_READ_from_disk_rather_than_rebuilt_from_the_identity()
+        // The tree's own folders - the stored files, the MiniPro tests - are never a board's,
+        // whatever lies in them (DataTreeLayout.ReservedTopFolders).
+        [Theory]
+        [InlineData("Files")]
+        [InlineData("MiniPro")]
+        [InlineData("files")]
+        public void A_folder_of_the_tree_itself_is_never_a_board(string top)
         {
-            // Board file names do not follow the folder names mechanically: "Data C128DCR 250477"
-            // lives under C128/250477, and "Data VIC20 250403" under VIC-20/250403. Rebuilding a
-            // name from the identity would miss every board whose file is not named after its
-            // folder - which is most of them.
-            string folder = Path.Combine(this.thisRoot, "Commodore", "C128", "250477");
+            string folder = Path.Combine(this.thisRoot, top, "ab", "cd");
             Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "Data C128DCR 250477 v2.0.0.xlsx"), "x");
+            File.WriteAllText(Path.Combine(folder, DataTreeLayout.BoardFileName), "{}");
 
-            PublishedBoardLocation location = PublishedBoardLocator.Locate(
-                this.thisRoot,
-                PublishedBoardLocatorTests.Manifest("Commodore", "C128", "250477"));
-
-            Assert.True(location.Exists);
-            Assert.EndsWith("Data C128DCR 250477 v2.0.0.xlsx", location.WorkbookPath);
+            Assert.False(PublishedBoardLocator.LocateBoard(this.thisRoot, $"{top}/ab/cd").Exists);
         }
 
         // -----------------------------------------------------------------------------------
@@ -162,10 +158,10 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public void A_folder_holding_no_workbook_is_reported_as_having_no_board()
+        public void A_folder_holding_no_board_file_is_reported_as_having_no_board()
         {
             // A board folder can exist carrying only images - a partially published board, or
-            // one whose files arrived before its workbook.
+            // one whose files arrived before its board file.
             string folder = this.BoardFolder();
             File.WriteAllText(Path.Combine(folder, "sheet1.png"), "x");
 
@@ -218,9 +214,9 @@ namespace CRT.Server.Tests
 
             Directory.CreateDirectory(dataTree);
             Directory.CreateDirectory(sibling);
-            File.WriteAllText(Path.Combine(sibling, "Data C64 250407 v2.0.0.xlsx"), "outside the tree");
+            File.WriteAllText(Path.Combine(sibling, DataTreeLayout.BoardFileName), "outside the tree");
 
-            // "../Commodore" resolves to a folder that exists and holds a real workbook.
+            // "../Commodore" resolves to a folder that exists and holds a board file.
             PublishedBoardLocation escaped = PublishedBoardLocator.Locate(
                 dataTree,
                 PublishedBoardLocatorTests.Manifest("../Commodore", "C64", "250407"));
@@ -231,7 +227,7 @@ namespace CRT.Server.Tests
             // containment doing its job rather than the locator failing to find anything at all.
             string inside = Path.Combine(dataTree, "Commodore", "C64", "250407");
             Directory.CreateDirectory(inside);
-            File.WriteAllText(Path.Combine(inside, "Data C64 250407 v2.0.0.xlsx"), "inside the tree");
+            File.WriteAllText(Path.Combine(inside, DataTreeLayout.BoardFileName), "inside the tree");
 
             PublishedBoardLocation found = PublishedBoardLocator.Locate(
                 dataTree,
@@ -244,7 +240,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void A_blank_identity_finds_nothing_rather_than_the_data_root_itself()
         {
-            // Falling back to the root would compare the submission against whatever workbook
+            // Falling back to the root would compare the submission against whatever board file
             // happened to sit at the top of the data tree - a diff against an unrelated board,
             // presented to the maintainer as this board's history.
             PublishedBoardLocation location = PublishedBoardLocator.Locate(
@@ -277,7 +273,7 @@ namespace CRT.Server.Tests
             // The anti-vacuity partner to the traversal tests above: those pass trivially if
             // nothing is ever found. This proves the ordinary case really does resolve, and
             // resolves inside the root.
-            this.BoardFolder("Data C64 250407 v2.0.0.xlsx");
+            this.BoardFolder(DataTreeLayout.BoardFileName);
 
             PublishedBoardLocation location =
                 PublishedBoardLocator.Locate(this.thisRoot, PublishedBoardLocatorTests.Manifest());

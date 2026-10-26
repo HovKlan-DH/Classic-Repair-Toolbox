@@ -547,7 +547,11 @@ namespace CRT.Server.Handlers.Submissions
                 "{Account} published {BoardId} revision {Revision} to production ({Copied} file(s) copied).",
                 access.Account.Email, board.BoardId, board.CurrentRevision, copy.FilesCopied);
 
-            return PromotionOutcome.Published(board, copy.FilesCopied, board.ProductionPublishedUtc) with { RemovedFiles = removal.Removed };
+            // Said by the board's names - a stored file's place is its checksum.
+            return PromotionOutcome.Published(board, copy.FilesCopied, board.ProductionPublishedUtc) with
+            {
+                RemovedFiles = removal.Removed.Select(removals.NameOf).ToList()
+            };
         }
 
         public const string RemovalsChangedMessage =
@@ -557,73 +561,48 @@ namespace CRT.Server.Handlers.Submissions
         // ###########################################################################################
         // THE FILES A PROMOTION WOULD REMOVE FROM PRODUCTION.
         //
-        // After the promotion the board's workbooks in production are BETA's, so the candidates
-        // are what production's workbooks cite that BETA's do not, and production is then read
-        // with BETA's citations standing in for its own. A file another production board still
-        // cites is kept; so is anything an older generation cites. A workbook that cannot be read
-        // in either tree blocks the removal rather than guessing.
+        // After the promotion the board's file in production is BETA's, so the candidates are the
+        // stored files production's board lists that BETA's does not (CRT 4.0 tree, 2026-10-25), and
+        // production is then read with BETA's list standing in for its own. Bytes another production
+        // board still lists are kept. A board file that cannot be read in either tree blocks the
+        // removal rather than guessing. Each removal carries the name production's board knew it by.
         // ###########################################################################################
         internal static FileRemovalPreview PreviewRemovals(string betaRoot, string productionRoot, BoardRecord board)
         {
-            string folder = $"{board.Manufacturer}/{board.Hardware}/{board.Board}";
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? before = PublishedBoardFiles.ByName(productionRoot, board.BoardId);
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? after = PublishedBoardFiles.ByName(betaRoot, board.BoardId);
 
-            if (!ProductionPromotionFlow.TryReadCitations(productionRoot, folder, out Dictionary<string, IReadOnlyCollection<string>> before, out string? why) ||
-                !ProductionPromotionFlow.TryReadCitations(betaRoot, folder, out Dictionary<string, IReadOnlyCollection<string>> after, out why))
+            if (before is null || after is null)
             {
-                return new FileRemovalPreview([], "Nothing is removed, because " + why);
+                string tree = before is null ? "the stable source's" : "BETA's";
+                return new FileRemovalPreview([], $"Nothing is removed, because {tree} board file of [{board.BoardId}] could not be read.");
             }
 
-            // Only inside the board's own folder (owner decision, 2026-09-27) - see
-            // AutomaticRemovalScope.
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (BoardDocument.StoredFileRow file in before.Values)
+            {
+                if (PublishedBoardFiles.StoredRelative(file) is { Length: > 0 } stored)
+                    names.TryAdd(stored, file.Name);
+            }
+
+            List<string> listedAfter = after.Values
+                .Select(PublishedBoardFiles.StoredRelative)
+                .Where(stored => stored.Length > 0)
+                .ToList();
+
+            // Only the board's own - see AutomaticRemovalScope.
             IReadOnlyList<string> candidates = AutomaticRemovalScope.Within(
-                folder,
-                DataTreeUsage.NoLongerCited(
-                    before.Values.SelectMany(files => files),
-                    after.Values.SelectMany(files => files)));
+                board.BoardId,
+                DataTreeUsage.NoLongerCited(names.Keys, listedAfter));
 
-            return FileRemovalPreview.Compute(productionRoot, candidates, after, ApprovePublishFlow.PreviewReads);
-        }
-
-        // Each board workbook at the top of the board's folder -> what it cites.
-        private static bool TryReadCitations(
-            string root,
-            string folder,
-            out Dictionary<string, IReadOnlyCollection<string>> citations,
-            out string? why)
-        {
-            citations = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.OrdinalIgnoreCase);
-            why = null;
-
-            if (!SubmissionPathRules.TryResolve(root, folder, out string full, out _) || !Directory.Exists(full))
-                return true;
-
-            try
-            {
-                foreach (string file in Directory.EnumerateFiles(full, "*" + DataGenerationRules.WorkbookExtension))
-                {
-                    string relative = $"{folder}/{Path.GetFileName(file)}";
-
-                    if (!DataTreeUsage.IsBoardFolderWorkbook(relative))
-                        continue;
-
-                    // Through the preview cache: these citations only choose what to SHOW; the
-                    // removal itself re-reads the tree (UnusedFileRemover).
-                    if (!ApprovePublishFlow.PreviewReads.TryGetCitations(file, out IReadOnlyCollection<string> cited))
-                    {
-                        why = $"the board workbook [{relative}] could not be read.";
-                        return false;
-                    }
-
-                    citations[relative] = cited.ToList();
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                why = $"the folder [{folder}] could not be read.";
-                return false;
-            }
-
-            return true;
+            return FileRemovalPreview
+                .Compute(
+                    productionRoot,
+                    candidates,
+                    new Dictionary<string, IReadOnlyCollection<string>> { [DataTreeLayout.BoardFilePath(board.BoardId)] = listedAfter },
+                    ApprovePublishFlow.PreviewReads)
+                .Named(names);
         }
 
         public const string PublishedAction = "production.published";
@@ -712,23 +691,26 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The plan, from the two trees as they are now. The BETA board is read for what it CITES,
-        // which is how its shared files are found; the walk of its folder is what it OWNS.
+        // The plan, from the two trees as they are now (CRT 4.0 tree, 2026-10-25): BETA's board file
+        // and the files it lists, against what production holds - its board file's bytes, and which
+        // of the stored files it has. A board file is compared by its bytes; a stored file by being
+        // there, since its name is its checksum.
         // ###########################################################################################
-        private async Task<ProductionPromotionResult> BuildPlanAsync(
+        private Task<ProductionPromotionResult> BuildPlanAsync(
             BoardRecord board,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             string betaRoot = options.DataTreeRoot ?? string.Empty;
             string productionRoot = options.ProductionDataTreeRoot ?? string.Empty;
 
-            PublishedTreeView? beta = PublishedTreeProbe.For(betaRoot);
-            PublishedTreeView? production = PublishedTreeProbe.For(productionRoot);
+            PublishedTreeView? production = PublishedTreeProbe.For(productionRoot, board.BoardId);
 
-            if (beta is null || production is null)
+            if (!Directory.Exists(betaRoot) || production is null)
             {
-                return new ProductionPromotionResult(
+                return Task.FromResult(new ProductionPromotionResult(
                     [],
                     0,
                     [new ValidationFinding
@@ -738,55 +720,23 @@ namespace CRT.Server.Handlers.Submissions
                         Subject = board.BoardId,
                         Message = "The BETA or stable data tree could not be read on the server."
                     }],
-                    TouchesSharedFiles: false);
+                    TouchesSharedFiles: false));
             }
 
-            var identity = new SubmissionManifest
-            {
-                BoardId = board.BoardId,
-                Manufacturer = board.Manufacturer,
-                Hardware = board.Hardware,
-                Board = board.Board
-            };
+            string boardFile = DataTreeLayout.BoardFilePath(board.BoardId);
+            PublishedBoardLocation inBeta = PublishedBoardLocator.LocateBoard(betaRoot, board.BoardId);
+            BoardDocument? betaDocument = inBeta.Exists ? BoardFiles.ReadDocument(inBeta.WorkbookPath) : null;
 
-            BoardData? boardData = await this.thisBoards.TryReadAsync(betaRoot, identity, cancellationToken);
-
-            IReadOnlyList<string> cited = boardData is null
-                ? []
-                : SubmissionManifestBuilder.CollectReferencedFiles(boardData);
-
-            return ProductionPromotionPlan.Build(
+            return Task.FromResult(ProductionPromotionPlan.Build(
                 board.Manufacturer,
                 board.Hardware,
                 board.Board,
-                ProductionPromotionFlow.WalkBoardFolder(betaRoot, board),
-                cited,
-                beta,
-                production);
-        }
-
-        // Every file under the board's BETA folder, data-root-relative with forward slashes.
-        // Empty when the folder does not resolve or is not there - which the plan refuses.
-        internal static IReadOnlyList<string> WalkBoardFolder(string betaRoot, BoardRecord board)
-        {
-            string relative = $"{board.Manufacturer}/{board.Hardware}/{board.Board}";
-
-            if (!SubmissionPathRules.TryResolve(betaRoot, relative, out string folder, out _) || !Directory.Exists(folder))
-                return [];
-
-            string fullRoot = Path.GetFullPath(betaRoot);
-
-            try
-            {
-                return Directory
-                    .EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                    .Select(path => Path.GetRelativePath(fullRoot, path).Replace(Path.DirectorySeparatorChar, '/'))
-                    .ToList();
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return [];
-            }
+                betaDocument?.Files,
+                betaDocument is null ? null : PublishedFileHashes.TryHash(betaRoot, boardFile),
+                PublishedFileHashes.TryHash(productionRoot, boardFile),
+                stored => PublishedBoardFiles.IsStored(betaRoot, stored),
+                stored => PublishedBoardFiles.IsStored(productionRoot, stored),
+                production.FindCaseVariant));
         }
     }
 

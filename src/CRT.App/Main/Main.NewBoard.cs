@@ -34,19 +34,19 @@ namespace CRT
         // ###########################################################################################
         internal async Task OpenNewBoardWindowAsync()
         {
-            // The next step is in the Drafts tab, which says "CRT has to be updated" - out of reach
-            // under its cover. Nothing is asked or made, and the Contribute tab says why (code
-            // review, 2026-10-09). The first draft of a run asks the server first, so this can fire
-            // (code review, 2026-10-10; Main.UpdateRequired.cs).
+            // The next step is in the Contribute tab, which says "CRT has to be updated" - out of
+            // reach under its cover. Nothing is asked or made (code review, 2026-10-09). The first
+            // draft of a run asks the server first, so this can fire (code review, 2026-10-10;
+            // Main.UpdateRequired.cs).
             await this.AskApiRevisionBeforeFirstDraftAsync();
 
             if (this.TabDrafts.IsUpdateRequiredShown)
             {
-                this.TabContribute.ShowDraftProblem(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered);
+                this.TabDrafts.ShowDraftProblem(AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered);
                 return;
             }
 
-            this.TabContribute.ShowDraftProblem(null);
+            this.TabDrafts.ShowDraftProblem(null);
 
             var window = new NewBoardWindow();
             window.Initialize(DataManager.HardwareBoards);
@@ -67,44 +67,36 @@ namespace CRT
             DataManager.RefreshDraftOnlyBoards();
 
             this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
-            this.ApplyDraftsTabVisibility();
-            this.SelectBoardForNewBoard(registration);
+            this.ApplyContributeTabState();
+            this.SelectBoard(registration.HardwareName, registration.BoardName);
 
             // ###########################################################################################
-            // *** AND LAND ON THE DRAFTS TAB, because that is where the next step is (owner
-            // request, 2026-09-24). ***
+            // *** AND LAND ON THE CONTRIBUTE TAB, because that is where the next step is (owner
+            // request, 2026-09-24, for the Drafts tab). ***
             //
-            // Creating a board is never the end of a task: the contributor now has to add schematic
-            // images, KiCad data and component rows, and every one of those actions lives on the
-            // Drafts tab. Selecting the board without switching left them on whichever tab they
-            // happened to start from - usually Contribute, which has nothing further to offer - with
-            // no indication that a new tab had just appeared to hold their work.
+            // Creating a board is never the end of a task: the contributor now has to add pictures,
+            // KiCad data and components, and every one of those actions lives on the Contribute tab.
             //
-            // AFTER SelectBoardForNewBoard, not before: that call drives the ordinary board-selection
-            // path, and the Drafts tab reads the selected board when it is shown.
+            // AFTER SelectBoard, not before: that call drives the ordinary board-selection path, and
+            // the tab shows the board it loads.
             // ###########################################################################################
-            this.SwitchToDraftsTab();
+            this.SwitchToContributeTab();
         }
 
         // ###########################################################################################
-        // Moves to the Drafts tab, if it is showing. The twin of SwitchToSchematicsTab, and
-        // null-guarded for the same reason: it is callable from another tab, so it cannot assume the
-        // tab control is up.
-        //
-        // Silently does nothing when the tab is hidden. A caller has just created a draft, so
-        // ApplyDraftsTabVisibility will have shown it - but a hidden tab cannot be selected, and
-        // throwing here would turn a cosmetic miss into a failed board creation.
+        // Moves to the Contribute tab. The twin of SwitchToSchematicsTab, and null-guarded for the
+        // same reason: it is callable from another tab, so it cannot assume the tab control is up.
         // ###########################################################################################
-        internal void SwitchToDraftsTab()
+        internal void SwitchToContributeTab()
         {
-            if (this.MainTabControl == null || this.DraftsTabItem == null || !this.DraftsTabItem.IsVisible)
+            if (this.MainTabControl == null || this.ContributeTabItem == null)
             {
                 return;
             }
 
-            if (!ReferenceEquals(this.MainTabControl.SelectedItem, this.DraftsTabItem))
+            if (!ReferenceEquals(this.MainTabControl.SelectedItem, this.ContributeTabItem))
             {
-                this.MainTabControl.SelectedItem = this.DraftsTabItem;
+                this.MainTabControl.SelectedItem = this.ContributeTabItem;
             }
         }
 
@@ -179,25 +171,27 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Selects the newly created board in the hardware/board drop-downs, which runs the ordinary
-        // board load for it.
+        // Selects a board in the hardware/board drop-downs, which runs the ordinary board load for
+        // it - a board just created, or one picked in the Contribute tab's "My drafts".
         //
         // Hardware is switched first so OnHardwareSelectionChanged has repopulated BoardComboBox's
         // items before the board is set, and _pendingBoardSelectionOverride makes that switch land
-        // on the new board directly - exactly the sequence ActivateWorkbook already uses, and for
-        // the same reasons its own comment gives.
+        // on the board directly - exactly the sequence ActivateWorkbook already uses, and for the
+        // same reasons its own comment gives.
         // ###########################################################################################
-        private void SelectBoardForNewBoard(NewBoardRegistration registration)
+        internal void SelectBoard(HardwareBoardEntry entry) => this.SelectBoard(entry.HardwareName, entry.BoardName);
+
+        private void SelectBoard(string hardwareName, string boardName)
         {
             var currentHardware = this.HardwareComboBox.SelectedItem as string;
 
-            if (!string.Equals(currentHardware, registration.HardwareName, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(currentHardware, hardwareName, StringComparison.OrdinalIgnoreCase))
             {
-                this._pendingBoardSelectionOverride = registration.BoardName;
-                this.HardwareComboBox.SelectedItem = registration.HardwareName;
+                this._pendingBoardSelectionOverride = boardName;
+                this.HardwareComboBox.SelectedItem = hardwareName;
             }
 
-            this.BoardComboBox.SelectedItem = registration.BoardName;
+            this.BoardComboBox.SelectedItem = boardName;
         }
     }
 }

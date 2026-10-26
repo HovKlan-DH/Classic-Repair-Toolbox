@@ -172,8 +172,8 @@ namespace CRT.Server.Handlers.Submissions
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 manifest, submitter, containmentRoot, store, blobs, DateTimeOffset.UtcNow, cancellationToken,
-                PublishedTreeProbe.For(options.DataTreeRoot),
-                PublishedTreeProbe.For(options.StableSourceRoot));
+                PublishedTreeProbe.For(options.DataTreeRoot, manifest),
+                PublishedTreeProbe.For(options.StableSourceRoot, manifest));
 
             // The refusals all carry { errors: [...] } - the one shape CRT reads findings from - so
             // a rate limit or a full disk reaches the contributor as a sentence, not a status code.

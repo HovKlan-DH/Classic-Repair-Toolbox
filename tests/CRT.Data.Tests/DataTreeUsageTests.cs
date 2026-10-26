@@ -519,5 +519,129 @@ namespace CRT.Data.Tests
         {
             Assert.Equal(expected, DataTreeUsage.Resolved(path));
         }
+
+        // ---- the CRT 4.0 tree (2026-10-25) --------------------------------------------------------
+
+        // ###########################################################################################
+        // *** A 4.0 TREE USES ITS MAIN FILE, ITS BOARD FILES, THE STORED FILES THEY LIST AND THE
+        // MINIPRO TESTS. *** A stored file no board lists is an orphan; one any board lists is not,
+        // whoever else listed it once.
+        // ###########################################################################################
+        [Fact]
+        public void A_json_tree_uses_its_main_file_board_files_listed_stored_files_and_the_MiniPro_tests()
+        {
+            using var tree = new TempWorkspace();
+            JsonTree.MainFile(tree.Root, Board);
+            JsonTree.Board(tree.Root, Board, ("Images/u8.png", "u8 bytes"));
+            JsonTree.Write(tree.Root, "MiniPro/IC tests/Catalogue/74LS00.txt", "test");
+            JsonTree.Write(tree.Root, JsonTree.Stored("orphan bytes", "x.png"), "orphan bytes");
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(tree.Root);
+
+            Assert.True(usage.IsComplete, string.Join(" ", usage.Problems));
+            Assert.True(usage.IsUsed(DataTreeLayout.MainFileName));
+            Assert.True(usage.IsUsed($"{Board}/board.json"));
+            Assert.True(usage.IsUsed(JsonTree.Stored("u8 bytes", "u8.png")));
+            Assert.True(usage.IsUsed("MiniPro/IC tests/Catalogue/74LS00.txt"));
+            Assert.Equal([JsonTree.Stored("orphan bytes", "x.png")], usage.UnusedFiles);
+        }
+
+        [Fact]
+        public void Bytes_two_boards_list_stay_while_either_lists_them()
+        {
+            using var tree = new TempWorkspace();
+            const string Other = "Commodore/C64/250425";
+            JsonTree.MainFile(tree.Root, Board, Other);
+            JsonTree.Board(tree.Root, Board, ("7406.pdf", "datasheet"));
+            JsonTree.Board(tree.Root, Other, ("Datasheets/7406.PDF", "datasheet"));
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(
+                tree.Root,
+                new Dictionary<string, IReadOnlyCollection<string>> { [$"{Board}/board.json"] = [] });
+
+            Assert.True(usage.IsUsed(JsonTree.Stored("datasheet", "7406.pdf")));
+            Assert.Empty(usage.RemovableFrom([JsonTree.Stored("datasheet", "7406.pdf")]));
+        }
+
+        // A publish's preview: the board file it writes lists what the plan lists.
+        [Fact]
+        public void A_preview_of_a_board_file_lists_what_the_publish_will_list()
+        {
+            using var tree = new TempWorkspace();
+            JsonTree.MainFile(tree.Root, Board);
+            JsonTree.Board(tree.Root, Board, ("old.png", "old bytes"));
+
+            string old = JsonTree.Stored("old bytes", "old.png");
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(
+                tree.Root,
+                new Dictionary<string, IReadOnlyCollection<string>> { [$"{Board}/board.json"] = [JsonTree.Stored("new bytes", "new.png")] });
+
+            Assert.True(usage.IsComplete);
+            Assert.Equal([old], usage.RemovableFrom([old]));
+            Assert.True(File.Exists(Path.Combine(tree.Root, old.Replace('/', Path.DirectorySeparatorChar))), "A preview removes nothing.");
+        }
+
+        // A board file found in a board folder counts, listed or not - a new board published before
+        // its row is in the lists must not read as unused.
+        [Fact]
+        public void A_board_file_the_main_file_does_not_list_still_counts()
+        {
+            using var tree = new TempWorkspace();
+            JsonTree.MainFile(tree.Root);
+            JsonTree.Board(tree.Root, Board, ("u8.png", "u8"));
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(tree.Root);
+
+            Assert.True(usage.IsComplete, string.Join(" ", usage.Problems));
+            Assert.Empty(usage.UnusedFiles);
+        }
+
+        // ###########################################################################################
+        // *** FAIL CLOSED. *** A 4.0 tree is one by its store or its board files too, so one whose
+        // main file went missing is never read by the Excel rule - which would find no master and no
+        // workbook and call every file unused.
+        // ###########################################################################################
+        [Fact]
+        public void A_json_tree_without_its_main_file_removes_nothing()
+        {
+            using var tree = new TempWorkspace();
+            JsonTree.Board(tree.Root, Board, ("u8.png", "u8"));
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(tree.Root);
+
+            Assert.False(usage.IsComplete);
+            Assert.Empty(usage.UnusedFiles);
+        }
+
+        [Fact]
+        public void A_listed_board_file_the_tree_lacks_or_cannot_read_removes_nothing()
+        {
+            using var missing = new TempWorkspace();
+            JsonTree.MainFile(missing.Root, Board);
+            JsonTree.Write(missing.Root, JsonTree.Stored("x", "x.png"), "x");
+
+            Assert.False(DataTreeUsage.Compute(missing.Root).IsComplete);
+
+            using var broken = new TempWorkspace();
+            JsonTree.MainFile(broken.Root, Board);
+            JsonTree.Write(broken.Root, $"{Board}/board.json", "{ not json");
+
+            DataTreeUsageResult usage = DataTreeUsage.Compute(broken.Root);
+
+            Assert.False(usage.IsComplete);
+            Assert.Empty(usage.UnusedFiles);
+        }
+
+        [Theory]
+        [InlineData("Commodore/C64/250407/board.json", true)]
+        [InlineData("Commodore/C64/250407/Board.json", false)]
+        [InlineData("Commodore/C64/board.json", false)]
+        [InlineData("Files/ab/c/board.json", false)]
+        [InlineData("MiniPro/IC tests/x/board.json", false)]
+        public void A_board_file_is_board_json_at_the_top_of_a_board_folder(string path, bool expected)
+        {
+            Assert.Equal(expected, DataTreeUsage.IsBoardFolderBoardFile(path));
+        }
     }
 }

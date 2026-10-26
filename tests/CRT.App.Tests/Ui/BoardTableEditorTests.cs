@@ -63,7 +63,7 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     private static BoardTableSheet Components(BoardTableEditor editor) =>
-        editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+        editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
 
     private static int Column(string name) =>
         BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(name);
@@ -633,15 +633,15 @@ public sealed class BoardTableEditorTests : IDisposable
             BoardData board = Board(Component("U1"), Component("U2"), Component("U3"));
             BoardTableEditor editor = this.OpenEditor(board, published: board);
             Window window = Show(editor);
-            BoardTableRow u2 = Row(editor, "U2");
 
-            editor.SelectCell(u2, 0);
+            editor.SelectCell(Row(editor, "U2"), 0);
             editor.DeleteRow();
             Assert.True(Components(editor).Rows[1].IsDeleted);
 
+            // The draft's undo: the table is built again from the draft, U2 live where it was.
             editor.Undo();
 
-            Assert.Same(u2, Components(editor).Rows[1]);
+            Assert.Same(Row(editor, "U2"), Components(editor).Rows[1]);
             Assert.Equal(0, Components(editor).ChangeCount);
 
             window.Close();
@@ -690,26 +690,37 @@ public sealed class BoardTableEditorTests : IDisposable
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
 
-            Assert.True(editor.PasteIntoCurrentCell("CPU 6510\r\n"));
+            Assert.True(editor.Paste("CPU 6510\r\n"));
             Assert.Equal("CPU 6510", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
+
+            // One cell into one cell needs no words: the cell shows it.
+            Assert.False(editor.GetControl<TextBlock>("StatusText").IsVisible);
 
             window.Close();
         });
     }
 
+    // ###########################################################################################
+    // *** A BLOCK IS PASTED SINCE CRT 4.0 (2026-10-25). *** Until then the table refused one ("For
+    // now the table pastes one cell at a time") - the owner's simple first version. With the board
+    // data out of Excel the plan's step 0 makes block paste the table's; its rules are
+    // BoardTableSheet.PasteBlock's, and BoardTableEditorBlockEditsTests holds them on screen.
+    // ###########################################################################################
     [Fact]
-    public void Pasting_a_block_of_cells_changes_nothing_and_says_why()
+    public void Pasting_a_block_of_cells_fills_them_from_the_selected_cell()
     {
         UiTest.Run(() =>
         {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
+            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU"), Component("U2", "VIC")), published: null);
             Window window = Show(editor);
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
 
-            Assert.False(editor.PasteIntoCurrentCell("U8\tCPU\r\nU9\tVIC\r\n"));
-            Assert.Equal("CPU", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
-            Assert.Contains("one cell at a time", editor.GetControl<TextBlock>("StatusText").Text);
+            Assert.True(editor.Paste("CPU 6510\tMOS 6510\r\nVIC II\tMOS 6569\r\n"));
+            Assert.Equal("CPU 6510", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
+            Assert.Equal("MOS 6510", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName) + 1].Text);
+            Assert.Equal("VIC II", Row(editor, "U2").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
+            Assert.Contains("Pasted into 2 rows.", editor.GetControl<TextBlock>("StatusText").Text);
 
             window.Close();
         });
@@ -726,8 +737,9 @@ public sealed class BoardTableEditorTests : IDisposable
             BoardTableRow ghost = Row(editor, "U2", deleted: true);
             editor.SelectCell(ghost, Column(BoardWorkbookSchema.ColFriendlyName));
 
-            Assert.False(editor.PasteIntoCurrentCell("Typed over"));
+            Assert.False(editor.Paste("Typed over"));
             Assert.Equal("VIC", ghost.Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
+            Assert.Equal(BoardTableEditWording.PasteOnDeletedRow, editor.GetControl<TextBlock>("StatusText").Text);
 
             window.Close();
         });
@@ -742,134 +754,214 @@ public sealed class BoardTableEditorTests : IDisposable
             Window window = Show(editor);
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColBoardLabel));
-            Assert.Equal("U1", editor.CopyTextOfCurrentCell());
+            Assert.Equal("U1", editor.CopySelectionText());
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
-            Assert.Equal("\"5.25\"\" drive\"", editor.CopyTextOfCurrentCell());
+            Assert.Equal("\"5.25\"\" drive\"", editor.CopySelectionText());
 
             window.Close();
         });
     }
 
-    // ------------------------------------------------------------------ Saving
+    // ------------------------------------------------------------------ Saving (CRT 4.0 step 1)
+    //
+    // In the Drafts tab the table works on the draft held in memory (DraftSession) and saves itself
+    // a second after a change (BoardTableEditor.DraftSession.cs, 2026-10-25). These tests drive the
+    // session on their own clock, so a save is due only when they move it on.
 
+    private DateTimeOffset thisNow = new(2026, 10, 25, 12, 0, 0, TimeSpan.Zero);
+
+    private (BoardTableEditor Editor, DraftSession Session) OpenOnSession(BoardData draft, BoardData? published = null, string? baselineLabel = null)
+    {
+        this.WriteDraft(draft);
+
+        DraftSession session = DraftSession.Open(this.DraftsRoot, BoardTableEditorTests.BoardKey, () => this.thisNow)!;
+
+        var editor = new BoardTableEditor();
+        Assert.True(editor.Load(session, published, baselineLabel: baselineLabel));
+        editor.SelectSheet(Components(editor));
+
+        return (editor, session);
+    }
+
+    private static int NameColumn => Column(BoardWorkbookSchema.ColFriendlyName);
+
+    private static string NameOf(BoardTableRow row) => row.Cells[NameColumn].Text;
+
+    private static string SaveState(BoardTableEditor editor) => editor.GetControl<TextBlock>("SaveStateText").Text ?? string.Empty;
+
+    private static string Status(BoardTableEditor editor) => editor.GetControl<TextBlock>("StatusText").Text ?? string.Empty;
+
+    private string NameOnDisk(string label) =>
+        DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single(component => component.BoardLabel == label).FriendlyName;
+
+    private static string NameInSession(DraftSession session, string label) =>
+        session.Content.Board.Components.Single(component => component.BoardLabel == label).FriendlyName;
+
+    // ###########################################################################################
+    // *** EVERY CHANGE IS SAVED WITHIN A SECOND (the plan, step 1). *** In the draft at once, in its
+    // file a second later - off the UI thread - and the table says so where "Save changes" was.
+    // ###########################################################################################
     [Fact]
-    public void Save_writes_the_draft_says_so_and_raises_Saved()
+    public async Task A_change_goes_into_the_draft_at_once_and_saves_itself_a_second_later()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(Board(Component("U1", "CPU")));
+            int saved = 0;
+            editor.Saved += (_, _) => saved++;
+
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
+
+            Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("CPU 6510", NameInSession(session, "U1"));
+            Assert.Equal("CPU", this.NameOnDisk("U1"));
+            Assert.Equal(DraftSaveWording.Saving, SaveState(editor));
+            Assert.True(editor.HasUnsavedChanges);
+
+            // Not within the second ...
+            editor.SaveIfDueForTests();
+            Assert.Null(editor.SaveInFlightForTests);
+
+            // ... and once it has passed.
+            this.thisNow += DraftSession.SaveDelay;
+            editor.SaveIfDueForTests();
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveInFlightForTests!);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("CPU 6510", this.NameOnDisk("U1"));
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
+            Assert.False(editor.HasUnsavedChanges);
+            Assert.Equal(1, saved);
+        });
+    }
+
+    // There is no "Save changes" and no "Reload" on a draft's table - the state is said instead.
+    [Fact]
+    public void A_drafts_table_says_its_save_state_and_offers_no_Save_or_Reload()
     {
         UiTest.Run(() =>
         {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
+            (BoardTableEditor editor, _) = this.OpenOnSession(Board(Component("U1", "CPU")));
+            Window window = Show(editor);
+
+            Assert.True(editor.GetControl<StackPanel>("SaveStatePanel").IsVisible);
+            Assert.False(editor.GetControl<Button>("SaveButton").IsVisible);
+            Assert.False(editor.GetControl<Button>("TryAgainButton").IsVisible);
+            Assert.Null(editor.FindControl<Button>("ReloadButton"));
+
+            window.Close();
+        });
+    }
+
+    // Saved now, on the calling thread - what another editor about to write the same draft asks for.
+    [Fact]
+    public void SaveNow_writes_the_draft_says_Saved_and_raises_Saved()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, _) = this.OpenOnSession(Board(Component("U1", "CPU")));
             bool savedRaised = false;
             editor.Saved += (_, _) => savedRaised = true;
 
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
+            Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
 
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.Save());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.SaveNow());
 
             Assert.True(savedRaised);
             Assert.False(editor.HasUnsavedChanges);
-            Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
-            Assert.Equal(
-                "CPU 6510",
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single().FriendlyName);
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
+            Assert.Equal("CPU 6510", this.NameOnDisk("U1"));
+        });
+    }
+
+    // ###########################################################################################
+    // *** UNDO AND REDO ARE THE DRAFT'S (the plan: "Undo and redo work across every editor"). *** The
+    // table is built again from the draft after each, with the cursor on the change.
+    // ###########################################################################################
+    [Fact]
+    public void Undo_and_redo_are_the_drafts_and_put_the_cursor_on_the_change()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(Board(Component("U1", "CPU"), Component("U2", "VIC")));
+            Window window = Show(editor);
+
+            Row(editor, "U2").Cells[NameColumn].Text = "VIC II";
+            Dispatcher.UIThread.RunJobs();
+            editor.SelectCell(Row(editor, "U1"), 0);
+
+            editor.Undo();
+
+            Assert.Equal("VIC", NameOf(Row(editor, "U2")));
+            Assert.Equal("VIC", NameInSession(session, "U2"));
+            Assert.Same(Row(editor, "U2"), editor.CurrentRow);
+            Assert.Equal(NameColumn, editor.CurrentCell!.ColumnIndex);
+            Assert.Equal(BoardTableSessionWording.Undone(BoardTableSessionWording.Step(BoardWorkbookSchema.SheetComponents)), Status(editor));
+
+            editor.Redo();
+
+            Assert.Equal("VIC II", NameOf(Row(editor, "U2")));
+            Assert.Equal("VIC II", NameInSession(session, "U2"));
+
+            window.Close();
+        });
+    }
+
+    // A change that leaves every row as it was - an empty row inserted - is no step of the draft.
+    [Fact]
+    public void An_empty_row_inserted_is_no_step_of_the_draft()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(Board(Component("U1", "CPU")));
+
+            Components(editor).InsertRow(Row(editor, "U1"));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(session.CanUndo);
+            Assert.False(editor.HasUnsavedChanges);
         });
     }
 
     // ###########################################################################################
     // The host's name for the published side - the data source it came from (owner request,
-    // 2026-10-05) - outlives a save. Both saves reopen the table on the file they wrote, and a
-    // reopened table that forgot the name went back to "Published value". Both paths, as each
-    // builds its own re-read.
+    // 2026-10-05) - outlives the table being built again from the draft (an undo, a redo).
     // ###########################################################################################
     [Fact]
-    public async Task The_published_sides_name_is_kept_when_a_save_reopens_the_table()
+    public void The_published_sides_name_is_kept_when_the_table_is_built_again()
     {
-        await UiTest.RunAsync(async () =>
+        UiTest.Run(() =>
         {
-            this.WriteDraft(Board(Component("U1", "CPU 6510"), Component("U2", "RAM")));
-
-            var editor = new BoardTableEditor();
-            Assert.True(editor.Load(
-                this.DraftsRoot,
-                BoardTableEditorTests.BoardKey,
+            (BoardTableEditor editor, _) = this.OpenOnSession(
+                Board(Component("U1", "CPU 6510"), Component("U2", "RAM")),
                 Board(Component("U1", "CPU"), Component("U2", "RAM")),
-                baselineLabel: "BETA source value"));
+                baselineLabel: "BETA source value");
 
-            var overlay = new BusyOverlay { LimitOverrideForTests = token => Task.Delay(Timeout.Infinite, token) };
-            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
-            window.Show();
+            string? ToolTipOfU1() => Row(editor, "U1").Cells[NameColumn].ToolTip;
+
+            Assert.Equal("BETA source value: CPU", ToolTipOfU1());
+
+            Row(editor, "U2").Cells[NameColumn].Text = "SRAM";
             Dispatcher.UIThread.RunJobs();
+            editor.Undo();
 
-            string? ToolTipOfU1() => Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].ToolTip;
-
+            Assert.Equal("RAM", NameOf(Row(editor, "U2")));
             Assert.Equal("BETA source value: CPU", ToolTipOfU1());
-
-            DraftTableSession opened = editor.SessionForTests!;
-            Row(editor, "U2").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "SRAM";
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.Save());
-            Assert.NotSame(opened, editor.SessionForTests);
-            Assert.Equal("BETA source value: CPU", ToolTipOfU1());
-
-            DraftTableSession saved = editor.SessionForTests!;
-            Row(editor, "U2").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "DRAM";
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
-            Assert.NotSame(saved, editor.SessionForTests);
-            Assert.Equal("BETA source value: CPU", ToolTipOfU1());
-
-            window.Close();
         });
     }
 
     // ###########################################################################################
-    // *** "SAVE CHANGES" WAITS UNDER "PLEASE WAIT" (owner question, 2026-09-30). *** Saving the
-    // largest board takes 0.6-2 seconds, and ran on the UI thread with the window frozen. It now runs
-    // under the window's overlay - asserted through the overlay's own limit being started - and the
-    // result is the ordinary save: on disk, said, and nothing left unsaved.
+    // *** WHAT GOES WITH A CHANGE IS SAID, AND CTRL+Z BRINGS IT BACK. *** A schematic image's row
+    // deleted takes what is drawn on it (DraftEditRules) - there was a question before a SAVE that
+    // would do this (code review, 2026-10-11); with no save to ask before, it is said once done.
     // ###########################################################################################
     [Fact]
-    public async Task Save_changes_saves_under_the_windows_please_wait()
+    public void Deleting_a_marked_schematic_image_says_what_went_with_it_and_Ctrl_Z_brings_it_back()
     {
-        await UiTest.RunAsync(async () =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            var overlay = new BusyOverlay();
-            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
-            window.Show();
-            Dispatcher.UIThread.RunJobs();
-
-            bool waited = false;
-            overlay.LimitOverrideForTests = token =>
-            {
-                waited = true;
-                return Task.Delay(Timeout.Infinite, token);
-            };
-
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
-
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
-
-            Assert.True(waited);
-            Assert.False(overlay.IsBusy);
-            Assert.False(editor.HasUnsavedChanges);
-            Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
-            Assert.Equal(
-                "CPU 6510",
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single().FriendlyName);
-
-            window.Close();
-        });
-    }
-
-    // ###########################################################################################
-    // *** A SAVE THAT REMOVES A SCHEMATIC IMAGE WITH SOMETHING DRAWN ON IT ASKS FIRST (code review,
-    // 2026-10-11). *** The save drops the image's highlights and KiCad calibration, and a row
-    // deleted in the table took them without a word, where Remove in "Schematic images" asks. A no
-    // writes nothing and keeps the edit on screen; a yes saves, and they are gone.
-    // ###########################################################################################
-    [Fact]
-    public async Task A_save_that_removes_a_marked_schematic_image_asks_first()
-    {
-        await UiTest.RunAsync(async () =>
+        UiTest.Run(() =>
         {
             this.WriteDraft(new BoardData
             {
@@ -886,197 +978,188 @@ public sealed class BoardTableEditorTests : IDisposable
                 [],
                 []);
 
+            DraftSession session = DraftSession.Open(this.DraftsRoot, BoardTableEditorTests.BoardKey, () => this.thisNow)!;
             var editor = new BoardTableEditor();
-            Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.BoardKey, published: null));
-            var overlay = new BusyOverlay { LimitOverrideForTests = token => Task.Delay(Timeout.Infinite, token) };
-            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
-            window.Show();
-            Dispatcher.UIThread.RunJobs();
+            Assert.True(editor.Load(session, published: null));
 
-            IReadOnlyList<SchematicDrop>? asked = null;
-            bool answer = false;
-            editor.ConfirmRemovingSchematics = drops =>
-            {
-                asked = drops;
-                return Task.FromResult(answer);
-            };
-
-            BoardTableSheet schematics = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+            BoardTableSheet schematics = editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
             int nameColumn = schematics.Columns.ToList().IndexOf(BoardWorkbookSchema.ColSchematicName);
             Assert.True(schematics.DeleteRow(schematics.Rows.Single(row => row.Cells[nameColumn].Text == "Top")));
-
-            Assert.Equal(DraftWorkbookEditOutcome.Cancelled, await editor.SaveAsync());
-
-            Assert.Equal([new SchematicDrop("Top", new SchematicRemovalLoss(1, false))], asked);
-            Assert.True(editor.HasUnsavedChanges);
-            Assert.Equal(BoardTableEditor.NotSavedKeptSchematics, editor.GetControl<TextBlock>("StatusText").Text);
-            Assert.Equal(
-                ["Top", "Bottom"],
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Schematics.Select(entry => entry.SchematicName));
-
-            answer = true;
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
-
-            BoardData saved = DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!;
-            Assert.Equal(["Bottom"], saved.Schematics.Select(entry => entry.SchematicName));
-            Assert.Empty(saved.ComponentHighlights);
-
-            window.Close();
-        });
-    }
-
-    // A save that removes nothing, or only images with nothing drawn on them, does not ask.
-    [Fact]
-    public async Task A_save_that_removes_no_marked_image_does_not_ask()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            BoardTableEditor editor = this.OpenEditor(
-                new BoardData
-                {
-                    Schematics = [new BoardSchematicEntry { SchematicName = "Clock", SchematicImageFile = "Commodore/C64/250407/clock.png" }],
-                    Components = [Component("U1", "CPU")],
-                },
-                published: null);
-
-            bool asked = false;
-            editor.ConfirmRemovingSchematics = _ =>
-            {
-                asked = true;
-                return Task.FromResult(false);
-            };
-
-            BoardTableSheet schematics = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
-            Assert.True(schematics.DeleteRow(schematics.Rows.Single()));
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
-
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
-            Assert.False(asked);
-        });
-    }
-
-    // ###########################################################################################
-    // *** PAST THE WAIT LIMIT THE TABLE IS LOCKED UNTIL THE WRITE ENDS (code review, 2026-10-01). ***
-    // The overlay lifts at the limit and the save carries on; with the grid live a contributor could
-    // type, and the finished save then reopened the table on the re-read file and discarded it
-    // silently. The editor is disabled from that moment (asserted INSIDE the hook, where it is
-    // observable) and enabled again afterwards.
-    // ###########################################################################################
-    [Fact]
-    public async Task A_save_past_the_wait_limit_locks_the_table_until_it_ends_then_unlocks_it()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            var overlay = new BusyOverlay();
-            var window = new Window { Content = new Grid { Children = { editor, overlay } }, Width = 1200, Height = 600 };
-            window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            // The limit has already passed when the wait starts: the overlay lifts at once.
-            overlay.LimitOverrideForTests = _ => Task.CompletedTask;
+            Assert.Equal("What was drawn on [Top] went with it: 1 highlight. Ctrl+Z brings it back.", Status(editor));
+            Assert.Empty(session.Content.Board.ComponentHighlights);
 
-            bool lockedWhenTold = false;
-            string statusWhenTold = string.Empty;
+            editor.Undo();
 
-            editor.LockedForSaveForTests = () =>
-            {
-                lockedWhenTold = !editor.IsEnabled;
-                statusWhenTold = editor.GetControl<TextBlock>("StatusText").Text ?? string.Empty;
-            };
+            Assert.Equal("Top", Assert.Single(session.Content.Board.ComponentHighlights).SchematicName);
+            Assert.Equal(["Top", "Bottom"], session.Content.Board.Schematics.Select(entry => entry.SchematicName));
+        });
+    }
 
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
+    // ###########################################################################################
+    // *** A FILE CHANGED OUTSIDE IS NEVER WRITTEN OVER UNASKED. *** The save is refused, the table
+    // says why, and the bar offers both versions: the saved one - one undoable step - or the
+    // table's, saved over it.
+    // ###########################################################################################
+    [Fact]
+    public void A_save_refused_by_an_outside_change_offers_the_saved_version_and_Ctrl_Z_brings_the_tables_back()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, _) = this.OpenOnSession(Board(Component("U1", "CPU")));
+            Window window = Show(editor);
 
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveAsync());
+            Row(editor, "U1").Cells[NameColumn].Text = "From the table";
+            Dispatcher.UIThread.RunJobs();
 
-            Assert.True(lockedWhenTold);
-            Assert.Equal(BoardTableEditor.StillSaving, statusWhenTold);
+            this.WriteDraft(Board(Component("U1", "From elsewhere")));
 
-            // Unlocked again, and the ordinary result said.
-            Assert.True(editor.IsEnabled);
-            Assert.Equal("Saved.", editor.GetControl<TextBlock>("StatusText").Text);
+            Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, editor.SaveNow());
+
+            Assert.Equal(DraftSaveWording.CouldNotSave(DraftWorkbookEditOutcome.ChangedOnDisk), SaveState(editor));
+            Assert.True(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
+            Assert.Equal(DraftSaveWording.ChangedOutside, editor.GetControl<TextBlock>("ChangedOnDiskText").Text);
+            Assert.False(editor.GetControl<Button>("TryAgainButton").IsVisible);
+            Assert.Equal("From elsewhere", this.NameOnDisk("U1"));
+
+            editor.GetControl<Button>("UseSavedVersionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("From elsewhere", NameOf(Row(editor, "U1")));
+            Assert.Equal(DraftSaveWording.UsedSavedVersion, Status(editor));
+            Assert.False(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
+
+            editor.Undo();
+            Assert.Equal("From the table", NameOf(Row(editor, "U1")));
 
             window.Close();
         });
     }
 
-    // While the save writes the file, the file watch leaves it alone - the save's own write would
-    // otherwise read as a change from outside and raise the warning over the table.
     [Fact]
-    public void The_file_watch_leaves_the_draft_alone_while_the_table_is_saving_it()
+    public async Task Keeping_the_tables_version_saves_it_over_the_file_changed_outside()
     {
-        UiTest.Run(() =>
+        await UiTest.RunAsync(async () =>
         {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "From the table";
+            (BoardTableEditor editor, _) = this.OpenOnSession(Board(Component("U1", "CPU")));
 
-            FieldInfo saving = typeof(BoardTableEditor).GetField("thisSaveInFlight", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            saving.SetValue(editor, true);
+            Row(editor, "U1").Cells[NameColumn].Text = "From the table";
+            Dispatcher.UIThread.RunJobs();
+            this.WriteDraft(Board(Component("U1", "From elsewhere")));
+            Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, editor.SaveNow());
 
-            this.WriteDraft(Board(Component("U1", "Written by the save")));
-            editor.CheckDraftFile();
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.KeepTableVersionAsync());
+            Dispatcher.UIThread.RunJobs();
 
-            Assert.False(editor.GetControl<Control>("ChangedOnDiskBar").IsVisible);
-
-            saving.SetValue(editor, false);
-            editor.CheckDraftFile();
-
-            Assert.True(editor.GetControl<Control>("ChangedOnDiskBar").IsVisible);
-        });
-    }
-
-    [Fact]
-    public void Save_is_refused_with_an_explanation_when_the_draft_changed_outside_the_table()
-    {
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "From the table";
-
-            // Edited in Excel meanwhile.
-            this.WriteDraft(Board(Component("U1", "From Excel")));
-
-            Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, editor.Save());
-
-            Assert.Contains("changed outside this table", editor.GetControl<TextBlock>("StatusText").Text);
-            Assert.True(editor.HasUnsavedChanges);
-            Assert.Equal(
-                "From Excel",
-                DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, BoardTableEditorTests.BoardKey)!.Components.Single().FriendlyName);
-        });
-    }
-
-    [Fact]
-    public void Catching_up_reloads_silently_when_nothing_is_unsaved_but_only_warns_when_something_is()
-    {
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-
-            this.WriteDraft(Board(Component("U1", "From Excel")));
-            editor.CheckDraftFile();
-
-            Assert.Equal("From Excel", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
-            Assert.Contains("Updated", editor.GetControl<TextBlock>("StatusText").Text);
+            Assert.Equal("From the table", this.NameOnDisk("U1"));
             Assert.False(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
+        });
+    }
 
-            // Now with an unsaved edit: reloading would lose it, so the table only warns - with the
-            // warning BAR, and Save greyed out, since that save would be refused.
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "Unsaved";
-            editor.RefreshPendingForTests();
-            this.WriteDraft(Board(Component("U1", "Excel again")));
-            editor.CheckDraftFile();
+    // ###########################################################################################
+    // *** A DRAFT WRITTEN ELSEWHERE IN CRT IS READ AGAIN (ReadDraftFileAgain). *** As one undoable
+    // step, announced so the draft's row and the board on screen follow - and not at all while a
+    // change of the table's waits: that save refuses, and the bar asks.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_written_elsewhere_is_read_again_as_one_undoable_step_unless_a_change_waits()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(Board(Component("U1", "CPU")));
+            int announced = 0;
+            editor.ReloadedFromOutside += (_, _) => announced++;
 
-            Assert.Equal("Unsaved", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
+            editor.ReadDraftFileAgain();
+            Assert.Equal(0, announced);
+
+            this.WriteDraft(Board(Component("U1", "From the component editor")));
+            editor.ReadDraftFileAgain();
+
+            Assert.Equal("From the component editor", NameOf(Row(editor, "U1")));
+            Assert.Equal(DraftSaveWording.UpdatedFromOutside, Status(editor));
+            Assert.Equal(1, announced);
+            Assert.True(session.CanUndo);
+
+            // A change of the table's waiting: nothing is read, nothing announced.
+            Row(editor, "U1").Cells[NameColumn].Text = "Mine";
+            Dispatcher.UIThread.RunJobs();
+            this.WriteDraft(Board(Component("U1", "Again")));
+            editor.ReadDraftFileAgain();
+
+            Assert.Equal("Mine", NameOf(Row(editor, "U1")));
+            Assert.Equal(1, announced);
+        });
+    }
+
+    [Fact]
+    public void A_cell_being_typed_in_is_never_read_away_by_an_outside_change()
+    {
+        // While a cell's editor is open the typing has not reached the draft. Reading the file then
+        // would throw it away under the contributor's hands.
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, _) = this.OpenOnSession(Board(Component("U1", "CPU")));
+            Window window = ShowWithControlBefore(editor);
+
+            editor.SelectCell(Row(editor, "U1"), NameColumn);
+            editor.GetControl<DataGrid>("TableGrid").Focus();
+            window.KeyTextInput("Typing");
+            Dispatcher.UIThread.RunJobs();
+
+            this.WriteDraft(Board(Component("U1", "From elsewhere")));
+            editor.ReadDraftFileAgain();
+
+            // Not read: the typing goes in when committed ...
+            Press(window, Avalonia.Input.Key.Enter);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Typing", NameOf(Row(editor, "U1")));
+
+            // ... and its save finds the outside change: refused, and the bar asks.
+            Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, editor.SaveNow());
             Assert.True(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
-            Assert.Contains("out of date", editor.GetControl<TextBlock>("ChangedOnDiskText").Text);
-            Assert.False(editor.GetControl<Button>("SaveButton").IsEnabled);
+            Assert.Equal("Typing", NameOf(Row(editor, "U1")));
 
-            // Reload (with the edits given up) takes the bar away and shows the file.
-            editor.Reload();
+            window.Close();
+        });
+    }
 
-            Assert.Equal("Excel again", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
-            Assert.False(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
+    // ###########################################################################################
+    // A save that cannot write says why, offers Try again - and that saves once it can. Held here by
+    // a handle that shares no deletion, which stops the replace on Windows.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_that_cannot_write_says_why_and_Try_again_saves_it()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (BoardTableEditor editor, _) = this.OpenOnSession(Board(Component("U1", "CPU")));
+            Window window = Show(editor);
+
+            Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
+            Dispatcher.UIThread.RunJobs();
+
+            using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+            {
+                Assert.Equal(DraftWorkbookEditOutcome.WriteFailed, editor.SaveNow());
+                Assert.Equal(DraftSaveWording.CouldNotSave(DraftWorkbookEditOutcome.WriteFailed), SaveState(editor));
+                Assert.True(editor.GetControl<Button>("TryAgainButton").IsVisible);
+                Assert.True(editor.HasUnsavedChanges);
+            }
+
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.TryAgainAsync());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("CPU 6510", this.NameOnDisk("U1"));
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
+            Assert.False(editor.GetControl<Button>("TryAgainButton").IsVisible);
+
+            window.Close();
         });
     }
 
@@ -1231,7 +1314,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Same(u1, editor.CurrentRow);
 
             // One gesture, one undo step.
-            Assert.Equal(1, editor.SessionForTests!.Document.History.UndoCount);
+            Assert.Equal(1, editor.DocumentForTests!.History.UndoCount);
             editor.Undo();
             Assert.Equal(["U1", "U2", "U3", "U4"], Labels(editor));
 
@@ -1253,7 +1336,7 @@ public sealed class BoardTableEditorTests : IDisposable
             ReleaseAt(window, grip);
 
             Assert.Equal(["U1", "U2"], Labels(editor));
-            Assert.Equal(0, editor.SessionForTests!.Document.History.UndoCount);
+            Assert.Equal(0, editor.DocumentForTests!.History.UndoCount);
             Assert.False(editor.HasUnsavedChanges);
             Assert.Same(Row(editor, "U2"), editor.CurrentRow);
 
@@ -1284,7 +1367,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal(["U3", "U1", "U2"], Labels(editor));
 
             ReleaseAt(window, aboveRows);
-            Assert.Equal(1, editor.SessionForTests!.Document.History.UndoCount);
+            Assert.Equal(1, editor.DocumentForTests!.History.UndoCount);
 
             window.Close();
         });
@@ -1306,7 +1389,7 @@ public sealed class BoardTableEditorTests : IDisposable
             PressAt(window, ghostHeader);
             DragTo(window, CentreOf(window, CellOnScreen(window, Row(editor, "U3"), 0)));
             ReleaseAt(window, ghostHeader);
-            Assert.Equal(0, editor.SessionForTests!.Document.History.UndoCount);
+            Assert.Equal(0, editor.DocumentForTests!.History.UndoCount);
 
             // Dragging U3 over the ghost leaves everything where it is.
             PressAt(window, CentreOf(window, HeaderOf(window, Row(editor, "U3"))));
@@ -1368,12 +1451,17 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // A new component stays where it was typed while the table is open - a row jumping away from the
+    // cursor mid-edit is what placing at the save avoided - and goes into its category, in label
+    // order, in the draft (BoardTableSheet.BuildRows). Said once; shown there when the table opens again.
+    // ###########################################################################################
     [Fact]
-    public void Saving_a_new_component_says_it_was_put_into_its_category()
+    public void A_new_component_stays_where_it_was_typed_and_is_saved_into_its_category()
     {
         UiTest.Run(() =>
         {
-            BoardTableEditor editor = this.OpenEditor(
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(
                 new BoardData
                 {
                     Components =
@@ -1381,18 +1469,23 @@ public sealed class BoardTableEditorTests : IDisposable
                         new ComponentEntry { BoardLabel = "U1", TechnicalNameOrValue = "x", Category = "IC" },
                         new ComponentEntry { BoardLabel = "U3", TechnicalNameOrValue = "x", Category = "IC" },
                     ],
-                },
-                published: null);
+                });
 
-            BoardTableRow inserted = Components(editor).InsertRow(null);
+            BoardTableRow inserted = Components(editor).InsertRow(Row(editor, "U3"));
             inserted.Cells[Column(BoardWorkbookSchema.ColBoardLabel)].Text = "U2";
             inserted.Cells[Column(BoardWorkbookSchema.ColCategory)].Text = "IC";
-            editor.RefreshPendingForTests();
+            Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.Save());
+            Assert.Equal(BoardTableSessionWording.NewComponentsPlaced, Status(editor));
+            Assert.Equal(["U1", "U3", "U2"], Labels(editor));
+            Assert.Equal(["U1", "U2", "U3"], session.Content.Board.Components.Select(component => component.BoardLabel));
 
-            Assert.Contains("New components were put into their category", editor.GetControl<TextBlock>("StatusText").Text);
-            Assert.Equal(["U1", "U2", "U3"], Labels(editor));
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.SaveNow());
+
+            var reopened = new BoardTableEditor();
+            Assert.True(reopened.Load(this.DraftsRoot, BoardTableEditorTests.BoardKey, published: null));
+            reopened.SelectSheet(Components(reopened));
+            Assert.Equal(["U1", "U2", "U3"], Labels(reopened));
         });
     }
 
@@ -1616,10 +1709,9 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void After_saving_a_placed_regional_variant_the_cursor_is_on_it_where_it_went()
+    public void A_regional_variant_is_saved_beside_its_twin()
     {
-        // The project owner's case: the row seemed to vanish on save. It now goes beside its twin,
-        // and the cursor follows it there rather than staying on whatever row took its old place.
+        // The project owner's case: the row seemed to vanish on save. It goes beside its twin.
         UiTest.Run(() =>
         {
             var board = new BoardData
@@ -1631,23 +1723,17 @@ public sealed class BoardTableEditorTests : IDisposable
                     new ComponentEntry { BoardLabel = "C1", TechnicalNameOrValue = "x", Category = "Capacitor" },
                 ],
             };
-            BoardTableEditor editor = this.OpenEditor(board, published: board);
-            Window window = Show(editor);
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(board, published: board);
 
             BoardTableRow inserted = Components(editor).InsertRow(Row(editor, "C1"));
             inserted.Cells[Column(BoardWorkbookSchema.ColBoardLabel)].Text = "U1";
             inserted.Cells[Column(BoardWorkbookSchema.ColRegion)].Text = "NTSC";
-            editor.RefreshPendingForTests();
-            editor.SelectCell(inserted, Column(BoardWorkbookSchema.ColRegion));
+            Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(BoardTableRowState.Added, inserted.State);
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.Save());
-
-            Assert.Equal(["U1", "U1", "U2", "C1"], Labels(editor));
-            Assert.Equal("NTSC", editor.CurrentRow!.Cells[Column(BoardWorkbookSchema.ColRegion)].Text);
-            Assert.Same(Components(editor).Rows[1], editor.CurrentRow);
-
-            window.Close();
+            Assert.Equal(
+                ["U1 PAL", "U1 NTSC", "U2 ", "C1 "],
+                session.Content.Board.Components.Select(component => $"{component.BoardLabel} {component.Region}"));
         });
     }
 
@@ -1939,25 +2025,27 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU"), Component("U2")), published: Board(Component("U1", "CPU"), Component("U2")));
             Window window = ShowWithControlBefore(editor);
-            BoardTableCell cell = Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)];
+
+            // Looked up each time: an undo builds the table again from the draft.
+            BoardTableCell Cell() => Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)];
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
             TypeAndCommit(window, editor, "6510");
-            Assert.Equal("6510", cell.Text);
+            Assert.Equal("6510", Cell().Text);
 
             PressCtrl(window, Avalonia.Input.Key.Z);
-            Assert.Equal("CPU", cell.Text);
-            Assert.Equal(BoardTableCellState.Unchanged, cell.State);
+            Assert.Equal("CPU", Cell().Text);
+            Assert.Equal(BoardTableCellState.Unchanged, Cell().State);
 
             // The cursor is back on the cell that changed, not wherever Enter had moved it.
-            Assert.Same(cell, editor.CurrentCell);
+            Assert.Same(Cell(), editor.CurrentCell);
 
             PressCtrl(window, Avalonia.Input.Key.Y);
-            Assert.Equal("6510", cell.Text);
+            Assert.Equal("6510", Cell().Text);
 
             PressCtrl(window, Avalonia.Input.Key.Z);
             PressCtrl(window, Avalonia.Input.Key.Z, shift: true);
-            Assert.Equal("6510", cell.Text);
+            Assert.Equal("6510", Cell().Text);
 
             window.Close();
         });
@@ -1974,7 +2062,7 @@ public sealed class BoardTableEditorTests : IDisposable
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
             TypeAndCommit(window, editor, "Processor");
 
-            Assert.Equal(1, editor.SessionForTests!.Document.History.UndoCount);
+            Assert.Equal(1, editor.DocumentForTests!.History.UndoCount);
 
             window.Close();
         });
@@ -2001,7 +2089,7 @@ public sealed class BoardTableEditorTests : IDisposable
             PressCtrl(window, Avalonia.Input.Key.Z);
 
             Assert.Equal("Earlier", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
-            Assert.Equal(1, editor.SessionForTests!.Document.History.UndoCount);
+            Assert.Equal(1, editor.DocumentForTests!.History.UndoCount);
 
             window.Close();
         });
@@ -2014,20 +2102,22 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
             Window window = ShowWithControlBefore(editor);
-            BoardTableCell cell = Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)];
+
+            // Looked up each time: an undo builds the table again from the draft.
+            BoardTableCell Cell() => Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)];
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
             TypeAndCommit(window, editor, "Changed");
 
-            BoardTableSheet credits = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetCredits)!;
+            BoardTableSheet credits = editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetCredits)!;
             editor.SelectSheet(credits);
             editor.GetControl<DataGrid>("TableGrid").Focus();
 
             PressCtrl(window, Avalonia.Input.Key.Z);
 
             Assert.Same(Components(editor), editor.CurrentSheet);
-            Assert.Equal("CPU", cell.Text);
-            Assert.Same(cell, editor.CurrentCell);
+            Assert.Equal("CPU", Cell().Text);
+            Assert.Same(Cell(), editor.CurrentCell);
 
             window.Close();
         });
@@ -2058,7 +2148,7 @@ public sealed class BoardTableEditorTests : IDisposable
 
             PressCtrl(window, Avalonia.Input.Key.Z);
 
-            Assert.Contains(u2, Components(editor).Rows);
+            Assert.False(Row(editor, "U2").IsDeleted);
             Assert.Equal(0, Components(editor).DeletedCount);
 
             window.Close();
@@ -2074,7 +2164,6 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
             Window window = ShowWithControlBefore(editor);
-            BoardTableCell cell = Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)];
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
             TypeAndCommit(window, editor, "Changed");
@@ -2085,29 +2174,30 @@ public sealed class BoardTableEditorTests : IDisposable
 
             PressCtrl(window, Avalonia.Input.Key.Z);
 
-            Assert.Equal("CPU", cell.Text);
+            Assert.Equal("CPU", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
 
             window.Close();
         });
     }
 
+    // Undoing back to what the file holds leaves nothing to save - "saved" is judged by content.
     [Fact]
-    public void Undoing_every_change_greys_Save_changes_out_again()
+    public void Undoing_every_change_leaves_nothing_to_save()
     {
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
             Window window = ShowWithControlBefore(editor);
-            Button save = editor.GetControl<Button>("SaveButton");
 
             editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
             TypeAndCommit(window, editor, "Changed");
-            Assert.True(save.IsEnabled);
+            Assert.True(editor.HasUnsavedChanges);
+            Assert.Equal(DraftSaveWording.Saving, SaveState(editor));
 
             PressCtrl(window, Avalonia.Input.Key.Z);
 
             Assert.False(editor.HasUnsavedChanges);
-            Assert.False(save.IsEnabled);
+            Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
 
             window.Close();
         });
@@ -2604,10 +2694,11 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             ComponentEntry[] many = Enumerable.Range(1, 40).Select(i => Component($"C{i}")).ToArray();
             BoardTableEditor editor = this.OpenEditor(Board(many), published: Board(many));
-            // 1800 wide so the toolbar is ONE line: the height below is tuned to where the rows
-            // start, and under the headless test font the toolbar needs about 1700 pixels - at 1200
+            // 2200 wide so the toolbar is ONE line: the height below is tuned to where the rows
+            // start, and under the headless test font the toolbar needs about 1900 pixels since
+            // "Fill down" and "Replace" joined it (2026-10-25; it was 1800 for about 1700) - at 1200
             // it wraps onto a second line since 2026-09-26 (it used to overflow, Save clipped).
-            var window = new Window { Content = editor, Width = 1800, Height = 432 };
+            var window = new Window { Content = editor, Width = 2200, Height = 432 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
@@ -2647,140 +2738,10 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
-    // ------------------------------------------------------------------ Watching the draft file (2026-09-24)
+    // ------------------------------------------------------------------ The notice
 
     [Fact]
-    public void A_refused_save_raises_the_warning_bar_too()
-    {
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "Unsaved";
-            editor.RefreshPendingForTests();
-
-            this.WriteDraft(Board(Component("U1", "From Excel")));
-
-            Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, editor.Save());
-            Assert.True(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
-            Assert.False(editor.GetControl<Button>("SaveButton").IsEnabled);
-        });
-    }
-
-    [Fact]
-    public void A_cell_being_typed_in_is_never_reloaded_away_by_an_outside_change()
-    {
-        // "Nothing unsaved" is not the whole truth while a cell's editor is open - the typing has
-        // not reached the model. Reloading then would throw it away under the contributor's hands.
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            Window window = ShowWithControlBefore(editor);
-
-            editor.SelectCell(Row(editor, "U1"), Column(BoardWorkbookSchema.ColFriendlyName));
-            editor.GetControl<DataGrid>("TableGrid").Focus();
-            window.KeyTextInput("Typing");
-            Dispatcher.UIThread.RunJobs();
-            Assert.False(editor.HasUnsavedChanges);
-
-            this.WriteDraft(Board(Component("U1", "From Excel")));
-            editor.CheckDraftFile();
-
-            // Not reloaded: the typing goes in when committed ...
-            Press(window, Avalonia.Input.Key.Enter);
-            editor.RefreshPendingForTests();
-            Assert.Equal("Typing", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
-
-            // ... and the next check finds unsaved edits on a changed draft: the warning, not a reload.
-            editor.CheckDraftFile();
-            Assert.True(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
-            Assert.Equal("Typing", Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text);
-
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public void The_open_in_Excel_notice_shows_the_whole_time_the_lock_file_is_there_edits_or_not()
-    {
-        // Owner's choice: "edit it in one place at a time" matters most BEFORE any editing
-        // starts, so the notice does not wait for the table to have unsaved edits.
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
-            Border notice = editor.GetControl<Border>("OpenElsewhereBar");
-            string lockFile = Path.Combine(Path.GetDirectoryName(this.WorkbookPath)!, "~$" + Path.GetFileName(this.WorkbookPath));
-
-            editor.CheckDraftFile();
-            Assert.False(notice.IsVisible);
-
-            File.WriteAllText(lockFile, "owner");
-            editor.CheckDraftFile();
-            Assert.True(notice.IsVisible);
-            Assert.Contains("Edit it in one place at a time", editor.GetControl<TextBlock>("OpenElsewhereText").Text);
-
-            // Still there with edits - and saving stays possible, since a lock file left behind by
-            // a crashed Excel must not block the table for good.
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "Edited";
-            editor.RefreshPendingForTests();
-            editor.CheckDraftFile();
-            Assert.True(notice.IsVisible);
-            Assert.True(editor.GetControl<Button>("SaveButton").IsEnabled);
-
-            File.Delete(lockFile);
-            editor.CheckDraftFile();
-            Assert.False(notice.IsVisible);
-        });
-    }
-
-    [Fact]
-    public void A_table_opened_while_the_draft_is_already_open_in_Excel_says_so_at_once()
-    {
-        // Reported: launch, open the table with Excel already holding the draft - no notice. It is
-        // now set when the table reads the file, not left to the first check two seconds later.
-        UiTest.Run(() =>
-        {
-            this.WriteDraft(Board(Component("U1")));
-            File.WriteAllText(
-                Path.Combine(Path.GetDirectoryName(this.WorkbookPath)!, "~$" + Path.GetFileName(this.WorkbookPath)),
-                "owner");
-
-            var editor = new BoardTableEditor();
-            Assert.True(editor.Load(this.DraftsRoot, BoardTableEditorTests.BoardKey, published: null));
-
-            Assert.True(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
-        });
-    }
-
-    [Fact]
-    public void A_reload_caused_by_an_outside_change_is_announced_so_the_draft_row_and_board_follow()
-    {
-        // Reported (seen in a screenshot): after Excel changed the draft and the table reloaded,
-        // the draft row still said "9 rows changed" while the tabs added up to 10, and the
-        // component list still showed the old value. A save announces itself; this reload must too.
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: null);
-            int announced = 0;
-            editor.ReloadedFromOutside += (_, _) => announced++;
-
-            editor.CheckDraftFile();
-            Assert.Equal(0, announced);
-
-            this.WriteDraft(Board(Component("U1", "From Excel")));
-            editor.CheckDraftFile();
-            Assert.Equal(1, announced);
-
-            // With unsaved edits there is no reload, so nothing to announce.
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "Unsaved";
-            editor.RefreshPendingForTests();
-            this.WriteDraft(Board(Component("U1", "Again")));
-            editor.CheckDraftFile();
-            Assert.Equal(1, announced);
-        });
-    }
-
-    [Fact]
-    public void The_notices_are_roomy()
+    public void The_notice_is_roomy()
     {
         UiTest.Run(() =>
         {
@@ -2788,82 +2749,11 @@ public sealed class BoardTableEditorTests : IDisposable
             Window window = Show(editor);
 
             Assert.Equal(new Thickness(15, 11), editor.GetControl<Border>("ChangedOnDiskBar").Padding);
-            Assert.Equal(new Thickness(15, 11), editor.GetControl<Border>("OpenElsewhereBar").Padding);
 
             window.Close();
         });
     }
 
-    [Fact]
-    public void The_draft_file_is_watched_only_while_the_table_is_on_screen()
-    {
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
-            Assert.False(editor.IsWatchingDraftFileForTests);
-
-            Window window = Show(editor);
-            Assert.True(editor.IsWatchingDraftFileForTests);
-
-            // A tab switch detaches the editor, as closing the window does here.
-            window.Close();
-            Dispatcher.UIThread.RunJobs();
-            Assert.False(editor.IsWatchingDraftFileForTests);
-        });
-    }
-
-    [Fact]
-    public void No_table_no_watching()
-    {
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
-            Window window = Show(editor);
-
-            editor.Clear();
-
-            Assert.False(editor.IsWatchingDraftFileForTests);
-            window.Close();
-        });
-    }
-
-    [Fact]
-    public void Save_is_greyed_out_while_Excel_really_holds_the_draft_open_and_back_once_it_lets_go()
-    {
-        // Owner request: "if I cannot save before Excel is closed, the save button should be
-        // disabled until the file gets closed". Held = lock file AND the workbook really held open,
-        // so a lock file left behind by a crashed Excel does not block the table for good.
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "File sharing is advisory outside Windows.");
-
-        UiTest.Run(() =>
-        {
-            BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
-            Button save = editor.GetControl<Button>("SaveButton");
-            string lockFile = Path.Combine(Path.GetDirectoryName(this.WorkbookPath)!, "~$" + Path.GetFileName(this.WorkbookPath));
-
-            Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "Edited";
-            editor.RefreshPendingForTests();
-            Assert.True(save.IsEnabled);
-
-            File.WriteAllText(lockFile, "owner");
-
-            using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
-            {
-                editor.CheckDraftFile();
-                Assert.True(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
-                Assert.False(save.IsEnabled);
-            }
-
-            // Excel closed the file (its lock file not yet gone, as after a crash): Save is back.
-            editor.CheckDraftFile();
-            Assert.True(save.IsEnabled);
-
-            File.Delete(lockFile);
-            editor.CheckDraftFile();
-            Assert.True(save.IsEnabled);
-            Assert.False(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
-        });
-    }
     // ###########################################################################################
     // DOCUMENT MODE - the Maintainer tab's table (2026-09-25). The same editor, opened on a
     // document with no draft file behind it: Save hands the document to the host, nothing is
@@ -2960,7 +2850,7 @@ public sealed class BoardTableEditorTests : IDisposable
     }
 
     [Fact]
-    public void A_document_opens_with_no_file_behind_it_and_no_Reload()
+    public void A_document_opens_with_no_file_behind_it_its_own_Save_and_no_save_state()
     {
         UiTest.Run(() =>
         {
@@ -2969,9 +2859,9 @@ public sealed class BoardTableEditorTests : IDisposable
 
             Assert.True(editor.HasTable);
             Assert.False(editor.IsFileBacked);
-            Assert.False(editor.GetControl<Button>("ReloadButton").IsVisible);
+            Assert.True(editor.GetControl<Button>("SaveButton").IsVisible);
+            Assert.False(editor.GetControl<StackPanel>("SaveStatePanel").IsVisible);
             Assert.False(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
-            Assert.False(editor.GetControl<Border>("OpenElsewhereBar").IsVisible);
 
             window.Close();
         });

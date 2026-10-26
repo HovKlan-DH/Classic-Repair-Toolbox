@@ -25,9 +25,10 @@ public static class IcTestCatalogue
     private static Dictionary<string, IcTestEntry>? _byMatch;
     private static string? _vectorsDir;
 
-    // The folder is named ONCE, in CRT.Data (DataTreeUsage.MiniProTestsFolder): no workbook cites
-    // these files, so the server's "unused files" rule keeps them only because it knows CRT reads
-    // this folder by name. DataFoldersReadByNameTests fails if the two ever disagree.
+    // The folder is named ONCE, in CRT.Data (DataTreeLayout.MiniProTestsFolder, the 4.0 tree's
+    // "MiniPro/IC tests"): no board cites these files, so the tree keeps them only because it
+    // reserves that folder (DataTreeLayout.ReservedTopFolders). DataFoldersReadByNameTests fails
+    // if the two ever disagree.
     public static string DefaultCatalogueDir =>
         Path.Combine(IcTestCatalogue.TestsFolder, "Catalogue");
 //        Path.Combine(AppContext.BaseDirectory, "Assets", "MiniPro", "IC-Tests", "catalogue");
@@ -36,7 +37,7 @@ public static class IcTestCatalogue
     public static string VectorsDir => _vectorsDir ?? Path.Combine(IcTestCatalogue.TestsFolder, "Vectors");
 
     private static string TestsFolder =>
-        Path.Combine(DataManager.DataRoot, DataTreeUsage.MiniProTestsFolder.Replace('/', Path.DirectorySeparatorChar));
+        Path.Combine(DataManager.DataRoot, DataTreeLayout.MiniProTestsFolder.Replace('/', Path.DirectorySeparatorChar));
 //    public static string VectorsDir => _vectorsDir ?? Path.Combine(AppContext.BaseDirectory, "Assets", "MiniPro", "IC-Tests", "vectors");
 
     public static IReadOnlyList<IcTestEntry> Entries

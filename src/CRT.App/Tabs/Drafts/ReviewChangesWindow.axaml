@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        x:Class="CRT.ReviewChangesWindow"
+        Title="Review changes"
+        Width="640"
+        Height="600"
+        MinWidth="480"
+        MinHeight="360"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!-- ###########################################################################################
+	     What a draft changes, in words (CRT 4.0 step 1's last slice, 2026-10-25 - DraftChangeSummary):
+	     the board's own parts, then each component, each component with "Undo changes to <component>".
+	     The groups are built in code (ReviewChangesWindow.ShowSummary) - one per component, from the
+	     summary, read again after an undo.
+	     ########################################################################################### -->
+	<Grid RowDefinitions="Auto,*,Auto" Margin="18">
+
+		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
+			<TextBlock x:Name="BoardNameText" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
+
+			<TextBlock TextWrapping="Wrap"
+					   Margin="0,4,0,0"
+					   Text="What your draft changes, compared with the published data. &quot;Undo changes to&quot; puts one component back as it is published - and Undo in the draft's header on the Contribute tab takes that back too, while CRT is running." />
+
+			<!-- Why an undo could not be made - set from code. -->
+			<TextBlock x:Name="StatusText"
+					   TextWrapping="Wrap"
+					   Foreground="{DynamicResource Text_Fail_Fg}"
+					   Margin="0,6,0,0"
+					   IsVisible="False" />
+		</StackPanel>
+
+		<ScrollViewer Grid.Row="1">
+			<StackPanel Spacing="8">
+				<StackPanel x:Name="GroupsPanel" Spacing="8" />
+
+				<TextBlock x:Name="NothingText"
+						   TextWrapping="Wrap"
+						   Opacity="0.8"
+						   Text="Your draft holds no changes from the published data."
+						   IsVisible="False" />
+			</StackPanel>
+		</ScrollViewer>
+
+		<StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Close" IsDefault="True" Click="OnCloseClick" />
+		</StackPanel>
+
+		<!-- The wait while a component is put back - the last child, over everything (CLAUDE.md:
+		     every wait the user watches runs under BusyOverlay). -->
+		<local:BusyOverlay Grid.RowSpan="3" Margin="-18" />
+	</Grid>
+</Window>

@@ -4,6 +4,7 @@ using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Compat;
 using CRT.Server.Handlers.Database;
+using CRT.Server.Handlers.DataTree;
 using CRT.Server.Handlers.Email;
 using CRT.Server.Handlers.Feedback;
 using CRT.Server.Handlers.Health;
@@ -32,6 +33,17 @@ namespace CRT.Server
     {
         public static void Main(string[] args)
         {
+            // ---------------------------------------------------------------------------------
+            // A COMMAND INSTEAD OF THE SERVICE (2026-10-24): converting an Excel-era data tree
+            // into the CRT 4.0 tree. It needs no configuration, no database and no web host, so
+            // it runs before any of them is built - see DataTreeConvertCommand.
+            // ---------------------------------------------------------------------------------
+            if (DataTreeConvertCommand.IsCommand(args))
+            {
+                Environment.ExitCode = DataTreeConvertCommand.Run(args, Console.Out);
+                return;
+            }
+
             var builder = WebApplication.CreateBuilder(args);
 
             // ---------------------------------------------------------------------------------

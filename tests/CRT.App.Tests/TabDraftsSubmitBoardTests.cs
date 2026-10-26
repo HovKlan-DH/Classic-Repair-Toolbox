@@ -35,7 +35,7 @@ public sealed class TabDraftsSubmitBoardTests : IDisposable
     // Unique per test, so BoardDataReader's static cache never carries one test's board into the
     // next (see DataManagerDraftOverlayTests).
     private readonly string thisExcelDataFile =
-        $"Commodore/C128/{Guid.NewGuid():N}/Data C128 test.xlsx";
+        $"Commodore/C128/{Guid.NewGuid():N}/board.json";
 
     static TabDraftsSubmitBoardTests()
     {
@@ -115,24 +115,25 @@ public sealed class TabDraftsSubmitBoardTests : IDisposable
                 return updated;
             }));
 
-        // Written into the sidecar as CRT's calibration save files it - the storage class is
-        // CRT.Data's own, not visible to this project.
-        string sidecarPath = Path.ChangeExtension(this.DraftWorkbook, ".json");
-        var sidecar = (JsonObject)JsonNode.Parse(File.ReadAllText(sidecarPath))!;
-        sidecar["KiCad calibration points"] = new JsonObject
+        // Written into the draft's board file as CRT's calibration save files it - the storage
+        // class is CRT.Data's own, not visible to this project. In CRT 4.0 the calibrations are a
+        // list of the board file itself (BoardDocument.KiCadCalibrations).
+        var boardFile = (JsonObject)JsonNode.Parse(File.ReadAllText(this.DraftWorkbook))!;
+        boardFile["kiCadCalibrations"] = new JsonArray
         {
-            ["PCB; Top"] = new JsonObject
+            new JsonObject
             {
-                ["CadName"] = "Open128 - PCB Top",
-                ["OffsetX"] = 1.0,
-                ["OffsetY"] = 2.0,
-                ["ScaleX"] = 3.5,
-                ["ScaleY"] = 4.0,
-                ["MirrorX"] = true,
-                ["MirrorY"] = false,
+                ["schematic"] = "PCB; Top",
+                ["cadName"] = "Open128 - PCB Top",
+                ["offsetX"] = 1.0,
+                ["offsetY"] = 2.0,
+                ["scaleX"] = 3.5,
+                ["scaleY"] = 4.0,
+                ["mirrorX"] = true,
+                ["mirrorY"] = false,
             },
         };
-        File.WriteAllText(sidecarPath, sidecar.ToJsonString());
+        File.WriteAllText(this.DraftWorkbook, boardFile.ToJsonString());
     }
 
     [Fact]

@@ -270,6 +270,7 @@ namespace CRT
                 // view read as the previous board still being loaded.
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
+                this.ShowBoardInContributeTab(null);
                 return;
             }
 
@@ -293,6 +294,7 @@ namespace CRT
                 // empty board pane, rather than the previous board's previews.
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
+                this.ShowBoardInContributeTab(null);
                 return;
             }
 
@@ -313,6 +315,7 @@ namespace CRT
                 // list) rather than whatever the previously selected board left on screen.
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
+                this.ShowBoardInContributeTab(null);
                 return;
             }
 
@@ -417,22 +420,28 @@ namespace CRT
 
             // ###########################################################################################
             // *** EVERYTHING THE POOL NEEDS IS READ HERE, ON THE UI THREAD (code review, 2026-10-13). ***
-            // The background half read the hardware and board drop-downs (through
-            // GetCurrentBoardKiCadRawPaths) and the live hidden-images set the Configuration tab
-            // changes on the UI thread - controls and a HashSet read off the UI thread while they could
-            // change. They are snapshots now; the pool touches no control and builds no UI object
-            // (the thumbnails are decoded, not rendered through an Image control).
+            // The background half read the hardware and board drop-downs (through the KiCad paths'
+            // lookup) and the live hidden-images set the Configuration tab changes on the UI thread -
+            // controls and a HashSet read off the UI thread while they could change. They are snapshots
+            // now; the pool touches no control and builds no UI object (the thumbnails are decoded, not
+            // rendered through an Image control).
+            //
+            // *** AND THE KiCad FILES ARE COPIED THERE (code review, 2026-10-25). *** Copied on the UI
+            // thread, the first showing of a board froze the window for the seconds tens of megabytes
+            // take; now they copy on the pool while the thumbnails decode (KiCadRawPathsFor).
             // ###########################################################################################
             var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
             string region = UserSettings.Region;
             string dataRoot = DataManager.DataRoot;
-            List<string> rawPaths = this.GetCurrentBoardKiCadRawPaths();
+            string excelDataFile = entry.ExcelDataFile;
             string thumbnailSetKey = $"{boardKey}\u001F{draftBoardFolder}";
 
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    Task<List<string>> rawPathsCopied = Task.Run(() => Main.KiCadRawPathsFor(dataRoot, draftBoardFolder, excelDataFile));
+
                     var highlightRects = HighlightRectBuilder.BuildHighlightRects(boardData, region);
 
                     bool IsSchematicVisible(string schematicName) =>
@@ -454,7 +463,7 @@ namespace CRT
                         .Where(schematic => IsSchematicVisible(schematic.SchematicName))
                         .Select(schematic => (
                             Name: schematic.SchematicName,
-                            FullPath: DraftFileResolver.Resolve(dataRoot, draftBoardFolder, schematic.SchematicImageFile) ??
+                            FullPath: DraftFileResolver.Resolve(dataRoot, draftBoardFolder, schematic.SchematicImageFile, entry.ExcelDataFile) ??
                                 Path.Combine(dataRoot, schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar))))
                         .ToList();
 
@@ -480,6 +489,8 @@ namespace CRT
                             IsMatchForSelection = false
                         })
                         .ToList();
+
+                    List<string> rawPaths = await rawPathsCopied;
 
                     await Dispatcher.UIThread.InvokeAsync(() =>
                     {
@@ -532,12 +543,23 @@ namespace CRT
                                 orderedThumbnails[savedIndex >= 0 ? savedIndex : 0];
                         }
 
-                        var localFiles = boardData.BoardLocalFiles.Select(file => new ResourceItem(
-                            file.Category,
-                            file.Name,
-                            string.IsNullOrWhiteSpace(file.File)
-                                ? string.Empty
-                                : Path.Combine(dataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))));
+                        // Found by name in the board's file list, with the root it was found under -
+                        // the launcher opens nothing outside it.
+                        var localFiles = boardData.BoardLocalFiles.Select(file =>
+                        {
+                            DraftFileResolution? resolved = string.IsNullOrWhiteSpace(file.File)
+                                ? null
+                                : DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, file.File, entry.ExcelDataFile);
+
+                            return new ResourceItem(
+                                file.Category,
+                                file.Name,
+                                resolved?.FullPath ??
+                                    (string.IsNullOrWhiteSpace(file.File)
+                                        ? string.Empty
+                                        : Path.Combine(dataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))),
+                                resolved?.Root);
+                        });
 
                         var webLinks = boardData.BoardLinks.Select(link => new ResourceItem(
                             link.Category,
@@ -546,7 +568,7 @@ namespace CRT
 
                         this.TabResources.LoadData(localFiles, webLinks);
                         this.TabOverview.LoadData(boardData);
-                        this.TabContribute.LoadData(boardData, this._localRegion);
+                        this.ShowBoardInContributeTab(entry);
                         this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
                     }, DispatcherPriority.Background);
 
@@ -559,7 +581,7 @@ namespace CRT
                                 return;
                             }
 
-                            await this.TabSchematicsControl.LoadKiCadProjectForCurrentBoardAsync();
+                            await this.TabSchematicsControl.LoadKiCadProjectForCurrentBoardAsync(rawPaths);
                         }, DispatcherPriority.Background);
                     }
                 }
@@ -803,51 +825,22 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Resolves full paths to modern raw KiCad files for the currently selected board.
-        // Raw files are auto-discovered from the board-local KiCad folder.
+        // Resolves full paths to the raw KiCad files of a board - `draftFolder` the VIEWED draft
+        // folder (DraftManager.GetViewedBoardFolder), so "view boards as officially published" shows
+        // only the published KiCad data: a drafted import is not something everyone else sees yet.
         //
-        // TWO roots are searched, official first, the same rule DraftFileResolver applies to every
-        // other board file: the board's own folder under "Data/", then the board's draft folder
-        // under "Drafts/" (session 2c, task 9). A board that exists only as a draft has no folder
-        // under "Data/" at all, so without the second root its imported KiCad data would never be
-        // read and no trace would ever appear - the very failure the import's own report warns
-        // about. An officially published board can also gain drafted KiCad files this way.
+        // *** IN CRT 4.0 ONE BOARD FILE NAMES THEM ALL (2026-10-24). *** A draft is the whole board -
+        // its file lists the published KiCad files as well as the ones imported into it - so with a
+        // draft only the draft's are read, else the published board's. Their bytes are copied under
+        // their names into CRT's cache, where the loaders find a project's sheets beside each other
+        // (BoardKiCadFolder). The "Schematic images" window's CAD names read the same files.
         //
-        // Official wins a file-name collision, since Distinct keeps the first of each and the
-        // official paths are added first.
+        // *** NEVER ON THE UI THREAD (code review, 2026-10-25). *** The first copy of a large board is
+        // tens of megabytes; the caller reads the three paths on the UI thread and asks this on the
+        // pool. It touches no control, so it is safe there.
         // ###########################################################################################
-        internal List<string> GetCurrentBoardKiCadRawPaths()
-        {
-            var entry = this.GetCurrentBoardEntry();
-            if (entry == null)
-            {
-                return new List<string>();
-            }
-
-            // ###########################################################################################
-            // BOTH ROOTS ARE STILL SEARCHED, but the drafted one has moved (Phase 6, 2026-09-23).
-            //
-            // A draft folder is now a board folder, so its KiCad data sits at
-            // "<draft board folder>/KiCad data" - the same shape the published tree uses, with no
-            // Files/ level in between.
-            //
-            // Both are still searched rather than just the resolved one: a contributor can import
-            // KiCad data into a draft for a board whose published copy already has some, and
-            // showing only one set would silently hide traces they can see in KiCad itself. The
-            // rule is KiCadRawFileScanner.ScanBoard, shared with the "Schematic images" window's
-            // CAD names (2026-10-10).
-            // ###########################################################################################
-            string boardExcelPath = this.GetCurrentBoardExcelPath();
-            string boardDirectory = Path.GetDirectoryName(boardExcelPath) ?? string.Empty;
-
-            // The VIEWED draft folder, so "view boards as officially published" shows only the
-            // published KiCad data - a drafted import is not something everyone else sees yet.
-            string draftFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
-
-            return KiCadRawFileScanner.ScanBoard(
-                Path.Combine(boardDirectory, AppConfig.KiCadDataFolderName),
-                string.IsNullOrWhiteSpace(draftFolder) ? string.Empty : Path.Combine(draftFolder, AppConfig.KiCadDataFolderName));
-        }
+        internal static List<string> KiCadRawPathsFor(string dataRoot, string draftFolder, string excelDataFile) =>
+            KiCadRawFileScanner.Scan(BoardKiCadFolder.ForBoard(dataRoot, draftFolder, excelDataFile, AppConfig.KiCadCacheFolder));
 
         // ###########################################################################################
         // Reloads the currently selected board from disk and restores the given schematic selection.
@@ -881,7 +874,11 @@ namespace CRT
             // BEFORE the reload rather than after: the reload is fire-and-forget, so ordering this
             // behind it would race the board load for no benefit. Nothing here depends on the new
             // board data - it reads the Drafts folder.
-            this.ApplyDraftsTabVisibility();
+            this.ApplyContributeTabState();
+
+            // The Drafts tab's table, open on that draft, reads its file again if something wrote it
+            // past the draft held in memory (CRT 4.0 step 1 - TabDrafts.ReadTableDraftAgain).
+            this.TabDrafts.ReadTableDraftAgain();
 
             // Not a board CHANGE, so the component search box is deliberately left alone - the same
             // thing passing a null sender used to express before this became a typed argument.

@@ -46,11 +46,16 @@ public sealed class DraftFingerprintTests : IDisposable
         Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = friendlyName, TechnicalNameOrValue = "6510" }],
     };
 
-    // Writes the draft workbook, and moves its write time on so nothing can mistake the new file
-    // for the old one by its date alone.
+    // Writes the draft's rows, and moves its write time on so nothing can mistake the new file
+    // for the old one by its date alone. A 4.0 draft is one board file, so the rows are written
+    // the way every draft write does it: with the highlights the file already holds.
     private void WriteDraft(BoardData board)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(this.Workbook)!);
+
+        if (File.Exists(this.Workbook) && BoardDataReader.ReadWorkbookUncached(this.Workbook) is BoardData before)
+            board.ComponentHighlights.AddRange(before.ComponentHighlights);
+
         BoardWorkbookWriter.Write(this.Workbook, board);
         File.SetLastWriteTimeUtc(this.Workbook, DateTime.UtcNow.AddMinutes(this.thisWrites++));
     }
@@ -104,29 +109,26 @@ public sealed class DraftFingerprintTests : IDisposable
         this.WriteDraft(Board("CPU 6510"));
         Assert.NotEqual(sent, this.Fingerprint());
 
-        // The file is a new file - another date, and bytes EPPlus wrote afresh - holding the
-        // values that were sent. The content is what counts.
+        // The file is a new file - another date, and bytes written afresh - holding the values
+        // that were sent. The content is what counts.
         this.WriteDraft(Board());
         Assert.Equal(sent, this.Fingerprint());
     }
 
-    // Case 4: opened in Excel and saved with nothing changed. Excel rewrites the file (another
-    // date, other bytes) and keeps its "~$" owner file beside it while the workbook is open.
+    // Case 4: the board file saved again with nothing changed - by an editor that lays the text
+    // out its own way, say (another date, other bytes). In 3.x this was Excel saving the workbook
+    // and keeping its "~$" owner file beside it; a 4.0 draft is its board file's content.
     [Fact]
-    public void Saving_the_workbook_in_Excel_without_changing_a_value_keeps_the_fingerprint()
+    public void Saving_the_board_file_again_without_changing_a_value_keeps_the_fingerprint()
     {
         string sent = this.SentDraft();
         byte[] before = File.ReadAllBytes(this.Workbook);
 
-        EpplusLicense.Ensure();
-        using (var package = EpplusLicense.OpenPackage(new FileInfo(this.Workbook)))
-        {
-            package.Workbook.Properties.Comments = "Saved again in Excel";
-            package.Save();
-        }
-
+        string relaidOut = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(this.Workbook))!
+            .ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(this.Workbook, relaidOut);
         File.SetLastWriteTimeUtc(this.Workbook, DateTime.UtcNow.AddHours(1));
-        this.DraftFile($"~${Path.GetFileName(this.Workbook)}", "Excel's owner file");
+        this.DraftFile($"~${Path.GetFileName(this.Workbook)}", "an editor's owner file");
 
         Assert.NotEqual(before, File.ReadAllBytes(this.Workbook));
         Assert.Equal(sent, this.Fingerprint());

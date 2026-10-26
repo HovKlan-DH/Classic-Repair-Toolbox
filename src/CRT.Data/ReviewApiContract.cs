@@ -213,7 +213,15 @@ namespace Handlers.DataHandling
         // the plan (BoardFileEntries.ForPromotion), so the sizes travel beside it. A file missing
         // from it shows no size. Optional: an older maintainer build ignores it.
         // ###########################################################################################
-        IReadOnlyDictionary<string, long>? FileSizes = null);
+        IReadOnlyDictionary<string, long>? FileSizes = null,
+
+        // ###########################################################################################
+        // The board's name for each path (2026-10-25): in the CRT 4.0 tree a file's place is its
+        // checksum ("Files/3f/3f7a...e1.png"), so the tree is drawn by the names the board knows its
+        // files by ("Component images/7406.png") and each is fetched from its place
+        // (BoardFileEntries.ForPromotion). Optional: an older maintainer build ignores it.
+        // ###########################################################################################
+        IReadOnlyDictionary<string, string>? FileNames = null);
 
     // ###########################################################################################
     // A SUBMISSION'S FILE TREE: the BETA data after approving it, against BETA now (owner request,
@@ -610,7 +618,15 @@ namespace Handlers.DataHandling
 
         // Where the STABLE source is published (2026-10-04) - set, with BetaDataUrl null, when the
         // table is the stable source's (BoardDetailRequest.Tree), which is never editable.
-        string? ProductionDataUrl = null);
+        string? ProductionDataUrl = null,
+
+        // ###########################################################################################
+        // Where each file the board names lies in its tree (2026-10-25): a CRT 4.0 board's rows cite
+        // a file by the board's name ("Component images/7406.png") and its bytes are stored under
+        // their checksum ("Files/3f/3f7a...e1.png"), so a file cell's picture is fetched from there.
+        // Optional: from an older server a cell's text is the file's place itself.
+        // ###########################################################################################
+        IReadOnlyDictionary<string, string>? FilePlaces = null);
 
     // `Summary` is the reason the maintainer gave - the submission's description. The check ignores it.
     public sealed record BoardEditRequest(

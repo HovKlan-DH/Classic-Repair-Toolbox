@@ -35,7 +35,7 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
     // rewrote the Excel file, which then read back the stale value - a test ordering bug, not a
     // product one. A fresh path per test means every test is a guaranteed cache miss.
     private readonly string thisExcelDataFile =
-        $"Commodore/C64/{Guid.NewGuid():N}/Data C64 test v1.0.0.xlsx";
+        $"Commodore/C64/{Guid.NewGuid():N}/board.json";
 
     static DataManagerDraftOverlayTests()
     {
@@ -67,15 +67,9 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
-    private void WriteBoardExcel()
-    {
-        string path = Path.Combine(
-            this.thisWorkspace.Root,
-            this.thisExcelDataFile.Replace('/', Path.DirectorySeparatorChar));
-
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        BoardWorkbookBuilder.WriteCompleteBoard(path);
-    }
+    // The published board's file in the 4.0 tree.
+    private void WriteBoardExcel() =>
+        BoardWorkbookBuilder.WriteCompleteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, this.thisExcelDataFile));
 
     // ###########################################################################################
     // Writes a DRAFT of this board: a real board workbook in the drafts tree, plus the marker

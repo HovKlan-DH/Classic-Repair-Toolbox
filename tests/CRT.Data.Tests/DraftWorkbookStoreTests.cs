@@ -33,6 +33,17 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     private string WorkbookPath =>
         DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
 
+    private string DraftFolder =>
+        DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+
+    // The board with a datasheet row for U8, citing the file by its 4.0 name.
+    private static BoardData WithDatasheet(BoardData board)
+    {
+        BoardData updated = DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU");
+        updated.ComponentLocalFiles.Add(new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Datasheets/U8.pdf" });
+        return updated;
+    }
+
     // Creates a draft holding the given components, the way DraftSeeder would.
     private void CreateDraft(params ComponentEntry[] components)
     {
@@ -82,6 +93,31 @@ public sealed class DraftWorkbookStoreTests : IDisposable
                 : component));
 
         return updated;
+    }
+
+    // A field a later CRT wrote on a row survives an edit made with this one (code review,
+    // 2026-10-25) - the edited row's as well as the others'. BoardDocumentUnknowns has the rules.
+    [Fact]
+    public void Fields_a_later_CRT_wrote_on_rows_survive_an_edit()
+    {
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"), DraftWorkbookStoreTests.Component("U9", "SID"));
+        Assert.True(DataTreeLayout.IsBoardFile(this.WorkbookPath));
+
+        BoardFiles.Change(this.WorkbookPath, document =>
+        {
+            foreach (BoardDocument.ComponentRow row in document.Components)
+                row.Unknown = new() { ["pinCount"] = System.Text.Json.JsonSerializer.SerializeToElement(40) };
+        });
+
+        Assert.True(DraftWorkbookStore.Edit(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "6510 CPU")));
+
+        BoardDocument written = BoardFiles.ReadDocument(this.WorkbookPath)!;
+
+        Assert.Equal("6510 CPU", written.Components.Single(row => row.BoardLabel == "U8").FriendlyName);
+        Assert.All(written.Components, row => Assert.Equal(40, row.Unknown!["pinCount"].GetInt32()));
     }
 
     // ------------------------------------------------------------------ Reading
@@ -238,28 +274,53 @@ public sealed class DraftWorkbookStoreTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A WRITE WHOSE SIDECAR FAILS CHANGED NOTHING (code review, 2026-10-11). *** The sidecar is
-    // written after the workbook has been moved into place, and a failure there answered "not
-    // saved" with the NEW workbook already on disk - "Schematic images" then deleted the images it
-    // had copied, and the draft's new rows named files that were gone. The workbook goes back as it
-    // was. The sidecar's place is taken by a folder, so its write fails on every system.
+    // *** A NEW FILE IS TAKEN IN ONLY WHEN THE WRITE IS (code review, 2026-10-11; CRT 4.0,
+    // 2026-10-24). *** A picked file lies in the draft folder under its name until the next write
+    // stores its bytes and lists it. The Excel-era write failed half-way on its sidecar and left
+    // rows naming files that were gone; a 4.0 write is one file - but a new file moved into the
+    // store BEFORE a write that then failed would be unlisted, and the next write's tidying would
+    // delete it. So it leaves its place only once the board file lists it.
     // ###########################################################################################
     [Fact]
-    public void A_write_whose_sidecar_cannot_be_written_puts_the_workbook_back()
+    public void A_new_file_is_stored_and_listed_and_leaves_its_place_after_the_write()
     {
         this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+        string arrived = this.thisWorkspace.WriteFile(Path.Combine(this.DraftFolder, "Datasheets", "U8.pdf"), "the datasheet");
+
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.WithDatasheet));
+
+        Assert.False(File.Exists(arrived));
+        Assert.False(Directory.Exists(Path.Combine(this.DraftFolder, "Datasheets")));
+        BoardDocument.StoredFileRow listed = Assert.Single(BoardFiles.ReadDocument(this.WorkbookPath)!.Files);
+        Assert.Equal("Datasheets/U8.pdf", listed.Name);
+        Assert.Equal("the datasheet", File.ReadAllText(DraftFileResolver.Resolve(string.Empty, this.DraftFolder, "Datasheets/U8.pdf")!));
+    }
+
+    [Fact]
+    public void A_write_that_cannot_replace_the_board_file_leaves_a_new_file_where_it_arrived()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        this.CreateDraft(DraftWorkbookStoreTests.Component("U8", "CPU"));
+        string arrived = this.thisWorkspace.WriteFile(Path.Combine(this.DraftFolder, "Datasheets", "U8.pdf"), "the datasheet");
         byte[] before = File.ReadAllBytes(this.WorkbookPath);
 
-        Directory.CreateDirectory(BoardComponentHighlightStorage.GetJsonPath(this.WorkbookPath));
+        bool saved;
 
-        bool saved = DraftWorkbookStore.Edit(
-            this.DraftsRoot,
-            DraftWorkbookStoreTests.BoardKey,
-            board => DraftWorkbookStoreTests.WithFriendlyName(board, "U8", "CPU (corrected)"));
+        // Readable, but not replaceable - the write fails at its very end.
+        using (new FileStream(this.WorkbookPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            saved = DraftWorkbookStore.Edit(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.WithDatasheet);
+        }
 
         Assert.False(saved);
         Assert.Equal(before, File.ReadAllBytes(this.WorkbookPath));
-        Assert.Equal("CPU", DraftWorkbookStore.LoadDraftBoard(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey)!.Components.Single().FriendlyName);
+        Assert.Equal("the datasheet", File.ReadAllText(arrived));
+
+        // And the next write takes it in.
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, DraftWorkbookStoreTests.WithDatasheet));
+        Assert.False(File.Exists(arrived));
+        Assert.Equal("the datasheet", File.ReadAllText(DraftFileResolver.Resolve(string.Empty, this.DraftFolder, "Datasheets/U8.pdf")!));
     }
 
     // ###########################################################################################
@@ -417,6 +478,104 @@ public sealed class DraftWorkbookStoreTests : IDisposable
         Assert.False(DraftWorkbookStore.RecordBroughtUpToDate(
             this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, "2026-09-20", "ABC"));
     }
+
+    // ------------------------------------------------------------------ Removing files (RemoveFiles)
+
+    // ###########################################################################################
+    // *** REMOVE ON A PUBLISHED KiCad FILE IMPORTED AGAIN PUTS THE PUBLISHED ONE BACK (code review,
+    // 2026-10-25). *** The KiCad data window lists such a file as the contributor's own, and Remove
+    // means "not my copy" - but it took the name off the draft's list, so the board lost the file at
+    // the next submission. A file the published board does not have is still dropped, and the bytes
+    // the draft stored for either go with it.
+    // ###########################################################################################
+    [Fact]
+    public void Removing_a_published_KiCad_file_imported_again_puts_the_published_one_back_and_drops_the_rest()
+    {
+        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+
+        BoardDocument.StoredFileRow mine = StoredFiles.Put(this.DraftFolder, "KiCad data/board.kicad_pcb", "(kicad_pcb mine)");
+        BoardDocument.StoredFileRow extra = StoredFiles.Put(this.DraftFolder, "KiCad data/extra.kicad_sch", "(kicad_sch extra)");
+        StoredFiles.WriteBoard(boardFile, mine, extra);
+
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+        string publishedBoardFile = Path.Combine(dataRoot, "Commodore", "C64", "250407", DataTreeLayout.BoardFileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(publishedBoardFile)!);
+        BoardDocument.StoredFileRow theirs = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", "(kicad_pcb published)");
+        StoredFiles.WriteBoard(publishedBoardFile, theirs);
+
+        Assert.True(DraftWorkbookStore.RemoveFiles(
+            this.DraftsRoot,
+            DraftWorkbookStoreTests.BoardKey,
+            ["KiCad data/board.kicad_pcb", "KiCad data/extra.kicad_sch"],
+            publishedBoardFile));
+
+        BoardDocument.StoredFileRow listed = Assert.Single(BoardFiles.ReadDocument(boardFile)!.Files);
+        Assert.Equal("KiCad data/board.kicad_pcb", listed.Name);
+        Assert.Equal(theirs.Sha256, listed.Sha256);
+
+        // The draft's own bytes for both are gone; the published bytes are the tree's.
+        Assert.False(File.Exists(Path.Combine(this.DraftFolder, DataTreeLayout.StoredFilePath(mine.Sha256, mine.Name).Replace('/', Path.DirectorySeparatorChar))));
+        Assert.False(File.Exists(Path.Combine(this.DraftFolder, DataTreeLayout.StoredFilePath(extra.Sha256, extra.Name).Replace('/', Path.DirectorySeparatorChar))));
+    }
+
+    // With no published board to go back to, Remove takes the name off the list - as before.
+    [Fact]
+    public void Removing_a_KiCad_file_with_no_published_board_takes_it_off_the_list()
+    {
+        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        StoredFiles.WriteBoard(boardFile, StoredFiles.Put(this.DraftFolder, "KiCad data/board.kicad_pcb", "(kicad_pcb mine)"));
+
+        Assert.True(DraftWorkbookStore.RemoveFiles(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, ["KiCad data/board.kicad_pcb"]));
+
+        Assert.Empty(BoardFiles.ReadDocument(boardFile)!.Files);
+    }
+
+    // ###########################################################################################
+    // *** A NAME IN THE LIST CAN SAY ANYTHING (code review, 2026-10-26). *** A draft folder put into
+    // Drafts by hand, or shared, can list "KiCad data/../../../x" - the KiCad data window lists it
+    // as imported, and Remove deleted the file that name climbs to, outside the draft. It comes off
+    // the list (written as it was listed, not only as Normalise spells it) and nothing outside the
+    // draft folder is touched.
+    // ###########################################################################################
+    [Fact]
+    public void Removing_a_listed_name_that_climbs_out_of_the_draft_deletes_nothing_outside_it()
+    {
+        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        string outside = this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Commodore", "notes.txt"), "the contributor's own notes");
+        const string climbing = "KiCad data/../../../notes.txt";
+        StoredFiles.WriteBoard(boardFile, StoredFiles.EntryFor(climbing, "anything"));
+
+        Assert.True(DraftWorkbookStore.RemoveFiles(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, [climbing]));
+
+        Assert.Equal("the contributor's own notes", File.ReadAllText(outside));
+        Assert.Empty(BoardFiles.ReadDocument(boardFile)!.Files);
+    }
+
+    // Remove takes away the bytes of what it removes - the stored ones and a copy lying in the
+    // folder - and nothing else: the draft held in memory keeps bytes no row cites while its undo
+    // could bring the row back (DraftFileMemory), and a Remove in between deleted them.
+    [Fact]
+    public void Removing_a_KiCad_file_takes_its_own_bytes_and_leaves_the_rest_of_the_store()
+    {
+        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        BoardDocument.StoredFileRow mine = StoredFiles.Put(this.DraftFolder, "KiCad data/board.kicad_pcb", "(kicad_pcb mine)");
+        BoardDocument.StoredFileRow remembered = StoredFiles.Put(this.DraftFolder, "Component images/u8.png", "a picture whose row was removed");
+        string lying = this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Commodore", "C64", "250407", "KiCad data", "sheet.kicad_sch"), "(kicad_sch)");
+        StoredFiles.WriteBoard(boardFile, mine);
+
+        Assert.True(DraftWorkbookStore.RemoveFiles(this.DraftsRoot, DraftWorkbookStoreTests.BoardKey, ["KiCad data/board.kicad_pcb", "KiCad data/sheet.kicad_sch"]));
+
+        Assert.False(File.Exists(this.StoredIn(mine)));
+        Assert.False(File.Exists(lying));
+        Assert.True(File.Exists(this.StoredIn(remembered)));
+    }
+
+    private string StoredIn(BoardDocument.StoredFileRow file) =>
+        Path.Combine(this.DraftFolder, DataTreeLayout.StoredFilePath(file.Sha256, file.Name).Replace('/', Path.DirectorySeparatorChar));
 
     // ------------------------------------------------------------------ Discarding
 

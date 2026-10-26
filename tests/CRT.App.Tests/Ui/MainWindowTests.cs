@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
+using Avalonia.Threading;
 using CRT;
 using Handlers.DataHandling;
 using Handlers.Theming;
@@ -71,7 +72,7 @@ public sealed class MainWindowTests : IDisposable
     // *** THE REPORTED BUG (2026-09-23): "Save to draft" did not make the Drafts tab appear, and
     // the application had to be restarted before it showed. ***
     //
-    // The tab is hidden until a draft exists, and ApplyDraftsTabVisibility is what re-evaluates
+    // The tab is hidden until a draft exists, and ApplyContributeTabState is what re-evaluates
     // that. It was called at startup, after "Add a new system", and from inside the Drafts tab
     // after a discard - but by NEITHER of the two paths that create a draft for an existing board:
     // the Contribute window's component save and the label editor's save. Both funnel through
@@ -114,8 +115,14 @@ public sealed class MainWindowTests : IDisposable
         ];
     }
 
+    // ###########################################################################################
+    // A local edit's reload brings the tab up to date: its title turns red, the draft is in "My
+    // drafts", and contributing counts as in use (the update check asks from then on). Before the
+    // Drafts tab's fix (2026-09-23) the reload left the tab hidden until the next restart; the tab
+    // is always on screen since CRT 4.0 step 2, and what follows the draft is its state.
+    // ###########################################################################################
     [Fact]
-    public void Reloading_after_a_local_edit_REVEALS_the_drafts_tab()
+    public void Reloading_after_a_local_edit_brings_the_Contribute_tab_up_to_date()
     {
         this.RedirectWorklogToTemp();
         this.RedirectSettingsToTemp();
@@ -124,24 +131,23 @@ public sealed class MainWindowTests : IDisposable
         {
             var window = new CRT.Main();
 
-            // Hidden in the markup, and nothing has happened yet to change that.
-            Assert.False(window.DraftsTabItem.IsVisible);
+            Assert.DoesNotContain("hasDrafts", window.ContributeTabHeaderText.Classes);
 
             this.GiveTheDraftsTabSomethingToShow(window);
 
-            // What BOTH save paths call. Before the fix this cleared the board cache and reloaded,
-            // and left the tab hidden until the next restart.
+            // What BOTH save paths call.
             window.ReloadCurrentBoardFromDisk(string.Empty);
 
-            Assert.True(window.DraftsTabItem.IsVisible);
+            Assert.Contains("hasDrafts", window.ContributeTabHeaderText.Classes);
+            Assert.Single(window.TabDrafts.Drafts);
+            Assert.True(window.ContributionInUseForTests);
         });
     }
 
-    // The anti-vacuity half: with no draft on disk the reload must NOT reveal the tab, or the
-    // "fix" would simply be showing it always and somebody who has never contributed would see a
-    // tab they have no use for.
+    // The anti-vacuity half: with no draft on disk the reload must NOT mark the tab, or the red
+    // title would say nothing at all.
     [Fact]
-    public void Reloading_with_NO_draft_leaves_the_drafts_tab_hidden()
+    public void Reloading_with_NO_draft_leaves_the_tab_unmarked()
     {
         this.RedirectWorklogToTemp();
         this.RedirectSettingsToTemp();
@@ -157,7 +163,9 @@ public sealed class MainWindowTests : IDisposable
 
             window.ReloadCurrentBoardFromDisk(string.Empty);
 
-            Assert.False(window.DraftsTabItem.IsVisible);
+            Assert.True(window.ContributeTabItem.IsVisible);
+            Assert.DoesNotContain("hasDrafts", window.ContributeTabHeaderText.Classes);
+            Assert.False(window.ContributionInUseForTests);
         });
     }
 
@@ -167,12 +175,13 @@ public sealed class MainWindowTests : IDisposable
     // left, and a click on a grid cell focuses the GRID - not a TextBox, which was the only thing
     // that stopped the steal. So the keystrokes went into the component filter instead.
     //
-    // Asserted on both sides of the table being open: the steal must stop while it is, and must
-    // come BACK once it closes - the Drafts tab without a table has nothing to type into, and
-    // exempting the whole tab would quietly switch the filter off there.
+    // *** THE WHOLE CONTRIBUTE TAB BACKS OFF (CRT 4.0 step 2, 2026-10-25). *** The Drafts tab
+    // exempted itself only while its table was open, since without one it had nothing to type into.
+    // The Contribute tab has its own search of the board's components beside the table, so it backs
+    // off whether the table is open or not - and the steal still applies on the other tabs.
     // ###########################################################################################
     [Fact]
-    public async Task While_the_Drafts_table_is_open_a_click_does_NOT_pull_focus_to_the_component_filter()
+    public async Task On_the_Contribute_tab_a_click_does_NOT_pull_focus_to_the_component_filter()
     {
         this.RedirectWorklogToTemp();
         this.RedirectSettingsToTemp();
@@ -187,17 +196,19 @@ public sealed class MainWindowTests : IDisposable
             CachedWorkbooks.Write(workbook, new BoardData { Components = [new ComponentEntry { BoardLabel = "C1" }] });
 
             window.TabDrafts.PublishedBoardOverrideForTests = _ => null;
-            window.ApplyDraftsTabVisibility();
-            window.MainTabControl.SelectedItem = window.DraftsTabItem;
+            window.ApplyContributeTabState();
 
-            // The Drafts tab with no table: the ordinary steal still applies.
+            window.MainTabControl.SelectedItem = window.SchematicsTabItem;
             Assert.True(window.ShouldReturnFocusToComponentSearch());
+
+            window.MainTabControl.SelectedItem = window.ContributeTabItem;
+            Assert.False(window.ShouldReturnFocusToComponentSearch());
 
             await window.TabDrafts.OpenTableAsync(window.TabDrafts.HardwareBoardsOverrideForTests![0]);
             Assert.False(window.ShouldReturnFocusToComponentSearch());
 
             Assert.True(await window.TabDrafts.CloseTableAsync());
-            Assert.True(window.ShouldReturnFocusToComponentSearch());
+            Assert.False(window.ShouldReturnFocusToComponentSearch());
         });
     }
 
@@ -224,13 +235,13 @@ public sealed class MainWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // The Drafts tab's title is IndianRed in both themes (owner request, 2026-09-25): a draft
-    // is temporary, and the tab says so. Asserted on the header the window really builds, through
-    // its theme key, so a header turned back into plain text - which the tab's selected and hover
-    // states would recolour - or a key missing from one theme fails here.
+    // The Contribute tab's title is IndianRed in both themes WHILE A DRAFT EXISTS (owner request,
+    // 2026-09-25, for the Drafts tab: a draft is temporary, and the tab says so), and the tab's own
+    // colour otherwise (CRT 4.0 step 2 - the tab is always on screen). Read off a SHOWN window,
+    // where the styles apply, through the theme key - a key missing from one theme fails here.
     // ###########################################################################################
     [Fact]
-    public void The_Drafts_tab_title_is_IndianRed_in_both_themes()
+    public void The_Contribute_tab_title_is_IndianRed_in_both_themes_while_a_draft_exists()
     {
         this.RedirectWorklogToTemp();
         this.RedirectSettingsToTemp();
@@ -238,11 +249,12 @@ public sealed class MainWindowTests : IDisposable
         UiTest.Run(() =>
         {
             var main = new CRT.Main();
+            main.Show();
 
-            // The title beside its badge (2026-09-30) - still its own block, in its own colour.
-            TextBlock header = main.DraftsTabHeaderText;
-            Assert.Equal("Drafts", header.Text);
-            Assert.Contains(header, Assert.IsType<StackPanel>(main.DraftsTabItem.Header).Children);
+            // The title beside its badge (2026-09-30) - its own block, in its own colour.
+            TextBlock header = main.ContributeTabHeaderText;
+            Assert.Equal("Contribute", header.Text);
+            Assert.Contains(header, Assert.IsType<StackPanel>(main.ContributeTabItem.Header).Children);
 
             foreach (Avalonia.Styling.ThemeVariant variant in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
             {
@@ -250,7 +262,17 @@ public sealed class MainWindowTests : IDisposable
                 Assert.Equal(Avalonia.Media.Colors.IndianRed, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(brush).Color);
             }
 
-            Assert.Equal(Avalonia.Media.Colors.IndianRed, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(header.Foreground).Color);
+            Avalonia.Media.Color Colour() => Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(header.Foreground).Color;
+
+            Assert.NotEqual(Avalonia.Media.Colors.IndianRed, Colour());
+
+            this.GiveTheDraftsTabSomethingToShow(main);
+            main.ApplyContributeTabState();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(Avalonia.Media.Colors.IndianRed, Colour());
+
+            main.Close();
         });
     }
 
@@ -1498,28 +1520,24 @@ public sealed class MainWindowTests : IDisposable
         {
             var main = new CRT.Main();
             var tabControl = main.GetControl<TabControl>("MainTabControl");
-            var draftsTab = main.GetControl<TabItem>("DraftsTabItem");
-
-            // The tab is hidden until a draft exists, so show it the way the real flow does.
-            draftsTab.IsVisible = true;
+            var draftsTab = main.GetControl<TabItem>("ContributeTabItem");
 
             var firstVisible = tabControl.Items.OfType<TabItem>().First(t => t.IsVisible);
             tabControl.SelectedItem = firstVisible;
 
-            main.SwitchToDraftsTab();
+            main.SwitchToContributeTab();
 
             Assert.Same(draftsTab, tabControl.SelectedItem);
         });
     }
 
     // ###########################################################################################
-    // A HIDDEN tab cannot be selected, and trying would leave the tab control showing an empty
-    // page. The caller has just created a draft so the tab will normally be up, but a silent
-    // no-op is the right failure here - turning a cosmetic miss into a thrown exception would
-    // fail the board creation that already succeeded.
+    // *** THE CONTRIBUTE TAB IS ALWAYS ON SCREEN (CRT 4.0 step 2, 2026-10-25). *** It replaced the
+    // Contribute tab, which always was, and the Drafts tab, which showed only once a draft existed:
+    // with no draft and no unread feedback it stays, only its title is not red.
     // ###########################################################################################
     [Fact]
-    public void Switching_to_a_HIDDEN_drafts_tab_leaves_the_selection_alone()
+    public void The_Contribute_tab_is_always_on_screen()
     {
         this.RedirectWorklogToTemp();
         this.RedirectSettingsToTemp();
@@ -1527,17 +1545,15 @@ public sealed class MainWindowTests : IDisposable
         UiTest.Run(() =>
         {
             var main = new CRT.Main();
-            var tabControl = main.GetControl<TabControl>("MainTabControl");
-            var draftsTab = main.GetControl<TabItem>("DraftsTabItem");
+            DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts-none-" + Guid.NewGuid().ToString("N")));
+            main.TabDrafts.HardwareBoardsOverrideForTests = [];
 
-            draftsTab.IsVisible = false;
+            Assert.True(main.ContributeTabItem.IsVisible);
 
-            var firstVisible = tabControl.Items.OfType<TabItem>().First(t => t.IsVisible);
-            tabControl.SelectedItem = firstVisible;
+            main.ApplyContributeTabState();
 
-            main.SwitchToDraftsTab();
-
-            Assert.Same(firstVisible, tabControl.SelectedItem);
+            Assert.True(main.ContributeTabItem.IsVisible);
+            Assert.DoesNotContain("hasDrafts", main.ContributeTabHeaderText.Classes);
         });
     }
 
@@ -1553,12 +1569,12 @@ public sealed class MainWindowTests : IDisposable
         {
             var main = new CRT.Main();
             var tabControl = main.GetControl<TabControl>("MainTabControl");
-            var draftsTab = main.GetControl<TabItem>("DraftsTabItem");
+            var draftsTab = main.GetControl<TabItem>("ContributeTabItem");
 
             draftsTab.IsVisible = true;
 
-            main.SwitchToDraftsTab();
-            main.SwitchToDraftsTab();
+            main.SwitchToContributeTab();
+            main.SwitchToContributeTab();
 
             Assert.Same(draftsTab, tabControl.SelectedItem);
         });

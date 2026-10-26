@@ -19,7 +19,7 @@ public sealed class BoardTableDeletedWithTests
 
         Assert.Equal(
             "Also deleted with U8: 3 rows on Component images, 1 on Component local files and 2 on Component links. " +
-            "Its 2 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            "Its 2 highlights on the schematics go too. Undo (Ctrl+Z) brings it all back.",
             deleted.Describe());
     }
 
@@ -29,7 +29,7 @@ public sealed class BoardTableDeletedWithTests
         var deleted = new BoardTableDeletedWith("C7", [new BoardTableSheetCount("Component images", 1)], Highlights: 1);
 
         Assert.Equal(
-            "Also deleted with C7: 1 row on Component images. Its 1 highlight on the schematics goes when you save. Undo (Ctrl+Z) brings it all back.",
+            "Also deleted with C7: 1 row on Component images. Its 1 highlight on the schematics goes too. Undo (Ctrl+Z) brings it all back.",
             deleted.Describe());
     }
 
@@ -40,7 +40,7 @@ public sealed class BoardTableDeletedWithTests
         var deleted = new BoardTableDeletedWith("R12", [], Highlights: 3);
 
         Assert.Equal(
-            "R12's 3 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            "R12's 3 highlights on the schematics go too. Undo (Ctrl+Z) brings it all back.",
             deleted.Describe());
     }
 
@@ -60,7 +60,7 @@ public sealed class BoardTableDeletedWithTests
 
         Assert.Equal(
             "Also deleted with U8, U9 and U10: 3 rows on Component images, 1 on Component links and 1 on Component local files. " +
-            "Their 3 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            "Their 3 highlights on the schematics go too. Undo (Ctrl+Z) brings it all back.",
             deleted!.Describe());
     }
 
@@ -76,7 +76,7 @@ public sealed class BoardTableDeletedWithTests
         ]);
 
         Assert.Equal(
-            "Also deleted with U8: 3 rows on Component images. Its 2 highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            "Also deleted with U8: 3 rows on Component images. Its 2 highlights on the schematics go too. Undo (Ctrl+Z) brings it all back.",
             deleted!.Describe());
     }
 
@@ -91,7 +91,7 @@ public sealed class BoardTableDeletedWithTests
         ]);
 
         Assert.Equal(
-            "The 3 highlights of R12 and R13 on the schematics go when you save. Undo (Ctrl+Z) brings it all back.",
+            "The 3 highlights of R12 and R13 on the schematics go too. Undo (Ctrl+Z) brings it all back.",
             highlightsOnly!.Describe());
 
         var one = new BoardTableDeletedWith("R12", [], Highlights: 1);

@@ -22,6 +22,9 @@ namespace CRT.Server.Handlers.Submissions
     // A file the contributor DID change is untouched by this - its hash never matched the published
     // one at create, so it has no row. An amended file whose hash differs from its row is the
     // maintainer's change, and is written as one. The stored payload is never rewritten.
+    //
+    // In the CRT 4.0 tree (2026-10-25) a file is the board's NAME for it, and "published" is what
+    // the published board lists under that name (PublishedTreeProbe.For a board).
     // ###########################################################################################
     public static class SubmissionLeftAsPublished
     {
@@ -134,7 +137,7 @@ namespace CRT.Server.Handlers.Submissions
 
             IReadOnlyDictionary<string, string> left = await store.GetLeftAsPublishedAsync(submissionId, cancellationToken).ConfigureAwait(false);
 
-            return SubmissionLeftAsPublished.KeepNewerPublished(manifest, left, PublishedTreeProbe.For(dataTreeRoot), out _);
+            return SubmissionLeftAsPublished.KeepNewerPublished(manifest, left, PublishedTreeProbe.For(dataTreeRoot, manifest), out _);
         }
     }
 }

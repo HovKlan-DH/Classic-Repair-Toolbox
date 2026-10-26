@@ -3,50 +3,62 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // The REAL PublishedTreeView: the two questions the submission rules ask about the published
-    // tree, answered from the data tree on this server (security review, 2026-09-25).
+    // The REAL PublishedTreeView: the questions the submission rules ask about what is published,
+    // answered from the data tree on this server (security review, 2026-09-25).
+    //
+    // *** IN THE CRT 4.0 TREE A VIEW IS OF ONE BOARD (2026-10-25). *** A submission names its
+    // files by the board's own names, so "what is published under this name" is the published
+    // board's list (PublishedBoardFiles) - HashOf and SizeOf answer from it, nothing is hashed. The
+    // folder listing stays the tree's own: a NEW board's folder must not differ from a published
+    // one's only by capitalisation (PublishedTreeView.FindCaseVariant).
     //
     // An I/O boundary, thin on purpose - the rules that USE these answers live in CRT.Data and are
-    // tested against a dictionary. What is here is a directory listing and a cached hash.
-    //
-    // Every relative path goes through SubmissionPathRules before it touches the disk, the one
-    // containment rule this service has; a hostile path cannot make the probe list or hash
-    // anything outside the tree.
+    // tested against a dictionary. Every relative path goes through SubmissionPathRules before it
+    // touches the disk, the one containment rule this service has.
     // ###########################################################################################
     public static class PublishedTreeProbe
     {
         // ###########################################################################################
-        // A view of the tree at `dataTreeRoot`, or NULL when there is no usable root. Null is what
-        // the rules treat as "the tree could not be consulted", which refuses every foreign file -
-        // the safe answer for a misconfigured service.
+        // A view of the board `boardId` in the tree at `dataTreeRoot`, or NULL when there is no
+        // usable root, or the board's file is there and cannot be read. Null is what the rules treat
+        // as "what is published could not be consulted" - the safe answer: nothing is admitted on
+        // the strength of being published already. A board the tree does not hold is an empty list.
         // ###########################################################################################
-        public static PublishedTreeView? For(string? dataTreeRoot)
+        public static PublishedTreeView? For(string? dataTreeRoot, string? boardId) =>
+            PublishedTreeProbe.For(
+                dataTreeRoot,
+                string.IsNullOrWhiteSpace(dataTreeRoot) || !Directory.Exists(dataTreeRoot) ? null : PublishedBoardFiles.ByName(dataTreeRoot, boardId));
+
+        // The same from the board's files already read (PublishedBoardRead.Files - an approval reads
+        // the board file once); null `files` is a board file that could not be read.
+        public static PublishedTreeView? For(string? dataTreeRoot, IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? files)
         {
-            if (string.IsNullOrWhiteSpace(dataTreeRoot) || !Directory.Exists(dataTreeRoot))
+            if (string.IsNullOrWhiteSpace(dataTreeRoot) || !Directory.Exists(dataTreeRoot) || files is null)
                 return null;
 
             return new PublishedTreeView(
-                relativePath => PublishedFileHashes.TryHash(dataTreeRoot, relativePath),
+                name => PublishedTreeProbe.HashOf(files, name),
                 relativeFolder => PublishedTreeProbe.List(dataTreeRoot, relativeFolder),
-                relativePath => PublishedTreeProbe.SizeOf(dataTreeRoot, relativePath));
+                name => files.TryGetValue(name.Trim(), out BoardDocument.StoredFileRow? file) ? file.Size : null);
         }
 
-        // The length of the file at this relative path, through the one containment rule - or null.
-        private static long? SizeOf(string dataTreeRoot, string relativePath)
+        // The checksum the board lists under this name, lower-case, or null.
+        private static string? HashOf(IReadOnlyDictionary<string, BoardDocument.StoredFileRow> files, string name)
         {
-            if (!SubmissionPathRules.TryResolve(dataTreeRoot, relativePath, out string path, out _))
+            if (!files.TryGetValue(name.Trim(), out BoardDocument.StoredFileRow? file))
                 return null;
 
-            try
-            {
-                var file = new FileInfo(path);
+            string sha = (file.Sha256 ?? string.Empty).Trim().ToLowerInvariant();
 
-                return file.Exists ? file.Length : null;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return null;
-            }
+            return DataTreeLayout.IsSha256(sha) ? sha : null;
+        }
+
+        // The view a submission is judged against: its own board's.
+        public static PublishedTreeView? For(string? dataTreeRoot, SubmissionManifest manifest)
+        {
+            ArgumentNullException.ThrowIfNull(manifest);
+
+            return PublishedTreeProbe.For(dataTreeRoot, manifest.BoardId);
         }
 
         private static IReadOnlyCollection<string>? List(string dataTreeRoot, string relativeFolder)

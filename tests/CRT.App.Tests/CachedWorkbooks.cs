@@ -25,9 +25,18 @@ internal static class CachedWorkbooks
 
     private static readonly ConcurrentDictionary<string, byte[]> BytesByBoard = new(StringComparer.Ordinal);
 
-    // Writes `board` to `path` exactly as BoardWorkbookWriter.Write would, creating the folder.
+    // Writes `board` to `path` exactly as BoardWorkbookWriter.Write would, creating the folder. A
+    // CRT 4.0 board file ("board.json") is written for real: it is plain JSON, quick to write, and
+    // the writer keeps what the file already holds beside the rows (2026-10-24).
     public static void Write(string path, BoardData board)
     {
+        if (DataTreeLayout.IsBoardFile(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            BoardWorkbookWriter.Write(path, board);
+            return;
+        }
+
         byte[] bytes = BytesByBoard.GetOrAdd(CachedWorkbooks.KeyOf(board), _ => CachedWorkbooks.WriteForReal(board));
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);

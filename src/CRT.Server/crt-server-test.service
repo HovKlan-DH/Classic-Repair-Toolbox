@@ -1,0 +1,43 @@
+[Unit]
+Description=Classic Repair Toolbox contribution service - TEST instance for CRT 4.0's pre-releases (CRT.Server)
+After=network.target mariadb.service
+
+# THE TEST INSTANCE (owner decision, 2026-10-25): its own program folder, settings, database and
+# port beside the live service, publishing into the CRT 4.0 trees that CRT 4.0's pre-releases read.
+# The live service keeps serving CRT 3.x from the Excel trees until the release. Stopped and disabled
+# on release day - INSTALLING.md, "A test instance for CRT 4.0's pre-releases". Every line not about
+# WHICH instance this is equals crt-server.service's (TestInstanceUnitTests).
+
+[Service]
+# Type=simple, NOT Type=notify: the service sends systemd no readiness signal, so with
+# "notify" it would serve requests while "systemctl start" hung and then reported failure.
+Type=simple
+User=crt-server
+Group=crt-data
+WorkingDirectory=/mydir/http/classic-repair-toolbox.dk/crt-server-test/app
+ExecStart=/usr/bin/dotnet /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/CRT.Server.dll
+Restart=always
+RestartSec=5
+# A refused setting or a failed database migration exits with 78 and is NOT restarted - a
+# restart cannot fix either. A database not up yet at boot exits with 69 and IS restarted.
+# Held to the code by ServerExitCodesTests.
+RestartPreventExitStatus=78
+
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# Loopback only, on a port of its own: reached through Apache at /crt-test/api/ and never directly.
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5198
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+# Hardening, exactly the live unit's. Writable: the CRT 4.0 trees it publishes into, and its own
+# stored uploads and feedback folder - never the live service's, and never the Excel trees.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4 /mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs /mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback
+
+[Install]
+WantedBy=multi-user.target

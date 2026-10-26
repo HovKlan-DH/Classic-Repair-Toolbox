@@ -82,7 +82,7 @@ namespace CRT.Server.Handlers.Submissions
                 return BoardOrderOutcome.Conflict(BoardListingRules.NoMasterMessage);
 
             if (!MasterListing.TryRead(betaMaster, out IReadOnlyList<MasterListingRow> listed, out string why))
-                return BoardOrderOutcome.Conflict($"BETA's main Excel data file could not be read: {why}");
+                return BoardOrderOutcome.Conflict($"BETA's main data file could not be read: {why}");
 
             if (!BoardOrderFlow.NamesExactly(listed, order))
                 return BoardOrderOutcome.Conflict(BoardOrderFlow.ChangedMessage);
@@ -90,7 +90,7 @@ namespace CRT.Server.Handlers.Submissions
             MasterListingEdit betaEdit = MasterListing.Reorder(betaMaster, order, nowUtc);
 
             if (!betaEdit.IsDone)
-                return BoardOrderOutcome.Conflict(betaEdit.Failure ?? "BETA's main Excel data file could not be written.");
+                return BoardOrderOutcome.Conflict(betaEdit.Failure ?? "BETA's main data file could not be written.");
 
             // *** FROM HERE ON, NOTHING IS CANCELLED (code review, 2026-10-04). *** BETA's list is
             // written: a client giving up now - CRT's wait limit, or CRT closed - must still leave
@@ -111,7 +111,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 if (stableMaster is null)
                 {
-                    problems.Add("The stable source has no versioned main Excel data file, so its list was not changed.");
+                    problems.Add("The stable source has no main data file, so its list was not changed.");
                 }
                 else
                 {

@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using CRT;
 using Handlers.DataHandling;
 
@@ -145,18 +147,68 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (owner
-    // request, 2026-09-24). *** The save would make the table's own save refused and its edits
-    // lost, so nothing is written, a notice is shown, and the window stays - no refresh, no
-    // switch to the Drafts tab.
+    // *** THE DRAFTS TAB'S TABLE NO LONGER HOLDS THE SAVE BACK (CRT 4.0 step 1, 2026-10-25). ***
+    // Until then "Save to draft" waited behind a notice while the table had unsaved edits for the
+    // same board - both wrote the same file. Now both change the one draft held in memory: the
+    // table's change, held and not yet saved (the session stands in for the table here), and this
+    // save land together, and the file holds both.
     // ###########################################################################################
     [Fact]
-    public async Task Save_to_draft_is_held_back_while_the_Drafts_table_has_unsaved_edits_for_the_board()
+    public async Task Save_to_draft_lands_on_top_of_a_change_the_Drafts_table_holds_and_saves_both()
     {
         using var workspace = new TempWorkspace();
+        string draftsRoot = ComponentContributionSaveRefreshTests.DraftsRootOf(workspace);
+        int afterSaved = 0;
 
-        var asked = new List<string>();
-        var notices = new List<UnsavedTableEditsPrompt>();
+        await ComponentContributionSaveRefreshTests.SaveEditedDescriptionAsync(
+            workspace,
+            "Written",
+            window =>
+            {
+                DraftSession table = DraftManager.Sessions.Get(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile)!;
+                Assert.True(table.Apply("The table's change", content => content with { Board = content.Board.WithRevisionDate("2026-02-02") }));
+                window.SetAfterSaved(() => afterSaved++);
+            },
+            throughTheClick: true);
+
+        Assert.Equal(1, afterSaved);
+
+        BoardData? draft = DraftWorkbookStore.LoadDraftBoard(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile);
+        Assert.Equal("Written", draft!.Components.Single(component => component.BoardLabel == "U1").Description);
+        Assert.Equal("2026-02-02", draft.RevisionDate);
+
+        Assert.False(DraftManager.Sessions.Find(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile)!.HasUnsavedChanges);
+    }
+
+    // The save is one step of the draft's history, named after the component - what the table's
+    // Ctrl+Z takes back, and the draft's own Undo will (step 1's last slice).
+    [Fact]
+    public async Task Save_to_draft_is_one_step_of_the_draft_s_history_that_undo_takes_back()
+    {
+        using var workspace = new TempWorkspace();
+        string draftsRoot = ComponentContributionSaveRefreshTests.DraftsRootOf(workspace);
+
+        await ComponentContributionSaveRefreshTests.SaveEditedDescriptionAsync(workspace, "Written", throughTheClick: true);
+
+        DraftSession session = DraftManager.Sessions.Find(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile)!;
+        Assert.Equal(DraftStepWording.ComponentSaved("U1"), session.UndoDescription);
+
+        Assert.True(session.Undo());
+        Assert.Equal("The original description", session.Content.Board.Components.Single(component => component.BoardLabel == "U1").Description);
+    }
+
+    // ###########################################################################################
+    // A save that cannot be made changes nothing, as before: the table holds a change and the file
+    // was written by another program meanwhile, so the draft's save is refused (neither is written
+    // over unasked) - this save is taken back out of the draft again, the window stays with the
+    // reason on its status line, and nothing is reloaded or switched to.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_that_cannot_be_made_is_taken_back_out_and_the_window_says_why()
+    {
+        using var workspace = new TempWorkspace();
+        string draftsRoot = ComponentContributionSaveRefreshTests.DraftsRootOf(workspace);
+        ComponentContributionWindow? shown = null;
         int refreshes = 0;
         int afterSaved = 0;
 
@@ -165,61 +217,37 @@ public sealed class ComponentContributionSaveRefreshTests : IDisposable
             "Must not be written",
             window =>
             {
-                window.SetUnsavedTableEditsCheck(board =>
-                {
-                    asked.Add(board);
-                    return UnsavedTableEditsPrompt.SavingElsewhere;
-                });
-                window.ShowSavingBlockedOverrideForTests = notice =>
-                {
-                    notices.Add(notice);
-                    return Task.CompletedTask;
-                };
+                shown = window;
                 window.SetRefreshBoardAfterSave(() => refreshes++);
                 window.SetAfterSaved(() => afterSaved++);
+
+                DraftSession table = DraftManager.Sessions.Get(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile)!;
+                Assert.True(table.Apply("The table's change", content => content with { Board = content.Board.WithRevisionDate("2026-02-02") }));
+
+                Assert.True(DraftWorkbookStore.Edit(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile, board => board.WithRevisionDate("2026-03-03")));
             },
             throughTheClick: true);
 
-        // Asked about THIS window's board.
-        Assert.Equal([ComponentContributionSaveRefreshTests.ExcelDataFile], asked);
-        Assert.Equal([UnsavedTableEditsPrompt.SavingElsewhere], notices);
         Assert.Equal(0, refreshes);
         Assert.Equal(0, afterSaved);
 
-        BoardData? draft = DraftWorkbookStore.LoadDraftBoard(
-            ComponentContributionSaveRefreshTests.DraftsRootOf(workspace),
-            ComponentContributionSaveRefreshTests.ExcelDataFile);
-        Assert.Equal(
-            "The original description",
-            draft!.Components.Single(component => component.BoardLabel == "U1").Description);
-    }
+        BoardData? draft = DraftWorkbookStore.LoadDraftBoard(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile);
+        Assert.Equal("The original description", draft!.Components.Single(component => component.BoardLabel == "U1").Description);
+        Assert.Equal("2026-03-03", draft.RevisionDate);
 
-    [Fact]
-    public async Task Save_to_draft_goes_ahead_when_the_table_has_nothing_unsaved_for_the_board()
-    {
-        using var workspace = new TempWorkspace();
-        int notices = 0;
+        // The table's change is still there, waiting for the table to ask which version to keep.
+        DraftSession session = DraftManager.Sessions.Find(draftsRoot, ComponentContributionSaveRefreshTests.ExcelDataFile)!;
+        Assert.Equal("The table's change", session.UndoDescription);
+        Assert.Equal("The original description", session.Content.Board.Components.Single(component => component.BoardLabel == "U1").Description);
 
-        await ComponentContributionSaveRefreshTests.SaveEditedDescriptionAsync(
-            workspace,
-            "Written",
-            window =>
-            {
-                window.SetUnsavedTableEditsCheck(_ => null);
-                window.ShowSavingBlockedOverrideForTests = _ =>
-                {
-                    notices++;
-                    return Task.CompletedTask;
-                };
-            },
-            throughTheClick: true);
+        string status = string.Empty;
+        UiTest.Run(() =>
+        {
+            Dispatcher.UIThread.RunJobs();
+            status = shown!.FindControl<TextBlock>("StatusTextBlock")!.Text ?? string.Empty;
+        });
 
-        Assert.Equal(0, notices);
-
-        BoardData? draft = DraftWorkbookStore.LoadDraftBoard(
-            ComponentContributionSaveRefreshTests.DraftsRootOf(workspace),
-            ComponentContributionSaveRefreshTests.ExcelDataFile);
-        Assert.Equal("Written", draft!.Components.Single(component => component.BoardLabel == "U1").Description);
+        Assert.Equal(DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.ChangedOnDisk), status);
     }
 
     // ###########################################################################################

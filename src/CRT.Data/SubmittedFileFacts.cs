@@ -21,6 +21,10 @@ namespace Handlers.DataHandling
     // PublishedSha256 is the hash of whatever is published at this path NOW, not of the file the
     // published board references - a submission can name a path the old board never cited, and
     // overwriting an existing file there is exactly the case a maintainer must not see as "added".
+    //
+    // *** IN THE CRT 4.0 TREE (2026-10-25) Path is the board's NAME for the file *** and
+    // PublishedSha256 the bytes the published board lists under that name - a name it lists with
+    // other bytes is a replaced file. Every file is the board's own there, so Scope is always Own.
     // ###########################################################################################
     public sealed record SubmittedFileFact(
         string Path,
@@ -67,7 +71,7 @@ namespace Handlers.DataHandling
                     file.Path,
                     file.Sha256,
                     file.SizeBytes,
-                    SubmissionFileScopes.Classify(manifest, file.Path),
+                    SubmissionFileScope.Own,
                     referenced.Contains(file.Path),
                     published));
             }

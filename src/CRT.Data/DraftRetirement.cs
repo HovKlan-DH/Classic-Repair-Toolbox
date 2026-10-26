@@ -259,6 +259,11 @@ namespace Handlers.DataHandling
                 return false;
             }
 
+            if (DataTreeLayout.IsBoardFile(status.PublishedWorkbookPath))
+            {
+                return DraftRetirement.StoredFilesMatchPublished(status, draftFolder);
+            }
+
             string draftSidecar = BoardComponentHighlightStorage.GetJsonPath(status.WorkbookPath);
 
             try
@@ -299,6 +304,96 @@ namespace Handlers.DataHandling
                 CrtLog.Warning($"Could not compare the draft files for [{status.BoardKey}] - [{ex.Message}]");
                 return false;
             }
+        }
+
+        // ###########################################################################################
+        // The same question for a CRT 4.0 draft (2026-10-24): is every file in its folder the
+        // published board's? Its store's bytes ("Files/<ab>/<sha>.<ext>") must be in the tree's
+        // store - that is, published; a file lying in the folder under its name, not yet taken in
+        // (DraftFiles), must be the published board's file of that name, byte for byte. The board
+        // file was compared by content above (or is gone, and holds nothing more), and CRT's own
+        // bookkeeping - the marker, the base, the Excel-era originals a conversion set aside - is
+        // never published.
+        //
+        // *** STORED BYTES THE DRAFT'S BOARD FILE DOES NOT LIST ARE NO WORK (code review, 2026-10-26).
+        // *** The draft held in memory keeps a dropped file's bytes while its undo could bring the
+        // row back (DraftFileMemory), and the next run's first save tidies them - a run that ended
+        // without one kept a published draft for good. A draft that lost its board file lists
+        // nothing, so there every stored file still counts.
+        // ###########################################################################################
+        private static bool StoredFilesMatchPublished(DraftStatus status, string draftFolder)
+        {
+            string treeRoot = DraftRetirement.TreeRootOf(status);
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? published = DraftFiles.ListedIn(status.PublishedWorkbookPath);
+
+            if (treeRoot.Length == 0 || published is null)
+            {
+                return false;
+            }
+
+            HashSet<string>? draftListed = null;
+
+            if (File.Exists(status.WorkbookPath))
+            {
+                // A board file that cannot be read might list anything. Keep the draft.
+                if (DraftFiles.ListedIn(status.WorkbookPath) is not { } draftFiles)
+                {
+                    return false;
+                }
+
+                draftListed = DraftFiles.StoredPaths(draftFolder, draftFiles.Values);
+            }
+
+            try
+            {
+                foreach (string draftFile in Directory.EnumerateFiles(draftFolder, "*", SearchOption.AllDirectories))
+                {
+                    string relative = Path.GetRelativePath(draftFolder, draftFile).Replace('\\', '/');
+                    bool stored = relative.StartsWith(DataTreeLayout.FilesFolder + "/", StringComparison.OrdinalIgnoreCase);
+
+                    if (DraftRetirement.SamePath(draftFile, status.WorkbookPath)
+                        || DraftFolderLayout.IsDraftOnlyFile(draftFile)
+                        || DraftFolderLayout.IsInBookkeepingFolder(relative)
+                        || (stored && draftListed is not null && !draftListed.Contains(Path.GetFullPath(draftFile))))
+                    {
+                        continue;
+                    }
+
+                    string publishedFile = stored
+                        ? Path.Combine(treeRoot, relative.Replace('/', Path.DirectorySeparatorChar))
+                        : published.TryGetValue(relative, out BoardDocument.StoredFileRow? listed) && DataTreeLayout.IsSha256(listed.Sha256)
+                            ? Path.Combine(treeRoot, DataTreeLayout.StoredFilePath(listed.Sha256, listed.Name).Replace('/', Path.DirectorySeparatorChar))
+                            : string.Empty;
+
+                    if (publishedFile.Length == 0 || !DraftRetirement.SameBytes(draftFile, publishedFile))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A file that cannot be read might hold anything. Keep the draft.
+                CrtLog.Warning($"Could not compare the draft files for [{status.BoardKey}] - [{ex.Message}]");
+                return false;
+            }
+        }
+
+        // The 4.0 tree the published board file sits in: its path less the board's own
+        // "<id>/board.json" - "" when the two do not line up.
+        private static string TreeRootOf(DraftStatus status)
+        {
+            string boardFile = DataTreeLayout.BoardFileFor(status.BoardKey).Replace('/', Path.DirectorySeparatorChar);
+            string published = Path.GetFullPath(status.PublishedWorkbookPath);
+
+            if (boardFile.Length == 0 || !published.EndsWith(Path.DirectorySeparatorChar + boardFile, StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            return published[..^(boardFile.Length + 1)];
         }
 
         // ###########################################################################################

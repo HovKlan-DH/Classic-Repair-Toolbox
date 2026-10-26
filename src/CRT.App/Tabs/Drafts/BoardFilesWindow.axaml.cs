@@ -153,8 +153,6 @@ namespace CRT
                 return;
             }
 
-            this.RefreshKiCadState();
-
             // ###########################################################################################
             // *** AND REBUILD THE REPORT FOR DATA THAT IS ALREADY THERE (owner report,
             // 2026-09-24). ***
@@ -163,7 +161,8 @@ namespace CRT
             // window on a board that already had KiCad data showed an empty panel - the one piece
             // of information that says whether the board labels line up with the KiCad references
             // was available exactly once, and only to whoever performed the import. Parsing a
-            // 45 MB .kicad_pcb takes a moment, so it is under the "please wait" too.
+            // 45 MB .kicad_pcb takes a moment, so it is under the "please wait" too - and so is the
+            // list of files, which the same read brings (ReadKiCadAsync).
             // ###########################################################################################
             this.Opening = BusyOverlay.HoldAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
         }
@@ -383,32 +382,104 @@ namespace CRT
         //
         // Paths are shown RELATIVE to the "KiCad data" folder, so a multi-sheet project reads as
         // "Pages/vic.kicad_sch" rather than an absolute path nobody can scan down.
+        //
+        // Shows what ReadKiCadAsync read off the UI thread - nothing here touches the disk.
         // ###########################################################################################
-        private void RefreshKiCadState()
+        private void ShowKiCadState(KiCadSnapshot snapshot)
         {
-            var files = this.EnumerateImportedKiCadFiles();
+            int count = snapshot.Imported.Count;
 
-            this.KiCadStateText.Text = files.Count == 0
+            this.KiCadStateText.Text = count == 0
                 ? "No KiCad data imported yet."
-                : files.Count == 1
+                : count == 1
                     ? "1 KiCad file imported:"
-                    : $"{files.Count} KiCad files imported:";
+                    : $"{count} KiCad files imported:";
 
             this.KiCadFiles.Clear();
 
-            string root = this.KiCadImportFolder;
-
-            foreach (string file in files)
+            foreach ((string file, string size) in snapshot.Imported)
             {
                 this.KiCadFiles.Add(new BoardKiCadFileRow
                 {
-                    RelativePath = BoardFilesWindow.RelativeToFolder(root, file),
-                    SizeText = BoardFilesWindow.DescribeSize(file),
+                    RelativePath = BoardFilesWindow.RelativeToFolder(snapshot.Copy, file),
+                    SizeText = size,
                     FullPath = file,
                 });
             }
 
             this.KiCadFilesPanel.IsVisible = this.KiCadFiles.Count > 0;
+        }
+
+        // ###########################################################################################
+        // WHAT THE KiCad SECTION SHOWS, READ OFF THE UI THREAD (code review, 2026-10-25). Making the
+        // board's KiCad copy (BoardKiCadFolder - tens of megabytes on a large board, copied again
+        // whenever an import changes it) ran on the UI thread, twice per refresh, against "the copy is
+        // NEVER made on the UI thread": the window froze, its "please wait" unable to paint. One read
+        // now brings everything the list and the report need: the copy, the draft's own files in it
+        // with their sizes, every file in it, and how many the published board has.
+        // ###########################################################################################
+        private sealed record KiCadSnapshot(
+            string Copy,
+            IReadOnlyList<(string Path, string Size)> Imported,
+            IReadOnlyList<string> Files,
+            int PublishedCount);
+
+        private Task<KiCadSnapshot> ReadKiCadAsync()
+        {
+            string dataRoot = this.DataRoot;
+            string draftFolder = this.thisDraftFolder;
+            string excelDataFile = this.thisExcelDataFile;
+            string draftBoardFile = this.DraftBoardFile;
+            Action? reading = this.ReadingKiCadForTests;
+
+            return Task.Run(() =>
+            {
+                reading?.Invoke();
+                return BoardFilesWindow.ReadKiCad(dataRoot, draftFolder, excelDataFile, draftBoardFile);
+            });
+        }
+
+        // Called where the KiCad read runs, just before it - for a test proving that is not the UI thread.
+        internal Action? ReadingKiCadForTests { get; set; }
+
+        private static KiCadSnapshot ReadKiCad(string dataRoot, string draftFolder, string excelDataFile, string draftBoardFile)
+        {
+            string publishedBoardFile = DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
+
+            // How many KiCad files the published board has - for the report's source line, counted from
+            // its list without copying them (code review, 2026-10-25: a second full copy, for a count).
+            int publishedCount = BoardKiCadFolder.ListedNames(publishedBoardFile).Count;
+
+            string copy = BoardKiCadFolder.ForBoard(dataRoot, draftFolder, excelDataFile, AppConfig.KiCadCacheFolder);
+
+            if (copy.Length == 0)
+            {
+                return new KiCadSnapshot(string.Empty, [], [], publishedCount);
+            }
+
+            List<string> files = KiCadRawFileScanner.Scan(copy);
+
+            // The KiCad files the draft brought itself - imported, or replaced - as files under their
+            // names in the copy, whichever of the two places their bytes are in now.
+            //
+            // *** IN CRT 4.0 A DRAFT NAMES ITS KiCad FILES IN ITS BOARD FILE (2026-10-24). *** An import
+            // lies in "<draft>/KiCad data" only until the draft's next write takes it into the draft's
+            // store, and a seeded draft lists the published board's KiCad files too - so the files
+            // listed are the draft's own by name (BoardKiCadFolder.ImportedNames). Sub-folders
+            // included - see KiCadRawFileScanner: a multi-sheet project keeps most of its sheets under
+            // Pages/, and counting only the top level reported "3 KiCad files imported" for 25.
+            string copyRoot = Path.GetDirectoryName(copy)!;
+            var importedNames = BoardKiCadFolder
+                .ImportedNames(draftBoardFile, publishedBoardFile)
+                .Select(name => Path.GetFullPath(Path.Combine(copyRoot, name.Replace('/', Path.DirectorySeparatorChar))))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            List<(string Path, string Size)> imported = files
+                .Where(path => importedNames.Contains(Path.GetFullPath(path)))
+                .Select(path => (path, BoardFilesWindow.DescribeSize(path)))
+                .ToList();
+
+            return new KiCadSnapshot(copy, imported, files, publishedCount);
         }
 
         // The file path as it reads inside the "KiCad data" folder, with forward slashes so a
@@ -460,39 +531,27 @@ namespace CRT
             }
         }
 
-        private List<string> EnumerateImportedKiCadFiles()
-        {
-            string folder = this.KiCadImportFolder;
-
-            if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
-            {
-                return new List<string>();
-            }
-
-            // Sub-folders included - see KiCadRawFileScanner. A multi-sheet project keeps most of
-            // its sheets under Pages/, and counting only the top level reported "3 KiCad files
-            // imported" for a 25-file project.
-            return KiCadRawFileScanner.Scan(folder);
-        }
-
         // ###########################################################################################
         // The draft's own "KiCad data" folder - at the draft folder's ROOT, exactly where a
-        // published board keeps it (Phase 6, 2026-09-23).
-        //
-        // It used to sit under a Files/ subfolder, which was the draft-only layout. Now that a
-        // draft folder IS a board folder the extra level is gone, so publishing a drafted board
-        // needs no path rewriting at all and Main.GetCurrentBoardKiCadRawPaths finds it with the
-        // identical rule it applies to an official board.
+        // published board kept it (Phase 6, 2026-09-23). Where an import is copied to; the draft's
+        // next write takes what lies there into its store (DraftFiles).
         // ###########################################################################################
         private string KiCadImportFolder =>
             string.IsNullOrWhiteSpace(this.thisDraftFolder)
                 ? string.Empty
                 : Path.Combine(this.thisDraftFolder, AppConfig.KiCadDataFolderName);
 
-        // The board's published "KiCad data" folder (DraftBoardSource.PublishedKiCadFolderOf) - read
-        // with the draft's, as the Schematics tab reads both (KiCadRawFileScanner.ScanBoard).
-        private string PublishedKiCadFolder =>
-            DraftBoardSource.PublishedKiCadFolderOf(this.DataRoot, this.thisExcelDataFile);
+        private string DraftBoardFile =>
+            string.IsNullOrWhiteSpace(this.thisDraftFolder)
+                ? string.Empty
+                : Path.Combine(this.thisDraftFolder, DataTreeLayout.BoardFileName);
+
+        // The board's KiCad project as the draft has it - the published files and the draft's own -
+        // copied under their names for the loaders (BoardKiCadFolder): what the Schematics tab
+        // draws the traces from. "" when the board has no KiCad files. Copies files: NEVER call it
+        // on the UI thread (the CAD names read it on the pool; the KiCad section through ReadKiCadAsync).
+        private string BoardKiCadCopy() =>
+            BoardKiCadFolder.ForBoard(this.DataRoot, this.thisDraftFolder, this.thisExcelDataFile, AppConfig.KiCadCacheFolder);
 
         // The published data tree - DataManager's, or a test's (set before Initialize: a test may not
         // point DataManager anywhere from the HeadlessUi collection).
@@ -611,8 +670,10 @@ namespace CRT
                     this.Schematics.Select(row => row.SchematicName),
                     StringComparer.OrdinalIgnoreCase);
 
-                (int importedCount, bool saved) = await this.WriteDraftAsync(CrtWaitWording.AddingSchematics, () =>
-                    BoardFilesWindow.CopySchematicsIntoDraft(accepted, draftFolder, excelDataFile, takenNames));
+                List<(string SchematicName, string StoredFileName)> imported = await this.WriteDraftAsync(CrtWaitWording.AddingSchematics, () =>
+                    BoardFilesWindow.CopySchematicsIntoDraftFolder(accepted, draftFolder, takenNames));
+
+                int importedCount = imported.Count;
 
                 if (importedCount == 0)
                 {
@@ -620,12 +681,18 @@ namespace CRT
                     return;
                 }
 
-                if (!saved)
+                // ONE change of the draft for the whole batch - one undo step, one save.
+                DraftWorkbookEditOutcome outcome = await this.ApplyToDraftAsync(
+                    CrtWaitWording.AddingSchematics,
+                    DraftStepWording.SchematicsAdded(importedCount),
+                    board => BoardFilesWindow.WithSchematics(board, excelDataFile, imported));
+
+                if (outcome != DraftWorkbookEditOutcome.Saved)
                 {
-                    // The copies were taken back out (CopySchematicsIntoDraft) - nothing changed.
-                    this.ShowStatus(
-                        "The images could not be added to your draft. If this board's Excel file is open in Excel, close it there and try again.",
-                        isError: true);
+                    // The change was taken back out (DraftEdits), and so are the copies - nothing changed.
+                    await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingSchematics, () => Task.Run(() => BoardFilesWindow.TakeBackCopies(draftFolder, imported)));
+
+                    this.ShowStatus("The images could not be added to your draft. " + DraftSaveWording.EditNotSaved(outcome), isError: true);
                     return;
                 }
 
@@ -637,25 +704,22 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The copying and the one draft edit, on the pool thread: how many images were copied, and
-        // whether the draft took them.
+        // The copying, on the pool thread: each image copied into the draft folder, with the name its
+        // row gets - the batch then goes into the draft as ONE change (ImportSchematicsAsync).
         //
         // *** A DRAFT THAT DID NOT TAKE THEM GETS NO COPIES EITHER (code review, 2026-10-10). *** The
         // edit's answer was ignored, so a workbook Excel held open still read "Added 2 schematic
         // images." with nothing new in the list - and the copies stayed in the draft folder, rows
-        // nothing would ever name. They are deleted again: each was copied to a file name nothing had
-        // (ResolveFreeImageFileName), so nothing else is lost with them.
+        // nothing would ever name. They are deleted again (TakeBackCopies): each was copied to a file
+        // name nothing had (ResolveFreeImageFileName), so nothing else is lost with them.
         // ###########################################################################################
-        private static (int Imported, bool Saved) CopySchematicsIntoDraft(
+        private static List<(string SchematicName, string StoredFileName)> CopySchematicsIntoDraftFolder(
             IReadOnlyList<string> accepted,
             string draftFolder,
-            string excelDataFile,
             HashSet<string> takenNames)
         {
-            int importedCount = 0;
-
             // Collected as the batch goes and written in ONE draft edit at the end - a save per
-            // image would re-read and re-write the whole workbook per file.
+            // image would re-write the whole board file per file.
             var importedSchematics = new List<(string SchematicName, string StoredFileName)>();
 
             foreach (string sourcePath in accepted)
@@ -681,8 +745,6 @@ namespace CRT
 
                     takenNames.Add(schematicName);
                     importedSchematics.Add((schematicName, storedFileName));
-
-                    importedCount++;
                 }
                 catch (Exception ex)
                 {
@@ -690,32 +752,23 @@ namespace CRT
                 }
             }
 
-            if (importedCount == 0)
-            {
-                return (0, false);
-            }
+            return importedSchematics;
+        }
 
-            bool saved = DraftWorkbookStore.Edit(
-                DraftManager.DraftsRoot,
-                excelDataFile,
-                board => BoardFilesWindow.WithSchematics(board, excelDataFile, importedSchematics));
-
-            if (!saved)
+        // The copies of a batch the draft did not take, deleted again - see CopySchematicsIntoDraftFolder.
+        private static void TakeBackCopies(string draftFolder, IReadOnlyList<(string SchematicName, string StoredFileName)> imported)
+        {
+            foreach ((_, string storedFileName) in imported)
             {
-                foreach ((_, string storedFileName) in importedSchematics)
+                try
                 {
-                    try
-                    {
-                        File.Delete(Path.Combine(draftFolder, storedFileName));
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        Logger.Warning($"Could not take back the copied image [{storedFileName}] - [{ex.Message}]");
-                    }
+                    File.Delete(Path.Combine(draftFolder, storedFileName));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning($"Could not take back the copied image [{storedFileName}] - [{ex.Message}]");
                 }
             }
-
-            return (importedCount, saved);
         }
 
         // ###########################################################################################
@@ -741,7 +794,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The board with imported schematics added - the transform DraftWorkbookStore.Edit applies.
+        // The board with imported schematics added - the change ImportSchematicsAsync applies.
         //
         // *** THE STORED PATH IS DATA-ROOT-RELATIVE, exactly as a published row's is. *** The file
         // sits at the draft folder's root, and that folder IS the board's
@@ -883,15 +936,17 @@ namespace CRT
                     // Removing the ROW, not the file - the image bytes stay in the draft folder, which
                     // is what the status message below promises. Dropping a row from a board is simply
                     // absence now; there is no tombstone to write.
-                    bool saved = await this.WriteDraftAsync(CrtWaitWording.RemovingSchematic, () => DraftWorkbookStore.Edit(
-                        draftsRoot,
-                        excelDataFile,
+                    DraftWorkbookEditOutcome outcome = await this.ApplyToDraftAsync(
+                        CrtWaitWording.RemovingSchematic,
+                        DraftStepWording.SchematicRemoved(name),
                         board =>
                         {
                             (BoardData without, bool wasFound) = SchematicRows.Without(board, target);
                             found = wasFound;
-                            return without;
-                        }));
+                            return wasFound ? without : null;
+                        });
+
+                    bool saved = outcome == DraftWorkbookEditOutcome.Saved;
 
                     if (saved && found)
                     {
@@ -902,9 +957,7 @@ namespace CRT
 
                     if (!saved)
                     {
-                        this.ShowStatus(
-                            $"[{name}] could not be removed. If this board's Excel file is open in Excel, close it there and try again.",
-                            isError: true);
+                        this.ShowStatus($"[{name}] could not be removed. " + DraftSaveWording.EditNotSaved(outcome), isError: true);
                     }
                     else if (!found)
                     {
@@ -1021,7 +1074,42 @@ namespace CRT
                 // A report still parsing these files would hold this one open - see thisPendingReport.
                 await this.WaitForPendingReportAsync();
 
-                if (!KiCadImportedFiles.TryRemove(this.KiCadImportFolder, row.FullPath))
+                // Taken off the draft's list by its name - the bytes go with it, from the draft's
+                // store or from where the import left them (DraftWorkbookStore.RemoveFiles). A write of
+                // the file list, which is no part of the draft's content, so it runs under the draft
+                // held in memory - saved first, read back after (DraftEdits.WriteFileDirectly).
+                string name = $"{AppConfig.KiCadDataFolderName}/{row.RelativePath}";
+                string draftsRoot = DraftManager.DraftsRoot;
+                string excelDataFile = this.thisExcelDataFile;
+
+                // A file the published board has goes back to the published one (DraftWorkbookStore.RemoveFiles).
+                string publishedBoardFile = DraftBoardSource.PublishedPathOf(this.DataRoot, excelDataFile);
+                bool backToPublished = false;
+                bool removed;
+
+                try
+                {
+                    removed = await BusyOverlay.RunLocalAsync(
+                        this,
+                        CrtWaitWording.SavingDraft,
+                        () => DraftEdits.WriteFileDirectlyAsync(
+                            excelDataFile,
+                            () =>
+                            {
+                                backToPublished = DraftFiles.ListedIn(publishedBoardFile)?.ContainsKey(name) == true;
+                                return DraftWorkbookStore.RemoveFiles(draftsRoot, excelDataFile, [name], publishedBoardFile);
+                            },
+                            succeeded => succeeded,
+                            DraftStepWording.KiCadFileRemoved,
+                            clearHistory: false));
+                }
+                catch (DraftNotSavedException ex)
+                {
+                    this.ShowStatus($"Could not remove [{row.RelativePath}]. " + DraftSaveWording.EditNotSaved(ex.Failure), isError: true);
+                    return;
+                }
+
+                if (!removed)
                 {
                     this.ShowStatus($"Could not remove [{row.RelativePath}] - see the log for details.", isError: true);
                     return;
@@ -1029,9 +1117,9 @@ namespace CRT
 
                 this.ChangedTheDraft = true;
 
-                this.RefreshKiCadState();
-                this.ShowStatus($"Removed [{row.RelativePath}] from your draft. Your own KiCad project is not touched - import it again to get the file back.");
+                this.ShowStatus(KiCadImportedFiles.RemovedLine(row.RelativePath, backToPublished));
 
+                // The list and the report, read again together (ReadKiCadAsync).
                 await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
             });
 
@@ -1103,6 +1191,7 @@ namespace CRT
             }
 
             string destinationFolder = this.KiCadImportFolder;
+            string excelDataFile = this.thisExcelDataFile;
 
             // Re-importing OVERWRITES files a report may still be reading - the same sharing
             // violation a Remove would hit, so the same wait (see thisPendingReport).
@@ -1124,13 +1213,21 @@ namespace CRT
                 }
 
                 // ###########################################################################################
+                // *** AND LISTED IN THE DRAFT AT ONCE (code review, 2026-10-25). *** A write with nothing
+                // else changed takes what was copied into the draft's list (DraftFiles), so everything
+                // that reads the list - Submit, the Drafts row - agrees with the Schematics tab. Through
+                // the draft held in memory when one is open (DraftEdits.TakeInNewFilesAsync). A write that
+                // fails costs nothing: the files stay where they were copied, found and taken in by the
+                // next write, and Submit carries them meanwhile (SubmissionKiCadFiles.Collect).
+                // ###########################################################################################
+                await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ImportingKiCad, () => DraftEdits.TakeInNewFilesAsync(excelDataFile));
+
+                // ###########################################################################################
                 // *** EVEN A COPY THAT STOPPED PART-WAY CHANGED THE DRAFT (code review, 2026-10-10). ***
                 // The files before the one that failed have been overwritten, so the board on screen
                 // is read again when the window closes - it used to go on drawing the old project.
                 // ###########################################################################################
                 this.ChangedTheDraft = true;
-
-                this.RefreshKiCadState();
 
                 if (complete)
                 {
@@ -1158,18 +1255,27 @@ namespace CRT
         // together - would claim matches that light up nothing, which is worse than saying nothing.
         //
         // *** THE FILES ARE THE ONES THE SCHEMATICS TAB READS (code review, 2026-10-10): the
-        // published board's "KiCad data" AND the draft's (KiCadRawFileScanner.ScanBoard). *** Read
-        // from the draft's alone, a net or a footprint only the published files have was reported
-        // as missing - "will NOT light up" for an important signal the Schematics tab draws - and
-        // the CAD names on offer differed from the "Schematic images" window's.
+        // board's KiCad project as the draft has it, the published files with the draft's own
+        // (BoardKiCadCopy). *** Read from the draft's imports alone, a net or a footprint only the
+        // published files have was reported as missing - "will NOT light up" for an important
+        // signal the Schematics tab draws - and the CAD names on offer differed from the
+        // "Schematic images" window's.
         // ###########################################################################################
         private async Task BuildAndShowReportAsync()
         {
-            List<string> publishedFiles = KiCadRawFileScanner.Scan(this.PublishedKiCadFolder);
-            List<string> draftFiles = this.EnumerateImportedKiCadFiles();
-            List<string> files = KiCadRawFileScanner.ScanBoard(this.PublishedKiCadFolder, this.KiCadImportFolder);
+            // The list of files and the report from one read off the UI thread (ReadKiCadAsync).
+            KiCadSnapshot snapshot = await this.ReadKiCadAsync();
 
-            string source = KiCadImportedFiles.ReportSourceLine(publishedFiles.Count, draftFiles.Count);
+            if (this.thisClosed)
+            {
+                return;
+            }
+
+            this.ShowKiCadState(snapshot);
+
+            IReadOnlyList<string> files = snapshot.Files;
+
+            string source = KiCadImportedFiles.ReportSourceLine(snapshot.PublishedCount, snapshot.Imported.Count);
             this.ReportSourceText.Text = source;
             this.ReportSourceText.IsVisible = source.Length > 0;
 

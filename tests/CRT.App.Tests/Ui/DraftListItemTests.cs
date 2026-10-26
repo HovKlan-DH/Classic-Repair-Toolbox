@@ -32,11 +32,9 @@ public sealed class DraftListItemTests
             BoardProblemCounts.None,
             drift,
             _ => Task.CompletedTask,
-            (_, _) => Task.CompletedTask,
             _ => Task.CompletedTask,
             _ => Task.CompletedTask,
             isTableOpen: false,
-            _ => Task.CompletedTask,
             lastSubmission,
             alreadySent,
             other);

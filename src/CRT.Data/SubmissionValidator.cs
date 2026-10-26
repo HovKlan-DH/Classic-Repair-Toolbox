@@ -191,6 +191,17 @@ namespace Handlers.DataHandling
                     $"A board cannot be named [{manifest.BoardId}]: that is where the shared files live."));
             }
 
+            // *** NOR WHERE THE CRT 4.0 TREE KEEPS ITS OWN FOLDERS (2026-10-25). *** "Files" holds every
+            // stored file and "MiniPro" the IC tests (DataTreeLayout.ReservedTopFolders) - a
+            // manufacturer of either name would put a board among them.
+            else if (DataTreeLayout.ReservedTopFolders.Contains(manifest.Manufacturer?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+            {
+                findings.Add(SubmissionValidator.Error(
+                    "identity.reserved_folder",
+                    manifest.BoardId,
+                    $"A board cannot be named [{manifest.BoardId}]: [{manifest.Manufacturer}] is a folder of the data itself."));
+            }
+
             if ((manifest.BaseRevision?.Length ?? 0) > SubmissionFormat.MaximumRevisionLength ||
                 (manifest.Rows?.RevisionDate?.Length ?? 0) > SubmissionFormat.MaximumRevisionLength)
             {

@@ -305,22 +305,6 @@ public partial class TabSchematics
                 return;
             }
 
-            // *** NOT WHILE THE DRAFTS TAB'S TABLE HOLDS UNSAVED EDITS FOR THIS BOARD (2026-09-24). ***
-            // The same rule and the same notice as the Contribute tab's "Save to draft": both would
-            // write the draft under the table, whose own save would then be refused and its edits lost.
-            // Nothing is saved and the editor stays in its mode, ready to save once the table is dealt with.
-            if (this.MainWindow?.TabDrafts.SavingBlockedFor(cacheKey) is UnsavedTableEditsPrompt blocked)
-            {
-                Logger.Info("Label editor save held back - the Drafts tab's table has unsaved edits for this board");
-
-                if (TopLevel.GetTopLevel(this) is Window owner)
-                {
-                    await UnsavedTableEditsWindow.ShowSavingBlockedAsync(owner, blocked);
-                }
-
-                return;
-            }
-
             var saveRows = this.BuildLabelEditorSaveRowsForCurrentSchematic();
 
             Logger.Debug($"Label editor built save rows count: [{saveRows.Count}]");
@@ -333,9 +317,11 @@ public partial class TabSchematics
             // drafted" and pick Modified vs Added. None of that applies now: a draft IS a board, so
             // the save simply writes the rows the editor holds.
             //
-            // DraftWorkbookStore.Edit supplies the board as it is ON DISK at this moment, which is
-            // what makes this safe against the contributor having edited the workbook in Excel while
-            // the application was open.
+            // *** THROUGH THE DRAFT HELD IN MEMORY (CRT 4.0 step 1, 2026-10-25 - DraftEdits). *** The
+            // save lands on the draft every editor shows - the Drafts tab's table hands over what it
+            // holds first, a file changed outside CRT is read first - and a save that cannot be made
+            // is taken back out. It used to read and write the file itself, held back while the
+            // table had unsaved edits.
             //
             // *** A BOARD WITH NO DRAFT IS SEEDED FIRST, and that is a real behaviour change. ***
             // Before, the first label editor save CREATED the draft implicitly. It cannot now: a draft
@@ -364,24 +350,22 @@ public partial class TabSchematics
                     }
                 }
 
-                bool saved = await Task.Run(() =>
-                {
-                    try
-                    {
-                        return DraftWorkbookStore.Edit(
-                            DraftManager.DraftsRoot,
-                            cacheKey,
-                            board => LabelEditorBoardWriter.ApplyLabelEditorSave(
-                                board, schematicName, saveRows, region));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Warning($"Label editor draft save failed - [{ex}]");
-                        return false;
-                    }
-                });
+                DraftWorkbookEditOutcome outcome;
 
-                return saved ? null : "Could not save your draft. See the log for details.";
+                try
+                {
+                    outcome = await DraftEdits.ApplyAndSaveAsync(
+                        cacheKey,
+                        DraftStepWording.ComponentsMarked(schematicName),
+                        board => LabelEditorBoardWriter.ApplyLabelEditorSave(board, schematicName, saveRows, region));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Label editor draft save failed - [{ex}]");
+                    outcome = DraftWorkbookEditOutcome.WriteFailed;
+                }
+
+                return outcome == DraftWorkbookEditOutcome.Saved ? null : DraftSaveWording.EditNotSaved(outcome);
             });
 
             if (failure is not null)
@@ -742,8 +726,8 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Shows a modal error dialog when label-editor changes cannot be written to the Excel file
-    // so save failures are visible immediately instead of only appearing in the logfile.
+    // Shows a modal error dialog when label-editor changes cannot be written to the draft's board
+    // file, so save failures are visible immediately instead of only appearing in the logfile.
     // ###########################################################################################
     private Task ShowLabelEditorSaveFailedDialogAsync(string errorMessage) =>
         ShowDialogAsync(this.BuildLabelEditorSaveFailedDialog(errorMessage));
@@ -754,7 +738,7 @@ public partial class TabSchematics
             headline: "Unable to save label editor changes",
             errorMessage: errorMessage,
             fallbackMessage: "The label editor changes could not be saved.",
-            hint: "If the Excel workbook is open in another program, close it and try again. Check the logfile for technical details.");
+            hint: "If the draft's board file is open in another program, close it and try again. Check the logfile for technical details.");
 
     // The same dialog for a KiCad calibration that could not be saved (code review, 2026-10-13).
     internal Window BuildKiCadCalibrationSaveFailedDialog(string errorMessage) =>

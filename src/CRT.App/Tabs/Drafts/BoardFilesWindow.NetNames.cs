@@ -36,7 +36,7 @@ namespace CRT
 
             this.NetNamesIntroText.Text =
                 "For the \"KiCad net name\" column of the board's \"Important signals\" sheet. Click a name to copy it, " +
-                "then paste it into the sheet - in Excel, or in the Drafts tab's table." +
+                "then paste it into that column of the table view, on the Contribute tab." +
                 (usedCount == 0
                     ? string.Empty
                     : usedCount == 1

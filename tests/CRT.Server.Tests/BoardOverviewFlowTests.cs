@@ -407,12 +407,12 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // The listings are read from each source's newest main Excel data file - the real files, by
+        // The listings are read from each source's main file - the real files, by
         // board id in any case; a source with no such file is null. Read once per version of the
         // file: a rewrite is read afresh.
         // ###########################################################################################
         [Fact]
-        public void The_listings_are_read_from_each_sources_main_Excel_data_file()
+        public void The_listings_are_read_from_each_sources_main_file()
         {
             string root = Path.Combine(Path.GetTempPath(), "crt-listings", Guid.NewGuid().ToString("N"));
             string beta = Path.Combine(root, "beta");
@@ -423,8 +423,8 @@ namespace CRT.Server.Tests
 
             try
             {
-                DataTreeBuilder.Master(beta, "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx");
-                DataTreeBuilder.Master(stable, "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx");
+                DataTreeBuilder.Master(beta, "Commodore/C64/250407/board.json");
+                DataTreeBuilder.Master(stable, "Commodore/C64/250407/board.json", "Commodore/C128/310378/board.json");
 
                 BoardListings listings = BoardOverviewFlow.ReadListings(beta, stable);
 
@@ -433,8 +433,8 @@ namespace CRT.Server.Tests
                 Assert.Null(BoardOverviewFlow.ReadListings(beta, Path.Combine(root, "none")).Stable);
 
                 // Rewritten with another board: read again.
-                File.SetLastWriteTimeUtc(Path.Combine(beta, "Classic-Repair-Toolbox.v2.0.0.xlsx"), DateTime.UtcNow.AddDays(-1));
-                DataTreeBuilder.Master(beta, "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx");
+                File.SetLastWriteTimeUtc(Path.Combine(beta, DataTreeLayout.MainFileName), DateTime.UtcNow.AddDays(-1));
+                DataTreeBuilder.Master(beta, "Commodore/C64/250407/board.json", "Commodore/C128/310378/board.json");
 
                 Assert.Equal(2, BoardOverviewFlow.ReadListings(beta, null).Beta!.Count);
             }

@@ -33,14 +33,9 @@ public class TabConstructionTests
         UiTest.Run(() => Assert.NotNull(new TabConfiguration()));
     }
 
+    // The Contribute tab - TabDrafts since CRT 4.0 step 2 (one tab for Contribute and Drafts).
     [Fact]
     public void The_contribute_tab_can_be_constructed()
-    {
-        UiTest.Run(() => Assert.NotNull(new TabContribute()));
-    }
-
-    [Fact]
-    public void The_drafts_tab_can_be_constructed()
     {
         UiTest.Run(() => Assert.NotNull(new TabDrafts()));
     }

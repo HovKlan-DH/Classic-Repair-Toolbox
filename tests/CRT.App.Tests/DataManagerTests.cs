@@ -1,11 +1,11 @@
 using System.Reflection;
+using CRT;
 using Handlers.DataHandling;
-using OfficeOpenXml;
 
 namespace ClassicRepairToolbox.Tests;
 
 // Characterisation tests for DataManager's local half - resolving the data root and reading the
-// master workbook that lists every hardware/board and every oscilloscope command set.
+// main file that lists every hardware/board and every oscilloscope command set.
 //
 // DataManager is a static singleton whose InitializeAsync also syncs over the network and seeds
 // the data folder. These tests never call it: LoadFrom(dataRoot, workbookName) is the local
@@ -16,11 +16,6 @@ namespace ClassicRepairToolbox.Tests;
 public sealed class DataManagerTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
-
-    static DataManagerTests()
-    {
-        ExcelPackage.License.SetNonCommercialPersonal("Classic Repair Toolbox tests");
-    }
 
     public void Dispose()
     {
@@ -72,219 +67,163 @@ public sealed class DataManagerTests : IDisposable
             DataManager.ResolveDataRoot(new[] { "--verbose", "--data-root=X", "somefile.txt" }));
     }
 
+    // CRT 4.0 keeps its tree in a folder of its own beside 3.x's "Data" (2026-10-24): a new folder
+    // is seeded from the install package, and 3.x's is left as it was.
     [Fact]
-    public void ResolveDataRoot_falls_back_to_a_Data_folder_under_local_appdata()
+    public void ResolveDataRoot_falls_back_to_the_4_0_data_folder_under_local_appdata()
     {
         string resolved = DataManager.ResolveDataRoot(Array.Empty<string>());
 
-        Assert.EndsWith(Path.Combine("Classic-Repair-Toolbox", "Data"), resolved);
+        Assert.EndsWith(Path.Combine("Classic-Repair-Toolbox", AppConfig.DataFolderName), resolved);
+        Assert.NotEqual(AppConfig.LegacyDataFolderName, AppConfig.DataFolderName);
         Assert.True(Path.IsPathRooted(resolved));
     }
 
-    // ------------------------------------------------------------ master workbook
+    // ------------------------------------------------------------ main file
+    //
+    // *** IN CRT 4.0 THE MAIN FILE IS JSON (2026-10-24). *** "Classic-Repair-Toolbox.v4.0.0.json"
+    // lists every board by its id, in the drop-downs' order, and every oscilloscope with its brand
+    // on each entry - the Excel sheet's merged-cell carrying forward and header searching are the
+    // converter's business now (DataTreeConversion), not the app's.
 
-    private const string HardwareSheet = "Hardware & Board";
-    private const string OscilloscopeSheet = "Oscilloscope";
+    private void LoadMain(IEnumerable<MainFiles.Board> boards, params MainDocument.OscilloscopeRow[] oscilloscopes) =>
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainFiles.Write(this.thisWorkspace.Root, boards, oscilloscopes));
 
-    private static readonly string[] HardwareHeaders =
-    {
-        "Hardware name in drop-down", "Board name in drop-down",
-        "Excel data file", "Hardware notes in \"Overview\" tab"
-    };
+    private void LoadMain(params MainFiles.Board[] boards) => this.LoadMain(boards, []);
 
-    private static readonly string[] OscilloscopeHeaders =
-    {
-        "Brand", "Series or model", "Port", "Identify", "DrainErrorQueue", "Operation-Complete",
-        "Clear-Statistics", "QueryActiveTrigger", "Stop", "Single", "Run", "QueryTriggerMode",
-        "QueryTriggerLevel", "SetTriggerLevel", "QueryTimeDiv", "SetTimeDiv", "QueryVoltsDiv",
-        "SetVoltsDiv", "DumpImage", "TIME/DIV", "VOLTS/DIV", "Debounce-Time"
-    };
-
-    /// <summary>Writes a master workbook into the temp data root and loads it.</summary>
-    private void LoadWorkbook(BoardWorkbookBuilder builder, string fileName = "Classic-Repair-Toolbox.xlsx")
-    {
-        builder.SaveTo(Path.Combine(this.thisWorkspace.Root, fileName));
-        DataManager.LoadFrom(this.thisWorkspace.Root, fileName);
-    }
-
-    private static BoardWorkbookBuilder HardwareWorkbook(params string?[][] rows) =>
-        new BoardWorkbookBuilder().Sheet(HardwareSheet, HardwareHeaders, rows);
-
-    // ###########################################################################################
-    // *** THE SERVER WRITES THE ROW, CRT READS IT - ONE FORMAT, BOTH SIDES (2026-09-27). *** A new
-    // board published to BETA gets its row in the main Excel data file from MasterListing (CRT.Data,
-    // run by the server). This drives that writer and then CRT's own reader, so a column renamed or
-    // a row placed where CRT does not look fails here rather than as a board missing from everyone's
-    // drop-downs.
-    // ###########################################################################################
     [Fact]
-    public void A_row_the_server_inserts_is_listed_by_CRT_in_its_place_with_its_names()
+    public void The_boards_are_listed_in_the_main_files_order_each_by_its_board_file()
     {
-        const string fileName = "Classic-Repair-Toolbox.v2.0.0.xlsx";
-
-        HardwareWorkbook(
-                new[] { "Commodore 64", "250407 (long board)", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", "" },
-                new[] { "Commodore 128", "310378 (C128 & C128D)", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx", "" },
-                new[] { "ZX Spectrum 16K/48K", "Issue 4B", "ZX Spectrum/Spectrum 16K-48K/Issue 4B/Data ZX Issue 4B v2.0.0.xlsx", "" })
-            .SaveTo(Path.Combine(this.thisWorkspace.Root, fileName));
-
-        MasterListingEdit edit = MasterListing.Insert(
-            Path.Combine(this.thisWorkspace.Root, fileName),
-            new MasterListingRow(
-                "Commodore 128",
-                "310378 Open128",
-                "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx",
-                "Open-source replica."),
-            "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx");
-
-        Assert.True(edit.IsDone, edit.Failure);
-
-        DataManager.LoadFrom(this.thisWorkspace.Root, fileName);
+        this.LoadMain(
+            new MainFiles.Board("Commodore/C64/250407", "Commodore 64", "250407 (long board)", "The breadbin"),
+            new MainFiles.Board("Commodore/C128/310378", "Commodore 128", "310378 (C128 & C128D)"),
+            new MainFiles.Board("ZX Spectrum/Spectrum 16K-48K/Issue 4B", "ZX Spectrum 16K/48K", "Issue 4B"));
 
         Assert.Equal(
-            ["250407 (long board)", "310378 (C128 & C128D)", "310378 Open128", "Issue 4B"],
+            ["250407 (long board)", "310378 (C128 & C128D)", "Issue 4B"],
             DataManager.HardwareBoards.Select(entry => entry.BoardName));
 
-        HardwareBoardEntry added = DataManager.HardwareBoards[2];
-        Assert.Equal("Commodore 128", added.HardwareName);
-        Assert.Equal("Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx", added.ExcelDataFile);
-        Assert.Equal("Open-source replica.", added.HardwareNotes);
-        Assert.True(added.IsPublished);
+        HardwareBoardEntry c64 = DataManager.HardwareBoards[0];
+        Assert.Equal("Commodore 64", c64.HardwareName);
+        Assert.Equal("Commodore/C64/250407/board.json", c64.ExcelDataFile);
+        Assert.Equal("The breadbin", c64.HardwareNotes);
+        Assert.True(c64.IsPublished);
     }
 
     [Fact]
-    public void A_missing_workbook_leaves_the_lists_empty_instead_of_throwing()
+    public void A_missing_main_file_leaves_the_lists_empty_instead_of_throwing()
     {
-        DataManager.LoadFrom(this.thisWorkspace.Root, "not-there.xlsx");
+        DataManager.LoadFrom(this.thisWorkspace.Root, "not-there.json");
 
         Assert.Empty(DataManager.HardwareBoards);
         Assert.Empty(DataManager.Oscilloscopes);
     }
 
-    [Fact]
-    public void Hardware_and_board_rows_are_read()
+    // A main file that is not JSON, or one a later CRT wrote in a format this one cannot read,
+    // lists nothing - never a half-read list.
+    [Theory]
+    [InlineData("not json at all")]
+    [InlineData("{ \"formatVersion\": 999, \"boards\": [ { \"boardId\": \"Commodore/C64/250407\" } ] }")]
+    public void A_main_file_that_cannot_be_read_leaves_the_lists_empty(string content)
     {
-        this.LoadWorkbook(HardwareWorkbook(
-            new[] { "C64", "250407", "Commodore/C64/250407/Data C64 250407.xlsx", "The breadbin" },
-            new[] { "Plus/4", "310163", "Commodore/Plus4/310163/Data Plus4 310163.xlsx", "The Plus/4" }));
+        File.WriteAllText(Path.Combine(this.thisWorkspace.Root, MainFiles.FileName), content);
 
-        Assert.Equal(2, DataManager.HardwareBoards.Count);
-
-        HardwareBoardEntry c64 = DataManager.HardwareBoards[0];
-        Assert.Equal("C64", c64.HardwareName);
-        Assert.Equal("250407", c64.BoardName);
-        Assert.Equal("Commodore/C64/250407/Data C64 250407.xlsx", c64.ExcelDataFile);
-        Assert.Equal("The breadbin", c64.HardwareNotes);
-    }
-
-    [Fact]
-    public void A_blank_hardware_name_is_carried_forward_from_the_row_above()
-    {
-        // The sheet uses a merged-cell style: one hardware name, several board rows under it.
-        this.LoadWorkbook(HardwareWorkbook(
-            new[] { "C64", "250407", "a.xlsx", "notes" },
-            new[] { null, "250425", "b.xlsx", "notes" },
-            new[] { null, "326298", "c.xlsx", "notes" }));
-
-        Assert.Equal(3, DataManager.HardwareBoards.Count);
-        Assert.All(DataManager.HardwareBoards, e => Assert.Equal("C64", e.HardwareName));
-        Assert.Equal(new[] { "250407", "250425", "326298" },
-            DataManager.HardwareBoards.Select(e => e.BoardName));
-    }
-
-    [Fact]
-    public void A_new_hardware_name_starts_a_new_carry_forward_group()
-    {
-        this.LoadWorkbook(HardwareWorkbook(
-            new[] { "C64", "250407", "a.xlsx", "" },
-            new[] { null, "250425", "b.xlsx", "" },
-            new[] { "Plus/4", "310163", "c.xlsx", "" },
-            new[] { null, "310164", "d.xlsx", "" }));
-
-        Assert.Equal(
-            new[] { "C64", "C64", "Plus/4", "Plus/4" },
-            DataManager.HardwareBoards.Select(e => e.HardwareName));
-    }
-
-    [Fact]
-    public void Column_order_in_the_master_workbook_does_not_matter()
-    {
-        string[] reversed = HardwareHeaders.Reverse().ToArray();
-
-        this.LoadWorkbook(new BoardWorkbookBuilder().Sheet(
-            HardwareSheet, reversed,
-            new[] { "The breadbin", "a.xlsx", "250407", "C64" }));
-
-        HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards);
-        Assert.Equal("C64", entry.HardwareName);
-        Assert.Equal("250407", entry.BoardName);
-    }
-
-    [Fact]
-    public void Comment_rows_above_the_header_are_skipped()
-    {
-        this.LoadWorkbook(new BoardWorkbookBuilder().SheetWithLeadingRows(
-            HardwareSheet,
-            new[] { "# Master data file", "# Revision date: 2026-01-01" },
-            HardwareHeaders,
-            new[] { "C64", "250407", "a.xlsx", "" }));
-
-        Assert.Single(DataManager.HardwareBoards);
-    }
-
-    [Fact]
-    public void A_workbook_with_the_wrong_headers_yields_no_hardware()
-    {
-        this.LoadWorkbook(new BoardWorkbookBuilder().Sheet(
-            HardwareSheet, new[] { "Nope", "Not", "These", "Either" },
-            new[] { "C64", "250407", "a.xlsx", "" }));
+        DataManager.LoadFrom(this.thisWorkspace.Root, MainFiles.FileName);
 
         Assert.Empty(DataManager.HardwareBoards);
     }
 
     [Fact]
-    public void Loading_a_second_workbook_replaces_the_previous_entries()
+    public void A_listed_board_with_no_id_is_skipped()
     {
-        this.LoadWorkbook(HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" }), "first.xlsx");
+        this.LoadMain(
+            new MainFiles.Board("", "C64", "nameless"),
+            new MainFiles.Board("Commodore/C64/250407", "C64", "250407"));
+
+        Assert.Equal(["250407"], DataManager.HardwareBoards.Select(entry => entry.BoardName));
+    }
+
+    // ###########################################################################################
+    // *** ONE WAY TO READ THE LIST (code review, 2026-10-26). *** A row with no hardware name of its
+    // own is under the hardware of the row above - the rule the server reads the main file by for
+    // its name checks, the Boards screen and placement (MasterListing.TryRead). CRT read the name as
+    // it stood and listed such a board under a blank hardware, so what users saw and what the
+    // server judged were two lists. Both now read the file the same, names trimmed.
+    // ###########################################################################################
+    [Fact]
+    public void The_boards_are_listed_as_the_server_reads_the_main_file_a_blank_hardware_name_under_the_one_above()
+    {
+        this.LoadMain(
+            new MainFiles.Board("Commodore/C64/250407", "Commodore 64", "250407"),
+            new MainFiles.Board("Commodore/C64/250425", "", "250425"),
+            new MainFiles.Board("Commodore/C128/310378", " Commodore 128 ", " 310378 "));
+
+        Assert.Equal(["Commodore 64", "Commodore 64", "Commodore 128"], DataManager.HardwareBoards.Select(entry => entry.HardwareName));
+        Assert.Equal("310378", DataManager.HardwareBoards[2].BoardName);
+
+        Assert.True(MasterListing.TryRead(Path.Combine(this.thisWorkspace.Root, MainFiles.FileName), out IReadOnlyList<MasterListingRow> rows, out _));
+        Assert.Equal(
+            rows.Select(row => (row.HardwareName, row.BoardName, row.ExcelDataFile)),
+            DataManager.HardwareBoards.Select(entry => (entry.HardwareName, entry.BoardName, entry.ExcelDataFile)));
+    }
+
+    [Fact]
+    public void Loading_a_second_main_file_replaces_the_previous_entries()
+    {
+        this.LoadMain(new MainFiles.Board("Commodore/C64/250407", "C64", "250407"));
         Assert.Single(DataManager.HardwareBoards);
 
-        this.LoadWorkbook(
-            HardwareWorkbook(
-                new[] { "Plus/4", "310163", "b.xlsx", "" },
-                new[] { "VIC-20", "250403", "c.xlsx", "" }),
-            "second.xlsx");
+        this.LoadMain(
+            new MainFiles.Board("Commodore/Plus4/310163", "Plus/4", "310163"),
+            new MainFiles.Board("Commodore/VIC-20/250403", "VIC-20", "250403"));
 
         Assert.Equal(2, DataManager.HardwareBoards.Count);
         Assert.DoesNotContain(DataManager.HardwareBoards, e => e.HardwareName == "C64");
     }
 
     [Fact]
-    public void The_resolved_workbook_name_is_reported()
+    public void The_resolved_main_file_name_is_reported()
     {
-        this.LoadWorkbook(HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" }), "chosen.xlsx");
+        this.LoadMain(new MainFiles.Board("Commodore/C64/250407", "C64", "250407"));
 
-        Assert.Equal("chosen.xlsx", DataManager.ResolvedMainExcelFileName);
+        Assert.Equal(MainFiles.FileName, DataManager.ResolvedMainExcelFileName);
     }
 
     // --------------------------------------------------------------- oscilloscopes
 
-    private static string?[] OscilloscopeRow(
-        string brand, string series, string timeDivList = "1ms, 2ms", string voltsDivList = "1V, 2V") =>
-        new string?[]
-        {
-            brand, series, "5025", "*IDN?", ":SYST:ERR?", "*OPC?", ":MEAS:CLE", ":TRIG:STAT?",
-            ":STOP", ":SING", ":RUN", ":TRIG:MODE?", ":TRIG:EDGE:LEV?", ":TRIG:EDGE:LEV {0}",
-            ":TIM:SCAL?", ":TIM:SCAL {0}", ":CHAN1:SCAL?", ":CHAN1:SCAL {0}", ":DISP:DATA?",
-            timeDivList, voltsDivList, "250"
-        };
+    private static MainDocument.OscilloscopeRow Oscilloscope(
+        string brand, string series, string timeDivList = "1ms, 2ms", string voltsDivList = "1V, 2V") => new()
+    {
+        Brand = brand,
+        SeriesOrModel = series,
+        Port = "5025",
+        Identify = "*IDN?",
+        DrainErrorQueue = ":SYST:ERR?",
+        OperationComplete = "*OPC?",
+        ClearStatistics = ":MEAS:CLE",
+        QueryActiveTrigger = ":TRIG:STAT?",
+        Stop = ":STOP",
+        Single = ":SING",
+        Run = ":RUN",
+        QueryTriggerMode = ":TRIG:MODE?",
+        QueryTriggerLevel = ":TRIG:EDGE:LEV?",
+        SetTriggerLevel = ":TRIG:EDGE:LEV {0}",
+        QueryTimeDiv = ":TIM:SCAL?",
+        SetTimeDiv = ":TIM:SCAL {0}",
+        QueryVoltsDiv = ":CHAN1:SCAL?",
+        SetVoltsDiv = ":CHAN1:SCAL {0}",
+        DumpImage = ":DISP:DATA?",
+        TimeDivList = timeDivList,
+        VoltsDivList = voltsDivList,
+        DebounceTime = "250",
+    };
+
+    private static readonly MainFiles.Board AnyBoard = new("Commodore/C64/250407", "C64", "250407");
 
     [Fact]
-    public void Oscilloscope_definitions_are_read_from_their_sheet()
+    public void Oscilloscope_definitions_are_read_from_the_main_file()
     {
-        this.LoadWorkbook(
-            HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" })
-                .Sheet(OscilloscopeSheet, OscilloscopeHeaders,
-                    OscilloscopeRow("Rigol", "DS1000Z")));
+        this.LoadMain([AnyBoard], Oscilloscope("Rigol", "DS1000Z"));
 
         OscilloscopeEntry scope = Assert.Single(DataManager.Oscilloscopes);
 
@@ -295,39 +234,29 @@ public sealed class DataManagerTests : IDisposable
         Assert.Equal(":TIM:SCAL {0}", scope.SetTimeDiv);
         Assert.Equal("1ms, 2ms", scope.TimeDivList);
         Assert.Equal("1V, 2V", scope.VoltsDivList);
+        Assert.Equal("250", scope.DebounceTime);
     }
 
     [Fact]
-    public void A_blank_oscilloscope_brand_is_carried_forward()
+    public void Each_oscilloscope_carries_its_own_brand()
     {
-        string?[] second = OscilloscopeRow("", "DS1000Z Plus");
+        this.LoadMain([AnyBoard], Oscilloscope("Rigol", "DS1000Z"), Oscilloscope("Siglent", "SDS1000X-E"));
 
-        this.LoadWorkbook(
-            HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" })
-                .Sheet(OscilloscopeSheet, OscilloscopeHeaders,
-                    OscilloscopeRow("Rigol", "DS1000Z"),
-                    second));
-
-        Assert.Equal(2, DataManager.Oscilloscopes.Count);
-        Assert.All(DataManager.Oscilloscopes, s => Assert.Equal("Rigol", s.Brand));
+        Assert.Equal(["Rigol", "Siglent"], DataManager.Oscilloscopes.Select(scope => scope.Brand));
     }
 
     [Fact]
-    public void An_oscilloscope_row_with_no_series_is_skipped()
+    public void An_oscilloscope_with_no_series_is_skipped()
     {
-        this.LoadWorkbook(
-            HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" })
-                .Sheet(OscilloscopeSheet, OscilloscopeHeaders,
-                    OscilloscopeRow("Rigol", "DS1000Z"),
-                    OscilloscopeRow("Siglent", "")));
+        this.LoadMain([AnyBoard], Oscilloscope("Rigol", "DS1000Z"), Oscilloscope("Siglent", ""));
 
         Assert.Single(DataManager.Oscilloscopes);
     }
 
     [Fact]
-    public void A_workbook_with_no_oscilloscope_sheet_still_loads_the_hardware()
+    public void A_main_file_with_no_oscilloscopes_still_lists_the_boards()
     {
-        this.LoadWorkbook(HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" }));
+        this.LoadMain(AnyBoard);
 
         Assert.Single(DataManager.HardwareBoards);
         Assert.Empty(DataManager.Oscilloscopes);
@@ -336,12 +265,9 @@ public sealed class DataManagerTests : IDisposable
     [Fact]
     public void A_loaded_scope_definition_drives_the_value_mapper_end_to_end()
     {
-        // Proves the two halves agree: what the workbook declares as supported is what the
+        // Proves the two halves agree: what the main file declares as supported is what the
         // mapper will actually snap a board's T/DIV value to.
-        this.LoadWorkbook(
-            HardwareWorkbook(new[] { "C64", "250407", "a.xlsx", "" })
-                .Sheet(OscilloscopeSheet, OscilloscopeHeaders,
-                    OscilloscopeRow("Rigol", "DS1000Z", timeDivList: "500us, 1ms, 2ms, 5ms")));
+        this.LoadMain([AnyBoard], Oscilloscope("Rigol", "DS1000Z", timeDivList: "500us, 1ms, 2ms, 5ms"));
 
         OscilloscopeEntry scope = Assert.Single(DataManager.Oscilloscopes);
 

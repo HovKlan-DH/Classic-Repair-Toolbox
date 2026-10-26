@@ -82,7 +82,26 @@ namespace Handlers.MaintainerHandling
                 ReviewApiParser.ParseStrings(root, "unchangedFiles"),
                 ReviewApiParser.String(root, "betaDataUrl"),
                 ReviewApiParser.String(root, "productionDataUrl"),
-                ReviewApiParser.ParseSizes(root, "fileSizes"));
+                ReviewApiParser.ParseSizes(root, "fileSizes"),
+                ReviewApiParser.ParseNames(root, "fileNames"));
+        }
+
+        // Path -> the board's name for it (2026-10-25, the plan's FileNames). Null when absent - an
+        // older server; an entry that is not text is left out.
+        private static IReadOnlyDictionary<string, string>? ParseNames(JsonElement root, string property)
+        {
+            if (!root.TryGetProperty(property, out JsonElement raw) || raw.ValueKind != JsonValueKind.Object)
+                return null;
+
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (JsonProperty entry in raw.EnumerateObject())
+            {
+                if (entry.Value.ValueKind == JsonValueKind.String && entry.Value.GetString() is { Length: > 0 } name)
+                    names[entry.Name] = name;
+            }
+
+            return names;
         }
 
         // ###########################################################################################

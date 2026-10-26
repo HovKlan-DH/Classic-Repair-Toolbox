@@ -80,6 +80,10 @@ namespace Handlers.DataHandling
                 [BoardWorkbookSchema.SheetComponentImages] = "Component images",
                 [BoardWorkbookSchema.SheetComponentLocalFiles] = "Component local files",
                 [BoardWorkbookSchema.SheetComponentLinks] = "Component links",
+
+                // CRT 4.0's own sheets (2026-10-25) - no reference workbook has them.
+                [BoardWorkbookSchema.SheetComponentPins] = "Component pins",
+                [BoardWorkbookSchema.SheetComponentReplacements] = "Component replacements",
                 [BoardWorkbookSchema.SheetBoardLocalFiles] = "Board local files",
                 [BoardWorkbookSchema.SheetBoardLinks] = "Board links",
                 [BoardWorkbookSchema.SheetKiCadImportantSignals] = "KiCad references",

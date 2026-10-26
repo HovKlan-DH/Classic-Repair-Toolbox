@@ -107,9 +107,9 @@ namespace Handlers.DataHandling
                 "Your draft now has the published update, but CRT could not note that it does, so the warning stays. " +
                 "Press \"" + DraftDriftWording.BringUpToDateButton + "\" again to finish - nothing of yours is lost.",
             DraftRebaseOutcome.ChangedOnDisk =>
-                "Your draft changed while this ran (saved in Excel, perhaps). Nothing was changed - try again.",
+                "Your draft changed while this ran (saved in another window, perhaps). Nothing was changed - try again.",
             DraftRebaseOutcome.WriteFailed =>
-                "Your draft could not be written - is its workbook open in Excel? Close it and try again. Nothing was changed.",
+                "Your draft could not be written - is one of its files open in another program? Close it and try again. Nothing was changed.",
             DraftRebaseOutcome.PublishedUnreadable =>
                 "The published data for this board could not be read. Nothing was changed.",
             DraftRebaseOutcome.DraftUnreadable =>

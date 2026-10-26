@@ -292,13 +292,6 @@ namespace CRT.Server.Handlers.Submissions
                 DateTimeOffset.UtcNow,
                 cancellationToken);
 
-            // Every file each returning submission carried - where the shared files it changed, and
-            // the exact bytes it put there, come from.
-            var files = new List<SubmissionFileRecord>();
-
-            foreach (SubmissionRecord submission in merged)
-                files.AddRange(await this.thisStore.GetFilesAsync(submission.Id, cancellationToken));
-
             // Each contributor's address - the account's when they were signed in (2026-09-29): the
             // confirmation names them, and the push-back mail is sent to them.
             IReadOnlyDictionary<long, string> addresses =
@@ -309,7 +302,6 @@ namespace CRT.Server.Handlers.Submissions
                 options.ProductionDataTreeRoot!,
                 board,
                 ProductionPromotionRules.Carrying(merged, addresses: addresses),
-                files,
                 cancellationToken);
         }
 

@@ -731,6 +731,7 @@ public partial class TabSchematics : UserControl
         this.thisKiCadOverlayLastRenderedVersion = 0;
         this.thisKiCadSchematicHoverHitTestCacheByKey.Clear();
         this.thisKiCadProject = null;
+        this.thisCurrentKiCadRawPaths = [];
         this.thisCurrentKiCadRuntimeCacheScopeKey = string.Empty;
 
         lock (this.thisKiCadPcbNetRenderCacheSync)

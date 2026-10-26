@@ -63,8 +63,16 @@ namespace Handlers.DataHandling
         // never been released to anyone else than me"), with the server's version back at 1.0.0.
         // Revision 1 now stands for the API as it is that day - "board" everywhere; the
         // "system"-to-"board" rename that had raised it to 2 the same morning is part of it.
+        //
+        // *** 2 SINCE 2026-10-25 - THE CRT 4.0 DATA TREE, RAISED BY HAND. *** A submitted file's
+        // `path`, a review answer's file paths, the published-file route's `{path}` and a removal's
+        // name are a board's NAME for a file now ("Component images/7406.png"), not a place in an
+        // Excel-era tree - the same shape with a new meaning, which ApiCompatibilityTests cannot see.
+        // A 3.x CRT's paths would be read as names and published as such, so the server tells it to
+        // update (ClientVersionPolicy) - the owner's decision for 3.x once 4.0 is out (2026-10-24: no
+        // more 3.x updates, and 3.x told to update on Submit and the Maintainer tab). Server 4.0.0.
         // ###########################################################################################
-        public const int ApiRevision = 1;
+        public const int ApiRevision = 2;
 
         // The header the review and submission clients send ApiRevision in.
         public const string ApiRevisionHeader = "X-CRT-Api-Revision";

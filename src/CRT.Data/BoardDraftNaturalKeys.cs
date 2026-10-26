@@ -97,6 +97,15 @@ namespace Handlers.DataHandling
         public static string ForKiCadImportantSignal(string displayName, string kiCadNetName) =>
             Join(displayName, kiCadNetName);
 
+        // CRT 4.0's own rows (2026-10-25). A pin is its component's (label + region, as a picture
+        // is) and its number on the case; a replacement its component's and its part number - a
+        // component can have several of either, and never two of the same.
+        public static string ForComponentPin(string boardLabel, string region, string pin) =>
+            Join(boardLabel, region, pin);
+
+        public static string ForComponentReplacement(string boardLabel, string region, string partNumber) =>
+            Join(boardLabel, region, partNumber);
+
         // ###########################################################################################
         // The key for one OFFICIAL BoardData row, dispatched on its type - the other side of the
         // pairing from the ForX methods above, which build a key from a drafted row's own fields.
@@ -123,6 +132,8 @@ namespace Handlers.DataHandling
             BoardLinkEntry boardLink => ForBoardLink(boardLink.Category, boardLink.Name),
             CreditEntry credit => ForCredit(credit.Category, credit.SubCategory, credit.NameOrHandle),
             KiCadImportantSignalEntry signal => ForKiCadImportantSignal(signal.DisplayName, signal.KiCadNetName),
+            ComponentPinEntry pin => ForComponentPin(pin.BoardLabel, pin.Region, pin.Pin),
+            ComponentReplacementEntry replacement => ForComponentReplacement(replacement.BoardLabel, replacement.Region, replacement.PartNumber),
 
             // ONE calibration per schematic, so the schematic name alone is the key - which is
             // also what KiCadCalibrationDraftWriter builds when it saves one, via ForSchematic.
@@ -153,6 +164,10 @@ namespace Handlers.DataHandling
             BoardWorkbookSchema.SheetCredits =>
                 [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColSubCategory, BoardWorkbookSchema.ColNameOrHandle],
             BoardWorkbookSchema.SheetKiCadImportantSignals => [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName],
+            BoardWorkbookSchema.SheetComponentPins =>
+                [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion, BoardWorkbookSchema.ColPin],
+            BoardWorkbookSchema.SheetComponentReplacements =>
+                [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion, BoardWorkbookSchema.ColPartNumber],
             _ => throw new System.NotSupportedException($"No natural key rule for sheet [{sheetName}].")
         };
 
@@ -185,6 +200,13 @@ namespace Handlers.DataHandling
             [typeof(BoardLinkEntry)] = [nameof(BoardLinkEntry.Category), nameof(BoardLinkEntry.Name)],
             [typeof(CreditEntry)] = [nameof(CreditEntry.Category), nameof(CreditEntry.SubCategory), nameof(CreditEntry.NameOrHandle)],
             [typeof(KiCadImportantSignalEntry)] = [nameof(KiCadImportantSignalEntry.DisplayName), nameof(KiCadImportantSignalEntry.KiCadNetName)],
+            [typeof(ComponentPinEntry)] = [nameof(ComponentPinEntry.BoardLabel), nameof(ComponentPinEntry.Region), nameof(ComponentPinEntry.Pin)],
+            [typeof(ComponentReplacementEntry)] =
+            [
+                nameof(ComponentReplacementEntry.BoardLabel),
+                nameof(ComponentReplacementEntry.Region),
+                nameof(ComponentReplacementEntry.PartNumber)
+            ],
             [typeof(KiCadCalibrationEntry)] = [nameof(KiCadCalibrationEntry.SchematicName)],
         };
 

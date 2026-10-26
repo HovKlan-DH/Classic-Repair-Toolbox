@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace Handlers.DataHandling
@@ -42,8 +43,72 @@ namespace Handlers.DataHandling
         // callers keep their existing "missing file" handling (skip the thumbnail, log a warning)
         // unchanged; this only adds a second place to look, not new required-file behaviour.
         // ###########################################################################################
-        public static string? Resolve(string dataRoot, string draftBoardFolder, string? relativeFile) =>
-            DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, relativeFile)?.FullPath;
+        public static string? Resolve(string dataRoot, string draftBoardFolder, string? relativeFile, string? boardIdentity = null) =>
+            DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, relativeFile, boardIdentity)?.FullPath;
+
+        // ###########################################################################################
+        // *** IN CRT 4.0 A ROW NAMES A FILE OF ITS BOARD (2026-10-24). *** The name is looked up in
+        // the board file that lists it, and its bytes in the store that holds them:
+        //
+        //   1. a new file lying in the draft folder under its name, not yet taken into the draft's
+        //      store (DraftFiles) - the draft's;
+        //   2. the draft's board file: its entry's bytes in the draft's own store, else the tree's;
+        //   3. the published board's board file (`boardIdentity`, the board CRT identifies the file
+        //      for): its entry's bytes in the tree's store;
+        //   4. a path from the data root, as the Excel generations' rows cited a file - still
+        //      answered, so anything holding one keeps resolving.
+        //
+        // `boardIdentity` is needed for (3) - without it a board shown without a draft resolves only
+        // by (4). `listings` is the lookup's own memory of the board files it read (BoardFileListings
+        // - a board's every file resolved after a save read its board file once per file). Null when
+        // nothing finds the file.
+        // ###########################################################################################
+        private static DraftFileResolution? ResolveByName(string dataRoot, string draftBoardFolder, string name, string? boardIdentity, BoardFileListings? listings)
+        {
+            Func<string, IReadOnlyDictionary<string, BoardDocument.StoredFileRow>?> listedIn =
+                listings is null ? DraftFiles.ListedIn : listings.ListedIn;
+
+            if (!string.IsNullOrWhiteSpace(draftBoardFolder))
+            {
+                // Only a name that can be a new file of the draft - inside its folder, not its store
+                // or bookkeeping (DraftFiles.TryArrivedPath, the rule a write takes it in by).
+                if (DraftFiles.TryArrivedPath(draftBoardFolder, name, out string arrived) && File.Exists(arrived))
+                    return new DraftFileResolution(arrived, draftBoardFolder, IsDrafted: true);
+
+                if (listedIn(Path.Combine(draftBoardFolder, DataTreeLayout.BoardFileName)) is { } draftFiles)
+                {
+                    return draftFiles.TryGetValue(name, out BoardDocument.StoredFileRow? listed)
+                        ? DraftFileResolver.Stored(listed, draftBoardFolder, dataRoot)
+                        : null;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(boardIdentity) &&
+                listedIn(DraftBoardSource.PublishedPathOf(dataRoot, boardIdentity)) is { } publishedFiles &&
+                publishedFiles.TryGetValue(name, out BoardDocument.StoredFileRow? published))
+            {
+                return DraftFileResolver.Stored(published, string.Empty, dataRoot);
+            }
+
+            return null;
+        }
+
+        // Where a listed file's bytes are: the draft's store (when there is a draft), else the tree's.
+        private static DraftFileResolution? Stored(BoardDocument.StoredFileRow file, string draftBoardFolder, string dataRoot)
+        {
+            if (!DataTreeLayout.IsSha256(file.Sha256))
+                return null;
+
+            string stored = DataTreeLayout.StoredFilePath(file.Sha256, file.Name).Replace('/', Path.DirectorySeparatorChar);
+
+            if (!string.IsNullOrWhiteSpace(draftBoardFolder) && File.Exists(Path.Combine(draftBoardFolder, stored)))
+                return new DraftFileResolution(Path.Combine(draftBoardFolder, stored), draftBoardFolder, IsDrafted: true);
+
+            if (!string.IsNullOrWhiteSpace(dataRoot) && File.Exists(Path.Combine(dataRoot, stored)))
+                return new DraftFileResolution(Path.Combine(dataRoot, stored), dataRoot, IsDrafted: false);
+
+            return null;
+        }
 
         // ###########################################################################################
         // The same resolution as Resolve, plus WHICH ROOT the file was found under.
@@ -58,12 +123,22 @@ namespace Handlers.DataHandling
         // silently did nothing on every board with a draft. Answering both halves here, from the
         // one place the order is decided, means the two can never disagree again.
         // ###########################################################################################
-        public static DraftFileResolution? ResolveWithSource(string dataRoot, string draftBoardFolder, string? relativeFile)
+        public static DraftFileResolution? ResolveWithSource(
+            string dataRoot,
+            string draftBoardFolder,
+            string? relativeFile,
+            string? boardIdentity = null,
+            BoardFileListings? listings = null)
         {
             string trimmed = relativeFile?.Trim() ?? string.Empty;
             if (trimmed.Length == 0)
             {
                 return null;
+            }
+
+            if (DraftFileResolver.ResolveByName(dataRoot, draftBoardFolder, BoardFileNames.Normalise(trimmed), boardIdentity, listings) is DraftFileResolution named)
+            {
+                return named;
             }
 
             string normalizedRelative = trimmed.Replace('/', Path.DirectorySeparatorChar);
@@ -91,8 +166,13 @@ namespace Handlers.DataHandling
             // for the first kind, so "Commodore/Shared files/Component images/HotCPU.png" was on
             // disk in the draft and nothing could find it. Asking the writer's own function means
             // the two cannot disagree again.
+            //
+            // *** NOT FOR A 4.0 DRAFT (2026-10-24). *** A draft with a board file names its files
+            // (ResolveByName above answered for it); a path into its folder is its store or its
+            // bookkeeping, never a file of the board.
             // ###########################################################################################
-            if (!string.IsNullOrWhiteSpace(draftBoardFolder))
+            if (!string.IsNullOrWhiteSpace(draftBoardFolder) &&
+                !File.Exists(Path.Combine(draftBoardFolder, DataTreeLayout.BoardFileName)))
             {
                 string draftedPath = DraftFileResolver.BuildDraftFileDestination(draftBoardFolder, trimmed);
 

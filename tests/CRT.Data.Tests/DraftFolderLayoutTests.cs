@@ -27,27 +27,28 @@ public sealed class DraftFolderLayoutTests
     }
 
     // ###########################################################################################
-    // *** THE SAME FILE NAME THE PUBLISHED BOARD USES. ***
+    // *** THE SAME FILE NAME THE PUBLISHED BOARD USES - IN CRT 4.0, board.json (2026-10-24). ***
     //
-    // Not "Data C64 250407 (draft).xlsx". The request was that the folder be indistinguishable
-    // from a real board, and a renamed workbook would announce itself as something else - it would
-    // also break BoardDataReader's cache key, which IS the ExcelDataFile identity.
+    // The request was that the folder be indistinguishable from a real board, so the draft's
+    // board file is named as the 4.0 tree names every board's, whatever file name the board's
+    // identity carries (an Excel-era one included).
     // ###########################################################################################
     [Fact]
-    public void The_workbook_keeps_the_PUBLISHED_file_name()
+    public void The_board_file_keeps_the_PUBLISHED_file_name()
     {
         Assert.Equal(
-            Path.Combine(Root, "Commodore", "C64", "250407", "Data C64 250407.xlsx"),
+            Path.Combine(Root, "Commodore", "C64", "250407", DataTreeLayout.BoardFileName),
             DraftFolderLayout.GetWorkbookPath(Root, Board));
     }
 
+    // The highlights, calibrations and renames the Excel generations kept in a JSON sidecar are
+    // in the board file itself - so "the sidecar" of a draft IS its board file, and nothing may
+    // treat it as a second file to copy or delete beside it.
     [Fact]
-    public void The_sidecar_sits_beside_the_workbook_with_a_json_extension()
+    public void The_sidecar_is_the_board_file_itself()
     {
-        // Derived through BoardComponentHighlightStorage.GetJsonPath, so there is one definition
-        // of "the sidecar beside this workbook" rather than a second extension swap here.
         Assert.Equal(
-            Path.Combine(Root, "Commodore", "C64", "250407", "Data C64 250407.json"),
+            DraftFolderLayout.GetWorkbookPath(Root, Board),
             DraftFolderLayout.GetSidecarPath(Root, Board));
     }
 

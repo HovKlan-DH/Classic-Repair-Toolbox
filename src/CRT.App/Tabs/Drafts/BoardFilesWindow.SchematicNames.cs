@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -19,11 +21,12 @@ namespace CRT
     // name the draft could not be written with (Excel holds the file) stays in its box, unsaved, to
     // be saved once the file is free.
     //
-    // The save is DraftWorkbookStore.RenameSchematic, which carries the image's component
-    // highlights and KiCad calibration over to the new name in the same write - both are filed
-    // under the name in the board's JSON sidecar (SchematicRename has why). This machine's worklogs
-    // and settings follow the image by its FILE when the board is next shown (LocalSchematicRename).
-    // It is one of the window's draft changes: queued, off the UI thread, under the "please wait".
+    // The rename is SchematicRename.Plan, decided on the draft held in memory and saved through it
+    // (DraftEdits, 2026-10-25), which carries the image's component highlights and KiCad calibration
+    // over to the new name in the same change - both are filed under the name (SchematicRename has
+    // why). This machine's worklogs and settings follow the image by its FILE when the board is next
+    // shown (LocalSchematicRename). It is one of the window's draft changes: queued, saved off the UI
+    // thread, under the "please wait".
     //
     // Part of the BoardFilesWindow partial class - see BoardFilesWindow.axaml.cs for the file map.
     // ###########################################################################################
@@ -79,12 +82,18 @@ namespace CRT
                     return true;
                 }
 
-                string draftsRoot = DraftManager.DraftsRoot;
                 string excelDataFile = this.thisExcelDataFile;
+                SchematicRenameOutcome? decided = null;
 
-                SchematicRenameOutcome outcome = await this.WriteDraftAsync(
+                DraftWorkbookEditOutcome saved = await BusyOverlay.RunLocalAsync(
+                    this,
                     CrtWaitWording.SavingSchematicName,
-                    () => DraftWorkbookStore.RenameSchematic(draftsRoot, excelDataFile, plan.Row, plan.Wanted));
+                    () => DraftEdits.ApplyWithFollowAndSaveAsync(
+                        excelDataFile,
+                        DraftStepWording.SchematicRenamed(plan.OldName, plan.Wanted),
+                        content => BoardFilesWindow.Rename(content, plan, outcome => decided = outcome)));
+
+                SchematicRenameOutcome outcome = BoardFilesWindow.RenameOutcome(decided, saved);
 
                 bool renamed = this.ShowRenameOutcome(row, plan, outcome);
 
@@ -107,16 +116,45 @@ namespace CRT
             {
                 if (this.TryPlanRename(row, out PlannedRename? plan) && plan is not null)
                 {
-                    this.ShowRenameOutcome(
-                        row,
-                        plan,
-                        DraftWorkbookStore.RenameSchematic(DraftManager.DraftsRoot, this.thisExcelDataFile, plan.Row, plan.Wanted));
+                    SchematicRenameOutcome? decided = null;
+
+                    DraftWorkbookEditOutcome saved = DraftEdits.ApplyWithFollowAndSaveNow(
+                        this.thisExcelDataFile,
+                        DraftStepWording.SchematicRenamed(plan.OldName, plan.Wanted),
+                        content => BoardFilesWindow.Rename(content, plan, outcome => decided = outcome));
+
+                    this.ShowRenameOutcome(row, plan, BoardFilesWindow.RenameOutcome(decided, saved));
                 }
             }
         }
 
         // A rename to write: which row, from what, to what.
         private sealed record PlannedRename(SchematicRowRef Row, string OldName, string Wanted);
+
+        // ###########################################################################################
+        // The rename decided on the draft as it is (SchematicRename.Plan - the row by its name and
+        // file, refused when blank or taken there) and, when it renames, the content renamed with the
+        // one rename for what hangs on the name to follow. `decided` hears the plan's outcome.
+        // ###########################################################################################
+        private static (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow) Rename(
+            BoardContent content,
+            PlannedRename plan,
+            Action<SchematicRenameOutcome> decided)
+        {
+            SchematicRenamePlan renamed = SchematicRename.Plan(content.Board, plan.Row, plan.Wanted);
+            decided(renamed.Outcome);
+
+            return renamed.Board is null ? (null, null) : (content with { Board = renamed.Board }, renamed.Follow);
+        }
+
+        // What a rename came to: the plan's outcome when the draft was saved with it (or it changed
+        // nothing), NoDraft with no draft to plan it on, WriteFailed when the save was not made.
+        private static SchematicRenameOutcome RenameOutcome(SchematicRenameOutcome? decided, DraftWorkbookEditOutcome saved) => saved switch
+        {
+            DraftWorkbookEditOutcome.Saved => decided ?? SchematicRenameOutcome.NoDraft,
+            DraftWorkbookEditOutcome.NoDraft => SchematicRenameOutcome.NoDraft,
+            _ => SchematicRenameOutcome.WriteFailed,
+        };
 
         // ###########################################################################################
         // What the row's Name box asks for. False, with the reason on the status line and the old
@@ -212,7 +250,7 @@ namespace CRT
         }
 
         internal const string NameNotWritten =
-            "The new name could not be saved. If this board's Excel file is open in Excel, close it there and " +
+            "The new name could not be saved. If another program has the draft's file open, close it there and " +
             "try again - or press Escape in the name box to keep the old name.";
     }
 }

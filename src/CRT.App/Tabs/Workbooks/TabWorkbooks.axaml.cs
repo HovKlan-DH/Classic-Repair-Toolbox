@@ -373,7 +373,7 @@ namespace CRT
         internal void EqualiseHeaderActionButtonWidthsForTests() => this.EqualiseHeaderActionButtonWidths();
 
         // ###########################################################################################
-        // Hands the tab its main-window reference, matching TabSchematics/TabOverview/TabContribute.
+        // Hands the tab its main-window reference, matching TabSchematics/TabOverview/TabDrafts.
         // The board key is the hardware/board combo selection, which lives on the main window, so
         // without this the tab cannot tell which board's workbooks to list.
         // ###########################################################################################

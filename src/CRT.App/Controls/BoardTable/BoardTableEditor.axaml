@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
              x:Class="CRT.BoardTableEditor">
 
 	<UserControl.Styles>
@@ -12,7 +13,7 @@
 
 		     The font and padding are Main.axaml's own TabItem setters, repeated here and scoped to
 		     this control, so the sheet tabs match the main tabs wherever this editor is hosted - the
-		     Drafts tab and the Maintainer tab alike. -->
+		     Contribute tab and the Maintainer tab alike. -->
 		<Style Selector="TabControl#SheetTabs TabItem">
 			<Setter Property="FontSize" Value="12" />
 			<Setter Property="Padding" Value="12,4" />
@@ -252,7 +253,7 @@
 		     band was not enough, and a black one "steals way too much focus"; so the header is set
 		     apart the way a printed table is: SEMI-BOLD names, a soft band, and a FIRM 2px line
 		     under the whole row. BoardTable_Header_* in BoardTableColors.axaml - the table's own
-		     keys, the same in the Drafts tab and the Maintainer tab.
+		     keys, the same in the Contribute tab and the Maintainer tab.
 
 		     Four places, each found the hard way (pinned by BoardTableEditorTests'
 		     The_header_row_is_set_apart_from_corner_to_corner):
@@ -353,18 +354,29 @@
 		<!-- THE TOOLBAR WRAPS rather than running off the edge (2026-09-26). In the Maintainer
 		     tab the table sits in the submission panel beside the queue, and at the window's
 		     default width a single row pushed "Save changes" out of sight entirely (seen in a
-		     render). Save and Reload are docked right, so they always keep their place; the row
-		     buttons and the colour key wrap onto a second line when there is no room. At the
-		     widths the Drafts tab is used at, it is one row, as before. -->
+		     render). Save - or a draft's save state - is docked right, so it always keeps its
+		     place; the row buttons and the colour key wrap onto a second line when there is no
+		     room. At the widths the Contribute tab is used at, it is one row, as before. -->
 		<DockPanel Grid.Row="1" Margin="0,0,0,6">
 			<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="16,0,0,0">
-				<Button x:Name="ReloadButton"
-						Content="Reload"
-						ToolTip.Tip="Read the draft again from its file, for example after editing it in Excel"
-						Click="OnReloadClick" />
-				<!-- Green, the Accept colour (owner decision, 2026-10-13 - it was the red of the Drafts
-				     row's "Discard" from 2026-09-24, so the one button that writes the draft stood out,
-				     but red now means only "throws away"). Disabled - and therefore greyed by the
+				<!-- A DRAFT SAVES ITSELF (CRT 4.0 step 1, 2026-10-25): where "Save changes" is, the
+				     Contribute tab's table says Saved, Saving... or "Could not save - <reason>", with
+				     Try again after a failure (BoardTableEditor.DraftSession.cs, DraftSaveWording).
+				     No Reload: the table follows the draft by itself. -->
+				<StackPanel x:Name="SaveStatePanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
+					<TextBlock x:Name="SaveStateText"
+							   VerticalAlignment="Center"
+							   TextWrapping="Wrap"
+							   MaxWidth="460"
+							   Text="Saved" />
+					<Button x:Name="TryAgainButton"
+							Content="Try again"
+							IsVisible="False"
+							ToolTip.Tip="Save the draft again"
+							Click="OnTryAgainClick" />
+				</StackPanel>
+				<!-- A DOCUMENT'S save - the Maintainer tab's, which publishes or amends. Green, the
+				     Accept colour (owner decision, 2026-10-13). Disabled - and therefore greyed by the
 				     theme - while there is nothing to save. -->
 				<Button x:Name="SaveButton"
 						Classes="Accept"
@@ -388,6 +400,13 @@
 							Content="Delete row"
 							ToolTip.Tip="Remove the selected rows - Shift+click or Ctrl+click to select several. A published row stays visible in red, where it was. Ctrl+Z undoes it."
 							Click="OnDeleteRowClick" />
+					<!-- Fill down (CRT 4.0, 2026-10-25): a spreadsheet's Ctrl+D, so the table does what
+					     Excel was used for (BoardTableEditor.BlockEdits.cs). Plain: it edits cells, as
+					     typing does. -->
+					<Button x:Name="FillDownButton"
+							Content="Fill down"
+							ToolTip.Tip="Copy the top selected cell of each column into the selected cells below it - or, with one row selected, the row above into it (Ctrl+D). Ctrl+Z undoes it."
+							Click="OnFillDownClick" />
 					<!-- No Move up / Move down buttons (removed by the project owner, 2026-09-24): a row is
 					     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
 				</StackPanel>
@@ -490,34 +509,77 @@
 							VerticalContentAlignment="Center" />
 				</Grid>
 
+				<!-- Opens the replace bar below the toolbar (Ctrl+H) - BoardTableEditor.BlockEdits.cs. -->
+				<Button x:Name="ReplaceButton"
+						Content="Replace"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Replace a piece of text in the cells the table shows (Ctrl+H)"
+						Click="OnReplaceClick" />
+
 			</WrapPanel>
 		</DockPanel>
 
 		<StackPanel Grid.Row="2">
-			<!-- The draft file changed underneath a table with unsaved edits - in Excel, most
-			     likely (BoardTableEditor.FileWatch.cs). Stays up until the table is reloaded. -->
+			<!-- THE REPLACE BAR (CRT 4.0, 2026-10-25): every occurrence of a text, capitals ignored,
+			     in the rows the table shows - on this sheet, or on every sheet. One undo step
+			     (BoardTableDocument.ReplaceAll; BoardTableEditor.BlockEdits.cs). Opens with one plain
+			     sentence saying what it is for, as every 4.0 section does. -->
+			<Border x:Name="ReplaceBar" IsVisible="False" Margin="0,0,0,6">
+				<StackPanel Spacing="4">
+					<TextBlock TextWrapping="Wrap"
+							   FontSize="11"
+							   Opacity="0.8"
+							   Text="Replaces a piece of text in every cell of the rows the table shows, ignoring capitals. Ctrl+Z undoes it." />
+					<WrapPanel Orientation="Horizontal" ItemSpacing="12" LineSpacing="6">
+						<StackPanel Orientation="Horizontal" Spacing="6">
+							<TextBlock Text="Find" VerticalAlignment="Center" />
+							<TextBox x:Name="ReplaceFindBox" Width="220" FontSize="11" />
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Spacing="6">
+							<TextBlock Text="Replace with" VerticalAlignment="Center" />
+							<TextBox x:Name="ReplaceWithBox" Width="220" FontSize="11" />
+						</StackPanel>
+						<CheckBox x:Name="ReplaceEverySheetBox"
+								  Content="On every sheet"
+								  VerticalAlignment="Center"
+								  ToolTip.Tip="Replace on every sheet of the table, not only on the one shown" />
+						<Button x:Name="ReplaceAllButton"
+								Classes="Accept"
+								Content="Replace all"
+								VerticalAlignment="Center"
+								Click="OnReplaceAllClick" />
+						<Button x:Name="CloseReplaceButton"
+								Content="Close"
+								VerticalAlignment="Center"
+								Click="OnCloseReplaceClick" />
+					</WrapPanel>
+				</StackPanel>
+			</Border>
+
+			<!-- The draft's file changed outside the table while a change of the table's waited to
+			     be saved, so that save was refused (DraftSession: ChangedOnDisk). Neither version is
+			     thrown away unasked: the file's, as one undoable step, or the table's, saved over it
+			     (BoardTableEditor.DraftSession.cs). The words are DraftSaveWording's. -->
 			<Border x:Name="ChangedOnDiskBar" Classes="TableNotice" IsVisible="False">
 				<Grid ColumnDefinitions="*,Auto">
 					<TextBlock Grid.Column="0"
 							   x:Name="ChangedOnDiskText"
 							   TextWrapping="Wrap"
 							   VerticalAlignment="Center"
-							   Text="The draft was changed outside this table - in Excel, for example - after the table was opened. What you see here is out of date, and your unsaved edits can no longer be saved into it. Copy anything you need, then press Reload." />
-					<Button Grid.Column="1"
-							x:Name="ChangedOnDiskReloadButton"
-							Content="Reload"
-							Margin="12,0,0,0"
-							VerticalAlignment="Center"
-							Click="OnReloadClick" />
+							   Text="{x:Static data:DraftSaveWording.ChangedOutside}" />
+					<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="12,0,0,0" VerticalAlignment="Center">
+						<Button x:Name="UseSavedVersionButton"
+								Classes="Danger"
+								Content="{x:Static data:DraftSaveWording.UseSavedVersion}"
+								ToolTip.Tip="Show the draft as it was saved outside the table. Ctrl+Z brings back the table's version."
+								Click="OnUseSavedVersionClick" />
+						<Button x:Name="KeepTableVersionButton"
+								Classes="Accept"
+								Content="{x:Static data:DraftSaveWording.KeepTableVersion}"
+								ToolTip.Tip="Save what the table shows over the draft's file"
+								Click="OnKeepTableVersionClick" />
+					</StackPanel>
 				</Grid>
-			</Border>
-
-			<!-- A spreadsheet program has the draft open, going by its lock file. "Appears": a
-			     program that crashed can leave the lock file behind. -->
-			<Border x:Name="OpenElsewhereBar" Classes="TableNotice" IsVisible="False">
-				<TextBlock x:Name="OpenElsewhereText"
-						   TextWrapping="Wrap"
-						   Text="This draft appears to be open in Excel (or another spreadsheet program). Edit it in one place at a time: the table follows what you save in Excel, but cannot save its own edits until the file is closed there." />
 			</Border>
 
 			<!-- What just happened (saved, refused, a paste that did not fit) or what to know about

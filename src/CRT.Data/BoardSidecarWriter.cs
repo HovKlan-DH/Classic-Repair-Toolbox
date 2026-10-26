@@ -79,6 +79,14 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(sidecarPath))
                 throw new InvalidOperationException($"Could not resolve a sidecar path for [{workbookPath}].");
 
+            // A CRT 4.0 board file keeps the three parts itself - written into it, the rest of the
+            // board as it was (2026-10-24).
+            if (DataTreeLayout.IsBoardFile(sidecarPath))
+            {
+                BoardFiles.WriteSidecarParts(sidecarPath, highlights, calibrations, renames);
+                return;
+            }
+
             JsonObject root = BoardSidecarWriter.BuildDocument(highlights, calibrations, renames);
 
             string directory = Path.GetDirectoryName(sidecarPath) ?? string.Empty;

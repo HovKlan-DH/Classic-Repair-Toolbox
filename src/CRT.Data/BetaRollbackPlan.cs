@@ -58,6 +58,11 @@ namespace Handlers.DataHandling
     // leak: the next promotion of ANY board citing the file carried those un-reviewed bytes to
     // production while the submission that introduced them sat in the queue.
     //
+    // *** IN THE CRT 4.0 TREE (2026-10-25) a board's "own files" are its board file and the stored
+    // files it lists *** (the server's BetaRollbackFiles hands them in), and there are no shared files:
+    // bytes another board lists too are stored once for both, and the server keeps a stored file
+    // another BETA board lists out of the removals. So sharedFiles is always null there.
+    //
     // Pure, and in CRT.Data because the Maintainer tab shows the same records before the
     // button is pressed that the server acts on - the SubmittedFileFact rule.
     // ###########################################################################################

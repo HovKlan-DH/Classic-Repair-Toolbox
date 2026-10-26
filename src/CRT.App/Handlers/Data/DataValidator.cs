@@ -58,7 +58,8 @@ namespace Handlers.DataHandling
                     BoardCheckRows.From(boardData),
                     new DiskFileLookup(
                         DataManager.DataRoot,
-                        DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                        DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
+                        entry.ExcelDataFile),
                     BoardCheckScope.Everything);
 
                 foreach (BoardDataProblem problem in problems)

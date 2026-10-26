@@ -35,6 +35,14 @@ namespace Handlers.DataHandling
         public static string DraftsRoot => _draftsRoot;
 
         // ###########################################################################################
+        // THE DRAFTS HELD IN MEMORY - one DraftSession per draft, shared by every editor of it (CRT
+        // 4.0 step 1, 2026-10-25). The Drafts tab's table works on its draft's session; the session
+        // saves itself. Kept for the whole run, so a draft's undo history outlives closing its table;
+        // a draft that is discarded or retired takes its session with it (DiscardDraft).
+        // ###########################################################################################
+        public static DraftSessions Sessions { get; } = new();
+
+        // ###########################################################################################
         // Resolves the folder to store drafts in - "--drafts-root=" if given, otherwise a "Drafts"
         // folder beside the default "Data" folder in the user's AppData folder - and points the
         // manager at it. Falls back to an unusable (empty) root silently on any failure, the same
@@ -309,13 +317,27 @@ namespace Handlers.DataHandling
         //
         // Every folder it looked at is logged: one it could NOT import is otherwise exactly the
         // silent "my board is not on the Drafts tab" this exists to end.
+        //
+        // `oldDataRoot` is CRT 3.x's Excel data folder (shared files an Excel-era copy cites are
+        // read from it), `treeContentRoot` the 4.0 tree (whose published boards name the files).
         // ###########################################################################################
-        public static void ImportHandPlacedFolders(IEnumerable<KnownDraftBoard> knownBoards)
+        public static void ImportHandPlacedFolders(IEnumerable<KnownDraftBoard> knownBoards, string oldDataRoot = "", string treeContentRoot = "")
         {
             if (string.IsNullOrWhiteSpace(_draftsRoot))
             {
                 return;
             }
+
+            List<KnownDraftBoard> known = (knownBoards ?? []).ToList();
+
+            // What CRT 3.x left - its drafts converted, its "_UserContribution" boards carried in as
+            // folders for the import below - first, so all of it is listed on this same launch.
+            DraftManager.TakeOverCrt3(
+                known.Where(board => board.IsPublished).Select(board => BoardDescriptorRules.BoardIdFromExcelDataFile(board.ExcelDataFile)).ToList(),
+                oldDataRoot,
+                treeContentRoot);
+
+            knownBoards = known;
 
             // ###########################################################################################
             // *** NEVER LETS AN EXCEPTION OUT (code review, 2026-09-27). *** DataManager calls this
@@ -328,7 +350,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                outcomes = DraftFolderImport.ImportUnmarkedFolders(_draftsRoot, knownBoards, DateTimeOffset.UtcNow);
+                outcomes = DraftFolderImport.ImportUnmarkedFolders(_draftsRoot, knownBoards, DateTimeOffset.UtcNow, oldDataRoot, treeContentRoot);
             }
             catch (Exception ex)
             {
@@ -348,11 +370,58 @@ namespace Handlers.DataHandling
                     ? "a new board"
                     : "a draft of the published board";
 
-                string renamed = outcome.RenamedFrom.Length > 0
-                    ? $", its workbook renamed from [{outcome.RenamedFrom}]"
+                string converted = outcome.ConvertedFromWorkbook.Length > 0
+                    ? $", converted from its workbook [{outcome.ConvertedFromWorkbook}]"
                     : string.Empty;
 
-                Logger.Info($"Took in folder [{outcome.BoardFolder}] as {kind} [{outcome.ExcelDataFile}]{renamed}");
+                Logger.Info($"Took in folder [{outcome.BoardFolder}] as {kind} [{outcome.ExcelDataFile}]{converted}");
+            }
+        }
+
+        // ###########################################################################################
+        // Takes over what CRT 3.x left in the drafts folder and its data folder (LocalDataMigration):
+        // every Excel-era draft converted into a 4.0 draft, and every board a 3.x "_UserContribution"
+        // workbook listed copied in once, for the import to take in. Every outcome is logged - a
+        // draft that could not be converted is otherwise a silent "my draft is gone". Never lets an
+        // exception out, for the same reason as the import.
+        // ###########################################################################################
+        private static void TakeOverCrt3(IReadOnlyCollection<string> publishedBoardIds, string oldDataRoot, string treeContentRoot)
+        {
+            try
+            {
+                foreach ((string folder, DraftConversionResult result) in
+                         LocalDataMigration.ConvertExcelDrafts(_draftsRoot, oldDataRoot, treeContentRoot, publishedBoardIds))
+                {
+                    if (result.Converted)
+                    {
+                        Logger.Info($"Converted the CRT 3 draft in [{folder}] into a CRT 4 draft - its Excel files are kept in [{DraftConversion.OriginalsFolder}]");
+                    }
+                    else
+                    {
+                        Logger.Warning($"The CRT 3 draft in [{folder}] could not be converted yet - {result.Failure} - tried again at the next start");
+                    }
+
+                    foreach (string note in result.Notes)
+                    {
+                        Logger.Info($"    {note}");
+                    }
+                }
+
+                var notes = new List<string>();
+
+                foreach (string boardId in LocalDataMigration.CarryUserContributionBoards(_draftsRoot, oldDataRoot, publishedBoardIds, notes))
+                {
+                    Logger.Info($"Carried the board [{boardId}] from the CRT 3 data folder into the drafts folder, to be taken in as a new board");
+                }
+
+                foreach (string note in notes)
+                {
+                    Logger.Warning(note);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Taking over what CRT 3 left in the drafts folder failed - [{ex.Message}]");
             }
         }
 
@@ -380,6 +449,10 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static bool DiscardDraft(string excelDataFile)
         {
+            // The draft held in memory goes first, whatever the delete does: a session left behind
+            // would save the discarded draft back into place a second later.
+            Sessions.Close(_draftsRoot, excelDataFile);
+
             string folder = GetBoardFolder(excelDataFile);
             if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
             {
@@ -388,5 +461,10 @@ namespace Handlers.DataHandling
 
             return DraftWorkbookStore.Discard(_draftsRoot, excelDataFile);
         }
+
+        // Whether the draft held in memory has a change its file does not have yet - a save waiting,
+        // or one that could not be made. Nothing may delete such a draft unasked (the retirement).
+        public static bool HasUnsavedChanges(string excelDataFile) =>
+            Sessions.Find(_draftsRoot, excelDataFile)?.HasUnsavedChanges == true;
     }
 }

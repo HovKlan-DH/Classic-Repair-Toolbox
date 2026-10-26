@@ -5,10 +5,16 @@ using Microsoft.Extensions.Logging;
 namespace CRT.Server.Handlers.Submissions
 {
     // ###########################################################################################
-    // Performs a publish: copies the submitted blobs into the data tree, generates the board
-    // workbook and its sidecar, and records the new revision (NewContributeStrategy.md Phase 5,
-    // task 6). It no longer writes system.json - retired 2026-09-25, see RetiredBoardDescriptor -
-    // and removes one an earlier build left in the board's folder.
+    // Performs a publish: stores the submitted blobs in the data tree, writes the board file, and
+    // records the new revision (NewContributeStrategy.md Phase 5, task 6). It no longer writes
+    // system.json - retired 2026-09-25, see RetiredBoardDescriptor - and removes one an earlier
+    // build left in the board's folder.
+    //
+    // *** THE CRT 4.0 TREE (2026-10-25). *** A board is its board file, "<board id>/board.json",
+    // holding everything the Excel generations kept in a workbook and its sidecar - the rows, the
+    // highlights, the KiCad calibrations, the schematic renames - and the board's list of files by
+    // name. Each file's bytes are stored once under their checksum ("Files/<ab>/<sha256>.<ext>"). So
+    // a publish stores the bytes the tree does not hold yet, then writes the one board file.
     //
     // *** THIS WRITES THE BETA TREE AND NEVER PRODUCTION. *** Since 2026-09-25 Production IS
     // written - by ProductionPromoter, and only by copying files that are already in BETA, once a
@@ -16,28 +22,27 @@ namespace CRT.Server.Handlers.Submissions
     // goes straight to Production, and nothing in this class may learn to: the BETA stage is the
     // one a person looks at before everybody gets it.
     //
-    // *** WHAT IT DOES NOT DECIDE. *** PublishPlan already decided every path, refused every
-    // unsafe one, and resolved which workbook GENERATION is being written. This class performs
-    // that plan and nothing more - it does not re-derive a path, and it must not, because
-    // re-joining the original strings is exactly the traversal hole SubmissionPathRules closes.
+    // *** WHAT IT DOES NOT DECIDE. *** PublishPlan already decided every place and refused every
+    // unsafe one. This class performs that plan and nothing more - it does not re-derive a path,
+    // and it must not, because re-joining the original strings is exactly the traversal hole
+    // SubmissionPathRules closes.
     //
-    // *** PUBLISHING IS NOT ATOMIC AND CANNOT BE MADE SO HERE. *** A board is hundreds of files
-    // across a tree that a sync reads concurrently; there is no rename that swaps them all at
-    // once. What this does instead is order the writes so a partial publish is RECOVERABLE:
+    // *** PUBLISHING IS NOT ATOMIC AND CANNOT BE MADE SO HERE. *** What this does instead is order
+    // the writes so a partial publish is RECOVERABLE:
     //
     //   0. EVERYTHING CHECKED FIRST (security review, 2026-09-25) - every blob present, intact and
-    //      of the type its name claims, and no symbolic link on the way to any destination. A
-    //      replaced image is NOT inert (the old workbook already cites it), so a refusal found
-    //      half way through used to leave half a board replaced;
-    //   1. files next, each hashed as it is copied and renamed into place only on a match;
-    //   2. the workbook next, which is what makes those files reachable;
-    //   3. the database row last of all, which is what records the board as being at this
-    //      revision.
+    //      of the type its name claims, and no symbolic link on the way to any destination;
+    //   1. the stored files next, each hashed as it is copied and renamed into place only on a
+    //      match. A stored file is NEW bytes beside the old - nothing the published board points at
+    //      changes - so stopping here leaves the board exactly as it was;
+    //   2. the board file next, replaced whole, which is what makes those files part of the board;
+    //   3. a new board's row in the main file, so the drop-down lists name it;
+    //   4. the database row last of all, which is what records the board as being at this revision.
     //
-    // An interrupted publish therefore leaves a tree carrying files nothing points at - wasted
-    // space, not corruption - rather than a workbook referencing files that never arrived, which
-    // is a board that fails to load. RE-RUNNING THE SAME PUBLISH IS SAFE and is the recovery: each
-    // step overwrites, and the blobs are content-addressed so a re-copy is byte-identical.
+    // An interrupted publish therefore leaves a tree carrying stored files nothing points at -
+    // wasted space, not corruption - never a board file naming bytes that never arrived. RE-RUNNING
+    // THE SAME PUBLISH IS SAFE and is the recovery: the stored files are content-addressed, so a
+    // re-copy is byte-identical, and the board file is replaced again.
     //
     // The project owner decided against retained revisions (open question 5), so there is no previous
     // version to roll back to. That is what makes the ordering above matter rather than being
@@ -77,8 +82,8 @@ namespace CRT.Server.Handlers.Submissions
             CancellationToken cancellationToken = default) =>
             this.ExecuteAsync(plan, boardData, calibrations, submissionId, nowUtc, listing: null, cancellationToken);
 
-        // `listing`: a NEW board's row for the main Excel data file (2026-09-27), written after the
-        // board and before the database - see step 2c. Null for everything already listed.
+        // `listing`: a NEW board's row for the main file (2026-09-27), written after the board and
+        // before the database - see step 3. Null for everything already listed.
         public Task<PublishOutcome> ExecuteAsync(
             PublishPlanDetail plan,
             BoardData boardData,
@@ -87,12 +92,16 @@ namespace CRT.Server.Handlers.Submissions
             DateTimeOffset nowUtc,
             MasterRowInsert? listing,
             CancellationToken cancellationToken = default) =>
-            this.ExecuteAsync(plan, boardData, calibrations, renames: null, submissionId, nowUtc, listing, cancellationToken);
+            this.ExecuteAsync(plan, boardData, calibrations, renames: null, submissionId, nowUtc, listing, cancellationToken: cancellationToken);
 
         // ###########################################################################################
-        // `renames`: the board's whole "Schematic renames" list as the sidecar is to hold it - the
+        // `renames`: the board's whole "Schematic renames" list as its board file is to hold it - the
         // approval's (ApprovePublishFlow.RenameLogFor: what it had, plus this publish's renames;
-        // owner decision 2026-10-10). Null keeps the list the board's sidecar has now, unchanged.
+        // owner decision 2026-10-10). Null keeps the list the board file has now, unchanged.
+        //
+        // `publishedBoardFile`: the board file as the approval read it once (PublishedBoardRead - code
+        // review, 2026-10-26), whose unknown fields are kept rather than the file being parsed again.
+        // Null, or one that could not be read, or of another path: read here, in full, as before.
         // ###########################################################################################
         public async Task<PublishOutcome> ExecuteAsync(
             PublishPlanDetail plan,
@@ -102,14 +111,11 @@ namespace CRT.Server.Handlers.Submissions
             long? submissionId,
             DateTimeOffset nowUtc,
             MasterRowInsert? listing,
+            PublishedBoardRead? publishedBoardFile = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(plan);
             ArgumentNullException.ThrowIfNull(boardData);
-
-            // Read before anything is written - the sidecar is replaced in step 2b.
-            IReadOnlyList<SchematicRenameRecord> renameLog =
-                renames ?? BoardComponentHighlightStorage.LoadSchematicRenames(plan.WorkbookPath);
 
             // *** REFUSED RATHER THAN DEFAULTED TO EMPTY. *** A caller passing null has almost
             // certainly failed to read the submission's calibrations rather than genuinely meaning
@@ -117,36 +123,33 @@ namespace CRT.Server.Handlers.Submissions
             // contributor's calibration work silently removed.
             ArgumentNullException.ThrowIfNull(calibrations);
 
+            // Read before anything is written - the board file is replaced in step 2.
+            IReadOnlyList<SchematicRenameRecord> renameLog =
+                renames ?? BoardComponentHighlightStorage.LoadSchematicRenames(plan.BoardFilePath);
+
             // ---- 0. Everything checked BEFORE anything is written (security review, 2026-09-25) --
-            //
-            // Replacing a board image is NOT inert - the old workbook already points at it - so a
-            // refusal discovered at file 600 of 1,200 would leave half a board replaced. Every blob
-            // is therefore proved present, intact and of the type its name claims, and every
-            // destination free of symbolic links, before the first byte lands.
             string? refusal = await this.CheckBeforeWritingAsync(plan, listing, cancellationToken).ConfigureAwait(false);
 
             if (refusal is not null)
                 return PublishOutcome.Failed(refusal);
 
             // ###########################################################################################
-            // *** CANCELLABLE ONLY UNTIL HERE (code review, 2026-10-13). *** The request's token used
-            // to be honoured between files: a maintainer's client giving up - a closed laptop, a
-            // proxy timeout - stopped the publish at file 600 of 1,200, with half the board
-            // replaced, the workbook untouched and the submission still pending. From the first
-            // write on, it runs to the end whatever the client does - the rule BoardOrderFlow and
+            // *** CANCELLABLE ONLY UNTIL HERE (code review, 2026-10-13). *** From the first write on,
+            // it runs to the end whatever the client does - a maintainer's client giving up (a closed
+            // laptop, a proxy timeout) must not stop it half way. The rule BoardOrderFlow and
             // BoardDeletionFlow already follow.
             // ###########################################################################################
             cancellationToken = CancellationToken.None;
 
-            // ---- 1. The files ------------------------------------------------------------------
+            IReadOnlyList<PlannedFile> stored = plan.StoredFiles;
+
+            // ---- 1. The stored files -------------------------------------------------------------
             //
             // Each copy is hashed as it is written and moved into place only on a match - see
             // BlobStore.TryCopyToAsync - so a blob that changed since the check above still cannot
             // reach the tree.
-            foreach (PlannedFile file in plan.Files)
+            foreach (PlannedFile file in stored)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 BlobCopyResult copied;
 
                 try
@@ -159,205 +162,125 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     // ###########################################################################################
                     // *** A FILESYSTEM REFUSAL IS A STOPPED PUBLISH, NOT A CRASH (owner report,
-                    // 2026-09-23). ***
-                    //
-                    // TryCopyToAsync returns false for a MISSING blob, which the branch below
-                    // handles - but it THROWS when the destination cannot be written. Nothing
-                    // caught that, so it escaped through ApprovePublishFlow and the endpoint, and
-                    // "Approve and publish" answered a bare 500 with nothing to act on.
-                    //
-                    // The real case: the service account could not overwrite an existing board
-                    // image in the published tree ("Permission denied" on
-                    // Board Layout 250407 NTSC.png). That is a deployment fault with a precise
-                    // remedy, and a 500 is the one response that hides which file and why.
-                    //
-                    // Stopping here is safe for the same reason the missing-blob branch is: the
-                    // workbook has not been touched, so nothing downstream reads the partially
-                    // copied files. The publish is genuinely incomplete either way - what changes
-                    // is that the maintainer is told WHICH file and WHY.
-                    //
-                    // Narrow on purpose: an IOException or a permission refusal is an environment
-                    // problem to report, whereas anything else here is a defect that should not be
-                    // quietly turned into a friendly message.
+                    // 2026-09-23). *** TryCopyToAsync THROWS when the destination cannot be written.
+                    // A deployment fault with a precise remedy, and a 500 is the one response that
+                    // hides which file and why. Stopping here is safe: only new stored files were
+                    // written, and the board file - what points at them - is untouched.
                     // ###########################################################################################
                     this.thisLogger.LogError(
                         ex,
-                        "Publish of {BoardId} stopped: [{Path}] could not be written.",
+                        "Publish of {BoardId} stopped: [{Name}] could not be stored at [{Path}].",
                         plan.BoardId,
-                        file.RelativePath);
+                        file.Name,
+                        file.StoredPath);
 
                     // The exception's own text names the server's paths - it is in the log line
                     // above, never in what the maintainer is shown (code review, 2026-10-13).
                     return PublishOutcome.Failed(
-                        $"[{file.RelativePath}] could not be written to the BETA data. " +
-                        PublishExecutor.FilesBeforeSentence(plan, file) +
+                        $"[{file.Name}] could not be written to the BETA data. Nothing of the board was changed. " +
                         "This is a server configuration problem rather than a fault in the submission - the server's log says more.");
                 }
 
                 if (copied == BlobCopyResult.HashMismatch)
                 {
                     return PublishOutcome.Failed(
-                        $"The stored content for [{file.RelativePath}] no longer matches what was submitted, so " +
-                        "it was not published. Files before it in this publish were already replaced; " +
-                        "re-running the publish is safe once the submission is sent again.");
+                        $"The stored content for [{file.Name}] no longer matches what was submitted, so it was not " +
+                        "published. Nothing of the board was changed; publishing again is safe once the submission is sent again.");
                 }
 
                 if (copied == BlobCopyResult.Missing)
                 {
-                    // The blob is missing from the store although the submission was finalised,
-                    // which means the store lost it or the plan named a hash nothing uploaded.
-                    // Stopping here leaves the tree as it was for everything downstream, because
-                    // the workbook has not been touched.
                     this.thisLogger.LogError(
-                        "Publish of {BoardId} stopped: blob {Hash} for {Path} is not in the store.",
+                        "Publish of {BoardId} stopped: blob {Hash} for {Name} is not in the store.",
                         plan.BoardId,
                         file.Sha256,
-                        file.RelativePath);
+                        file.Name);
 
                     return PublishOutcome.Failed(
-                        $"The content for [{file.RelativePath}] is no longer in the blob store, so the publish was stopped before any board file was changed.");
+                        $"The content for [{file.Name}] is no longer in the blob store, so the publish was stopped before any board file was changed.");
                 }
             }
 
-            // ---- 2. The workbook ---------------------------------------------------------------
+            // ---- 2. The board file ---------------------------------------------------------------
             //
-            // Generated from the submitted rows, never uploaded - PublishPlan refuses a submitted
-            // workbook outright, so that a contributor cannot overwrite a frozen generation.
-            cancellationToken.ThrowIfCancellationRequested();
-
-            string workbookHash;
+            // Generated from the submitted rows, never uploaded - SubmissionFileRules refuses a .json
+            // outright, so a contributor cannot write a board file of their own.
+            string boardFileHash;
 
             try
             {
                 // ###########################################################################################
                 // *** THE REVISION DATE IS STAMPED WITH THE PUBLISH DATE (owner request,
-                // 2026-09-23). ***
+                // 2026-09-23). *** It means "when this board's data was last published" - so the
+                // publish is the only event that can set it truthfully. TAKEN FROM THE PLAN, NOT
+                // COMPUTED AGAIN (2026-09-26): the plan's descriptor is what reaches
+                // `boards.current_revision` at step 4, and the next draft re-bases against that row,
+                // so the board file and the row carry ONE value.
                 //
-                // It is the "# Revision date:" line at the top of the Board schematics sheet, and it
-                // means "when this board's data was last published" - so the publish is the only
-                // event that can set it truthfully. Carrying the SUBMITTED value through would date
-                // a freshly published board to whenever the contributor happened to start their
-                // draft, which on a submission that sat in the queue for a week is simply wrong.
-                //
-                // Deliberately NOT done when CRT writes a draft: a draft is not published data, and
-                // stamping it locally would move the value DraftRevisionComparer uses to detect that
-                // the published board has drifted - every draft would immediately look as though it
-                // had a newer revision than the board it came from.
-                //
-                // Formatted as "2026-May-12" (BoardWorkbookStyle.FormatRevisionDate), matching what
-                // the shipped boards already carry.
-                //
-                // *** TAKEN FROM THE PLAN, NOT COMPUTED AGAIN (2026-09-26). *** It used to stamp
-                // FormatRevisionDate(nowUtc) here while the plan's descriptor - which is what
-                // reaches `boards.current_revision` at step 4 below - was built from the SUBMITTED
-                // date. So the workbook and the database row disagreed, and the row is what the
-                // next draft re-bases against. ApprovePublishFlow.BuildPlan now stamps it once and
-                // both read that one value.
+                // Fields this server does not know - at the top of the board file and on every row -
+                // are kept: a later CRT's additions survive an edit made through this one
+                // (BoardDocumentUnknowns). So the board file there is read IN FULL or not at all
+                // (code review, 2026-10-25): one that cannot be read - a newer format, a hand edit
+                // gone wrong - stops the publish rather than being replaced by what this server knows.
                 // ###########################################################################################
                 BoardData publishedBoard = boardData.WithRevisionDate(plan.Descriptor.Revision);
 
-                BoardWorkbookWriter.Write(plan.WorkbookPath, publishedBoard);
+                BoardDocument? existing = publishedBoardFile is { Document: { } readOnce } && publishedBoardFile.IsAt(plan.BoardFilePath)
+                    ? readOnce
+                    : BoardFiles.ReadInFull(plan.BoardFilePath);
 
-                workbookHash = await PublishExecutor
-                    .ComputeFileHashAsync(plan.WorkbookPath, cancellationToken)
+                BoardDocument document = BoardDocumentMapping.ToDocument(
+                    new BoardContent(publishedBoard, calibrations, renameLog),
+                    name => name,
+                    plan.FileList);
+
+                BoardDocumentUnknowns.CarryOver(existing, document);
+
+                BoardFiles.Write(plan.BoardFilePath, document);
+
+                boardFileHash = await PublishExecutor
+                    .ComputeFileHashAsync(plan.BoardFilePath, cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // ###########################################################################################
-                // *** THE SAME FILESYSTEM REFUSAL, AT THE STAGE WHERE IT ACTUALLY HURTS. ***
-                //
-                // Step 1 stopping is clean - the workbook is untouched, so nothing reads the files
-                // it managed to copy. Stopping HERE is not clean: the images have been replaced and
-                // the workbook has not, so the board on disk is a mixture until the publish is
-                // re-run. Reported as such rather than thrown, because a maintainer needs to know the
-                // tree is mid-publish, which a 500 does not tell them.
-                //
-                // Re-running the publish repairs it: every step overwrites unconditionally, so the
-                // second attempt writes the same files again from the same blobs.
+                // *** REPORTED, NOT A 500. *** The board file is replaced whole (FileReplacer), so a
+                // failure leaves the OLD board file as it was, and the stored files copied in step 1
+                // are new bytes nothing points at yet. Approving again repairs it.
                 // ###########################################################################################
                 this.thisLogger.LogError(
                     ex,
-                    "Publish of {BoardId} stopped while writing the workbook [{Path}]. The board's "
-                    + "FILES were already replaced, so the tree is part-published until this is re-run.",
+                    "Publish of {BoardId} stopped while writing the board file [{Path}].",
                     plan.BoardId,
-                    plan.WorkbookPath);
+                    plan.BoardFilePath);
 
                 return PublishOutcome.Failed(
-                    "The board workbook could not be written - the server's log says why. The board's image and "
-                    + "attachment files were already replaced, so this board is part-published - "
-                    + "re-run the publish once the server configuration is fixed.");
+                    "The board file could not be written - the server's log says why. The board is as it was; " +
+                    "approve again once the server configuration is fixed.");
             }
-
-            // ---- 2b. The SIDECAR ---------------------------------------------------------------
-            //
-            // *** A BOARD IS TWO FILES, AND OMITTING THIS ONE IS SILENT DATA LOSS. *** The `.json`
-            // beside the workbook holds every COMPONENT HIGHLIGHT - the rectangles the whole app is
-            // built around - and every KiCad calibration. BoardWorkbookWriter does not write them,
-            // so a publish that stopped at the workbook would produce a board whose highlights had
-            // simply vanished, with no retained revision to restore from.
-            //
-            // Written immediately after the workbook and before anything advertises the revision,
-            // so the two halves of a board become reachable together. An interruption between them
-            // leaves a workbook with a stale sidecar, which re-running the publish repairs.
-            //
-            // Calibrations are NOT part of BoardData - they live only in the sidecar - so they are
-            // passed separately rather than read off the merged board.
-            cancellationToken.ThrowIfCancellationRequested();
-
-            string sidecarHash;
-
-            try
+            catch (InvalidOperationException ex)
             {
-                // Takes the WORKBOOK path and derives the sidecar itself, through the same helper
-                // the reader uses - so this call site cannot derive it differently from where it is
-                // read.
-                //
-                // Only when its content changes (owner request, 2026-09-28): a sidecar already
-                // holding these highlights keeps its bytes, so "Publish to production" does not list
-                // it as a file to copy when nothing in it changed - see WriteIfChanged.
-                if (!BoardSidecarWriter.WriteIfChanged(plan.WorkbookPath, boardData.ComponentHighlights, calibrations, renameLog))
-                    this.thisLogger.LogInformation("The highlight file of {BoardId} is unchanged and was kept as it is.", plan.BoardId);
-
-                sidecarHash = await PublishExecutor
-                    .ComputeFileHashAsync(plan.SidecarPath, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // ###########################################################################################
-                // *** REPORTED, NOT A 500 (owner report, 2026-09-28). *** This escaped once: a
-                // sidecar copied into BETA by hand could not be opened for writing, and "Approve and
-                // publish" answered a bare 500 with the new workbook already written. The sidecar
-                // is now REPLACED rather than opened (FileReplacer) and the folder is checked before
-                // anything is written, so this should be unreachable - but if it is reached, the
-                // maintainer is told the board is part-published and that approving again repairs
-                // it, exactly as for the workbook above.
-                // ###########################################################################################
                 this.thisLogger.LogError(
                     ex,
-                    "Publish of {BoardId} stopped while writing the highlight file [{Path}]. The board's "
-                    + "FILES and WORKBOOK were already replaced, so the tree is part-published until this is re-run.",
+                    "Publish of {BoardId} stopped: the board file [{Path}] there could not be read in full.",
                     plan.BoardId,
-                    plan.SidecarPath);
+                    plan.BoardFilePath);
 
                 return PublishOutcome.Failed(
-                    "The board's highlight file could not be written - the server's log says why. The board's files and "
-                    + "workbook were already replaced, so this board is part-published - approve again once the "
-                    + "server configuration is fixed.");
+                    "The board file in the BETA data could not be read in full - it may have been written by a newer " +
+                    "CRT, or edited by hand - so it was not written over. The board is as it was; the server's log says more.");
             }
 
-            // ---- 2c. A NEW board's row in the main Excel data file (owner request, 2026-09-27) --
+            // ---- 3. A NEW board's row in the main file (owner request, 2026-09-27) ----------------
             //
             // What makes the board appear in CRT's drop-downs at all - CRT finds boards only through
-            // that file. After the board's two files, so the row never names a board that is not
-            // there; before the database, so the publish is not recorded until it is listed. A
-            // failure here leaves the board written but unlisted - invisible, not broken - and
-            // re-running the publish repairs it: the insert updates a row already there.
+            // that file. After the board file, so the row never names a board that is not there;
+            // before the database, so the publish is not recorded until it is listed. A failure here
+            // leaves the board written but unlisted - invisible, not broken - and re-running the
+            // publish repairs it: the insert updates a row already there.
             if (listing is not null)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 MasterListingEdit edit = MasterListing.Insert(listing.MasterPath, listing.Row, listing.AfterExcelDataFile, nowUtc);
 
                 if (!edit.IsDone)
@@ -372,24 +295,19 @@ namespace CRT.Server.Handlers.Submissions
                 }
             }
 
-            // ---- 3. What this publish IS -----------------------------------------------------
+            // ---- What this publish IS ------------------------------------------------------------
             //
-            // Held in memory and recorded in the database; never written to the tree since
-            // system.json was retired (2026-09-25).
-            //
-            // DescriptorWithWorkbook, not the planned descriptor: the planned one covers the
-            // uploaded files only, and a rows-only change uploads nothing - so without the
-            // workbook and sidecar folded in, the content hash would not move, and the production
-            // promotion - which compares exactly this hash to decide what is waiting - would never
-            // offer the board. A submission that only MOVES A HIGHLIGHT touches neither a row nor
-            // an uploaded file, so the sidecar's hash is the only thing that can move it at all.
-            BoardDescriptor descriptor = plan.DescriptorWithWorkbook(workbookHash, sidecarHash);
+            // DescriptorWithBoardFile, not the planned descriptor: the planned one covers the files
+            // only, and a rows-only change stores nothing - so without the board file folded in the
+            // content hash would not move, and the production promotion, which compares exactly this
+            // hash to decide what is waiting, would never offer the board.
+            BoardDescriptor descriptor = plan.DescriptorWithBoardFile(boardFileHash);
 
             // A system.json an earlier build wrote into this folder: not relevant to users, and
             // no longer kept. See RetiredBoardDescriptor.
             RetiredBoardDescriptor.TryRemove(plan.DataRoot, plan.BoardFolder, this.thisLogger);
 
-            // ---- 4. The database ---------------------------------------------------------------
+            // ---- 4. The database -----------------------------------------------------------------
             //
             // Last, so a row claiming a revision can never exist before the tree actually holds
             // it. The reverse order would leave a contributor's next submission diffing against a
@@ -411,35 +329,30 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             this.thisLogger.LogInformation(
-                "Published {BoardId} revision {Revision} ({FileCount} files, workbook {Workbook}).",
+                "Published {BoardId} revision {Revision} ({FileCount} files stored, board file {BoardFile}).",
                 plan.BoardId,
                 descriptor.Revision,
-                plan.Files.Count,
-                plan.WorkbookFileName);
+                stored.Count,
+                plan.BoardFileRelative);
 
-            return PublishOutcome.Published(descriptor, workbookHash, plan.Files.Count);
+            return PublishOutcome.Published(descriptor, boardFileHash, stored.Count);
         }
-
-        // What a refusal at `file` leaves behind - nothing, when it is the first file written.
-        private static string FilesBeforeSentence(PublishPlanDetail plan, PlannedFile file) =>
-            ReferenceEquals(plan.Files.FirstOrDefault(), file)
-                ? "Nothing was changed. "
-                : "Files before it were already replaced; approving again once it is fixed completes the publish. ";
 
         // ###########################################################################################
         // The pre-write check. Null when everything may be written, otherwise the reason it may not.
         //
-        // Also covers the two GENERATED files - workbook and sidecar - for links:
-        // they are written through the same folders, and a link there redirects them just as well.
+        // Also covers the GENERATED board file for links: it is written through the same folders,
+        // and a link there redirects it just as well.
         // ###########################################################################################
         private async Task<string?> CheckBeforeWritingAsync(PublishPlanDetail plan, MasterRowInsert? listing, CancellationToken cancellationToken)
         {
-            IEnumerable<string> destinations = plan.Files
-                .Select(file => file.AbsolutePath)
-                .Append(plan.WorkbookPath)
-                .Append(plan.SidecarPath);
+            IReadOnlyList<PlannedFile> stored = plan.StoredFiles;
 
-            // The main Excel data file too, for a new board: written through the same root.
+            IEnumerable<string> destinations = stored
+                .Select(file => file.AbsolutePath)
+                .Append(plan.BoardFilePath);
+
+            // The main file too, for a new board: written through the same root.
             if (listing is not null)
             {
                 destinations = destinations.Append(listing.MasterPath);
@@ -447,12 +360,12 @@ namespace CRT.Server.Handlers.Submissions
                 // Checked before the first byte, like everything else here: a row placed after one
                 // that has since left the list must not be found out after the board is written.
                 if (!MasterListing.TryRead(listing.MasterPath, out IReadOnlyList<MasterListingRow> rows, out string why))
-                    return $"The main Excel data file could not be read ({why}), so the new board could not be listed. Nothing was changed.";
+                    return $"The main data file could not be read ({why}), so the new board could not be listed. Nothing was changed.";
 
                 if (MasterListing.IndexOfBoard(rows, listing.Row.BoardId) < 0 &&
                     !BoardListingRules.AfterIsListed(rows, listing.AfterExcelDataFile))
                 {
-                    return $"The new board was placed after [{listing.AfterExcelDataFile}], which is no longer in the " +
+                    return $"The new board was placed after [{BoardDescriptorRules.BoardIdFromExcelDataFile(listing.AfterExcelDataFile)}], which is no longer in the " +
                         "drop-down lists. Place it again in the Boards screen. Nothing was changed.";
                 }
 
@@ -460,7 +373,9 @@ namespace CRT.Server.Handlers.Submissions
                     return $"{MasterListing.NamesTakenMessage(taken)} Nothing was changed.";
             }
 
-            foreach (string destination in destinations)
+            List<string> destinationList = destinations.ToList();
+
+            foreach (string destination in destinationList)
             {
                 string? link = PublishPathSafety.FindLinkOnPath(plan.DataRoot, destination, PublishPathSafety.IsLink);
 
@@ -479,11 +394,11 @@ namespace CRT.Server.Handlers.Submissions
 
             // ###########################################################################################
             // *** EVERY FOLDER THIS WRITES INTO MAY BE WRITTEN (owner report, 2026-09-28). *** A folder
-            // copied into BETA by hand as another user refuses every write, and finding that out at
-            // the third file leaves the board half-replaced. After the link check, which a probe -
-            // a real file - must never get ahead of. See TreeWriteAccess.
+            // copied into BETA by hand as another user refuses every write, and finding that out half
+            // way through is the half-published board this ordering exists to avoid. After the link
+            // check, which a probe - a real file - must never get ahead of. See TreeWriteAccess.
             // ###########################################################################################
-            IReadOnlyList<string> refusing = TreeWriteAccess.FoldersRefusing(plan.DataRoot, destinations, this.CanWriteFolderForTests);
+            IReadOnlyList<string> refusing = TreeWriteAccess.FoldersRefusing(plan.DataRoot, destinationList, this.CanWriteFolderForTests);
 
             if (refusing.Count > 0)
             {
@@ -497,7 +412,7 @@ namespace CRT.Server.Handlers.Submissions
                 return TreeWriteAccess.RefusalMessage("BETA", plan.DataRoot, refusing);
             }
 
-            foreach (PlannedFile file in plan.Files)
+            foreach (PlannedFile file in stored)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -508,30 +423,33 @@ namespace CRT.Server.Handlers.Submissions
                 if (!blob.Exists)
                 {
                     this.thisLogger.LogError(
-                        "Publish of {BoardId} stopped: blob {Hash} for {Path} is not in the store.",
-                        plan.BoardId, file.Sha256, file.RelativePath);
+                        "Publish of {BoardId} stopped: blob {Hash} for {Name} is not in the store.",
+                        plan.BoardId, file.Sha256, file.Name);
 
-                    return $"The content for [{file.RelativePath}] is no longer in the blob store, so the publish " +
+                    return $"The content for [{file.Name}] is no longer in the blob store, so the publish " +
                         "was stopped before any board file was changed.";
                 }
 
                 if (!blob.HashMatches)
                 {
                     this.thisLogger.LogError(
-                        "Publish of {BoardId} stopped: blob {Hash} for {Path} no longer hashes to its name.",
-                        plan.BoardId, file.Sha256, file.RelativePath);
+                        "Publish of {BoardId} stopped: blob {Hash} for {Name} no longer hashes to its name.",
+                        plan.BoardId, file.Sha256, file.Name);
 
-                    return $"The stored content for [{file.RelativePath}] no longer matches what was submitted, so " +
+                    return $"The stored content for [{file.Name}] no longer matches what was submitted, so " +
                         "the publish was stopped before any board file was changed.";
                 }
 
                 // The finalise-time rules again - a KiCad schematic's sheets read from the whole
                 // file (KiCadSheetReferences) - so a submission queued before a rule existed cannot
-                // carry past it into BETA.
-                if (!SubmissionContentRules.MatchesWholeFile(
-                        file.RelativePath, blob.Head, () => this.thisBlobs.OpenText(file.Sha256), out string reason))
+                // carry past it into BETA. Every name of the same bytes is judged by its own type.
+                foreach (PlannedFile named in plan.Files.Where(other => string.Equals(other.StoredPath, file.StoredPath, StringComparison.Ordinal)))
                 {
-                    return $"[{file.RelativePath}] cannot be published: {reason} Nothing was changed.";
+                    if (!SubmissionContentRules.MatchesWholeFile(
+                            named.Name, blob.Head, () => this.thisBlobs.OpenText(named.Sha256), out string reason))
+                    {
+                        return $"[{named.Name}] cannot be published: {reason} Nothing was changed.";
+                    }
                 }
             }
 
@@ -539,15 +457,10 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // The SHA-256 of a file on disk, streamed.
-        //
-        // Streamed rather than read into memory because a board workbook for a large board is not
-        // small, and the strategy document's own performance note is explicit: never load a whole
-        // board into memory to compute a hash.
-        //
-        // Lower-case hex, matching BoardDescriptorRules.ComputeContentHash and
-        // dataChecksums.json - a hash that differs only in case compares unequal everywhere it is
-        // used, which reads as every client being permanently out of date.
+        // The SHA-256 of a file on disk, streamed. Lower-case hex, matching
+        // BoardDescriptorRules.ComputeContentHash and dataChecksums.json - a hash that differs only
+        // in case compares unequal everywhere it is used, which reads as every client being
+        // permanently out of date.
         // ###########################################################################################
         private static async Task<string> ComputeFileHashAsync(string path, CancellationToken cancellationToken)
         {
@@ -566,8 +479,8 @@ namespace CRT.Server.Handlers.Submissions
     }
 
     // ###########################################################################################
-    // A new board's row for the main Excel data file: which file, the row, and the row it goes
-    // after (null: first). See MasterListing.
+    // A new board's row for the main file: which file, the row, and the row it goes after (null:
+    // first). See MasterListing.
     // ###########################################################################################
     public sealed record MasterRowInsert(string MasterPath, MasterListingRow Row, string? AfterExcelDataFile);
 
@@ -576,7 +489,7 @@ namespace CRT.Server.Handlers.Submissions
     //
     // The descriptor is returned rather than merely written, because the caller records the
     // revision in its own audit trail and would otherwise have to read the file back to learn
-    // what it just published.
+    // what it just published. WorkbookSha256 is the board file's.
     // ###########################################################################################
     public sealed class PublishOutcome
     {

@@ -164,6 +164,16 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         KiCadImportantSignals =
         [
             new KiCadImportantSignalEntry { DisplayName = "Clock", KiCadNetName = "/CLK" }
+        ],
+
+        // CRT 4.0's own sheets (2026-10-25).
+        ComponentPins =
+        [
+            new ComponentPinEntry { BoardLabel = "U8", Region = "PAL", Pin = "40", Name = "VCC", Direction = "Power" }
+        ],
+        ComponentReplacements =
+        [
+            new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Needs changes", Changes = "Swap C12", Source = "Forum" }
         ]
     };
 

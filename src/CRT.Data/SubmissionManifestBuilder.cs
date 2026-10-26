@@ -142,7 +142,12 @@ namespace Handlers.DataHandling
                     BoardLocalFiles = merged.BoardLocalFiles.ToList(),
                     BoardLinks = merged.BoardLinks.ToList(),
                     Credits = merged.Credits.ToList(),
-                    KiCadImportantSignals = merged.KiCadImportantSignals.ToList()
+                    KiCadImportantSignals = merged.KiCadImportantSignals.ToList(),
+
+                    // Always sent, empty when the board has none - null is an older client's
+                    // "not sent" (see SubmissionRows.ComponentPins).
+                    ComponentPins = merged.ComponentPins.ToList(),
+                    ComponentReplacements = merged.ComponentReplacements.ToList()
                 }
             };
 
@@ -328,7 +333,9 @@ namespace Handlers.DataHandling
                 BoardLocalFiles = [.. rows.BoardLocalFiles],
                 BoardLinks = [.. rows.BoardLinks],
                 Credits = [.. rows.Credits],
-                KiCadImportantSignals = [.. rows.KiCadImportantSignals]
+                KiCadImportantSignals = [.. rows.KiCadImportantSignals],
+                ComponentPins = [.. rows.ComponentPins ?? []],
+                ComponentReplacements = [.. rows.ComponentReplacements ?? []]
             };
         }
     }

@@ -239,7 +239,16 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                 for it on every launch was a question whose answer never changes - and one that broke
                 the moment somebody typed a trailing slash or omitted the scheme. The address is
                 ReviewApiRoutes.DefaultBaseAddress.
+
+                While that is the TEST instance (CRT 4.0's pre-releases, 2026-10-25), this line says so:
+                its accounts are its own, and a maintainer typing the live password would otherwise
+                read the refusal as a broken account (ContributionServer.SignInNote).
                 -->
+                <TextBlock x:Name="TestServerSignInText"
+                           TextWrapping="Wrap"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text_Warning_Fg}"
+                           IsVisible="False" />
 
                 <TextBlock Text="Email"
                            Opacity="0.7"
@@ -667,7 +676,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                     <TextBlock Text="Unused files" FontSize="13" />
                                     <TextBlock Classes="AdminLock" Text="&#xf023;" />
                                 </StackPanel>
-                                <TextBlock Text="Files no workbook uses, in the BETA or the stable data" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                                <TextBlock Text="Files no board uses, in the BETA or the stable data" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 

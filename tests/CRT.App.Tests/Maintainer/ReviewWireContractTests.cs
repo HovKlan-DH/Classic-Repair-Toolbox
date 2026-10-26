@@ -1772,6 +1772,65 @@ public sealed class ReviewWireContractTests
         Assert.Null(answer.Files.Single(file => file.Path != shared).AlsoUsedBy);
     }
 
+    // ###########################################################################################
+    // *** THE CRT 4.0 TREE'S NAMES AND PLACES (2026-10-25). *** A board lists its files by name,
+    // each one's bytes stored under their checksum ("Files/<ab>/<sha256>.<ext>"), so the answers
+    // carry both: the plan names each stored file (fileNames, a copied file's name, the removals'
+    // names), a file tree says where an entry's bytes lie (treePath), and a board's table where each
+    // of its files is (filePlaces). Renamed on one side alone, a maintainer would read checksums
+    // for names or open nothing - silently; it fails here instead.
+    // ###########################################################################################
+    [Fact]
+    public void The_4_0_trees_names_and_places_read_back_on_every_answer_that_carries_them()
+    {
+        const string Stored = "Files/3f/3f7a.png";
+        const string Removed = "Files/9c/9c01.pdf";
+        const string Kept = "Files/aa/aa11.pdf";
+
+        ProductionPlanView? plan = ReviewApiParser.ParseProductionPlan(ReviewWireContractTests.Answer(new ProductionPlanAnswer(
+            "Commodore/C64/250407",
+            "2026-October-25",
+            new string('c', 64),
+            IsAwaitingProduction: true,
+            TouchesSharedFiles: false,
+            CanPublish: true,
+            Refusal: null,
+            Approval: null,
+            UnchangedCount: 1,
+            Files: [new PromotionFile(Stored, new string('3', 64), PromotionChange.Added, PromotionStage.Content, IsShared: false, Name: "Images/u8.png")],
+            Problems: [],
+            Removals: new FileRemovalPreview([Removed], null, new Dictionary<string, string> { [Removed] = "old.pdf" }),
+            UnchangedFiles: [Kept],
+            FileNames: new Dictionary<string, string> { [Stored] = "Images/u8.png", [Kept] = "manual.pdf" })));
+
+        Assert.Equal("Images/u8.png", Assert.Single(plan!.Files).Name);
+        Assert.Equal([Removed], plan.Removals!.Files);
+        Assert.Equal("old.pdf", plan.Removals.NameOf(Removed));
+        Assert.Equal("manual.pdf", plan.FileNames![Kept]);
+
+        BoardFileEntry entry = new("Images/u8.png", BoardFileChange.Unchanged, BoardFileSource.Beta, TreePath: Stored);
+
+        Assert.Equal(Stored, Assert.Single(ReviewApiParser.ParseSubmissionFiles(ReviewWireContractTests.Answer(
+            new SubmissionFilesAnswer("Commodore/C64/250407", [entry])))!.Files).PlaceInTree);
+        Assert.Equal(Stored, Assert.Single(ReviewApiParser.ParseBoardFiles(ReviewWireContractTests.Answer(
+            new BoardFilesAnswer("Commodore/C64/250407", [entry])))!.Files).PlaceInTree);
+
+        BoardTableAnswer? table = ReviewApiParser.ParseBoardTable(ReviewWireContractTests.Answer(new BoardTableAnswer(
+            "Commodore/C64/250407", "f", new SubmissionRows(), MayEdit: true, FilePlaces: new Dictionary<string, string> { ["Images/u8.png"] = Stored })));
+
+        Assert.Equal(Stored, table!.FilePlaces!["Images/u8.png"]);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(new
+        {
+            canPublish = true,
+            submission = new { id = 42, boardId = "Commodore/C64/250407", state = "pending", summary = "x" },
+            findings = Array.Empty<object>(),
+            removals = new FileRemovalPreview([Removed], null, new Dictionary<string, string> { [Removed] = "old.pdf" })
+        }));
+
+        Assert.Equal("old.pdf", detail!.Removals!.NameOf(Removed));
+    }
+
     // The mails the server could not send - never part of the public health answer.
     [Fact]
     public void The_server_status_reads_back_how_many_mails_wait_and_an_older_server_says_nothing()

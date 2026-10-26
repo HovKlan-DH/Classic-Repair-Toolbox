@@ -10,91 +10,74 @@ namespace Handlers.DataHandling
     // 2026-09-25: "it should be a two-fold process, where it is first published to BETA and then it
     // is published to the real production").
     //
-    // Pure, like PublishPlan: the facts about both trees go in as delegates, and a list of copies or
-    // a list of refusals comes out. The server's ProductionPromoter performs the list; the review
-    // application shows the SAME records to the maintainer before they press the button, which is why
-    // they live here in CRT.Data - one type on both ends of the wire, the SubmittedFileFact rule.
+    // Pure, like PublishPlan: the facts about both trees go in, a list of copies or a list of
+    // refusals comes out. The server's ProductionPromoter performs the list; the Maintainer tab shows
+    // the SAME records to the maintainer before they press the button, which is why they live here
+    // in CRT.Data - one type on both ends of the wire, the SubmittedFileFact rule.
     //
     // *** ONLY BYTES THAT ARE ALREADY IN BETA. *** Nothing reaches Production except a file the
     // BETA tree holds right now, so the most a promotion can publish is what a maintainer could
     // already look at there. That is the whole of the argument for letting a maintainer do it.
     //
     // *** PER BOARD, NOT PER SUBMISSION. *** BETA is one tree: two submissions merged into one
-    // board cannot be promoted separately, because the board's workbook already holds both.
+    // board cannot be promoted separately, because the board's file already holds both.
     //
-    // WHAT IS COPIED:
-    //   - every file under the board's own BETA folder ("<Manufacturer>/<Hardware>/<Board>/...")
-    //     that Production lacks or holds different bytes for - the workbook and sidecar of every
-    //     generation, images, attachments, KiCad files. Never a system.json: that file is retired
-    //     (2026-09-25) and a copy an earlier build left in BETA is not carried;
-    //   - every SHARED file the BETA board cites ("<Manufacturer>/Shared files/...", "Generic
-    //     shared files/...") that Production lacks or holds differently. Those reach every board
-    //     citing them, so a promotion that changes one is the ADMINISTRATOR's (TouchesSharedFiles).
+    // *** WHAT IS COPIED IN THE CRT 4.0 TREE (2026-10-25). *** A board is its board file
+    // ("<board id>/board.json") and the stored files it lists ("Files/<ab>/<sha256>.<ext>",
+    // DataTreeLayout). So:
+    //   - every stored file the BETA board lists that Production does not hold yet. A stored file
+    //     never changes - its name is its checksum - so one Production holds is already identical,
+    //     and a file the board REPLACED is a new stored file beside the old;
+    //   - the board file, when Production's differs - last, because it is what makes the copied
+    //     files reachable (the publish's order: an interrupted promotion leaves files nothing points
+    //     at, never a board pointing at files that are not there). Re-running repairs it.
+    // No shared files and no other board's files any more (every board owns its files), so a
+    // promotion never touches another board and needs no second approval for one.
     //
     // WHAT IS REFUSED:
-    //   - a cited file of ANOTHER board that is not already identical in Production: the board
-    //     would go out pointing at a file Production does not have. That board goes first.
-    //   - a cited file of this board or a shared folder that BETA itself does not have: the BETA
-    //     board is broken, and a broken board is not promoted.
-    //   - a path that differs from one already in Production only by capitalisation, for the
-    //     reason PublishedTreeView gives: every Windows and macOS client folds the two together.
+    //   - a BETA board without a readable board file: there is nothing to publish;
+    //   - a stored file the BETA board lists that BETA does not hold: the BETA board is broken, and
+    //     a broken board is not promoted;
+    //   - a board folder that differs from one already in Production only by capitalisation, for
+    //     the reason PublishedTreeView gives: every Windows and macOS client folds the two together.
     //
-    // THIS PLAN ONLY COPIES. What the promotion REMOVES from production - files the board stops
-    // citing that nothing else there uses - is ProductionPromotionFlow.PreviewRemovals, shown beside
-    // this list and sent back with the approval (2026-09-25).
-    //
-    // THE ORDER is the publish's, and for the same reason - an interrupted promotion must leave a
-    // board that loads: content files first, then the board's workbooks and sidecars, which make
-    // those files reachable. Re-running the same promotion repairs an interrupted one, because
-    // every copy overwrites and is verified.
+    // THIS PLAN ONLY COPIES. What the promotion REMOVES from production - stored files no board
+    // there lists once this board's file is copied - is ProductionPromotionFlow.PreviewRemovals,
+    // shown beside this list and sent back with the approval (2026-09-25).
     // ###########################################################################################
     public static class ProductionPromotionPlan
     {
         // ###########################################################################################
         // Builds the list.
         //
-        //   ownFiles     - every file under the board's folder in BETA, data-root-relative with
-        //                  forward slashes, as the server's walk found them.
-        //   citedFiles   - every file the BETA board's rows cite (SubmissionManifestBuilder.
-        //                  CollectReferencedFiles over the BETA board).
-        //   beta         - hashes in BETA; production - hashes and case variants in Production.
+        //   betaFiles            - the BETA board's files by name (its board file's list); null when
+        //                          BETA has no readable board file.
+        //   betaBoardFile        - the SHA-256 of BETA's board file; productionBoardFile the same
+        //                          in Production, null when it has none.
+        //   inBeta, inProduction - whether a tree holds a stored file (data-root-relative).
+        //   productionVariant    - the folder Production holds that differs from a path only by
+        //                          capitalisation, or null (PublishedTreeView.FindCaseVariant).
         // ###########################################################################################
         public static ProductionPromotionResult Build(
             string manufacturer,
             string hardware,
             string board,
-            IEnumerable<string> ownFiles,
-            IEnumerable<string> citedFiles,
-            PublishedTreeView beta,
-            PublishedTreeView production)
+            IReadOnlyList<BoardDocument.StoredFileRow>? betaFiles,
+            string? betaBoardFile,
+            string? productionBoardFile,
+            Func<string, bool> inBeta,
+            Func<string, bool> inProduction,
+            Func<string, string?>? productionVariant = null)
         {
-            ArgumentNullException.ThrowIfNull(ownFiles);
-            ArgumentNullException.ThrowIfNull(citedFiles);
-            ArgumentNullException.ThrowIfNull(beta);
-            ArgumentNullException.ThrowIfNull(production);
+            ArgumentNullException.ThrowIfNull(inBeta);
+            ArgumentNullException.ThrowIfNull(inProduction);
 
             string boardFolder = $"{manufacturer}/{hardware}/{board}";
+            string boardFile = DataTreeLayout.BoardFilePath(boardFolder);
 
             var problems = new List<ValidationFinding>();
-            var copies = new Dictionary<string, PromotionFile>(StringComparer.Ordinal);
 
-            // Already identical in production - by path, for the file tree (owner request,
-            // 2026-09-28), and counted for the summary.
-            var unchanged = new List<string>();
-
-            string[] own = ownFiles
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .Select(path => path.Replace('\\', '/'))
-                .Where(path => !ProductionPromotionPlan.IsHidden(path))
-                .Where(path => !ProductionPromotionPlan.IsRetired(boardFolder, path))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-
-            // For "is this cited file one the walk found?" below - once per cited file, so a set
-            // rather than a scan of `own` (a large board cites ~2,000 of its ~2,200 files).
-            var ownSet = new HashSet<string>(own, StringComparer.Ordinal);
-
-            if (own.Length == 0)
+            if (betaFiles is null || string.IsNullOrWhiteSpace(betaBoardFile))
             {
                 problems.Add(ProductionPromotionPlan.Error(
                     "promote.not_in_beta",
@@ -104,95 +87,74 @@ namespace Handlers.DataHandling
                 return new ProductionPromotionResult([], 0, problems, TouchesSharedFiles: false);
             }
 
-            // ---- The board's own folder -------------------------------------------------------
-            foreach (string path in own)
+            var copies = new Dictionary<string, PromotionFile>(StringComparer.Ordinal);
+
+            // Already identical in production - by path, for the file tree (owner request,
+            // 2026-09-28), and counted for the summary.
+            var unchanged = new List<string>();
+
+            foreach (BoardDocument.StoredFileRow file in betaFiles)
             {
-                if (!path.StartsWith(boardFolder + "/", StringComparison.Ordinal))
-                {
-                    // The walk handed over something outside the folder it was asked for. Not
-                    // this board's to promote, whatever it is.
-                    problems.Add(ProductionPromotionPlan.Error(
-                        "promote.outside_board", path, $"[{path}] is not inside [{boardFolder}]."));
-                    continue;
-                }
-
-                if (ProductionPromotionPlan.TryPlan(path, beta, production, problems, out PromotionFile? file))
-                {
-                    if (file is null)
-                        unchanged.Add(path);
-                    else
-                        copies[path] = file;
-                }
-            }
-
-            // ---- What the board cites outside its own folder -----------------------------------
-            foreach (string cited in citedFiles
-                         .Where(path => !string.IsNullOrWhiteSpace(path))
-                         .Select(path => path.Replace('\\', '/'))
-                         .Distinct(StringComparer.Ordinal))
-            {
-                SubmissionFileScope scope = SubmissionFileScopes.Classify(manufacturer, hardware, board, cited);
-
-                if (scope == SubmissionFileScope.Own)
-                {
-                    // Already walked. A cited own file the walk did not find is a BETA board
-                    // pointing at nothing.
-                    if (!ownSet.Contains(cited))
-                    {
-                        problems.Add(ProductionPromotionPlan.Error(
-                            "promote.cited_missing_in_beta",
-                            cited,
-                            $"The BETA board cites [{cited}], which is not in the BETA data. Fix the board in BETA first."));
-                    }
-
-                    continue;
-                }
-
-                if (ProductionPromotionPlan.IsHidden(cited))
+                if (!DataTreeLayout.IsSha256(file.Sha256))
                 {
                     problems.Add(ProductionPromotionPlan.Error(
-                        "promote.hidden_path", cited, $"[{cited}] is a hidden path and is never published."));
+                        "promote.unreadable_in_beta", file.Name, $"The BETA board lists [{file.Name}] without a usable checksum. Fix the board in BETA first."));
                     continue;
                 }
 
-                if (scope == SubmissionFileScope.Foreign)
-                {
-                    string? inBeta = beta.HashOf(cited);
-                    string? inProduction = production.HashOf(cited);
+                string stored = DataTreeLayout.StoredFilePath(file.Sha256, file.Name);
 
-                    if (inBeta is null || !string.Equals(inBeta, inProduction, StringComparison.Ordinal))
-                    {
-                        problems.Add(ProductionPromotionPlan.Error(
-                            "promote.foreign_not_in_production",
-                            cited,
-                            $"The board uses [{cited}], which belongs to another board and is not yet in the stable source " +
-                            "in the same form. Publish that board to the stable source first."));
-                    }
-
+                if (copies.ContainsKey(stored) || unchanged.Contains(stored, StringComparer.Ordinal))
                     continue;
-                }
 
-                // Shared: copied like an own file, and noted, because it reaches every board.
-                if (beta.HashOf(cited) is null)
+                if (!inBeta(stored))
                 {
                     problems.Add(ProductionPromotionPlan.Error(
                         "promote.cited_missing_in_beta",
-                        cited,
-                        $"The BETA board cites [{cited}], which is not in the BETA data. Fix the board in BETA first."));
+                        file.Name,
+                        $"The BETA board lists [{file.Name}], which is not in the BETA data. Fix the board in BETA first."));
                     continue;
                 }
 
-                if (ProductionPromotionPlan.TryPlan(cited, beta, production, problems, out PromotionFile? shared))
+                if (inProduction(stored))
                 {
-                    if (shared is null)
-                        unchanged.Add(cited);
-                    else
-                        copies[cited] = shared with { IsShared = true };
+                    unchanged.Add(stored);
+                    continue;
+                }
+
+                copies[stored] = new PromotionFile(stored, file.Sha256, PromotionChange.Added, PromotionStage.Content, IsShared: false, Name: file.Name);
+            }
+
+            // ---- The board file, last -------------------------------------------------------------
+            if (string.Equals(betaBoardFile, productionBoardFile, StringComparison.OrdinalIgnoreCase))
+            {
+                unchanged.Add(boardFile);
+            }
+            else
+            {
+                string? variant = productionBoardFile is null ? productionVariant?.Invoke(boardFolder) : null;
+
+                if (variant is not null && !string.Equals(variant, boardFolder, StringComparison.Ordinal))
+                {
+                    problems.Add(ProductionPromotionPlan.Error(
+                        "promote.case_collision",
+                        boardFolder,
+                        $"[{boardFolder}] differs only by capitalisation from [{variant}], which the stable source already has. " +
+                        "On Windows and macOS the two would be the same folder."));
+                }
+                else
+                {
+                    copies[boardFile] = new PromotionFile(
+                        boardFile,
+                        betaBoardFile!.ToLowerInvariant(),
+                        productionBoardFile is null ? PromotionChange.Added : PromotionChange.Replaced,
+                        PromotionStage.Board,
+                        IsShared: false,
+                        Name: DataTreeLayout.BoardFileName);
                 }
             }
 
             IReadOnlyList<PromotionFile> ordered = copies.Values
-                .Select(file => file with { Stage = ProductionPromotionPlan.StageOf(boardFolder, file.Path) })
                 .OrderBy(file => file.Stage)
                 .ThenBy(file => file.Path, StringComparer.Ordinal)
                 .ToList();
@@ -201,93 +163,21 @@ namespace Handlers.DataHandling
                 problems.Count == 0 ? ordered : [],
                 unchanged.Count,
                 problems,
-                // Only REPLACING a shared file production already has needs the administrator too
-                // (owner decision, 2026-09-27) - a new one reaches nobody who did not ask for it.
-                TouchesSharedFiles: ordered.Any(file => file.IsShared && file.Change == PromotionChange.Replaced),
-                Unchanged: unchanged.Order(StringComparer.Ordinal).ToList());
+                TouchesSharedFiles: false,
+                Unchanged: unchanged.Order(StringComparer.Ordinal).ToList(),
+                Names: ProductionPromotionPlan.NamesOf(boardFile, betaFiles));
         }
 
-        // ###########################################################################################
-        // One file: null out-param for "already identical in Production", a PromotionFile for a
-        // copy, false (with a problem recorded) for a refusal.
-        // ###########################################################################################
-        private static bool TryPlan(
-            string path,
-            PublishedTreeView beta,
-            PublishedTreeView production,
-            List<ValidationFinding> problems,
-            out PromotionFile? file)
+        // The board's name for each tree path of its files - what the file tree shows.
+        internal static IReadOnlyDictionary<string, string> NamesOf(string boardFile, IReadOnlyList<BoardDocument.StoredFileRow> files)
         {
-            file = null;
+            var names = new Dictionary<string, string>(StringComparer.Ordinal) { [boardFile] = DataTreeLayout.BoardFileName };
 
-            string? betaHash = beta.HashOf(path);
+            foreach (BoardDocument.StoredFileRow file in files.Where(file => DataTreeLayout.IsSha256(file.Sha256)))
+                names.TryAdd(DataTreeLayout.StoredFilePath(file.Sha256, file.Name), file.Name);
 
-            if (betaHash is null)
-            {
-                problems.Add(ProductionPromotionPlan.Error(
-                    "promote.unreadable_in_beta", path, $"[{path}] could not be read in the BETA data."));
-                return false;
-            }
-
-            string? productionHash = production.HashOf(path);
-
-            if (string.Equals(betaHash, productionHash, StringComparison.Ordinal))
-                return true;
-
-            if (productionHash is null)
-            {
-                string? variant = production.FindCaseVariant(path);
-
-                if (variant is not null && !string.Equals(variant, path, StringComparison.Ordinal))
-                {
-                    problems.Add(ProductionPromotionPlan.Error(
-                        "promote.case_collision",
-                        path,
-                        $"[{path}] differs only by capitalisation from [{variant}], which the stable source already has. " +
-                        "On Windows and macOS the two would be the same file."));
-                    return false;
-                }
-            }
-
-            file = new PromotionFile(
-                path,
-                betaHash,
-                productionHash is null ? PromotionChange.Added : PromotionChange.Replaced,
-                PromotionStage.Content,
-                IsShared: false);
-
-            return true;
+            return names;
         }
-
-        // ###########################################################################################
-        // Which of the two write stages a file belongs to. The board's workbooks and sidecars are
-        // the .xlsx and .json files at the folder's TOP level, and go after everything they cite.
-        // ###########################################################################################
-        internal static PromotionStage StageOf(string boardFolder, string path)
-        {
-            if (!path.StartsWith(boardFolder + "/", StringComparison.Ordinal))
-                return PromotionStage.Content;
-
-            string rest = path[(boardFolder.Length + 1)..];
-
-            if (rest.Contains('/'))
-                return PromotionStage.Content;
-
-            return rest.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) ||
-                   rest.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
-                ? PromotionStage.Board
-                : PromotionStage.Content;
-        }
-
-        // A dot-segment anywhere: temporary files a publish writes beside its target, and anything
-        // else hidden. Never published, so never promoted.
-        private static bool IsHidden(string path) =>
-            path.Split('/').Any(segment => segment.StartsWith('.'));
-
-        // The retired system.json at the board folder's top level - see BoardDescriptorStore. The
-        // promotion removes one from production instead of carrying one there.
-        private static bool IsRetired(string boardFolder, string path) =>
-            string.Equals(path, $"{boardFolder}/{BoardDescriptorStore.FileName}", StringComparison.Ordinal);
 
         private static ValidationFinding Error(string code, string subject, string message) =>
             new()
@@ -303,13 +193,17 @@ namespace Handlers.DataHandling
     // One file a promotion will copy. On the wire to the Maintainer tab as this very record,
     // so the two cannot disagree about its fields. The enums travel as NAMES for the reason
     // SubmissionFileScope gives.
+    //
+    // `Name` (2026-10-25): the board's name for the file - Path is where it lies in the tree, which
+    // for a 4.0 stored file is its checksum. Optional: an older server sends none.
     // ###########################################################################################
     public sealed record PromotionFile(
         string Path,
         string Sha256,
         PromotionChange Change,
         PromotionStage Stage,
-        bool IsShared);
+        bool IsShared,
+        string? Name = null);
 
     [JsonConverter(typeof(JsonStringEnumConverter<PromotionChange>))]
     public enum PromotionChange
@@ -328,12 +222,14 @@ namespace Handlers.DataHandling
 
     // `Unchanged`: the paths counted by UnchangedCount - the file tree's "already the same" (owner
     // request, 2026-09-28). Empty when the plan was refused before it looked at any file.
+    // `Names`: the board's name for each tree path of its files (2026-10-25) - see PromotionFile.Name.
     public sealed record ProductionPromotionResult(
         IReadOnlyList<PromotionFile> Files,
         int UnchangedCount,
         IReadOnlyList<ValidationFinding> Problems,
         bool TouchesSharedFiles,
-        IReadOnlyList<string>? Unchanged = null)
+        IReadOnlyList<string>? Unchanged = null,
+        IReadOnlyDictionary<string, string>? Names = null)
     {
         public bool CanPromote => this.Problems.Count == 0;
     }

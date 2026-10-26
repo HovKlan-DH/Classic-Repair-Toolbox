@@ -210,4 +210,53 @@ public sealed class SubmissionFileLocatorTests : IDisposable
 
         Assert.NotEmpty(reason);
     }
+
+    // ---- the CRT 4.0 tree (2026-10-25) ------------------------------------------------------------
+
+    // ###########################################################################################
+    // *** A 4.0 BOARD NAMES ITS FILES. *** A draft's board file lists each name with its checksum;
+    // the bytes are in the draft's own store when the draft brought them, else in the tree's - and
+    // a published board without a draft is found through its board file (`boardIdentity`).
+    // ###########################################################################################
+    [Fact]
+    public void A_name_the_drafts_board_file_lists_is_found_in_the_drafts_store_or_the_trees()
+    {
+        JsonTree.Board(this.DraftFolder, "x/y/z", ("Images/new.png", "drafted"), ("Images/old.png", "official"));
+        File.Move(
+            System.IO.Path.Combine(this.DraftFolder, "x", "y", "z", "board.json"),
+            System.IO.Path.Combine(this.DraftFolder, "board.json"));
+
+        // The published bytes are in the tree's store only.
+        string official = JsonTree.Stored("official", "old.png");
+        JsonTree.Write(this.DataRoot, official, "official");
+        File.Delete(System.IO.Path.Combine(this.DraftFolder, official.Replace('/', System.IO.Path.DirectorySeparatorChar)));
+
+        Assert.True(SubmissionFileLocator.TryLocate(this.DataRoot, this.DraftFolder, "Images/new.png", out string drafted, out string why), why);
+        Assert.True(SubmissionFileLocator.TryLocate(this.DataRoot, this.DraftFolder, "Images/old.png", out string published, out why), why);
+
+        Assert.Equal("drafted", File.ReadAllText(drafted));
+        Assert.Equal("official", File.ReadAllText(published));
+    }
+
+    [Fact]
+    public void A_name_of_a_published_board_without_a_draft_is_found_through_its_board_file()
+    {
+        JsonTree.Board(this.DataRoot, "Commodore/C64/250407", ("Images/u8.png", "u8"));
+
+        Assert.True(SubmissionFileLocator.TryLocate(
+            this.DataRoot, string.Empty, "Images/u8.png", out string path, out string why, "Commodore/C64/250407/board.json"), why);
+
+        Assert.Equal("u8", File.ReadAllText(path));
+        Assert.False(SubmissionFileLocator.TryLocate(this.DataRoot, string.Empty, "Images/u8.png", out _, out _));
+    }
+
+    // A name is still combined with a folder, so one climbing out of it is never looked for.
+    [Fact]
+    public void A_name_climbing_out_of_its_folder_is_refused_before_anything_looks()
+    {
+        this.thisWorkspace.WriteFile("secret.png", "secret");
+
+        Assert.False(SubmissionFileLocator.TryLocate(this.DataRoot, this.DraftFolder, "../../../../secret.png", out _, out string reason));
+        Assert.NotEmpty(reason);
+    }
 }

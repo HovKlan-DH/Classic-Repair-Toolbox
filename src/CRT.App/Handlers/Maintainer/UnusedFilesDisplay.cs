@@ -36,8 +36,8 @@ namespace Handlers.MaintainerHandling
 
             string checkedAgainst =
                 $"{UnusedFilesDisplay.Number(listing.FileCount)} files checked against " +
-                $"{UnusedFilesDisplay.Count(listing.MasterCount, "master workbook")} and " +
-                $"{UnusedFilesDisplay.Count(listing.BoardWorkbookCount, "board workbook")}";
+                $"{UnusedFilesDisplay.Count(listing.MasterCount, "main data file")} and " +
+                $"{UnusedFilesDisplay.Count(listing.BoardWorkbookCount, "board file")}";
 
             return listing.Files.Count == 0
                 ? $"Nothing in {tree} is unused ({checkedAgainst})."

@@ -122,6 +122,9 @@ namespace Handlers.DataHandling
 
             IReadOnlyList<string> files = DataTreeUsage.ListFiles(root, problems);
 
+            if (DataTreeUsage.IsJsonTree(root, files))
+                return DataTreeUsage.ComputeJsonTree(root, files, overrides, cache, problems);
+
             // ---- 1. Masters, and the board workbooks they list ---------------------------------
             var masters = files
                 .Where(path => !path.Contains('/') && DataTreeUsage.IsMasterFileName(path))
@@ -204,6 +207,119 @@ namespace Handlers.DataHandling
             }
 
             return new DataTreeUsageResult(files, used, usedFolders, problems, masters.Count, boardWorkbooks.Count);
+        }
+
+        // ###########################################################################################
+        // *** THE CRT 4.0 TREE (2026-10-25). *** A tree is one when it has the main file, the store
+        // ("Files/") or any board file - so a 4.0 tree whose main file went missing is never read by
+        // the Excel rule, which would find no master and no workbook and call every file unused.
+        // ###########################################################################################
+        internal static bool IsJsonTree(string root, IReadOnlyList<string> files) =>
+            File.Exists(Path.Combine(root, DataTreeLayout.MainFileName)) ||
+            Directory.Exists(Path.Combine(root, DataTreeLayout.FilesFolder)) ||
+            files.Any(DataTreeUsage.IsBoardFolderBoardFile);
+
+        // ###########################################################################################
+        // WHAT A CRT 4.0 TREE USES (DataTreeLayout). A file is used when it is:
+        //
+        //   1. the main file ("Classic-Repair-Toolbox.v4.0.0.json" at the top);
+        //   2. a BOARD FILE - "<Manufacturer>/<Hardware>/<Board>/board.json", listed by the main file
+        //      or found in a board folder;
+        //   3. a stored file a board file lists ("Files/<ab>/<sha256>.<ext>" - BoardDataReader's
+        //      citations of a board file are exactly these);
+        //   4. inside a folder CRT reads by name - the MiniPro IC tests, "MiniPro/IC tests";
+        //   5. a documentation file whose name starts with "!".
+        //
+        // The rule's other parts hold as they do for the Excel trees: `citationsAfter` previews a
+        // publish (board file -> the stored files it WILL list), and anything that cannot be read -
+        // the main file, a board file it lists that is not there, a board file that does not read -
+        // makes the result INCOMPLETE, which removes nothing.
+        // ###########################################################################################
+        private static DataTreeUsageResult ComputeJsonTree(
+            string root,
+            IReadOnlyList<string> files,
+            Dictionary<string, IReadOnlyCollection<string>> overrides,
+            WorkbookReadCache? cache,
+            List<string> problems)
+        {
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var usedFolders = new HashSet<string>([DataTreeLayout.MiniProTestsFolder], StringComparer.OrdinalIgnoreCase);
+            var boardFiles = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            int mainFiles = 0;
+
+            string mainPath = Path.Combine(root, DataTreeLayout.MainFileName);
+
+            if (!File.Exists(mainPath))
+            {
+                problems.Add($"The main file [{DataTreeLayout.MainFileName}] is not in the data.");
+            }
+            else
+            {
+                mainFiles = 1;
+                used.Add(DataTreeLayout.MainFileName);
+
+                if (!MasterListing.TryRead(mainPath, out IReadOnlyList<MasterListingRow> rows, out string why))
+                {
+                    problems.Add($"The main file [{DataTreeLayout.MainFileName}] could not be read: {why}");
+                }
+                else
+                {
+                    foreach (MasterListingRow row in rows.Where(row => row.ExcelDataFile.Length > 0))
+                        boardFiles.TryAdd(row.ExcelDataFile, true);
+                }
+            }
+
+            foreach (string path in files.Where(DataTreeUsage.IsBoardFolderBoardFile))
+                boardFiles.TryAdd(path, false);
+
+            foreach (string path in overrides.Keys)
+                boardFiles.TryAdd(path, false);
+
+            var onDisk = new HashSet<string>(files, StringComparer.Ordinal);
+
+            foreach ((string boardFile, bool listed) in boardFiles)
+            {
+                used.Add(boardFile);
+
+                if (overrides.TryGetValue(boardFile, out IReadOnlyCollection<string>? after))
+                {
+                    foreach (string cited in after)
+                        DataTreeUsage.AddCited(used, cited);
+
+                    continue;
+                }
+
+                string full = Path.Combine(root, boardFile.Replace('/', Path.DirectorySeparatorChar));
+
+                if (!onDisk.Contains(boardFile) || !File.Exists(full))
+                {
+                    problems.Add(listed
+                        ? $"The main file lists the board file [{boardFile}], which is not in the data."
+                        : $"The board file [{boardFile}] is not in the data.");
+                    continue;
+                }
+
+                if (!DataTreeUsage.TryReadCitations(full, cache, out IReadOnlyCollection<string> cites))
+                {
+                    problems.Add($"The board file [{boardFile}] could not be read.");
+                    continue;
+                }
+
+                foreach (string cited in cites)
+                    DataTreeUsage.AddCited(used, cited);
+            }
+
+            return new DataTreeUsageResult(files, used, usedFolders, problems, mainFiles, boardFiles.Count);
+        }
+
+        // "<Manufacturer>/<Hardware>/<Board>/board.json", outside the tree's own top folders.
+        public static bool IsBoardFolderBoardFile(string path)
+        {
+            string[] segments = (path ?? string.Empty).Split('/');
+
+            return segments.Length == 4 &&
+                   string.Equals(segments[3], DataTreeLayout.BoardFileName, StringComparison.Ordinal) &&
+                   !DataTreeLayout.ReservedTopFolders.Contains(segments[0], StringComparer.OrdinalIgnoreCase);
         }
 
         // ###########################################################################################

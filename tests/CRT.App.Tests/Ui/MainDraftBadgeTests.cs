@@ -98,7 +98,7 @@ public sealed class MainDraftBadgeTests : IDisposable
             window.HardwareComboBox.ItemsSource = new[] { DraftedHardware, OtherHardware };
             window.HardwareComboBox.SelectedIndex = 0;
 
-            window.ApplyDraftsTabVisibility();
+            window.ApplyContributeTabState();
 
             Assert.True(TemplateDrawsChip(window.HardwareComboBox, DraftedHardware));
             Assert.False(TemplateDrawsChip(window.HardwareComboBox, OtherHardware));
@@ -127,7 +127,7 @@ public sealed class MainDraftBadgeTests : IDisposable
                 window.HardwareComboBox.ItemsSource = new[] { DraftedHardware, OtherHardware };
                 window.HardwareComboBox.SelectedIndex = 0;
 
-                window.ApplyDraftsTabVisibility();
+                window.ApplyContributeTabState();
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.False(HasChip(window.HardwareComboBox), "No draft exists yet, so no chip.");
@@ -136,7 +136,7 @@ public sealed class MainDraftBadgeTests : IDisposable
                 window.HardwareComboBox.SelectionChanged += (_, _) => selectionChanges++;
 
                 WriteDraftMarker();
-                window.ApplyDraftsTabVisibility();
+                window.ApplyContributeTabState();
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.True(HasChip(window.HardwareComboBox), "The chip should appear on the closed drop-down.");
@@ -166,12 +166,12 @@ public sealed class MainDraftBadgeTests : IDisposable
                 window.HardwareComboBox.ItemsSource = new[] { DraftedHardware, OtherHardware };
                 window.HardwareComboBox.SelectedIndex = 0;
 
-                window.ApplyDraftsTabVisibility();
+                window.ApplyContributeTabState();
                 Dispatcher.UIThread.RunJobs();
                 Assert.True(HasChip(window.HardwareComboBox));
 
                 DraftManager.DiscardDraft(BoardKey);
-                window.ApplyDraftsTabVisibility();
+                window.ApplyContributeTabState();
                 Dispatcher.UIThread.RunJobs();
 
                 Assert.False(HasChip(window.HardwareComboBox));

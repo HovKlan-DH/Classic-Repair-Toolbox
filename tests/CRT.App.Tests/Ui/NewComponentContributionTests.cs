@@ -162,11 +162,16 @@ public class NewComponentContributionTests
         });
     }
 
-    // A component with no category is merged into the board data and is then unreachable - the
-    // main window builds its category filter from the categories present and skips blank ones - so
-    // it is refused as firmly as a missing board label, and marked on its own box.
+    // ###########################################################################################
+    // A component with no category is merged into the board data and is not in the component list -
+    // the main window builds its category filter from the categories present and skips blank ones.
+    // It was refused as firmly as a missing board label; since CRT 4.0 step 1 (2026-10-25 -
+    // "Unfinished work is fine. Only Submit asks for problems to be fixed") it is SAVED, its box
+    // marked with what is left, and the table warns until it has one (component.no_category). A
+    // missing board label still stops the save - the rows would have nothing to be filed under.
+    // ###########################################################################################
     [Fact]
-    public void Sending_a_new_component_with_no_category_marks_the_category_and_stops()
+    public void Saving_a_new_component_with_no_category_marks_the_category_and_goes_ahead()
     {
         UiTest.Run(() =>
         {
@@ -183,11 +188,11 @@ public class NewComponentContributionTests
             PumpLayout(window);
 
             Assert.True(row.HasCategoryError);
-            Assert.Equal("A category is required", row.CategoryErrorText);
+            Assert.Equal(ComponentContributionWindow.NoCategoryYetText, row.CategoryErrorText);
 
-            // The label is fine, so nothing may be marked on it.
+            // The label is fine, so nothing may be marked on it - and the save was not refused.
             Assert.False(row.HasBoardLabelError);
-            Assert.Contains("needs a category", StatusText(window));
+            Assert.DoesNotContain("needs a category", StatusText(window));
 
             window.Close();
         });
@@ -462,18 +467,19 @@ public class NewComponentContributionTests
     {
         UiTest.Run(() =>
         {
-            var tab = new TabContribute();
-            var button = tab.FindControl<Button>("AddNewComponentButton")!;
+            var tab = new TabDrafts();
+            var button = tab.FindControl<Button>("AddComponentButton")!;
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" };
 
             // Before any board has been chosen, and after one is unloaded again.
-            tab.LoadData(null, "PAL");
-            Assert.False(button.IsEnabled);
+            tab.ShowBoard(null, null, "PAL", null);
+            Assert.False(button.IsEffectivelyEnabled);
 
-            tab.LoadData(BoardWithOneComponent(), "PAL");
-            Assert.True(button.IsEnabled);
+            tab.ShowBoard(entry, BoardWithOneComponent(), "PAL", null);
+            Assert.True(button.IsEffectivelyEnabled);
 
-            tab.LoadData(null, "PAL");
-            Assert.False(button.IsEnabled);
+            tab.ShowBoard(null, null, "PAL", null);
+            Assert.False(button.IsEffectivelyEnabled);
         });
     }
 

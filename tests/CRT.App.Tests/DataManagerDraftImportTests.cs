@@ -1,5 +1,4 @@
 using Handlers.DataHandling;
-using OfficeOpenXml;
 
 namespace ClassicRepairToolbox.Tests;
 
@@ -8,14 +7,16 @@ namespace ClassicRepairToolbox.Tests;
 // (owner report, 2026-09-27: "I added one new board into ...\Drafts but as I cannot see the
 // 'Draft' tab, then I cannot submit it").
 //
-// DraftFolderImportTests pins each rule of the import on its own. THIS file pins the three pieces
-// the owner's case needs TOGETHER, because each one alone still leaves the board unsubmittable:
+// DraftFolderImportTests pins each rule of the import on its own. THIS file pins the pieces the
+// owner's case needs TOGETHER, because each one alone still leaves the board unsubmittable:
 //
-//   - the import, or the folder is not a draft and the Drafts tab never lists it;
-//   - the one-entry-per-folder rule in DataManager.MergeDraftOnlyBoards, or a board made the old
-//     way is listed twice - under its _UserContribution names and under its folder names;
-//   - the empty baseline for a new board, or its rows are compared against the contributor's
-//     own legacy copy in Data/, count as nothing, and Submit stays disabled.
+//   - the import - in CRT 4.0 converting an Excel-era copy into a 4.0 draft (2026-10-24) - or
+//     the folder is not a draft and the Drafts tab never lists it;
+//   - one entry per folder (DataManager.MergeDraftOnlyBoards), or the board is listed twice;
+//   - the empty baseline for a new board, or its rows count as nothing and Submit stays disabled.
+//
+// A board made the old way, listed by a "_UserContribution" workbook, is no longer read from the
+// data folder in 4.0: its copy in Drafts/ is how it is carried over.
 //
 // "DataManager" collection: DataManager's lists and DraftManager's root are both statics.
 // ###########################################################################################
@@ -24,25 +25,12 @@ public sealed class DataManagerDraftImportTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
-    private const string MasterName = "Classic-Repair-Toolbox.xlsx";
+    private static readonly MainFiles.Board C64 = new("Commodore/C64/250407", "Commodore 64", "250407 (long board)");
 
-    // What DataManager derives from MasterName - see thisGetUserContributionMainExcelRelativePath.
-    private const string ContributionName = "Classic-Repair-Toolbox_UserContribution.xlsx";
+    private const string LegacyBoardId = "Commodore/C128/310378 Open128";
 
-    private const string PublishedKey = "Commodore/C64/250407/Data C64 250407.xlsx";
-
-    private const string LegacyKey = "Commodore/C128/310378 Open128/Data C128 310378 Open128.xlsx";
-
-    private static readonly string[] HardwareHeaders =
-    {
-        "Hardware name in drop-down", "Board name in drop-down",
-        "Excel data file", "Hardware notes in \"Overview\" tab"
-    };
-
-    static DataManagerDraftImportTests()
-    {
-        ExcelPackage.License.SetNonCommercialPersonal("Classic Repair Toolbox tests");
-    }
+    // The Excel workbook a board made the old way was copied with.
+    private const string LegacyWorkbook = LegacyBoardId + "/Data C128 310378 Open128.xlsx";
 
     public DataManagerDraftImportTests()
     {
@@ -51,40 +39,40 @@ public sealed class DataManagerDraftImportTests : IDisposable
 
     public void Dispose()
     {
-        DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.xlsx");
+        DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.json");
         DraftManager.LoadFrom(string.Empty);
         this.thisWorkspace.Dispose();
     }
 
     private string DraftsRoot => Path.Combine(this.thisWorkspace.Root, "Drafts");
 
+    private string DataRoot => this.thisWorkspace.Root;
+
     [Fact]
     public void A_board_made_the_old_way_and_copied_into_Drafts_is_listed_once_and_can_be_submitted()
     {
-        this.WriteHardwareList(MasterName, new[] { "Commodore 64", "250407 (long board)", PublishedKey, "" });
-        this.WriteHardwareList(ContributionName, new[] { "Commodore 128", "310378 Open128", LegacyKey, "Has 6581 SID." });
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WriteHandPlacedWorkbook(LegacyWorkbook, components: 3);
 
-        // The legacy copy in Data/, and the same board copied into Drafts/ with no marker.
-        this.WriteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, LegacyKey), components: 3);
-        this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, LegacyKey), components: 3);
+        DataManager.LoadFrom(this.DataRoot, main);
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
-
-        // Once, and where the contributor already knows it - under its _UserContribution names.
+        // Once, under its folder names - the ones a submission must send.
         HardwareBoardEntry entry = Assert.Single(
             DataManager.HardwareBoards,
-            board => BoardDescriptorRules.BoardIdFromExcelDataFile(board.ExcelDataFile) == "Commodore/C128/310378 Open128");
-        Assert.Equal("Commodore 128", entry.HardwareName);
+            board => BoardDescriptorRules.BoardIdFromExcelDataFile(board.ExcelDataFile) == LegacyBoardId);
+        Assert.True(entry.IsDraftOnly);
+        Assert.Equal("C128", entry.HardwareName);
+        Assert.Equal(DataTreeLayout.BoardFilePath(LegacyBoardId), entry.ExcelDataFile);
 
         // On the Drafts tab - once.
         Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
 
-        // A new board with all three rows to send, so Submit is enabled.
+        // A new board with all three rows to send, so Submit is enabled - and a 4.0 draft now.
         DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile)!;
         Assert.True(status.IsNewBoard);
         Assert.Equal(3, DraftStatusReader.CountChanges(status));
+        Assert.Equal(DataTreeLayout.BoardFileName, Path.GetFileName(status.WorkbookPath));
 
-        // Registered under its FOLDER names - the ones a submission must send.
         Assert.Equal("C128", status.NewBoard!.HardwareName);
         Assert.Equal("310378 Open128", status.NewBoard.BoardName);
     }
@@ -92,14 +80,12 @@ public sealed class DataManagerDraftImportTests : IDisposable
     [Fact]
     public void A_hand_placed_board_nothing_lists_appears_as_a_new_board_of_its_own()
     {
-        const string key = "Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx";
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WriteHandPlacedWorkbook("Amstrad/CPC 6128/MC0020/Data CPC 6128 MC0020.xlsx", components: 2);
 
-        this.WriteHardwareList(MasterName, new[] { "Commodore 64", "250407 (long board)", PublishedKey, "" });
-        this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, key), components: 2);
+        DataManager.LoadFrom(this.DataRoot, main);
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
-
-        HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards, board => board.ExcelDataFile == key);
+        HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards, board => board.ExcelDataFile == "Amstrad/CPC 6128/MC0020/board.json");
         Assert.True(entry.IsDraftOnly);
         Assert.Equal("CPC 6128", entry.HardwareName);
         Assert.Equal("MC0020", entry.BoardName);
@@ -109,16 +95,16 @@ public sealed class DataManagerDraftImportTests : IDisposable
     [Fact]
     public void A_hand_placed_copy_of_a_published_board_becomes_its_draft_and_counts_only_what_differs()
     {
-        this.WriteHardwareList(MasterName, new[] { "Commodore 64", "250407 (long board)", PublishedKey, "" });
-        this.WriteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, PublishedKey), components: 3);
-        this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, PublishedKey), components: 4);
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WritePublishedBoard(C64.Identity, components: 3);
+        this.WriteHandPlacedWorkbook(C64.BoardId + "/Data C64 250407 v3.0.0.xlsx", components: 4);
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
+        DataManager.LoadFrom(this.DataRoot, main);
 
         HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards);
         Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
 
-        DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, PublishedKey)!;
+        DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, C64.Identity)!;
         Assert.False(status.IsNewBoard);
         Assert.Equal(1, DraftStatusReader.CountChanges(status));
     }
@@ -126,58 +112,39 @@ public sealed class DataManagerDraftImportTests : IDisposable
     // ###########################################################################################
     // *** THE DRAFT THAT VANISHED (owner report, 2026-09-27). *** Open128 - made the old way, copied
     // into Drafts/ and submitted - was merged into BETA at 12:48, and at 12:49 CRT deleted the
-    // draft "because its changes are now in the published data". They were not: retirement
-    // compared the draft with the file at its path in Data/, which for a _UserContribution board is
-    // the contributor's OWN copy - identical, since the draft was copied from it. Only a board the
-    // MAIN workbook lists is published; the legacy board's draft must stay.
+    // draft "because its changes are now in the published data". They were not. Only a board the
+    // MAIN file lists is published; a draft of a board it does not list is never retired, whatever
+    // its receipt says.
     // ###########################################################################################
     [Fact]
-    public async Task A_board_made_the_old_way_is_not_retired_against_the_contributors_own_copy()
+    public async Task A_board_the_main_file_does_not_list_is_not_retired()
     {
-        this.WriteHardwareList(MasterName, new[] { "Commodore 64", "250407 (long board)", PublishedKey, "" });
-        this.WriteHardwareList(ContributionName, new[] { "Commodore 128", "310378 Open128", LegacyKey, "" });
-        this.WriteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, LegacyKey), components: 3);
-        this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, LegacyKey), components: 3);
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WriteHandPlacedWorkbook(LegacyWorkbook, components: 3);
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
+        DataManager.LoadFrom(this.DataRoot, main);
 
-        HardwareBoardEntry legacy = Assert.Single(DataManager.HardwareBoards, board => board.ExcelDataFile == LegacyKey);
-        Assert.True(legacy.IsUserContribution);
-        Assert.False(legacy.IsPublished);
-        Assert.True(Assert.Single(DataManager.HardwareBoards, board => board.ExcelDataFile == PublishedKey).IsPublished);
-
-        Assert.Equal([PublishedKey], DataManager.PublishedExcelDataFiles());
-
-        List<SubmissionReceipt> receipts = [Published("Commodore/C128/310378 Open128")];
+        Assert.Equal([C64.Identity], DataManager.PublishedExcelDataFiles());
 
         IReadOnlyList<RetirableDraft> retirable = await PublishedDraftRetirer.FindAsync(
-            receipts, DataManager.DataRoot, DraftManager.DraftsRoot, DataManager.PublishedExcelDataFiles());
+            [Published(LegacyBoardId)], DataManager.DataRoot, DraftManager.DraftsRoot, DataManager.PublishedExcelDataFiles());
 
         Assert.Empty(retirable);
-
-        // What the list passed before did: every non-draft-only board, the legacy one included -
-        // and the draft came back as retirable. This is the deletion the owner saw.
-        IReadOnlyList<RetirableDraft> withTheOldList = await PublishedDraftRetirer.FindAsync(
-            receipts,
-            DataManager.DataRoot,
-            DraftManager.DraftsRoot,
-            DataManager.HardwareBoards.Where(board => !board.IsDraftOnly).Select(board => board.ExcelDataFile).ToList());
-
-        Assert.Single(withTheOldList);
     }
 
-    // The other half: a draft of a board that IS published, identical to it and merged, still goes.
+    // The other half: a draft of a board that IS published, identical to it and published, goes -
+    // the Excel files its conversion set aside notwithstanding.
     [Fact]
     public async Task A_draft_of_a_really_published_board_is_still_retired_once_it_matches()
     {
-        this.WriteHardwareList(MasterName, new[] { "Commodore 64", "250407 (long board)", PublishedKey, "" });
-        this.WriteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, PublishedKey), components: 3);
-        this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, PublishedKey), components: 3);
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WritePublishedBoard(C64.Identity, components: 3);
+        this.WriteHandPlacedWorkbook(C64.BoardId + "/Data C64 250407 v3.0.0.xlsx", components: 3);
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
+        DataManager.LoadFrom(this.DataRoot, main);
 
         IReadOnlyList<RetirableDraft> retirable = await PublishedDraftRetirer.FindAsync(
-            [Published("Commodore/C64/250407")],
+            [Published(C64.BoardId)],
             DataManager.DataRoot,
             DraftManager.DraftsRoot,
             DataManager.PublishedExcelDataFiles());
@@ -186,41 +153,70 @@ public sealed class DataManagerDraftImportTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A NEW BOARD'S DRAFT STAYS REACHABLE ONCE BETA LISTS IT (code review, 2026-09-27). *** The
-    // publish names the workbook with the tree's generation ("... v2.0.0.xlsx"), so the listed
-    // entry cannot read the draft, which keeps its own name. Skipping the draft's entry because its
-    // FOLDER was listed left the draft unreachable until production retired it - no edit, no
-    // resubmission, even after a push-back asked for one. The draft keeps its entry, reads its own
-    // workbook, and is ONE row on the Drafts tab.
+    // *** A NEW BOARD'S DRAFT STAYS REACHABLE ONCE BETA LISTS IT (code review, 2026-09-27). *** A
+    // draft made by CRT 3.x keeps the workbook name it was created with, while the main file lists
+    // the board by its board file. In 4.0 both name the same folder, and every identity of a folder
+    // reads its one board file - so the LISTED entry reads the draft, and it is ONE row on the
+    // Drafts tab (2026-10-24; in 3.x the listed entry could not read it, and the draft kept an
+    // entry of its own).
     // ###########################################################################################
     [Fact]
-    public void A_new_boards_draft_stays_reachable_after_BETA_lists_the_board_under_another_workbook_name()
+    public void A_new_boards_draft_stays_reachable_after_the_main_file_lists_the_board()
     {
-        const string draftKey = "Commodore/C128/310378 Open128/Data C128 310378 Open128.xlsx";
-        const string listedKey = "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx";
+        const string draftKey = LegacyWorkbook;
+        var listed = new MainFiles.Board(LegacyBoardId, "Commodore 128", "310378 Open128");
 
-        this.WriteHardwareList(MasterName,
-            new[] { "Commodore 64", "250407 (long board)", PublishedKey, "" },
-            new[] { "Commodore 128", "310378 Open128", listedKey, "" });
-        this.WriteBoard(DraftBoardSource.PublishedPathOf(this.thisWorkspace.Root, listedKey), components: 3);
+        string main = MainFiles.Write(this.DataRoot, C64, listed);
+        this.WritePublishedBoard(listed.Identity, components: 3);
 
         // The contributor's new-board draft, as "Add a new board" made it.
-        this.WriteBoard(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, draftKey), components: 4);
-        DraftMarkerStore.Save(DraftFolderLayout.GetMarkerPath(this.DraftsRoot, draftKey), new DraftMarker
+        Assert.True(DraftSeeder.CreateNewBoard(this.DraftsRoot, new NewBoardRegistration
         {
-            BoardKey = draftKey,
-            NewBoard = new NewBoardRegistration { HardwareName = "C128", BoardName = "310378 Open128", ExcelDataFile = draftKey },
-        });
+            HardwareName = "C128",
+            BoardName = "310378 Open128",
+            ExcelDataFile = draftKey,
+        }).Created);
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, draftKey, board => WithComponents(board, 4)));
 
-        DataManager.LoadFrom(this.thisWorkspace.Root, MasterName);
+        DataManager.LoadFrom(this.DataRoot, main);
 
-        HardwareBoardEntry draft = Assert.Single(DataManager.HardwareBoards, board => board.ExcelDataFile == draftKey);
-        Assert.True(draft.IsDraftOnly);
-        Assert.Contains(DataManager.HardwareBoards, board => board.ExcelDataFile == listedKey);
+        Assert.DoesNotContain(DataManager.HardwareBoards, board => board.ExcelDataFile == draftKey);
+        HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards, board => board.ExcelDataFile == listed.Identity);
 
-        // One row on the Drafts tab - the entry that reads the draft.
-        Assert.Same(draft, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
-        Assert.True(DraftBoardSource.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, draft.ExcelDataFile).IsDraft);
+        // One row on the Drafts tab - the listed entry, which reads the draft.
+        Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
+        BoardSourceSelection source = DraftBoardSource.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile);
+        Assert.True(source.IsDraft);
+        Assert.Equal(4, DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, entry.ExcelDataFile)!.Components.Count);
+    }
+
+    // ###########################################################################################
+    // *** A DRAFT CRT 3.x MADE IS CONVERTED WHEN THE BOARDS ARE LISTED (2026-10-24). *** Its
+    // workbook would otherwise be a draft with no board file - listed, unreadable, unsendable. The
+    // load converts it before anything lists the boards, so it is an ordinary 4.0 draft at once.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_CRT_3_made_is_a_4_0_draft_once_the_boards_are_listed()
+    {
+        const string crt3Workbook = "Commodore/C64/250407/Data C64 250407 v3.0.0.xlsx";
+
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WritePublishedBoard(C64.Identity, components: 3);
+        this.WriteHandPlacedWorkbook(crt3Workbook, components: 4);
+        DraftMarkerStore.Save(
+            Path.Combine(DraftFolderLayout.GetBoardFolder(this.DraftsRoot, crt3Workbook), DraftFolderLayout.DraftMarkerFileName),
+            new DraftMarker { BoardKey = crt3Workbook, BaseRevision = "2026-August-7" });
+
+        DataManager.LoadFrom(this.DataRoot, main);
+
+        HardwareBoardEntry entry = Assert.Single(DataManager.HardwareBoards);
+        Assert.Same(entry, Assert.Single(DraftManager.EnumerateDraftedBoards(DataManager.HardwareBoards)));
+
+        DraftStatus status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, C64.Identity)!;
+        Assert.True(File.Exists(status.WorkbookPath));
+        Assert.Equal(DataTreeLayout.BoardFileName, Path.GetFileName(status.WorkbookPath));
+        Assert.Equal(1, DraftStatusReader.CountChanges(status));
+        Assert.Equal("2026-August-7", status.BaseRevision);
     }
 
     // "published" - in the production data, the only state retirement acts on.
@@ -234,21 +230,25 @@ public sealed class DataManagerDraftImportTests : IDisposable
 
     // ------------------------------------------------------------------ helpers
 
-    private void WriteHardwareList(string fileName, params string?[][] rows) =>
-        new BoardWorkbookBuilder()
-            .Sheet("Hardware & Board", HardwareHeaders, rows)
-            .SaveTo(Path.Combine(this.thisWorkspace.Root, fileName));
-
-    private void WriteBoard(string path, int components)
+    private static BoardData WithComponents(BoardData board, int components)
     {
-        var board = new BoardData { RevisionDate = "2026-August-7" };
+        var updated = new BoardData { RevisionDate = board.RevisionDate, HardwareName = board.HardwareName, BoardName = board.BoardName };
 
         for (int i = 0; i < components; i++)
         {
-            board.Components.Add(new ComponentEntry { BoardLabel = $"U{i}", Description = "part" });
+            updated.Components.Add(new ComponentEntry { BoardLabel = $"U{i}", Description = "part" });
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        CachedWorkbooks.Write(path, board);
+        return updated;
     }
+
+    private static BoardData Board(int components) => WithComponents(new BoardData { RevisionDate = "2026-August-7" }, components);
+
+    // An Excel workbook put into Drafts/ by hand, under the name it was copied with - no marker.
+    private void WriteHandPlacedWorkbook(string workbookPath, int components) =>
+        CachedWorkbooks.Write(Path.Combine([this.DraftsRoot, .. workbookPath.Split('/')]), Board(components));
+
+    // The published board's file in the 4.0 tree.
+    private void WritePublishedBoard(string identity, int components) =>
+        CachedWorkbooks.Write(DraftBoardSource.PublishedPathOf(this.DataRoot, identity), Board(components));
 }

@@ -27,12 +27,15 @@ namespace Handlers.DataHandling
     {
         private readonly string thisDataRoot;
         private readonly string thisDraftBoardFolder;
+        private readonly string thisBoardIdentity;
 
         // `betaSource`: whether the downloaded data is the BETA source's rather than the stable one's.
-        public DraftTableFileSource(string dataRoot, string draftBoardFolder, bool betaSource = false)
+        // `boardIdentity`: the board whose published file lists the names the published side cites.
+        public DraftTableFileSource(string dataRoot, string draftBoardFolder, bool betaSource = false, string boardIdentity = "")
         {
             this.thisDataRoot = dataRoot ?? string.Empty;
             this.thisDraftBoardFolder = draftBoardFolder ?? string.Empty;
+            this.thisBoardIdentity = boardIdentity ?? string.Empty;
             this.PublishedLabel = betaSource ? "BETA source" : "Stable source";
         }
 
@@ -89,7 +92,15 @@ namespace Handlers.DataHandling
             {
                 return this.thisDraftBoardFolder.Length == 0
                     ? null
-                    : DraftFileResolver.ResolveWithSource(this.thisDataRoot, this.thisDraftBoardFolder, trimmed);
+                    : DraftFileResolver.ResolveWithSource(this.thisDataRoot, this.thisDraftBoardFolder, trimmed, this.thisBoardIdentity);
+            }
+
+            // A 4.0 board's name, looked up in the published board's own file list.
+            if (this.thisDataRoot.Length > 0 &&
+                this.thisBoardIdentity.Length > 0 &&
+                DraftFileResolver.ResolveWithSource(this.thisDataRoot, string.Empty, trimmed, this.thisBoardIdentity) is { } published)
+            {
+                return published;
             }
 
             if (this.thisDataRoot.Length == 0 ||

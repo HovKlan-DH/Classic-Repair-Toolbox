@@ -663,9 +663,9 @@ namespace CRT.Server.Handlers.Submissions
         // already hold - so the per-address budget can count what was really requested.
         long BytesToUpload = 0,
 
-        // Whether it adds or changes a file under "Shared files" / "Generic shared files" -
-        // decided at creation by SubmissionSharedFiles, and what routes it to the administrator
-        // rather than to the board's maintainers. See ReviewAuthority.
+        // Whether it changes a file several boards share - what routed it to the administrator as
+        // well as the board's maintainers (ReviewAuthority). The CRT 4.0 tree has no shared files
+        // (2026-10-25), so a 4.0 server always stores false; the column stays for the rows before.
         bool TouchesSharedFiles = false,
 
         // A new board's notes from "Create board" (2026-10-05) - null when it carried none.

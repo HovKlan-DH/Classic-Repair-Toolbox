@@ -39,16 +39,17 @@ namespace CRT
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
         //   Main.Notices.cs           - what the notice cards over the tabs' bottom-right corner share
         //   Main.NoticeDemo.cs        - "--demo-notices": every notice played once after launch
-        //   Main.NewBoard.cs         - "Add a new board": the create dialog, draft creation, navigation
-        //   Main.EditBoardAsDraft.cs - "Edit board as draft": a draft of the board shown, or the one there is
+        //   Main.NewBoard.cs         - "Add a new board": the create dialog, draft creation, navigation;
+        //                               SelectBoard, which "My drafts" uses too
+        //   Main.FirstDraft.cs        - a board's first draft, made when the Contribute tab's first change starts
         //   Main.DraftDrift.cs        - the "official data moved under your draft" banner and report
         //   Main.DraftBadges.cs       - the "Draft" chip on Hardware and Board drop-down entries
         //   Main.SourceSwitchNotice.cs - the banner about the source: "now in BETA - tick BETA to try
         //                                it" or "now in the stable source - switch back from BETA"
         //   Main.BoardViews.cs        - counting a board as viewed after ten seconds, sending views home
         //   Main.Maintainer.cs        - the Maintainer tab: shown or not, its badge, and the layout while selected
-        //   Main.SubmissionChecks.cs  - the Drafts tab's badge, and asking about sent submissions while CRT runs
-        //   Main.UpdateRequired.cs    - "CRT has to be updated" over the Drafts and Maintainer tabs when
+        //   Main.SubmissionChecks.cs  - the Contribute tab's badge, and asking about sent submissions while CRT runs
+        //   Main.UpdateRequired.cs    - "CRT has to be updated" over the Contribute and Maintainer tabs when
         //                               the server turns this version away (API revision, or a 426)
         //   Main.SchematicRenames.cs  - a schematic image renamed (published, or in a draft): this
         //                               machine's worklogs and settings that name it follow
@@ -236,7 +237,6 @@ namespace CRT
 
             this.TabSchematicsControl.Initialize(this);
             this.TabOverview.Initialize(this);
-            this.TabContribute.Initialize(this);
             this.TabWorkbooks.Initialize(this);
             this.TabDrafts.Initialize(this);
             this.TabConfiguration.Initialize(this);
@@ -478,7 +478,7 @@ namespace CRT
                 // PopulateHardwareDropDown just guaranteed - rather than a board-specific load.
                 // Calling it in the constructor would always find an empty HardwareBoards list
                 // (see this method's own header comment on why that population moved here).
-                this.ApplyDraftsTabVisibility();
+                this.ApplyContributeTabState();
 
                 if (UserSettings.CheckVersionOnLaunch)
                 {
@@ -770,16 +770,19 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Shows or hides the "Drafts" tab (session 2b, task 7) to match whether ANY board has a
-        // local draft - unlike EnableWorklog/EnableNetworkConnectedOscilloscopeTab, this is not a
-        // user preference; it is a plain fact about the Drafts/ folder's current contents. Called
-        // from StartAsync (once DataManager.HardwareBoards exists) and from TabDrafts itself after
-        // a discard, so the tab disappears the moment the last draft is gone rather than staying
-        // visible-but-empty until the app restarts.
+        // The Contribute tab's state, read again whenever the set of drafts could have changed: at
+        // startup, after a board load, after a discard, a save or a retirement. The tab is ALWAYS on
+        // screen since CRT 4.0 step 2 (one tab for Contribute and Drafts); what follows the drafts is
+        // its rows ("My drafts"), the drop-downs' "Draft" chips, the title's colour - IndianRed while a
+        // draft exists - and its badge, the unread maintainer feedback.
+        //
+        // *** "IN USE" IS WHAT THE DRAFTS TAB'S VISIBILITY WAS. *** A draft, or unread feedback on
+        // something sent: only then does CRT ask the server whether it still serves this version
+        // (AskApiRevisionOnceInUse) - somebody who has never contributed is never asked.
         // ###########################################################################################
-        public void ApplyDraftsTabVisibility()
+        public void ApplyContributeTabState()
         {
-            if (this.DraftsTabItem == null)
+            if (this.ContributeTabItem == null)
                 return;
 
             this.TabDrafts.RefreshDrafts();
@@ -788,35 +791,35 @@ namespace CRT
             // Main.DraftBadges.cs.
             this.ApplyDraftBadges();
 
-            // ###########################################################################################
-            // *** UNREAD MAINTAINER FEEDBACK KEEPS THIS TAB VISIBLE EVEN WITH NO DRAFTS. ***
-            //
-            // Without this the badge would be unreachable in exactly the case it exists for. A
-            // contributor submits a draft and then discards it locally - the ordinary thing to do
-            // once it has been sent - which takes their draft count to zero and hides the tab. The
-            // maintainer then asks for changes, and the only place that feedback is shown is behind a
-            // button on a tab that is no longer on screen. They would never find out.
-            //
-            // The reverse is deliberately NOT true: no feedback and no drafts still hides the tab,
-            // so somebody who has never contributed sees no trace of the feature.
             int unread = SubmissionReceiptStore.UnreadCommentCount();
-            bool hasUnreadFeedback = unread > 0;
             bool hasAnyDrafts = this.TabDrafts.Drafts.Count > 0;
 
             // The tab's own badge: the same count as "My submissions" inside it (Main.SubmissionChecks.cs).
-            this.ShowDraftsTabBadge(unread);
+            this.ShowContributeTabBadge(unread);
 
-            bool shouldShow = hasAnyDrafts || hasUnreadFeedback;
-            this.DraftsTabItem.IsVisible = shouldShow;
+            this.ContributeTabHeaderText.Classes.Set("hasDrafts", hasAnyDrafts);
 
-            if (!shouldShow)
-            {
-                this.MoveSelectionOffHiddenTab(this.DraftsTabItem);
-            }
+            this.thisContributionInUse = hasAnyDrafts || unread > 0;
 
-            // Shown for the first time: does the server still serve this CRT? (Main.UpdateRequired.cs)
+            // In use for the first time: does the server still serve this CRT? (Main.UpdateRequired.cs)
             this.AskApiRevisionOnceInUse();
         }
+
+        // A draft exists, or unread feedback on something sent - see ApplyContributeTabState.
+        private bool thisContributionInUse;
+
+        internal bool ContributionInUseForTests => this.thisContributionInUse;
+
+        // ###########################################################################################
+        // The board shown, handed to the Contribute tab - its draft as it reads now, the region shown,
+        // and the components its draft changed (the same mark the component list shows).
+        // ###########################################################################################
+        internal void ShowBoardInContributeTab(HardwareBoardEntry? entry) =>
+            this.TabDrafts.ShowBoard(
+                entry,
+                this._currentBoardData,
+                this._localRegion,
+                this._currentBoardDraftSummary.DraftedComponentBoardLabels);
 
         // ###########################################################################################
         // Deletes any local draft whose work is now in the published data (owner request,
@@ -886,8 +889,11 @@ namespace CRT
                     DataManager.HardwareBoards.Where(entry => entry.IsDraftOnly).Select(entry => entry.ExcelDataFile),
                     StringComparer.OrdinalIgnoreCase);
 
-                IReadOnlyList<RetirableDraft> candidates = await PublishedDraftRetirer.FindAsync(
-                    receipts, dataRoot, draftsRoot, excelDataFiles);
+                // None while CRT talks to the test instance, whose stable data does not last
+                // (ContributionServer.RetiresPublishedDrafts).
+                IReadOnlyList<RetirableDraft> candidates = ContributionServer.RetiresPublishedDrafts(AppConfig.UsesTestServer)
+                    ? await PublishedDraftRetirer.FindAsync(receipts, dataRoot, draftsRoot, excelDataFiles)
+                    : [];
 
                 if (candidates.Count > 0)
                 {
@@ -899,7 +905,10 @@ namespace CRT
                         // Each draft is named by its WORKBOOK path (RetirableDraft.ExcelDataFile),
                         // never by the receipt's board id - passing the id here is the mix-up that
                         // kept every published draft on screen until 2026-09-25.
-                        isInUse: excelDataFile => this.TabDrafts.HasUnsavedTableEditsFor(excelDataFile),
+                        // A draft whose change is not in its file yet - the table's, or another
+                        // editor's whose save could not be made - stays (DraftSession).
+                        isInUse: excelDataFile =>
+                            this.TabDrafts.HasUnsavedTableEditsFor(excelDataFile) || DraftManager.HasUnsavedChanges(excelDataFile),
                         discard: excelDataFile =>
                         {
                             // A table open on this draft with nothing unsaved just closes - it would
@@ -946,11 +955,11 @@ namespace CRT
             // maintainer's reply the status check just brought down.
             try
             {
-                this.ApplyDraftsTabVisibility();
+                this.ApplyContributeTabState();
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Could not refresh the Drafts tab after checking for retirable drafts: [{ex.Message}]");
+                Logger.Warning($"Could not refresh the Contribute tab after checking for retirable drafts: [{ex.Message}]");
             }
         }
 
@@ -1046,10 +1055,10 @@ namespace CRT
         // pointer release pulls focus back to it - EXCEPT where a tab needs the keyboard itself.
         //
         // Extracted from the pointer-release handler (2026-09-24) so the rule can be tested; the
-        // conditions are the handler's own, unchanged, plus the Drafts table below.
+        // conditions are the handler's own, unchanged, plus the Contribute tab below.
         //
-        // *** THE DRAFTS TAB'S TABLE EDITOR OWNS THE KEYBOARD WHILE IT IS OPEN. *** A click on a
-        // grid cell focuses the GRID, not a text box, so the "another TextBox holds focus" check
+        // *** THE CONTRIBUTE TAB OWNS THE KEYBOARD WHILE IT IS SHOWN. *** A click on a grid cell of
+        // its table focuses the GRID, not a text box, so the "another TextBox holds focus" check
         // below does not cover it: focus went straight back to the filter, and typing into the
         // selected cell landed in the component filter instead (reported by the project owner).
         // ###########################################################################################
@@ -1074,7 +1083,9 @@ namespace CRT
                 return false;
             }
 
-            if (ReferenceEquals(selectedTab, this.DraftsTabItem) && this.TabDrafts.IsTableOpen)
+            // The Contribute tab owns the keyboard too (CRT 4.0 step 2): its table, and its own search
+            // of the board's components - the filter it would steal focus for is the same list.
+            if (ReferenceEquals(selectedTab, this.ContributeTabItem))
             {
                 return false;
             }
@@ -1180,6 +1191,10 @@ namespace CRT
         // Unsaved edits in the Drafts tab's table, then in the Maintainer tab's - each tab brought
         // forward and asked. True when CRT may go: nothing unsaved, or every one saved or discarded.
         //
+        // *** THE DRAFTS TAB'S TABLE SAVES FIRST (CRT 4.0 step 1, 2026-10-25). *** A draft saves itself
+        // a second after a change, so whatever still waits is saved here; the tab is brought forward
+        // and asks only when that save could not be made.
+        //
         // *** QUITTING AND INSTALLING AN UPDATE BOTH ASK (code review, 2026-10-09). *** Installing
         // restarts CRT through Velopack's ApplyUpdatesAndRestart, which exits the process without a
         // Closing event - so OnWindowClosing never asked, and the "CRT has to be updated" overlay's
@@ -1188,11 +1203,11 @@ namespace CRT
         internal async Task<bool> ConfirmLeavingTablesAsync()
         {
             // A cell still being typed in counts (code review, 2026-10-13) - committed first.
-            if (this.TabDrafts.CommitCellsAndHasUnsavedTableEdits())
+            if (this.TabDrafts.CommitCellsAndHasUnsavedTableEdits() && !await this.TabDrafts.SaveDraftEditorsNowAsync())
             {
-                if (this.DraftsTabItem != null && this.MainTabControl != null)
+                if (this.ContributeTabItem != null && this.MainTabControl != null)
                 {
-                    this.MainTabControl.SelectedItem = this.DraftsTabItem;
+                    this.MainTabControl.SelectedItem = this.ContributeTabItem;
                 }
 
                 if (!await this.TabDrafts.ConfirmLeavingTableAsync(this))

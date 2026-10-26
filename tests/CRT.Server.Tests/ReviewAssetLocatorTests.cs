@@ -21,8 +21,10 @@ namespace CRT.Server.Tests
     //   SUBMITTED - addressed by HASH. A hash cannot carry a traversal, so containment is not the
     //               risk; the risk is a maintainer fetching a blob belonging to some OTHER
     //               submission. Guarded by requiring the manifest to reference that hash.
-    //   PUBLISHED - addressed by a caller-supplied PATH into the data tree. Guarded by
-    //               SubmissionPathRules, the same containment the write paths use.
+    //   PUBLISHED - addressed by the board's NAME for a file (the CRT 4.0 tree, 2026-10-25).
+    //               Guarded by the published board's own list - only a name it lists is served -
+    //               and by serving the stored file of its checksum, never a place built from the
+    //               name.
     // ###########################################################################################
     // Shares the "BoardFiles" collection - see PublishExecutorTests for why these must not run
     // in parallel.
@@ -167,291 +169,125 @@ namespace CRT.Server.Tests
         }
 
         // -----------------------------------------------------------------------------------
-        // The PUBLISHED side: addressed by path, contained to the board folder.
+        // The PUBLISHED side: asked for by the board's NAME, scoped to the published board's list.
+        //
+        // In the CRT 4.0 tree (2026-10-25) a request names a file as the board does, and only a name
+        // the published board of this submission lists is answered - from the stored file of its
+        // checksum ("Files/<ab>/<sha256>.<ext>"), so no name is ever turned into a place in the tree.
         // -----------------------------------------------------------------------------------
 
-        // ###########################################################################################
-        // *** THE PATH IS RELATIVE TO THE DATA TREE ROOT, NOT THE BOARD FOLDER (corrected
-        // 2026-09-23). ***
-        //
-        // This test used to pass "Schematics/board.png" and expect it resolved under the board
-        // folder. That was wrong about the real data: a board stores its references relative to
-        // the DATA ROOT ("Commodore/C64/250407/Schematics/board.png"), which is how the desktop
-        // app resolves them. The old base doubled the board segments, so every published image
-        // answered 404 and the maintainer was told "No published file at this path" about files that
-        // are in fact published.
-        //
-        // The expectation is corrected rather than the code bent to it - see the locator header
-        // for why the board folder could never have been right.
-        // ###########################################################################################
-        [Fact]
-        public void A_published_file_is_found_by_its_DATA_TREE_relative_path()
+        // The published board's files by name, as PublishedBoardFiles reads them.
+        private static IReadOnlyDictionary<string, BoardDocument.StoredFileRow> Listed(params (string Name, string Sha256)[] files) =>
+            files.ToDictionary(
+                file => file.Name,
+                file => new BoardDocument.StoredFileRow { Name = file.Name, Sha256 = file.Sha256, Size = 5 },
+                StringComparer.OrdinalIgnoreCase);
+
+        // Stores `content` in the tree as the file of `name` would be, and returns its checksum.
+        private string Store(string name, string content)
         {
-            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Schematics");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "board.png"), "bytes");
+            string sha = DataTreeBuilder.Sha(content);
+            File.WriteAllText(DataTreeBuilder.Full(this.thisDataTree, DataTreeLayout.StoredFilePath(sha, name)), content);
+            return sha;
+        }
+
+        [Fact]
+        public void A_name_the_published_board_lists_is_found_at_its_stored_bytes()
+        {
+            string sha = this.Store("Schematics/board.png", "bytes");
 
             Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
                 ReviewAssetLocatorTests.Manifest(),
-                "Commodore/C64/250407/Schematics/board.png",
-                out string resolved));
-
-            Assert.True(File.Exists(resolved));
-        }
-
-        // ###########################################################################################
-        // *** THE CASE THE OLD BOARD-FOLDER BASE COULD NEVER HAVE SERVED. ***
-        //
-        // A shared component image is stored as "Commodore/Shared files/Component images/6526.png"
-        // - outside the board folder by design, and cited by boards across a manufacturer. Under
-        // the old base this was unreachable, so an entire legitimate category of board reference
-        // could not be shown to a maintainer at all.
-        // ###########################################################################################
-        [Fact]
-        public void A_SHARED_file_outside_the_board_folder_is_found()
-        {
-            const string Shared = "Commodore/Shared files/Component images/6526.png";
-
-            string folder = Path.Combine(
-                this.thisDataTree, "Commodore", "Shared files", "Component images");
-
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "6526.png"), "bytes");
-
-            Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.ManifestReferencing([Shared]),
-                Shared,
-                out string resolved));
-
-            Assert.True(File.Exists(resolved));
-        }
-
-        // ###########################################################################################
-        // *** THE OLD PICTURE OF A CHANGED OR DELETED ROW (2026-09-26). *** The submission no
-        // longer cites it - only the published board does - and it is the "before" side of the
-        // comparison. It used to answer 404, so every removed image read "No published file at this
-        // path" in the change summary.
-        // ###########################################################################################
-        [Fact]
-        public void A_file_only_the_PUBLISHED_board_cites_is_found()
-        {
-            const string Old = "Commodore/C64/250407/old board.png";
-
-            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "old board.png"), "bytes");
-
-            Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.ManifestReferencing(["Commodore/C64/250407/new board.png"]),
-                Old,
+                "Schematics/board.png",
                 out string resolved,
-                publishedBoardFiles: () => [Old]));
+                ReviewAssetLocatorTests.Listed(("Schematics/board.png", sha))));
 
-            Assert.True(File.Exists(resolved));
+            Assert.Equal("bytes", File.ReadAllText(resolved));
         }
 
-        // Neither board cites it: still refused, whatever sits on disk beside the board.
+        // ###########################################################################################
+        // *** THE OLD PICTURE OF A CHANGED OR DELETED ROW (2026-09-26). *** The submission no longer
+        // cites it - only the published board does - and it is the "before" side of the comparison.
+        // ###########################################################################################
         [Fact]
-        public void A_file_NEITHER_board_cites_is_still_refused()
+        public void A_name_only_the_PUBLISHED_board_lists_is_found()
         {
-            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "unrelated.png"), "bytes");
-
-            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.ManifestReferencing(["Commodore/C64/250407/new board.png"]),
-                "Commodore/C64/250407/unrelated.png",
-                out _,
-                publishedBoardFiles: () => ["Commodore/C64/250407/old board.png"]));
-        }
-
-        // The published board is read only when the submission does not cite the path itself - the
-        // ordinary request (a file the submission names) never pays for a workbook read.
-        [Fact]
-        public void The_published_board_is_not_read_for_a_file_the_submission_cites()
-        {
-            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407", "Schematics");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "board.png"), "bytes");
-
-            bool asked = false;
+            string sha = this.Store("old board.png", "old bytes");
 
             Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
-                ReviewAssetLocatorTests.Manifest(),
-                "Commodore/C64/250407/Schematics/board.png",
-                out _,
-                publishedBoardFiles: () =>
-                {
-                    asked = true;
-                    return [];
-                }));
+                ReviewAssetLocatorTests.ManifestReferencing(["new board.png"]),
+                "old board.png",
+                out string resolved,
+                ReviewAssetLocatorTests.Listed(("old board.png", sha))));
 
-            Assert.False(asked);
+            Assert.Equal("old bytes", File.ReadAllText(resolved));
+        }
+
+        // A file lying in the board's folder under the name, but not in its list, is not the board's.
+        [Fact]
+        public void A_name_the_published_board_does_NOT_list_is_refused_whatever_lies_on_disk()
+        {
+            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "private-notes.png"), "not listed");
+
+            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
+                this.thisDataTree,
+                ReviewAssetLocatorTests.Manifest(),
+                "private-notes.png",
+                out _,
+                ReviewAssetLocatorTests.Listed(("Schematics/board.png", this.Store("Schematics/board.png", "bytes")))));
         }
 
         // ###########################################################################################
-        // *** THE SCOPE LIMIT THAT REPLACED THE BOARD FOLDER, and it is STRICTER. ***
-        //
-        // The old base confined reads to the board own folder. The new one confines them to the
-        // files the submission board actually NAMES - so a file sitting inside the board folder,
-        // which the old rule would have served, is refused unless the board references it.
-        // ###########################################################################################
-        // ###########################################################################################
-        // *** THE CONTAINMENT TEST THAT CANNOT PASS VACUOUSLY, and it is here because the obvious
-        // version DID. ***
-        //
-        // The traversal tests below hand the locator a path the board does not reference, so since
-        // 2026-09-23 the SCOPE check refuses them before SubmissionPathRules is ever reached -
-        // meaning they would keep passing with containment deleted outright. Verified by deleting
-        // it: all thirty tests still went green.
-        //
-        // This one closes that hole by having the BOARD ITSELF reference the traversal, which is
-        // the real threat model - the manifest is contributor-supplied, so an attacker controls
-        // the row values and can name "../../../secrets/..." as a schematic image. The scope check
-        // then passes and only containment stands between the request and the file.
-        //
-        // The secret is a REAL file in a REAL folder, so the refusal cannot come from File.Exists.
-        // Delete SubmissionPathRules from the locator and this goes red.
+        // *** A NAME NEVER BECOMES A PLACE. *** Even a list naming a traversal - the scope check then
+        // passes - reaches only the stored file of its checksum, so the secret next to the tree,
+        // a REAL file in a REAL folder, is never served. The anti-vacuity half: the stored bytes of
+        // the same name ARE found.
         // ###########################################################################################
         [Fact]
-        public void A_traversal_the_BOARD_ITSELF_REFERENCES_is_still_refused()
+        public void A_traversal_the_published_list_itself_names_reaches_only_the_store()
         {
             string secrets = Path.Combine(this.thisRoot, "secrets");
             Directory.CreateDirectory(secrets);
             File.WriteAllText(Path.Combine(secrets, "appsettings.Production.json"), "connection string");
 
-            // The data tree is <root>/data, so one level up reaches thisRoot.
             const string Escape = "../secrets/appsettings.Production.json";
+            string sha = DataTreeBuilder.Sha("connection string");
 
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.ManifestReferencing([Escape]),
-                Escape,
-                out _));
-        }
+                this.thisDataTree, ReviewAssetLocatorTests.Manifest(), Escape, out _, ReviewAssetLocatorTests.Listed((Escape, sha))));
 
-        [Fact]
-        public void A_file_the_board_does_NOT_reference_is_refused_even_inside_the_board_folder()
-        {
-            string folder = Path.Combine(this.thisDataTree, "Commodore", "C64", "250407");
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "private-notes.png"), "not referenced");
-
-            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.Manifest(),
-                "Commodore/C64/250407/private-notes.png",
-                out _));
-        }
-
-        [Fact]
-        public void A_TRAVERSAL_ONTO_A_REAL_FILE_OUTSIDE_THE_TREE_IS_REFUSED()
-        {
-            // *** THE TEST THIS FILE EXISTS FOR, and the one shape that has already been written
-            // vacuously twice in this project. *** The secret is placed in a REAL sibling folder
-            // holding a REAL file, so the refusal cannot come from File.Exists returning false.
-            // Delete SubmissionPathRules from the locator and this goes red.
-            string secrets = Path.Combine(this.thisRoot, "secrets");
-            Directory.CreateDirectory(secrets);
-            File.WriteAllText(Path.Combine(secrets, "appsettings.Production.json"), "connection string");
-
-            // The board folder is <tree>/Commodore/C64/250407, so four levels up reaches thisRoot.
-            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.Manifest(),
-                "../../../../secrets/appsettings.Production.json",
-                out _));
-        }
-
-        [Fact]
-        public void The_same_shape_INSIDE_the_tree_IS_found_so_the_refusal_is_containment()
-        {
-            // The anti-vacuity half of the test above. Same nesting depth, same file name, the
-            // only difference being that it stays inside the tree AND is referenced by the board -
-            // so a locator that simply finds nothing would fail HERE.
-            const string Inside = "Commodore/C64/250407/a/b/c/secrets/appsettings.Production.json";
-
-            string folder = Path.Combine(
-                this.thisDataTree, "Commodore", "C64", "250407", "a", "b", "c", "secrets");
-
-            Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "appsettings.Production.json"), "harmless");
+            this.Store(Escape, "connection string");
 
             Assert.True(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.ManifestReferencing([Inside]),
-                Inside,
-                out string resolved));
+                this.thisDataTree, ReviewAssetLocatorTests.Manifest(), Escape, out string resolved, ReviewAssetLocatorTests.Listed((Escape, sha))));
 
-            Assert.Equal("harmless", File.ReadAllText(resolved));
+            Assert.StartsWith(Path.GetFullPath(Path.Combine(this.thisDataTree, "Files")), resolved, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void A_file_in_ANOTHER_boards_folder_is_refused()
+        public void A_listed_name_without_a_usable_checksum_is_refused()
         {
-            // Containment is to THIS board, not merely to the data tree. A maintainer opening a
-            // C64 submission has no business reading an Amstrad board's files through it, and
-            // "inside the tree" would permit exactly that.
-            string other = Path.Combine(this.thisDataTree, "Amstrad", "CPC464", "Z70200");
-            Directory.CreateDirectory(other);
-            File.WriteAllText(Path.Combine(other, "board.png"), "other board");
-
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
                 ReviewAssetLocatorTests.Manifest(),
-                "../../../Amstrad/CPC464/Z70200/board.png",
-                out _));
+                "Schematics/board.png",
+                out _,
+                ReviewAssetLocatorTests.Listed(("Schematics/board.png", "../../etc/passwd"))));
         }
 
         [Fact]
-        public void An_ABSOLUTE_path_is_refused()
+        public void A_listed_file_whose_bytes_are_not_in_the_tree_is_refused_WITHOUT_throwing()
         {
-            string absolute = Path.Combine(this.thisRoot, "secrets.txt");
-            File.WriteAllText(absolute, "secret");
-
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
                 this.thisDataTree,
                 ReviewAssetLocatorTests.Manifest(),
-                absolute,
-                out _));
-        }
-
-        [Fact]
-        public void A_file_that_simply_does_not_exist_is_refused_WITHOUT_throwing()
-        {
-            // An ordinary miss: the published board references an image that is not on disk. The
-            // maintainer gets "not found" and the rest of the screen still draws.
-            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree,
-                ReviewAssetLocatorTests.Manifest(),
-                "Schematics/missing.png",
-                out _));
-        }
-
-        [Fact]
-        public void An_UNSAFE_IDENTITY_in_the_manifest_cannot_relocate_the_board_folder()
-        {
-            // The identity is untrusted too - it arrives inside the submission. A manufacturer of
-            // ".." would move the board folder up the tree and make every subsequent containment
-            // check contain the WRONG folder.
-            string secrets = Path.Combine(this.thisRoot, "secrets");
-            Directory.CreateDirectory(secrets);
-            File.WriteAllText(Path.Combine(secrets, "key.txt"), "secret");
-
-            var manifest = new SubmissionManifest
-            {
-                Manufacturer = "..",
-                Hardware = "..",
-                Board = ".."
-            };
-
-            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree, manifest, "secrets/key.txt", out _));
+                "Schematics/board.png",
+                out _,
+                ReviewAssetLocatorTests.Listed(("Schematics/board.png", ReviewAssetLocatorTests.Hash('c')))));
         }
 
         [Fact]
@@ -463,14 +299,21 @@ namespace CRT.Server.Tests
                 string.Empty,
                 ReviewAssetLocatorTests.Manifest(),
                 "Schematics/board.png",
-                out _));
+                out _,
+                ReviewAssetLocatorTests.Listed(("Schematics/board.png", ReviewAssetLocatorTests.Hash('a')))));
         }
 
+        // No manifest, or a published board that could not be read, locates nothing.
         [Fact]
-        public void A_null_manifest_locates_NOTHING()
+        public void A_null_manifest_or_an_unread_published_board_locates_NOTHING()
         {
+            string sha = this.Store("Schematics/board.png", "bytes");
+
             Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
-                this.thisDataTree, null, "Schematics/board.png", out _));
+                this.thisDataTree, null, "Schematics/board.png", out _, ReviewAssetLocatorTests.Listed(("Schematics/board.png", sha))));
+
+            Assert.False(ReviewAssetLocator.TryLocatePublishedFile(
+                this.thisDataTree, ReviewAssetLocatorTests.Manifest(), "Schematics/board.png", out _, null));
         }
 
         // -----------------------------------------------------------------------------------

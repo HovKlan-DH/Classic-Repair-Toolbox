@@ -741,12 +741,14 @@ namespace CRT.Server.Handlers.Submissions
             SubmissionManifest? manifest =
                 await submissions.LoadPayloadAsync(submissionId, cancellationToken);
 
+            // The published board's files by name - the scope of what may be fetched (a board file
+            // that cannot be read lists nothing here, which only means no file is served).
             if (!ReviewAssetLocator.TryLocatePublishedFile(
                     options.DataTreeRoot,
                     manifest,
                     path,
                     out string resolved,
-                    publishedBoardFiles: () => ReviewEndpoints.PublishedBoardCitations(options.DataTreeRoot, manifest)))
+                    manifest is null ? null : PublishedBoardFiles.ByName(options.DataTreeRoot, manifest.BoardId)))
             {
                 // One 404 for unsafe, absent and out-of-scope alike. Distinguishing them would let
                 // the tree be probed for what exists.
@@ -754,25 +756,6 @@ namespace CRT.Server.Handlers.Submissions
             }
 
             return ReviewEndpoints.FileResult(resolved, path);
-        }
-
-        // ###########################################################################################
-        // What the PUBLISHED board of a submission's board cites - so the old picture of a changed
-        // or deleted row can be shown beside the new one (2026-09-26). Read through the preview
-        // cache (WorkbookReadCache), since this only decides what may be SHOWN; a workbook that
-        // cannot be read cites nothing here, which only means that file is not served.
-        // ###########################################################################################
-        private static IReadOnlyCollection<string> PublishedBoardCitations(string? dataTreeRoot, SubmissionManifest? manifest)
-        {
-            if (manifest is null)
-                return [];
-
-            PublishedBoardLocation location = PublishedBoardLocator.Locate(dataTreeRoot, manifest);
-
-            return location.Exists &&
-                   ApprovePublishFlow.PreviewReads.TryGetCitations(location.WorkbookPath, out IReadOnlyCollection<string> cites)
-                ? cites
-                : [];
         }
 
         // ###########################################################################################
@@ -868,7 +851,8 @@ namespace CRT.Server.Handlers.Submissions
             // Judged against the tree as it is NOW - the answer the approval itself will act on, so
             // the screen cannot promise a one-approval publish the server then turns into the first
             // of two. Not stored here: this is a read; the approval stores it.
-            bool touchesSharedFiles = ApprovePublishFlow.TouchesSharedFilesNow(record, manifest, options.DataTreeRoot);
+            // The CRT 4.0 tree has no shared files (ApprovePublishFlow.TouchesSharedFilesNowAsync).
+            const bool touchesSharedFiles = false;
 
             bool canPublish = ReviewAuthority.CanPublish(access, record);
 
@@ -930,7 +914,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 // The SHA-256 of each published file the submission also carries, so the review
                 // app can drop the pairs that are byte-identical instead of showing every file on
-                // both sides as replaced. See PublishedFileHashes.
+                // both sides as replaced. Read off the published board's list (SubmissionFileTreeFlow.HashesOf).
                 PublishedHashes: comparison.PublishedHashes,
 
                 // Which image each schematic is drawn from, so a moved highlight lands on the
@@ -1038,15 +1022,24 @@ namespace CRT.Server.Handlers.Submissions
 
             IReadOnlyList<string> publishedFiles = ReviewEndpoints.PublishedFilePaths(published);
 
-            // Hashed for EVERY submitted path that exists on disk, whether or not the old board
-            // cited it - see PublishedFileHashes' header for why "on both lists" was not enough, and
-            // why they are hashed here rather than read from dataChecksums.json.
-            IReadOnlyDictionary<string, string> publishedHashes = await PublishedFileHashes
-                .ComputeAsync(
-                    dataTreeRoot,
-                    manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal).ToList(),
-                    cancellationToken)
-                .ConfigureAwait(false);
+            // ###########################################################################################
+            // What the published board lists under each name the submission carries (2026-10-25) -
+            // the CRT 4.0 tree names a board's files by the board, and its list holds each one's
+            // checksum, so nothing is hashed: a name listed with the same bytes is unchanged, with
+            // other bytes replaced, unlisted added. EVERY submitted name is looked up, whether or not
+            // a published row cites it - see PublishedFileHashes' header for why "on both lists" was
+            // not enough.
+            // ###########################################################################################
+            IReadOnlyDictionary<string, string> listed = SubmissionFileTreeFlow.HashesOf(
+                PublishedBoardFiles.ByName(dataTreeRoot, manifest.BoardId) ?? new Dictionary<string, BoardDocument.StoredFileRow>());
+
+            var publishedHashes = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (string name in manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal))
+            {
+                if (listed.TryGetValue(name, out string? sha))
+                    publishedHashes[name] = sha;
+            }
 
             // *** THE REVISION DATE IS NOW COMPARED PROPERLY. *** It used to be a real gap:
             // SubmissionRows carried no revision date, so the published board's was used for BOTH
@@ -1162,41 +1155,12 @@ namespace CRT.Server.Handlers.Submissions
             if (!location.Exists)
                 return [];
 
-            var entries = new List<KiCadCalibrationEntry>();
-
-            // TryLoadKiCadCalibration answers for ONE schematic at a time, so the names have to
-            // come from the board - which is the only thing that lists them.
-            foreach (BoardSchematicEntry schematic in published?.Schematics ?? [])
-            {
-                if (string.IsNullOrWhiteSpace(schematic.SchematicName))
-                    continue;
-
-                if (BoardComponentHighlightStorage.TryLoadKiCadCalibration(
-                        location.WorkbookPath,
-                        schematic.SchematicName,
-                        out string cadName,
-                        out double offsetX,
-                        out double offsetY,
-                        out double scaleX,
-                        out double scaleY,
-                        out bool mirrorX,
-                        out bool mirrorY))
-                {
-                    entries.Add(new KiCadCalibrationEntry
-                    {
-                        SchematicName = schematic.SchematicName,
-                        CadName = cadName,
-                        OffsetX = offsetX,
-                        OffsetY = offsetY,
-                        ScaleX = scaleX,
-                        ScaleY = scaleY,
-                        MirrorX = mirrorX,
-                        MirrorY = mirrorY
-                    });
-                }
-            }
-
-            return entries;
+            // The names come from the board - the only thing that lists them - and the file is parsed
+            // ONCE for all of them (code review, 2026-10-26: TryLoadKiCadCalibration parsed it once
+            // per schematic, on every submission opened and every approval).
+            return BoardComponentHighlightStorage.LoadKiCadCalibrations(
+                location.WorkbookPath,
+                (published?.Schematics ?? []).Select(schematic => schematic.SchematicName));
         }
 
         // ###########################################################################################
@@ -1239,7 +1203,7 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<string> PublishedFiles,
 
             // Path -> SHA-256 for the published files the submission also names, so the review
-            // app can drop byte-identical pairs. See PublishedFileHashes.
+            // app can drop byte-identical pairs - read off the published board's list (SubmissionFileTreeFlow.HashesOf).
             IReadOnlyDictionary<string, string> PublishedHashes,
 
             // Schematic name to the image file it is drawn from, so a moved highlight can be put

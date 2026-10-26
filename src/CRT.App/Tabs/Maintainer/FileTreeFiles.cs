@@ -98,8 +98,10 @@ namespace CRT
             {
                 BoardFileSource.Submission when this.thisSession is not null && this.thisSubmissionId is long id && file.Sha256 is string hash =>
                     this.thisClient.GetSubmittedAssetAsync(this.thisSession, id, hash, token),
-                BoardFileSource.Production => this.thisClient.GetPublishedDataFileAsync(this.thisProductionDataUrl, file.Path, token),
-                BoardFileSource.Beta => this.thisClient.GetPublishedDataFileAsync(this.thisBetaDataUrl, file.Path, token),
+                // From its place in the tree - a 4.0 tree's file is shown by name and stored under its
+                // checksum (BoardFileEntry.TreePath, 2026-10-25).
+                BoardFileSource.Production => this.thisClient.GetPublishedDataFileAsync(this.thisProductionDataUrl, file.PlaceInTree, token),
+                BoardFileSource.Beta => this.thisClient.GetPublishedDataFileAsync(this.thisBetaDataUrl, file.PlaceInTree, token),
                 _ => Task.FromResult(ReviewApiResult<byte[]>.Failed(ReviewApiFailure.NotFound, "There is nothing to open yet."))
             });
 

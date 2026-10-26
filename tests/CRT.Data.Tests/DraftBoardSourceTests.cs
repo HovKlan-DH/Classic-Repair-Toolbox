@@ -405,7 +405,7 @@ public sealed class DraftBoardSourceTests : IDisposable
     }
 
     // The KiCad data the "Schematic images" and "KiCad data" windows read beside the draft's -
-    // where Main.GetCurrentBoardKiCadRawPaths reads it (code review, 2026-10-10: the window derived
+    // where Main.KiCadRawPathsFor reads it (code review, 2026-10-10: the window derived
     // the path a second way, beside PublishedPathOf).
     [Fact]
     public void The_published_KiCad_folder_is_beside_the_published_workbook()

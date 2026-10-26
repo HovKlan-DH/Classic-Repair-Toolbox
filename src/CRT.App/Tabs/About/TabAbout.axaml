@@ -133,7 +133,7 @@
 						Spacing="4"
 						Margin="0,16,0,0"
 						IsVisible="False">
-				<TextBlock Text="Board Excel data last revisioned:"
+				<TextBlock Text="Board data last revisioned:"
 						   FontSize="14" />
 				<TextBlock x:Name="RevisionDateText"
 						   FontSize="14"

@@ -1,4 +1,5 @@
 using CRT.Server.Handlers.Submissions;
+using Handlers.DataHandling;
 using Xunit;
 
 namespace CRT.Server.Tests
@@ -7,7 +8,8 @@ namespace CRT.Server.Tests
     // Covers PublishedBoardLister - the boards in the data tree a maintainer can be assigned to.
     //
     // A real temp folder, because the thing under test IS the folder walk: which folders count as
-    // a board, and which are the shared-file folders that must never get a maintainer.
+    // a board, and which are the tree's own folders that must never get a maintainer. In the CRT
+    // 4.0 tree (2026-10-25) a board is a folder holding its board file ("board.json").
     // ###########################################################################################
     public sealed class PublishedBoardListerTests : IDisposable
     {
@@ -31,17 +33,17 @@ namespace CRT.Server.Tests
             }
         }
 
-        private void Board(string manufacturer, string hardware, string board, bool withWorkbook = true)
+        private void Board(string manufacturer, string hardware, string board, string file = DataTreeLayout.BoardFileName)
         {
             string folder = Path.Combine(this.thisRoot, manufacturer, hardware, board);
             Directory.CreateDirectory(folder);
 
-            if (withWorkbook)
-                File.WriteAllText(Path.Combine(folder, $"Data {hardware} {board} v2.0.0.xlsx"), "x");
+            if (file.Length > 0)
+                File.WriteAllText(Path.Combine(folder, file), "x");
         }
 
         [Fact]
-        public void Every_board_folder_holding_a_workbook_is_listed_with_its_three_parts()
+        public void Every_board_folder_holding_a_board_file_is_listed_with_its_three_parts()
         {
             this.Board("Commodore", "C64", "250407");
             this.Board("Commodore", "C128", "310378");
@@ -57,25 +59,30 @@ namespace CRT.Server.Tests
             Assert.Equal(("Commodore", "C64", "250407"), (c64.Manufacturer, c64.Hardware, c64.Board));
         }
 
+        // ###########################################################################################
+        // The tree's own folders - the stored files ("Files/<ab>/...") and the MiniPro tests - are
+        // not boards, and a maintainer assigned to one would review nothing. Both carry sub-folders
+        // deep enough to look like a board to a naive walk.
+        // ###########################################################################################
         [Fact]
-        public void The_SHARED_FILE_folders_are_never_boards()
+        public void The_trees_own_folders_are_never_boards()
         {
-            // "Generic shared files" at the top and "Shared files" beside a manufacturer's boards
-            // are not boards, and a maintainer assigned to one would review nothing. Both carry
-            // sub-folders deep enough to look like a board to a naive walk.
             this.Board("Commodore", "C64", "250407");
-            this.Board("Commodore", "Shared files", "Images");
-            this.Board("Generic shared files", "Chips", "TTL");
+            this.Board(DataTreeLayout.FilesFolder, "ab", "cd");
+            this.Board("MiniPro", "IC tests", "74");
 
             IReadOnlyList<PublishedBoardLister.KnownBoard> boards = PublishedBoardLister.List(this.thisRoot);
 
             Assert.Equal("Commodore/C64/250407", Assert.Single(boards).BoardId);
         }
 
+        // A folder with no board file is not a board - an Excel workbook alone included, which is a
+        // generation of its own tree.
         [Fact]
-        public void A_folder_with_no_workbook_is_not_a_board()
+        public void A_folder_with_no_board_file_is_not_a_board()
         {
-            this.Board("Commodore", "C64", "250407", withWorkbook: false);
+            this.Board("Commodore", "C64", "250407", file: string.Empty);
+            this.Board("Commodore", "C64", "250466", file: "Data C64 250466 v2.0.0.xlsx");
             this.Board("Commodore", "C64", "250425");
 
             Assert.Equal("Commodore/C64/250425", Assert.Single(PublishedBoardLister.List(this.thisRoot)).BoardId);

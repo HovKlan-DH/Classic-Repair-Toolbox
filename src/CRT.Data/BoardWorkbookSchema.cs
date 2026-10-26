@@ -46,6 +46,17 @@ namespace Handlers.DataHandling
         public const string SheetCredits = "Credits";
         public const string SheetKiCadImportantSignals = "Important signals";
 
+        // ###########################################################################################
+        // CRT 4.0's own sheets (step 2, 2026-10-25): no Excel generation has them, and none ever will
+        // (Excel is frozen at 4.0), so the Excel reader reads them only quietly (IsCrt4Sheet) - their
+        // home is the board file and the table.
+        // ###########################################################################################
+        public const string SheetComponentPins = "Component pins";
+        public const string SheetComponentReplacements = "Component replacements";
+
+        public static bool IsCrt4Sheet(string sheetName) =>
+            sheetName is BoardWorkbookSchema.SheetComponentPins or BoardWorkbookSchema.SheetComponentReplacements;
+
         // ---- Board schematics columns ------------------------------------------------------
         public const string ColSchematicName = "Schematic name";
         public const string ColCadName = "CAD name";
@@ -90,6 +101,18 @@ namespace Handlers.DataHandling
         // ---- Important signals columns -----------------------------------------------------
         public const string ColDisplayName = "Display name";
         public const string ColKiCadNetName = "KiCad net name";
+
+        // ---- CRT 4.0's own columns (step 2, 2026-10-25) --------------------------------------
+        // On Components (Package, Repair notes), on Component images for a scope baseline
+        // (Machine state, Source), and on the two new sheets (Direction; Kind, What to change,
+        // Source). Source is shared: where a baseline, or a replacement's advice, comes from.
+        public const string ColPackage = "Package";
+        public const string ColRepairNotes = "Repair notes";
+        public const string ColMachineState = "Machine state";
+        public const string ColSource = "Source";
+        public const string ColDirection = "Direction";
+        public const string ColKind = "Kind";
+        public const string ColChanges = "What to change";
 
         // ###########################################################################################
         // The marker cell carrying the board's hand-maintained revision date, in the top-left
@@ -157,7 +180,9 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColPartNumber,
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColRegion,
-                BoardWorkbookSchema.ColDescription
+                BoardWorkbookSchema.ColDescription,
+                BoardWorkbookSchema.ColPackage,
+                BoardWorkbookSchema.ColRepairNotes
             ],
             [
                 BoardWorkbookSchema.ColBoardLabel,
@@ -177,7 +202,9 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColNote,
                 BoardWorkbookSchema.ColTimeDiv,
                 BoardWorkbookSchema.ColVoltsDiv,
-                BoardWorkbookSchema.ColTriggerLevelVolts
+                BoardWorkbookSchema.ColTriggerLevelVolts,
+                BoardWorkbookSchema.ColMachineState,
+                BoardWorkbookSchema.ColSource
             ],
             [
                 BoardWorkbookSchema.ColBoardLabel,
@@ -185,6 +212,29 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColName,
                 BoardWorkbookSchema.ColFile
             ]);
+
+        public static readonly SheetDefinition ComponentPins = new(
+            BoardWorkbookSchema.SheetComponentPins,
+            [
+                BoardWorkbookSchema.ColBoardLabel,
+                BoardWorkbookSchema.ColRegion,
+                BoardWorkbookSchema.ColPin,
+                BoardWorkbookSchema.ColName,
+                BoardWorkbookSchema.ColDirection
+            ],
+            [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColPin]);
+
+        public static readonly SheetDefinition ComponentReplacements = new(
+            BoardWorkbookSchema.SheetComponentReplacements,
+            [
+                BoardWorkbookSchema.ColBoardLabel,
+                BoardWorkbookSchema.ColRegion,
+                BoardWorkbookSchema.ColPartNumber,
+                BoardWorkbookSchema.ColKind,
+                BoardWorkbookSchema.ColChanges,
+                BoardWorkbookSchema.ColSource
+            ],
+            [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColPartNumber]);
 
         public static readonly SheetDefinition ComponentLocalFiles = new(
             BoardWorkbookSchema.SheetComponentLocalFiles,
@@ -245,6 +295,8 @@ namespace Handlers.DataHandling
         // published boards with an "Important signals" sheet put it before "Credits"; this list had
         // them the other way round, so every workbook the app wrote ended in "Important signals"
         // and the table's sheet tabs disagreed with the file the project owner knows (reported).
+        //
+        // CRT 4.0's two sheets follow the component sheets, so one component's rows sit together.
         public static readonly IReadOnlyList<SheetDefinition> AllSheets =
         [
             BoardWorkbookSchema.BoardSchematics,
@@ -252,6 +304,8 @@ namespace Handlers.DataHandling
             BoardWorkbookSchema.ComponentImages,
             BoardWorkbookSchema.ComponentLocalFiles,
             BoardWorkbookSchema.ComponentLinks,
+            BoardWorkbookSchema.ComponentPins,
+            BoardWorkbookSchema.ComponentReplacements,
             BoardWorkbookSchema.BoardLocalFiles,
             BoardWorkbookSchema.BoardLinks,
             BoardWorkbookSchema.KiCadImportantSignals,
@@ -296,7 +350,9 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColPartNumber, entry.PartNumber),
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColRegion, entry.Region),
-                    (BoardWorkbookSchema.ColDescription, entry.Description)))];
+                    (BoardWorkbookSchema.ColDescription, entry.Description),
+                    (BoardWorkbookSchema.ColPackage, entry.Package),
+                    (BoardWorkbookSchema.ColRepairNotes, entry.RepairNotes)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentImages)
@@ -311,7 +367,30 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColNote, entry.Note),
                     (BoardWorkbookSchema.ColTimeDiv, entry.TimeDiv),
                     (BoardWorkbookSchema.ColVoltsDiv, entry.VoltsDiv),
-                    (BoardWorkbookSchema.ColTriggerLevelVolts, entry.TriggerLevelVolts)))];
+                    (BoardWorkbookSchema.ColTriggerLevelVolts, entry.TriggerLevelVolts),
+                    (BoardWorkbookSchema.ColMachineState, entry.MachineState),
+                    (BoardWorkbookSchema.ColSource, entry.Source)))];
+            }
+
+            if (sheet.SheetName == BoardWorkbookSchema.SheetComponentPins)
+            {
+                return [.. data.ComponentPins.Select(entry => Row(
+                    (BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
+                    (BoardWorkbookSchema.ColRegion, entry.Region),
+                    (BoardWorkbookSchema.ColPin, entry.Pin),
+                    (BoardWorkbookSchema.ColName, entry.Name),
+                    (BoardWorkbookSchema.ColDirection, entry.Direction)))];
+            }
+
+            if (sheet.SheetName == BoardWorkbookSchema.SheetComponentReplacements)
+            {
+                return [.. data.ComponentReplacements.Select(entry => Row(
+                    (BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
+                    (BoardWorkbookSchema.ColRegion, entry.Region),
+                    (BoardWorkbookSchema.ColPartNumber, entry.PartNumber),
+                    (BoardWorkbookSchema.ColKind, entry.Kind),
+                    (BoardWorkbookSchema.ColChanges, entry.Changes),
+                    (BoardWorkbookSchema.ColSource, entry.Source)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentLocalFiles)
@@ -427,7 +506,9 @@ namespace Handlers.DataHandling
                 PartNumber = Val(r, BoardWorkbookSchema.ColPartNumber),
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Region = Val(r, BoardWorkbookSchema.ColRegion),
-                Description = Val(r, BoardWorkbookSchema.ColDescription)
+                Description = Val(r, BoardWorkbookSchema.ColDescription),
+                Package = Val(r, BoardWorkbookSchema.ColPackage),
+                RepairNotes = Val(r, BoardWorkbookSchema.ColRepairNotes)
             }).ToList();
 
         public static List<ComponentImageEntry> MapComponentImages(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -442,7 +523,30 @@ namespace Handlers.DataHandling
                 Note = Val(r, BoardWorkbookSchema.ColNote),
                 TimeDiv = Val(r, BoardWorkbookSchema.ColTimeDiv),
                 VoltsDiv = Val(r, BoardWorkbookSchema.ColVoltsDiv),
-                TriggerLevelVolts = Val(r, BoardWorkbookSchema.ColTriggerLevelVolts)
+                TriggerLevelVolts = Val(r, BoardWorkbookSchema.ColTriggerLevelVolts),
+                MachineState = Val(r, BoardWorkbookSchema.ColMachineState),
+                Source = Val(r, BoardWorkbookSchema.ColSource)
+            }).ToList();
+
+        public static List<ComponentPinEntry> MapComponentPins(IEnumerable<IReadOnlyDictionary<string, string>> rows)
+            => rows.Select(r => new ComponentPinEntry
+            {
+                BoardLabel = Val(r, BoardWorkbookSchema.ColBoardLabel),
+                Region = Val(r, BoardWorkbookSchema.ColRegion),
+                Pin = Val(r, BoardWorkbookSchema.ColPin),
+                Name = Val(r, BoardWorkbookSchema.ColName),
+                Direction = Val(r, BoardWorkbookSchema.ColDirection)
+            }).ToList();
+
+        public static List<ComponentReplacementEntry> MapComponentReplacements(IEnumerable<IReadOnlyDictionary<string, string>> rows)
+            => rows.Select(r => new ComponentReplacementEntry
+            {
+                BoardLabel = Val(r, BoardWorkbookSchema.ColBoardLabel),
+                Region = Val(r, BoardWorkbookSchema.ColRegion),
+                PartNumber = Val(r, BoardWorkbookSchema.ColPartNumber),
+                Kind = Val(r, BoardWorkbookSchema.ColKind),
+                Changes = Val(r, BoardWorkbookSchema.ColChanges),
+                Source = Val(r, BoardWorkbookSchema.ColSource)
             }).ToList();
 
         public static List<ComponentLocalFileEntry> MapComponentLocalFiles(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -536,6 +640,8 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.SheetComponentImages => BoardWorkbookSchema.MapComponentImages(rows),
                 BoardWorkbookSchema.SheetComponentLocalFiles => BoardWorkbookSchema.MapComponentLocalFiles(rows),
                 BoardWorkbookSchema.SheetComponentLinks => BoardWorkbookSchema.MapComponentLinks(rows),
+                BoardWorkbookSchema.SheetComponentPins => BoardWorkbookSchema.MapComponentPins(rows),
+                BoardWorkbookSchema.SheetComponentReplacements => BoardWorkbookSchema.MapComponentReplacements(rows),
                 BoardWorkbookSchema.SheetBoardLocalFiles => BoardWorkbookSchema.MapBoardLocalFiles(rows),
                 BoardWorkbookSchema.SheetBoardLinks => BoardWorkbookSchema.MapBoardLinks(rows),
                 BoardWorkbookSchema.SheetCredits => BoardWorkbookSchema.MapCredits(rows),
@@ -565,6 +671,8 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.SheetComponentImages => data.ComponentImages,
                 BoardWorkbookSchema.SheetComponentLocalFiles => data.ComponentLocalFiles,
                 BoardWorkbookSchema.SheetComponentLinks => data.ComponentLinks,
+                BoardWorkbookSchema.SheetComponentPins => data.ComponentPins,
+                BoardWorkbookSchema.SheetComponentReplacements => data.ComponentReplacements,
                 BoardWorkbookSchema.SheetBoardLocalFiles => data.BoardLocalFiles,
                 BoardWorkbookSchema.SheetBoardLinks => data.BoardLinks,
                 BoardWorkbookSchema.SheetCredits => data.Credits,
@@ -638,6 +746,12 @@ namespace Handlers.DataHandling
                 KiCadImportantSignals = name == BoardWorkbookSchema.SheetKiCadImportantSignals
                     ? BoardWorkbookSchema.MapKiCadImportantSignals(materialised)
                     : data.KiCadImportantSignals,
+                ComponentPins = name == BoardWorkbookSchema.SheetComponentPins
+                    ? BoardWorkbookSchema.MapComponentPins(materialised)
+                    : data.ComponentPins,
+                ComponentReplacements = name == BoardWorkbookSchema.SheetComponentReplacements
+                    ? BoardWorkbookSchema.MapComponentReplacements(materialised)
+                    : data.ComponentReplacements,
             };
         }
     }

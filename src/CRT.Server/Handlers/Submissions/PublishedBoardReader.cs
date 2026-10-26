@@ -15,14 +15,10 @@ namespace CRT.Server.Handlers.Submissions
     // report every row as an addition, which is the same information stripped of the one fact
     // that matters: that nobody has ever vetted this board.
     //
-    // *** IT READS THE NEWEST GENERATION, using the same rule publishing writes with. *** If this
-    // read an older, frozen generation the maintainer would be shown a diff against a board no
-    // current build uses - every change would look real and most of them would be noise from the
-    // generation gap. DataGenerationRules owns that decision for both directions.
-    //
-    // *** THIS IS WHERE EPPlus RUNS ON THE SERVER. *** Open question 8 predicted Phase 4 task 3;
-    // it turned out to be here and the publish writer. The project owner has decided to proceed on
-    // the current licence and settle it separately.
+    // *** IT READS THE BOARD FILE PUBLISHING WRITES (the CRT 4.0 tree, 2026-10-25). *** The board's
+    // "<id>/board.json" (PublishedBoardLocator) - the one board a tree holds of it; the Excel
+    // generations it used to choose between are trees of their own, frozen for older CRTs. The
+    // shared reader reads a board.json as a 4.0 board, so EPPlus no longer runs here.
     //
     // An I/O boundary, so it is thin on purpose: resolving WHICH file and deciding what a missing
     // one means are the parts worth testing, and they live in PublishedBoardLocator.

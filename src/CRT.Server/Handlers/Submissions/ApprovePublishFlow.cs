@@ -264,8 +264,13 @@ namespace CRT.Server.Handlers.Submissions
 
             BoardData board = PublishMerge.Build(manifest, published);
 
-            PublishPlanResult plan = ApprovePublishFlow.BuildPlan(
-                dataTreeRoot, manifest, published, nowUtc);
+            // The published board FILE, read once for everything below - the plan's view of what is
+            // published, the removals, the change summary, the rename log and the write (code review,
+            // 2026-10-26: it was parsed some five times, and its calibrations once per schematic,
+            // under the lock every other publish waits on). See PublishedBoardRead.
+            PublishedBoardRead publishedFile = PublishedBoardRead.Of(dataTreeRoot, manifest.BoardId);
+
+            PublishPlanResult plan = ApprovePublishFlow.BuildPlan(dataTreeRoot, manifest, nowUtc, publishedFile);
 
             if (!plan.IsPlanned)
             {
@@ -308,7 +313,7 @@ namespace CRT.Server.Handlers.Submissions
             // Whether a shared file changes is decided against the tree AS IT IS NOW, not only as
             // it was when the submission arrived - see TouchesSharedFilesNowAsync.
             bool touchesSharedFiles = await ApprovePublishFlow
-                .TouchesSharedFilesNowAsync(record, manifest, dataTreeRoot, this.thisStore, cancellationToken)
+                .TouchesSharedFilesNowAsync(record, this.thisStore, cancellationToken)
                 .ConfigureAwait(false);
 
             ApprovalStatus approval = await ApprovePublishFlow.ApprovalStatusAsync(
@@ -346,7 +351,7 @@ namespace CRT.Server.Handlers.Submissions
             // citing a shared file - they look again rather than having files removed they were
             // never shown. No list at all is an older maintainer application - see
             // RemovalsNotSentMessage.
-            FileRemovalPreview removals = ApprovePublishFlow.PreviewRemovals(dataTreeRoot, published, board, plan);
+            FileRemovalPreview removals = ApprovePublishFlow.PreviewRemovals(dataTreeRoot, manifest, plan, publishedFile);
 
             if (!removals.Matches(shownRemovals))
             {
@@ -362,7 +367,7 @@ namespace CRT.Server.Handlers.Submissions
             // the write below replaces BETA's board, and no copy of it is kept. Never stops the
             // publish - see SummariseChanges.
             SubmissionChanges? changes = ApprovePublishFlow.SummariseChanges(
-                dataTreeRoot, manifest, published, board, plan.Plan!, this.thisLogger, submissionId);
+                dataTreeRoot, manifest, published, board, plan.Plan!, this.thisLogger, submissionId, publishedFile);
 
             // ---- 7. Write --------------------------------------------------------------------
             //
@@ -372,10 +377,11 @@ namespace CRT.Server.Handlers.Submissions
                     plan.Plan!,
                     board,
                     PublishMerge.CalibrationsOf(manifest),
-                    ApprovePublishFlow.RenameLogFor(plan.Plan!, published, board),
+                    ApprovePublishFlow.RenameLogFor(plan.Plan!, published, board, publishedFile),
                     submissionId,
                     nowUtc,
                     listing.Insert,
+                    publishedFile,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -411,6 +417,9 @@ namespace CRT.Server.Handlers.Submissions
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
 
+            // Said by the board's names - a stored file's place is its checksum.
+            IReadOnlyList<string> removedNames = removed.Select(removals.NameOf).ToList();
+
             // The approval that published it, beside any earlier one.
             await this.AfterTheFactAsync(submissionId, "the approval could not be recorded", () => this.thisStore
                 .AddApprovalAsync(submissionId, approval.YourRole!.Value, access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, afterWrite))
@@ -435,7 +444,7 @@ namespace CRT.Server.Handlers.Submissions
             if (changes is not null)
             {
                 await this.AfterTheFactAsync(submissionId, "what it changed could not be recorded for its history", () => this.thisStore
-                    .SetChangesAsync(submissionId, SubmissionChangeFacts.WithRemovedFiles(changes, removed), nowUtc, afterWrite))
+                    .SetChangesAsync(submissionId, SubmissionChangeFacts.WithRemovedFiles(changes, removedNames), nowUtc, afterWrite))
                     .ConfigureAwait(false);
             }
 
@@ -447,7 +456,7 @@ namespace CRT.Server.Handlers.Submissions
             // (ReviewEndpoints, after the publish - see NewBoardMaintainerFlow, and StableHolds).
             return ApproveOutcome.Published(outcome.Descriptor) with
             {
-                RemovedFiles = removed,
+                RemovedFiles = removedNames,
                 CreatedBoard = published is null && !ApprovePublishFlow.StableHolds(this.thisOptions, manifest),
             };
         }
@@ -500,6 +509,8 @@ namespace CRT.Server.Handlers.Submissions
         // throws is logged and the submission simply has no summary - the same as one published
         // before summaries existed.
         // ###########################################################################################
+        //
+        // `publishedFile`: the board file as the approval read it once - null reads it here.
         internal static SubmissionChanges? SummariseChanges(
             string dataTreeRoot,
             SubmissionManifest manifest,
@@ -507,7 +518,8 @@ namespace CRT.Server.Handlers.Submissions
             BoardData board,
             PublishPlanDetail plan,
             ILogger logger,
-            long submissionId)
+            long submissionId,
+            PublishedBoardRead? publishedFile = null)
         {
             try
             {
@@ -515,11 +527,27 @@ namespace CRT.Server.Handlers.Submissions
                     published,
                     board,
                     manifest.Renames,
-                    publishedCalibrations: ReviewEndpoints.PublishedCalibrations(dataTreeRoot, manifest, published),
+                    publishedCalibrations: publishedFile?.CalibrationsFor((published?.Schematics ?? []).Select(schematic => schematic.SchematicName))
+                                           ?? ReviewEndpoints.PublishedCalibrations(dataTreeRoot, manifest, published),
                     submittedCalibrations: PublishMerge.CalibrationsOf(manifest));
 
-                (IReadOnlyList<string> added, IReadOnlyList<string> replaced) = SubmissionChangeFacts.SplitWrites(
-                    plan.Files.Select(file => (file.RelativePath, file.AbsolutePath)));
+                // By the board's names (2026-10-25): a name the board did not list before is added,
+                // one it listed with other bytes is replaced - the 4.0 tree stores the new bytes
+                // beside the old, so "is there a file at this place" no longer tells them apart.
+                IReadOnlyDictionary<string, BoardDocument.StoredFileRow> before =
+                    (publishedFile is null ? PublishedBoardFiles.ByName(dataTreeRoot, manifest.BoardId) : publishedFile.Files)
+                    ?? new Dictionary<string, BoardDocument.StoredFileRow>();
+
+                var added = new List<string>();
+                var replaced = new List<string>();
+
+                foreach (BoardDocument.StoredFileRow file in plan.FileList)
+                {
+                    if (!before.TryGetValue(file.Name, out BoardDocument.StoredFileRow? was))
+                        added.Add(file.Name);
+                    else if (!string.Equals(was.Sha256, file.Sha256, StringComparison.OrdinalIgnoreCase))
+                        replaced.Add(file.Name);
+                }
 
                 return SubmissionChangeFacts.Build(rows, added, replaced);
             }
@@ -562,7 +590,7 @@ namespace CRT.Server.Handlers.Submissions
                 return isNewToTree
                     ? ListingForPublish.Refused(master is null
                         ? BoardListingRules.NoMasterMessage
-                        : "BETA's main Excel data file could not be read, so the new board could not be added to the drop-down lists.")
+                        : "BETA's main data file could not be read, so the new board could not be added to the drop-down lists.")
                     : ListingForPublish.NothingToAdd;
             }
 
@@ -583,13 +611,13 @@ namespace CRT.Server.Handlers.Submissions
             if (!BoardListingRules.AfterIsListed(rows, placement.AfterExcelDataFile))
             {
                 return ListingForPublish.Refused(
-                    $"It was placed after [{placement.AfterExcelDataFile}], which is no longer in the drop-down lists. " +
+                    $"It was placed after [{BoardDescriptorRules.BoardIdFromExcelDataFile(placement.AfterExcelDataFile)}], which is no longer in the drop-down lists. " +
                     "Place it again in the Boards screen.");
             }
 
             return ListingForPublish.Add(new MasterRowInsert(
                 master,
-                BoardListingRules.RowFor(placement, dataTreeRoot, plan.WorkbookPath),
+                BoardListingRules.RowFor(placement, dataTreeRoot, plan.BoardFilePath),
                 placement.AfterExcelDataFile));
         }
 
@@ -608,62 +636,86 @@ namespace CRT.Server.Handlers.Submissions
         // THE FILES THIS PUBLISH WOULD REMOVE, shown to the maintainer before they approve and
         // checked again when they do - the same computation both times.
         //
-        // The candidates are what the board stops citing; the tree is then read with the workbook
-        // the plan WRITES standing in for its new citations, so a file another board - or an older
-        // generation of this one - still cites is kept. Nothing to preview when the board is new
-        // or the plan is refused.
+        // *** IN THE CRT 4.0 TREE THEY ARE STORED FILES (2026-10-25). *** The candidates are the
+        // stored files the published board lists and the planned board no longer does - a name it
+        // dropped, or a file it replaced. The tree is then read with the board file the plan WRITES
+        // standing in for its new list, so bytes another board still lists - the same picture on two
+        // boards - are kept. Each removal carries the name the board knew it by (Names), for
+        // showing. Nothing to preview when the board is new or the plan is refused.
         // ###########################################################################################
+        //
+        // `publishedFile`: the board file as the approval read it once - null reads it here.
         internal static FileRemovalPreview PreviewRemovals(
             string dataTreeRoot,
-            BoardData? published,
-            BoardData board,
-            PublishPlanResult plan)
+            SubmissionManifest manifest,
+            PublishPlanResult plan,
+            PublishedBoardRead? publishedFile = null)
         {
-            if (published is null || !plan.IsPlanned)
+            if (!plan.IsPlanned)
                 return FileRemovalPreview.Nothing;
 
-            string workbook = Path
-                .GetRelativePath(Path.GetFullPath(dataTreeRoot), plan.Plan!.WorkbookPath)
-                .Replace(Path.DirectorySeparatorChar, '/');
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? published = publishedFile is null
+                ? PublishedBoardFiles.ByName(dataTreeRoot, manifest.BoardId)
+                : publishedFile.Files;
 
-            // Only inside the board's own folder (owner decision, 2026-09-27) - a shared file or
-            // another board's the board stops citing stays, for Account > Unused files.
-            IReadOnlyList<string> after = SubmissionManifestBuilder.CollectReferencedFiles(board);
+            if (published is null || published.Count == 0)
+                return FileRemovalPreview.Nothing;
+
+            List<string> after = plan.Plan!.FileList
+                .Select(PublishedBoardFiles.StoredRelative)
+                .Where(path => path.Length > 0)
+                .ToList();
+
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (BoardDocument.StoredFileRow file in published.Values)
+            {
+                string stored = PublishedBoardFiles.StoredRelative(file);
+
+                if (stored.Length > 0)
+                    names.TryAdd(stored, file.Name);
+            }
+
             IReadOnlyList<string> candidates = AutomaticRemovalScope.Within(
-                BoardDescriptorRules.BoardIdFromExcelDataFile(workbook),
-                DataTreeUsage.NoLongerCited(SubmissionManifestBuilder.CollectReferencedFiles(published), after));
+                manifest.BoardId,
+                DataTreeUsage.NoLongerCited(names.Keys, after));
 
             if (candidates.Count == 0)
                 return FileRemovalPreview.Nothing;
 
-            return FileRemovalPreview.Compute(
-                dataTreeRoot,
-                candidates,
-                new Dictionary<string, IReadOnlyCollection<string>> { [workbook] = after.ToList() },
-                ApprovePublishFlow.PreviewReads);
+            return FileRemovalPreview
+                .Compute(
+                    dataTreeRoot,
+                    candidates,
+                    new Dictionary<string, IReadOnlyCollection<string>> { [plan.Plan.BoardFileRelative] = after },
+                    ApprovePublishFlow.PreviewReads)
+                .Named(names);
         }
 
         // ###########################################################################################
         // The board's "Schematic renames" list after this publish (owner decision, 2026-10-10: a
         // rename that is accepted "must also change for everyone updating to this data"): the list
-        // its .json in the tree holds now, then every image this publish renames, dated with the
-        // publish's revision date - SchematicRenameLog.ForPublish. Every CRT that syncs the board
-        // follows it for its user's own worklogs and settings. Shared with the file list, so the
-        // maintainer is told the .json changes exactly when the publish will change it.
+        // its board file holds now, then every image this publish renames, dated with the publish's
+        // revision date - SchematicRenameLog.ForPublish. Every CRT that syncs the board follows it
+        // for its user's own worklogs and settings.
         // ###########################################################################################
-        internal static List<SchematicRenameRecord> RenameLogFor(PublishPlanDetail plan, BoardData? published, BoardData board) =>
+        //
+        // `publishedFile`: the board file as the approval read it once - null, or another file, reads it here.
+        internal static List<SchematicRenameRecord> RenameLogFor(PublishPlanDetail plan, BoardData? published, BoardData board, PublishedBoardRead? publishedFile = null) =>
             SchematicRenameLog.ForPublish(
-                BoardComponentHighlightStorage.LoadSchematicRenames(plan.WorkbookPath),
+                publishedFile is not null && publishedFile.IsAt(plan.BoardFilePath)
+                    ? publishedFile.Renames.ToList()
+                    : BoardComponentHighlightStorage.LoadSchematicRenames(plan.BoardFilePath),
                 published,
                 board,
                 plan.Descriptor.Revision);
 
         // ###########################################################################################
         // The preview for the review screen: the same plan the approval would build - but only when
-        // the board stops citing something (code review, 2026-09-25). The submission detail asks
-        // for this on every click on a queue row; building the plan hashes files, and reading the
-        // tree parses every workbook in it, so both are skipped when there is nothing to remove,
-        // which is nearly every submission. What IS read goes through PreviewReads.
+        // the board stops listing something (code review, 2026-09-25). The submission detail asks
+        // for this on every click on a queue row, and reading the tree parses every board file in
+        // it, so that is skipped when nothing would go, which is nearly every submission. What IS
+        // read goes through PreviewReads.
         // ###########################################################################################
         internal static FileRemovalPreview PreviewRemovals(
             string dataTreeRoot,
@@ -674,20 +726,46 @@ namespace CRT.Server.Handlers.Submissions
             if (published is null)
                 return FileRemovalPreview.Nothing;
 
-            BoardData board = PublishMerge.Build(manifest, published);
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? before =
+                PublishedBoardFiles.ByName(dataTreeRoot, manifest.BoardId);
 
-            IReadOnlyList<string> candidates = DataTreeUsage.NoLongerCited(
-                SubmissionManifestBuilder.CollectReferencedFiles(published),
-                SubmissionManifestBuilder.CollectReferencedFiles(board));
-
-            if (candidates.Count == 0)
+            // Every published name still submitted with the same bytes: nothing can go.
+            if (before is null || ApprovePublishFlow.EveryPublishedFileStillSent(before, manifest.Files))
+            {
                 return FileRemovalPreview.Nothing;
+            }
 
             return ApprovePublishFlow.PreviewRemovals(
                 dataTreeRoot,
-                published,
-                board,
-                ApprovePublishFlow.BuildPlan(dataTreeRoot, manifest, published, nowUtc));
+                manifest,
+                ApprovePublishFlow.BuildPlan(dataTreeRoot, manifest, nowUtc));
+        }
+
+        // ###########################################################################################
+        // Whether every file the published board lists is still in the submission with the same
+        // bytes - names and checksums compared without regard to capitals. Looked up by name (code
+        // review, 2026-10-25): comparing every published file with every submitted one was some 1.4
+        // million comparisons for a board of 1,200 files, on every click on its queue row.
+        // ###########################################################################################
+        internal static bool EveryPublishedFileStillSent(
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow> published,
+            IEnumerable<SubmissionFile> sent)
+        {
+            var sentByName = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (SubmissionFile file in sent)
+            {
+                string name = file.Path ?? string.Empty;
+
+                if (!sentByName.TryGetValue(name, out HashSet<string>? checksums))
+                    sentByName[name] = checksums = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                checksums.Add(file.Sha256 ?? string.Empty);
+            }
+
+            return published.Values.All(file =>
+                sentByName.TryGetValue(file.Name ?? string.Empty, out HashSet<string>? checksums) &&
+                checksums.Contains(file.Sha256 ?? string.Empty));
         }
 
         // ###########################################################################################
@@ -742,50 +820,26 @@ namespace CRT.Server.Handlers.Submissions
                 access?.Account.Id);
 
         // ###########################################################################################
-        // *** DOES THIS SUBMISSION CHANGE A SHARED FILE - JUDGED AGAINST THE TREE AS IT IS NOW
-        // (code review, 2026-09-25). ***
+        // *** DOES APPROVING THIS REPLACE A SHARED FILE? NEVER, IN THE CRT 4.0 TREE (2026-10-25). ***
         //
-        // The flag stored at create compared the submission with the tree of THAT moment. A
-        // submission citing a shared file unchanged was an ordinary one-approval item for ever -
-        // and once another publish changed that file, its now-old bytes would revert the file for
-        // every board that cites it, on a single maintainer's approval, with the administrator never
-        // asked. So the stored flag is only a floor: true stays true, and the submission is checked
-        // afresh against the published tree (SubmissionSharedFiles, the create-time rule).
+        // A submission replacing a file several boards share needed a maintainer of the board AND
+        // the administrator (owner decision, 2026-09-25), decided afresh against the tree at each
+        // approval. Every board owns its files in the 4.0 tree, each board's bytes stored under
+        // their checksum (owner decision, 2026-10-24: no shared files), so no submission replaces a
+        // file another board sees, and none waits for a second approval on that account.
         //
-        // No manifest to check (an unreadable payload) leaves the stored flag - nothing else can be
-        // known, and such a submission is refused before it publishes anyway.
+        // A flag an older server stored is put right here, so the queue stops marking the submission
+        // as needing the administrator in every window, not only in this one.
         // ###########################################################################################
-        // ###########################################################################################
-        // Does approving this REPLACE a shared file as the tree stands NOW (SubmissionSharedFiles)?
-        //
-        // *** DECIDED AFRESH, NOT FROM THE FLAG STORED AT CREATE (2026-09-27). *** Until then the
-        // stored flag was a floor, only ever raised - and it was set for merely ADDING a shared
-        // file, which no longer needs the administrator (owner decision). Trusting it would keep
-        // every submission queued before that change waiting for a second approval nobody needs.
-        // What the approval would do to the tree now is the question, so that is what is asked;
-        // the flag is only the answer when the payload cannot be read.
-        // ###########################################################################################
-        internal static bool TouchesSharedFilesNow(SubmissionRecord record, SubmissionManifest? manifest, string? dataTreeRoot) =>
-            manifest is null
-                ? record.TouchesSharedFiles
-                : SubmissionSharedFiles.TouchesSharedFiles(manifest, PublishedTreeProbe.For(dataTreeRoot));
-
-        // The same, and the answer is STORED when it differs from the flag, so the queue marks the
-        // submission as needing the administrator - or no longer needing them - in every window,
-        // not only in this one.
         private static async Task<bool> TouchesSharedFilesNowAsync(
             SubmissionRecord record,
-            SubmissionManifest manifest,
-            string dataTreeRoot,
             ISubmissionStore store,
             CancellationToken cancellationToken)
         {
-            bool touches = ApprovePublishFlow.TouchesSharedFilesNow(record, manifest, dataTreeRoot);
+            if (record.TouchesSharedFiles)
+                await store.SetTouchesSharedFilesAsync(record.Id, false, cancellationToken).ConfigureAwait(false);
 
-            if (touches != record.TouchesSharedFiles)
-                await store.SetTouchesSharedFilesAsync(record.Id, touches, cancellationToken).ConfigureAwait(false);
-
-            return touches;
+            return false;
         }
 
         // ###########################################################################################
@@ -852,36 +906,16 @@ namespace CRT.Server.Handlers.Submissions
         // construction and that refusal becomes unreachable through this path. It stays in
         // PublishPlan as a guard for any other caller.
         // ###########################################################################################
+        //
+        // `publishedFile`: the board file as the approval read it once - null reads it here.
         internal static PublishPlanResult BuildPlan(
             string dataTreeRoot,
             SubmissionManifest manifest,
-            BoardData? published,
-            DateTimeOffset nowUtc)
+            DateTimeOffset nowUtc,
+            PublishedBoardRead? publishedFile = null)
         {
-            PublishedBoardLocation location = PublishedBoardLocator.Locate(dataTreeRoot, manifest);
-
-            string boardFolder = location.Exists
-                ? location.BoardFolder
-                : Path.Combine(
-                    dataTreeRoot,
-                    manifest.Manufacturer.Trim(),
-                    manifest.Hardware.Trim(),
-                    manifest.Board.Trim());
-
-            // What is already on disk, so the plan can spot a case-only collision against a file
-            // it is not itself writing.
-            IEnumerable<string> existing = Directory.Exists(boardFolder)
-                ? Directory.EnumerateFiles(boardFolder)
-                    .Select(Path.GetFileName)
-                    .Where(name => !string.IsNullOrEmpty(name))
-                    .Select(name => name!)
-                : [];
-
             return PublishPlan.Build(
                 dataTreeRoot,
-                boardFolder,
-                existing,
-                ApprovePublishFlow.BoardStem(manifest, location),
                 manifest,
                 BoardWorkbookStyle.FormatRevisionDate(nowUtc),
                 nowUtc,
@@ -893,43 +927,12 @@ namespace CRT.Server.Handlers.Submissions
                 BoardDescriptorRules.BoardOrigin.Contributed,
 
                 // What is published NOW, read at the moment of publishing rather than trusted from
-                // when the submission arrived: another board's file it cites must still be
-                // byte-identical, and no case-variant may have appeared since. (2026-09-25)
-                PublishedTreeProbe.For(dataTreeRoot));
-        }
+                // when the submission arrived: the board's files by name, and no case-variant of a
+                // new board's folder may have appeared since. (2026-09-25)
+                publishedFile is null ? PublishedTreeProbe.For(dataTreeRoot, manifest) : PublishedTreeProbe.For(dataTreeRoot, publishedFile.Files),
 
-        // ###########################################################################################
-        // The board file's stem - "Data C64 250407", the part before the generation suffix.
-        //
-        // *** READ OFF THE EXISTING FILE WHERE THERE IS ONE, because it does NOT follow the folder
-        // names mechanically. *** "Data C128DCR 250477" lives under C128/250477, so rebuilding it
-        // from the identity would write a second, differently-named board beside the real one and
-        // the board would then carry two. Only a genuinely new board falls back to the
-        // convention.
-        // ###########################################################################################
-        private static string BoardStem(SubmissionManifest manifest, PublishedBoardLocation location)
-        {
-            if (location.Exists)
-            {
-                string name = Path.GetFileNameWithoutExtension(location.WorkbookPath);
-
-                // Strip the generation suffix, leaving the stem the plan will re-add one to.
-                Version? generation = DataGenerationRules.TryReadGeneration(
-                    Path.GetFileName(location.WorkbookPath));
-
-                if (generation is not null)
-                {
-                    int suffix = name.LastIndexOf(" v", StringComparison.Ordinal);
-
-                    if (suffix > 0)
-                        name = name[..suffix];
-                }
-
-                if (!string.IsNullOrWhiteSpace(name))
-                    return name;
-            }
-
-            return $"Data {manifest.Hardware.Trim()} {manifest.Board.Trim()}";
+                // Bytes the tree already holds are not written again (PublishPlan).
+                stored => PublishedBoardFiles.IsStored(dataTreeRoot, stored));
         }
     }
 

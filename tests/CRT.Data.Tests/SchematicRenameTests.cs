@@ -178,4 +178,61 @@ public sealed class SchematicRenameTests
         Assert.False(moved);
         Assert.Same(board, SchematicRename.Apply(board, -1, "New").Board);
     }
+
+    // ------------------------------------------------------------------ the whole rename decided (Plan)
+
+    // SchematicRename.Plan is shared by the draft file's write (DraftWorkbookStore.RenameSchematic)
+    // and the draft held in memory ("Schematic images" through DraftSession, 2026-10-25), which hands
+    // the plan's Follow to what follows the edit.
+    [Fact]
+    public void A_planned_rename_renames_the_row_and_names_the_rename_for_what_hangs_on_it()
+    {
+        BoardData board = Board("Top", "Bottom");
+        board.ComponentHighlights.Add(Highlight("Top", "U1"));
+
+        SchematicRenamePlan plan = SchematicRename.Plan(board, new SchematicRowRef("Top", "Commodore/C64/250407/Top.png"), " PCB; Top ");
+
+        Assert.Equal(SchematicRenameOutcome.Renamed, plan.Outcome);
+        Assert.Equal(["PCB; Top", "Bottom"], plan.Board!.Schematics.Select(entry => entry.SchematicName));
+        Assert.Equal("PCB; Top", Assert.Single(plan.Board.ComponentHighlights).SchematicName);
+        Assert.Equal("PCB; Top", plan.Follow["top"]);
+        Assert.Equal(("Top", "PCB; Top"), (plan.From, plan.To));
+    }
+
+    [Theory]
+    [InlineData("Top", SchematicRenameOutcome.Unchanged)]
+    [InlineData("  ", SchematicRenameOutcome.Blank)]
+    [InlineData(" bottom ", SchematicRenameOutcome.NameTaken)]
+    public void A_planned_rename_that_cannot_or_need_not_be_made_changes_nothing(string newName, SchematicRenameOutcome expected)
+    {
+        SchematicRenamePlan plan = SchematicRename.Plan(Board("Top", "Bottom"), new SchematicRowRef("Top", "Commodore/C64/250407/Top.png"), newName);
+
+        Assert.Equal(expected, plan.Outcome);
+        Assert.Null(plan.Board);
+        Assert.Empty(plan.Follow);
+    }
+
+    // The row is found by its name AND its image file - one changed outside the window is not there.
+    [Fact]
+    public void A_planned_rename_of_a_row_the_board_does_not_have_is_not_found()
+    {
+        Assert.Equal(
+            SchematicRenameOutcome.NotFound,
+            SchematicRename.Plan(Board("Top"), new SchematicRowRef("Top", "Commodore/C64/250407/Other.png"), "New").Outcome);
+    }
+
+    // Of two images sharing a name nothing says which one the highlights were drawn for, so the
+    // rename of one names no rename for them to follow - they stay on the name that is still there.
+    [Fact]
+    public void A_planned_rename_of_one_of_two_images_sharing_a_name_names_no_rename_to_follow()
+    {
+        BoardData board = Board("Top");
+        board.Schematics.Add(new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Commodore/C64/250407/Other.png" });
+
+        SchematicRenamePlan plan = SchematicRename.Plan(board, new SchematicRowRef("Top", "Commodore/C64/250407/Other.png"), "Bottom");
+
+        Assert.Equal(SchematicRenameOutcome.Renamed, plan.Outcome);
+        Assert.Equal(["Top", "Bottom"], plan.Board!.Schematics.Select(entry => entry.SchematicName));
+        Assert.Empty(plan.Follow);
+    }
 }

@@ -76,12 +76,6 @@ namespace Handlers.DataHandling
         // delete shows. Case-insensitive, as labels are.
         private Dictionary<string, int> thisHighlightCounts = new(StringComparer.OrdinalIgnoreCase);
 
-        // The board's schematic images as the table opened with them - what a save is measured
-        // against to tell which images it removes (SchematicsRemovedBySave). The draft on disk is
-        // still exactly this when a save goes through: a save refuses a workbook changed since it
-        // was read (DraftTableSession).
-        private IReadOnlyList<BoardSchematicEntry> thisOpenedSchematics = [];
-
         // ###########################################################################################
         // Builds the table for one draft. `published` is null when there is nothing published to
         // compare against.
@@ -97,7 +91,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         //
         // `files` says whether a file a row names is there (BoardDataChecks) - the draft's own
-        // folder and the downloaded data for the Drafts tab (DraftTableSession), nothing for the
+        // folder and the downloaded data for the Drafts tab (DiskFileLookup), nothing for the
         // Maintainer tab, whose files the server checked when the submission arrived.
         public static BoardTableDocument Create(
             BoardData? published,
@@ -112,7 +106,6 @@ namespace Handlers.DataHandling
                 BaselineLabel = string.IsNullOrWhiteSpace(baselineLabel) ? DefaultBaselineLabel : baselineLabel,
                 thisFiles = files,
                 thisHighlights = draft.ComponentHighlights.ToList(),
-                thisOpenedSchematics = draft.Schematics.ToList(),
                 thisCreating = true,
             };
 
@@ -402,7 +395,9 @@ namespace Handlers.DataHandling
                 BoardTableDocument.EntriesOf<ComponentLinkEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentLinks),
                 BoardTableDocument.EntriesOf<BoardLinkEntry>(entriesBySheet, BoardWorkbookSchema.SheetBoardLinks),
                 BoardTableDocument.EntriesOf<CreditEntry>(entriesBySheet, BoardWorkbookSchema.SheetCredits),
-                BoardTableDocument.EntriesOf<KiCadImportantSignalEntry>(entriesBySheet, BoardWorkbookSchema.SheetKiCadImportantSignals));
+                BoardTableDocument.EntriesOf<KiCadImportantSignalEntry>(entriesBySheet, BoardWorkbookSchema.SheetKiCadImportantSignals),
+                BoardTableDocument.EntriesOf<ComponentPinEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentPins),
+                BoardTableDocument.EntriesOf<ComponentReplacementEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentReplacements));
 
             IReadOnlyList<BoardDataProblem> problems = BoardDataChecks.Check(checkRows, this.thisFiles, BoardCheckScope.Everything);
 
@@ -535,10 +530,10 @@ namespace Handlers.DataHandling
         // The board to save: `current` - the board as it is on disk right now, handed over by
         // DraftWorkbookStore.Edit - with every sheet replaced by this table's rows.
         //
-        // *** ALL NINE SHEETS ARE REPLACED, EDITED OR NOT. *** That is only safe because the save
-        // path refuses when the workbook has changed since this table was read (see
-        // DraftTableSession) - otherwise a sheet the contributor never touched here would silently
-        // overwrite an edit made to it in Excel meanwhile.
+        // *** ALL NINE SHEETS ARE REPLACED, EDITED OR NOT. *** That is only safe because `current`
+        // is what the table was built from: the draft's session, which every other change goes
+        // through and the table is built again after (BoardTableEditor.DraftSession.cs) - otherwise a
+        // sheet the contributor never touched here would silently overwrite an edit made elsewhere.
         //
         // *** AND THE HIGHLIGHTS OF A COMPONENT DELETED HERE GO WITH IT (2026-09-25). *** A component
         // whose row was deleted in the table, and whose label no row still carries, is gone from the
@@ -548,18 +543,77 @@ namespace Handlers.DataHandling
         public BoardData ApplyTo(BoardData current) => this.TakeSaveSnapshot()(current);
 
         // ###########################################################################################
+        // *** THE TABLE'S CHANGE AS AN EDIT OF THE DRAFT HELD IN MEMORY (CRT 4.0 step 1, 2026-10-25;
+        // DraftSession.Apply). *** The session's content with every sheet replaced by this table's
+        // rows, as a save writes them (TakeSaveSnapshot) - the highlights, calibrations and renames
+        // carried along - or null when that changes no row: an empty row inserted, a value typed back
+        // to what it was. Null is "nothing to do" to the session, so no step that changes nothing
+        // lands in the draft's history. Every sheet needing it is brought up to date first.
+        //
+        // *** ONLY THE SHEETS CHANGED SINCE THE LAST HAND-OVER (code review, 2026-10-26). *** Every
+        // settled cell edit built, put in and compared all nine sheets - their rows three times over -
+        // on the UI thread, a lag on the largest boards. A sheet no change touched since MarkSaved is
+        // the session's already (the table is built again from it after any other change), so it is
+        // left as the session has it, its very rows, and only the changed ones are worked on.
+        // ###########################################################################################
+        public Func<BoardContent, BoardContent?> TakeSessionEdit()
+        {
+            this.RefreshPendingSheets();
+
+            List<BoardTableSheet> changed = this.Sheets.Where(this.thisChangedSheets.Contains).ToList();
+            Func<BoardData, BoardData> apply = this.TakeSaveSnapshot(changed);
+            List<BoardWorkbookSchema.SheetDefinition> compared = changed.Select(sheet => sheet.Definition).ToList();
+
+            return content =>
+            {
+                ArgumentNullException.ThrowIfNull(content);
+
+                BoardData board = apply(content.Board);
+
+                return BoardTableDocument.HasSameRows(content.Board, board, compared) ? null : content with { Board = board };
+            };
+        }
+
+        // Every sheet whose rows changed since its last refresh, refreshed - the board checked once.
+        public void RefreshPendingSheets()
+        {
+            using (this.DeferProblems())
+            {
+                foreach (BoardTableSheet sheet in this.Sheets.Where(sheet => sheet.NeedsRefresh))
+                {
+                    sheet.Refresh();
+                }
+            }
+        }
+
+        // Whether two boards hold the same rows on `sheets` and the same highlights - a table's
+        // change can only drop highlights (a deleted component's), so their number says it.
+        private static bool HasSameRows(BoardData before, BoardData after, IEnumerable<BoardWorkbookSchema.SheetDefinition> sheets) =>
+            before.ComponentHighlights.Count == after.ComponentHighlights.Count &&
+            sheets.All(sheet =>
+            {
+                IReadOnlyList<IReadOnlyDictionary<string, string>> was = BoardWorkbookSchema.BuildRows(sheet, before);
+                IReadOnlyList<IReadOnlyDictionary<string, string>> now = BoardWorkbookSchema.BuildRows(sheet, after);
+
+                return was.Count == now.Count &&
+                       was.Zip(now).All(pair =>
+                           pair.First.Count == pair.Second.Count &&
+                           pair.First.All(cell => pair.Second.TryGetValue(cell.Key, out string? value) && string.Equals(cell.Value, value, StringComparison.Ordinal)));
+            });
+
+        // ###########################################################################################
         // *** WHAT A SAVE WRITES, TAKEN NOW - AND APPLIED LATER, ON ANY THREAD (2026-09-30). ***
         // The table's rows are read HERE, on the thread that edits them; the function returned
-        // touches nothing of this document, so the workbook can be read, changed and written off
-        // the UI thread while the window shows "please wait" (DraftTableSession.PrepareSave -
-        // owner question, 2026-09-30: a save of the largest board takes 0.6-2 seconds). An edit
-        // made after this is taken is not in it.
+        // touches nothing of this document, so it can be applied off the UI thread (owner
+        // question, 2026-09-30: a save of the largest board takes 0.6-2 seconds). An edit made
+        // after this is taken is not in it.
         //
-        // ApplyTo is exactly this, applied at once: same rows, same deleted components.
+        // ApplyTo is exactly this, applied at once: same rows, same deleted components. `only`: just
+        // those sheets, the rest of `current` left as it is (TakeSessionEdit) - every sheet otherwise.
         // ###########################################################################################
-        public Func<BoardData, BoardData> TakeSaveSnapshot()
+        public Func<BoardData, BoardData> TakeSaveSnapshot(IReadOnlyCollection<BoardTableSheet>? only = null)
         {
-            List<(BoardWorkbookSchema.SheetDefinition Definition, IReadOnlyList<IReadOnlyDictionary<string, string>> Rows)> sheets = this.Sheets
+            List<(BoardWorkbookSchema.SheetDefinition Definition, IReadOnlyList<IReadOnlyDictionary<string, string>> Rows)> sheets = (only ?? this.Sheets)
                 .Select(sheet => (sheet.Definition, sheet.BuildRows()))
                 .ToList();
 
@@ -596,29 +650,6 @@ namespace Handlers.DataHandling
             };
         }
 
-        // ###########################################################################################
-        // The schematic images a save would take off the board, by name: opened with this table,
-        // and neither kept nor renamed by the rows the save writes - by the rule every draft write
-        // follows what hangs on a schematic's name with (SubmissionRowsBoard.FollowSchematics: a
-        // renamed row is followed by its image file). Whatever is drawn on them goes with them at the
-        // save (DraftWorkbookStore.EditCore), so the Drafts tab asks first
-        // (DraftTableSession.SchematicsLostBySave; code review, 2026-10-11).
-        // ###########################################################################################
-        public IReadOnlyList<string> SchematicsRemovedBySave()
-        {
-            if (this.FindSheet(BoardWorkbookSchema.SheetBoardSchematics) is not BoardTableSheet sheet)
-            {
-                return [];
-            }
-
-            BoardData saved = BoardWorkbookSchema.WithRows(new BoardData(), sheet.Definition, sheet.BuildRows());
-
-            return SubmissionRowsBoard.FollowSchematics(this.thisOpenedSchematics, saved.Schematics)
-                .Where(pair => pair.Value is null && pair.Key.Trim().Length > 0)
-                .Select(pair => pair.Key)
-                .ToList();
-        }
-
         // The labels of components deleted in this table: opened with a row that is no longer
         // live (`gone`), and carried by no row the save writes.
         private static IReadOnlySet<string> LabelsOfDeletedComponents(BoardData saved, IReadOnlyList<string> gone)
@@ -636,10 +667,12 @@ namespace Handlers.DataHandling
         // The rows a deleted component leaves on the other component sheets - deleted with it (see
         // BoardTableSheet.DeleteRow). `label` and `region` are the deleted Components row's.
         //
-        //   - No row still has the label: every image, local file and link row for it goes.
+        //   - No row still has the label: every image, local file, link, pin and replacement row for
+        //     it goes.
         //   - Another row has the label but none has this REGION (a regional variant deleted, its
-        //     twin kept): only the image rows for that label AND region go. Files and links are not
-        //     per region, and still belong to the twin; so do images with a blank region.
+        //     twin kept): only the image, pin and replacement rows for that label AND region go.
+        //     Files and links are not per region, and still belong to the twin; so do rows with a
+        //     blank region.
         //   - Otherwise (a duplicate row deleted): nothing else goes.
         //
         // Labels and regions compare ignoring case, as everywhere else. Null when nothing went.
@@ -667,14 +700,23 @@ namespace Handlers.DataHandling
 
             var counts = new List<BoardTableSheetCount>();
 
+            // Pins and replacement parts (CRT 4.0, 2026-10-25) are filed by region as images are,
+            // so a regional variant deleted takes its own along.
+            bool PerRegion(string sheetName) =>
+                sheetName is BoardWorkbookSchema.SheetComponentImages
+                    or BoardWorkbookSchema.SheetComponentPins
+                    or BoardWorkbookSchema.SheetComponentReplacements;
+
             foreach (string sheetName in new[]
             {
                 BoardWorkbookSchema.SheetComponentImages,
                 BoardWorkbookSchema.SheetComponentLocalFiles,
-                BoardWorkbookSchema.SheetComponentLinks
+                BoardWorkbookSchema.SheetComponentLinks,
+                BoardWorkbookSchema.SheetComponentPins,
+                BoardWorkbookSchema.SheetComponentReplacements
             })
             {
-                if (labelRemains && sheetName != BoardWorkbookSchema.SheetComponentImages)
+                if (labelRemains && !PerRegion(sheetName))
                 {
                     continue;
                 }
@@ -705,13 +747,108 @@ namespace Handlers.DataHandling
                 : new BoardTableDeletedWith(label.Trim(), counts, highlights);
         }
 
+        // ###########################################################################################
+        // *** FIND & REPLACE (CRT 4.0, 2026-10-25 - the plan's step 0). *** Every occurrence of
+        // `find` in the cells of `sheets` - ignoring capitals, as the search box does - becomes
+        // `replacement`, as typed. Only rows `shows` lets through, which is the table's own view (a
+        // picked pill, a search): what changes is what can be seen. Red rows are never touched.
+        //
+        // ONE change across every sheet it touches - one undo step - and the board checked once.
+        // A replacement that leaves a cell as it was (the same text in other capitals) is not
+        // counted.
+        // ###########################################################################################
+        public BoardTableReplaceResult ReplaceAll(
+            string? find,
+            string? replacement,
+            IReadOnlyList<BoardTableSheet> sheets,
+            Func<BoardTableRow, bool> shows)
+        {
+            ArgumentNullException.ThrowIfNull(sheets);
+            ArgumentNullException.ThrowIfNull(shows);
+
+            if (string.IsNullOrEmpty(find))
+            {
+                return new BoardTableReplaceResult(0, 0, 0);
+            }
+
+            int occurrences = 0;
+            int cells = 0;
+            var touched = new List<BoardTableSheet>();
+
+            this.History.BeginGroup();
+
+            try
+            {
+                using (this.DeferProblems())
+                {
+                    foreach (BoardTableSheet sheet in sheets.Where(sheet => this.Sheets.Contains(sheet)).Distinct())
+                    {
+                        int cellsBefore = cells;
+
+                        foreach (BoardTableRow row in sheet.Rows.Where(row => !row.IsDeleted && shows(row)).ToList())
+                        {
+                            foreach (BoardTableCell cell in row.Cells)
+                            {
+                                int count = BoardTableDocument.CountOccurrences(cell.Text, find);
+
+                                if (count > 0 && BoardTableSheet.Write(cell, cell.Text.Replace(find, replacement ?? string.Empty, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    occurrences += count;
+                                    cells++;
+                                }
+                            }
+                        }
+
+                        if (cells > cellsBefore)
+                        {
+                            touched.Add(sheet);
+                            sheet.Refresh();
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                // The step belongs to the first sheet written - where Ctrl+Z puts the cursor. Ended
+                // whatever happened, or every later edit would join this one step.
+                this.History.EndGroup(touched.Count > 0 ? touched[0] : this.Sheets[0]);
+            }
+
+            return new BoardTableReplaceResult(occurrences, cells, touched.Count);
+        }
+
+        // How often `find` occurs in `text`, ignoring capitals, not overlapping - as Replace counts.
+        private static int CountOccurrences(string text, string find)
+        {
+            int count = 0;
+
+            for (int at = text.IndexOf(find, StringComparison.OrdinalIgnoreCase); at >= 0; at = text.IndexOf(find, at + find.Length, StringComparison.OrdinalIgnoreCase))
+            {
+                count++;
+            }
+
+            return count;
+        }
+
         public void MarkSaved()
         {
             this.History.MarkSaved();
+            this.thisChangedSheets.Clear();
             this.SetUnsavedChanges(false);
         }
 
-        internal void MarkDirty() => this.SetUnsavedChanges(true);
+        // A sheet changed - every change a sheet makes says so, which is what makes the table hand
+        // anything over at all - and which (TakeSessionEdit works on those alone).
+        internal void MarkDirty(BoardTableSheet sheet)
+        {
+            this.NoteSheetChanged(sheet);
+            this.SetUnsavedChanges(true);
+        }
+
+        // The sheets changed since the last MarkSaved - see TakeSessionEdit.
+        internal void NoteSheetChanged(BoardTableSheet sheet) => this.thisChangedSheets.Add(sheet);
+
+        private readonly HashSet<BoardTableSheet> thisChangedSheets = new(ReferenceEqualityComparer.Instance);
 
         // Also how an undo or redo that lands back on the saved state clears the flag again.
         internal void SetUnsavedChanges(bool value)

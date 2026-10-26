@@ -64,7 +64,7 @@ namespace Handlers.DataHandling
         }
 
         // "Also deleted with U8: 3 rows on Component images and 1 on Component links. Its 2
-        // highlights on the schematics go when you save. Undo (Ctrl+Z) brings it all back."
+        // highlights on the schematics go too. Undo (Ctrl+Z) brings it all back."
         // Several components: "Also deleted with U8 and U9: ... Their 3 highlights ...".
         public string Describe()
         {
@@ -82,14 +82,14 @@ namespace Handlers.DataHandling
             if (this.Highlights > 0)
             {
                 string highlights = BoardTableDeletedWith.Count(this.Highlights, "highlight", "highlights");
-                string verb = this.Highlights == 1 ? "goes" : "go";
+                string verb = this.Highlights == 1 ? "goes too" : "go too";
 
                 sentences.Add((this.Rows.Count > 0, this.IsSeveral) switch
                 {
-                    (true, false) => $"Its {highlights} on the schematics {verb} when you save.",
-                    (true, true) => $"Their {highlights} on the schematics {verb} when you save.",
-                    (false, false) => $"{this.BoardLabel}'s {highlights} on the schematics {verb} when you save.",
-                    (false, true) => $"The {highlights} of {this.BoardLabel} on the schematics {verb} when you save."
+                    (true, false) => $"Its {highlights} on the schematics {verb}.",
+                    (true, true) => $"Their {highlights} on the schematics {verb}.",
+                    (false, false) => $"{this.BoardLabel}'s {highlights} on the schematics {verb}.",
+                    (false, true) => $"The {highlights} of {this.BoardLabel} on the schematics {verb}."
                 });
             }
 

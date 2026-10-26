@@ -17,10 +17,6 @@ namespace Handlers.DataHandling
         public bool IsNothing => this.MarkedComponents == 0 && !this.HasCalibration;
     }
 
-    // One schematic image a save of the table removes from the draft, and what goes with it
-    // (DraftTableSession.SchematicsLostBySave).
-    public sealed record SchematicDrop(string SchematicName, SchematicRemovalLoss Loss);
-
     // ###########################################################################################
     // REMOVING A SCHEMATIC IMAGE ASKS FIRST WHEN SOMETHING IS LOST WITH IT (code review,
     // 2026-10-10).
@@ -90,36 +86,6 @@ namespace Handlers.DataHandling
             return $"{SchematicRemoval.GoesWithIt(loss)} Adding the image again later does not bring {them} back - the image file itself stays in your draft folder.";
         }
 
-        // ###########################################################################################
-        // *** THE SAME QUESTION WHEN A SAVE OF THE TABLE REMOVES IMAGES (code review, 2026-10-11). ***
-        // A "Board schematics" row deleted in the Drafts tab's table took the image's highlights and
-        // KiCad calibration with it at the save without a word, where Remove in "Schematic images"
-        // asks. So does a row RENAMED with its image file changed in the same save: a rename is
-        // followed by its image file (SubmissionRowsBoard.FollowSchematics), so without the file to
-        // go by it reads as one image removed and another added - which the last sentence says.
-        // ###########################################################################################
-        public static string SaveQuestion(IReadOnlyList<SchematicDrop> drops) =>
-            $"Save, and remove {SchematicRemoval.NamesOf(drops)} from your draft?";
-
-        public static string SaveWhatGoes(IReadOnlyList<SchematicDrop> drops)
-        {
-            if (drops.Count == 0)
-            {
-                return string.Empty;
-            }
-
-            string what = drops.Count == 1
-                ? SchematicRemoval.WhatGoes(drops[0].Loss)
-                : string.Join(" ", drops.Select(drop => $"[{drop.SchematicName}]: {SchematicRemoval.GoesWithIt(drop.Loss)}")) +
-                  " Adding the images again later does not bring any of it back - the image files themselves stay in your draft folder.";
-
-            string renamed = drops.Count == 1
-                ? "Renamed it, not removed it? What is drawn on an image follows a new name only while its image file stays the same - change the name and the file in two separate saves."
-                : "Renamed them, not removed them? What is drawn on an image follows a new name only while its image file stays the same - change the name and the file in two separate saves.";
-
-            return $"{what}\n\n{renamed} Cancel saves nothing, and Ctrl+Z in the table brings back a row you deleted.";
-        }
-
         // "Its highlights for 3 components and its KiCad calibration go with it." - or the part of
         // that the image has.
         private static string GoesWithIt(SchematicRemovalLoss loss)
@@ -134,16 +100,6 @@ namespace Handlers.DataHandling
                 (true, false) => $"Its highlights for {components} go with it.",
                 _ => "Its KiCad calibration goes with it.",
             };
-        }
-
-        // "[A]", "[A] and [B]", "[A], [B] and [C]".
-        private static string NamesOf(IReadOnlyList<SchematicDrop> drops)
-        {
-            List<string> names = drops.Select(drop => $"[{drop.SchematicName}]").ToList();
-
-            return names.Count <= 1
-                ? string.Concat(names)
-                : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
         }
     }
 }

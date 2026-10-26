@@ -181,6 +181,9 @@ namespace CRT
                 ? DraftManager.GetViewedBoardFolder(currentEntry.ExcelDataFile)
                 : string.Empty;
 
+            // The board whose published file lists the names a row cites (DraftFileResolver).
+            string boardIdentity = this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty;
+
             if (UserSettings.MultipleInstancesForComponentPopup)
             {
                 if (!this._componentInfoWindowsByKey.TryGetValue(componentKey, out var popup) || !popup.IsVisible)
@@ -205,7 +208,8 @@ namespace CRT
                     UserSettings.Region,
                     DataManager.DataRoot,
                     hasExplicitRegionComponents,
-                    draftBoardFolder);
+                    draftBoardFolder,
+                    boardIdentity);
 
                 popup.UpdateOscilloscopeSessionTitleState(
                     this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -243,7 +247,8 @@ namespace CRT
                 UserSettings.Region,
                 DataManager.DataRoot,
                 hasExplicitRegionComponents,
-                draftBoardFolder);
+                draftBoardFolder,
+                boardIdentity);
 
             this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
                 this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -519,7 +524,6 @@ namespace CRT
             }
 
             this.TabSchematicsControl.UpdateHighlightsForComponents(survivingLabels);
-            this.TabContribute.LoadData(this._currentBoardData, this._localRegion);
             this.TabOverview.ApplyFilter(searchTerm);
         }
 
@@ -644,17 +648,19 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens a maximized contribution editor window for the selected component.
+        // Opens a maximized contribution editor window for the selected component - on `board`, the
+        // draft as the Contribute tab's component pane left it (the board on screen may not have
+        // caught up with it yet, and a window opened on that would save it back).
         // ###########################################################################################
-        internal void OpenComponentContributionWindow(string boardLabel)
+        internal void OpenComponentContributionWindow(string boardLabel, BoardData board)
         {
-            if (this._currentBoardData == null || string.IsNullOrWhiteSpace(boardLabel))
+            if (string.IsNullOrWhiteSpace(boardLabel))
             {
                 return;
             }
 
             this.ShowComponentContributionWindow(window => window.LoadComponent(
-                this._currentBoardData,
+                board,
                 DataManager.DataRoot,
                 this.HardwareComboBox.SelectedItem as string ?? string.Empty,
                 this.BoardComboBox.SelectedItem as string ?? string.Empty,
@@ -708,19 +714,14 @@ namespace CRT
             window.SetRefreshBoardAfterSave(() => this.ReloadCurrentBoardFromDisk(
                 this.TabSchematicsControl.GetCurrentSchematicName()));
 
-            // A save takes the contributor to the Drafts tab, where the next step is (owner
-            // request, 2026-09-24). The window is maximized over this one, so it closes first -
-            // switching the tab behind it would change nothing that can be seen. The refresh above
-            // has already shown the Drafts tab if this save created the board's first draft.
+            // A save takes the contributor to the Contribute tab, where the next step is (owner
+            // request, 2026-09-24, for the Drafts tab). The window is maximized over this one, so it
+            // closes first - switching the tab behind it would change nothing that can be seen.
             window.SetAfterSaved(() =>
             {
                 window.Close();
-                this.SwitchToDraftsTab();
+                this.SwitchToContributeTab();
             });
-
-            // Held back while the Drafts tab's table has unsaved edits for the same board - see
-            // ComponentContributionWindow.SubmitAsync.
-            window.SetUnsavedTableEditsCheck(this.TabDrafts.SavingBlockedFor);
 
             this.PositionFullscreenWindowOnSameScreen(window);
             window.WindowState = Avalonia.Controls.WindowState.Maximized;
@@ -823,7 +824,7 @@ namespace CRT
             this.TabSchematicsControl.UpdateHighlightsForComponents(survivingLabels);
             this.TabSchematicsControl.UpdateComponentLabels();
             this.TabOverview.LoadData(this._currentBoardData);
-            this.TabContribute.LoadData(this._currentBoardData, this._localRegion);
+            this.ShowBoardInContributeTab(this.GetCurrentBoardEntry());
         }
     }
 }

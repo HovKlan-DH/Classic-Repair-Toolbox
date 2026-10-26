@@ -100,5 +100,9 @@ public sealed class DraftDriftWordingTests
 
         Assert.False(DraftDriftWording.IsSuccess(report));
         Assert.Contains("Nothing was changed", DraftDriftWording.Outcome(report));
+
+        // A CRT 4.0 draft is a board file no spreadsheet program edits (2026-10-25), so no failure
+        // sends the contributor to close it in Excel.
+        Assert.DoesNotContain("Excel", DraftDriftWording.Outcome(report));
     }
 }

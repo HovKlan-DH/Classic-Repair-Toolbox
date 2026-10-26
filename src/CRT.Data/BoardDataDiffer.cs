@@ -116,6 +116,8 @@ namespace Handlers.DataHandling
             BoardDataDiffer.CompareSection(changes, "Component highlights", published?.ComponentHighlights, draft.ComponentHighlights);
             BoardDataDiffer.CompareSection(changes, "Component local files", published?.ComponentLocalFiles, draft.ComponentLocalFiles);
             BoardDataDiffer.CompareSection(changes, "Component links", published?.ComponentLinks, draft.ComponentLinks);
+            BoardDataDiffer.CompareSection(changes, BoardWorkbookSchema.SheetComponentPins, published?.ComponentPins, draft.ComponentPins);
+            BoardDataDiffer.CompareSection(changes, BoardWorkbookSchema.SheetComponentReplacements, published?.ComponentReplacements, draft.ComponentReplacements);
             BoardDataDiffer.CompareSection(changes, "Board local files", published?.BoardLocalFiles, draft.BoardLocalFiles);
             BoardDataDiffer.CompareSection(changes, "Board links", published?.BoardLinks, draft.BoardLinks);
             BoardDataDiffer.CompareSection(changes, "Credits", published?.Credits, draft.Credits);

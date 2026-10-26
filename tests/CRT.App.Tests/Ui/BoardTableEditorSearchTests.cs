@@ -414,13 +414,15 @@ public sealed class BoardTableEditorSearchTests : IDisposable
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            // A save reads the draft back - the search stays, and still narrows the rows.
+            // A save, and the table built again from the draft (an undo), keep the search - and it
+            // still narrows the rows.
             Assert.True(editor.Load(this.DraftsRoot, C64, published: Board()));
             editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponentImages)!);
             Search(window, editor, "pinout");
             Row(editor, "CR17").Cells[ColumnOf(editor, BoardWorkbookSchema.ColNote)].Text = "checked";
             editor.RefreshPendingForTests();
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.Save());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, editor.SaveNow());
+            editor.Undo();
             Settle();
 
             Assert.Equal("pinout", SearchBox(editor).Text);

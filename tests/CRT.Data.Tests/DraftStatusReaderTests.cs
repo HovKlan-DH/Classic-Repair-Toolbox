@@ -255,7 +255,8 @@ public sealed class DraftStatusReaderTests : IDisposable
 
         for (int i = 0; i < components; i++)
         {
-            board.Components.Add(new ComponentEntry { BoardLabel = $"U{i}", Description = "part" });
+            // With a category - a component without one is a warning of its own (component.no_category).
+            board.Components.Add(new ComponentEntry { BoardLabel = $"U{i}", Category = "IC", Description = "part" });
         }
 
         return board;

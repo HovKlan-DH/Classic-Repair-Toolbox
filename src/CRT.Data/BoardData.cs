@@ -45,6 +45,18 @@ namespace Handlers.DataHandling
         public string Category { get; init; } = string.Empty;
         public string Region { get; init; } = string.Empty;
         public string Description { get; init; } = string.Empty;
+
+        // ###########################################################################################
+        // New in CRT 4.0 (step 2, 2026-10-25 - the plan's component pane: "a one-line description
+        // with a counter, plus repair notes with clickable links ... Pick a package"). Never in the
+        // Excel generations: a board file writes each only when it is filled.
+        //
+        // Package is the chip's case, "DIP-40" (ComponentVocabulary.Packages offers the usual ones);
+        // the pins are rows of their own (ComponentPinEntry). RepairNotes is the long text the
+        // one-line Description has no room for - several lines, links clickable where it is shown.
+        // ###########################################################################################
+        public string Package { get; init; } = string.Empty;
+        public string RepairNotes { get; init; } = string.Empty;
     }
 
     public class ComponentImageEntry
@@ -59,6 +71,48 @@ namespace Handlers.DataHandling
         public string TimeDiv { get; init; } = string.Empty;
         public string VoltsDiv { get; init; } = string.Empty;
         public string TriggerLevelVolts { get; init; } = string.Empty;
+
+        // ###########################################################################################
+        // A SCOPE BASELINE's conditions, new in CRT 4.0 (step 2, 2026-10-25 - the plan: "region and
+        // machine state ... where it comes from: measured on a known-good board, datasheet, service
+        // manual, or other"). MachineState is what the machine was doing ("READY prompt, nothing
+        // pressed"); Source is one of ComponentVocabulary.BaselineSources. A picture leaves both
+        // empty, and a board file writes each only when it is filled.
+        // ###########################################################################################
+        public string MachineState { get; init; } = string.Empty;
+        public string Source { get; init; } = string.Empty;
+    }
+
+    // ###########################################################################################
+    // ONE PIN OF A COMPONENT - new in CRT 4.0 (step 2, 2026-10-25 - the plan's Pinout: "name the
+    // pins: number, signal name, direction"). Pin is its number on the case ("1", "40"), Name the
+    // signal ("VCC", "~{RESET}"), Direction one of ComponentVocabulary.PinDirections. A pin is
+    // filed by label and region, as a component's pictures are: a blank region is every region.
+    // ###########################################################################################
+    public class ComponentPinEntry
+    {
+        public string BoardLabel { get; init; } = string.Empty;
+        public string Region { get; init; } = string.Empty;
+        public string Pin { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string Direction { get; init; } = string.Empty;
+    }
+
+    // ###########################################################################################
+    // A PART THAT CAN STAND IN FOR A COMPONENT - new in CRT 4.0 (step 2, 2026-10-25 - the plan:
+    // "Replacements: part number; kind (drop-in, or needs changes); what to change; where the advice
+    // comes from"). Kind is one of ComponentVocabulary.ReplacementKinds; Changes says what has to
+    // be done for one that is not a drop-in; Source is where the advice comes from, in words (a
+    // forum thread, a magazine, "tried on my own board").
+    // ###########################################################################################
+    public class ComponentReplacementEntry
+    {
+        public string BoardLabel { get; init; } = string.Empty;
+        public string Region { get; init; } = string.Empty;
+        public string PartNumber { get; init; } = string.Empty;
+        public string Kind { get; init; } = string.Empty;
+        public string Changes { get; init; } = string.Empty;
+        public string Source { get; init; } = string.Empty;
     }
 
     public class ComponentHighlightEntry
@@ -214,6 +268,16 @@ namespace Handlers.DataHandling
         public List<KiCadImportantSignalEntry> KiCadImportantSignals { get; init; } = new();
 
         // ###########################################################################################
+        // New in CRT 4.0 (step 2, 2026-10-25): each component's pins and replacement parts.
+        //
+        // *** A BOARD COPIED BY HAND NAMES EVERY ONE OF THESE. *** BoardData is copied by listing its
+        // properties, and a list left out of a copy is dropped without a sound - BoardDataCaptionTests
+        // fails on a copy that carries the board's sections without all of them.
+        // ###########################################################################################
+        public List<ComponentPinEntry> ComponentPins { get; init; } = new();
+        public List<ComponentReplacementEntry> ComponentReplacements { get; init; } = new();
+
+        // ###########################################################################################
         // The same board with a different revision date - used by the publish, which stamps the
         // date it actually published on (added 2026-09-23).
         //
@@ -238,6 +302,8 @@ namespace Handlers.DataHandling
             BoardLinks = this.BoardLinks,
             Credits = this.Credits,
             KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
         };
 
         // ###########################################################################################
@@ -265,6 +331,8 @@ namespace Handlers.DataHandling
             BoardLinks = this.BoardLinks,
             Credits = this.Credits,
             KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
         };
 
         // The same board under another "# Hardware:" / "# Board:" caption - the publish, for a board
@@ -285,6 +353,38 @@ namespace Handlers.DataHandling
             BoardLinks = this.BoardLinks,
             Credits = this.Credits,
             KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
+        };
+
+        // ###########################################################################################
+        // The same board with some of a component's sections replaced - the component pane's edits
+        // (ComponentPaneEdits, CRT 4.0 step 2). A null list keeps the board's own. Lists shared, as
+        // WithRevisionDate's are.
+        // ###########################################################################################
+        public BoardData WithComponentSections(
+            List<ComponentEntry>? components = null,
+            List<ComponentImageEntry>? componentImages = null,
+            List<ComponentLocalFileEntry>? componentLocalFiles = null,
+            List<ComponentLinkEntry>? componentLinks = null,
+            List<ComponentPinEntry>? componentPins = null,
+            List<ComponentReplacementEntry>? componentReplacements = null) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = this.HardwareName,
+            BoardName = this.BoardName,
+            Schematics = this.Schematics,
+            Components = components ?? this.Components,
+            ComponentImages = componentImages ?? this.ComponentImages,
+            ComponentHighlights = this.ComponentHighlights,
+            ComponentLocalFiles = componentLocalFiles ?? this.ComponentLocalFiles,
+            ComponentLinks = componentLinks ?? this.ComponentLinks,
+            BoardLocalFiles = this.BoardLocalFiles,
+            BoardLinks = this.BoardLinks,
+            Credits = this.Credits,
+            KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = componentPins ?? this.ComponentPins,
+            ComponentReplacements = componentReplacements ?? this.ComponentReplacements,
         };
 
         // The same board with different highlights - used when a save drops the highlights of a
@@ -304,6 +404,8 @@ namespace Handlers.DataHandling
             BoardLinks = this.BoardLinks,
             Credits = this.Credits,
             KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
         };
     }
 

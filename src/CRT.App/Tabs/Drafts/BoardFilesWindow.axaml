@@ -466,7 +466,7 @@
 							<TextBlock TextWrapping="Wrap"
 									   FontSize="11"
 									   Opacity="0.8"
-									   Text="Each of these can back one schematic image with the KiCad data. Pick it as the image's CAD name in the &quot;Schematic images&quot; window - the button beside &quot;KiCad data&quot; in the Drafts tab." />
+									   Text="Each of these can back one schematic image with the KiCad data. Pick it as the image's CAD name in the &quot;Schematic images&quot; window - &quot;Pictures&quot; on the left of the Contribute tab." />
 							<TextBlock x:Name="ViewNamesListText" TextWrapping="Wrap" FontSize="12" />
 						</StackPanel>
 

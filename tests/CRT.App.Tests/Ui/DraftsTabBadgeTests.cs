@@ -60,19 +60,19 @@ public sealed class DraftsTabBadgeTests : IDisposable
             SubmissionReceiptStore.Record(Receipt(43, "pending"));
 
             var main = new CRT.Main();
-            main.ApplyDraftsTabVisibility();
+            main.ApplyContributeTabState();
 
-            Assert.Equal("2", main.DraftsTabBadgeForTests);
-            Assert.Equal(SubmissionReceiptStore.UnreadCommentCount().ToString(), main.DraftsTabBadgeForTests);
+            Assert.Equal("2", main.ContributeTabBadgeForTests);
+            Assert.Equal(SubmissionReceiptStore.UnreadCommentCount().ToString(), main.ContributeTabBadgeForTests);
 
             // News keeps the tab on screen even with no drafts - otherwise the badge had nowhere to be.
-            Assert.True(main.DraftsTabItem.IsVisible);
+            Assert.True(main.ContributeTabItem.IsVisible);
 
             SubmissionReceiptStore.AcknowledgeComment(41);
             SubmissionReceiptStore.AcknowledgeComment(42);
-            main.ApplyDraftsTabVisibility();
+            main.ApplyContributeTabState();
 
-            Assert.Null(main.DraftsTabBadgeForTests);
+            Assert.Null(main.ContributeTabBadgeForTests);
         });
     }
 
@@ -92,11 +92,11 @@ public sealed class DraftsTabBadgeTests : IDisposable
 
             // Nothing moved on this tick, nothing to retire: not drawn again.
             await main.RetirePublishedDraftsAsync(refreshDraftsTab: false);
-            Assert.Null(main.DraftsTabBadgeForTests);
+            Assert.Null(main.ContributeTabBadgeForTests);
 
             // A receipt moved (or the launch check): drawn, badge and all.
             await main.RetirePublishedDraftsAsync(refreshDraftsTab: true);
-            Assert.Equal("1", main.DraftsTabBadgeForTests);
+            Assert.Equal("1", main.ContributeTabBadgeForTests);
         });
     }
 
@@ -147,7 +147,7 @@ public sealed class DraftsTabBadgeTests : IDisposable
 
             string both = serverFirst.RequiresAppUpdateBannerTextForTests!;
             Assert.Contains(submissions, both, StringComparison.Ordinal);
-            Assert.Contains("Newer main Excel data file is available", both, StringComparison.Ordinal);
+            Assert.Contains("Newer main data file is available", both, StringComparison.Ordinal);
 
             var excelFirst = new CRT.Main();
             excelFirst.ShowMainExcelRequiresAppUpdateBannerForTests();
@@ -163,21 +163,23 @@ public sealed class DraftsTabBadgeTests : IDisposable
             excelFirst.ShowMainExcelRequiresAppUpdateBannerForTests();
 
             Assert.DoesNotContain(submissions, excelFirst.RequiresAppUpdateBannerTextForTests!, StringComparison.Ordinal);
-            Assert.StartsWith("Newer main Excel data file is available", excelFirst.RequiresAppUpdateBannerTextForTests!, StringComparison.Ordinal);
+            Assert.StartsWith("Newer main data file is available", excelFirst.RequiresAppUpdateBannerTextForTests!, StringComparison.Ordinal);
         });
     }
 
-    // Nothing sent at all: no badge (and, with no drafts either, no tab).
+    // Nothing sent at all: no badge - and, with no drafts either, contributing is not in use (the
+    // tab stays on screen since CRT 4.0 step 2; the update check does not ask).
     [Fact]
     public void Nothing_sent_is_no_badge()
     {
         UiTest.Run(() =>
         {
             var main = new CRT.Main();
-            main.ApplyDraftsTabVisibility();
+            main.ApplyContributeTabState();
 
-            Assert.Null(main.DraftsTabBadgeForTests);
-            Assert.False(main.DraftsTabItem.IsVisible);
+            Assert.Null(main.ContributeTabBadgeForTests);
+            Assert.True(main.ContributeTabItem.IsVisible);
+            Assert.False(main.ContributionInUseForTests);
         });
     }
 

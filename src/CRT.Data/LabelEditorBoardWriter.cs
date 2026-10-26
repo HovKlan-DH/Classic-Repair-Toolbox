@@ -88,6 +88,8 @@ namespace Handlers.DataHandling
                 BoardLinks = current.BoardLinks,
                 Credits = current.Credits,
                 KiCadImportantSignals = current.KiCadImportantSignals,
+                ComponentPins = current.ComponentPins,
+                ComponentReplacements = current.ComponentReplacements,
             };
         }
 

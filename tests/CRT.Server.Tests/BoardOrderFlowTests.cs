@@ -9,7 +9,7 @@ namespace CRT.Server.Tests
     // ###########################################################################################
     // BoardOrderFlow - the administrator putting CRT's drop-down lists in order (owner request,
     // 2026-10-04: "a possibility to be able to sort the list of systems, which then gets saved to both
-    // sources (BETA + stable) after my save"). Two real trees, each with a real main Excel data file;
+    // sources (BETA + stable) after my save"). Two real trees, each with a real main file (CRT 4.0);
     // the manifest writer is a fake that records which trees it was asked to rebuild.
     // ###########################################################################################
     public sealed class BoardOrderFlowTests : IDisposable
@@ -17,17 +17,17 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 10, 4, 12, 0, 0, TimeSpan.Zero);
 
         private static readonly MasterListingRow C64 =
-            new("Commodore 64", "250407 (long board)", "Commodore/C64/250407/Data C64 250407 v2.0.0.xlsx", string.Empty);
+            new("Commodore 64", "250407 (long board)", "Commodore/C64/250407/board.json", string.Empty);
 
         private static readonly MasterListingRow C128 =
-            new("Commodore 128", "310378 (C128 & C128D)", "Commodore/C128/310378/Data C128 310378 v2.0.0.xlsx", "Has 6581 SID.");
+            new("Commodore 128", "310378 (C128 & C128D)", "Commodore/C128/310378/board.json", "Has 6581 SID.");
 
         private static readonly MasterListingRow Spectrum =
-            new("ZX Spectrum 16K/48K", "Issue 4B", "ZX Spectrum/Spectrum 16K-48K/Issue 4B/Data ZX Issue 4B v2.0.0.xlsx", string.Empty);
+            new("ZX Spectrum 16K/48K", "Issue 4B", "ZX Spectrum/Spectrum 16K-48K/Issue 4B/board.json", string.Empty);
 
         // In BETA only - not promoted yet.
         private static readonly MasterListingRow Open128 =
-            new("Commodore 128", "310378 Open128", "Commodore/C128/310378 Open128/Data C128 310378 Open128 v2.0.0.xlsx", string.Empty);
+            new("Commodore 128", "310378 Open128", "Commodore/C128/310378 Open128/board.json", string.Empty);
 
         private readonly string thisRoot = Path.Combine(Path.GetTempPath(), "crt-order", Guid.NewGuid().ToString("N"));
 
@@ -129,8 +129,8 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task An_order_that_does_not_name_exactly_BETAs_boards_is_refused_and_nothing_is_written()
         {
-            byte[] beta = File.ReadAllBytes(Path.Combine(this.Beta, "Classic-Repair-Toolbox.v2.0.0.xlsx"));
-            byte[] stable = File.ReadAllBytes(Path.Combine(this.Stable, "Classic-Repair-Toolbox.v2.0.0.xlsx"));
+            byte[] beta = File.ReadAllBytes(Path.Combine(this.Beta, DataTreeLayout.MainFileName));
+            byte[] stable = File.ReadAllBytes(Path.Combine(this.Stable, DataTreeLayout.MainFileName));
 
             BoardOrderOutcome outcome = await this.Order(this.Options(), Spectrum, C128, C64);
 
@@ -138,8 +138,8 @@ namespace CRT.Server.Tests
             Assert.True(outcome.IsConflict);
             Assert.Equal(BoardOrderFlow.ChangedMessage, outcome.Error);
 
-            Assert.Equal(beta, File.ReadAllBytes(Path.Combine(this.Beta, "Classic-Repair-Toolbox.v2.0.0.xlsx")));
-            Assert.Equal(stable, File.ReadAllBytes(Path.Combine(this.Stable, "Classic-Repair-Toolbox.v2.0.0.xlsx")));
+            Assert.Equal(beta, File.ReadAllBytes(Path.Combine(this.Beta, DataTreeLayout.MainFileName)));
+            Assert.Equal(stable, File.ReadAllBytes(Path.Combine(this.Stable, DataTreeLayout.MainFileName)));
             Assert.Empty(this.thisRebuilt);
             Assert.Empty(this.thisAccounts.Audit);
         }
@@ -187,12 +187,12 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** BETA FIRST, AND A LATER FAILURE IS SAID, NOT HIDDEN. *** A stable source with no main
-        // Excel data file to write: BETA is saved all the same, and the answer says what was not.
+        // file to write: BETA is saved all the same, and the answer says what was not.
         // ###########################################################################################
         [Fact]
         public async Task A_stable_list_that_cannot_be_written_is_said_after_BETA_was_saved()
         {
-            File.Delete(Path.Combine(this.Stable, "Classic-Repair-Toolbox.v2.0.0.xlsx"));
+            File.Delete(Path.Combine(this.Stable, DataTreeLayout.MainFileName));
 
             BoardOrderOutcome outcome = await this.Order(this.Options(), Spectrum, Open128, C128, C64);
 

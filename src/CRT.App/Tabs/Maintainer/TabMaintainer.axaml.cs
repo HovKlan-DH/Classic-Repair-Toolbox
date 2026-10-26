@@ -112,6 +112,7 @@ namespace CRT
             this.WireTable();
             this.WireAccountScreen();
             this.ShowNotRememberedNote(ReviewSessionStore.IsSupported);
+            this.ShowTestServerNote(AppConfig.UsesTestServer);
         }
 
         // ###########################################################################################
@@ -954,7 +955,7 @@ namespace CRT
             this.ShowDecisionPanel(visible: true, canPublish: detail.CanPublish, approval: detail.Approval);
             this.SetDecisionButtonsEnabled(true);
             this.ShowDecisionMessage(null, isError: false);
-            this.ShowRemovalNote(detail.Removals);
+            this.ShowRemovalNote(detail.Removals, detail.SubmittedFiles.Select(file => file.Path));
 
             // The list says what the submission itself says - see TabMaintainer.QueueItems.cs.
             this.UpdateQueueEntry(
@@ -1470,14 +1471,15 @@ namespace CRT
         // ###########################################################################################
         // The files approving the submission on screen would remove, as the server listed them -
         // said beside the button and sent back with the approval, so what goes is what was shown.
+        // `kept`: the names the submission's board lists - see FileRemovalWording.Unused.
         // ###########################################################################################
-        private void ShowRemovalNote(FileRemovalPreview? removals)
+        private void ShowRemovalNote(FileRemovalPreview? removals, IEnumerable<string>? kept = null)
         {
             this.thisShownRemovals = removals?.Files ?? [];
 
             if (this.FindControl<TextBlock>("RemovalStatusText") is TextBlock note)
             {
-                string? text = FileRemovalWording.ApproveNote(removals);
+                string? text = FileRemovalWording.ApproveNote(removals, kept);
                 note.Text = text ?? string.Empty;
                 note.IsVisible = text is not null;
             }

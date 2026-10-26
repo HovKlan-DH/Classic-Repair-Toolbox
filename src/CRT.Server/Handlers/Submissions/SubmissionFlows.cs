@@ -182,7 +182,7 @@ namespace CRT.Server.Handlers.Submissions
                 {
                     alreadyHeld.Add(file.Sha256);
                 }
-                else if (SubmissionFlows.TryFindPublishedCopy(file, containmentRoot, tree, out string source))
+                else if (SubmissionFlows.TryFindPublishedCopy(file, containmentRoot, out string source))
                 {
                     importable[file.Sha256] = (source, file.SizeBytes);
                     bytesToImport += file.SizeBytes;
@@ -256,10 +256,10 @@ namespace CRT.Server.Handlers.Submissions
             // database read must not yield the ability to act on submissions in flight.
             string uploadToken = SecureToken.Create();
 
-            // Decided now, from the manifest against the published tree, and stored on the row: a
-            // submission changing a shared file needs two approvals (ApprovalRules). With no view
-            // of the tree this is TRUE, the safe side. Before the gate, because it may hash files.
-            bool touchesSharedFiles = SubmissionSharedFiles.TouchesSharedFiles(manifest, tree);
+            // A submission changing a shared file needed two approvals (ApprovalRules). The CRT 4.0
+            // tree has no shared files - every board owns its files, each board's bytes stored
+            // under their checksum (owner decision, 2026-10-24) - so no submission touches one.
+            const bool touchesSharedFiles = false;
 
             long submissionId;
 
@@ -697,39 +697,33 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // Where this server's own copy of a submitted file is, when the published tree holds it
-        // at the SAME path with the SAME hash - the file the contributor did not change.
+        // Where this server's own copy of a submitted file's bytes is, when the published tree
+        // holds them. In the CRT 4.0 tree (2026-10-25) every file's bytes are stored under their
+        // checksum (PublishedBoardFiles.FindStored), so ANY bytes the tree already holds are found,
+        // under whatever name they were published: every untouched file of the board edited, and
+        // the same picture another board already has.
         //
-        // SAME PATH ONLY. The same bytes published under some other name would be found only by
-        // hashing the whole tree, and the case that costs contributors real uploads is simpler:
-        // every untouched file of the board they edited.
-        //
-        // The hash comes from the tree's cache and is only a reason to TRY; the import hashes what
-        // it copies and is the real check. The path goes through the same containment rule and the
-        // same link refusal the publish uses, so a link inside the tree cannot make an import read
-        // from somewhere else.
+        // The checksum in the name is only a reason to TRY; the import hashes what it copies and is
+        // the real check. The place goes through the same containment rule and the same link
+        // refusal the publish uses, so a link inside the tree cannot make an import read from
+        // somewhere else.
         // ###########################################################################################
         private static bool TryFindPublishedCopy(
             SubmissionFile file,
             string containmentRoot,
-            PublishedTreeView? tree,
             out string source)
         {
             source = string.Empty;
 
-            if (tree is null)
+            string stored = PublishedBoardFiles.FindStored(containmentRoot, file.Sha256, file.Path);
+
+            if (stored.Length == 0)
                 return false;
 
-            if (!string.Equals(tree.HashOf(file.Path), file.Sha256, StringComparison.Ordinal))
+            if (PublishPathSafety.FindLinkOnPath(containmentRoot, stored, PublishPathSafety.IsLink) is not null)
                 return false;
 
-            if (!SubmissionPathRules.TryResolve(containmentRoot, file.Path, out string resolved, out _))
-                return false;
-
-            if (PublishPathSafety.FindLinkOnPath(containmentRoot, resolved, PublishPathSafety.IsLink) is not null)
-                return false;
-
-            source = resolved;
+            source = stored;
             return true;
         }
 

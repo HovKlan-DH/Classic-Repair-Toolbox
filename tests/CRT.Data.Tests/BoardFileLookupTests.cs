@@ -42,6 +42,38 @@ public sealed class BoardFileLookupTests
         Assert.Equal(BoardFileState.Missing, lookup.Check($"{Board}/U9.png").State);
     }
 
+    // ###########################################################################################
+    // *** ONE LOOKUP READS A BOARD FILE ONCE, EVEN RIGHT AFTER IT WAS WRITTEN (code review,
+    // 2026-10-25). *** The shared cache trusts a board file's stamp only two seconds after a write,
+    // and the Drafts tab counts the draft's problems straight after every autosave - so each of a
+    // large board's ~1,200 files parsed the whole board file again, on the UI thread. The file here
+    // has just been written: unsettled, as it is after a save. Once it changes, it is read again.
+    // ###########################################################################################
+    [Fact]
+    public void A_lookup_reads_a_just_written_board_file_once_and_again_only_once_it_changed()
+    {
+        using var workspace = new TempWorkspace();
+        string draftFolder = workspace.Path_("Drafts", "Commodore", "C64", "250407");
+        Directory.CreateDirectory(workspace.Path_("Data"));
+
+        BoardDocument.StoredFileRow[] files = Enumerable.Range(1, 40)
+            .Select(index => StoredFiles.Put(draftFolder, $"Images/sheet{index}.png", $"sheet {index}"))
+            .ToArray();
+
+        string boardFile = StoredFiles.WriteBoard(Path.Combine(draftFolder, DataTreeLayout.BoardFileName), files);
+
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftFolder);
+
+        Assert.All(files, file => Assert.Equal(BoardFileState.Found, lookup.Check(file.Name).State));
+        Assert.Equal(1, lookup.BoardFilesForTests.ReadsForTests);
+
+        BoardDocument.StoredFileRow added = StoredFiles.Put(draftFolder, "Images/new.png", "a new picture");
+        StoredFiles.WriteBoard(boardFile, [.. files, added]);
+
+        Assert.Equal(BoardFileState.Found, lookup.Check("Images/new.png").State);
+        Assert.Equal(2, lookup.BoardFilesForTests.ReadsForTests);
+    }
+
     // A draft's own file sits in its board folder, without the board's own path in front.
     [Fact]
     public void A_file_in_the_drafts_own_folder_is_found()

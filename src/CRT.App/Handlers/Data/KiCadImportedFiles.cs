@@ -83,6 +83,16 @@ namespace Handlers.DataHandling
                     ? "Checked against the board's published KiCad data - your draft has none of its own yet."
                     : "Checked against the board's published KiCad data together with your draft's, as the Schematics tab draws them.";
 
+        // ###########################################################################################
+        // What the KiCad data window says after Remove. A file the published board has goes back to
+        // the published one (code review, 2026-10-25 - DraftWorkbookStore.RemoveFiles), so that is
+        // what it says; a file only the draft had is gone from it.
+        // ###########################################################################################
+        public static string RemovedLine(string relativePath, bool backToPublished) =>
+            backToPublished
+                ? $"Removed your copy of [{relativePath}] - the published file is used again. Your own KiCad project is not touched."
+                : $"Removed [{relativePath}] from your draft. Your own KiCad project is not touched - import it again to get the file back.";
+
         public static bool TryRemove(string kiCadFolder, string filePath)
         {
             if (string.IsNullOrWhiteSpace(kiCadFolder) || string.IsNullOrWhiteSpace(filePath))

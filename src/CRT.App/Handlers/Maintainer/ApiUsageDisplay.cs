@@ -32,7 +32,7 @@ namespace Handlers.MaintainerHandling
 
         public const int DefaultDays = 90;
 
-        public const string SubmissionsHeading = "Submit, in the Drafts tab";
+        public const string SubmissionsHeading = "Submit, on the Contribute tab";
 
         public const string MaintainerHeading = "The Maintainer tab";
 

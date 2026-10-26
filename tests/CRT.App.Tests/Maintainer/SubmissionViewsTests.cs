@@ -69,6 +69,25 @@ public sealed class SubmissionViewsTests
             Removing("old.png")));
     }
 
+    // ###########################################################################################
+    // *** IN THE CRT 4.0 TREE A REMOVAL IS A STORED FILE, READ BY ITS NAME (2026-10-25). *** A file
+    // replaced under its own name leaves its earlier bytes ("Files/3f/3f7a.pdf") for the approval to
+    // remove under that same name - one file changing, as the server's tree shows it, never the
+    // changed file plus a removal of a path nobody knows.
+    // ###########################################################################################
+    [Fact]
+    public void A_replaced_files_earlier_bytes_are_the_same_one_change()
+    {
+        var earlierBytes = new FileRemovalPreview(
+            ["Files/3f/3f7a.pdf"],
+            null,
+            new Dictionary<string, string> { ["Files/3f/3f7a.pdf"] = "manual.pdf" });
+
+        var replaced = new SubmittedFileFact("manual.pdf", "new", 10, SubmissionFileScope.Own, IsReferenced: true, PublishedSha256: "old");
+
+        Assert.Equal(1, SubmissionViews.ChangingFiles([replaced], earlierBytes));
+    }
+
     // A new board: nothing is published, so every file it carries is new.
     [Fact]
     public void A_new_boards_files_are_all_counted_as_new()

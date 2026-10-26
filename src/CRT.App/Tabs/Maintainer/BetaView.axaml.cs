@@ -263,11 +263,20 @@ namespace CRT
                 // What publishing REMOVES from production, FIRST and in red: the least visible change
                 // and the one that cannot be undone (2026-09-25). Said even when it is nothing, so
                 // the maintainer knows it was checked.
-                string? removals = FileRemovalWording.Headline(plan.Removals, "the stable data");
+                // What stable lists afterwards: what is copied and what is already the same, by name -
+                // a removal under one of those names is the earlier version of a replaced file.
+                IReadOnlyList<string> kept =
+                [
+                    .. plan.Files.Select(file => file.Name ?? file.Path),
+                    .. (plan.UnchangedFiles ?? []).Select(path => plan.FileNames is not null && plan.FileNames.TryGetValue(path, out string? name) ? name : path)
+                ];
+
+                IReadOnlyList<string> unused = FileRemovalWording.Unused(plan.Removals, kept);
+                string? removals = FileRemovalWording.Headline(plan.Removals, "the stable data", kept);
 
                 if (removals is not null)
                 {
-                    bool any = plan.Removals!.Files.Count > 0;
+                    bool any = unused.Count > 0;
 
                     var headline = new TextBlock
                     {
@@ -282,11 +291,12 @@ namespace CRT
 
                     attention.Children.Add(headline);
 
-                    foreach (string path in plan.Removals.Files)
+                    // By the name the board knew each by - a CRT 4.0 tree's stored file is its checksum.
+                    foreach (string name in unused)
                     {
                         attention.Children.Add(new TextBlock
                         {
-                            Text = FileRemovalWording.Line(path),
+                            Text = FileRemovalWording.Line(name),
                             TextWrapping = TextWrapping.Wrap,
                             Foreground = Brushes.IndianRed,
                             FontWeight = FontWeight.SemiBold
@@ -323,12 +333,13 @@ namespace CRT
             ReviewSession? session = this.thisSession;
 
             tree.Files = client is null ? null : new FileTreeFiles(this, client, session, submissionId: null, plan.BetaDataUrl, plan.ProductionDataUrl);
-            // With each file's size, from the plan (2026-10-04).
+            // With each file's size, from the plan (2026-10-04) - keyed by its place in the tree, while
+            // a 4.0 tree's file is shown by its board name (2026-10-25).
             IReadOnlyDictionary<string, long>? sizes = plan.FileSizes;
 
             tree.Show(BoardFileEntries.WithSizes(
-                BoardFileEntries.ForPromotion(plan.Files, plan.Removals?.Files, plan.UnchangedFiles),
-                entry => sizes is not null && sizes.TryGetValue(entry.Path, out long size) ? size : null));
+                BoardFileEntries.ForPromotion(plan.Files, plan.Removals?.Files, plan.UnchangedFiles, plan.FileNames),
+                entry => sizes is not null && sizes.TryGetValue(entry.PlaceInTree, out long size) ? size : null));
             tree.IsVisible = true;
         }
 

@@ -64,7 +64,8 @@ public sealed class TabDraftsTests : IDisposable
         var board = new BoardData();
         for (int i = 0; i < rowCount; i++)
         {
-            board.Components.Add(new ComponentEntry { BoardLabel = $"U{i}" });
+            // With a category - a component without one is a warning of its own (component.no_category).
+            board.Components.Add(new ComponentEntry { BoardLabel = $"U{i}", Category = "IC" });
         }
 
         string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
@@ -81,8 +82,10 @@ public sealed class TabDraftsTests : IDisposable
             });
     }
 
+    // With no drafts, "My drafts" says there are none and offers nothing (CRT 4.0 step 2 - it was
+    // the Drafts tab's list and its empty state).
     [Fact]
-    public void With_no_drafts_at_all_the_empty_state_shows_and_the_list_is_hidden()
+    public void With_no_drafts_at_all_My_drafts_says_none_and_is_off()
     {
         UiTest.Run(() =>
         {
@@ -94,14 +97,16 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
+            ComboBox myDrafts = tab.GetControl<ComboBox>("MyDraftsComboBox");
+
             Assert.Empty(tab.Drafts);
-            Assert.True(tab.GetControl<TextBlock>("EmptyStateText").IsVisible);
-            Assert.False(tab.GetControl<ScrollViewer>("DraftsScrollViewer").IsVisible);
+            Assert.Equal("No drafts yet", myDrafts.PlaceholderText);
+            Assert.False(myDrafts.IsEnabled);
         });
     }
 
     [Fact]
-    public void A_drafted_board_appears_in_the_list_and_the_empty_state_is_hidden()
+    public void A_drafted_board_is_in_My_drafts()
     {
         UiTest.Run(() =>
         {
@@ -116,10 +121,13 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
+            ComboBox myDrafts = tab.GetControl<ComboBox>("MyDraftsComboBox");
+
             var item = Assert.Single(tab.Drafts);
             Assert.Equal("Commodore 64 - 250407", item.DisplayName);
-            Assert.True(tab.GetControl<ScrollViewer>("DraftsScrollViewer").IsVisible);
-            Assert.False(tab.GetControl<TextBlock>("EmptyStateText").IsVisible);
+            Assert.Same(item, Assert.Single(myDrafts.ItemsSource!.Cast<DraftListItem>()));
+            Assert.Equal("My drafts (1)", myDrafts.PlaceholderText);
+            Assert.True(myDrafts.IsEnabled);
         });
     }
 
@@ -326,7 +334,7 @@ public sealed class TabDraftsTests : IDisposable
     // fresh path per test is a guaranteed cache miss, the same reasoning (and the same fix)
     // DataManagerDraftOverlayTests documents for itself.
     private readonly string thisExcelDataFile =
-        $"Commodore/C64/{Guid.NewGuid():N}/Data C64 drift.xlsx";
+        $"Commodore/C64/{Guid.NewGuid():N}/board.json";
 
     // Drift needs a real board workbook on disk to read an official revision from, plus a draft
     // recording a different base. DataManager is pointed at the workspace so the relative
@@ -566,17 +574,12 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     [Fact]
-    public void With_NO_DRAFTS_but_unread_feedback_the_empty_state_says_so()
+    public void With_NO_DRAFTS_but_unread_feedback_My_submissions_says_so()
     {
         UiTest.Run(() =>
         {
-            // *** THE ONE CASE THIS TAB APPEARS EMPTY. *** With no drafts it is normally hidden
-            // outright; unread maintainer feedback is what holds it open
-            // (Main.ApplyDraftsTabVisibility), because a contributor who submitted and then
-            // discarded their draft would otherwise never see the reply.
-            //
-            // "No local drafts yet" would then be a true sentence answering the wrong question,
-            // leaving somebody staring at an empty tab with no idea a maintainer had written.
+            // A contributor who submitted and then discarded their draft must still see the reply:
+            // the tab is always on screen since CRT 4.0 step 2, and "My submissions" carries the count.
             var tab = new TabDrafts
             {
                 HardwareBoardsOverrideForTests = [],
@@ -585,20 +588,17 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            var empty = tab.GetControl<TextBlock>("EmptyStateText");
-
-            Assert.True(empty.IsVisible);
-            Assert.Contains("maintainer has replied", empty.Text!, StringComparison.Ordinal);
-            Assert.Contains("My submissions", empty.Text!, StringComparison.Ordinal);
+            Assert.True(tab.GetControl<Border>("MySubmissionsBadge").IsVisible);
+            Assert.Equal("1", tab.GetControl<TextBlock>("MySubmissionsBadgeText").Text);
         });
     }
 
     [Fact]
-    public void With_no_drafts_and_NO_feedback_the_empty_state_is_the_ordinary_one()
+    public void With_no_drafts_and_NO_feedback_there_is_no_badge()
     {
         UiTest.Run(() =>
         {
-            // Somebody who has never contributed must see no trace of the review feature.
+            // Somebody who has never contributed sees no count of anything.
             var tab = new TabDrafts
             {
                 HardwareBoardsOverrideForTests = [],
@@ -607,10 +607,8 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            var empty = tab.GetControl<TextBlock>("EmptyStateText");
-
-            Assert.Contains("No local drafts yet", empty.Text!, StringComparison.Ordinal);
-            Assert.DoesNotContain("maintainer", empty.Text!, StringComparison.OrdinalIgnoreCase);
+            Assert.False(tab.GetControl<Border>("MySubmissionsBadge").IsVisible);
+            Assert.Equal("No drafts yet", tab.GetControl<ComboBox>("MyDraftsComboBox").PlaceholderText);
         });
     }
 
@@ -748,62 +746,55 @@ public sealed class TabDraftsTests : IDisposable
                     ExcelDataFile = empty,
                 });
 
-            var tab = new TabDrafts();
-            tab.HardwareBoardsOverrideForTests = new List<HardwareBoardEntry>
-            {
-                BoardEntry("Commodore 64", "250407", withRows),
-                BoardEntry("VIC20", "250408", empty)
-            };
+            HardwareBoardEntry boardWithRows = BoardEntry("Commodore 64", "250407", withRows);
+            HardwareBoardEntry emptyBoard = BoardEntry("VIC20", "250408", empty);
 
+            var tab = new TabDrafts();
+            tab.HardwareBoardsOverrideForTests = [boardWithRows, emptyBoard];
             tab.RefreshDrafts();
 
             var window = new Window { Content = tab, Width = 1100, Height = 600 };
             window.Show();
-            window.Measure(new Size(1100, 600));
-            window.Arrange(new Rect(0, 0, 1100, 600));
-            Dispatcher.UIThread.RunJobs();
 
-            List<Button> submitButtons = tab.GetVisualDescendants()
-                .OfType<Button>()
-                .Where(button => (button.Content as string) == "Submit")
-                .ToList();
+            // The header is the board shown's (CRT 4.0 step 2) - one Submit, for that board.
+            Button SubmitShownFor(HardwareBoardEntry entry)
+            {
+                tab.ShowBoard(entry, new BoardData(), "PAL", null);
+                window.Measure(new Size(1100, 600));
+                window.Arrange(new Rect(0, 0, 1100, 600));
+                Dispatcher.UIThread.RunJobs();
 
-            // One per drafted board, not one for the tab.
-            Assert.Equal(2, submitButtons.Count);
+                return Assert.Single(tab.GetVisualDescendants().OfType<Button>(), button => (button.Content as string) == "Submit");
+            }
 
-            // The row WITH rows is enabled; the empty new board is not. Asserted as a set rather
-            // than by index, since the list is ordered by label and that ordering is not this
-            // test's subject.
-            Assert.Contains(submitButtons, button => button.IsEnabled);
-            Assert.Contains(submitButtons, button => !button.IsEnabled);
+            // The draft WITH rows can be sent; the empty new board cannot.
+            Assert.True(SubmitShownFor(boardWithRows).IsEnabled);
+            Assert.False(SubmitShownFor(emptyBoard).IsEnabled);
 
             window.Close();
         });
     }
 
     // ###########################################################################################
-    // *** "Schematic images" AND "KiCad data" ARE TWO BUTTONS (owner request, 2026-09-24). ***
-    //
-    // They used to be one "Schematic images and KiCad data" button. Asserted on the RENDERED row
-    // for the same reason as the Submit test above: a button bound to the wrong command, or left
-    // at another button's column index and drawn on top of it, passes every model-level test. So
-    // this checks each button exists, is wired to its OWN command, and sits clear of the others.
+    // *** THE HEADER'S BUTTONS EACH HAVE THEIR OWN PLACE (CRT 4.0 step 2, 2026-10-25). *** Asserted
+    // on the RENDERED header for the same reason as the Submit test above: a button bound to the
+    // wrong command, or left at another button's column index and drawn on top of it, passes every
+    // model-level test. The board's pictures, KiCad data and table view are on the left now, never
+    // on the header too.
     // ###########################################################################################
     [Fact]
-    public void The_rendered_row_has_separate_Schematic_images_and_KiCad_data_buttons()
+    public void The_rendered_header_has_its_own_buttons_and_the_board_parts_are_on_the_left()
     {
         UiTest.Run(() =>
         {
             string excelDataFile = "Commodore/C64/250407/Data.xlsx";
             WriteDraftWithChanges(excelDataFile);
 
+            HardwareBoardEntry entry = BoardEntry("Commodore 64", "250407", excelDataFile);
             var tab = new TabDrafts();
-            tab.HardwareBoardsOverrideForTests = new List<HardwareBoardEntry>
-            {
-                BoardEntry("Commodore 64", "250407", excelDataFile)
-            };
-
+            tab.HardwareBoardsOverrideForTests = [entry];
             tab.RefreshDrafts();
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
 
             var window = new Window { Content = tab, Width = 1300, Height = 600 };
             window.Show();
@@ -816,18 +807,21 @@ public sealed class TabDraftsTests : IDisposable
 
             DraftListItem row = Assert.Single(tab.Drafts);
 
-            Assert.Same(row.ManageSchematicImagesCommand, Named("Schematic images").Command);
-            Assert.Same(row.ManageKiCadDataCommand, Named("KiCad data").Command);
-            Assert.Same(row.EditTableCommand, Named("Edit in table format").Command);
-            Assert.DoesNotContain(buttons, button => (button.Content as string) == "Schematic images and KiCad data");
+            Assert.Same(row.ReviewChangesCommand, Named("Review changes").Command);
+            Assert.Same(row.SubmitCommand, Named("Submit").Command);
+            Assert.Same(row.DiscardCommand, Named("Discard draft").Command);
 
-            // Every button of the row in a column of its own - two sharing an index draw on top of
-            // each other, and nothing throws.
-            var rowButtons = new[] { "Edit in table format", "Schematic images", "KiCad data", "Submit", "Discard" }
+            // Every button of the header in a column of its own - two sharing an index draw on top
+            // of each other, and nothing throws.
+            var rowButtons = new[] { "What changed", "Review changes", "Submit", "Discard draft" }
                 .Select(Named)
                 .ToList();
 
             Assert.Equal(rowButtons.Count, rowButtons.Select(Grid.GetColumn).Distinct().Count());
+
+            Assert.DoesNotContain(buttons, button => (button.Content as string) is "Edit in table format" or "Schematic images");
+            Assert.Same(tab.GetControl<Button>("TableViewButton"), Named("Table view"));
+            Assert.True(tab.GetControl<Button>("PicturesNavButton").IsEffectivelyEnabled);
 
             window.Close();
         });
@@ -865,9 +859,10 @@ public sealed class TabDraftsTests : IDisposable
     //
     // The table itself is pinned by BoardTableEditorTests; these pin the TAB around it: that
     // opening one draft's table hides every other row but leaves `Drafts` whole (Main decides
-    // whether this tab is shown at all from its count), and that unsaved table edits are never
-    // lost without the contributor saying so. The prompt is answered through
-    // UnsavedTableEditsAnswerForTests - the real window would block on ShowDialog.
+    // whether this tab is shown at all from its count), and that the table's changes are never lost
+    // without the contributor saying so: since CRT 4.0 step 1 (2026-10-25) the table saves itself,
+    // and closing it saves what still waits; only a save that cannot be made asks. The prompt is
+    // answered through UnsavedTableEditsAnswerForTests - the real window would block on ShowDialog.
     // ###########################################################################################
     private const string TableBoardA = "Commodore/C64/250407/Data.xlsx";
     private const string TableBoardB = "Commodore/C64/250425/Data.xlsx";
@@ -897,29 +892,22 @@ public sealed class TabDraftsTests : IDisposable
     private static HardwareBoardEntry EntryA(TabDrafts tab) =>
         tab.HardwareBoardsOverrideForTests!.First(entry => entry.ExcelDataFile == TabDraftsTests.TableBoardA);
 
-    // The draft rows the tab actually SHOWS: the list, or - in table mode - the open draft's row in
-    // its own host, with the list hidden.
-    private static IEnumerable<DraftListItem> ShownRows(TabDrafts tab)
+    // The draft row the tab's header SHOWS (CRT 4.0 step 2): the table's draft, else the board
+    // shown's - none when neither has one.
+    private static DraftListItem? HeaderRow(TabDrafts tab)
     {
-        ContentControl openRow = tab.GetControl<ContentControl>("OpenDraftRow");
-        if (openRow.IsVisible)
-        {
-            return openRow.Content is DraftListItem item ? [item] : [];
-        }
-
-        return tab.GetControl<ScrollViewer>("DraftsScrollViewer").IsVisible
-            ? tab.GetControl<ItemsControl>("DraftsItemsControl").ItemsSource!.Cast<DraftListItem>()
-            : [];
+        ContentControl header = tab.GetControl<ContentControl>("CurrentDraftRow");
+        return header.IsVisible ? header.Content as DraftListItem : null;
     }
 
-    // Types into the open table's first component, leaving an unsaved edit.
-    private static void MakeUnsavedEdit(TabDrafts tab)
+    // Types into the open table's first component, leaving a change the draft has not saved yet.
+    private static void MakeUnsavedEdit(TabDrafts tab, string text = "Typed in the table")
     {
         BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
-        BoardTableSheet components = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+        BoardTableSheet components = editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
         int friendlyName = components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName);
 
-        components.Rows[0].Cells[friendlyName].Text = "Typed in the table";
+        components.Rows[0].Cells[friendlyName].Text = text;
         Assert.True(tab.HasUnsavedTableEdits);
     }
 
@@ -927,18 +915,17 @@ public sealed class TabDraftsTests : IDisposable
         DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, excelDataFile)!.Components[0].FriendlyName;
 
     [Fact]
-    public void Every_draft_row_offers_Edit_in_table_format_while_no_table_is_open()
+    public void While_no_table_is_open_no_row_is_marked_open_and_the_start_panel_shows()
     {
         UiTest.Run(() =>
         {
             TabDrafts tab = TabWithTwoDrafts();
+            tab.ShowBoard(EntryA(tab), new BoardData(), "PAL", null);
 
-            Assert.All(tab.Drafts, row =>
-            {
-                Assert.False(row.IsTableOpen);
-                Assert.Equal("Edit in table format", row.TableButtonText);
-            });
+            Assert.All(tab.Drafts, row => Assert.False(row.IsTableOpen));
             Assert.False(tab.GetControl<BoardTableEditor>("TableEditor").IsVisible);
+            Assert.True(tab.GetControl<StackPanel>("StartPanel").IsVisible);
+            Assert.Equal("Table view", tab.GetControl<Button>("TableViewButton").Content);
         });
     }
 
@@ -1035,10 +1022,11 @@ public sealed class TabDraftsTests : IDisposable
     // ###########################################################################################
     // *** A CELL STILL BEING TYPED IN COUNTS WHEN CRT IS QUIT (code review, 2026-10-13). *** The grid
     // does not commit when focus moves outside it, so quitting saw no change and closed without a
-    // word - the typed value was gone. The check commits the cell first, and the question is asked.
+    // word - the typed value was gone. The check commits the cell first - and the table saves it,
+    // asking nothing (CRT 4.0 step 1).
     // ###########################################################################################
     [Fact]
-    public async Task Quitting_with_a_drafts_cell_still_in_its_editor_counts_it_and_asks()
+    public async Task Quitting_with_a_drafts_cell_still_in_its_editor_counts_it_and_saves_it()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -1076,33 +1064,37 @@ public sealed class TabDraftsTests : IDisposable
             };
 
             Assert.True(tab.CommitCellsAndHasUnsavedTableEdits());
-            Assert.False(await tab.ConfirmLeavingTableAsync());
-            Assert.Single(asked);
+            Assert.True(await tab.ConfirmLeavingTableAsync());
+            Assert.Empty(asked);
+            Assert.False(tab.HasUnsavedTableEdits);
+            Assert.Contains(
+                DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA)!.Components,
+                component => component.BoardLabel.EndsWith(" (typed)", StringComparison.Ordinal));
 
             window.Close();
         });
     }
 
     [Fact]
-    public async Task Opening_the_table_shows_ONLY_that_drafts_row_with_the_table_below_it()
+    public async Task Opening_the_table_shows_that_drafts_header_and_the_table_on_the_right()
     {
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
+            tab.ShowBoard(EntryA(tab), new BoardData(), "PAL", null);
 
             await tab.OpenTableAsync(EntryA(tab));
 
-            DraftListItem shown = Assert.Single(ShownRows(tab));
+            DraftListItem shown = HeaderRow(tab)!;
             Assert.Equal(TabDraftsTests.TableBoardA, shown.ExcelDataFile);
             Assert.True(shown.IsTableOpen);
-            Assert.Equal("Close table", shown.TableButtonText);
+            Assert.Equal("Close table view", tab.GetControl<Button>("TableViewButton").Content);
 
             Assert.True(tab.GetControl<BoardTableEditor>("TableEditor").IsVisible);
             Assert.True(tab.GetControl<BoardTableEditor>("TableEditor").HasTable);
-            Assert.False(tab.GetControl<ScrollViewer>("DraftsScrollViewer").IsVisible);
+            Assert.False(tab.GetControl<StackPanel>("StartPanel").IsVisible);
 
-            // Drafts itself still lists BOTH - Main reads its count to decide whether this tab is
-            // shown at all, and a table open on one draft must not hide the tab's reason to exist.
+            // Drafts itself still lists BOTH - "My drafts" and the drop-downs' chips read it.
             Assert.Equal(2, tab.Drafts.Count);
         });
     }
@@ -1131,7 +1123,7 @@ public sealed class TabDraftsTests : IDisposable
             await tab.OpenTableAsync(EntryA(tab));
 
             BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
-            BoardTableSheet components = editor.SessionForTests!.Document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+            BoardTableSheet components = editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
             int friendlyName = components.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName);
 
             Assert.Equal(tooltip, components.Rows.Single(row => !row.IsDeleted).Cells[friendlyName].ToolTip);
@@ -1140,29 +1132,31 @@ public sealed class TabDraftsTests : IDisposable
     }
 
     [Fact]
-    public async Task In_table_mode_the_open_drafts_row_is_really_drawn_above_the_table()
+    public async Task In_table_mode_the_drafts_header_is_really_drawn_above_the_table()
     {
-        // Measured, not just listed. The first version drew the open row at ZERO height: it
-        // switched layouts by assigning a new RowDefinitions collection to the body Grid, which
-        // kept measuring its cells against the old row kinds. The row, and its "Close table"
-        // button (the only way out), was there yet drawn nowhere. This fails against that version.
+        // Measured, not just listed. A first version drew the open row at ZERO height (a
+        // RowDefinitions collection replaced instead of changed): the row was there yet drawn
+        // nowhere. The header and the way out ("Close table view") must be on screen with the table.
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
+            tab.ShowBoard(EntryA(tab), new BoardData(), "PAL", null);
             var window = new Window { Content = tab, Width = 1300, Height = 700 };
             window.Show();
 
             await tab.OpenTableAsync(EntryA(tab));
             Dispatcher.UIThread.RunJobs();
 
-            ContentControl openRow = tab.GetControl<ContentControl>("OpenDraftRow");
+            ContentControl header = tab.GetControl<ContentControl>("CurrentDraftRow");
             BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
 
-            Assert.True(openRow.Bounds.Height > 0, $"The open draft's row is {openRow.Bounds.Height}px tall");
-            Assert.True(editor.Bounds.Height > openRow.Bounds.Height, "The table should take the rest of the height");
-            Assert.True(editor.Bounds.Top >= openRow.Bounds.Bottom, "The table should sit BELOW the row");
+            Assert.True(header.Bounds.Height > 0, $"The draft's header is {header.Bounds.Height}px tall");
+            Assert.True(editor.Bounds.Height > header.Bounds.Height, "The table should take the rest of the height");
+            Assert.True(editor.TranslatePoint(new Point(0, 0), tab)!.Value.Y >= header.TranslatePoint(new Point(0, header.Bounds.Height), tab)!.Value.Y,
+                "The table should sit BELOW the header");
 
-            Button close = tab.GetVisualDescendants().OfType<Button>().Single(button => (button.Content as string) == "Close table");
+            Button close = tab.GetControl<Button>("TableViewButton");
+            Assert.Equal("Close table view", close.Content);
             Assert.True(close.Bounds.Height > 0);
 
             window.Close();
@@ -1183,12 +1177,12 @@ public sealed class TabDraftsTests : IDisposable
 
             Assert.True(tab.IsTableOpen);
             Assert.True(tab.HasUnsavedTableEdits);
-            Assert.Single(ShownRows(tab));
+            Assert.Equal(TabDraftsTests.TableBoardA, HeaderRow(tab)!.ExcelDataFile);
         });
     }
 
     [Fact]
-    public async Task Closing_a_table_with_nothing_unsaved_goes_straight_back_to_the_list()
+    public async Task Closing_a_table_with_nothing_unsaved_goes_straight_back_to_the_start_panel()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -1200,13 +1194,17 @@ public sealed class TabDraftsTests : IDisposable
             Assert.True(await tab.CloseTableAsync());
 
             Assert.False(tab.IsTableOpen);
-            Assert.Equal(2, ShownRows(tab).Count());
+            Assert.True(tab.GetControl<StackPanel>("StartPanel").IsVisible);
             Assert.False(tab.GetControl<BoardTableEditor>("TableEditor").IsVisible);
         });
     }
 
+    // ###########################################################################################
+    // *** CLOSING SAVES WHAT STILL WAITS, AND ASKS NOTHING (CRT 4.0 step 1, 2026-10-25). *** The
+    // table saves itself a second after a change; a change made just before Close is saved by it.
+    // ###########################################################################################
     [Fact]
-    public async Task Closing_with_unsaved_edits_and_CANCEL_keeps_the_table_and_the_edits()
+    public async Task Closing_a_table_saves_what_still_waits_and_asks_nothing()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -1214,43 +1212,7 @@ public sealed class TabDraftsTests : IDisposable
             await tab.OpenTableAsync(EntryA(tab));
             MakeUnsavedEdit(tab);
 
-            tab.UnsavedTableEditsAnswerForTests = _ => UnsavedTableEditsChoice.Cancel;
-
-            Assert.False(await tab.CloseTableAsync());
-
-            Assert.True(tab.IsTableOpen);
-            Assert.True(tab.HasUnsavedTableEdits);
-        });
-    }
-
-    [Fact]
-    public async Task Closing_with_unsaved_edits_and_DISCARD_closes_without_writing_anything()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            TabDrafts tab = TabWithTwoDrafts();
-            await tab.OpenTableAsync(EntryA(tab));
-            MakeUnsavedEdit(tab);
-
-            tab.UnsavedTableEditsAnswerForTests = _ => UnsavedTableEditsChoice.Discard;
-
-            Assert.True(await tab.CloseTableAsync());
-
-            Assert.False(tab.IsTableOpen);
-            Assert.NotEqual("Typed in the table", FirstFriendlyNameOnDisk(TabDraftsTests.TableBoardA));
-        });
-    }
-
-    [Fact]
-    public async Task Closing_with_unsaved_edits_and_SAVE_writes_the_draft_then_closes()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            TabDrafts tab = TabWithTwoDrafts();
-            await tab.OpenTableAsync(EntryA(tab));
-            MakeUnsavedEdit(tab);
-
-            tab.UnsavedTableEditsAnswerForTests = _ => UnsavedTableEditsChoice.Save;
+            tab.UnsavedTableEditsAnswerForTests = _ => throw new InvalidOperationException("Saved - nothing to ask.");
 
             Assert.True(await tab.CloseTableAsync());
 
@@ -1259,33 +1221,42 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // A save that cannot be made asks - and Cancel keeps the table and its change. Refused here: the
+    // draft was written outside the table meanwhile ("Save to draft" in the Contribute tab, say), so
+    // the question offers no Save (it was just tried) and says why - offering it made "Close table" a
+    // loop (reported, 2026-09-24).
+    // ###########################################################################################
     [Fact]
-    public async Task A_save_that_is_REFUSED_keeps_the_table_open_rather_than_losing_the_edits()
+    public async Task A_save_that_is_refused_asks_and_Cancel_keeps_the_table_and_the_change()
     {
-        // Choosing Save and having it refused (the file changed underneath) must not be read as
-        // "fine to leave" - the edits would be gone with nothing written.
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
             await tab.OpenTableAsync(EntryA(tab));
             MakeUnsavedEdit(tab);
 
+            var asked = new List<UnsavedTableEditsPrompt>();
+            tab.UnsavedTableEditsAnswerForTests = prompt =>
+            {
+                asked.Add(prompt);
+                return UnsavedTableEditsChoice.Cancel;
+            };
+
             WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 3);
-            tab.UnsavedTableEditsAnswerForTests = _ => UnsavedTableEditsChoice.Save;
 
             Assert.False(await tab.CloseTableAsync());
 
+            Assert.Equal([UnsavedTableEditsPrompt.DraftChangedOnDisk], asked);
             Assert.True(tab.IsTableOpen);
             Assert.True(tab.HasUnsavedTableEdits);
         });
     }
 
+    // Discard closes on the draft as it was written elsewhere - that version is not touched.
     [Fact]
-    public async Task Closing_when_the_draft_changed_on_disk_asks_WITHOUT_Save_and_discarding_closes()
+    public async Task A_save_that_is_refused_asks_and_Discard_closes_on_the_draft_as_saved()
     {
-        // Reported as a loop: after "Save to draft" in the Contribute tab had written the same
-        // draft, "Close table" offered Save, the save was refused, the table stayed open, and the
-        // next Close asked again. The question now knows a save cannot land and does not offer it.
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
@@ -1300,16 +1271,20 @@ public sealed class TabDraftsTests : IDisposable
             };
 
             WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 3);
+            string written = FirstFriendlyNameOnDisk(TabDraftsTests.TableBoardA);
 
             Assert.True(await tab.CloseTableAsync());
 
             Assert.Equal([UnsavedTableEditsPrompt.DraftChangedOnDisk], asked);
             Assert.False(tab.IsTableOpen);
+            Assert.Equal(written, FirstFriendlyNameOnDisk(TabDraftsTests.TableBoardA));
+            Assert.NotEqual("Typed in the table", written);
         });
     }
 
+    // A save that fails - another program holds the draft's file - asks too, with the reason.
     [Fact]
-    public async Task Closing_while_Excel_holds_the_draft_open_asks_WITHOUT_Save()
+    public async Task Closing_while_another_program_holds_the_draft_asks_WITHOUT_Save()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "File sharing is advisory outside Windows.");
 
@@ -1327,37 +1302,13 @@ public sealed class TabDraftsTests : IDisposable
             };
 
             string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA);
-            File.WriteAllText(Path.Combine(Path.GetDirectoryName(workbook)!, "~$" + Path.GetFileName(workbook)), "owner");
 
             using (new FileStream(workbook, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
             {
                 Assert.False(await tab.CloseTableAsync());
             }
 
-            Assert.Equal([UnsavedTableEditsPrompt.DraftOpenElsewhere], asked);
-            Assert.True(tab.IsTableOpen);
-        });
-    }
-
-    [Fact]
-    public async Task Closing_with_the_draft_unchanged_on_disk_asks_the_ordinary_question_with_Save()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            TabDrafts tab = TabWithTwoDrafts();
-            await tab.OpenTableAsync(EntryA(tab));
-            MakeUnsavedEdit(tab);
-
-            var asked = new List<UnsavedTableEditsPrompt>();
-            tab.UnsavedTableEditsAnswerForTests = prompt =>
-            {
-                asked.Add(prompt);
-                return UnsavedTableEditsChoice.Cancel;
-            };
-
-            Assert.False(await tab.CloseTableAsync());
-
-            Assert.Equal([UnsavedTableEditsPrompt.Leaving], asked);
+            Assert.Equal([UnsavedTableEditsPrompt.DraftNotWritten], asked);
             Assert.True(tab.IsTableOpen);
         });
     }
@@ -1382,44 +1333,61 @@ public sealed class TabDraftsTests : IDisposable
             Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardB));
             Assert.False(tab.HasUnsavedTableEditsFor(null));
 
-            Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.Save());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.SaveNow());
             Assert.False(tab.HasUnsavedTableEditsFor(TabDraftsTests.TableBoardA));
         });
     }
 
     // ###########################################################################################
-    // *** WHICH NOTICE HOLDS ANOTHER EDITOR'S SAVE BACK (code review, 2026-10-09). *** The ordinary
-    // one sends the contributor to this tab to save or discard the table first - but a tab saying
-    // "CRT has to be updated" cannot be used, so then the notice says what settles the table
-    // instead (updating or quitting CRT asks). Nothing holds a save back for another board.
+    // *** ANOTHER EDITOR'S SAVE LANDS ON TOP OF WHAT THE TABLE HOLDS (CRT 4.0 step 1, 2026-10-25). ***
+    // It used to be held back while the table had unsaved edits (the "SavingElsewhere" notice). Now
+    // both change the one draft held in memory: the table hands over the change it has not pushed yet
+    // (DraftSession.ChangeComing), the other editor's change lands on top, and one save writes both.
+    // The table shows it at once, and its Ctrl+Z takes the other editor's change back first.
     // ###########################################################################################
     [Fact]
-    public async Task A_covered_Drafts_tab_holds_another_editors_save_back_with_its_own_notice()
+    public async Task Another_editors_save_lands_on_top_of_what_the_table_holds_and_the_tables_undo_takes_it_back()
     {
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
-
-            Assert.Null(tab.SavingBlockedFor(TabDraftsTests.TableBoardA));
-
             await tab.OpenTableAsync(EntryA(tab));
+
             MakeUnsavedEdit(tab);
 
-            Assert.Equal(UnsavedTableEditsPrompt.SavingElsewhere, tab.SavingBlockedFor(TabDraftsTests.TableBoardA));
-            Assert.Null(tab.SavingBlockedFor(TabDraftsTests.TableBoardB));
+            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                TabDraftsTests.TableBoardA,
+                DraftStepWording.SchematicsAdded(1),
+                board => board.WithSchematics([.. board.Schematics, new BoardSchematicEntry { SchematicName = "Front", SchematicImageFile = "top.png" }]));
 
-            tab.ShowUpdateRequired(AppUpdateRequiredWording.For(AppUpdateArea.Drafts, "Please update CRT.", null));
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, outcome);
 
-            Assert.Equal(UnsavedTableEditsPrompt.SavingElsewhereUpdateRequired, tab.SavingBlockedFor(TabDraftsTests.TableBoardA));
-            Assert.Null(tab.SavingBlockedFor(TabDraftsTests.TableBoardB));
+            // Both are in the file - the table's change was not lost under the other's save.
+            Assert.Equal("Typed in the table", FirstFriendlyNameOnDisk(TabDraftsTests.TableBoardA));
+            Assert.Contains(
+                DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA)!.Schematics,
+                schematic => schematic.SchematicName == "Front");
+
+            // And on screen, at once.
+            BoardTableSheet schematics = tab.TableEditor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+            Assert.Single(schematics.Rows);
+            Assert.False(tab.HasUnsavedTableEdits);
+
+            tab.TableEditor.Undo();
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA)!;
+            Assert.Empty(session.Content.Board.Schematics);
+            Assert.Equal("Typed in the table", session.Content.Board.Components[0].FriendlyName);
+            Assert.Empty(tab.TableEditor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!.Rows);
         });
     }
 
     [Fact]
-    public async Task When_the_table_follows_an_outside_change_the_drafts_row_count_follows_too()
+    public async Task When_the_table_reads_a_draft_written_elsewhere_the_drafts_row_count_follows_too()
     {
         // Reported: the table reloaded after Excel changed the draft, but the draft's row kept its
-        // old "N rows changed". The Drafts tab now refreshes on that reload as it does on a save.
+        // old "N rows changed". The Drafts tab refreshes when the table reads the draft again - after
+        // another part of CRT wrote it - as it does on a save.
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
@@ -1428,12 +1396,70 @@ public sealed class TabDraftsTests : IDisposable
             string before = tab.Drafts.Single(draft => draft.ExcelDataFile == TabDraftsTests.TableBoardA).RowSummary;
 
             WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 5);
-            tab.TableEditor.CheckDraftFile();
+            tab.ReadTableDraftAgain();
 
             string after = tab.Drafts.Single(draft => draft.ExcelDataFile == TabDraftsTests.TableBoardA).RowSummary;
             Assert.NotEqual(before, after);
             Assert.Equal("5 rows changed", after);
             Assert.True(tab.IsTableOpen);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE DRAFT HELD IN MEMORY OUTLIVES ITS TABLE (DraftManager.Sessions, 2026-10-25). *** Opened
+    // again, the table is on the same draft - a change made before is still one Ctrl+Z away - and a
+    // file written meanwhile by another part of CRT is read first.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_table_opened_again_is_on_the_same_draft_and_reads_what_was_written_meanwhile()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            await tab.OpenTableAsync(EntryA(tab));
+            MakeUnsavedEdit(tab);
+            Assert.True(await tab.CloseTableAsync());
+
+            await tab.OpenTableAsync(EntryA(tab));
+
+            DraftSession session = tab.TableEditor.DraftSessionForTests!;
+            Assert.Same(DraftManager.Sessions.Find(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA), session);
+            Assert.True(session.CanUndo);
+            Assert.Equal("Typed in the table", session.Content.Board.Components[0].FriendlyName);
+
+            Assert.True(await tab.CloseTableAsync());
+            WriteDraftWithChanges(TabDraftsTests.TableBoardA, rowCount: 4);
+            await tab.OpenTableAsync(EntryA(tab));
+
+            Assert.Same(session, tab.TableEditor.DraftSessionForTests);
+            Assert.Equal(4, session.Content.Board.Components.Count);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE BOARD ON SCREEN CATCHES UP ONCE THE TABLE IS CLOSED (CRT 4.0 step 1, 2026-10-25). ***
+    // A draft saves a second after every change; reading the whole board again each time would make
+    // the table lag while typed into. The draft's row follows each save; the board, the table's close
+    // (or leaving the tab).
+    // ###########################################################################################
+    [Fact]
+    public async Task The_board_on_screen_is_read_again_when_the_table_closes_not_at_every_save()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            var reloaded = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloaded.Add;
+
+            await tab.OpenTableAsync(EntryA(tab));
+            MakeUnsavedEdit(tab);
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.SaveNow());
+
+            Assert.Empty(reloaded);
+
+            Assert.True(await tab.CloseTableAsync());
+
+            Assert.Equal([TabDraftsTests.TableBoardA], reloaded);
         });
     }
 
@@ -1451,7 +1477,8 @@ public sealed class TabDraftsTests : IDisposable
 
             Assert.False(tab.IsTableOpen);
             Assert.False(tab.GetControl<BoardTableEditor>("TableEditor").HasTable);
-            Assert.Equal(TabDraftsTests.TableBoardB, Assert.Single(ShownRows(tab)).ExcelDataFile);
+            Assert.Equal(TabDraftsTests.TableBoardB, Assert.Single(tab.Drafts).ExcelDataFile);
+            Assert.Null(HeaderRow(tab));
         });
     }
 
@@ -1490,7 +1517,11 @@ public sealed class TabDraftsTests : IDisposable
 
             Assert.NotNull(message);
             Assert.Contains(entry.ToString(), message);
-            Assert.Contains("Excel", message);
+
+            // Worded for the likely cause - a file open in another program. A CRT 4.0 draft is a
+            // board file no spreadsheet program edits, so Excel is no longer named (2026-10-25).
+            Assert.Contains("open in another program", message);
+            Assert.DoesNotContain("Excel", message);
         });
     }
 
@@ -1569,6 +1600,7 @@ public sealed class TabDraftsTests : IDisposable
                 "You have already sent this draft as it is now, on 2026-October-3. Change something to send it again.",
                 row.SubmitTooltip);
 
+            tab.ShowBoard(tab.HardwareBoardsOverrideForTests![0], new BoardData(), "PAL", null);
             var window = new Window { Content = tab, Width = 1300, Height = 600 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
@@ -1661,6 +1693,7 @@ public sealed class TabDraftsTests : IDisposable
             Assert.Equal("Submitted - awaiting feedback from a maintainer", row.SubmissionStateText);
             Assert.Contains("2026-September-27", row.SubmissionTooltip, StringComparison.Ordinal);
 
+            tab.ShowBoard(tab.HardwareBoardsOverrideForTests![0], new BoardData(), "PAL", null);
             var window = new Window { Content = tab, Width = 1300, Height = 600 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
@@ -1690,6 +1723,7 @@ public sealed class TabDraftsTests : IDisposable
             tab.RefreshDrafts();
             Assert.False(Assert.Single(tab.Drafts).HasSubmission);
 
+            tab.ShowBoard(tab.HardwareBoardsOverrideForTests![0], new BoardData(), "PAL", null);
             var window = new Window { Content = tab, Width = 1300, Height = 600 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
@@ -1920,10 +1954,12 @@ public sealed class TabDraftsTests : IDisposable
     // was thrown away, and the release landed on a new one that had never seen the press. A read
     // that finds nothing changed must keep the rows, and so the buttons on them.
     // ###########################################################################################
+    // Since CRT 4.0 step 2 the row is the draft's header, and the board's parts are on the left -
+    // the header's buttons and the left column's must both survive the read.
     [Theory]
-    [InlineData("Schematic images")]
-    [InlineData("KiCad data")]
-    [InlineData("Edit in table format")]
+    [InlineData("Review changes")]
+    [InlineData("Discard draft")]
+    [InlineData("Add component")]
     public void A_click_on_a_rows_button_survives_the_list_being_read_again_mid_click(string label)
     {
         string excelDataFile = "Commodore/C64/250407/Data.xlsx";
@@ -1931,8 +1967,10 @@ public sealed class TabDraftsTests : IDisposable
 
         UiTest.Run(() =>
         {
-            var tab = new TabDrafts { HardwareBoardsOverrideForTests = [BoardEntry("Commodore 64", "250407", excelDataFile)] };
+            HardwareBoardEntry entry = BoardEntry("Commodore 64", "250407", excelDataFile);
+            var tab = new TabDrafts { HardwareBoardsOverrideForTests = [entry] };
             tab.RefreshDrafts();
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
 
             var window = new Window { Content = tab, Width = 1300, Height = 600 };
             window.Show();

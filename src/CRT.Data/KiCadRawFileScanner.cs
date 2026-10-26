@@ -117,7 +117,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Every raw KiCad file a BOARD reads: its published "KiCad data" folder first, then its
-        // draft's (Main.GetCurrentBoardKiCadRawPaths' rule). Both are read because a contributor
+        // draft's (Main.KiCadRawPathsFor' rule). Both are read because a contributor
         // can import KiCad data into a draft of a board whose published copy already has some.
         //
         // Shared with the "Schematic images" window (2026-10-10), which offers the view names of

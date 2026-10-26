@@ -326,20 +326,26 @@ namespace Handlers.MaintainerHandling
             return files == 0 ? "No files." : $"{FileTreeWording.Count(files, "file")}.";
         }
 
-        // "the workbook", "the highlight file" or both - named by what they are, not by path. Null
-        // for neither.
+        // "the board file" (the CRT 4.0 tree, 2026-10-25), or an Excel tree's "the workbook", "the
+        // highlight file" or both - named by what they are, not by path. Null for none.
         private static string? WrittenFiles(IReadOnlyList<BoardFileEntry> written)
         {
-            bool workbook = written.Any(file => !BoardFileEntries.IsHighlightFile(file.Path));
+            bool boardFile = written.Any(file => DataTreeLayout.IsBoardFile(file.Path));
+            bool workbook = written.Any(file => !DataTreeLayout.IsBoardFile(file.Path) && !BoardFileEntries.IsHighlightFile(file.Path));
             bool sidecar = written.Any(file => BoardFileEntries.IsHighlightFile(file.Path));
 
-            return (workbook, sidecar) switch
-            {
-                (true, true) => "the workbook and the highlight file",
-                (true, false) => "the workbook",
-                (false, true) => "the highlight file",
-                _ => null
-            };
+            var named = new List<string>();
+
+            if (boardFile)
+                named.Add("the board file");
+
+            if (workbook)
+                named.Add("the workbook");
+
+            if (sidecar)
+                named.Add("the highlight file");
+
+            return named.Count == 0 ? null : string.Join(" and ", named);
         }
 
         // A file's size on its row (owner request, 2026-10-04) - none for a folder, or for a file
