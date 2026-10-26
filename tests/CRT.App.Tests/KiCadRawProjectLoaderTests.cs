@@ -751,6 +751,23 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
         Assert.Null(pads[1].PinType);
     }
 
+    // A footprint's name, value and datasheet - what a new board's components are made from - in
+    // KiCad 7's properties and an older file's texts alike.
+    [Fact]
+    public async Task Footprints_carry_their_footprint_name_value_and_datasheet()
+    {
+        KiCadProjectRoot? root = await this.LoadAsync(this.WritePcb(KiCadFixtures.PcbWithFootprintNames));
+
+        List<KiCadPcbFootprint> footprints = root!.Pcb[0].Footprints;
+
+        Assert.Equal(
+            [
+                ("U12", "Package_DIP:DIP-20_W7.62mm", "74LS373", "http://www.ti.com/lit/gpn/sn74LS373"),
+                ("U22", "KU-14194HB-RevB-KiCad:DIP16", "4164-2", null),
+            ],
+            footprints.Select(footprint => (footprint.Reference, footprint.FootprintName, footprint.Value, footprint.Datasheet)));
+    }
+
     // ###########################################################################################
     // A symbol's pins come from the sheet's own copy of its library symbol: every unit's (the gates
     // and the hidden power pins are one chip's), the De Morgan body style passed over, and a derived

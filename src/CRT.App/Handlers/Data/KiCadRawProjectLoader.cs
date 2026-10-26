@@ -502,6 +502,9 @@ namespace Handlers.DataHandling
                 {
                     Reference = reference,
                     Layer = footprintLayer,
+                    FootprintName = Arg(footprintNode, 0),
+                    Value = ExtractFootprintTextValue(footprintNode, "value"),
+                    Datasheet = ExtractFootprintTextValue(footprintNode, "Datasheet"),
                     Pads = pads
                 });
             }

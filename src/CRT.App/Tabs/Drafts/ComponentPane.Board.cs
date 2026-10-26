@@ -103,6 +103,10 @@ namespace CRT
                 this.thisNetChoices = null;
             }
 
+            // What "Mark all automatically" said was of the part as it was open before - the part read
+            // again after its marks keeps it (ShowBoardPartRows).
+            this.ShowPicturesNote(null);
+
             this.ForgetComponentRows();
             this.ShowBoardPartRows();
         }
@@ -170,6 +174,7 @@ namespace CRT
 
                 if (part == PaneBoardPart.Pictures)
                 {
+                    this.DropPicturesNoteIfMovedOn();
                     this.ShowBoardPictures(board);
                 }
             }

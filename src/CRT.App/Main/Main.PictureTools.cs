@@ -65,6 +65,10 @@ namespace CRT
             }
         }
 
+        // Whether "Mark components" or "Align KiCad" is on on the Schematics tab - its Done writes what
+        // it holds, so the Contribute tab's "Mark all automatically" waits for it.
+        internal bool IsPictureToolOn => this.TabSchematicsControl.IsLabelEditorActive;
+
         // ###########################################################################################
         // A tool on a picture, from the Contribute tab: the Schematics tab, the picture, the tool. With
         // a tool already on there, that one is shown - it holds the board and the picture until it ends.

@@ -72,6 +72,10 @@ namespace CRT
             // Main's marks are up to date with the board it has just read.
             this.thisChangedHere.Clear();
 
+            // The start panel's lists are worked out once below - unless the start panel coming back
+            // as what was open closes has done it already (code review, 2026-10-26: twice per board).
+            int readinessAsked = this.thisReadinessAsk;
+
             if (this.thisTableEntry is { } tableEntry && (entry is null || !TabDrafts.SameBoard(tableEntry, entry)))
             {
                 this.CloseTableForAnotherBoard(tableEntry);
@@ -84,6 +88,12 @@ namespace CRT
             }
 
             this.ShowWorkspace();
+
+            // How ready a new board is, or what an existing one lacks (TabDrafts.Readiness.cs).
+            if (this.thisReadinessAsk == readinessAsked)
+            {
+                this.ShowReadiness();
+            }
         }
 
         // ###########################################################################################
@@ -176,7 +186,7 @@ namespace CRT
             bool hasBoard = this.thisCurrentBoard is not null;
             this.WorkspaceNav.IsEnabled = hasBoard;
             this.ComponentPane.IsVisible = !this.IsTableOpen && this.IsComponentOpen;
-            this.StartPanel.IsVisible = !this.IsTableOpen && !this.IsComponentOpen;
+            this.ShowStartPanel(!this.IsTableOpen && !this.IsComponentOpen);
             this.TableViewButton.Content = this.thisCurrentEntry is { } entry && this.IsTableOpenFor(entry) ? "Close table view" : "Table view";
 
             string revision = this.thisCurrentBoard?.RevisionDate?.Trim() ?? string.Empty;

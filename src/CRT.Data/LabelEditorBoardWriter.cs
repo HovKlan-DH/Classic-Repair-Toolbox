@@ -147,6 +147,19 @@ namespace Handlers.DataHandling
             return components;
         }
 
+        // ###########################################################################################
+        // Whether a rectangle labelled `boardLabel` makes a NEW component when saved in `region` - the
+        // only case its category is used. The label editor asks only those for one (code review,
+        // 2026-10-26: it asked every rectangle, and one of a component with no category could not be
+        // saved at all).
+        // ###########################################################################################
+        public static bool IsNewComponent(BoardData current, string? boardLabel, string? region)
+        {
+            ArgumentNullException.ThrowIfNull(current);
+
+            return !LabelEditorBoardWriter.ComponentExists(current, boardLabel?.Trim() ?? string.Empty, region?.Trim() ?? string.Empty);
+        }
+
         private static bool ComponentExists(BoardData current, string boardLabel, string targetRegion)
         {
             return current.Components.Any(component =>

@@ -51,6 +51,10 @@ namespace CRT
     //                         turns this version of CRT away from submissions
     //   TabDrafts.SubmitOthers.cs - the other drafts the Submit dialog offers to send with one, and
     //                         making each ready once Submit is pressed
+    //   TabDrafts.Readiness.cs - the start panel's "Getting this board ready" checklist of a new
+    //                         board, and "What's missing" on an existing one
+    //   TabDrafts.MarkAutomatically.cs - a picture's "Mark all automatically": every component's
+    //                         rectangle from its KiCad footprint, on a picture aligned with KiCad
     // ###########################################################################################
     public partial class TabDrafts : UserControl
     {

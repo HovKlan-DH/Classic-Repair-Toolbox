@@ -48,6 +48,9 @@ namespace CRT
 
             // Shown: read again. Posted - the tab is still being laid out.
             Dispatcher.UIThread.Post(this.RefreshForOutsideChanges, DispatcherPriority.Background);
+
+            // And the start panel's lists, when a board was shown while the tab was not (TabDrafts.Readiness.cs).
+            this.ShowReadinessIfStale();
         }
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

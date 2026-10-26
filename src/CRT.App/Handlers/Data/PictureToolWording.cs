@@ -19,6 +19,51 @@ namespace Handlers.DataHandling
         public const string AlignTip = "Opens the Schematics tab on this picture, to line the KiCad copper up with it";
         public const string AlignNeedsKiCadTip = "Needs the board's KiCad data and a CAD name for this picture";
 
+        // ---- marking from KiCad, on the Contribute tab (step 3, slice 3c) ---------------------------------
+
+        public const string MarkAutomaticallyButton = "Mark all automatically";
+
+        public const string MarkAutomaticallyTip =
+            "Draws a rectangle around every component not marked on this picture yet, from the KiCad data it is aligned with";
+
+        public const string MarkAutomaticallyNeedsAlignTip = "Needs the board's KiCad data, a CAD name for this picture, and KiCad aligned on it";
+
+        public static string MarkedAutomatically(int count, string picture) => count switch
+        {
+            0 => $"Every component KiCad shows on [{Trimmed(picture)}] is marked already.",
+            1 => $"Marked 1 component on [{Trimmed(picture)}] from the KiCad data.",
+            _ => $"Marked {count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components on [{Trimmed(picture)}] from the KiCad data.",
+        };
+
+        public static string NotAligned(string picture) =>
+            $"Align KiCad on [{Trimmed(picture)}] first - the rectangles are drawn from that alignment.";
+
+        public static string NotABoardView(string picture) =>
+            $"[{Trimmed(picture)}] shows a KiCad schematic sheet, not the board - mark its components with Mark components.";
+
+        public const string KiCadNotRead = "The board's KiCad data could not be read, so nothing was marked.";
+
+        // Nothing to mark - told apart (code review, 2026-10-26: each read "marked already").
+        public static string NoComponentsYet(string picture) =>
+            $"The board has no components yet, so nothing was marked on [{Trimmed(picture)}] - add them first.";
+
+        public static string NoFootprintOnPicture(string picture) =>
+            $"None of the board's components has a KiCad footprint on [{Trimmed(picture)}], so nothing was marked.";
+
+        // A picture tool's Done writes its picture's rectangles as it holds them - marks put in meanwhile
+        // would go (code review, 2026-10-26).
+        public const string PictureToolOn =
+            "Mark components or Align KiCad is still on on the Schematics tab - finish it with Done or Cancel first.";
+
+        // ---- the components not marked yet, beside the label editor (step 3, slice 3c) -------------------
+
+        public static string UnmarkedHeading(int count) =>
+            $"Not marked on this picture ({count.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
+
+        public const string UnmarkedHelp = "Pick one, then draw its rectangle - it is named for you.";
+
+        public const string AllMarked = "Every component of the board is marked on this picture.";
+
         // ---- the bar ------------------------------------------------------------------------------------
 
         public const string Done = "Done";
@@ -75,7 +120,9 @@ namespace Handlers.DataHandling
             Title(PictureTool.MarkComponents, "A"), Title(PictureTool.AlignKiCad, "A"), Help(PictureTool.MarkComponents),
             Help(PictureTool.AlignKiCad), CannotStart(PictureTool.MarkComponents, "A"), CannotStart(PictureTool.AlignKiCad, "A"),
             PictureNotFound("A"), ImageMissing("A"), NoKiCadData, NoKiCadView("A"), Highlight("A"), TakeHighlightAway("A"),
-            EditComponent, EditComponentTip,
+            EditComponent, EditComponentTip, MarkAutomaticallyButton, MarkAutomaticallyTip, MarkAutomaticallyNeedsAlignTip,
+            MarkedAutomatically(0, "A"), MarkedAutomatically(1, "A"), MarkedAutomatically(2, "A"), NotAligned("A"), NotABoardView("A"),
+            KiCadNotRead, UnmarkedHeading(3), UnmarkedHelp, AllMarked, NoComponentsYet("A"), NoFootprintOnPicture("A"), PictureToolOn,
         ];
     }
 }

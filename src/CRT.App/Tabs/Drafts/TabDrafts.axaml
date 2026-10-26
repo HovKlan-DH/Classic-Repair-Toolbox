@@ -244,6 +244,30 @@
 			<Setter Property="FontSize" Value="11" />
 			<Setter Property="VerticalAlignment" Value="Center" />
 		</Style>
+
+		<!-- "Getting this board ready": a step's icon by its state, its title bold while it is next. -->
+		<Style Selector="TextBlock.ReadinessIcon">
+			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+			<Setter Property="FontSize" Value="13" />
+			<Setter Property="Margin" Value="0,2,0,0" />
+			<Setter Property="Opacity" Value="0.45" />
+		</Style>
+		<Style Selector="TextBlock.ReadinessIcon.done">
+			<Setter Property="Foreground" Value="{DynamicResource Text_Success_Fg}" />
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+		<Style Selector="TextBlock.ReadinessIcon.next">
+			<Setter Property="Foreground" Value="{DynamicResource Text_Waiting_Fg}" />
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+		<Style Selector="TextBlock.ReadinessTitle.next">
+			<Setter Property="FontWeight" Value="SemiBold" />
+		</Style>
+		<Style Selector="TextBlock.ReadinessDetail">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Opacity" Value="0.75" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
 	</UserControl.Styles>
 
 	<Grid RowDefinitions="Auto,Auto,*">
@@ -459,8 +483,10 @@
 			</Grid>
 
 			<Grid Grid.Column="2">
-				<!-- What to do here, until something is open on the right. -->
-				<StackPanel x:Name="StartPanel" Spacing="8" Margin="4,4,0,0">
+				<!-- What to do here, until something is open on the right - scrolled when it is long, and
+				     shown while the panel is (its visibility is the panel's). -->
+				<ScrollViewer IsVisible="{Binding #StartPanel.IsVisible}" HorizontalScrollBarVisibility="Disabled">
+				<StackPanel x:Name="StartPanel" Spacing="8" Margin="4,4,12,12" MaxWidth="760" HorizontalAlignment="Left">
 					<TextBlock x:Name="StartText"
 							   TextWrapping="Wrap"
 							   Text="Pick a component on the left to correct or add to what it says, or a part of the board. The table view shows the whole board as sheets." />
@@ -468,7 +494,22 @@
 							   FontSize="11"
 							   Opacity="0.75"
 							   IsVisible="False" />
+
+					<!-- A new board: getting it ready, step by step (CRT 4.0 step 3 - TabDrafts.Readiness.cs). -->
+					<StackPanel x:Name="ReadinessPanel" Spacing="6" Margin="0,10,0,0" IsVisible="False">
+						<TextBlock Text="Getting this board ready" FontSize="16" FontWeight="SemiBold" />
+						<StackPanel x:Name="ReadinessStepsPanel" Spacing="8" />
+						<!-- What the last step's button did ("Added 19 components from KiCad - ..."). -->
+						<TextBlock x:Name="ReadinessNoteText" TextWrapping="Wrap" Margin="26,4,0,0" IsVisible="False" />
+					</StackPanel>
+
+					<!-- An existing board: what it still lacks, each component a click away. -->
+					<StackPanel x:Name="MissingPanel" Spacing="6" Margin="0,10,0,0" IsVisible="False">
+						<TextBlock Text="What's missing" FontSize="16" FontWeight="SemiBold" />
+						<StackPanel x:Name="MissingGroupsPanel" Spacing="10" />
+					</StackPanel>
 				</StackPanel>
+				</ScrollViewer>
 
 				<local:BoardTableEditor x:Name="TableEditor"
 										IsVisible="False" />

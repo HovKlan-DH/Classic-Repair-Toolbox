@@ -907,6 +907,9 @@
 							ToolTip.Tip="Open the board's pictures - add new ones, take some away, rename them, put them in order or give them their KiCad view"
 							Click="OnManagePicturesClick" />
 
+					<!-- What "Mark all automatically" did, or why it could not (step 3, slice 3c). -->
+					<TextBlock x:Name="BoardPicturesNoteText" TextWrapping="Wrap" Margin="0,0,0,8" IsVisible="False" />
+
 					<TextBlock x:Name="NoBoardPicturesText" Classes="EmptyLine" Text="No pictures yet." />
 
 					<ItemsControl x:Name="BoardPicturesItemsControl">
@@ -964,7 +967,7 @@
 											     contributor mode went): its components' rectangles, and the KiCad copper
 											     lined up with it - the latter for a board with KiCad data and a picture with
 											     a CAD name (PictureToolWording). -->
-											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+											<WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6" Margin="0,4,0,0">
 												<Button Content="Mark components"
 														Tag="{Binding}"
 														ToolTip.Tip="Opens the Schematics tab on this picture, to draw a rectangle around each component"
@@ -975,7 +978,16 @@
 														ToolTip.Tip="{Binding AlignTip}"
 														ToolTip.ShowOnDisabled="True"
 														Click="OnAlignKiCadClick" />
-											</StackPanel>
+												<!-- Every component's rectangle from its footprint, on a picture aligned with
+												     KiCad (step 3, slice 3c) - it adds marks, so green. -->
+												<Button Content="Mark all automatically"
+														Classes="Accept"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanMarkAutomatically}"
+														ToolTip.Tip="{Binding MarkAutomaticallyTip}"
+														ToolTip.ShowOnDisabled="True"
+														Click="OnMarkAutomaticallyClick" />
+											</WrapPanel>
 										</StackPanel>
 									</Grid>
 								</Border>

@@ -210,6 +210,26 @@ internal static class KiCadFixtures
     )
     """;
 
+    // Two footprints with their names, values and datasheets: KiCad 7's properties, and an older
+    // file's "module" with its texts.
+    public const string PcbWithFootprintNames = """
+    (kicad_pcb (version 20240108) (generator pcbnew)
+      (footprint "Package_DIP:DIP-20_W7.62mm" (layer "F.Cu")
+        (at 10 10)
+        (property "Reference" "U12")
+        (property "Value" "74LS373")
+        (property "Datasheet" "http://www.ti.com/lit/gpn/sn74LS373")
+        (pad "1" thru_hole rect (at 0 0) (size 1.6 1.6) (layers "*.Cu"))
+      )
+      (module KU-14194HB-RevB-KiCad:DIP16 (layer F.Cu)
+        (at 30 10)
+        (fp_text reference U22 (at 0 0) (layer F.SilkS))
+        (fp_text value 4164-2 (at 0 2) (layer F.Fab))
+        (pad 1 thru_hole rect (at 0 0) (size 1.6 1.6) (layers *.Cu))
+      )
+    )
+    """;
+
     // A sheet keeping its library symbols: a two-unit gate with a De Morgan body style, and a symbol
     // derived from it with no pins of its own.
     public const string SchematicWithLibrarySymbols = """

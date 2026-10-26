@@ -563,23 +563,14 @@ public partial class TabSchematics
             return default;
         }
 
-        double nx = (worldX - worldBounds.X) / worldBounds.Width;
-        double ny = (worldY - worldBounds.Y) / worldBounds.Height;
-
-        if (calibration.MirrorX)
-        {
-            nx = 1.0 - nx;
-        }
-
-        if (calibration.MirrorY)
-        {
-            ny = 1.0 - ny;
-        }
-
-        double imageX = calibration.OffsetX + (nx * calibration.ScaleX * this.currentFullResBitmap.PixelSize.Width);
-        double imageY = calibration.OffsetY + (ny * calibration.ScaleY * this.currentFullResBitmap.PixelSize.Height);
-
-        return new Point(imageX, imageY);
+        // The one mapping - "Mark all automatically" places its rectangles with it too.
+        return KiCadFootprintMarks.WorldToImagePixel(
+            worldX,
+            worldY,
+            worldBounds,
+            new KiCadCalibrationValues(calibration.ScaleX, calibration.ScaleY, calibration.OffsetX, calibration.OffsetY, calibration.MirrorX, calibration.MirrorY),
+            this.currentFullResBitmap.PixelSize.Width,
+            this.currentFullResBitmap.PixelSize.Height);
     }
 
     // ###########################################################################################

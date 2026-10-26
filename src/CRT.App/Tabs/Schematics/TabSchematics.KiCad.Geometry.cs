@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -108,81 +109,10 @@ public partial class TabSchematics
     // ###########################################################################################
     // Computes a world bounding box for all PCB geometry used by the MVP overlay.
     // Copper zones are included so rendering and hit testing use the full occupied board area.
+    // The rule is KiCadFootprintMarks' - "Mark all automatically" maps footprints with the same
+    // bounds, so its rectangles land where this tab draws the copper.
     // ###########################################################################################
-    private Rect GetKiCadPcbWorldBounds(KiCadPcb pcb)
-    {
-        bool hasValue = false;
-        double minX = 0;
-        double minY = 0;
-        double maxX = 0;
-        double maxY = 0;
-
-        void Include(double x, double y)
-        {
-            if (!hasValue)
-            {
-                minX = maxX = x;
-                minY = maxY = y;
-                hasValue = true;
-                return;
-            }
-
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-
-        foreach (var segment in pcb.Routing.Segments)
-        {
-            if (segment.Start != null) Include(segment.Start.X, segment.Start.Y);
-            if (segment.End != null) Include(segment.End.X, segment.End.Y);
-        }
-
-        foreach (var via in pcb.Routing.Vias)
-        {
-            if (via.At != null) Include(via.At.X, via.At.Y);
-        }
-
-        foreach (var arc in pcb.Routing.Arcs)
-        {
-            if (arc.Start != null) Include(arc.Start.X, arc.Start.Y);
-            if (arc.Mid != null) Include(arc.Mid.X, arc.Mid.Y);
-            if (arc.End != null) Include(arc.End.X, arc.End.Y);
-        }
-
-        foreach (var footprint in pcb.Footprints)
-        {
-            foreach (var pad in footprint.Pads)
-            {
-                if (pad.AbsoluteCenter == null)
-                {
-                    continue;
-                }
-
-                double halfWidth = (pad.Size?.X ?? 0.0) / 2.0;
-                double halfHeight = (pad.Size?.Y ?? 0.0) / 2.0;
-
-                Include(pad.AbsoluteCenter.X - halfWidth, pad.AbsoluteCenter.Y - halfHeight);
-                Include(pad.AbsoluteCenter.X + halfWidth, pad.AbsoluteCenter.Y + halfHeight);
-            }
-        }
-
-        foreach (var zone in pcb.Routing.Zones)
-        {
-            foreach (var polygon in zone.FilledPolygons.Count > 0 ? zone.FilledPolygons : zone.OutlinePolygons)
-            {
-                foreach (var point in polygon.Points)
-                {
-                    Include(point.X, point.Y);
-                }
-            }
-        }
-
-        return hasValue
-            ? new Rect(minX, minY, Math.Max(0.0001, maxX - minX), Math.Max(0.0001, maxY - minY))
-            : default;
-    }
+    private Rect GetKiCadPcbWorldBounds(KiCadPcb pcb) => KiCadFootprintMarks.PcbWorldBounds(pcb);
 
     // ###########################################################################################
     // Computes a world bounding box for schematic wires, polylines, and net labels.

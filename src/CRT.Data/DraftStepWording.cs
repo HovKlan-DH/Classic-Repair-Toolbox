@@ -18,6 +18,16 @@ namespace Handlers.DataHandling
         // A new component, from the component pane's "Add component" (slice 3c).
         public static string ComponentAdded(string label) => $"[{label}] added";
 
+        // A new board's components from its KiCad data, all in one go (step 3) - how many.
+        public static string ComponentsFromKiCad(int count) =>
+            count == 1 ? "1 component added from KiCad" : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components added from KiCad";
+
+        // "Mark all automatically" on a picture aligned with KiCad (step 3) - how many, and where.
+        public static string ComponentsMarkedFromKiCad(string picture, int count) =>
+            count == 1
+                ? $"1 component marked on [{picture}] from KiCad"
+                : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components marked on [{picture}] from KiCad";
+
         // "Copy from another board" (slice 5) - what the component took, and from where.
         public static string ComponentCopied(string label, string fromBoard) => $"[{label}] copied from {fromBoard}";
 

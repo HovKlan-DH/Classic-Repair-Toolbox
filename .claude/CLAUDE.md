@@ -714,6 +714,82 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   right-click), a board part, the table - goes again when that closes with nothing in it**
   (`TabDrafts.LetGoOfDraftMadeOnlyToLook`; code review, 2026-10-26): nothing waiting to be saved, no
   change against the published board, never a new board's, never one there before.
+- **The start panel says how far the board is** (CRT 4.0 step 3's slice 3a, 2026-10-26;
+  `TabDrafts.Readiness.cs`, every rule and word `BoardReadiness`): a NEW board (`IsDraftOnly`) gets
+  "Getting this board ready" - the plan's nine steps, each DONE by what the draft held in memory holds
+  (never a box ticked), the KiCad project optional (without it matching, aligning and signals are
+  skipped, no button), the first step left NEXT, "Check and submit" next once nothing else is and never
+  done - with a button to the tool that does each (Add component and Submit green). An EXISTING board
+  gets "What's missing": no short description, marked on no picture, pins but no scope baseline - each
+  component a button opening it in the pane, the first `ListedAtMost` named. **Worked out ONCE per board
+  shown and when the start panel comes back** (`ShowStartPanel`; ShowBoard skips its own when that did
+  it), never on every `RefreshDrafts`, and **not while the tab is off screen** - then when it is shown
+  (`IsOnScreen`, `ShowReadinessIfStale` from `OnAttachedToVisualTree`; code review, 2026-10-26); from the
+  SESSION's content when the board has one (the pane's saves leave the board shown behind). The KiCad
+  facts (`BoardKiCadFacts`) arrive a moment later through `ReadBoardKiCadAsync` **into the same rows**,
+  and **"What's missing"'s groups and buttons are made once too** (`InPlaceList.Sync`) - a control made
+  again under a press threw the click away; a newer ask wins (`thisReadinessAsk`). A board's last facts
+  are KEPT and shown while they are read again (`thisReadinessFacts` - the button flicked to "Add
+  component"); another board's checklist goes AT ONCE (`HideSteps`), and with no draft to open none
+  shows. **KiCad files that could not be read are NOT empty KiCad data** (`BoardKiCadFacts.Read`): the
+  KiCad step says so (`KiCadUnreadable`), matching, aligning and signals need data CRT can read.
+  **Matching never holds the list up** once a picture shows a view: every picture or every view matched
+  is done, anything between Optional - CRT cannot know a photo shows no view (code review, 2026-10-26).
+- **"Add N from KiCad"** (step 3's slice 3b, 2026-10-26 - the plan: "one press adds every KiCad
+  component that isn't on the board yet"; the rule CRT.Data's `KiCadBoardComponents`, the KiCad types
+  handed over by `KiCadComponentTable`, the button `TabDrafts.AddFromKiCadAsync`): the components step's
+  button while the KiCad data has components the board lacks (`ReadinessStep.FromKiCad`), else "Add
+  component". **The components are the FIRST PCB file's footprints, once per reference** (a project
+  with no PCB, its symbols) - never a placeholder ("REF**", "#PWR", "U?"), a footprint with no numbered
+  pad (a logo), a mounting hole, a fiducial or a net tie; the checklist's "N found in KiCad" counts the
+  very same ones (`BoardKiCadFacts`). **The category is what the live boards use for the reference
+  prefix** (measured on the stable tree: C Capacitor, R/RP Resistor, U*/IC IC, CR/D/DP Diode, CN/P
+  Connector, Q/TR Transistor; KiCad's convention where they have none - J a Connector, JP Misc; the rest
+  Misc). **The package only when the footprint's NAME says it and its pads agree** (a name STARTING
+  "DIP16", "PDIP-40", "DIP-14_W7.62mm" with that many pads - "SOIC-DIP-8" and "Oscillator_DIP-14" are
+  none; a 24/28-pin DIP "wide" by W15.24 in its name or pin 1 and the last pin 600 mil apart; SIP; TO-92
+  and TO-220 with three pads) - else empty. The value is KiCad's ("~" none). A
+  component with a package gets its PINS (`KiCadPinTable` - "Fill from KiCad"'s; the net never stored),
+  one with a datasheet that is a web address (the symbol's, else the footprint's; `TextLinkFinder`'s
+  shapes) a "Datasheet for <value>" link. **ONE step** (`DraftStepWording.ComponentsFromKiCad`), placed
+  by `ComponentPlacement` (new categories chips first), saved at once under the BusyOverlay - **counted
+  and named on the draft as the change finds it** (`DraftEdits.OpenForChangeAsync` first: a file
+  written outside read, what editors hold handed over); only a change reads the board on screen again.
+  What came of it is said under the checklist (`BoardReadiness.AddedFromKiCad`) **only while the draft
+  is the content it was said of** (`ReadinessNote` - an Undo takes it); no draft to open is said on the
+  tab's problem line. The
+  loader reads each footprint's name, value and datasheet (`KiCadPcbFootprint.FootprintName`/`Value`/
+  `Datasheet`). On the shipped KiCad data every chip gets its package but 250469's PLA (its own footprint).
+- **"Mark all automatically"** (step 3's slice 3c, 2026-10-26 - the plan: "on aligned PCB pictures,
+  Mark all automatically draws each component's rectangle from its footprint"; `Handlers/Geometry/
+  KiCadFootprintMarks`, `TabDrafts.MarkAutomatically.cs`): a green button on each picture card in the
+  Pictures part, on for a picture with a CAD name AND a calibration in the draft; whether its view is a
+  SIDE OF THE BOARD (pcb_top/pcb_bottom, never a schematic sheet) is decided with the KiCad data read
+  (`KiCadFootprintMarks.Plan` - the first thing missing is said under the part's heading). **The board's
+  world bounds and the mapping onto the picture are the Schematics tab's own** - its
+  `GetKiCadPcbWorldBounds` and `MapKiCadWorldToImagePixel` call `KiCadFootprintMarks.PcbWorldBounds`/
+  `WorldToImagePixel` - so a rectangle lands where the copper is drawn; never a second copy of either.
+  A rectangle is the footprint's pads (each turned by its own angle) with 0.5 mm around and at least 2 mm
+  across, in whole pixels cut to the picture (a corner a hair off a pixel IS that pixel - float noise
+  added one). Only components the board HAS, seen from the picture's side (a through-hole pad from both,
+  a surface part from its own), with NO mark on the picture yet - a mark drawn by hand is never moved;
+  ONE step (`DraftStepWording.ComponentsMarkedFromKiCad`), worked out on the draft as the change finds
+  it, saved at once. **Never while a picture tool is on** (`Main.IsPictureToolOn`; code review,
+  2026-10-26: the label editor's Done writes its picture's rectangles as it holds them, and the marks
+  went without a word). Nothing marked is said for what it is (`KiCadMarkPlan.WhyNothing`: no components
+  yet, no footprint on the picture, all marked already), and the note under the part goes once the draft
+  moves on (`DropPicturesNoteIfMovedOn` - an Undo takes it). The checklist's Mark step offers it once a
+  picture is aligned with a SIDE OF THE BOARD (`BoardKiCadFacts.BoardViews` - never a schematic sheet).
+- **The label editor lists the components not marked on its picture** (slice 3c - the plan: "Photos and
+  scanned schematics use the label editor as today, with the unmarked components listed beside it";
+  `TabSchematics.LabelEditor.Unmarked.cs`, `UnmarkedComponents`): IN the picture tool's bar (the editor
+  only starts from "Mark components"; over the picture's corners it covered Global settings), one button
+  per label, changed in place. **One picked names the next rectangle drawn** - label and category, no
+  prompt (`AddDrawnLabelEditorRectangle`); picked again it is let go; an undo puts a component back.
+  **Done asks a category only of a label that makes a NEW component** (`LabelEditorBoardWriter
+  .IsNewComponent` - the save's own rule, in the region it saves in; code review, 2026-10-26): it asked
+  every rectangle, and one of a component with no category - picked, or marked automatically - could not
+  be saved at all.
 - **"Contribution in use"** (`Main.thisContributionInUse` - a draft, or unread news on something sent)
   is what the Drafts tab's visibility used to be: it decides whether CRT asks the API revision.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
@@ -1096,7 +1172,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 | `TabSchematics.Input.cs` | Pointer, wheel, gesture and keyboard handlers - these only dispatch |
 | `TabSchematics.Thumbnails.cs` / `.ThumbnailsDetach.cs` | Thumbnail loading, order and selection, and the detached window mode. The panel itself - in the tab, the detached window and beside fullscreen - is ONE control, `SchematicsThumbnailGallery` (auto-fit, never scrolled; owner request 2026-10-15). **The selection and the label editor's lock are the TAB's** (`SelectedThumbnail` - a field, never a list bound to the tiles, which a drag's lift emptied - `SelectThumbnailFromGallery`, `IsThumbnailNavigationLocked`, `CancelThumbnailDrags` before the tiles are replaced): a gallery shows them, listens only while in the visual tree, handles EVERY press and release on a tile (the ListBoxItem selected on a press, on a right press, and on another finger's release), selects on its own pointer's left release, and never passes on what its own ListBox does by itself - each "nothing selected" from a lifted tile or a Ctrl+click once blanked the view |
 | `TabSchematics.Highlights.cs` | Component highlight overlays, blink, hover UI, labels |
-| `TabSchematics.LabelEditor*.cs` | Label editor lifecycle, interaction, snap context, test seams |
+| `TabSchematics.LabelEditor*.cs` | Label editor lifecycle, interaction, snap context, test seams, and the components not marked on the picture (`.Unmarked.cs`) |
 | `TabSchematics.Worklog.cs` / `.Worklog.TestSeams.cs` | Worklog overlay, area drawing and moving |
 | `TabSchematics.KiCad*.cs` | KiCad load, panels, rendering, render cache, geometry, hit-testing, calibration |
 | `TabSchematics.Settings.cs` | Board-level and global setting rows |

@@ -254,13 +254,25 @@ public partial class TabSchematics
             return;
         }
 
+        this.AddDrawnLabelEditorRectangle(finalRect, releaseContainerPoint);
+    }
+
+    // ###########################################################################################
+    // A rectangle drawn, into the working copy and selected: named at once after the component
+    // picked in the list of those not marked yet (step 3, slice 3c - TabSchematics.LabelEditor
+    // .Unmarked.cs), else the prompt asks for its label.
+    // ###########################################################################################
+    private void AddDrawnLabelEditorRectangle(Rect finalRect, Point promptPoint)
+    {
         this.PushLabelEditorUndoState(this.CreateLabelEditorUndoState());
+
+        UnmarkedComponent? picked = this.TakePickedUnmarkedComponent();
 
         var newRow = new EditableComponentHighlight
         {
             SchematicName = this.GetCurrentSchematicName(),
-            BoardLabel = string.Empty,
-            Category = string.Empty,
+            BoardLabel = picked?.Label ?? string.Empty,
+            Category = picked?.Category ?? string.Empty,
             X = finalRect.X,
             Y = finalRect.Y,
             Width = finalRect.Width,
@@ -269,10 +281,18 @@ public partial class TabSchematics
 
         this.thisLabelEditorWorkingHighlights.Add(newRow);
         this.SetSingleSelectedLabelEditorHighlight(newRow, refresh: false);
+
+        if (picked is not null)
+        {
+            this.RefreshLabelEditorOverlay();
+            this.SchematicsContainer.Focus();
+            return;
+        }
+
         this.thisPendingNewLabelEditorHighlight = newRow;
 
         this.RefreshLabelEditorOverlay();
-        this.ShowNewLabelEditorPrompt(releaseContainerPoint);
+        this.ShowNewLabelEditorPrompt(promptPoint);
     }
 
     // ###########################################################################################

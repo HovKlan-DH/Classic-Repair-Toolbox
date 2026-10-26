@@ -52,6 +52,7 @@ namespace CRT
             this.ComponentPane.PreviewRequested += (_, label) => this.PreviewComponent(label);
             this.ComponentPane.ManagePicturesRequested += (_, _) => this.ManagePictures();
             this.ComponentPane.PictureToolRequested += (_, asked) => this.RunGuarded(() => this.StartPictureToolAsync(asked.Tool, asked.Picture), "Picture tool");
+            this.ComponentPane.MarkAutomaticallyRequested += (_, picture) => this.RunGuarded(() => this.MarkAutomaticallyAsync(picture), "Mark all automatically");
             this.ComponentPane.FindOnOtherBoards = this.FindOnOtherBoardsAsync;
             this.ComponentPane.FindAlsoTargets = this.FindAlsoTargetsAsync;
             this.ComponentPane.ApplyToOtherBoards = this.ApplyToOtherBoardsAsync;

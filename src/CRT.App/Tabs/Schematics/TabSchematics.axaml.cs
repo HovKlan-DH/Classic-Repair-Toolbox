@@ -27,6 +27,8 @@
 //   TabSchematics.LabelEditor.Interaction.cs  Label editor pointer/keyboard interaction
 //   TabSchematics.LabelEditor.Snap.cs         Builds the snap context from tab state; the maths
 //                                             itself is Handlers/Geometry/LabelEditorSnapGeometry
+//   TabSchematics.LabelEditor.Unmarked.cs     The components not marked on the picture, listed
+//                                             beside the editor - one picked names the next rectangle
 //   TabSchematics.KiCad.cs                    KiCad project state, selection and cache scopes
 //   TabSchematics.KiCad.Panels.cs             The Important signals and Net connections panels
 //   TabSchematics.KiCad.Render.cs             Draws the KiCad overlay onto the schematic

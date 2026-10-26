@@ -130,6 +130,18 @@ namespace Handlers.DataHandling
         [JsonPropertyName("layer")]
         public string? Layer { get; init; }
 
+        // The footprint it is drawn with ("Package_DIP:DIP-40_W15.24mm"), its value ("6510") and its
+        // datasheet property (KiCad 7 and later copy it from the symbol) - what a new board's
+        // components are made from (KiCadBoardComponents).
+        [JsonPropertyName("footprint")]
+        public string? FootprintName { get; init; }
+
+        [JsonPropertyName("value")]
+        public string? Value { get; init; }
+
+        [JsonPropertyName("datasheet")]
+        public string? Datasheet { get; init; }
+
         [JsonPropertyName("pads")]
         public List<KiCadPcbPad> Pads { get; init; } = new();
     }

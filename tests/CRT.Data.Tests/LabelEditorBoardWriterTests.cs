@@ -22,6 +22,30 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class LabelEditorBoardWriterTests
 {
+    // ###########################################################################################
+    // A rectangle makes a new component only where the board has none of its label in the region
+    // saved in - a blank region either side matching any (code review, 2026-10-26: the editor asked
+    // every rectangle for a category, though only a new component's is used).
+    // ###########################################################################################
+    [Fact]
+    public void A_label_is_a_new_component_only_where_the_board_has_none_in_that_region()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U1" },
+                new ComponentEntry { BoardLabel = "U2", Region = "PAL" },
+            ],
+        };
+
+        Assert.False(LabelEditorBoardWriter.IsNewComponent(board, " u1 ", "NTSC"));
+        Assert.False(LabelEditorBoardWriter.IsNewComponent(board, "U2", "PAL"));
+        Assert.False(LabelEditorBoardWriter.IsNewComponent(board, "U2", ""));
+        Assert.True(LabelEditorBoardWriter.IsNewComponent(board, "U2", "NTSC"));
+        Assert.True(LabelEditorBoardWriter.IsNewComponent(board, "U3", ""));
+    }
+
     private static LabelEditorSaveRow Row(
         string boardLabel,
         double x = 10,

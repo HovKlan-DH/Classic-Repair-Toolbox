@@ -537,7 +537,7 @@ namespace CRT
 
             this.TableEditor.IsVisible = this.IsTableOpen;
             this.ComponentPane.IsVisible = !this.IsTableOpen && this.IsComponentOpen;
-            this.StartPanel.IsVisible = !this.IsTableOpen && !this.IsComponentOpen;
+            this.ShowStartPanel(!this.IsTableOpen && !this.IsComponentOpen);
         }
 
         // ###########################################################################################

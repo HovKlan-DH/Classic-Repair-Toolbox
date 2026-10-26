@@ -43,6 +43,8 @@ public sealed class CrtWaitWordingTests
             CrtWaitWording.RemovingSchematic,
             CrtWaitWording.ImportingKiCad,
             CrtWaitWording.CheckingKiCadMatches,
+            CrtWaitWording.AddingKiCadComponents,
+            CrtWaitWording.MarkingFromKiCad,
             CrtWaitWording.ConnectingOscilloscope,
             CrtWaitWording.DownloadingUpdate,
             CrtWaitWording.ExportingWorkbook(asZip: true),

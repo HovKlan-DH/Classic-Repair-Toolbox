@@ -338,6 +338,10 @@ public partial class TabSchematics
     // ###########################################################################################
     private void RefreshLabelEditorOverlay(IReadOnlyList<(Point Start, Point End)>? snapGuides = null)
     {
+        // The components not marked yet follow every change of the working copy, the mode's end
+        // included (TabSchematics.LabelEditor.Unmarked.cs).
+        this.ShowUnmarkedComponents();
+
         if (!this.thisIsLabelEditorMode || this.currentFullResBitmap == null)
         {
             this.SchematicsLabelEditorOverlay.ApplyState(
@@ -578,6 +582,12 @@ public partial class TabSchematics
             .Where(row => string.Equals(row.SchematicName, schematicName, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
+        // A category is asked only of a label that makes a new component - the save's own rule
+        // (LabelEditorBoardWriter.IsNewComponent, in the region it saves in) leaves an existing one
+        // alone (code review, 2026-10-26).
+        BoardData? board = this.CurrentBoardDataForLabelEditor;
+        string region = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
+
         foreach (var row in rows)
         {
             if (string.IsNullOrWhiteSpace(row.BoardLabel))
@@ -586,7 +596,8 @@ public partial class TabSchematics
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(row.Category))
+            if (string.IsNullOrWhiteSpace(row.Category) &&
+                (board is null || LabelEditorBoardWriter.IsNewComponent(board, row.BoardLabel, region)))
             {
                 validationError = $"The label [{row.BoardLabel}] is missing a category";
                 return false;

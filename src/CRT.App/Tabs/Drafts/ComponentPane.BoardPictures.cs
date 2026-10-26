@@ -29,6 +29,10 @@ namespace CRT
     //   - "USE FOR ALL PICTURES" gives every picture these colours, as one step.
     //   - Adding, removing, renaming and ordering pictures stays the "Schematic images" window's
     //     (ManagePicturesRequested - the host opens it); the part reads the draft again after it.
+    //   - EACH CARD'S TOOLS: "Mark components" and "Align KiCad" open the Schematics tab in that tool
+    //     (PictureToolRequested); "Mark all automatically" (step 3, slice 3c), on a picture aligned with
+    //     KiCad, has the host draw every component's rectangle from its footprint
+    //     (MarkAutomaticallyRequested - TabDrafts.MarkAutomatically.cs), said under the heading.
     //
     // Part of the ComponentPane partial class - see ComponentPane.axaml.cs for the file map.
     // ###########################################################################################
@@ -66,8 +70,12 @@ namespace CRT
 
             Dictionary<string, Dictionary<string, List<Rect>>> highlights = HighlightRectBuilder.BuildHighlightRects(board, this.thisRegion);
 
-            // "Align KiCad" needs the board's KiCad data - names under "KiCad data/" in the draft's list.
+            // "Align KiCad" needs the board's KiCad data - names under "KiCad data/" in the draft's list;
+            // "Mark all automatically" a picture aligned in the draft too.
             bool boardHasKiCad = this.thisSession?.ListedFiles.Keys.Any(SubmissionKiCadFiles.IsInKiCadFolder) == true;
+            var aligned = new HashSet<string>(
+                this.thisSession?.Content.Calibrations.Select(entry => entry.SchematicName?.Trim() ?? string.Empty) ?? [],
+                StringComparer.OrdinalIgnoreCase);
 
             ComponentPane.Fill(
                 this.thisBoardPictures,
@@ -76,7 +84,8 @@ namespace CRT
                     highlights.TryGetValue(row.SchematicName?.Trim() ?? string.Empty, out var byLabel)
                         ? byLabel.Values.SelectMany(rects => rects).ToList()
                         : [],
-                    boardHasKiCad)));
+                    boardHasKiCad,
+                    aligned.Contains(row.SchematicName?.Trim() ?? string.Empty))));
 
             foreach (ComponentPaneBoardPictureRow row in this.thisBoardPictures)
             {
@@ -164,6 +173,53 @@ namespace CRT
             this.CommitHeld();
             this.PictureToolRequested?.Invoke(this, (tool, row.Name));
         }
+
+        // ###########################################################################################
+        // "Mark all automatically" on a picture aligned with KiCad (step 3, slice 3c): what the pane
+        // holds handed over first, then the host draws the rectangles into the draft
+        // (TabDrafts.MarkAutomaticallyAsync) and says what came of it here (ShowPicturesNote).
+        // ###########################################################################################
+        internal event EventHandler<string>? MarkAutomaticallyRequested;
+
+        private void OnMarkAutomaticallyClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneBoardPictureRow row })
+            {
+                this.RequestMarkAutomatically(row);
+            }
+        }
+
+        internal void RequestMarkAutomatically(ComponentPaneBoardPictureRow row)
+        {
+            this.thisTypingTimer.Stop();
+            this.CommitHeld();
+            this.MarkAutomaticallyRequested?.Invoke(this, row.Name);
+        }
+
+        // The draft's content the note was said of - it goes once the draft moves on.
+        private BoardContent? thisPicturesNoteContent;
+
+        // ###########################################################################################
+        // What the last "Mark all automatically" did - null to say nothing. Said only while the draft is
+        // the content it was said of (code review, 2026-10-26: after an Undo it still said the marks
+        // were made) - the part read again drops it (DropPicturesNoteIfMovedOn).
+        // ###########################################################################################
+        internal void ShowPicturesNote(string? note)
+        {
+            this.thisPicturesNoteContent = this.thisSession?.Content;
+            this.BoardPicturesNoteText.Text = note;
+            this.BoardPicturesNoteText.IsVisible = !string.IsNullOrWhiteSpace(note);
+        }
+
+        private void DropPicturesNoteIfMovedOn()
+        {
+            if (this.BoardPicturesNoteText.IsVisible && !ReferenceEquals(this.thisSession?.Content, this.thisPicturesNoteContent))
+            {
+                this.ShowPicturesNote(null);
+            }
+        }
+
+        internal string? PicturesNoteForTests => this.BoardPicturesNoteText.IsVisible ? this.BoardPicturesNoteText.Text : null;
 
         // ---- previews -----------------------------------------------------------------------------
 
@@ -332,14 +388,25 @@ namespace CRT
 
         public string AlignTip => this.CanAlignKiCad ? PictureToolWording.AlignTip : PictureToolWording.AlignNeedsKiCadTip;
 
-        public static ComponentPaneBoardPictureRow From(BoardSchematicEntry row, IReadOnlyList<Rect> highlights, bool boardHasKiCad = false)
+        // "Mark all automatically" needs that, and KiCad aligned on the picture - whether its view is a
+        // side of the board, the host finds out and says (KiCadFootprintMarks.Plan).
+        public bool CanMarkAutomatically { get; init; }
+
+        public string MarkAutomaticallyTip => this.CanMarkAutomatically
+            ? PictureToolWording.MarkAutomaticallyTip
+            : PictureToolWording.MarkAutomaticallyNeedsAlignTip;
+
+        public static ComponentPaneBoardPictureRow From(BoardSchematicEntry row, IReadOnlyList<Rect> highlights, bool boardHasKiCad = false, bool aligned = false)
         {
+            bool canAlign = boardHasKiCad && !string.IsNullOrWhiteSpace(row.CadName);
+
             var shown = new ComponentPaneBoardPictureRow
             {
                 Name = row.SchematicName ?? string.Empty,
                 File = row.SchematicImageFile ?? string.Empty,
                 Highlights = highlights,
-                CanAlignKiCad = boardHasKiCad && !string.IsNullOrWhiteSpace(row.CadName),
+                CanAlignKiCad = canAlign,
+                CanMarkAutomatically = canAlign && aligned,
             };
 
             shown.Use(row.ReadColours());

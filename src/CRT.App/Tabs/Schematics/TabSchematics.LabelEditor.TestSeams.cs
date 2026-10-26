@@ -68,6 +68,9 @@ public partial class TabSchematics
 
     internal void CancelLabelEditorChangesForTests() => this.CancelLabelEditorChanges();
 
+    // Done's check of the working copy, before anything is written.
+    internal bool TryValidateLabelEditorSaveForTests(out string validationError) => this.TryValidateLabelEditorSave(out validationError);
+
     // Selection, by index into the working rows.
     internal void SelectLabelEditorRowForTests(int workingIndex)
     {

@@ -91,6 +91,12 @@ namespace Handlers.DataHandling
 
         public const string CheckingKiCadMatches = "Checking what the KiCad data lines up with...";
 
+        // "Add N from KiCad" on a new board's checklist (step 3).
+        public const string AddingKiCadComponents = "Adding the components from the KiCad data to your draft...";
+
+        // "Mark all automatically" on a picture aligned with KiCad (step 3).
+        public const string MarkingFromKiCad = "Drawing the components' rectangles from the KiCad data...";
+
         public const string ConnectingOscilloscope = "Connecting to the oscilloscope...";
 
         public const string DownloadingUpdate = "Downloading the update...";

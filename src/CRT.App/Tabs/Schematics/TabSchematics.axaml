@@ -890,7 +890,7 @@
 				BorderThickness="1"
 				CornerRadius="6"
 				Padding="12,8">
-			<Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+			<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
 				<StackPanel Spacing="2" VerticalAlignment="Center">
 					<TextBlock x:Name="PictureToolTitleText"
 							   FontWeight="Bold"
@@ -911,6 +911,33 @@
 							Classes="Accept"
 							Content="Done" />
 				</StackPanel>
+
+				<!-- THE COMPONENTS NOT MARKED ON THIS PICTURE YET (step 3, slice 3c - the plan: "Photos
+				     and scanned schematics use the label editor as today, with the unmarked components
+				     listed beside it"): while the label editor is on, in the bar - never over the
+				     picture's corners, which hold the settings and the traces. Pick one, draw its
+				     rectangle, and it is named - no question asked (TabSchematics.LabelEditor.Unmarked.cs). -->
+				<Border x:Name="UnmarkedPanelBorder"
+						Grid.Row="1"
+						Grid.ColumnSpan="2"
+						IsVisible="False"
+						Margin="0,8,0,0"
+						Padding="0,8,0,0"
+						BorderBrush="{DynamicResource Schematics_Panels_Border}"
+						BorderThickness="0,1,0,0">
+					<StackPanel Spacing="4">
+						<TextBlock x:Name="UnmarkedHeadingText"
+								   FontWeight="Bold"
+								   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+						<TextBlock x:Name="UnmarkedHelpText"
+								   FontSize="12"
+								   TextWrapping="Wrap"
+								   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+						<ScrollViewer MaxHeight="140" HorizontalScrollBarVisibility="Disabled">
+							<WrapPanel x:Name="UnmarkedButtonsPanel" />
+						</ScrollViewer>
+					</StackPanel>
+				</Border>
 			</Grid>
 		</Border>
 
