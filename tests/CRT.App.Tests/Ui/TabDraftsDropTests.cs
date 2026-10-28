@@ -5,8 +5,9 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
 // Files dropped on the Contribute tab (TabDrafts.Drop.cs - CRT 4.0 step 3, slice 3e): pictures of the
-// board open "Schematic images" with them being added, its KiCad project folder "KiCad data" - the
-// windows' own imports, tested in BoardFilesWindowTests; nothing usable is said on the tab's line.
+// board go into the Pictures part as its "Add pictures" adds them (ComponentPaneTests), its KiCad
+// project folder opens "KiCad data" importing it (BoardFilesWindowTests); nothing usable is said on
+// the tab's line.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class TabDraftsDropTests : IDisposable
@@ -27,19 +28,19 @@ public sealed class TabDraftsDropTests : IDisposable
     }
 
     // The tab on a board, the windows it would open recorded instead.
-    private static (TabDrafts Tab, List<(BoardFilesSection Section, IReadOnlyList<string> Paths)> Opened) TabOnBoard()
+    private static (TabDrafts Tab, List<(BoardDropKind Kind, IReadOnlyList<string> Paths)> Opened) TabOnBoard()
     {
         var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "999001", ExcelDataFile = Board, IsDraftOnly = true };
-        var opened = new List<(BoardFilesSection, IReadOnlyList<string>)>();
+        var opened = new List<(BoardDropKind, IReadOnlyList<string>)>();
 
         var tab = new TabDrafts
         {
             HardwareBoardsOverrideForTests = [entry],
             PublishedBoardOverrideForTests = _ => null,
             EnsureDraftOverrideForTests = _ => Task.FromResult(true),
-            ManageDroppedFilesOverrideForTests = (_, section, paths) =>
+            ManageDroppedFilesOverrideForTests = (_, kind, paths) =>
             {
-                opened.Add((section, paths));
+                opened.Add((kind, paths));
                 return Task.CompletedTask;
             },
         };
@@ -49,8 +50,9 @@ public sealed class TabDraftsDropTests : IDisposable
         return (tab, opened);
     }
 
+    // The pictures alone are handed on - what is no picture left out, and said on the tab's line.
     [Fact]
-    public async Task Pictures_dropped_open_Schematic_images_with_them()
+    public async Task Pictures_dropped_are_handed_on_as_pictures_and_the_rest_left_out()
     {
         string top = this.thisWorkspace.WriteFile("top.png", "x");
         string notes = this.thisWorkspace.WriteFile("notes.txt", "x");
@@ -61,10 +63,67 @@ public sealed class TabDraftsDropTests : IDisposable
 
             await tab.DropOnBoardAsync([top, notes]);
 
-            (BoardFilesSection section, IReadOnlyList<string> paths) = Assert.Single(opened);
-            Assert.Equal(BoardFilesSection.SchematicImages, section);
+            (BoardDropKind kind, IReadOnlyList<string> paths) = Assert.Single(opened);
+            Assert.Equal(BoardDropKind.Pictures, kind);
             Assert.Equal([top], paths);
-            Assert.Null(tab.DraftProblemForTests);
+            Assert.Equal(BoardDrop.LeftWithoutPictures(1), tab.DraftProblemForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // Pictures dropped on the board go into its Pictures part, opened for them, as one step - the
+    // "Schematic images" window they opened until step 3 is gone.
+    // ###########################################################################################
+    [Fact]
+    public async Task Pictures_dropped_are_added_in_the_boards_Pictures_part()
+    {
+        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, Board);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        CachedWorkbooks.Write(boardFile, new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }] });
+        DraftMarkerStore.Save(DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, Board), new DraftMarker { BoardKey = Board });
+        string under = this.thisWorkspace.WriteFile("Under side.png", "x");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _) = TabOnBoard();
+            tab.ManageDroppedFilesOverrideForTests = null;
+
+            await tab.DropOnBoardAsync([under]);
+
+            Assert.True(tab.IsComponentOpen);
+            Assert.Equal(PaneBoardPart.Pictures, tab.ComponentPaneForTests.BoardPart);
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, Board)!;
+            Assert.Equal(["Top", "Under side"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Equal("Picture added", session.UndoDescription);
+            Assert.False(session.HasUnsavedChanges);
+            Assert.Equal(["Top", "Under side"], tab.ComponentPaneForTests.BoardPicturesForTests.Select(row => row.Name));
+        });
+    }
+
+    // ###########################################################################################
+    // What was left out is said ONCE THE DRAFT IS THERE (code review, 2026-10-28): making a board's
+    // first draft clears the tab's line (Main.EnsureDraftAsync - stood in for here as it does it), and
+    // the note said before went unseen on every board with no draft yet.
+    // ###########################################################################################
+    [Fact]
+    public async Task What_was_left_out_is_said_after_the_first_draft_is_made()
+    {
+        string top = this.thisWorkspace.WriteFile("top.png", "x");
+        string notes = this.thisWorkspace.WriteFile("notes.txt", "x");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, var opened) = TabOnBoard();
+            tab.EnsureDraftOverrideForTests = _ =>
+            {
+                tab.ShowDraftProblem(null);
+                return Task.FromResult(true);
+            };
+
+            await tab.DropOnBoardAsync([top, notes]);
+
+            Assert.Single(opened);
+            Assert.Equal(BoardDrop.LeftWithoutPictures(1), tab.DraftProblemForTests);
         });
     }
 
@@ -81,8 +140,8 @@ public sealed class TabDraftsDropTests : IDisposable
 
             await tab.DropOnBoardAsync([project]);
 
-            (BoardFilesSection section, IReadOnlyList<string> paths) = Assert.Single(opened);
-            Assert.Equal(BoardFilesSection.KiCadData, section);
+            (BoardDropKind kind, IReadOnlyList<string> paths) = Assert.Single(opened);
+            Assert.Equal(BoardDropKind.KiCad, kind);
             Assert.Equal([project], paths);
         });
     }
@@ -158,12 +217,12 @@ public sealed class TabDraftsDropTests : IDisposable
 
         await UiTest.RunAsync(async () =>
         {
-            var opened = new List<BoardFilesSection>();
+            var opened = new List<BoardDropKind>();
             var tab = new TabDrafts
             {
-                ManageDroppedFilesOverrideForTests = (_, section, _) =>
+                ManageDroppedFilesOverrideForTests = (_, kind, _) =>
                 {
-                    opened.Add(section);
+                    opened.Add(kind);
                     return Task.CompletedTask;
                 },
             };

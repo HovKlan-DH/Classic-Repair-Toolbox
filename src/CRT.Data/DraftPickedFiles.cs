@@ -26,6 +26,14 @@ namespace Handlers.DataHandling
 
         private readonly string thisDraftFolder;
         private readonly List<(string Copy, string? SetAside)> thisCopies = new();
+        private readonly List<string> thisCopied = new();
+
+        // ###########################################################################################
+        // The RelativeFile of every file copied, in the order asked - the ones skipped left out, so a
+        // caller adds rows only for what is there (code review, 2026-10-28: three pictures picked, one
+        // locked by another program, and three rows went in, one naming a file the draft lacked).
+        // ###########################################################################################
+        public IReadOnlyList<string> Copied => this.thisCopied;
 
         private DraftPickedFiles(string draftFolder)
         {
@@ -65,6 +73,7 @@ namespace Handlers.DataHandling
                     File.Copy(source, destination, overwrite: true);
 
                     copies.thisCopies.Add((destination, setAside));
+                    copies.thisCopied.Add(relativeFile);
                     done.Add(destination);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

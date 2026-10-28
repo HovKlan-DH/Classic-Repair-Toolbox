@@ -142,8 +142,8 @@ public sealed class DraftChangeSummaryTests
         Assert.Equal(DraftChangeSummary.BoardTitle, board.Title);
         Assert.Equal(
             [
-                "Schematic image [Top] renamed [Front]",
-                "Schematic image [Bottom]: CAD name changed",
+                "Picture [Top] renamed [Front]",
+                "Picture [Bottom]: CAD name changed",
                 "Credit [Data / Anna] added",
                 "KiCad calibration of [Bottom] changed",
             ],

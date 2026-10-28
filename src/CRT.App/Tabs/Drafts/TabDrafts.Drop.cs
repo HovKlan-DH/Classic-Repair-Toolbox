@@ -12,18 +12,18 @@ namespace CRT
     // what was found, what was ignored, and what is left to do").
     //
     // Pictures of the board, or its KiCad project folder, dragged onto the tab anywhere are added to
-    // the board shown: what was dropped decides which (BoardDrop), and the window that manages them -
-    // "Schematic images" or "KiCad data" - opens with them being added, exactly as its own drop target
-    // adds them (BoardFilesWindow.ImportOnceOpen): one step, the KiCad summary, everything after as
-    // the window does it. The board's draft is made as for every other way in (OnCurrentDraftAsync).
-    // Nothing usable dropped is said on the tab's problem line.
+    // the board shown: what was dropped decides which (BoardDrop). Pictures go into the Pictures part,
+    // opened for them, as its "Add pictures" adds them (ComponentPane.AddPicturesAsync); a KiCad
+    // project opens "KiCad data" with it being imported, as that window's own drop target imports it
+    // (BoardFilesWindow.ImportOnceOpen) - its summary and all. The board's draft is made as for every
+    // other way in (OnCurrentDraftAsync). Nothing usable dropped is said on the tab's problem line.
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
     public partial class TabDrafts
     {
-        // Stands in for opening the window with the files - a test has no window to show.
-        internal Func<HardwareBoardEntry, BoardFilesSection, IReadOnlyList<string>, Task>? ManageDroppedFilesOverrideForTests { get; set; }
+        // Stands in for adding what was dropped - the pictures, or the KiCad project's window.
+        internal Func<HardwareBoardEntry, BoardDropKind, IReadOnlyList<string>, Task>? ManageDroppedFilesOverrideForTests { get; set; }
 
         // Stands in for reading what was dropped - a test holds it to change the board meanwhile.
         internal Func<IReadOnlyList<string>, Task<BoardDrop>>? ReadDropOverrideForTests { get; set; }
@@ -86,12 +86,52 @@ namespace CRT
 
             this.ShowDraftProblem(null);
 
-            BoardFilesSection section = drop.Kind == BoardDropKind.KiCad ? BoardFilesSection.KiCadData : BoardFilesSection.SchematicImages;
+            // ###########################################################################################
+            // What was dropped with it and left out, said on the tab's line (BoardDrop.Note) - ONCE
+            // THE DRAFT IS THERE (code review, 2026-10-28): making a board's first draft clears that
+            // line (Main.EnsureDraftAsync), and the note said before it went unseen on most boards.
+            // ###########################################################################################
+            void SayWhatWasLeftOut() => this.ShowDraftProblem(drop.Note.Length > 0 ? drop.Note : null);
 
-            await this.OnCurrentDraftAsync(entry =>
-                this.ManageDroppedFilesOverrideForTests is { } manage
-                    ? manage(entry, section, drop.Paths)
-                    : this.ManageFilesAsync(entry, section, drop.Paths));
+            if (this.ManageDroppedFilesOverrideForTests is { } manage)
+            {
+                await this.OnCurrentDraftAsync(entry =>
+                {
+                    SayWhatWasLeftOut();
+                    return manage(entry, drop.Kind, drop.Paths);
+                });
+
+                return;
+            }
+
+            if (drop.Kind == BoardDropKind.KiCad)
+            {
+                await this.OnCurrentDraftAsync(entry =>
+                {
+                    SayWhatWasLeftOut();
+                    return this.ManageFilesAsync(entry, drop.Paths);
+                });
+
+                return;
+            }
+
+            await this.AddDroppedPicturesAsync(drop.Paths, SayWhatWasLeftOut);
+        }
+
+        // ###########################################################################################
+        // Pictures dropped: the Pictures part opened on the board shown - its draft made first when it
+        // has none - and the pictures added there, as "Add pictures" adds them (step 3 - the
+        // "Schematic images" window went). `sayWhatWasLeftOut` once the part is open on its draft.
+        // ###########################################################################################
+        private async Task AddDroppedPicturesAsync(IReadOnlyList<string> pictures, Action sayWhatWasLeftOut)
+        {
+            await this.OpenBoardPartAsync(PaneBoardPart.Pictures);
+
+            if (this.IsComponentOpen && this.ComponentPane.BoardPart == PaneBoardPart.Pictures)
+            {
+                sayWhatWasLeftOut();
+                await this.ComponentPane.AddPicturesAsync(pictures);
+            }
         }
     }
 }

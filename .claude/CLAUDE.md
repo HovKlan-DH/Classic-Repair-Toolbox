@@ -554,8 +554,8 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   its Notes are the repair notes, else the first image's note as before (`OverviewHtmlBuilder.BuildRows`).
   **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
   `TabDrafts.OpenBoardPartAsync`): the left column's "Files and links", "Credits" and "Important
-  signals" show one of them in place of a component (`PaneBoardPart`) - Pictures and KiCad data still
-  open their windows. Each list is ONE step when changed (`BoardPartEdits`, replaced as a whole);
+  signals" show one of them in place of a component (`PaneBoardPart`) - Pictures too since slice 4b;
+  KiCad data still opens its window. Each list is ONE step when changed (`BoardPartEdits`, replaced as a whole);
   files, links and credits are listed and written GROUPED BY CATEGORY (`BoardPartEdits.Grouped`), and
   a list differing only by its order is the SAME board, so opening and leaving a part changes nothing.
   A board file added goes to "Board local files/" under a free name and is saved at once, as a
@@ -574,8 +574,8 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   them, a colour by NAME when it has one (`RectGeometry.ColorText`), an opacity as "30%"
   (`PictureColours.OpacityText`). **A picker writing back the colour it shows writes nothing** (the
   row's setters compare with what is shown - a blank colour shows CRT's default, and the picker would
-  otherwise write it). Adding, removing, renaming and ordering pictures stay the "Schematic images"
-  window's, opened from the part ("Add, remove or rename pictures"). `BoardSchematicEntry.ReadColours`
+  otherwise write it). Adding, naming, matching, ordering and removing pictures are the cards' too
+  since step 3 (below, "The pictures ... ON THEIR CARDS"). `BoardSchematicEntry.ReadColours`
   is a METHOD: the row's properties are its columns, counted by reflection. **The part marks the
   components of the region CRT shows** (`ShowBoardPart(..., region)`). **The pane reads each picture
   ONCE** - its thumbnails and the previews alike (`PaneImageCache`; code review, 2026-10-26): kept by
@@ -713,7 +713,10 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   **A draft made only to OPEN something - a component ("Edit this component" is on everybody's
   right-click), a board part, the table - goes again when that closes with nothing in it**
   (`TabDrafts.LetGoOfDraftMadeOnlyToLook`; code review, 2026-10-26): nothing waiting to be saved, no
-  change against the published board, never a new board's, never one there before.
+  change against the published board, never a new board's, never one there before - **nor one holding
+  its rows in another ORDER** (`BoardRowOrder`, every sheet; code review 2026-10-28: pictures moved and
+  the draft went with the new order). Order still counts for nothing else - Submit of an order-only
+  draft stays the owner decision on order not yet taken.
 - **The start panel says how far the board is** (CRT 4.0 step 3's slice 3a, 2026-10-26;
   `TabDrafts.Readiness.cs`, every rule and word `BoardReadiness`): a NEW board (`IsDraftOnly`) gets
   "Getting this board ready" - the plan's nine steps, each DONE by what the draft held in memory holds
@@ -820,9 +823,15 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   "Commodore 64": typed as the folder, a board came under a second hardware in the drop-down lists - the
   form's example was "C64", now "Commodore 64"). Two names equally close offer neither. Never blocks Create.
 - **Files dropped on the Contribute tab** (slice 3e; `TabDrafts.Drop.cs`, the rule `BoardDrop`): anywhere on
-  the tab, onto the board shown - pictures open "Schematic images", a KiCad project FOLDER "KiCad data",
-  each ADDING them as it opens (`BoardFilesWindow.ImportOnceOpen` - the window's own imports, never a
-  second copy); a folder with no KiCad file but pictures at its top is those pictures. **A hidden file is
+  the tab, onto the board shown - pictures go into the Pictures part, opened for them, as its "Add
+  pictures" adds them (`ComponentPane.AddPicturesAsync`), a KiCad project FOLDER opens "KiCad data"
+  importing it as it opens (`BoardFilesWindow.ImportOnceOpen` - the window's own import, never a second
+  copy); a folder with no KiCad file but pictures at its top is those pictures. **Everything dropped
+  counts, and what is left out is said** (`BoardDrop.Note`, on the tab's line; code review 2026-10-28 -
+  the first folder decided alone): a KiCad project folder is taken on its own, one at a time; else every
+  picture - loose, or at any folder's top - goes in together. The note is said ONCE THE DRAFT IS THERE
+  (inside the work `OnCurrentDraftAsync` runs): making a board's first draft clears the tab's line
+  (`Main.EnsureDraftAsync`). **A hidden file is
   never a picture nor a KiCad file** (`ContributionPackaging.IsAddablePictureFile`, the scanner's walk -
   second code review, 2026-10-28: macOS's "._IMG_0001.JPG" beside every picture on a USB stick became rows
   the server refused at Submit). The dropped folder is walked ONCE (`KiCadRawFileScanner.Probe`). **What opens nothing
@@ -844,35 +853,56 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   rules. **The folder is walked ONCE** (`KiCadRawFileScanner.ScanSplit`: taken, left out, older KiCad), and
   **the walk, the copy and the report are ONE of the window's queued changes** under its wait (code review,
   2026-10-28: walked outside the queue, the window could close meanwhile and the import landed unseen).
-  The KiCad half of the window is `BoardFilesWindow.KiCad.cs`.
+  The window is "KiCad data" alone since step 3; its KiCad part is `BoardFilesWindow.KiCad.cs`.
 - **"Contribution in use"** (`Main.thisContributionInUse` - a draft, or unread news on something sent)
   is what the Drafts tab's visibility used to be: it decides whether CRT asks the API revision.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
 `SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `BoardFilesWindow`,
 `DiscardDraftWindow`, `ForgetSubmissionWindow`, `RemoveSchematicWindow`).
 
-- **"Schematic images" picks each image's CAD name** (owner request, 2026-10-10;
-  `BoardFilesWindow.CadNames.cs`): the board's KiCad VIEW names, from its published AND draft "KiCad
-  data" (`KiCadRawFileScanner.ScanBoard`, `Main.GetCurrentBoardKiCadRawPaths`' rule too), read WITHOUT
-  parsing the PCB (`KiCadRawProjectLoader.LoadViewDisplayNamesAsync`); a name one image has is LEFT
-  OUT of the other images' lists, not greyed out (owner request; `SchematicCadNameChoices`). **Each row's drop-down list is changed IN
-  PLACE** (`BoardSchematicRow.ApplyCadNameChoices`, `InPlaceList.Sync`) - a replaced ItemsSource lets go
-  of the selection and the binding writes "nothing" back over the image's CAD name.
-- **Every change "Schematic images" and "KiCad data" make to the draft is ONE queued change**
-  (code review, 2026-10-10; `BoardFilesWindow.DraftChanges.cs`): applied to the draft held in memory
-  and saved off the UI thread under the window's BusyOverlay (`ApplyToDraftAsync`), each after the
-  one before it (a click whose press came before the overlay still lands), reading the rows only when
-  it runs.
-  **Closing waits for the queue and saves a typed name; a name that cannot be saved keeps the window
-  open with the reason.** A test waits for `DraftChanging`. **A row is found by its name AND its image
-  file** (`SchematicRows`, `SchematicOrder`) - two rows can share a name, and by name alone a change
-  went to the first and Remove took both. **Remove asks first when the image has highlights or a
-  KiCad calibration** (`SchematicRemoval`, `RemoveSchematicWindow`) - they go with the row.
+- **The pictures are added, named, matched, ordered and removed ON THEIR CARDS** in the Pictures part
+  (CRT 4.0 step 3, 2026-10-28 - the plan: "Pictures: today's Schematic images content, moved inline";
+  owner: "do what is best for having the best UX for the user. It should be as easy as possible";
+  `ComponentPane.BoardPictureList.cs`). **The "Schematic images" window is GONE**; `BoardFilesWindow` is
+  "KiCad data" alone, and the checklist's picture steps open the Pictures part. "Add pictures" (or
+  pictures dropped on the tab) copies each in at the board's top under a name of the board's own
+  (`ComponentPaneFileNames.ForBoardPicture`), named after its file and never a name a picture has
+  (`BoardPictureEdits`) - ONE step, saved at once; never a hidden file; **only the pictures actually
+  copied get a card** (`DraftPickedFiles.Copied` - one locked or gone is said, code review 2026-10-28).
+  The name box renames on Enter or when left (Escape puts the name back) through `SchematicRename.Plan`
+  and `ApplyWithFollow` - **never on a pause in typing** (`CommitHeld(fromTyping)`: a pause after "Top"
+  saved or refused half a name). **A name refused stays in its box** with the reason, and the part
+  stays open on it (`KeepsRefusedPictureName`) - the pane's Close, another part, a component or the
+  table asked for (`OpenPaneAsync`, `OpenTableAsync`); only another board shown closes it. The pictures'
+  undo steps and "Review changes" say "Picture [Top] ..." and "KiCad view of [Top]"
+  (`DraftStepWording`, `DraftChangeSummary`), and Remove asks "Remove picture" with Undo to bring back
+  what goes with it (`SchematicRemoval.WhatGoes`). **"Shows KiCad view"** picks the CAD name
+  from the board's views, read by the host off the UI thread from the project the Schematics tab draws,
+  ASKED by the pane when the part opens and again whenever the draft's KiCad files change while it is
+  open (`KiCadViewsWanted`, numbered like the pins' ask - an older read is never taken;
+  `TabDrafts.LoadKiCadViewsAsync` -> `UseKiCadViews`; the pane's board is set BEFORE it shows a part, or a
+  read done at once was dropped); a view one picture has is LEFT OUT of the other pictures' lists, not
+  greyed out (owner request, 2026-10-10; `SchematicCadNameChoices`). **Each card's drop-down list is
+  changed IN PLACE** (`ApplyCadNameChoices`, `InPlaceList.Sync`) - a replaced ItemsSource lets go of
+  the selection and the binding writes "nothing" back over the CAD name; a null pick is never a pick.
+  Move up/Move down move one place (`BoardPictureEdits.Moved` - dragging went with the window). **A card
+  is found by its name AND its image file** (`SchematicRows.RefOf`) - two rows can share a name, and by
+  name alone a change went to the first and Remove took both. **Remove asks first when the picture has
+  highlights or a KiCad calibration** (`SchematicRemoval`, `RemoveSchematicWindow`) - they go with it,
+  and Undo brings them back. **A rename or a view picked changes its card IN PLACE**: a name commits as
+  its box loses focus - on the PRESS of another card's button - and cards made again would throw that
+  click away; only adding, moving and removing show the cards again. Left unused by the window's going,
+  with their tests: `KiCadRawProjectLoader.LoadViewDisplayNamesAsync` and CRT.Data's `SchematicOrder`.
+- **Every change "KiCad data" makes to the draft is ONE queued change** (code review, 2026-10-10;
+  `BoardFilesWindow.DraftChanges.cs`): applied to the draft held in memory and saved off the UI thread
+  under the window's BusyOverlay (`ChangeDraftAsync`), each after the one before it (a click whose
+  press came before the overlay still lands). **Closing waits for the queue.** A test waits for
+  `DraftChanging`.
 - **What hangs on a schematic's NAME follows it in every draft write** (owner request, 2026-10-10;
   `DraftWorkbookStore.EditCore`): the sidecar files highlights and the KiCad calibration by schematic
   name, so a rename moves them and a deletion drops them - the server's own rule for a table edit
-  (`SubmissionRowsBoard.FollowSchematics`: same image file, new name = a rename). The Name box
-  names its rename outright (`SchematicRename.Plan`, decided on the draft held in memory and handed in
+  (`SubmissionRowsBoard.FollowSchematics`: same image file, new name = a rename). A picture card's
+  name box names its rename outright (`SchematicRename.Plan`, decided on the draft held in memory and handed in
   by `DraftSession.ApplyWithFollow`). A KiCad calibration is looked up without regard to
   capitals (`BoardComponentHighlightStorage`), like every other schematic name, and a write reads the
   sidecar's calibrations ONCE (`LoadKiCadCalibrations` - it parsed the file once per schematic, twice).
@@ -977,7 +1007,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   (`DraftFolderLayout.IsDraftOnlyFile`). Files and calibrations count for Submit (`DraftOtherChanges`,
   measured against the base); only row ORDER does not.
 - **Every editor changes the ONE draft held in memory** (CRT 4.0 step 1, 2026-10-25; `DraftEdits`):
-  the component pane, the label editor, the KiCad calibration and "Schematic images" hand their
+  the component pane, the label editor, the KiCad calibration and "KiCad data" hand their
   change to the draft's `DraftSession` and save it at once. **Only handing over what the table holds
   and applying the result run on the UI thread** (code review, 2026-10-25): the session is opened,
   the file asked about (`FileChangedOutside`) and the edit worked out with what follows it
@@ -994,7 +1024,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   "Bring my draft up to date", Remove of a KiCad file - goes through `DraftEdits.WriteFileDirectlyAsync`
   (held changes collected on the UI thread, saved first, the file read back; bringing up to date
   clears the history, measured against the old base); a KiCad import takes its files in with
-  `TakeInNewFilesAsync`. "Schematic images" still has the table saved before it opens
+  `TakeInNewFilesAsync`. "KiCad data" still has the table saved before it opens
   (`SettleTableEditsAsync`), so a table that cannot save is asked about once, not behind every click.
 - **Each draft's row counts problems too** (`DraftStatusReader.CountProblemsCached`), and the list is
   read again when the tab is shown or CRT's window is activated - when an Excel edit arrives.
@@ -1146,7 +1176,8 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
 #### Workbooks (`Tabs/Workbooks/`) and the worklog
 
 `TabWorkbooks.axaml(.cs)`, `.BoardPreviews.cs` (the board pane), `.Summary.cs` (the summary strip),
-`.Export.cs` (PDF/ZIP), `.PreviewReorder.cs`. A workbook is a repair on one board; it holds worklogs.
+`.Export.cs` (PDF/ZIP), `.PreviewReorder.cs`, `.Devices.cs` (the user's devices). A workbook is a
+repair on one board; it holds worklogs.
 
 - **`WorklogManager.ResolveActiveWorkbook(workbooks, savedActiveId)` is the ONE place "which workbook"
   is decided** - saved id if still on this board, else the newest. Activation goes through
@@ -1210,6 +1241,40 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   (`AttachCapturedPhoto` after `InitializeForNewEntry`), filed against the CURRENT schematic, parked.
   Both attach paths share `WorklogAttachmentWriter` (id allocation skipping existing bytes, rollback on
   a failed persist, the entry re-read from disk).
+- **The user's own devices** (CRT 4.0 step 4, 2026-10-28 - the plan: "Your own machines, each with its
+  repairs"; owner decision 2026-10-24: "Device" wherever a person reads it, `OwnedDevice` in code -
+  minipro's "device" is the chip type; `OwnedDeviceStore`, `TabWorkbooks.Devices.cs`). **Stored like
+  workbooks**: one `device_{id}/` folder each in the Workbooks folder (its index.json and photos), ids
+  from the root index.json's `lastDeviceId` - BESIDE `lastWorkbookId`, one file, so each allocation
+  keeps the other's (`WorklogManager.AllocateNextDeviceId`) - never handed out again, **nor an id a
+  workbook still names** (a lost counter brought a deleted device's id back, its repairs on the new
+  device); a field a later CRT writes is kept by the device, the workbook record and the root file
+  (`JsonExtensionData`). **A repair names its device** (`WorkbookRecord.OwnedDeviceId`, null for none,
+  `WorklogManager.SetWorkbookDevice`), never a list on the device: a deleted workbook leaves nothing
+  behind, and an id no device has reads as none (`OwnedDeviceRepairs.DeviceOf`).
+  "My devices" lists EVERY device above the workbooks, whatever board is shown; a card opens its PAGE in
+  place of the workbook (one card marked at a time): what it is (status as words, `OwnedDeviceStatus`,
+  its pill `WorklogInfoPillBuilder.BuildDeviceStatusPill` - the tab's one informational look), its
+  repairs on ANY board totalled by ONE `WorkbookSummary` over every worklog, time and cost by the
+  workbook headline's own `BuildTimeAndCostStats` (`OwnedDeviceRepairs.Summarize`/`HeadlineStats`), the
+  changes made to it (a board swapped in "Edit device" is recorded by itself), notes and photos.
+  **Notes are saved to the device they were TYPED FOR** (`thisNotesDeviceId`; code review 2026-10-28 -
+  a card click takes no focus, and the next device's page saved the first one's notes as its own),
+  never refilled under the caret. **Photos are copied in, and a device deleted, off the UI thread under
+  the BusyOverlay**, each under a PLAIN name directly in the device's folder
+  (`ComponentPaneFileNames.ForDevicePhoto` and a containment check - Security, code review 2026-10-28: on
+  Linux a "\" in a picked name took the copy out of the folder), what could not be added said
+  (`OwnedDeviceWording.PhotosAdded`); each photo decoded small ONCE (kept by path, length and write
+  time), every workbook read once per refresh - handed over by `Main.RefreshWorklogBar`, which has read
+  them - and the board pane not rebuilt behind the page (`ShouldRebuildBoardPreviews`). Enter in "Add
+  device" saves from a box, never from a focused button. An action on the page
+  reads the devices AGAIN before drawing it (`ShowDeviceAgain` - drawn from the old list, a change
+  added did not show). "New repair" is "Create new workbook" with the device
+  preselected, then opens it on its board; that form offers the user's devices with the board ("None"
+  first) whenever one has it. Under a workbook's title "On my device" puts it on a device with its
+  board, or the one it is on. "Delete device" asks, and its repairs stay. Words: `OwnedDeviceWording`.
+  **Not yet**: the device picker beside the board drop-downs and the bar's "Breadbin #2 - No video"
+  (slice 4c), "Export history" (4d).
 
 #### Schematics (`Tabs/Schematics/`)
 

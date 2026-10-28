@@ -260,6 +260,27 @@ namespace Handlers.DataHandling
         public const string FileNotCopied =
             "The file could not be copied into your draft - see the log for why.";
 
+        // ---- the board's pictures (step 3 - the "Schematic images" window, moved inline) ------------
+
+        // `notCopied`: pictures picked that could not be copied in - said, for they got no card.
+        public static string PicturesAdded(int count, int notCopied = 0)
+        {
+            string added = count == 1 ? "Added 1 picture." : $"Added {count.ToString(CultureInfo.InvariantCulture)} pictures.";
+
+            return notCopied switch
+            {
+                <= 0 => added,
+                1 => $"{added} 1 could not be copied - it is open in another program, or no longer where it was picked.",
+                _ => $"{added} {notCopied.ToString(CultureInfo.InvariantCulture)} could not be copied - they are open in another program, or no longer where they were picked.",
+            };
+        }
+
+        public const string NoPicturesToAdd =
+            "Nothing was added - pick PNG, JPEG, GIF, BMP or WebP files.";
+
+        public static string PictureRemoved(string name) =>
+            $"Removed [{name.Trim()}]. Undo at the top of the tab takes it back.";
+
         // ---- important signals suggested ----------------------------------------------------------
 
         public static string SignalSuggestionsHeading(int count) =>

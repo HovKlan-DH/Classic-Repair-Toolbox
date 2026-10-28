@@ -50,13 +50,13 @@ namespace CRT
             this.ComponentPane.Saved += (_, excelDataFile) => this.OnComponentPaneSaved(excelDataFile);
             this.ComponentPane.ShowOnBoardRequested += (_, label) => this.RunGuarded(() => this.ShowComponentOnBoardAsync(label), "Show on board");
             this.ComponentPane.PreviewRequested += (_, label) => this.PreviewComponent(label);
-            this.ComponentPane.ManagePicturesRequested += (_, _) => this.ManagePictures();
             this.ComponentPane.PictureToolRequested += (_, asked) => this.RunGuarded(() => this.StartPictureToolAsync(asked.Tool, asked.Picture), "Picture tool");
             this.ComponentPane.MarkAutomaticallyRequested += (_, picture) => this.RunGuarded(() => this.MarkAutomaticallyAsync(picture), "Mark all automatically");
             this.ComponentPane.FindOnOtherBoards = this.FindOnOtherBoardsAsync;
             this.ComponentPane.FindAlsoTargets = this.FindAlsoTargetsAsync;
             this.ComponentPane.ApplyToOtherBoards = this.ApplyToOtherBoardsAsync;
             this.ComponentPane.ComponentShown += (_, label) => this.RunGuarded(() => this.LoadKiCadPinsAsync(label), "Reading the KiCad pins");
+            this.ComponentPane.KiCadViewsWanted += (_, ask) => this.RunGuarded(() => this.LoadKiCadViewsAsync(ask), "Reading the KiCad views");
             this.ComponentPane.ShowNetRequested += (_, net) => this.RunGuarded(() => this.ShowNetOnBoardAsync(net), "Show on board");
         }
 
@@ -531,6 +531,7 @@ namespace CRT
                 {
                     this.ComponentPane.ShowBoardPart(session, part, published, publishedBoardFile, this.thisCurrentRegion);
 
+                    // The Pictures part asks for the KiCad views itself (KiCadViewsWanted).
                     if (part == PaneBoardPart.ImportantSignals)
                     {
                         this.RunGuarded(() => this.LoadNetChoicesAsync(entry), "Reading the KiCad nets");
@@ -539,6 +540,39 @@ namespace CRT
 
         // For tests, in place of reading a board's KiCad nets.
         internal Func<HardwareBoardEntry, Task<KiCadNetChoices>>? NetChoicesOverrideForTests { get; set; }
+
+        // For tests, in place of reading a board's KiCad view names.
+        internal Func<HardwareBoardEntry, Task<IReadOnlyList<string>>>? KiCadViewsOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // The board's KiCad view names for the Pictures part's "Shows KiCad view" (step 3 - the
+        // "Schematic images" window's, moved inline): the project the Schematics tab draws, read off the
+        // UI thread (ReadBoardKiCadAsync - KiCadProjectLoader keeps its parse), handed to the part it
+        // was read for - `ask`, the pane's numbered ask, so an older read ending last is not taken.
+        // None for a board without KiCad data.
+        // ###########################################################################################
+        private async Task LoadKiCadViewsAsync(int ask)
+        {
+            if (this.thisComponentEntry is not { } entry)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> views = this.KiCadViewsOverrideForTests is { } read
+                ? await read(entry)
+                : await TabDrafts.ReadBoardKiCadAsync(
+                    DataManager.DataRoot,
+                    DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
+                    entry.ExcelDataFile,
+                    "its pictures' KiCad views") is { } root
+                    ? root.Project.Views.Select(view => view.DisplayName?.Trim() ?? string.Empty).Where(view => view.Length > 0).ToList()
+                    : [];
+
+            if (this.thisComponentEntry is { } open && TabDrafts.SameBoard(open, entry))
+            {
+                this.ComponentPane.UseKiCadViews(views, ask);
+            }
+        }
 
         private async Task LoadNetChoicesAsync(HardwareBoardEntry entry)
         {
@@ -573,6 +607,14 @@ namespace CRT
         // ###########################################################################################
         private async Task OpenPaneAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show)
         {
+            // A picture's name the Pictures part cannot take keeps it open, the reason under its
+            // heading - another part or component in its place threw the name away (code review,
+            // 2026-10-28). Another board shown still closes it: that cannot be called off.
+            if (this.IsComponentOpen && this.ComponentPane.KeepsRefusedPictureName())
+            {
+                return;
+            }
+
             if (this.IsTableOpen && !await this.CloseTableAsync())
             {
                 return;
@@ -599,8 +641,11 @@ namespace CRT
             // Its list of files too, so a picture replaced under its own name reads as a change.
             string publishedBoardFile = published is null ? string.Empty : this.PublishedBoardFileOf(entry);
 
-            show(session, published, publishedBoardFile);
+            // The pane's board is known BEFORE it shows anything: what it starts reading for the part
+            // (its KiCad views, its nets) is handed over only while it is still open on this board,
+            // and a read done at once was otherwise dropped as being for no pane.
             this.thisComponentEntry = entry;
+            show(session, published, publishedBoardFile);
 
             // The draft's header follows the session now open.
             this.RefreshDrafts();

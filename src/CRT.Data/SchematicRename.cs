@@ -62,10 +62,12 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class SchematicRename
     {
-        public const string NeedsAName = "A schematic image needs a name.";
+        // Said on the Contribute tab's picture cards (step 3 - the "Schematic images" window went), so
+        // in its word: a picture.
+        public const string NeedsAName = "A picture needs a name.";
 
         public static string NameTaken(string name) =>
-            $"Another schematic image is already named [{name}] - each name can be used once.";
+            $"Another picture is already named [{name}] - each name can be used once.";
 
         // Why `newName` cannot be an image's name beside `otherNames` (the board's other images),
         // or null when it can.

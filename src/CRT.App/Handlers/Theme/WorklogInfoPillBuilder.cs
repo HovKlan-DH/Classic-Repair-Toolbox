@@ -189,6 +189,28 @@ namespace Handlers.Theming
         }
 
         // ###########################################################################################
+        // A device's status (CRT 4.0 step 4 - Working, Faulty, In repair, ...) in the SAME
+        // informational visual: its own colour (OwnedDeviceStatus.ColourKeyOf) on the border and the
+        // label, the pill's rounding and padding. No glyph - the word says it. The one place a device's
+        // status pill is drawn (code review, 2026-10-28: the Workbooks tab drew its own).
+        // ###########################################################################################
+        public static Border BuildDeviceStatusPill(string status, double fontSize = 11.0)
+        {
+            IBrush brush = ThemeResources.ResolveBrush(OwnedDeviceStatus.ColourKeyOf(status), Brushes.Gray);
+
+            return new Border
+            {
+                Background = ThemeResources.ResolveBrush("Form_Bg", Brushes.Transparent),
+                BorderBrush = brush,
+                BorderThickness = InfoBorderThickness,
+                CornerRadius = PillCornerRadius,
+                Padding = new Thickness(10, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = BuildLabel(OwnedDeviceStatus.Normalise(status), fontSize, brush),
+            };
+        }
+
+        // ###########################################################################################
         // Restyles an EXISTING pill declared in markup, for the two sites that cannot simply be
         // handed a new Border: the worklog bar and the Workbooks top-line each keep one long-lived
         // pill in their AXAML and swap its text as the active workbook changes.

@@ -186,38 +186,65 @@
 				Background="{DynamicResource Workbooks_Panel_Bg}"
 				BorderBrush="{DynamicResource Workbooks_Separator}"
 				BorderThickness="0,0,1,0">
-			<Grid RowDefinitions="Auto,*" Margin="9">
+			<ScrollViewer Margin="9" VerticalScrollBarVisibility="Auto">
+				<StackPanel Spacing="5">
 
-				<TextBlock Grid.Row="0"
-						   x:Name="WorkbookCountText"
-						   Text="0 workbooks"
-						   FontSize="11"
-						   FontWeight="Bold"
-						   VerticalAlignment="Center"
-						   Margin="0,0,0,7" />
+					<!-- "My devices" (CRT 4.0 step 4): the computers the user owns, every one
+					     whatever board is shown - a click opens its page on the right in place of
+					     the workbook (TabWorkbooks.Devices.cs). The workbooks below stay as they
+					     were; one on a device names it on its card. -->
+					<Grid ColumnDefinitions="*,Auto">
+						<TextBlock x:Name="DeviceListHeadingText"
+								   Text="My devices"
+								   FontSize="11"
+								   FontWeight="Bold"
+								   VerticalAlignment="Center" />
+						<Button x:Name="AddDeviceButton"
+								Grid.Column="1"
+								Classes="Accept"
+								Content="Add device"
+								FontSize="10"
+								Padding="6,2"
+								Click="OnAddDeviceClick" />
+					</Grid>
 
-				<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-					<StackPanel Spacing="5">
+					<TextBlock x:Name="NoDevicesText"
+							   Classes="WorkbooksFaint"
+							   FontSize="10"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
 
-						<!-- Shown instead of the list when the board has no workbooks at all. The
-						     count above still reads "0 workbooks", so this only has to say what to
-						     do about it. -->
-						<TextBlock x:Name="NoWorkbooksText"
-								   Text="No repairs recorded for this board yet.&#10;Use &quot;Create new workbook&quot; above the tabs to start one."
-								   Classes="WorkbooksFaint"
-								   FontSize="10"
-								   TextWrapping="Wrap"
-								   IsVisible="False" />
+					<StackPanel x:Name="DeviceListPanel" Spacing="5" />
 
-						<!-- One card per workbook, built in code rather than by an ItemsControl
-						     DataTemplate: each card's status pill needs its brush resolved through
-						     Application.Current with an explicit ThemeVariant (see
-						     BuildWorkbookCard), which a template binding cannot express. -->
-						<StackPanel x:Name="WorkbookListPanel" Spacing="5" />
+					<Border Height="1"
+							Background="{DynamicResource Workbooks_Separator}"
+							Margin="0,6,0,2" />
 
-					</StackPanel>
-				</ScrollViewer>
-			</Grid>
+					<TextBlock x:Name="WorkbookCountText"
+							   Text="0 workbooks"
+							   FontSize="11"
+							   FontWeight="Bold"
+							   VerticalAlignment="Center"
+							   Margin="0,0,0,2" />
+
+					<!-- Shown instead of the list when the board has no workbooks at all. The
+					     count above still reads "0 workbooks", so this only has to say what to
+					     do about it. -->
+					<TextBlock x:Name="NoWorkbooksText"
+							   Text="No repairs recorded for this board yet.&#10;Use &quot;Create new workbook&quot; above the tabs to start one."
+							   Classes="WorkbooksFaint"
+							   FontSize="10"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+
+					<!-- One card per workbook, built in code rather than by an ItemsControl
+					     DataTemplate: each card's status pill needs its brush resolved through
+					     Application.Current with an explicit ThemeVariant (see
+					     BuildWorkbookCard), which a template binding cannot express. -->
+					<StackPanel x:Name="WorkbookListPanel" Spacing="5" />
+
+				</StackPanel>
+			</ScrollViewer>
 		</Border>
 
 		<GridSplitter x:Name="OuterSplitter" Grid.Column="1" />
@@ -226,7 +253,7 @@
 		     RIGHT: the selected workbook - its top-line, the board with numbered pins, and the
 		     entry list.
 		     =================================================================================== -->
-		<Grid Grid.Column="2" RowDefinitions="Auto,*">
+		<Grid x:Name="WorkbookViewGrid" Grid.Column="2" RowDefinitions="Auto,*">
 
 			<!-- The workbook's top-line: "#{N} · {Title}", its status pill and note, then the
 				     Edit/Delete workbook actions right-aligned. It spans the FULL width of this
@@ -309,6 +336,22 @@
 								   Text=""
 								   TextWrapping="Wrap"
 								   IsVisible="False" />
+
+						<!-- Which of the user's devices this repair is on (CRT 4.0 step 4) - picked
+						     here, "None" taking it off. Shown while the user has a device to pick or the
+						     repair is on one (TabWorkbooks.Devices.cs, ApplyWorkbookDevice). -->
+						<StackPanel x:Name="WorkbookDevicePanel"
+									Orientation="Horizontal"
+									Spacing="6"
+									IsVisible="False">
+							<TextBlock Text="On my device"
+									   Classes="WorkbooksMuted"
+									   FontSize="11" />
+							<ComboBox x:Name="WorkbookDeviceComboBox"
+									  FontSize="11"
+									  MinWidth="160"
+									  SelectionChanged="OnWorkbookDeviceSelectionChanged" />
+						</StackPanel>
 
 						<!-- The workbook summary strip: one always-visible headline line
 						     ("7 worklogs - 12.5 h - 430 - 4 open") with a chevron that expands the
@@ -573,6 +616,133 @@
 				</Border>
 			</Grid>
 		</Grid>
+
+		<!-- ===================================================================================
+		     A DEVICE'S PAGE (CRT 4.0 step 4 - the plan: "Its page is its history"), in place of the
+		     workbook while a device is picked in "My devices": what it is, its repairs with their
+		     totals, the changes made to it, and its notes and photos. Filled and wired in
+		     TabWorkbooks.Devices.cs; a workbook clicked, or a repair opened, brings the workbook back.
+		     =================================================================================== -->
+		<ScrollViewer x:Name="DevicePageScroller"
+					  Grid.Column="2"
+					  VerticalScrollBarVisibility="Auto"
+					  IsVisible="False">
+			<StackPanel Margin="14,11" Spacing="14">
+
+				<Grid ColumnDefinitions="*,Auto">
+					<StackPanel Spacing="3">
+						<WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="5">
+							<TextBlock x:Name="DeviceNameText"
+									   FontSize="16"
+									   FontWeight="Bold"
+									   VerticalAlignment="Center" />
+							<!-- The status pill, WorklogInfoPillBuilder's - the one place it is drawn. -->
+							<Decorator x:Name="DeviceStatusHost" VerticalAlignment="Center" />
+						</WrapPanel>
+						<TextBlock x:Name="DeviceDetailText" Classes="WorkbooksMuted" FontSize="11" TextWrapping="Wrap" />
+						<TextBlock x:Name="DeviceOriginText" Classes="WorkbooksMuted" FontSize="11" TextWrapping="Wrap" />
+					</StackPanel>
+
+					<StackPanel Grid.Column="1"
+								Orientation="Horizontal"
+								Spacing="4"
+								VerticalAlignment="Top"
+								Margin="8,0,0,0">
+						<Button x:Name="EditDeviceButton"
+								Classes="WorkbookHeaderAction"
+								Content="Edit device"
+								FontSize="11"
+								Click="OnEditDeviceClick" />
+						<Button x:Name="DeleteDeviceButton"
+								Classes="Danger WorkbookHeaderAction"
+								Content="Delete device"
+								FontSize="11"
+								Click="OnDeleteDeviceClick" />
+					</StackPanel>
+				</Grid>
+
+				<!-- Its repairs: the workbooks naming it, newest first, each opening the workbook. -->
+				<StackPanel Spacing="5">
+					<Grid ColumnDefinitions="*,Auto">
+						<StackPanel Spacing="2" VerticalAlignment="Center">
+							<TextBlock x:Name="DeviceRepairsHeadingText" FontSize="13" FontWeight="Bold" />
+							<!-- Runs, the numbers bold - see TabWorkbooks.Devices.cs. -->
+							<TextBlock x:Name="DeviceRepairsSummaryText" FontSize="11" TextWrapping="Wrap" />
+						</StackPanel>
+						<Button x:Name="NewRepairButton"
+								Grid.Column="1"
+								Classes="Accept"
+								Content="New repair"
+								FontSize="11"
+								VerticalAlignment="Center"
+								Click="OnNewRepairClick" />
+					</Grid>
+					<TextBlock x:Name="NoDeviceRepairsText"
+							   Classes="WorkbooksFaint"
+							   FontSize="11"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+					<StackPanel x:Name="DeviceRepairsPanel" Spacing="4" />
+				</StackPanel>
+
+				<!-- The changes made to it outside a repair, oldest first, and a line to add one. -->
+				<StackPanel Spacing="5">
+					<TextBlock x:Name="DeviceChangesHeadingText" FontSize="13" FontWeight="Bold" />
+					<TextBlock x:Name="NoDeviceChangesText"
+							   Classes="WorkbooksFaint"
+							   FontSize="11"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+					<StackPanel x:Name="DeviceChangesPanel" Spacing="3" />
+					<Grid ColumnDefinitions="Auto,8,*,8,Auto" Margin="0,2,0,0">
+						<CalendarDatePicker x:Name="ChangeDatePicker" FontSize="11" />
+						<TextBox x:Name="ChangeTextBox"
+								 Grid.Column="2"
+								 FontSize="11"
+								 PlaceholderText="What was changed - for example a new power supply"
+								 KeyDown="OnChangeTextKeyDown" />
+						<Button x:Name="AddChangeButton"
+								Grid.Column="4"
+								Classes="Accept"
+								Content="Add change"
+								FontSize="11"
+								Click="OnAddChangeClick" />
+					</Grid>
+				</StackPanel>
+
+				<!-- Notes (saved when the box is left) and photos. -->
+				<StackPanel Spacing="5">
+					<Grid ColumnDefinitions="*,Auto">
+						<TextBlock x:Name="DevicePhotosHeadingText" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+						<Button x:Name="AddDevicePhotosButton"
+								Grid.Column="1"
+								Classes="Accept"
+								Content="Add photos"
+								FontSize="11"
+								Click="OnAddDevicePhotosClick" />
+					</Grid>
+					<!-- What "Add photos" did - how many went in, and how many could not. -->
+					<TextBlock x:Name="DevicePhotosNoteText"
+							   Classes="WorkbooksMuted"
+							   FontSize="11"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+					<TextBox x:Name="DeviceNotesTextBox"
+							 FontSize="11"
+							 AcceptsReturn="True"
+							 TextWrapping="Wrap"
+							 MinHeight="60"
+							 VerticalContentAlignment="Top"
+							 PlaceholderText="Notes about this device - what it needs, what it came with"
+							 LostFocus="OnDeviceNotesLostFocus" />
+					<TextBlock x:Name="NoDevicePhotosText"
+							   Classes="WorkbooksFaint"
+							   FontSize="11"
+							   IsVisible="False" />
+					<WrapPanel x:Name="DevicePhotosPanel" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" />
+				</StackPanel>
+			</StackPanel>
+		</ScrollViewer>
 		</Grid>
 	</Grid>
 </UserControl>

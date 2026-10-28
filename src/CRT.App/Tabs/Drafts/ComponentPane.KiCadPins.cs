@@ -95,6 +95,19 @@ namespace CRT
         // ###########################################################################################
         private void FollowKiCadFiles()
         {
+            // The Pictures part asks for the board's KiCad views again (code review, 2026-10-28: a
+            // project imported while the part was open left "Shows KiCad view" empty until it was
+            // opened again).
+            if (this.thisBoardPart == PaneBoardPart.Pictures && this.thisSession is { } shown)
+            {
+                if (!string.Equals(ComponentPane.KiCadFilesOf(shown), this.thisKiCadFilesAskedFor, StringComparison.Ordinal))
+                {
+                    this.AskForKiCadViews();
+                }
+
+                return;
+            }
+
             if (this.thisSession is not { } session || this.thisIsNew || this.thisBoardPart is not null || this.thisLabel.Length == 0)
             {
                 return;

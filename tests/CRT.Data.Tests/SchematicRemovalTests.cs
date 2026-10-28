@@ -37,17 +37,17 @@ public sealed class SchematicRemovalTests : IDisposable
     }
 
     [Fact]
-    public void The_question_names_the_image_and_says_what_goes_and_that_it_does_not_come_back()
+    public void The_question_names_the_image_and_says_what_goes_and_that_Undo_brings_it_back()
     {
         Assert.Equal("Remove [PCB; Top] from your draft?", SchematicRemoval.Question("PCB; Top"));
 
         Assert.Equal(
-            "Its highlights for 37 components and its KiCad calibration go with it. Adding the image again later does not bring them back - the image file itself stays in your draft folder.",
+            "Its highlights for 37 components and its KiCad calibration go with it. Undo at the top of the Contribute tab brings them back.",
             SchematicRemoval.WhatGoes(new SchematicRemovalLoss(37, true)));
 
         Assert.StartsWith("Its highlights for 1 component go with it.", SchematicRemoval.WhatGoes(new SchematicRemovalLoss(1, false)));
         Assert.StartsWith("Its KiCad calibration goes with it.", SchematicRemoval.WhatGoes(new SchematicRemovalLoss(0, true)));
-        Assert.Contains("does not bring it back", SchematicRemoval.WhatGoes(new SchematicRemovalLoss(0, true)));
+        Assert.Contains("brings it back", SchematicRemoval.WhatGoes(new SchematicRemovalLoss(0, true)));
     }
 
     // Read from the sidecar beside the workbook - where the highlights and the calibration live.

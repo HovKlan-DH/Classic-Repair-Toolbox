@@ -83,6 +83,22 @@ namespace Handlers.DataHandling
         // the walk-past-what-exists floor already handles safely.
         // ###########################################################################################
         [JsonPropertyName("lastWorklogId")] public int LastWorklogId { get; set; }
+
+        // ###########################################################################################
+        // The user's own device this repair was made on (CRT 4.0 step 4 - OwnedDeviceStore), or null
+        // for a repair on no device - every workbook written before devices existed, and any the
+        // user never put on one. Nothing is forced: such a workbook stays in the workbook list, and
+        // "On my device" under its title puts it on one.
+        //
+        // An id no device has any more (the device was deleted) reads as no device - device ids are
+        // never handed out again, so a dangling id can never come to name a different device.
+        // ###########################################################################################
+        [JsonPropertyName("ownedDeviceId")] public int? OwnedDeviceId { get; set; }
+
+        // What a later CRT writes into a workbook and this one does not know - kept and written back
+        // by every save, as a device's own record keeps it (code review, 2026-10-28: a field added
+        // later, as ownedDeviceId was, would otherwise go with the first save of an older CRT).
+        [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
     }
 
     // ###########################################################################################
@@ -482,6 +498,15 @@ namespace Handlers.DataHandling
         private sealed class WorkbookCounters
         {
             [JsonPropertyName("lastWorkbookId")] public int LastWorkbookId { get; set; }
+
+            // The highest DEVICE id ever handed out (CRT 4.0 step 4) - the user's own devices live
+            // in this same root as "device_{id}" folders, and their ids are never reused for the
+            // reason workbook ids are not. Zero in a file written before devices existed; the
+            // allocator then walks past the device folders on disk, as the workbook side does.
+            [JsonPropertyName("lastDeviceId")] public int LastDeviceId { get; set; }
+
+            // A counter a later CRT adds is kept and written back (code review, 2026-10-28).
+            [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
         private static string CountersPath =>
@@ -583,7 +608,9 @@ namespace Handlers.DataHandling
         // counter in one write, with all of its worklog_N folders still on disk and now orphaned.
         //
         // A workbook record always carries a boardKey; the counter file has only lastWorkbookId, so
-        // the presence of that property is the discriminator. An unreadable or non-JSON file is NOT
+        // the presence of that property is the discriminator. A DEVICE's record (OwnedDeviceStore,
+        // "device_{id}/index.json") carries one too, so a root pointed at a device folder is caught
+        // the same way. An unreadable or non-JSON file is NOT
         // treated as a record - the counter has to be writable in the ordinary case, and a corrupt
         // counter file is exactly what the write is there to replace.
         //
@@ -622,6 +649,58 @@ namespace Handlers.DataHandling
                 Logger.Warning($"Could not inspect [{path}] before writing the worklog id counters: [{ex.Message}] - treating it as a counter file");
                 return false;
             }
+        }
+
+        // ###########################################################################################
+        // The next DEVICE id (CRT 4.0 step 4), allocated and RECORDED in the same root index.json as
+        // the workbook counter - one file, so a workbook allocation rewriting it keeps the device
+        // counter and the other way round. The same rules as the workbook side: the counter when
+        // there is one, else the highest device folder on disk, then walked past every device folder
+        // that exists; a failed counter write is logged and tolerated.
+        //
+        // *** NOR AN ID A REPAIR STILL NAMES (code review, 2026-10-28). *** The counter can be lost - an
+        // unreadable file rewritten, or one an older CRT wrote back without it - and a deleted device's
+        // number would then come back, its repairs appearing on the new device. A deleted device's
+        // repairs keep naming it, so every id a workbook names is walked past too.
+        // ###########################################################################################
+        internal static int AllocateNextDeviceId()
+        {
+            int id = (ReadCounters()?.LastDeviceId ?? HighestDeviceIdOnDisk()) + 1;
+
+            var named = ReadAllWorkbooks()
+                .Select(workbook => workbook.OwnedDeviceId)
+                .OfType<int>()
+                .ToHashSet();
+
+            while (named.Contains(id) ||
+                   (!string.IsNullOrEmpty(_workbookRootPath) &&
+                    Directory.Exists(Path.Combine(_workbookRootPath, OwnedDeviceStore.BuildDeviceFolderName(id)))))
+            {
+                id++;
+            }
+
+            string path = CountersPath;
+            if (!string.IsNullOrEmpty(path) && !IsWorkbookRecordFile(path))
+            {
+                var counters = ReadCounters() ?? new WorkbookCounters { LastWorkbookId = HighestWorkbookIdOnDisk() };
+                counters.LastDeviceId = id;
+                AtomicJsonFile.Write(path, counters, SaveJsonOptions, "worklog id counters");
+            }
+
+            return id;
+        }
+
+        private static int HighestDeviceIdOnDisk()
+        {
+            if (string.IsNullOrEmpty(_workbookRootPath) || !Directory.Exists(_workbookRootPath))
+            {
+                return 0;
+            }
+
+            return Directory.GetDirectories(_workbookRootPath)
+                .Select(folder => OwnedDeviceStore.TryParseDeviceFolderName(Path.GetFileName(folder), out int id) ? id : 0)
+                .DefaultIfEmpty(0)
+                .Max();
         }
 
         // ###########################################################################################
@@ -940,7 +1019,9 @@ namespace Handlers.DataHandling
         // were invisible to GetWorkbookFolder, which does guard - so every entry the user then
         // recorded was discarded with nothing but a log line.
         // ###########################################################################################
-        public static WorkbookRecord? CreateWorkbook(string boardKey, string title, string note)
+        // ownedDeviceId: the user's device the repair is on ("New repair" on a device's page), or
+        // null for none.
+        public static WorkbookRecord? CreateWorkbook(string boardKey, string title, string note, int? ownedDeviceId = null)
         {
             if (string.IsNullOrEmpty(_workbookRootPath))
             {
@@ -961,7 +1042,8 @@ namespace Handlers.DataHandling
                 Note = note?.Trim() ?? string.Empty,
                 Status = "Open",
                 StartDate = DateTime.Now.Date,
-                WorklogCount = 0
+                WorklogCount = 0,
+                OwnedDeviceId = ownedDeviceId
             };
 
             try
@@ -1020,6 +1102,34 @@ namespace Handlers.DataHandling
             }
 
             Logger.Info($"Setting changed: [Worklog] updated workbook [#{workbookId}] [{record.Title}]");
+
+            return record;
+        }
+
+        // ###########################################################################################
+        // Puts a workbook on one of the user's devices, or takes it off (null) - leaving every other
+        // field alone, re-read first as UpdateWorkbook does. Returns the saved record, or null when
+        // the workbook cannot be found or the write failed.
+        // ###########################################################################################
+        public static WorkbookRecord? SetWorkbookDevice(int workbookId, int? ownedDeviceId)
+        {
+            string? folder = GetWorkbookFolder(workbookId);
+            var record = folder == null ? null : ReadWorkbookRecord(folder);
+
+            if (folder == null || record == null)
+            {
+                Logger.Warning($"Failed to put workbook [#{workbookId}] on a device: it could not be read");
+                return null;
+            }
+
+            record.OwnedDeviceId = ownedDeviceId;
+
+            if (!SaveWorkbook(folder, record))
+            {
+                return null;
+            }
+
+            Logger.Info($"Setting changed: [Worklog] workbook [#{workbookId}] put on device [{(ownedDeviceId?.ToString(CultureInfo.InvariantCulture) ?? "none")}]");
 
             return record;
         }

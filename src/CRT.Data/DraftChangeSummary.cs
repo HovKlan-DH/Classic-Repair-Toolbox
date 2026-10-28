@@ -323,7 +323,7 @@ namespace Handlers.DataHandling
             {
                 if (to is { Length: > 0 } && !string.Equals(from, to, StringComparison.Ordinal))
                 {
-                    lines.Add($"Schematic image [{from}] renamed [{to}]");
+                    lines.Add($"Picture [{from}] renamed [{to}]");
                     renamedTo.Add(to);
                 }
             }
@@ -337,9 +337,9 @@ namespace Handlers.DataHandling
 
                 lines.Add(row.Kind switch
                 {
-                    BoardRowChangeKind.Added => $"Schematic image [{row.DisplayLabel}] added",
-                    BoardRowChangeKind.Deleted => $"Schematic image [{row.DisplayLabel}] removed",
-                    _ => $"Schematic image [{row.DisplayLabel}]: {DraftChangeSummary.ChangedList(otherFields.Count > 0 ? otherFields : row.ChangedFields)}",
+                    BoardRowChangeKind.Added => $"Picture [{row.DisplayLabel}] added",
+                    BoardRowChangeKind.Deleted => $"Picture [{row.DisplayLabel}] removed",
+                    _ => $"Picture [{row.DisplayLabel}]: {DraftChangeSummary.ChangedList(otherFields.Count > 0 ? otherFields : row.ChangedFields)}",
                 });
             }
 

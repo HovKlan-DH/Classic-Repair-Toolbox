@@ -17,10 +17,10 @@ public sealed class DraftStepWordingTests
         Assert.Equal("[U8] back to its published values", DraftStepWording.ComponentReverted("U8"));
         Assert.Equal("Components marked on [Top]", DraftStepWording.ComponentsMarked("Top"));
         Assert.Equal("KiCad calibration of [Top]", DraftStepWording.Calibration("Top"));
-        Assert.Equal("Schematic image [Top] removed", DraftStepWording.SchematicRemoved("Top"));
-        Assert.Equal("Schematic image [Top] renamed [Front]", DraftStepWording.SchematicRenamed("Top", "Front"));
-        Assert.Equal("CAD name of [Top]", DraftStepWording.CadName("Top"));
-        Assert.Equal("CAD name of [Top]", DraftStepWording.PicturesMatched(["Top"]));
+        Assert.Equal("Picture [Top] removed", DraftStepWording.SchematicRemoved("Top"));
+        Assert.Equal("Picture [Top] renamed [Front]", DraftStepWording.SchematicRenamed("Top", "Front"));
+        Assert.Equal("KiCad view of [Top]", DraftStepWording.CadName("Top"));
+        Assert.Equal("KiCad view of [Top]", DraftStepWording.PicturesMatched(["Top"]));
         Assert.Equal("3 pictures matched to KiCad views", DraftStepWording.PicturesMatched(["Top", "Bottom", "Clock"]));
 
         // The component pane's own sections (CRT 4.0 step 2).
@@ -48,8 +48,8 @@ public sealed class DraftStepWordingTests
     [Fact]
     public void Images_added_are_counted_and_read_in_the_singular_for_one()
     {
-        Assert.Equal("Schematic image added", DraftStepWording.SchematicsAdded(1));
-        Assert.Equal("3 schematic images added", DraftStepWording.SchematicsAdded(3));
+        Assert.Equal("Picture added", DraftStepWording.SchematicsAdded(1));
+        Assert.Equal("3 pictures added", DraftStepWording.SchematicsAdded(3));
     }
 
     // A step's name is read by a hobbyist on the status line: plain ASCII, no program named.

@@ -853,7 +853,7 @@ namespace CRT
         // its file lists the published KiCad files as well as the ones imported into it - so with a
         // draft only the draft's are read, else the published board's. Their bytes are copied under
         // their names into CRT's cache, where the loaders find a project's sheets beside each other
-        // (BoardKiCadFolder). The "Schematic images" window's CAD names read the same files.
+        // (BoardKiCadFolder). The Pictures part's KiCad views read the same files.
         //
         // *** NEVER ON THE UI THREAD (code review, 2026-10-25). *** The first copy of a large board is
         // tens of megabytes; the caller reads the three paths on the UI thread and asks this on the

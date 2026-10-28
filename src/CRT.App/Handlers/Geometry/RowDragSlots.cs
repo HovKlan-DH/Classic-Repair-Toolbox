@@ -6,8 +6,8 @@ namespace Handlers.Geometry
     // ###########################################################################################
     // THE MATHS OF DRAGGING A ROW UP OR DOWN A LIST WITH A PLACEHOLDER - where the pointer says
     // the row should go. Shared by the worklog editor's Photos and Files lists, and - through
-    // ListRowDrag - the Drafts tab's "Schematic images" window and the Maintainer tab's
-    // drop-down placement (2026-09-27), so the one thing that went wrong once cannot go wrong
+    // ListRowDrag - the Maintainer tab's drop-down placement (2026-09-27; the Drafts tab's
+    // "Schematic images" window too, until CRT 4.0 step 3), so the one thing that went wrong once cannot go wrong
     // again in another copy. It sat in the CRT.UI library from then until 2026-09-30; still
     // Avalonia-free, and still tested by CRT.App.Tests' RowDragSlotsTests.
     //

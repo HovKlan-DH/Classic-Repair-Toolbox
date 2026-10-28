@@ -83,8 +83,10 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The view names LoadAsync would give these files, in the same order - WITHOUT PARSING A
-        // PCB (2026-10-10). The "Schematic images" window offers them as CAD names, and a board's
-        // .kicad_pcb runs to tens of megabytes that window has no other use for.
+        // PCB (2026-10-10). The "Schematic images" window offered them as CAD names, and a board's
+        // .kicad_pcb runs to tens of megabytes that window had no other use for. *** UNUSED SINCE
+        // CRT 4.0 STEP 3 *** - the window went, and the Pictures part takes the views from the project
+        // its host reads anyway (TabDrafts.ReadBoardKiCadAsync, kept by KiCadProjectLoader's cache).
         //
         // A PCB's two views are named after its FILE, so only its opening is read, to keep a file
         // that is no KiCad board out as LoadAsync keeps it out. The schematic sheets ARE read as

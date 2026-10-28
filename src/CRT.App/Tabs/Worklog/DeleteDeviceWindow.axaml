@@ -1,0 +1,33 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.DeleteDeviceWindow"
+        Title="Delete device"
+        Width="420"
+        MinWidth="380"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!-- Asked before one of the user's devices is deleted (CRT 4.0 step 4): what goes and what
+	     stays, in OwnedDeviceWording.DeleteQuestion's words. Enter cancels, as DeleteWorkbookWindow's
+	     does - deleting is a click on the button, never a reflexive keypress. -->
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock Text="Delete device" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<TextBlock x:Name="QuestionText" TextWrapping="Wrap" />
+
+		<TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Text="This cannot be undone!" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="DeleteButton"
+					Classes="Danger"
+					Content="Delete device"
+					Click="OnDeleteClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

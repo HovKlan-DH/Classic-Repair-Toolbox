@@ -3,6 +3,9 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace CRT
 {
@@ -47,10 +50,50 @@ namespace CRT
         // ###########################################################################################
         // Must be called before showing the dialog in CREATE mode: sets the board the new workbook
         // belongs to. Not used in edit mode - the workbook being edited already has a board.
+        //
+        // The repair can go on one of the user's devices with this board (CRT 4.0 step 4): "None"
+        // and those devices are offered, `ownedDeviceId` preselected ("New repair" on a device's
+        // page). With no device on this board there is nothing to ask.
         // ###########################################################################################
-        public void Initialize(string boardKey)
+        public void Initialize(string boardKey, int? ownedDeviceId = null)
         {
             this.thisBoardKey = boardKey;
+
+            List<OwnedDeviceRecord> devices = OwnedDeviceStore.GetAll()
+                .Where(device => device.Id == ownedDeviceId ||
+                                 string.Equals(device.BoardKey, boardKey, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var choices = new List<DeviceChoice> { new(null, "None") };
+            choices.AddRange(devices.Select(device => new DeviceChoice(device.Id, device.Name)));
+
+            this.DeviceComboBox.ItemsSource = choices;
+            this.DeviceComboBox.SelectedItem = choices.FirstOrDefault(choice => choice.Id == ownedDeviceId) ?? choices[0];
+            this.DevicePanel.IsVisible = devices.Count > 0;
+
+            if (devices.FirstOrDefault(device => device.Id == ownedDeviceId) is { } device)
+            {
+                this.Title = $"New repair on {device.Name}";
+            }
+        }
+
+        // One entry of the device drop-down - its label is what the list shows.
+        internal sealed record DeviceChoice(int? Id, string Label)
+        {
+            public override string ToString() => this.Label;
+        }
+
+        // The device picked, or null for none.
+        internal int? ChosenDeviceId => this.DevicePanel.IsVisible ? (this.DeviceComboBox.SelectedItem as DeviceChoice)?.Id : null;
+
+        // The record the dialog closed with - for the tests, which cannot read a ShowDialog result.
+        internal WorkbookRecord? Created { get; private set; }
+
+        // Types a description and presses the submit button, as a test cannot through ShowDialog.
+        internal void CreateForTests(string title)
+        {
+            this.TitleTextBox.Text = title;
+            this.OnCreateClick(null, new RoutedEventArgs());
         }
 
         // ###########################################################################################
@@ -155,7 +198,7 @@ namespace CRT
                 return;
             }
 
-            var record = WorklogManager.CreateWorkbook(this.thisBoardKey, title, note);
+            var record = WorklogManager.CreateWorkbook(this.thisBoardKey, title, note, this.ChosenDeviceId);
 
             if (record == null)
             {
@@ -167,6 +210,7 @@ namespace CRT
                 return;
             }
 
+            this.Created = record;
             this.Close(record);
         }
     }

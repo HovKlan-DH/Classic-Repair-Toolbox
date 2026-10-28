@@ -895,17 +895,20 @@
 				</Grid.ColumnDefinitions>
 			<StackPanel Grid.Column="0" Spacing="18" Margin="4,12,12,12">
 
-				<!-- ==== Pictures (slice 4b) - how a marked component is drawn on each ==== -->
+				<!-- ==== Pictures (slice 4b; step 3 moved "Schematic images" here) - every picture of the
+				     board: added, named, matched to its KiCad view, ordered, removed, and how a marked
+				     component is drawn on it (ComponentPane.BoardPictures.cs, .BoardPictureList.cs) ==== -->
 				<StackPanel x:Name="PicturesPart" Spacing="4">
 					<TextBlock x:Name="BoardPicturesHeading" Classes="PaneHeading" Text="Pictures" />
 					<TextBlock Classes="PaneIntro"
-							   Text="How a marked component is drawn on each of the board's pictures - its colour, and how strongly it shows on the picture and on its thumbnail. The preview shows the components marked on the picture." />
-					<Button x:Name="ManagePicturesButton"
-							Content="Add, remove or rename pictures"
+							   Text="Photos of the board's sides and its schematic sheets - everything else is marked on them. Name each one, say which KiCad view it shows, put them in order, and choose how a marked component is drawn on it." />
+					<Button x:Name="AddPicturesButton"
+							Classes="Accept"
+							Content="Add pictures"
 							HorizontalAlignment="Left"
 							Margin="0,0,0,8"
-							ToolTip.Tip="Open the board's pictures - add new ones, take some away, rename them, put them in order or give them their KiCad view"
-							Click="OnManagePicturesClick" />
+							ToolTip.Tip="Pick photos of the board's sides, or its schematic sheets - each is copied into your draft, your own file left where it is. They can be dragged onto the tab too."
+							Click="OnAddPicturesClick" />
 
 					<!-- What "Mark all automatically" did, or why it could not (step 3, slice 3c). -->
 					<TextBlock x:Name="BoardPicturesNoteText" TextWrapping="Wrap" Margin="0,0,0,8" IsVisible="False" />
@@ -933,8 +936,22 @@
 										</Border>
 
 										<StackPanel Grid.Column="2" Spacing="6">
-											<TextBlock Text="{Binding Name}" FontWeight="Bold" TextWrapping="Wrap" />
+											<!-- The name, saved on Enter or leaving the box (Escape puts it back). -->
+											<TextBox Text="{Binding NameDraft, Mode=TwoWay}"
+													 FontWeight="Bold"
+													 ToolTip.Tip="The picture's name - its thumbnail on the Schematics tab says it. Enter or leaving the box saves it."
+													 KeyDown="OnPictureNameKeyDown"
+													 LostFocus="OnPictureNameLostFocus" />
 											<TextBlock Text="{Binding File}" FontSize="11" Opacity="0.75" TextTrimming="CharacterEllipsis" />
+
+											<!-- The KiCad view the picture shows - once the board's views are read. -->
+											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsCadNames}">
+												<TextBlock Text="Shows KiCad view" VerticalAlignment="Center" />
+												<ComboBox ItemsSource="{Binding CadNameChoices}"
+														  SelectedItem="{Binding SelectedCadNameChoice, Mode=TwoWay}"
+														  MinWidth="220"
+														  ToolTip.Tip="Which view of the board's KiCad data this picture shows - its traces are drawn on it from that view, and Align KiCad lines them up" />
+											</StackPanel>
 
 											<Grid ColumnDefinitions="Auto,8,Auto,12,*,8,40" RowDefinitions="Auto,6,Auto,6,Auto">
 												<TextBlock Grid.Row="0" Grid.Column="0" Text="Marked components" VerticalAlignment="Center" />
@@ -987,6 +1004,26 @@
 														ToolTip.Tip="{Binding MarkAutomaticallyTip}"
 														ToolTip.ShowOnDisabled="True"
 														Click="OnMarkAutomaticallyClick" />
+											</WrapPanel>
+
+											<!-- The picture's place among the board's pictures, and taking it away (step 3 -
+											     the "Schematic images" window's, moved here). -->
+											<WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6">
+												<Button Content="Move up"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanMoveUp}"
+														ToolTip.Tip="Move this picture up - the order every user of the board sees the pictures in"
+														Click="OnMovePictureUpClick" />
+												<Button Content="Move down"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanMoveDown}"
+														ToolTip.Tip="Move this picture down - the order every user of the board sees the pictures in"
+														Click="OnMovePictureDownClick" />
+												<Button Content="Remove"
+														Classes="Danger"
+														Tag="{Binding}"
+														ToolTip.Tip="Take this picture off the board - it asks first when components are marked on it"
+														Click="OnRemoveBoardPictureClick" />
 											</WrapPanel>
 										</StackPanel>
 									</Grid>

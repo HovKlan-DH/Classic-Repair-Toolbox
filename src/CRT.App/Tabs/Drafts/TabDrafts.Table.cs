@@ -178,6 +178,12 @@ namespace CRT
                 return;
             }
 
+            // A picture's name the Pictures part cannot take keeps it open (OpenPaneAsync has why).
+            if (this.IsComponentOpen && this.ComponentPane.KeepsRefusedPictureName())
+            {
+                return;
+            }
+
             // The right side shows one thing: the component pane goes, what it holds handed to the
             // draft the table is about to show - and saved before the table reads the draft's file,
             // under CRT's "please wait" (code review, 2026-10-26): the contributor pressed for the

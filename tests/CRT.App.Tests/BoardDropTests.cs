@@ -68,21 +68,55 @@ public sealed class BoardDropTests : IDisposable
         Assert.Equal(BoardDropKind.Nothing, byFile.Kind);
         Assert.Equal(BoardDrop.KiCadFileNotFolder, byFile.Problem);
 
-        // With pictures dropped beside it, the pictures are added.
-        Assert.Equal(BoardDropKind.Pictures, Of([pro, "top.png"], []).Kind);
+        // With pictures dropped beside it, the pictures are added - the file said to be left out.
+        BoardDrop beside = Of([pro, "top.png"], []);
+        Assert.Equal(BoardDropKind.Pictures, beside.Kind);
+        Assert.Equal(BoardDrop.LeftWithoutPictures(1), beside.Note);
 
+        // One KiCad project at a time - the other one said to be left.
         BoardDrop twoFolders = Of(["A", "B"], new() { ["A"] = ["A/a.kicad_pcb"], ["B"] = ["B/b.kicad_pcb"] });
         Assert.Equal(["A"], twoFolders.Paths);
+        Assert.Equal(BoardDrop.LeftBesideKiCad(1), twoFolders.Note);
     }
 
-    // Picture files are pictures - anything else dropped with them is left be.
+    // Picture files are pictures - anything else dropped with them is left out, and said.
     [Fact]
-    public void Picture_files_are_pictures_and_the_rest_is_left_be()
+    public void Picture_files_are_pictures_and_the_rest_is_said_to_be_left_out()
     {
         BoardDrop drop = Of(["top.png", "notes.txt", "bottom.webp", " "], []);
 
         Assert.Equal(BoardDropKind.Pictures, drop.Kind);
         Assert.Equal(["top.png", "bottom.webp"], drop.Paths);
+        Assert.Equal(BoardDrop.LeftWithoutPictures(1), drop.Note);
+        Assert.Equal(string.Empty, Of(["top.png"], []).Note);
+    }
+
+    // ###########################################################################################
+    // Loose pictures dropped with a folder of scans go in TOGETHER (code review, 2026-10-28: the
+    // first folder decided alone, and the loose photos were skipped without a word). A folder of
+    // neither among them is said to be left out.
+    // ###########################################################################################
+    [Fact]
+    public void Loose_pictures_and_folders_of_scans_go_in_together()
+    {
+        BoardDrop drop = Of(
+            ["Top.jpg", "Scans", "Bottom.jpg", "Notes"],
+            new() { ["Scans"] = ["Scans/side.png", "Scans/readme.txt"], ["Notes"] = ["Notes/notes.txt"] });
+
+        Assert.Equal(BoardDropKind.Pictures, drop.Kind);
+        Assert.Equal(["Top.jpg", "Scans/side.png", "Bottom.jpg"], drop.Paths);
+        Assert.Equal(BoardDrop.LeftWithoutPictures(1), drop.Note);
+    }
+
+    // A KiCad project dropped with pictures is taken on its own - the pictures said to be left.
+    [Fact]
+    public void A_KiCad_project_dropped_with_pictures_is_taken_alone_and_the_rest_said()
+    {
+        BoardDrop drop = Of(["Top.jpg", "Open128", "Bottom.jpg"], new() { ["Open128"] = ["Open128/Open128.kicad_pro"] });
+
+        Assert.Equal(BoardDropKind.KiCad, drop.Kind);
+        Assert.Equal(["Open128"], drop.Paths);
+        Assert.Equal(BoardDrop.LeftBesideKiCad(2), drop.Note);
     }
 
     [Fact]

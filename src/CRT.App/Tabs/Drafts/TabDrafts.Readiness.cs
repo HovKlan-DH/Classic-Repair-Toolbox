@@ -19,8 +19,8 @@ namespace CRT
     //
     //   - A NEW BOARD (one only a draft has) shows its checklist (BoardReadiness): each step done by what
     //     its draft holds, the first with something to do next, each with a button to the tool that
-    //     does it - the "Schematic images" and "KiCad data" windows, the Pictures part (Mark components
-    //     and Align KiCad on each picture), Add component, Important signals, Submit.
+    //     does it - the Pictures part (adding pictures, their KiCad views, Mark components and Align
+    //     KiCad on each), the "KiCad data" window, Add component, Important signals, Submit.
     //   - AN EXISTING BOARD shows what it lacks, each component a click away (BoardReadiness.Missing).
     //   - "ADD N FROM KICAD" (slice 3b) puts every component of the board's KiCad data the draft lacks
     //     into it in one step - with their values, categories, packages, pins and datasheet links.
@@ -487,9 +487,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // A step's button: the tool that does the step. Matching a picture to a KiCad view is its CAD
-        // name in "Schematic images"; aligning and marking are on each picture's card in the Pictures
-        // part ("Align KiCad", "Mark components").
+        // A step's button: the tool that does the step. Adding pictures, matching each to its KiCad view
+        // ("Shows KiCad view"), aligning and marking are all on the picture cards of the Pictures part.
         // ###########################################################################################
         internal void DoReadinessStep(ReadinessStepKind kind)
         {
@@ -497,14 +496,12 @@ namespace CRT
             {
                 case ReadinessStepKind.Pictures:
                 case ReadinessStepKind.Match:
+                case ReadinessStepKind.Align:
+                case ReadinessStepKind.Mark:
                     this.ManagePictures();
                     break;
                 case ReadinessStepKind.KiCad:
-                    this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry, BoardFilesSection.KiCadData)), "KiCad data");
-                    break;
-                case ReadinessStepKind.Align:
-                case ReadinessStepKind.Mark:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Pictures), "Pictures");
+                    this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry)), "KiCad data");
                     break;
                 case ReadinessStepKind.Components when this.thisReadinessSteps.Any(step => step.Kind == ReadinessStepKind.Components && step.FromKiCad > 0):
                     this.RunGuarded(this.AddFromKiCadAsync, "Add from KiCad");

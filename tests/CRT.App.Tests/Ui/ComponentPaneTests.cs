@@ -2278,7 +2278,8 @@ public sealed class ComponentPaneTests : IDisposable
     // Two pictures - one with its colours set, one blank (CRT's defaults) - and a component marked on
     // the first; the first picture's bytes stored, so its preview can be read. `withKiCad`: the board
     // lists a KiCad file and the first picture names its KiCad view (slice 6's "Align KiCad").
-    private DraftSession OpenDraftWithPictures(bool withKiCad = false)
+    // `alignBottom`: KiCad is aligned on the second picture, which has no marks.
+    private DraftSession OpenDraftWithPictures(bool withKiCad = false, bool alignBottom = false)
     {
         BoardData board = Published();
         board.Schematics.AddRange([
@@ -2289,7 +2290,10 @@ public sealed class ComponentPaneTests : IDisposable
 
         Directory.CreateDirectory(this.DraftFolder);
         BoardFiles.Write(this.BoardFile, BoardDocumentMapping.ToDocument(
-            new BoardContent(board, [], []),
+            new BoardContent(
+                board,
+                alignBottom ? [new KiCadCalibrationEntry { SchematicName = "Bottom", CadName = "PCB bottom", OffsetX = 1, OffsetY = 2, ScaleX = 1, ScaleY = 1 }] : [],
+                []),
             name => name,
             withKiCad
                 ? [this.Stored("Images/top.png", ComponentPaneTests.Png), this.Stored("KiCad data/board.kicad_pcb", "(kicad_pcb)"u8.ToArray())]
@@ -2418,21 +2422,443 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
-    // Adding, removing and renaming pictures is the "Schematic images" window's - asked of the host.
+    // ---- the pictures themselves, on their cards (step 3 - the "Schematic images" window went) ----
+
+    // The name box on a picture's card.
+    private static TextBox NameBoxOf(ComponentPane pane, ComponentPaneBoardPictureRow row) =>
+        pane.GetVisualDescendants().OfType<TextBox>().First(box => ReferenceEquals(box.DataContext, row) && box.Text == row.NameDraft);
+
+    // ###########################################################################################
+    // "Add pictures" (and pictures dropped on the tab): each copied in at the board's top under a name
+    // of its own, named after its file and never a name a picture has - ONE step for all, the draft
+    // saved at once; what is no picture is left out.
+    // ###########################################################################################
     [Fact]
-    public void The_pictures_part_asks_the_host_for_the_Schematic_images_window()
+    public async Task Pictures_added_are_copied_in_named_after_their_files_as_one_step_and_saved_at_once()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+        string top = this.Pickable("Top.png", ComponentPaneTests.Png);
+        string under = this.Pickable("Under side.png", ComponentPaneTests.Png);
+        string notes = this.Pickable("notes.txt", "x"u8.ToArray());
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            Assert.Contains("Accept", Get<Button>(pane, "AddPicturesButton").Classes);
+
+            Assert.True(await pane.AddPicturesAsync([top, under, notes]));
+
+            Assert.Equal(
+                [("Top", "Images/top.png"), ("Bottom", "Images/bottom.png"), ("Top (2)", "Top.png"), ("Under side", "Under side.png")],
+                session.Content.Board.Schematics.Select(row => (row.SchematicName, row.SchematicImageFile)));
+            Assert.Equal("2 pictures added", session.UndoDescription);
+            Assert.Contains("Top.png", this.ListedOnDisk());
+            Assert.Contains("Under side.png", this.ListedOnDisk());
+            Assert.False(session.HasUnsavedChanges);
+
+            Assert.Equal(4, pane.BoardPicturesForTests.Count);
+            Assert.Equal("Pictures (4)", Get<TextBlock>(pane, "BoardPicturesHeading").Text);
+            Assert.Equal(ComponentPaneWording.PicturesAdded(2), pane.PicturesNoteForTests);
+
+            window.Close();
+        });
+    }
+
+    // Nothing but what is no picture - a text file, a hidden file: nothing added, and said why.
+    [Fact]
+    public async Task Nothing_is_added_when_no_picture_was_picked_and_it_says_why()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+        string notes = this.Pickable("notes.txt", "x"u8.ToArray());
+        string hidden = this.Pickable(".thumb.png", ComponentPaneTests.Png);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+
+            Assert.False(await pane.AddPicturesAsync([notes, hidden]));
+
+            Assert.False(session.CanUndo);
+            Assert.Equal(2, session.Content.Board.Schematics.Count);
+            Assert.Equal(ComponentPaneWording.NoPicturesToAdd, pane.PicturesNoteForTests);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A name typed renames the picture on Enter - ONE step, the components marked on it carried to
+    // the new name - and the card is the SAME card (made again, it would throw away a click pressed on
+    // another card as the box lost focus). Escape puts the name back.
+    // ###########################################################################################
+    [Fact]
+    public void A_pictures_name_typed_renames_it_on_Enter_and_its_marks_go_with_it()
     {
         DraftSession session = this.OpenDraftWithPictures();
 
         UiTest.Run(() =>
         {
             (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            ComponentPaneBoardPictureRow top = pane.BoardPicturesForTests[0];
+            TextBox box = NameBoxOf(pane, top);
+
+            box.Text = "Something";
+            box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+            Assert.Equal("Top", box.Text);
+            Assert.False(session.CanUndo);
+
+            box.Text = " Front ";
+            box.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+
+            Assert.Equal("Picture [Top] renamed [Front]", session.UndoDescription);
+            Assert.Equal(["Front", "Bottom"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Equal("Front", Assert.Single(session.Content.Board.ComponentHighlights).SchematicName);
+            Assert.Same(top, pane.BoardPicturesForTests[0]);
+            Assert.Equal("Front", top.Name);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A blank name, or one another picture has (capitals aside), is refused with the reason - and the
+    // typed name STAYS in its box to be fixed (code review, 2026-10-28: it was put back to the old
+    // name, and closing the pane then threw it away unseen). The draft is as it was.
+    // ###########################################################################################
+    [Fact]
+    public void A_blank_name_or_one_another_picture_has_is_refused_with_the_reason_and_kept_in_its_box()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            ComponentPaneBoardPictureRow top = pane.BoardPicturesForTests[0];
+
+            top.NameDraft = "bottom";
+            Assert.False(pane.CommitPictureName(top));
+            Assert.Equal(SchematicRename.NameTaken("bottom"), pane.PicturesNoteForTests);
+            Assert.Equal("bottom", top.NameDraft);
+
+            top.NameDraft = "   ";
+            Assert.False(pane.CommitPictureName(top));
+            Assert.Equal(SchematicRename.NeedsAName, pane.PicturesNoteForTests);
+
+            Assert.False(session.CanUndo);
+            Assert.Equal(["Top", "Bottom"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+
+            // Escape puts the picture's name back.
+            NameBoxOf(pane, top).RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+            Assert.Equal("Top", top.NameDraft);
+
+            window.Close();
+        });
+    }
+
+    // The pane's Close stays open over a name that cannot be taken - the reason under the heading -
+    // and closes once the name is fixed.
+    [Fact]
+    public void Close_stays_open_over_a_picture_name_that_cannot_be_taken()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            int closes = 0;
+            pane.CloseRequested += (_, _) => closes++;
+
+            pane.BoardPicturesForTests[0].NameDraft = "Bottom";
+            Click(Get<Button>(pane, "CloseButton"));
+
+            Assert.Equal(0, closes);
+            Assert.Equal(SchematicRename.NameTaken("Bottom"), pane.PicturesNoteForTests);
+
+            pane.BoardPicturesForTests[0].NameDraft = "Front";
+            Click(Get<Button>(pane, "CloseButton"));
+
+            Assert.Equal(1, closes);
+            Assert.Equal("Front", session.Content.Board.Schematics[0].SchematicName);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A picture's name is taken on Enter or when its box is left - never on a pause in typing (code
+    // review, 2026-10-28: a pause after "Top" saved it as a rename, or refused it and put the old
+    // name back under the caret). The pause - the colours' too - takes everything but the name.
+    // ###########################################################################################
+    [Fact]
+    public void A_picture_name_is_never_taken_on_a_pause_in_typing()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            ComponentPaneBoardPictureRow bottom = pane.BoardPicturesForTests[1];
+
+            // "Top" typed over "Bottom" on the way to "Top side" - taken, or refused, on a pause.
+            bottom.NameDraft = "Top";
+            pane.CommitHeld(fromTyping: true);
+
+            Assert.False(session.CanUndo);
+            Assert.Equal("Top", bottom.NameDraft);
+            Assert.Null(pane.PicturesNoteForTests);
+
+            // The rest typed, and the box left: renamed.
+            bottom.NameDraft = "Top side";
+            pane.CommitHeld();
+            Assert.Equal(["Top", "Top side"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+
+            window.Close();
+        });
+    }
+
+    // Pictures picked that cannot be copied in - gone since they were picked - get no card, and are said.
+    [Fact]
+    public async Task Pictures_that_could_not_be_copied_get_no_card_and_are_said()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+        string side = this.Pickable("Side.png", ComponentPaneTests.Png);
+        string gone = Path.Combine(this.thisWorkspace.Root, "Picked", "Gone.png");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+
+            Assert.True(await pane.AddPicturesAsync([side, gone]));
+
+            Assert.Equal(["Top", "Bottom", "Side"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Equal(ComponentPaneWording.PicturesAdded(1, notCopied: 1), pane.PicturesNoteForTests);
+            Assert.Equal("Picture added", session.UndoDescription);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // The Pictures part asks for the board's KiCad views when it opens, and again when the draft's
+    // KiCad files change while it is open - a project imported (code review, 2026-10-28: the views
+    // stayed as they were until the part was opened again). A read answers only its own ask.
+    // ###########################################################################################
+    [Fact]
+    public void The_Pictures_part_asks_for_the_KiCad_views_again_when_the_KiCad_files_change()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            var asks = new List<int>();
+            pane.KiCadViewsWanted += (_, ask) => asks.Add(ask);
+
+            pane.ShowBoardPart(session, PaneBoardPart.Pictures, WithBoardParts());
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal([1], asks);
+
+            // A KiCad project imported: its file arrives in the draft and a write lists it.
+            Directory.CreateDirectory(Path.Combine(this.DraftFolder, "KiCad data"));
+            File.WriteAllText(Path.Combine(this.DraftFolder, "KiCad data", "board.kicad_pcb"), "(kicad_pcb)");
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save(evenUnchanged: true));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal([1, 2], asks);
+
+            // The read asked first ending last is not taken; the latest is.
+            pane.UseKiCadViews(["PCB top", "PCB bottom"], 2);
+            pane.UseKiCadViews(["Old view"], 1);
+            Assert.Contains(pane.BoardPicturesForTests[1].CadNameChoices, item => item.CadName == "PCB bottom");
+            Assert.DoesNotContain(pane.BoardPicturesForTests[1].CadNameChoices, item => item.CadName == "Old view");
+
+            window.Close();
+        });
+    }
+
+    // What the pane holds is handed over as the draft is asked for it - a name typed and not left yet
+    // goes in with the rest (the pane closing, another board, Submit).
+    [Fact]
+    public void A_name_typed_and_not_left_goes_into_the_draft_when_the_pane_hands_over()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+
+            pane.BoardPicturesForTests[1].NameDraft = "Underside";
+            pane.CommitHeld();
+
+            Assert.Equal(["Top", "Underside"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "Shows KiCad view": the board's views once the host has read them - a view another picture has
+    // left OUT of the list (owner request, 2026-10-10) - picked as ONE step, every list changed IN
+    // PLACE (a list replaced lets go of its selection), and Align KiCad offered with it.
+    // ###########################################################################################
+    [Fact]
+    public void A_KiCad_view_picked_is_the_pictures_CAD_name_and_no_other_pictures_choice()
+    {
+        DraftSession session = this.OpenDraftWithPictures(withKiCad: true);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            ComponentPaneBoardPictureRow top = pane.BoardPicturesForTests[0];
+            ComponentPaneBoardPictureRow bottom = pane.BoardPicturesForTests[1];
+            Assert.False(bottom.ShowsCadNames);
+
+            pane.UseKiCadViews(["PCB top", "PCB bottom", "Sheet 1"]);
+
+            Assert.True(bottom.ShowsCadNames);
+            Assert.DoesNotContain(bottom.CadNameChoices, item => item.CadName == "PCB top");
+            Assert.Contains(top.CadNameChoices, item => item.CadName == "PCB top");
+            Assert.Equal("PCB top", top.SelectedCadNameChoice?.CadName);
+            Assert.False(bottom.CanAlignKiCad);
+            CadNameChoiceItem topsOwn = top.SelectedCadNameChoice!;
+
+            // Picked in the drop-down: written once the binding has finished.
+            bottom.SelectedCadNameChoice = bottom.CadNameChoices.Single(item => item.CadName == "PCB bottom");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("KiCad view of [Bottom]", session.UndoDescription);
+            Assert.Equal("PCB bottom", session.Content.Board.Schematics[1].CadName);
+            Assert.True(bottom.CanAlignKiCad);
+            Assert.DoesNotContain(top.CadNameChoices, item => item.CadName == "PCB bottom");
+            Assert.Same(topsOwn, top.SelectedCadNameChoice);
+            Assert.Same(bottom, pane.BoardPicturesForTests[1]);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // Up and down move a picture one place - the board's own order, ONE step - offered only where
+    // they lead somewhere.
+    // ###########################################################################################
+    [Fact]
+    public void Up_and_down_move_a_picture_one_place_as_one_step()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            Assert.Equal((false, true), (pane.BoardPicturesForTests[0].CanMoveUp, pane.BoardPicturesForTests[0].CanMoveDown));
+            Assert.Equal((true, false), (pane.BoardPicturesForTests[1].CanMoveUp, pane.BoardPicturesForTests[1].CanMoveDown));
+
+            pane.MovePicture(pane.BoardPicturesForTests[1], -1);
+
+            Assert.Equal("Order of the pictures", session.UndoDescription);
+            Assert.Equal(["Bottom", "Top"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Equal(["Bottom", "Top"], pane.BoardPicturesForTests.Select(row => row.Name));
+            Assert.False(pane.BoardPicturesForTests[0].CanMoveUp);
+
+            // Already at the top: no step.
+            pane.MovePicture(pane.BoardPicturesForTests[0], -1);
+            Assert.True(session.Undo());
+            Assert.False(session.CanUndo);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // Remove asks first when components are marked on the picture - they go with it - and "no" keeps
+    // everything; "yes" takes the picture and its marks off as ONE step, which Undo brings back.
+    // ###########################################################################################
+    [Fact]
+    public async Task Removing_a_picture_with_marks_asks_first_and_takes_them_along()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            var asked = new List<(string Name, SchematicRemovalLoss Loss)>();
+            bool answer = false;
+            pane.ConfirmPictureRemovalOverrideForTests = (name, loss) =>
+            {
+                asked.Add((name, loss));
+                return Task.FromResult(answer);
+            };
+
+            await pane.RemovePictureAsync(pane.BoardPicturesForTests[0]);
+
+            Assert.Equal([("Top", new SchematicRemovalLoss(1, false))], asked);
+            Assert.False(session.CanUndo);
+            Assert.Equal(2, pane.BoardPicturesForTests.Count);
+
+            answer = true;
+            await pane.RemovePictureAsync(pane.BoardPicturesForTests[0]);
+
+            Assert.Equal("Picture [Top] removed", session.UndoDescription);
+            Assert.Equal(["Bottom"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Empty(session.Content.Board.ComponentHighlights);
+            Assert.Equal(["Bottom"], pane.BoardPicturesForTests.Select(row => row.Name));
+            Assert.Equal(ComponentPaneWording.PictureRemoved("Top"), pane.PicturesNoteForTests);
+
+            Assert.True(session.Undo());
+            Assert.Equal(["Top", "Bottom"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Single(session.Content.Board.ComponentHighlights);
+
+            window.Close();
+        });
+    }
+
+    // A KiCad alignment on the picture is asked about too; a picture with nothing on it goes unasked.
+    [Fact]
+    public async Task Removing_asks_about_a_KiCad_alignment_and_nothing_about_a_bare_picture()
+    {
+        DraftSession session = this.OpenDraftWithPictures(alignBottom: true);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            var asked = new List<SchematicRemovalLoss>();
+            pane.ConfirmPictureRemovalOverrideForTests = (_, loss) =>
+            {
+                asked.Add(loss);
+                return Task.FromResult(true);
+            };
+
+            await pane.RemovePictureAsync(pane.BoardPicturesForTests[1]);
+
+            Assert.Equal([new SchematicRemovalLoss(0, true)], asked);
+            Assert.Equal(["Top"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Empty(session.Content.Calibrations);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public async Task A_picture_with_nothing_on_it_is_removed_without_a_question()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
             int asked = 0;
-            pane.ManagePicturesRequested += (_, _) => asked++;
+            pane.ConfirmPictureRemovalOverrideForTests = (_, _) =>
+            {
+                asked++;
+                return Task.FromResult(false);
+            };
 
-            Click(Get<Button>(pane, "ManagePicturesButton"));
+            await pane.RemovePictureAsync(pane.BoardPicturesForTests[1]);
 
-            Assert.Equal(1, asked);
+            Assert.Equal(0, asked);
+            Assert.Equal("Picture [Bottom] removed", session.UndoDescription);
+            Assert.Equal(["Top"], session.Content.Board.Schematics.Select(row => row.SchematicName));
 
             window.Close();
         });

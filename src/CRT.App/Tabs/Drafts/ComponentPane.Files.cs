@@ -50,7 +50,8 @@ namespace CRT
         // Twice the width a thumbnail is drawn at, for a sharp one on a high-density screen.
         private const int ThumbnailWidth = 336;
 
-        private static readonly FilePickerFileType PictureFileType = new("Pictures")
+        // Internal: the Workbooks tab's device photos pick the same kinds of picture.
+        internal static readonly FilePickerFileType PictureFileType = new("Pictures")
         {
             Patterns = ContributionPackaging.DisplayableImageExtensions.Select(extension => "*" + extension).ToArray(),
             MimeTypes = ["image/*"],
@@ -268,7 +269,15 @@ namespace CRT
         // when the file could not be copied in; a save that fails says so in the draft's header, as
         // every save of the pane does.
         // ###########################################################################################
-        private async Task<bool> AddToDraftAsync(string source, string name, Action change)
+        private Task<bool> AddToDraftAsync(string source, string name, Action change) =>
+            this.AddToDraftAsync([(source, name)], _ => change());
+
+        // ###########################################################################################
+        // Several picked files at once - the board's pictures - each under its name, one step for all.
+        // `change` is handed the names actually COPIED: a file that could not be (locked by another
+        // program, gone since it was picked) gets no row (code review, 2026-10-28).
+        // ###########################################################################################
+        private async Task<bool> AddToDraftAsync(IReadOnlyList<(string Source, string Name)> files, Action<IReadOnlyList<string>> change)
         {
             if (this.thisSession is not { } session)
             {
@@ -279,7 +288,7 @@ namespace CRT
 
             return await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingFile, async () =>
             {
-                DraftPickedFiles copies = await Task.Run(() => DraftPickedFiles.CopyInto(draftFolder, [(source, name)]));
+                DraftPickedFiles copies = await Task.Run(() => DraftPickedFiles.CopyInto(draftFolder, files));
 
                 if (!copies.AnyLying)
                 {
@@ -287,8 +296,9 @@ namespace CRT
                     return false;
                 }
 
+                List<string> copied = copies.Copied.ToList();
                 copies.Keep();
-                change();
+                change(copied);
                 this.ShowEmptyLines();
                 this.LoadThumbnails();
 

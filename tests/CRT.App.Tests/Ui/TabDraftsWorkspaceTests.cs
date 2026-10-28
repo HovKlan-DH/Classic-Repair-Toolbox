@@ -314,6 +314,32 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
+    // The Pictures part gets the board's KiCad views to match its pictures to (step 3 - the
+    // "Schematic images" window's drop-downs, moved onto the cards), read for it once it is open.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_Pictures_part_gets_the_boards_KiCad_views_for_its_pictures()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.KiCadViewsOverrideForTests = _ => Task.FromResult<IReadOnlyList<string>>(["PCB top", "PCB bottom"]);
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+            ComponentPaneBoardPictureRow top = tab.ComponentPaneForTests.BoardPicturesForTests.Single();
+            await Until(() => top.CadNameChoices.Count == 3);
+
+            Assert.Equal(["", "PCB top", "PCB bottom"], top.CadNameChoices.Select(item => item.CadName));
+            Assert.True(top.ShowsCadNames);
+        });
+    }
+
+    // ###########################################################################################
     // A draft made only because something was opened on the board - a component ("Edit this
     // component" on everybody's right-click menu), a board part, the table - goes again when that is
     // closed with nothing in the draft (code review, 2026-10-26): it stayed, the tab's title turned
@@ -385,6 +411,99 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
 
             Assert.True(busyWhileReading);
             window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A draft made only to look whose pictures were MOVED is kept (code review, 2026-10-28): order is
+    // no change the counts see, so closing the part deleted the draft and the new order with it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_draft_made_only_to_look_keeps_its_pictures_new_order()
+    {
+        BoardData Pictures() => new()
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "top.png" },
+                new BoardSchematicEntry { SchematicName = "Bottom", SchematicImageFile = "bottom.png" },
+            ],
+        };
+
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+        string published = Path.Combine(dataRoot, DataTreeLayout.BoardFileFor(BoardA).Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(published)!);
+        CachedWorkbooks.Write(published, Pictures());
+        DataManager.LoadFrom(dataRoot, "does-not-exist.xlsx");
+
+        try
+        {
+            await UiTest.RunAsync(async () =>
+            {
+                HardwareBoardEntry entry = Entry("250407", BoardA);
+                TabDrafts tab = Tab(entry);
+                tab.PublishedBoardOverrideForTests = _ => Pictures();
+                tab.EnsureDraftOverrideForTests = _ =>
+                {
+                    WriteDraft(BoardA, Pictures());
+                    return Task.FromResult(true);
+                };
+                tab.ShowBoard(entry, Pictures(), "PAL", null);
+
+                await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+                tab.ComponentPaneForTests.MovePicture(tab.ComponentPaneForTests.BoardPicturesForTests[1], -1);
+                DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+                Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+
+                tab.CloseComponent();
+
+                Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+            });
+        }
+        finally
+        {
+            DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.xlsx");
+        }
+    }
+
+    // ###########################################################################################
+    // A picture's name the Pictures part cannot take keeps the part open, the reason under its
+    // heading, when another part or the table is asked for (code review, 2026-10-28: the typed name
+    // and its reason went without a word). Once the name is put back, the other part opens.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picture_name_that_cannot_be_taken_keeps_the_Pictures_part_open()
+    {
+        BoardData TwoPictures()
+        {
+            BoardData board = Board();
+            board.Schematics.Add(new BoardSchematicEntry { SchematicName = "Bottom" });
+            return board;
+        }
+
+        WriteDraft(BoardA, TwoPictures());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => TwoPictures();
+            tab.ShowBoard(entry, TwoPictures(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+            ComponentPaneBoardPictureRow bottom = tab.ComponentPaneForTests.BoardPicturesForTests[1];
+            bottom.NameDraft = "Top";
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            Assert.Equal(PaneBoardPart.Pictures, tab.ComponentPaneForTests.BoardPart);
+            Assert.Equal(SchematicRename.NameTaken("Top"), tab.ComponentPaneForTests.PicturesNoteForTests);
+
+            await tab.ShowTableOnSheetAsync(BoardWorkbookSchema.SheetCredits);
+            Assert.False(tab.IsTableOpen);
+
+            bottom.NameDraft = "Bottom";
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            Assert.Equal(PaneBoardPart.Credits, tab.ComponentPaneForTests.BoardPart);
         });
     }
 

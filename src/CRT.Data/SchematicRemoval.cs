@@ -83,7 +83,7 @@ namespace Handlers.DataHandling
 
             string them = loss.MarkedComponents > 0 ? "them" : "it";
 
-            return $"{SchematicRemoval.GoesWithIt(loss)} Adding the image again later does not bring {them} back - the image file itself stays in your draft folder.";
+            return $"{SchematicRemoval.GoesWithIt(loss)} Undo at the top of the Contribute tab brings {them} back.";
         }
 
         // "Its highlights for 3 components and its KiCad calibration go with it." - or the part of

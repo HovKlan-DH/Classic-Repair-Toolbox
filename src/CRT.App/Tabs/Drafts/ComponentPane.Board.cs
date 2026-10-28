@@ -97,10 +97,16 @@ namespace CRT
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
 
-            // The KiCad nets are read again for the part each time it opens (UseNetChoices).
+            // The KiCad nets are read again for the part each time it opens (UseNetChoices), and so are
+            // the KiCad views the pictures pick from (UseKiCadViews).
             if (part == PaneBoardPart.ImportantSignals)
             {
                 this.thisNetChoices = null;
+            }
+
+            if (part == PaneBoardPart.Pictures)
+            {
+                this.thisCadViewNames = null;
             }
 
             // What "Mark all automatically" said was of the part as it was open before - the part read
@@ -109,6 +115,11 @@ namespace CRT
 
             this.ForgetComponentRows();
             this.ShowBoardPartRows();
+
+            if (part == PaneBoardPart.Pictures)
+            {
+                this.AskForKiCadViews();
+            }
         }
 
         // ###########################################################################################
@@ -262,9 +273,10 @@ namespace CRT
             };
         }
 
-        // A picture as the board lists it - its name and its image file.
+        // A picture as the board lists it - its name, its image file and the KiCad view it shows (picked
+        // on its card since step 3).
         private static string PictureKey(BoardSchematicEntry row) =>
-            string.Join('\u001F', row.SchematicName?.Trim(), row.SchematicImageFile?.Trim());
+            string.Join('\u001F', row.SchematicName?.Trim(), row.SchematicImageFile?.Trim(), row.CadName?.Trim());
 
         private void ShowBoardPartChanged()
         {
@@ -275,8 +287,9 @@ namespace CRT
 
         // ---- the part's changes into the draft ----------------------------------------------------
 
-        // Everything the part's boxes hold that the draft does not have yet - each list one step.
-        private void CommitBoardPart()
+        // Everything the part's boxes hold that the draft does not have yet - each list one step. A
+        // picture's name never on a typing pause (`fromTyping` - see CommitHeld).
+        private void CommitBoardPart(bool fromTyping)
         {
             switch (this.thisBoardPart)
             {
@@ -291,6 +304,12 @@ namespace CRT
                     this.CommitSignals();
                     break;
                 case PaneBoardPart.Pictures:
+                    // A name typed first - the colours are filed by the pictures' names.
+                    if (!fromTyping)
+                    {
+                        this.CommitPictureNames();
+                    }
+
                     this.CommitPictureColours();
                     break;
             }

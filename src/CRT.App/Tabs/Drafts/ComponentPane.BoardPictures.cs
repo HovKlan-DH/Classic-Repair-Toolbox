@@ -27,8 +27,8 @@ namespace CRT
     //     picture's colours (BoardPartEdits.WithPictureColours, by name AND image file). A colour the
     //     picker merely shows - CRT's own default for a blank one - writes nothing (the row's guard).
     //   - "USE FOR ALL PICTURES" gives every picture these colours, as one step.
-    //   - Adding, removing, renaming and ordering pictures stays the "Schematic images" window's
-    //     (ManagePicturesRequested - the host opens it); the part reads the draft again after it.
+    //   - ADDING, NAMING, THE KICAD VIEW, ORDER AND REMOVING are the cards' too since step 3 - the
+    //     "Schematic images" window went (ComponentPane.BoardPictureList.cs).
     //   - EACH CARD'S TOOLS: "Mark components" and "Align KiCad" open the Schematics tab in that tool
     //     (PictureToolRequested); "Mark all automatically" (step 3, slice 3c), on a picture aligned with
     //     KiCad, has the host draw every component's rectangle from its footprint
@@ -43,9 +43,6 @@ namespace CRT
 
         private readonly ObservableCollection<ComponentPaneBoardPictureRow> thisBoardPictures = new();
         private readonly List<Task> thisPreviewLoads = new();
-
-        // Asked to open the "Schematic images" window on the board shown.
-        public event EventHandler? ManagePicturesRequested;
 
         internal IReadOnlyList<ComponentPaneBoardPictureRow> BoardPicturesForTests => this.thisBoardPictures;
 
@@ -90,7 +87,11 @@ namespace CRT
             foreach (ComponentPaneBoardPictureRow row in this.thisBoardPictures)
             {
                 row.PropertyChanged += this.OnPictureRowChanged;
+                row.CadNameChosen = this.OnCadNameChosen;
             }
+
+            this.ShowPictureOrder();
+            this.ShowCadNameChoices();
 
             this.BoardPicturesHeading.Text = ComponentPaneWording.Heading("Pictures", this.thisBoardPictures.Count);
             this.NoBoardPicturesText.IsVisible = this.thisBoardPictures.Count == 0;
@@ -139,12 +140,6 @@ namespace CRT
 
             this.thisTypingTimer.Stop();
             this.CommitPictureColours();
-        }
-
-        private void OnManagePicturesClick(object? sender, RoutedEventArgs e)
-        {
-            this.CommitHeld();
-            this.ManagePicturesRequested?.Invoke(this, EventArgs.Empty);
         }
 
         // ###########################################################################################
@@ -295,6 +290,26 @@ namespace CRT
     }
 
     // ###########################################################################################
+    // One entry in a picture's "Shows KiCad view" drop-down. An object of its own rather than the
+    // CRT.Data record, so the entry a drop-down shows keeps its identity while the entries around it
+    // come and go (ComponentPaneBoardPictureRow.ApplyCadNameChoices).
+    // ###########################################################################################
+    public sealed class CadNameChoiceItem
+    {
+        public CadNameChoiceItem(SchematicCadNameChoice choice)
+        {
+            this.CadName = choice.CadName;
+            this.Label = choice.Label;
+        }
+
+        public string CadName { get; }
+
+        public string Label { get; }
+
+        public override string ToString() => this.Label;
+    }
+
+    // ###########################################################################################
     // One of the board's pictures as the Pictures part holds it - its colours as the board keeps them
     // (text), shown to the pickers as colours and percentages. A blank colour shows CRT's own default,
     // and a picker writing back the very colour it shows is no change (the setters' guard): a picker
@@ -314,10 +329,149 @@ namespace CRT
         private string thisThumbnailOpacity = string.Empty;
         private Bitmap? thisThumbnail;
         private Size thisImageSize;
+        private string thisName = string.Empty;
+        private string? thisNameDraft;
+        private string thisCadName = string.Empty;
+        private bool thisBoardHasKiCad;
+        private bool thisAligned;
+        private bool thisCanMoveUp;
+        private bool thisCanMoveDown;
+        private CadNameChoiceItem? thisSelectedCadNameChoice;
 
-        public string Name { get; init; } = string.Empty;
+        // The picture's name as the draft has it - set by a rename the draft took (step 3, moved inline).
+        public string Name
+        {
+            get => this.thisName;
+            set
+            {
+                if (this.Set(ref this.thisName, value))
+                {
+                    this.Raise(nameof(this.NameDraft));
+                }
+            }
+        }
+
+        // What the name box holds - the name until something else is typed.
+        public string NameDraft
+        {
+            get => this.thisNameDraft ?? this.thisName;
+            set
+            {
+                if (string.Equals(this.NameDraft, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                this.thisNameDraft = value;
+                this.Raise(nameof(this.NameDraft));
+            }
+        }
+
+        // The box holds another name than the picture has - not saved yet.
+        internal bool HasNameEdit => !string.Equals(this.NameDraft, this.thisName, StringComparison.Ordinal);
+
+        // The typed name let go - the box shows the picture's name again.
+        internal void ForgetNameEdit()
+        {
+            this.thisNameDraft = null;
+            this.Raise(nameof(this.NameDraft));
+        }
 
         public string File { get; init; } = string.Empty;
+
+        // The KiCad view the picture shows - its CAD name.
+        public string CadName
+        {
+            get => this.thisCadName;
+            set
+            {
+                if (this.Set(ref this.thisCadName, value?.Trim()))
+                {
+                    this.RaiseTools();
+                }
+            }
+        }
+
+        // ###########################################################################################
+        // The "Shows KiCad view" drop-down - the "Schematic images" window's, moved inline. ONE list for
+        // the row's lifetime, changed in place (ApplyCadNameChoices): a ComboBox whose items are
+        // replaced lets go of its selection, and the row would hear "nothing chosen".
+        // ###########################################################################################
+        public ObservableCollection<CadNameChoiceItem> CadNameChoices { get; } = new();
+
+        // Told when another view is picked - the pane writes it. Never for the drop-down letting go of
+        // its items (null).
+        internal Action<ComponentPaneBoardPictureRow, string>? CadNameChosen { get; set; }
+
+        public CadNameChoiceItem? SelectedCadNameChoice
+        {
+            get => this.thisSelectedCadNameChoice;
+            set
+            {
+                if (value is null || ReferenceEquals(value, this.thisSelectedCadNameChoice))
+                {
+                    return;
+                }
+
+                this.thisSelectedCadNameChoice = value;
+                this.Raise(nameof(this.SelectedCadNameChoice));
+
+                if (!string.Equals(value.CadName, this.thisCadName, StringComparison.OrdinalIgnoreCase))
+                {
+                    this.CadNameChosen?.Invoke(this, value.CadName);
+                }
+            }
+        }
+
+        // The drop-down shows once there is a view to pick, or the picture names one already.
+        public bool ShowsCadNames => this.CadNameChoices.Count > 1 || this.thisCadName.Length > 0;
+
+        // ###########################################################################################
+        // Makes CadNameChoices read these choices, in order, IN PLACE (InPlaceList.Sync) - never the
+        // selected entry taken away, which the choices always hold (SchematicCadNameChoices lists the
+        // picture's own name) - then selects the one CadName names.
+        // ###########################################################################################
+        internal void ApplyCadNameChoices(IReadOnlyList<SchematicCadNameChoice> choices)
+        {
+            InPlaceList.Sync(
+                this.CadNameChoices,
+                choices,
+                (item, choice) => string.Equals(item.CadName, choice.CadName, StringComparison.OrdinalIgnoreCase),
+                choice => new CadNameChoiceItem(choice),
+                keep: this.thisSelectedCadNameChoice);
+
+            this.thisSelectedCadNameChoice = choices.Count == 0
+                ? null
+                : this.CadNameChoices.FirstOrDefault(item => string.Equals(
+                    item.CadName,
+                    SchematicCadNameChoices.Selected(choices, this.thisCadName).CadName,
+                    StringComparison.OrdinalIgnoreCase));
+
+            // Always said, so a drop-down that lost its selection while its items moved shows it again.
+            this.Raise(nameof(this.SelectedCadNameChoice));
+            this.Raise(nameof(this.ShowsCadNames));
+        }
+
+        // Whether the picture can move up or down - not at an end.
+        public bool CanMoveUp
+        {
+            get => this.thisCanMoveUp;
+            set
+            {
+                this.thisCanMoveUp = value;
+                this.Raise(nameof(this.CanMoveUp));
+            }
+        }
+
+        public bool CanMoveDown
+        {
+            get => this.thisCanMoveDown;
+            set
+            {
+                this.thisCanMoveDown = value;
+                this.Raise(nameof(this.CanMoveDown));
+            }
+        }
 
         // The picture's highlights, in its own pixels.
         public IReadOnlyList<Rect> Highlights { get; init; } = [];
@@ -383,30 +537,38 @@ namespace CRT
         public static bool IsColourChange(string? property) => property is
             nameof(HighlightColor) or nameof(HighlightOpacity) or nameof(ThumbnailColor) or nameof(ThumbnailOpacity) or nameof(OppositeTraceColor);
 
-        // "Align KiCad" works on a board with KiCad data, for a picture that names its KiCad view.
-        public bool CanAlignKiCad { get; init; }
+        // "Align KiCad" works on a board with KiCad data, for a picture that names its KiCad view - which
+        // the drop-down can change while the card is shown.
+        public bool CanAlignKiCad => this.thisBoardHasKiCad && this.thisCadName.Length > 0;
 
         public string AlignTip => this.CanAlignKiCad ? PictureToolWording.AlignTip : PictureToolWording.AlignNeedsKiCadTip;
 
         // "Mark all automatically" needs that, and KiCad aligned on the picture - whether its view is a
         // side of the board, the host finds out and says (KiCadFootprintMarks.Plan).
-        public bool CanMarkAutomatically { get; init; }
+        public bool CanMarkAutomatically => this.CanAlignKiCad && this.thisAligned;
 
         public string MarkAutomaticallyTip => this.CanMarkAutomatically
             ? PictureToolWording.MarkAutomaticallyTip
             : PictureToolWording.MarkAutomaticallyNeedsAlignTip;
 
+        private void RaiseTools()
+        {
+            foreach (string property in new[] { nameof(this.CanAlignKiCad), nameof(this.AlignTip), nameof(this.CanMarkAutomatically), nameof(this.MarkAutomaticallyTip), nameof(this.ShowsCadNames) })
+            {
+                this.Raise(property);
+            }
+        }
+
         public static ComponentPaneBoardPictureRow From(BoardSchematicEntry row, IReadOnlyList<Rect> highlights, bool boardHasKiCad = false, bool aligned = false)
         {
-            bool canAlign = boardHasKiCad && !string.IsNullOrWhiteSpace(row.CadName);
-
             var shown = new ComponentPaneBoardPictureRow
             {
-                Name = row.SchematicName ?? string.Empty,
                 File = row.SchematicImageFile ?? string.Empty,
                 Highlights = highlights,
-                CanAlignKiCad = canAlign,
-                CanMarkAutomatically = canAlign && aligned,
+                thisName = row.SchematicName ?? string.Empty,
+                thisCadName = row.CadName?.Trim() ?? string.Empty,
+                thisBoardHasKiCad = boardHasKiCad,
+                thisAligned = aligned,
             };
 
             shown.Use(row.ReadColours());

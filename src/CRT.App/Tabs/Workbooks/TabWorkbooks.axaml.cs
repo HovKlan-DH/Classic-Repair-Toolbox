@@ -31,6 +31,9 @@ namespace CRT
     //                                preview's caption and persisted per workbook
     //   TabWorkbooks.Summary.cs      the collapsible workbook-summary strip above the board pane
     //   TabWorkbooks.Export.cs       exporting a workbook to PDF or ZIP
+    //   TabWorkbooks.Devices.cs      "My devices" above the workbooks, a device's page in place of
+    //                                the workbook, and "On my device" under a workbook's title
+    //                                (CRT 4.0 step 4)
     //
     // What IS real:
     //   - the left panel, listing the workbooks WorklogManager holds for the selected board,
@@ -629,7 +632,9 @@ namespace CRT
         // UpdateClearSearchButtonVisibility captures it.
         private double thisSearchBoxNaturalRightPadding = double.NaN;
 
-        public void RefreshWorkbooks(List<WorkbookRecord>? boardWorkbooks = null)
+        // allWorkbooks: every board's, when the caller has read them (Main.RefreshWorklogBar has) - a
+        // device's page lists its repairs on any board from them, never reading them again.
+        public void RefreshWorkbooks(List<WorkbookRecord>? boardWorkbooks = null, List<WorkbookRecord>? allWorkbooks = null)
         {
             if (this.WorkbookListPanel == null)
                 return;
@@ -657,6 +662,10 @@ namespace CRT
             // Fresh per pass - this caches reads WITHIN one rebuild, never across them, so an entry
             // saved between refreshes is picked up by the next one. See the field's own comment.
             this.thisEntriesReadThisPass.Clear();
+            this.thisAllWorkbooksThisPass = allWorkbooks;
+
+            // "My devices" first: the workbook cards below name the device each repair is on.
+            this.RefreshDeviceList();
 
             string boardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
 
@@ -669,6 +678,12 @@ namespace CRT
             var workbooks = boardWorkbooks ?? (IsAllBoardsScope
                 ? WorklogManager.GetAllWorkbooks()
                 : WorklogManager.GetWorkbooksForBoard(boardKey));
+
+            // Every board's already, in that scope - a device's page reads no second copy this pass.
+            if (IsAllBoardsScope && this.thisAllWorkbooksThisPass is null)
+            {
+                this.thisAllWorkbooksThisPass = workbooks;
+            }
 
             this.WorkbookListPanel.Children.Clear();
 
@@ -754,7 +769,15 @@ namespace CRT
             }
 
             this.ApplyHeaderForWorkbook(shownWorkbook);
-            this.RefreshBoardPreviews();
+
+            // Not behind a device's page - rebuilt as the page goes (TabWorkbooks.Devices.cs).
+            if (this.ShouldRebuildBoardPreviews())
+            {
+                this.RefreshBoardPreviews();
+            }
+
+            // The device's page in place of the workbook while one is picked (TabWorkbooks.Devices.cs).
+            this.ApplyDeviceView();
         }
 
         // The empty-list message the markup ships with, restored whenever a search is not the reason
@@ -943,6 +966,9 @@ namespace CRT
             if (string.IsNullOrWhiteSpace(boardKey))
                 return;
 
+            // A workbook picked brings the workbook back in place of a device's page.
+            this.thisSelectedDeviceId = null;
+
             this.thisActivateWorkbook?.Invoke(boardKey, workbookId);
 
             // AFTER the activation, not before: that call is what rebuilds the board pane and so
@@ -968,6 +994,9 @@ namespace CRT
         private void ApplyHeaderForWorkbook(WorkbookRecord? workbook)
         {
             this.thisHeaderWorkbook = workbook;
+
+            // "On my device" follows the workbook shown (TabWorkbooks.Devices.cs).
+            this.ApplyWorkbookDevice(workbook);
 
             if (workbook == null)
             {
@@ -1333,6 +1362,12 @@ namespace CRT
             body.Children.Add(headerRow);
             body.Children.Add(titleText);
             body.Children.Add(metaText);
+
+            // The user's device the repair is on, when it is on one (CRT 4.0 step 4).
+            if (this.BuildWorkbookDeviceLine(workbook) is { } deviceLine)
+            {
+                body.Children.Add(deviceLine);
+            }
 
             // --- Row 4: which board this workbook belongs to, "Show all workbooks" scope only ----
             // Only shown when the list can hold more than one board's cards - in the normal

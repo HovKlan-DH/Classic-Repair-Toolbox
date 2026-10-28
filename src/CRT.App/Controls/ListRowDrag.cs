@@ -24,9 +24,10 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // DRAGGING A ROW UP OR DOWN A LIST, WITH A PLACEHOLDER - the pointer handling, shared by the
-    // Contribute tab's "Schematic images" window and the Maintainer tab's drop-down placement
-    // (2026-09-27). The maths is RowDragSlots'; this is the Avalonia rim around it. It was written
+    // DRAGGING A ROW UP OR DOWN A LIST, WITH A PLACEHOLDER - the pointer handling of the Maintainer
+    // tab's drop-down placement and order of boards (2026-09-27; the Contribute tab's "Schematic
+    // images" window used it too until CRT 4.0 step 3, its pictures now moved by Up and Down on their
+    // cards). The maths is RowDragSlots'; this is the Avalonia rim around it. It was written
     // for the schematic images first and lifted out unchanged when the Maintainer tab needed the
     // same thing, so the race below cannot come back in a second copy.
     //

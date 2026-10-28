@@ -315,7 +315,10 @@ namespace CRT
                 // active and to filter the fallback when no explicit choice was made (see
                 // TabWorkbooks.RefreshWorkbooks).
                 bool showAllBoards = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
-                this.TabWorkbooks?.RefreshWorkbooks(showAllBoards ? allWorkbooks : workbooks);
+
+                // Every workbook too, for a device's page - read here already, never a second time
+                // there (code review, 2026-10-28).
+                this.TabWorkbooks?.RefreshWorkbooks(showAllBoards ? allWorkbooks : workbooks, allWorkbooks);
             }
 
             this.WorklogNoJobText.IsVisible = !hasWorkbook;

@@ -34,6 +34,36 @@ public sealed class ComponentPaneFileNamesTests
         Assert.Equal("Board local files/Service manual (2).pdf", ComponentPaneFileNames.ForBoardFile(Picked("Service manual.pdf"), ["board local files/service manual.pdf"]));
     }
 
+    // A picture of the board lies at the board's top under its own name, as every live board keeps
+    // them - a second file of that name numbered, and a leading dot never kept (the server refuses one).
+    [Fact]
+    public void A_board_picture_keeps_its_own_name_at_the_boards_top()
+    {
+        Assert.Equal("Top side.png", ComponentPaneFileNames.ForBoardPicture(Picked("Top side.png"), []));
+        Assert.Equal("Top side (2).png", ComponentPaneFileNames.ForBoardPicture(Picked("Top side.png"), ["top side.png"]));
+        Assert.Equal("scan.jpg", ComponentPaneFileNames.ForBoardPicture(Picked(".scan.jpg"), []));
+    }
+
+    // ###########################################################################################
+    // A device's photo gets a PLAIN name - no separator, no leading dot - whatever the picked file
+    // is called (code review, 2026-10-28): on Linux and macOS "\" is part of a name, and FreeName
+    // made "x\..\..\board.png" into "../../board.png", a copy above the device's folder.
+    // ###########################################################################################
+    [Fact]
+    public void A_device_photo_gets_a_plain_name_of_its_own()
+    {
+        // windows-path-literal: a Linux file NAME holding backslashes, the case being guarded against.
+        string climbing = Path.Combine(Path.GetTempPath(), "x\\..\\..\\board.png");
+
+        string name = ComponentPaneFileNames.ForDevicePhoto(climbing, []);
+
+        Assert.DoesNotContain('/', name);
+        Assert.DoesNotContain('\\', name);
+        Assert.False(name.StartsWith('.'), name);
+        Assert.EndsWith("board.png", name, StringComparison.Ordinal);
+        Assert.Equal("front (2).jpg", ComponentPaneFileNames.ForDevicePhoto(Picked("front.jpg"), ["Front.jpg"]));
+    }
+
     // ###########################################################################################
     // A scope baseline is named as the published ones are - "<label>_<pin>_<name>" with the picked
     // file's type ("Scope baseline/IC107_1_PA3.jpg") - whatever the screenshot was called.

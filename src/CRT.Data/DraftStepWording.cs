@@ -73,15 +73,15 @@ namespace Handlers.DataHandling
         public static string Calibration(string schematic) => $"KiCad calibration of [{schematic}]";
 
         public static string SchematicsAdded(int count) =>
-            count == 1 ? "Schematic image added" : $"{count.ToString(CultureInfo.InvariantCulture)} schematic images added";
+            count == 1 ? "Picture added" : $"{count.ToString(CultureInfo.InvariantCulture)} pictures added";
 
-        public static string SchematicRemoved(string name) => $"Schematic image [{name}] removed";
+        public static string SchematicRemoved(string name) => $"Picture [{name}] removed";
 
-        public static string SchematicRenamed(string from, string to) => $"Schematic image [{from}] renamed [{to}]";
+        public static string SchematicRenamed(string from, string to) => $"Picture [{from}] renamed [{to}]";
 
-        public const string SchematicOrder = "Order of the schematic images";
+        public const string SchematicOrder = "Order of the pictures";
 
-        public static string CadName(string schematic) => $"CAD name of [{schematic}]";
+        public static string CadName(string schematic) => $"KiCad view of [{schematic}]";
 
         // Suggested matches taken from the new board's checklist (step 3) - the picture, or how many.
         public static string PicturesMatched(IReadOnlyList<string> pictures) =>

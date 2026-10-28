@@ -510,8 +510,8 @@ namespace CRT
         // board's KiCad project as the draft has it, the published files with the draft's own
         // (BoardKiCadCopy). *** Read from the draft's imports alone, a net or a footprint only the
         // published files have was reported as missing - "will NOT light up" for an important
-        // signal the Schematics tab draws - and the CAD names on offer differed from the
-        // "Schematic images" window's.
+        // signal the Schematics tab draws - and the view names on offer differed from those the
+        // pictures could be matched to.
         // ###########################################################################################
         private async Task BuildAndShowReportAsync()
         {

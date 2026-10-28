@@ -45,7 +45,9 @@ namespace CRT
     //   - AND THE COMPONENT AS A WHOLE (slice 3c, 2026-10-26): a new one added, one deleted, "Show on
     //     board" and "Preview popup" (ComponentPane.Whole.cs) - the component editor's window is gone.
     //   - AND, IN PLACE OF A COMPONENT, ONE OF THE BOARD'S OWN LISTS (slice 4a, 2026-10-26): its files
-    //     and links, its credits or its important signals (ComponentPane.Board.cs).
+    //     and links, its credits or its important signals (ComponentPane.Board.cs) - and its pictures,
+    //     added, named, matched to a KiCad view, ordered and removed on their cards since step 3
+    //     (ComponentPane.BoardPictureList.cs - the "Schematic images" window went).
     //
     // The file map:
     //   ComponentPane.axaml.cs  - showing a component, the fields, pins, replacement parts and links,
@@ -58,6 +60,8 @@ namespace CRT
     //   ComponentPane.Board.cs  - the board's files and links, credits and important signals
     //   ComponentPane.BoardPictures.cs - the board's pictures and the colours a marked component is
     //                             drawn in on each, with their previews
+    //   ComponentPane.BoardPictureList.cs - the pictures themselves: Add pictures, each one's name,
+    //                             its KiCad view, Move up/down and Remove
     //   ComponentPane.SignalSuggestions.cs - important signals suggested from the KiCad net names, and
     //                             "Show on board" lighting a net up on the Schematics tab
     //   ComponentPane.KiCadPins.cs - the component's pins from the board's KiCad data: "Fill from
@@ -124,7 +128,7 @@ namespace CRT
             this.thisTypingTimer.Tick += (_, _) =>
             {
                 this.thisTypingTimer.Stop();
-                this.CommitHeld();
+                this.CommitHeld(fromTyping: true);
             };
 
             this.AddHandler(TextBox.TextChangedEvent, this.OnAnyTextChanged, handledEventsToo: true);
@@ -507,8 +511,12 @@ namespace CRT
         // ###########################################################################################
         // Everything the boxes hold that the draft does not have yet, into the draft - each field one
         // step, each section one step; nothing at all when nothing changed.
+        //
+        // `fromTyping`: the typing pause asked. A picture's NAME is never taken then - a rename happens
+        // on Enter or when its box is left (code review, 2026-10-28: a pause mid-word saved "Top" as a
+        // rename, or refused it as taken and put the old name back under the caret).
         // ###########################################################################################
-        internal void CommitHeld()
+        internal void CommitHeld(bool fromTyping = false)
         {
             if (this.thisSession is null || this.thisShowing)
             {
@@ -518,7 +526,7 @@ namespace CRT
             // A board part holds its own lists (ComponentPane.Board.cs).
             if (this.thisBoardPart is not null)
             {
-                this.CommitBoardPart();
+                this.CommitBoardPart(fromTyping);
                 return;
             }
 
@@ -668,6 +676,12 @@ namespace CRT
                 this.ShowCounter();
             }
 
+            // A picture's name waits for Enter or its box being left - typing it starts no pause.
+            if (e.Source is TextBox { DataContext: ComponentPaneBoardPictureRow })
+            {
+                return;
+            }
+
             this.thisTypingTimer.Stop();
             this.thisTypingTimer.Start();
         }
@@ -688,7 +702,7 @@ namespace CRT
                 return;
             }
 
-            Dispatcher.UIThread.Post(this.CommitHeld, DispatcherPriority.Background);
+            Dispatcher.UIThread.Post(() => this.CommitHeld(), DispatcherPriority.Background);
         }
 
         // Enter in a one-line box takes what it says into the draft at once.
@@ -709,7 +723,20 @@ namespace CRT
 
         // ---- buttons ----------------------------------------------------------------------------
 
-        private void OnCloseClick(object? sender, RoutedEventArgs e) => this.CloseRequested?.Invoke(this, EventArgs.Empty);
+        // ###########################################################################################
+        // Close - except over a picture's name that cannot be taken: the pane stays open with the reason
+        // under the part's heading and the name in its box (code review, 2026-10-28 - the
+        // "Schematic images" window's rule); Escape in the box puts the old name back.
+        // ###########################################################################################
+        private void OnCloseClick(object? sender, RoutedEventArgs e)
+        {
+            if (this.KeepsRefusedPictureName())
+            {
+                return;
+            }
+
+            this.CloseRequested?.Invoke(this, EventArgs.Empty);
+        }
 
         // ###########################################################################################
         // "Undo changes to <label>": the component back as published - every row of it, every region

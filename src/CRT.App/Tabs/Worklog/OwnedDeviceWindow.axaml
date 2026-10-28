@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.OwnedDeviceWindow"
+        Title="Add device"
+        Width="480"
+        MinWidth="420"
+        CanResize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!-- ###########################################################################################
+	     ADD DEVICE / EDIT DEVICE (CRT 4.0 step 4) - one computer the user owns: its name, hardware and
+	     board, region, status, serial number and where it came from. Its notes, photos and changes
+	     are edited on its page in the Workbooks tab. See OwnedDeviceWindow.axaml.cs.
+	     ########################################################################################### -->
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeaderText" Text="Add device" FontSize="16" FontWeight="Bold" />
+		<TextBlock Text="One computer you own - its repairs, the changes made to it and its photos are kept together on its page in the Workbooks tab."
+				   TextWrapping="Wrap"
+				   FontSize="11"
+				   Opacity="0.8"
+				   Margin="0,0,0,8" />
+
+		<TextBlock Text="Name" />
+		<TextBox x:Name="NameTextBox"
+				 PlaceholderText="For example Breadbin #2"
+				 TextChanged="OnNameTextChanged" />
+		<TextBlock x:Name="ValidationText"
+				   Foreground="{DynamicResource Text_Fail_Fg}"
+				   FontSize="11"
+				   TextWrapping="Wrap"
+				   IsVisible="False" />
+
+		<TextBlock Text="Hardware" Margin="0,8,0,0" />
+		<ComboBox x:Name="HardwareComboBox"
+				  HorizontalAlignment="Stretch"
+				  SelectionChanged="OnHardwareSelectionChanged" />
+
+		<TextBlock Text="Board" Margin="0,8,0,0" />
+		<ComboBox x:Name="BoardComboBox" HorizontalAlignment="Stretch" />
+
+		<Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+			<StackPanel Grid.Column="0" Spacing="4">
+				<TextBlock Text="Region" />
+				<ComboBox x:Name="RegionComboBox" HorizontalAlignment="Stretch" />
+			</StackPanel>
+			<StackPanel Grid.Column="2" Spacing="4">
+				<TextBlock Text="Status" />
+				<ComboBox x:Name="StatusComboBox" HorizontalAlignment="Stretch" />
+			</StackPanel>
+		</Grid>
+
+		<TextBlock Text="Serial number" Margin="0,8,0,0" />
+		<TextBox x:Name="SerialTextBox" />
+
+		<TextBlock Text="Where it came from" Margin="0,8,0,0" />
+		<TextBox x:Name="OriginTextBox" PlaceholderText="For example a flea market, a friend, or new in 1985" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="SaveButton"
+					Classes="Accept"
+					Content="Add device"
+					Click="OnSaveClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

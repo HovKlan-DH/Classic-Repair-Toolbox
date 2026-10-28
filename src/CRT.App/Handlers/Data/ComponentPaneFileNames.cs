@@ -32,6 +32,20 @@ namespace Handlers.DataHandling
         public static string ForFile(string sourcePath, IEnumerable<string> taken) =>
             ComponentPaneFileNames.InFolder(ContributionFileLocations.FileRowKind.ComponentFile, ComponentPaneFileNames.Shaped(Path.GetFileName(sourcePath)), taken);
 
+        // A picture of the board (its Pictures part, step 3): at the board's top, as every live board
+        // keeps its pictures ("Board Layout 250407 NTSC.png") - the "Schematic images" window's place.
+        public static string ForBoardPicture(string sourcePath, IEnumerable<string> taken) =>
+            BoardFileNames.FreeName(ComponentPaneFileNames.Shaped(Path.GetFileName(sourcePath)), taken);
+
+        // ###########################################################################################
+        // A photo of one of the user's devices, in its "device_{id}" folder (CRT 4.0 step 4): a plain
+        // name of its own - the picked file's, shaped as a board's is. Never a separator: on Linux and
+        // macOS a "\" is part of a file's name, and turned into "/" by FreeName it took the copy out
+        // of the device's folder (code review, 2026-10-28).
+        // ###########################################################################################
+        public static string ForDevicePhoto(string sourcePath, IEnumerable<string> taken) =>
+            BoardFileNames.FreeName(ComponentPaneFileNames.Shaped(Path.GetFileName(sourcePath)), taken);
+
         // A file of the board itself (the board's "Files and links", slice 4a): "Board local files/<file>".
         public static string ForBoardFile(string sourcePath, IEnumerable<string> taken) =>
             ComponentPaneFileNames.InFolder(ContributionFileLocations.FileRowKind.BoardFile, ComponentPaneFileNames.Shaped(Path.GetFileName(sourcePath)), taken);

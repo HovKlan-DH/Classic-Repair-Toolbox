@@ -184,6 +184,18 @@ public sealed class ComponentPaneWordingTests
     }
 
     // Every sentence the pane says is plain ASCII and names neither Excel nor the old editor window.
+    // The Pictures part's own lines (step 3 - the "Schematic images" window's work moved there): one
+    // picture or several, and the name trimmed in what was removed.
+    [Fact]
+    public void Pictures_added_and_removed_are_said_in_plain_words()
+    {
+        Assert.Equal("Added 1 picture.", ComponentPaneWording.PicturesAdded(1));
+        Assert.Equal("Added 3 pictures.", ComponentPaneWording.PicturesAdded(3));
+        Assert.StartsWith("Added 2 pictures. 1 could not be copied - ", ComponentPaneWording.PicturesAdded(2, notCopied: 1), StringComparison.Ordinal);
+        Assert.StartsWith("Added 0 pictures. 2 could not be copied - they", ComponentPaneWording.PicturesAdded(0, notCopied: 2), StringComparison.Ordinal);
+        Assert.StartsWith("Removed [Top]. ", ComponentPaneWording.PictureRemoved(" Top "), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_new_sentences_are_plain_ASCII()
     {
@@ -212,6 +224,11 @@ public sealed class ComponentPaneWordingTests
             ComponentPaneWording.NetHeadingTip,
             ComponentPaneWording.SignalSuggestionsHeading(3),
             ComponentPaneWording.SignalSuggestionsIntro,
+            ComponentPaneWording.PicturesAdded(2),
+            ComponentPaneWording.PicturesAdded(2, notCopied: 1),
+            ComponentPaneWording.PicturesAdded(1, notCopied: 3),
+            ComponentPaneWording.NoPicturesToAdd,
+            ComponentPaneWording.PictureRemoved("Top"),
         ];
 
         Assert.All(sentences, sentence =>

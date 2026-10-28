@@ -27,6 +27,24 @@ public sealed class DraftPickedFilesTests : IDisposable
 
         Assert.Equal("new picture", File.ReadAllText(this.InDraft("Component images/U8.png")));
         Assert.True(copies.AnyLying);
+        Assert.Equal(["Component images/U8.png"], copies.Copied);
+    }
+
+    // ###########################################################################################
+    // A picked file that cannot be copied - gone since it was picked - is left out of what was
+    // copied, so its row is never added (code review, 2026-10-28: rows went in for every picture
+    // picked, one naming a file the draft lacked).
+    // ###########################################################################################
+    [Fact]
+    public void A_file_that_could_not_be_copied_is_not_among_those_copied()
+    {
+        string gone = Path.Combine(this.thisWorkspace.Root, "Pictures", "gone.png");
+
+        DraftPickedFiles copies = DraftPickedFiles.CopyInto(
+            this.DraftFolder,
+            [(this.Picked("top"), "Top.png"), (gone, "Gone.png"), (this.Picked("bottom"), "Bottom.png")]);
+
+        Assert.Equal(["Top.png", "Bottom.png"], copies.Copied);
     }
 
     [Fact]

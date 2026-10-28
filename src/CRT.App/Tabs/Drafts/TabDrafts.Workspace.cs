@@ -3,6 +3,7 @@ using Avalonia.Interactivity;
 using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -25,8 +26,9 @@ namespace CRT
     //
     // *** NOT YET THE PLAN'S WHOLE SCREEN. *** A component opens in the component pane, "Add
     // component" opens its form for a new one, and the board's pictures, files and links, credits and
-    // important signals open there too (TabDrafts.Component.cs) - but KiCad data still opens its
-    // window, and adding or renaming pictures the "Schematic images" window.
+    // important signals open there too (TabDrafts.Component.cs), the pictures added, named, matched
+    // to their KiCad views, ordered and removed on their cards since step 3 - but KiCad data still
+    // opens its window.
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
@@ -148,13 +150,29 @@ namespace CRT
 
             if (status is null || status.IsNewBoard ||
                 DraftStatusReader.CountChangesCached(status) > 0 ||
-                DraftStatusReader.CountOtherChangesCached(status, DraftManager.DraftsRoot).Any)
+                DraftStatusReader.CountOtherChangesCached(status, DraftManager.DraftsRoot).Any ||
+                TabDrafts.HoldsAnotherOrder(entry, status))
             {
                 return;
             }
 
             Logger.Info($"The draft of [{entry.ExcelDataFile}] was made only to open something on it, and holds nothing - let go of again");
             this.DiscardConfirmed(entry);
+        }
+
+        // ###########################################################################################
+        // Whether the draft holds its rows in another order than the published board - pictures moved
+        // up or down, a row dragged in the table: no change the counts above see, but the
+        // contributor's, kept (BoardRowOrder; code review, 2026-10-28). The draft as held in memory
+        // when there is a session, else its file.
+        // ###########################################################################################
+        private static bool HoldsAnotherOrder(HardwareBoardEntry entry, DraftStatus status)
+        {
+            BoardData? draft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile)?.Content.Board
+                ?? (File.Exists(status.WorkbookPath) ? BoardDataReader.ReadWorkbookUncached(status.WorkbookPath) : null);
+            BoardData? published = File.Exists(status.PublishedWorkbookPath) ? BoardDataReader.ReadWorkbookUncached(status.PublishedWorkbookPath) : null;
+
+            return draft is not null && published is not null && BoardRowOrder.DiffersFrom(published, draft);
         }
 
         // A draft no editor shows any more, saved off the UI thread - a failure is the session's, said
@@ -348,16 +366,15 @@ namespace CRT
                 ? this.CloseTableAsync()
                 : this.OnCurrentDraftAsync(this.ShowTableAsync);
 
-        // The pictures and their colours in the pane (slice 4b); adding, removing and renaming them is
-        // the "Schematic images" window's, opened from there (ManagePicturesRequested).
-        private void OnPicturesClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Pictures), "Pictures");
+        // The board's pictures in the pane - added, named, matched to their KiCad views, ordered, removed
+        // and coloured there (slice 4b; step 3 moved the "Schematic images" window in).
+        private void OnPicturesClick(object? sender, RoutedEventArgs e) => this.ManagePictures();
 
         private void ManagePictures() =>
-            this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry, BoardFilesSection.SchematicImages)), "Schematic images");
+            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Pictures), "Pictures");
 
         private void OnKiCadClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry, BoardFilesSection.KiCadData)), "KiCad data");
+            this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry)), "KiCad data");
 
         // The board's own lists, in the pane on the right (slice 4a - TabDrafts.Component.cs).
         private void OnImportantSignalsClick(object? sender, RoutedEventArgs e) =>

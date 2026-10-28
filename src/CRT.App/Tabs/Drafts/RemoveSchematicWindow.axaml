@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="CRT.RemoveSchematicWindow"
-        Title="Remove schematic image"
+        Title="Remove picture"
         Width="440"
         MinWidth="400"
         CanResize="False"
@@ -13,7 +13,7 @@
         Foreground="{DynamicResource Fg}">
 
 	<StackPanel Margin="18" Spacing="4">
-		<TextBlock x:Name="HeadingText" Text="Remove schematic image" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+		<TextBlock x:Name="HeadingText" Text="Remove picture" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
 
 		<TextBlock x:Name="QuestionText" TextWrapping="Wrap" FontWeight="Bold" />
 
@@ -25,7 +25,7 @@
 			<Button Content="Cancel" Click="OnCancelClick" />
 			<Button x:Name="RemoveButton"
 					Classes="Danger"
-					Content="Remove image"
+					Content="Remove picture"
 					Click="OnRemoveClick" />
 		</StackPanel>
 	</StackPanel>

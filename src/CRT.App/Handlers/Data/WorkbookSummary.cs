@@ -188,28 +188,41 @@ namespace Handlers.DataHandling
                     totals.WorklogCount == 1 ? " worklog" : " worklogs")
             };
 
-            // The time as WORDS - "45 minutes", "1 hour and 15 minutes" - not the decimal hours it
-            // is stored as. See WorklogDurationFormatter for why; the short of it is that decimal
-            // hours is a storage format, and "1.4 h" is read as an hour and forty by everyone who
-            // has not just done the arithmetic. It contributes NO stat at all when the workbook has
-            // no time logged, which is why the headline is built as a list rather than a fixed
-            // array: a zero here would be the only "0" in a line of real figures.
-            stats.AddRange(WorklogDurationFormatter.BuildStats(totals.TotalHours));
-
-            // The cost is dropped when there is none, exactly as the time above is - "1 worklog .
-            // 0 USD . 1 open" spends a column reporting the absence of a figure, which the absence
-            // itself says better. Asked for directly.
-            if (WorklogCurrency.FormatCostOrEmpty(totals.TotalCost, currencyCode).Length > 0)
-            {
-                stats.Add(new Stat(string.Empty, totals.TotalCost.ToString("0.##", CultureInfo.InvariantCulture),
-                    " " + WorklogCurrency.NormalizeCode(currencyCode)));
-            }
+            stats.AddRange(BuildTimeAndCostStats(totals, currencyCode));
 
             // "open" STAYS at zero, unlike the two above. It is not a total that is missing - it is
             // a state count over worklogs that exist, and "0 open" on a finished job says something
             // a reader wants ("everything here is closed"), where "0 USD" says only that nobody has
             // billed anything yet.
             stats.Add(new Stat(string.Empty, totals.OpenWorklogCount.ToString(CultureInfo.InvariantCulture), " open"));
+
+            return stats;
+        }
+
+        // ###########################################################################################
+        // The time and the cost as parts - the workbook's headline above and a device's repairs line
+        // (OwnedDeviceRepairs.HeadlineStats) alike, so both add them up and spell them by ONE rule
+        // (code review, 2026-10-28: the device page had its own copy).
+        //
+        // The time as WORDS - "45 minutes", "1 hour and 15 minutes" - not the decimal hours it is
+        // stored as. See WorklogDurationFormatter for why; the short of it is that decimal hours is a
+        // storage format, and "1.4 h" is read as an hour and forty by everyone who has not just done
+        // the arithmetic. It contributes NO stat at all when no time is logged: a zero here would be
+        // the only "0" in a line of real figures.
+        //
+        // The cost is dropped when there is none, exactly as the time is - "1 worklog . 0 USD . 1
+        // open" spends a column reporting the absence of a figure, which the absence itself says
+        // better. Asked for directly.
+        // ###########################################################################################
+        public static IReadOnlyList<Stat> BuildTimeAndCostStats(Totals totals, string? currencyCode)
+        {
+            var stats = new List<Stat>(WorklogDurationFormatter.BuildStats(totals.TotalHours));
+
+            if (WorklogCurrency.FormatCostOrEmpty(totals.TotalCost, currencyCode).Length > 0)
+            {
+                stats.Add(new Stat(string.Empty, totals.TotalCost.ToString("0.##", CultureInfo.InvariantCulture),
+                    " " + WorklogCurrency.NormalizeCode(currencyCode)));
+            }
 
             return stats;
         }

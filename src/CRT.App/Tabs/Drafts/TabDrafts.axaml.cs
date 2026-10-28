@@ -471,17 +471,17 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Opens the board-image OR the KiCad import window for one drafted board (session 2c,
-        // task 9) - one button each since 2026-09-24, both landing in BoardFilesWindow.
+        // Opens the "KiCad data" window for one drafted board (session 2c, task 9) - its pictures are
+        // the Pictures part's since step 3, the window's "Schematic images" half gone.
         //
         // The board labels and the "Important signals" rows handed over - what the KiCad report
         // judges the KiCad data against - are the DRAFT's, read from its workbook on disk
         // (BoardForFilesWindowAsync).
-        // ###########################################################################################
         //
-        // `toImport`: files dropped on the tab (TabDrafts.Drop.cs) - added as the window opens, as its
-        // own drop target adds them.
-        private async Task ManageFilesAsync(HardwareBoardEntry entry, BoardFilesSection section, IReadOnlyList<string>? toImport = null)
+        // `toImport`: a KiCad project folder dropped on the tab (TabDrafts.Drop.cs) - imported as the
+        // window opens, as its own drop target imports it.
+        // ###########################################################################################
+        private async Task ManageFilesAsync(HardwareBoardEntry entry, IReadOnlyList<string>? toImport = null)
         {
             if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
             {
@@ -512,7 +512,7 @@ namespace CRT
             var window = new BoardFilesWindow();
             // The "Important signals" rows from the same draft, for the KiCad report's net names
             // (2026-10-10).
-            window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, section, boardData?.KiCadImportantSignals);
+            window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, boardData?.KiCadImportantSignals);
 
             if (toImport is { Count: > 0 })
             {
@@ -525,11 +525,11 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // After "Schematic images" or "KiCad data" closes - and ONLY when it changed the draft
-        // (owner report, 2026-10-10: closing it refreshed the detached schematic thumbnails although
-        // nothing had changed; the board on screen was reloaded every time). Then the row's count
-        // follows, and the board on screen is read again if it is this one - a new or moved image is
-        // a new thumbnail list, a picked CAD name or new KiCad files new traces. An open table needs
+        // After "KiCad data" closes - and ONLY when it changed the draft (owner report, 2026-10-10:
+        // closing the window it was then refreshed the detached schematic thumbnails although nothing
+        // had changed; the board on screen was reloaded every time). Then the row's count follows,
+        // and the board on screen is read again if it is this one - new KiCad files are new traces
+        // (the pictures' own changes are the Pictures part's, saved as it makes them). An open table needs
         // nothing: it showed each change as the window made it (the draft held in memory, CRT 4.0
         // step 1).
         // ###########################################################################################
@@ -786,7 +786,7 @@ namespace CRT
             Task.Run(() => BoardDataReader.ReadWorkbookUncached(status.WorkbookPath));
 
         // ###########################################################################################
-        // The board "Schematic images" and "KiCad data" are handed - its labels and its "Important
+        // The board "KiCad data" is handed - its labels and its "Important
         // signals" rows, which the KiCad report judges the draft's KiCad data against: the draft
         // WORKBOOK as it is on disk, like BoardToSendAsync and for its reasons (code review,
         // 2026-10-11). It was DataManager.LoadBoardDataAsync, which answers the PUBLISHED board under

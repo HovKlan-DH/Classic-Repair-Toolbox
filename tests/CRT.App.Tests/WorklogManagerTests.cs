@@ -224,16 +224,17 @@ public sealed class WorklogManagerTests : IDisposable
         // The root carries an index.json of its own, but it must never become a central listing of
         // workbooks - workbooks are discovered only by scanning the numbered subfolders, so a root
         // file naming them is a second source of truth that can go stale. Asserting its CONTENT is
-        // what states that: it holds the id counter and nothing else. This used to assert the root
-        // file simply did not exist, which said the same thing only while the counter lived under
-        // the name counters.json.
+        // what states that: it holds the id counters and nothing else - the workbooks' and, since
+        // CRT 4.0 step 4, the user's devices' (OwnedDeviceStore), which live in the same root. This
+        // used to assert the root file simply did not exist, which said the same thing only while the
+        // counter lived under the name counters.json.
         string rootIndexPath = Path.Combine(root, "index.json");
         Assert.True(File.Exists(rootIndexPath), "the root index.json carries the workbook id counter");
 
         using var rootIndex = JsonDocument.Parse(File.ReadAllText(rootIndexPath));
         Assert.Equal(1, rootIndex.RootElement.GetProperty("lastWorkbookId").GetInt32());
         Assert.Equal(
-            new[] { "lastWorkbookId" },
+            new[] { "lastWorkbookId", "lastDeviceId" },
             rootIndex.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
     }
 
@@ -2670,5 +2671,54 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal("Recap the board", document.RootElement.GetProperty("title").GetString());
         Assert.Equal("Bought at a fair", document.RootElement.GetProperty("note").GetString());
         Assert.Equal("Commodore|C64", document.RootElement.GetProperty("boardKey").GetString());
+    }
+
+    // ###########################################################################################
+    // A workbook's device (CRT 4.0 step 4): none for every workbook written before devices existed,
+    // the one "New repair" on a device's page names, kept through the workbook's other writes, and
+    // changed or taken off by SetWorkbookDevice alone.
+    // ###########################################################################################
+    [Fact]
+    public void A_workbooks_device_is_kept_through_its_other_writes_and_set_on_its_own()
+    {
+        string root = this.LoadWorklog();
+
+        var plain = CreateWorkbook("Commodore 64|250407", "Recap the board");
+        Assert.Null(plain.OwnedDeviceId);
+
+        var onDevice = WorklogManager.CreateWorkbook("Commodore 64|250407", "No video", "", ownedDeviceId: 4)!;
+        Assert.Equal(4, onDevice.OwnedDeviceId);
+
+        WorklogManager.UpdateWorkbook(onDevice.Id, "No video - VIC socket", "");
+        Assert.Equal(4, WorklogManager.GetAllWorkbooks().Single(w => w.Id == onDevice.Id).OwnedDeviceId);
+
+        Assert.Equal(6, WorklogManager.SetWorkbookDevice(plain.Id, 6)!.OwnedDeviceId);
+        Assert.Null(WorklogManager.SetWorkbookDevice(onDevice.Id, null)!.OwnedDeviceId);
+
+        using var stored = JsonDocument.Parse(File.ReadAllText(Path.Combine(WorkbookFolder(root, plain.Id), "index.json")));
+        Assert.Equal(6, stored.RootElement.GetProperty("ownedDeviceId").GetInt32());
+    }
+
+    // A field a later CRT writes into a workbook is written back by this one's saves.
+    [Fact]
+    public void A_workbook_field_this_CRT_does_not_know_is_kept_through_a_save()
+    {
+        string root = this.LoadWorklog();
+        var workbook = CreateWorkbook("Commodore 64|250407", "No video");
+        string index = Path.Combine(WorkbookFolder(root, workbook.Id), "index.json");
+        File.WriteAllText(index, File.ReadAllText(index).TrimEnd().TrimEnd('}') + ", \"repairShelf\": \"B2\" }");
+
+        WorklogManager.UpdateWorkbook(workbook.Id, "No video - VIC socket", "");
+
+        using var stored = JsonDocument.Parse(File.ReadAllText(index));
+        Assert.Equal("B2", stored.RootElement.GetProperty("repairShelf").GetString());
+    }
+
+    [Fact]
+    public void A_workbook_that_cannot_be_found_is_put_on_no_device()
+    {
+        this.LoadWorklog();
+
+        Assert.Null(WorklogManager.SetWorkbookDevice(42, 1));
     }
 }
