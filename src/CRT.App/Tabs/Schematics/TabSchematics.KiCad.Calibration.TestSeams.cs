@@ -1,4 +1,7 @@
 using Avalonia.Input;
+using Handlers.DataHandling;
+using System;
+using System.Threading.Tasks;
 
 namespace CRT;
 
@@ -21,10 +24,16 @@ namespace CRT;
 // So these seams pin the contract the fix rests on: a recorded capture is released and forgotten
 // by whatever ends the drag, and calling the release with nothing captured is harmless.
 //
+// Since then calibration mode CAN be entered headlessly (UseKiCadProjectForTests, a stand-in bitmap),
+// so its save has a stand-in too - "Done - next picture" (step 3, slice 3d) is pressed by a test.
+//
 // Part of the TabSchematics partial class - see TabSchematics.axaml.cs for the tab overview.
 // ###########################################################################################
 public partial class TabSchematics
 {
+    // Stands in for the calibration's save into the draft: the row in, a failure out - or null for saved.
+    internal Func<KiCadCalibrationEntry, Task<string?>>? KiCadCalibrationSaveOverrideForTests { get; set; }
+
     internal IPointer? KiCadTraceCalibrationCapturedPointerForTests =>
         this.thisKiCadTraceCalibrationCapturedPointer;
 

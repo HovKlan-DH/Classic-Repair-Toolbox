@@ -37,33 +37,58 @@ namespace Handlers.DataHandling
         Skipped,
     }
 
-    // One row of the checklist: its number, what it is, how far along, and what is left - and, for the
-    // components, how many the KiCad data has that the board does not (its button adds them).
-    internal sealed record ReadinessStep(ReadinessStepKind Kind, int Number, ReadinessState State, string Title, string Detail, int FromKiCad = 0);
+    // One row of the checklist: its number, what it is, how far along, and what is left - for the
+    // components, how many the KiCad data has that the board does not (its button adds them), and for
+    // matching, the pictures and views that seem to go together (slice 3d - offered under the step).
+    internal sealed record ReadinessStep(
+        ReadinessStepKind Kind,
+        int Number,
+        ReadinessState State,
+        string Title,
+        string Detail,
+        int FromKiCad = 0,
+        IReadOnlyList<SchematicCadNameSuggestion>? Matches = null);
 
     // ###########################################################################################
     // What the board's KiCad data says: the labels of its components - the very ones "Add N from
     // KiCad" adds (KiCadComponentTable: its first PCB file's footprints, no placeholder, logo or
-    // mounting hole) - and its view names. Not Read: the KiCad files could not be read - no data,
-    // never data with nothing in it (code review, 2026-10-26).
+    // mounting hole) - its view names, which of them are a side of the board, and every view as
+    // matching a picture sees it (ToMatch - its side, and its PCB file's name). Not Read: the KiCad
+    // files could not be read - no data, never data with nothing in it (code review, 2026-10-26).
     // ###########################################################################################
-    internal sealed record BoardKiCadFacts(IReadOnlyList<string> References, IReadOnlyList<string> Views, bool Read = true, IReadOnlyList<string>? BoardViews = null)
+    internal sealed record BoardKiCadFacts(
+        IReadOnlyList<string> References,
+        IReadOnlyList<string> Views,
+        bool Read = true,
+        IReadOnlyList<string>? BoardViews = null,
+        IReadOnlyList<KiCadViewToMatch>? ToMatch = null)
     {
-        public static BoardKiCadFacts Of(KiCadProjectRoot? root) =>
-            root is null
-                ? new BoardKiCadFacts([], [], Read: false)
-                : new BoardKiCadFacts(
-                    KiCadComponentTable.Of(root).Select(component => component.Label).ToList(),
-                    root.Project.Views
-                        .Select(view => view.DisplayName?.Trim() ?? string.Empty)
-                        .Where(view => view.Length > 0)
-                        .ToList(),
-                    BoardViews: root.Project.Views
-                        .Where(view => string.Equals(view.Type, "pcb_top", StringComparison.OrdinalIgnoreCase) ||
-                                       string.Equals(view.Type, "pcb_bottom", StringComparison.OrdinalIgnoreCase))
-                        .Select(view => view.DisplayName?.Trim() ?? string.Empty)
-                        .Where(view => view.Length > 0)
-                        .ToList());
+        public static BoardKiCadFacts Of(KiCadProjectRoot? root)
+        {
+            if (root is null)
+            {
+                return new BoardKiCadFacts([], [], Read: false);
+            }
+
+            List<KiCadViewToMatch> views = root.Project.Views
+                .Select(view => new KiCadViewToMatch(
+                    view.DisplayName?.Trim() ?? string.Empty,
+                    BoardKiCadFacts.SideOf(view),
+                    BoardKiCadFacts.SideOf(view) == KiCadViewSide.Sheet ? string.Empty : System.IO.Path.GetFileNameWithoutExtension(view.SourceFile ?? string.Empty)))
+                .Where(view => view.Name.Length > 0)
+                .ToList();
+
+            return new BoardKiCadFacts(
+                KiCadComponentTable.Of(root).Select(component => component.Label).ToList(),
+                views.Select(view => view.Name).ToList(),
+                BoardViews: views.Where(view => view.Side != KiCadViewSide.Sheet).Select(view => view.Name).ToList(),
+                ToMatch: views);
+        }
+
+        private static KiCadViewSide SideOf(KiCadProjectView view) =>
+            string.Equals(view.Type, "pcb_top", StringComparison.OrdinalIgnoreCase) ? KiCadViewSide.Top
+            : string.Equals(view.Type, "pcb_bottom", StringComparison.OrdinalIgnoreCase) ? KiCadViewSide.Bottom
+            : KiCadViewSide.Sheet;
     }
 
     // What an existing board still lacks - components by their labels, in the board's order.
@@ -147,6 +172,9 @@ namespace Handlers.DataHandling
                             : "With the board's KiCad project, its traces light up and its components can be added in one go."),
             };
 
+            // The pictures and views that seem to go together (slice 3d) - once the views are known.
+            List<SchematicCadNameSuggestion> suggested = facts is null ? [] : SchematicCadNameSuggestions.For(board.Schematics, facts.ToMatch ?? []);
+
             if (!usable)
             {
                 steps.Add((ReadinessStepKind.Match, Status.Skipped, "Match pictures to KiCad views", needsKiCad));
@@ -163,6 +191,7 @@ namespace Handlers.DataHandling
                         : match switch
                         {
                             Status.Done => $"{shown}.",
+                            _ when suggested.Count > 0 => $"{shown} - check the matches suggested below.",
                             Status.Optional => $"{shown} - name the view of any other picture that shows one.",
                             _ => $"{shown} - name the view each one shows.",
                         }));
@@ -207,7 +236,14 @@ namespace Handlers.DataHandling
             List<ReadinessStep> result = BoardReadiness.WithStates(steps);
 
             return facts is not null
-                ? result.Select(step => step.Kind == ReadinessStepKind.Components ? step with { FromKiCad = notOnBoard } : step).ToList()
+                ? result
+                    .Select(step => step.Kind switch
+                    {
+                        ReadinessStepKind.Components => step with { FromKiCad = notOnBoard },
+                        ReadinessStepKind.Match when suggested.Count > 0 => step with { Matches = suggested },
+                        _ => step,
+                    })
+                    .ToList()
                 : result;
         }
 
@@ -325,6 +361,28 @@ namespace Handlers.DataHandling
                 ? $"Added {components} from KiCad."
                 : $"Added {components} from KiCad - {string.Join(", ", with)}.";
         }
+
+        // ###########################################################################################
+        // The matches suggested under "Match pictures to KiCad views" (slice 3d): each pair, its "Use",
+        // the button for all of them, and what taking them did.
+        // ###########################################################################################
+        public const string MatchesHeading = "Suggested from the names of the pictures and their files:";
+
+        public const string UseMatch = "Use";
+
+        public static string SuggestedMatch(SchematicCadNameSuggestion match) => $"[{match.SchematicName}] shows [{match.CadName}]";
+
+        public static string UseMatchTip(SchematicCadNameSuggestion match) => $"Give [{match.SchematicName}] the KiCad view [{match.CadName}]";
+
+        public static string UseAllMatches(int count) => $"Use all {BoardReadiness.Count(count)} suggestions";
+
+        public static string MatchesUsed(IReadOnlyList<SchematicCadNameSuggestion> used) =>
+            used.Count switch
+            {
+                0 => "Those pictures, or their KiCad views, have been matched already.",
+                1 => $"[{used[0].SchematicName}] now shows [{used[0].CadName}].",
+                _ => $"{BoardReadiness.Count(used.Count)} pictures now show their KiCad views.",
+            };
 
         public const string KiCadNotRead = "The board's KiCad data could not be read, so nothing was added.";
 

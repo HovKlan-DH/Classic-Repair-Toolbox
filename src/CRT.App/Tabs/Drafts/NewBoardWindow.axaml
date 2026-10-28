@@ -37,13 +37,26 @@
 						 MinimumPrefixLength="0"
 						 PlaceholderText="Commodore" />
 
+		<!-- "Did you mean Commodore?" (CRT 4.0 step 3, slice 3e - the plan: "Did you mean Commodore?
+		     when a typed name is close to an existing one"): offered under the box, never in the way -
+		     the name typed may be a new one. SimilarNames decides. -->
+		<StackPanel x:Name="ManufacturerDidYouMeanPanel" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="False">
+			<TextBlock x:Name="ManufacturerDidYouMeanText" VerticalAlignment="Center" FontWeight="SemiBold" />
+			<Button x:Name="ManufacturerDidYouMeanButton" />
+		</StackPanel>
+
 		<TextBlock Text="Hardware" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<TextBlock Text="The machine itself, for example C64 or Amiga 500."
+		<TextBlock Text="The machine itself, as CRT's hardware list names it - for example Commodore 64 or Amiga 500."
 				   TextWrapping="Wrap"
 				   FontSize="11"
 				   Opacity="0.75"
 				   Margin="0,0,0,2" />
-		<TextBox x:Name="HardwareBox" PlaceholderText="C64" />
+		<TextBox x:Name="HardwareBox" PlaceholderText="Commodore 64" />
+
+		<StackPanel x:Name="HardwareDidYouMeanPanel" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="False">
+			<TextBlock x:Name="HardwareDidYouMeanText" VerticalAlignment="Center" FontWeight="SemiBold" />
+			<Button x:Name="HardwareDidYouMeanButton" />
+		</StackPanel>
 
 		<TextBlock Text="Board" FontWeight="SemiBold" Margin="0,10,0,0" />
 		<TextBlock Text="The board revision, for example 250407. If you do not know it, use something that identifies the board to you."

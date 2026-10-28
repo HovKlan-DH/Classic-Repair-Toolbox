@@ -1126,6 +1126,254 @@ public sealed class BoardFilesWindowTests : IDisposable
         });
     }
 
+    // ---- dropped on the Contribute tab, and the KiCad summary (step 3, slice 3e) ----------------------
+
+    private static async Task UntilImported(BoardFilesWindow window)
+    {
+        for (int i = 0; i < 500 && !(window.DroppedImport.IsCompleted && window.DraftChanging.IsCompleted); i++)
+        {
+            await Task.Delay(10);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.DroppedImport.IsCompleted, "The files dropped should have been imported.");
+    }
+
+    // ###########################################################################################
+    // The plan's "KiCad: drop the project folder and get a summary of what was found, what was
+    // ignored, and what is left to do": a folder dropped on the Contribute tab is imported as the
+    // window opens, and the summary says what the KiCad data holds, what was left out - its schematic
+    // still in an older KiCad's form, said with what to do - and what is left to do.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_KiCad_folder_dropped_is_imported_as_the_window_opens_and_summed_up()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = this.thisWorkspace.Path_("Project");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.sch"), "EESchema Schematic File Version 4");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "lib.pretty", "DIP-40.kicad_mod"), "(footprint)");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "3d", "socket.step"), "ISO-10303-21;");
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"], BoardFilesSection.KiCadData);
+            window.ImportOnceOpen([source]);
+
+            await UntilImported(window);
+            for (int i = 0; i < 200 && !window.GetControl<Border>("KiCadSummaryPanel").IsVisible; i++)
+            {
+                await Task.Delay(10);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Equal(["board.kicad_pcb"], window.KiCadFiles.Select(row => row.RelativePath));
+            Assert.True(window.GetControl<Border>("KiCadSummaryPanel").IsVisible);
+            Assert.Equal("Found 1 PCB with 1 component and 1 net, and no schematic sheet.", TextOf(window, "KiCadFoundText"));
+            Assert.Equal(
+                "Left out, as CRT does not read them: 1 footprint, 1 3D model and 1 file from an older KiCad.",
+                TextOf(window, "KiCadLeftOutText"));
+            Assert.Equal(string.Join(" ", KiCadImportSummary.CannotRead(["board.sch"], ["board.sch"], ["board.kicad_pcb"])), TextOf(window, "KiCadOlderText"));
+            Assert.True(window.GetControl<TextBlock>("KiCadOlderText").IsVisible);
+
+            // What is left to do, by the checklist's rules on the draft as it now is.
+            Assert.True(VisibleOf(window, "KiCadLeftToDoPanel"));
+            Assert.Contains("- Match each picture to the KiCad view it shows.", TextOf(window, "KiCadLeftToDoText"), StringComparison.Ordinal);
+
+            // The check done, the status line no longer says it is checking (render, 2026-10-28: it
+            // read "Checking what it lines up with..." under the finished summary).
+            Assert.Equal("Imported 1 KiCad file - the summary above says what it holds.", window.StatusTextForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // The folder's walk is ONE OF THE WINDOW'S CHANGES (code review, 2026-10-28): moved off the UI
+    // thread but outside the queue, the window could be closed while it ran - closing waits only for
+    // what is queued - and the import went into the draft after, the board on screen never read again.
+    // ###########################################################################################
+    [Fact]
+    public async Task Closing_waits_for_a_folder_still_being_read()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = this.thisWorkspace.Path_("Project");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+
+        using var release = new ManualResetEventSlim(false);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow { ScanningKiCadForTests = () => release.Wait(TimeSpan.FromSeconds(10)) };
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"], BoardFilesSection.KiCadData);
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            Task importing = window.ImportKiCadFolderAsync(source);
+
+            for (int i = 0; i < 10; i++)
+            {
+                await Task.Delay(5);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.False(window.DraftChanging.IsCompleted, "The folder being read is a change closing has to wait for.");
+
+            release.Set();
+
+            for (int i = 0; i < 500 && !(importing.IsCompleted && window.DraftChanging.IsCompleted); i++)
+            {
+                await Task.Delay(10);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.True(window.ChangedTheDraft);
+            Assert.Equal(["board.kicad_pcb"], window.KiCadFiles.Select(row => row.RelativePath));
+        });
+    }
+
+    // ###########################################################################################
+    // .sch and .brd are EAGLE's too (code review, 2026-10-28): an EAGLE project was told it came from
+    // an older KiCad and to open it in KiCad and save it - which does nothing for EAGLE. Only a file
+    // that SAYS it is KiCad's (its first line) is an older KiCad's; EAGLE's is told how KiCad imports it.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_EAGLE_project_is_not_called_an_older_KiCad()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = this.thisWorkspace.Path_("Eagle");
+        File.WriteAllText(this.thisWorkspace.Path_("Eagle", "board.sch"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE eagle SYSTEM \"eagle.dtd\">\n<eagle version=\"9.6.2\">");
+        File.WriteAllText(this.thisWorkspace.Path_("Eagle", "board.brd"), "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE eagle SYSTEM \"eagle.dtd\">\n<eagle version=\"9.6.2\">");
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"], BoardFilesSection.KiCadData);
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            await window.ImportKiCadFolderAsync(source);
+
+            Assert.Empty(window.KiCadFiles);
+            Assert.DoesNotContain("older KiCad", window.StatusTextForTests, StringComparison.Ordinal);
+            Assert.Contains("EAGLE", window.StatusTextForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // An import whose copy failed imported nothing, so the summary says nothing of it (code review,
+    // 2026-10-28: it was recorded before the copy, and a later report summed up what it "left out").
+    // ###########################################################################################
+    [Fact]
+    public async Task A_copy_that_failed_leaves_nothing_for_the_summary()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        // A FILE where the draft's "KiCad data" folder goes: nothing can be copied there.
+        File.WriteAllText(Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data"), "in the way");
+
+        string source = this.thisWorkspace.Path_("Project");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "lib.pretty", "DIP-40.kicad_mod"), "(footprint)");
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"], BoardFilesSection.KiCadData);
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            await window.ImportKiCadFolderAsync(source);
+
+            Assert.Equal("Could not copy those KiCad files - see the log for details.", window.StatusTextForTests);
+            Assert.False(window.HasLastImportForTests);
+        });
+    }
+
+    // A folder from an older KiCad only: nothing imported, and the status line says why and what to do.
+    [Fact]
+    public async Task An_older_KiCads_project_dropped_says_what_to_do()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = this.thisWorkspace.Path_("Old");
+        File.WriteAllText(this.thisWorkspace.Path_("Old", "c64.sch"), "EESchema Schematic File Version 4");
+        File.WriteAllText(this.thisWorkspace.Path_("Old", "c64.pro"), "update=");
+        Directory.CreateDirectory(source);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"], BoardFilesSection.KiCadData);
+            window.ImportOnceOpen([source]);
+
+            await UntilImported(window);
+
+            Assert.Empty(window.KiCadFiles);
+            Assert.Equal(KiCadImportSummary.NothingToImport(["c64.pro", "c64.sch"], ["c64.sch"]), window.StatusTextForTests);
+            Assert.StartsWith("No KiCad files CRT can read in that folder. Its schematic files (.sch)", window.StatusTextForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // A hidden picture file is never added (code review, 2026-10-28): macOS leaves "._bottom.png" beside
+    // every picture on a USB stick, and each became a row with no preview whose name the server refuses
+    // at Submit ("file.hidden_name").
+    // ###########################################################################################
+    [Fact]
+    public async Task A_hidden_picture_file_is_never_added()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string picture = this.thisWorkspace.Path_("Card", "bottom.png");
+        File.WriteAllBytes(picture, BoardFilesWindowTests.OnePixelPng);
+        string hidden = this.thisWorkspace.Path_("Card", "._bottom.png");
+        File.WriteAllBytes(hidden, [0, 5, 22, 7]);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, [], BoardFilesSection.SchematicImages);
+            BoardFilesWindowTests.WaitForOpening(window);
+
+            await window.ImportSchematicsAsync([picture, hidden]);
+            for (int i = 0; i < 200 && window.Schematics.Count < 2; i++)
+            {
+                await Task.Delay(10);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Equal(["Top side", "bottom"], window.Schematics.Select(row => row.SchematicName));
+        });
+    }
+
+    // Pictures dropped: added as the "Schematic images" window opens, as its own drop target adds them.
+    [Fact]
+    public async Task Pictures_dropped_are_added_as_the_window_opens()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string picture = this.thisWorkspace.Path_("Scans", "bottom.png");
+        File.WriteAllBytes(picture, BoardFilesWindowTests.OnePixelPng);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new BoardFilesWindow();
+            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, [], BoardFilesSection.SchematicImages);
+            window.ImportOnceOpen([picture]);
+
+            await UntilImported(window);
+            for (int i = 0; i < 200 && window.Schematics.Count < 2; i++)
+            {
+                await Task.Delay(10);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Equal(["Top side", "bottom"], window.Schematics.Select(row => row.SchematicName));
+            Assert.True(window.ChangedTheDraft);
+        });
+    }
+
     // ###########################################################################################
     // *** DRAGGING THE SCHEMATIC IMAGES INTO A NEW ORDER (owner request, 2026-09-27). ***
     //

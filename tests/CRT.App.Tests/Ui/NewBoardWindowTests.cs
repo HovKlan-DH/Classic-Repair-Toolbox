@@ -515,4 +515,58 @@ public sealed class NewBoardWindowTests : IDisposable
             Assert.False(window.IsVisible);
         });
     }
+
+    // ------------------------------------------------------------------ Did you mean (step 3, slice 3e)
+
+    // ###########################################################################################
+    // The plan's "Did you mean Commodore?": a manufacturer a slip away, and a machine typed as its
+    // folder ("C64", the form's old example), are offered as CRT has them - each "Use" puts the name
+    // in its box. Never in the way: Create stays on, the name typed may be a new one.
+    // ###########################################################################################
+    [Fact]
+    public void A_name_close_to_one_CRT_has_is_offered_and_Use_puts_it_in()
+    {
+        UiTest.Run(() =>
+        {
+            var window = WindowWith(
+                Entry("Commodore 64", "250407 (long board)", "Commodore/C64/250407/board.json"),
+                Entry("Commodore VIC-20", "324003", "Commodore/VIC-20/324003/board.json"));
+
+            Fill(window, "Comodore", "C64", "999001");
+
+            Assert.Equal("Commodore", window.ManufacturerOfferedForTests);
+            Assert.Equal("Commodore 64", window.HardwareOfferedForTests);
+            Assert.Equal("Did you mean Commodore 64?", window.GetControl<TextBlock>("HardwareDidYouMeanText").Text);
+            Assert.Equal("Use Commodore 64", window.GetControl<Button>("HardwareDidYouMeanButton").Content);
+            Assert.True(CreateEnabled(window));
+
+            window.GetControl<Button>("ManufacturerDidYouMeanButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            window.GetControl<Button>("HardwareDidYouMeanButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("Commodore", window.GetControl<AutoCompleteBox>("ManufacturerBox").Text);
+            Assert.Equal("Commodore 64", window.GetControl<TextBox>("HardwareBox").Text);
+            Assert.Null(window.ManufacturerOfferedForTests);
+            Assert.Null(window.HardwareOfferedForTests);
+            Assert.StartsWith("Commodore 64 - 999001", window.PreviewTextForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // Names as CRT has them, and new ones, ask nothing.
+    [Fact]
+    public void Names_as_CRT_has_them_or_new_ones_ask_nothing()
+    {
+        UiTest.Run(() =>
+        {
+            var window = WindowWith(Entry("Commodore 64", "250407 (long board)", "Commodore/C64/250407/board.json"));
+
+            Fill(window, "Commodore", "Commodore 64", "999001");
+            Assert.Null(window.ManufacturerOfferedForTests);
+            Assert.Null(window.HardwareOfferedForTests);
+
+            Fill(window, "Atari", "Atari 800XL", "CA061086");
+            Assert.Null(window.ManufacturerOfferedForTests);
+            Assert.Null(window.HardwareOfferedForTests);
+            Assert.False(window.GetControl<StackPanel>("HardwareDidYouMeanPanel").IsVisible);
+        });
+    }
 }

@@ -262,4 +262,105 @@ public sealed class KiCadRawFileScannerTests : IDisposable
 
         Assert.Single(KiCadRawFileScanner.ScanBoard(this.Project, this.Project));
     }
+
+    // ###########################################################################################
+    // ONE walk of a folder an import is made from (CRT 4.0 step 3, slice 3e - the KiCad summary; code
+    // review, 2026-10-28: it was walked twice): the files taken as Scan takes them, and every OTHER
+    // file - sub-folders included, a backup folder or a dot-folder never entered - each relative to
+    // the folder with forward slashes, in a stable order.
+    // ###########################################################################################
+    [Fact]
+    public void One_walk_splits_the_files_taken_from_those_left_out()
+    {
+        this.Write("Open128.kicad_pcb", "(kicad_pcb)");
+        this.Write("Open128.kicad_sch");
+        this.Write("Pages/vic.kicad_sch");
+        this.Write("Open128.pretty/DIP-40.kicad_mod", "x");
+        this.Write("3d/socket.step", "x");
+        this.Write("Pages/notes.txt", "x");
+        this.Write("Open128-backups/Open128.kicad_sch", "x");
+        this.Write(".git/config", "x");
+
+        KiCadFolderScan scan = KiCadRawFileScanner.ScanSplit(this.Project);
+
+        Assert.Equal(KiCadRawFileScanner.Scan(this.Project), scan.Taken);
+        Assert.Equal(["3d/socket.step", "Open128.pretty/DIP-40.kicad_mod", "Pages/notes.txt"], scan.LeftOut);
+        Assert.Empty(scan.OlderKiCad);
+
+        KiCadFolderScan none = KiCadRawFileScanner.ScanSplit(Path.Combine(this.thisWorkspace.Root, "nope"));
+        Assert.Empty(none.Taken);
+        Assert.Empty(none.LeftOut);
+        Assert.Empty(KiCadRawFileScanner.ScanSplit(string.Empty).LeftOut);
+    }
+
+    // ###########################################################################################
+    // A .sch or .brd is an older KiCad's only when its first line says so - EAGLE uses the same two
+    // extensions (code review, 2026-10-28: an EAGLE project was told to open itself in KiCad).
+    // ###########################################################################################
+    [Fact]
+    public void An_older_KiCads_schematic_or_board_is_told_by_its_first_line()
+    {
+        this.Write("old.sch", "EESchema Schematic File Version 4\nEELAYER 30 0");
+        this.Write("old.brd", "PCBNEW-BOARD Version 1 date 1/1/2010");
+        this.Write("eagle.sch", "<?xml version=\"1.0\"?>\n<!DOCTYPE eagle SYSTEM \"eagle.dtd\">");
+        this.Write("eagle.brd", "<?xml version=\"1.0\"?>");
+        this.Write("readme.txt", "EESchema Schematic File");
+
+        Assert.Equal(["old.brd", "old.sch"], KiCadRawFileScanner.ScanSplit(this.Project).OlderKiCad);
+        Assert.False(KiCadRawFileScanner.IsOlderKiCadFile(Path.Combine(this.Project, "missing.sch")));
+    }
+
+    // ###########################################################################################
+    // A hidden file is never a KiCad file (code review, 2026-10-28): macOS leaves "._Open128.kicad_pcb"
+    // - binary, its resource fork - beside the real one on a USB stick, and it was taken, parsed and
+    // sent, its name refused by the server. It is no file of the project at all: neither taken nor
+    // counted as left out, as a hidden folder is never entered.
+    // ###########################################################################################
+    [Fact]
+    public void A_hidden_file_is_neither_taken_nor_left_out()
+    {
+        this.Write("Open128.kicad_pcb", "(kicad_pcb)");
+        this.Write("._Open128.kicad_pcb", "\u0000\u0005\u0016\u0007");
+        this.Write(".DS_Store", "x");
+
+        Assert.Equal([Path.Combine(this.Project, "Open128.kicad_pcb")], KiCadRawFileScanner.Scan(this.Project));
+
+        KiCadFolderScan scan = KiCadRawFileScanner.ScanSplit(this.Project);
+        Assert.Single(scan.Taken);
+        Assert.Empty(scan.LeftOut);
+    }
+
+    // Whether a folder holds any KiCad file CRT reads - at any depth, past the folders never entered.
+    [Fact]
+    public void Whether_a_folder_holds_a_KiCad_file_is_answered_at_any_depth()
+    {
+        this.Write("notes.txt", "x");
+        this.Write("Open128-backups/Open128.kicad_sch", "x");
+        Assert.False(KiCadRawFileScanner.Probe(this.Project).HoldsKiCad);
+
+        this.Write("Deep/Pages/vic.kicad_sch");
+        Assert.True(KiCadRawFileScanner.Probe(this.Project).HoldsKiCad);
+
+        Assert.False(KiCadRawFileScanner.Probe(Path.Combine(this.thisWorkspace.Root, "nope")).HoldsKiCad);
+    }
+
+    // ###########################################################################################
+    // A folder dropped that holds no KiCad file: the one walk keeps only what saying why needs - its
+    // .sch and .brd files, and which an older KiCad wrote (second code review, 2026-10-28: such a
+    // folder was walked in full twice, every path kept).
+    // ###########################################################################################
+    [Fact]
+    public void A_folder_with_no_KiCad_file_is_probed_for_its_schematics_and_boards_only()
+    {
+        this.Write("old/c64.sch", "EESchema Schematic File Version 4");
+        this.Write("eagle/board.brd", "<?xml version=\"1.0\"?>");
+        this.Write("notes.txt", "x");
+        this.Write("photos/top.jpg", "x");
+
+        KiCadFolderProbe probe = KiCadRawFileScanner.Probe(this.Project);
+
+        Assert.False(probe.HoldsKiCad);
+        Assert.Equal(["eagle/board.brd", "old/c64.sch"], probe.SchematicsAndBoards);
+        Assert.Equal(["old/c64.sch"], probe.OlderKiCad);
+    }
 }

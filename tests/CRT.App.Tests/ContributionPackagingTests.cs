@@ -194,6 +194,24 @@ public class ContributionPackagingTests
         Assert.False(ContributionPackaging.IsDisplayableImageFile(fileName));
     }
 
+    // ###########################################################################################
+    // A picture a contributor can add is one CRT draws and is NOT hidden (code review, 2026-10-28):
+    // macOS's "._IMG_0001.JPG" beside every picture on a USB stick became a row the server refused.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("top.png", true)]
+    [InlineData("Scans/IMG_0001.JPG", true)]
+    [InlineData("._IMG_0001.JPG", false)]
+    [InlineData("Scans/._top.png", false)]
+    [InlineData(".hidden.png", false)]
+    [InlineData("notes.txt", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void Only_a_drawable_picture_that_is_not_hidden_can_be_added(string? fileName, bool addable)
+    {
+        Assert.Equal(addable, ContributionPackaging.IsAddablePictureFile(fileName));
+    }
+
     // .svg is in the ExternalTargetLauncher allowlist but deliberately NOT here: that allowlist
     // guards files handed to the OS shell, which has an SVG viewer, whereas a component image is
     // drawn by Avalonia Bitmap, which cannot decode SVG. Do not "fix" this by adding it.

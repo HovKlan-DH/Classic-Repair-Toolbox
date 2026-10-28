@@ -61,4 +61,51 @@ public sealed class PictureToolStartTests
         Assert.Equal(PictureToolStep.Refuse, noView.Step);
         Assert.StartsWith("[Top] names no view of the board's KiCad data", noView.Reason, StringComparison.Ordinal);
     }
+
+    // ---- "Done - next picture" (step 3, slice 3d) -----------------------------------------------------
+
+    private static readonly string[] Pictures = ["Layout", "Top", "Bottom", "Sheet 1", "Sheet 2"];
+
+    private static string? Next(string current, string[] withView, params string[] aligned) =>
+        PictureToolStart.NextToAlign(
+            Pictures,
+            current,
+            picture => withView.Contains(picture, StringComparer.OrdinalIgnoreCase),
+            picture => aligned.Contains(picture, StringComparer.OrdinalIgnoreCase));
+
+    // The next picture after this one with a KiCad view and no alignment yet - a picture with no
+    // view (a photo of the layout) is passed over.
+    [Fact]
+    public void The_next_picture_is_the_next_with_a_KiCad_view_not_aligned_yet()
+    {
+        string[] withView = ["Top", "Bottom", "Sheet 1", "Sheet 2"];
+
+        Assert.Equal("Bottom", Next("Top", withView));
+        Assert.Equal("Sheet 2", Next("Top", withView, "Bottom", "Sheet 1"));
+        Assert.Equal("Top", Next(" layout ", withView));
+    }
+
+    // Round to the start: the last picture's next is the first not aligned.
+    [Fact]
+    public void After_the_last_picture_the_next_is_found_from_the_start()
+    {
+        Assert.Equal("Top", Next("Sheet 2", ["Top", "Bottom", "Sheet 1", "Sheet 2"], "Bottom"));
+    }
+
+    // Nothing left but this one: no next - Done is the way on. This one itself is never its own next,
+    // aligned or not.
+    [Fact]
+    public void With_every_other_picture_aligned_there_is_no_next()
+    {
+        Assert.Null(Next("Top", ["Top", "Bottom"], "Bottom"));
+        Assert.Null(Next("Top", ["Top"]));
+        Assert.Null(PictureToolStart.NextToAlign([], "Top", _ => true, _ => false));
+    }
+
+    // A picture not in the list (one hidden meanwhile) starts the search from the first.
+    [Fact]
+    public void A_picture_not_listed_looks_from_the_first()
+    {
+        Assert.Equal("Top", Next("Gone", ["Top", "Bottom"]));
+    }
 }

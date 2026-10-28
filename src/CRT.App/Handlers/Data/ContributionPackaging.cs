@@ -64,6 +64,17 @@ namespace Handlers.DataHandling
         public static bool IsDisplayableImageFile(string? pathValue) => ImageFileTypes.IsDisplayable(pathValue);
 
         // ###########################################################################################
+        // A file a contributor can add as a picture of the board: one CRT shows, and not hidden (code
+        // review, 2026-10-28). A name starting with a dot is refused at Submit (SubmissionFileRules,
+        // "file.hidden_name"), and macOS leaves "._IMG_0001.JPG" beside every picture on a USB stick or an
+        // SD card - each became a picture row with no preview, its name refused for a file nobody saw.
+        // ###########################################################################################
+        public static bool IsAddablePictureFile(string? pathValue) =>
+            !string.IsNullOrWhiteSpace(pathValue) &&
+            !Path.GetFileName(pathValue.Trim()).StartsWith('.') &&
+            ContributionPackaging.IsDisplayableImageFile(pathValue);
+
+        // ###########################################################################################
         // What is wrong with the file on a component image row, if anything. A row is allowed to sit
         // there empty while it is still being filled in, but by the time it is saved it must carry
         // either a file the application can display - otherwise it ships a component image that

@@ -83,6 +83,12 @@ namespace Handlers.DataHandling
 
         public static string CadName(string schematic) => $"CAD name of [{schematic}]";
 
+        // Suggested matches taken from the new board's checklist (step 3) - the picture, or how many.
+        public static string PicturesMatched(IReadOnlyList<string> pictures) =>
+            pictures.Count == 1
+                ? DraftStepWording.CadName(pictures[0])
+                : $"{pictures.Count.ToString(CultureInfo.InvariantCulture)} pictures matched to KiCad views";
+
         // The file read back after a write that was more than the draft's content (DraftSession.WriteFileDirectly).
         public const string KiCadFileRemoved = "KiCad file removed";
 

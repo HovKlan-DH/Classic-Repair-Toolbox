@@ -311,6 +311,142 @@ public sealed class TabDraftsReadinessTests : IDisposable
         });
     }
 
+    // The suggested matches' "Use" buttons, in the order shown, and "Use all".
+    private static List<Button> UseButtons(TabDrafts tab) =>
+        tab.GetControl<StackPanel>("ReadinessStepsPanel")
+            .GetLogicalDescendants()
+            .OfType<Button>()
+            .Where(button => button.Tag is SchematicCadNameSuggestion)
+            .ToList();
+
+    private static Button UseAllButton(TabDrafts tab) =>
+        tab.GetControl<StackPanel>("ReadinessStepsPanel")
+            .GetLogicalDescendants()
+            .OfType<Button>()
+            .Single(button => button.Content is string label && label.StartsWith("Use all", StringComparison.Ordinal));
+
+    // ###########################################################################################
+    // The plan's "Match: suggested pairs ("...Top.png" with "PCB Top") to confirm": listed under the
+    // Match step once the KiCad data is read, each with a green "Use" - one taken is ONE step, its
+    // CAD name in the draft held in memory and saved, the rest left standing in their same rows; "Use
+    // all" takes the rest as one step.
+    // ###########################################################################################
+    [Fact]
+    public async Task Suggested_matches_are_offered_and_each_Use_is_one_step()
+    {
+        var board = new BoardData
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Top (replica)", SchematicImageFile = "Images/Issue 4.F.png" },
+                new BoardSchematicEntry { SchematicName = "Bottom (replica)", SchematicImageFile = "Images/Issue 4.B.png" },
+                new BoardSchematicEntry { SchematicName = "Main sheet", SchematicImageFile = "Images/scan.png" },
+            ],
+            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
+        };
+
+        WriteDraft(NewBoard, board, "KiCad data/Issue 4.kicad_pcb");
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("999001", NewBoard, draftOnly: true);
+            TabDrafts tab = Tab(entry);
+
+            var root = new KiCadProjectRoot
+            {
+                Project = new KiCadProjectInfo
+                {
+                    Views =
+                    [
+                        new KiCadProjectView { DisplayName = "Issue 4 - PCB Top", Type = "pcb_top", SourceFile = "Issue 4.kicad_pcb" },
+                        new KiCadProjectView { DisplayName = "Issue 4 - PCB Bottom", Type = "pcb_bottom", SourceFile = "Issue 4.kicad_pcb" },
+                        new KiCadProjectView { DisplayName = "Main sheet", Type = "schematic", SourceFile = "issue4.kicad_sch" },
+                    ],
+                },
+            };
+
+            tab.BoardKiCadOverrideForTests = _ => Task.FromResult<KiCadProjectRoot?>(root);
+            var reloaded = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloaded.Add;
+
+            tab.ShowBoard(entry, board, "PAL", null);
+            await tab.ReadinessShownForTests;
+
+            List<Button> uses = UseButtons(tab);
+            Assert.Equal(["Top (replica)", "Bottom (replica)", "Main sheet"], uses.Select(button => ((SchematicCadNameSuggestion)button.Tag!).SchematicName));
+            Assert.All(uses, button => Assert.Contains("Accept", button.Classes));
+            Assert.All(uses, button => Assert.Equal("Use", button.Content));
+            Assert.Equal("Use all 3 suggestions", UseAllButton(tab).Content);
+            Assert.Contains("Accept", UseAllButton(tab).Classes);
+
+            uses[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => tab.ReadinessNoteForTests is not null);
+            await tab.ReadinessShownForTests;
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, NewBoard)!;
+            Assert.Equal(["Issue 4 - PCB Top", "", ""], session.Content.Board.Schematics.Select(row => row.CadName));
+            Assert.Equal(DraftStepWording.CadName("Top (replica)"), session.UndoDescription);
+            Assert.False(session.HasUnsavedChanges);
+            Assert.Equal([NewBoard], reloaded);
+            Assert.Equal("[Top (replica)] now shows [Issue 4 - PCB Top].", tab.ReadinessNoteForTests);
+
+            // The rest left standing - the very rows they were (a row made again under a press threw
+            // that click away).
+            List<Button> rest = UseButtons(tab);
+            Assert.Equal([uses[1], uses[2]], rest);
+            Assert.Equal("Use all 2 suggestions", UseAllButton(tab).Content);
+
+            UseAllButton(tab).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => tab.ReadinessNoteForTests == "2 pictures now show their KiCad views.");
+            await tab.ReadinessShownForTests;
+
+            Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom", "Main sheet"], session.Content.Board.Schematics.Select(row => row.CadName));
+            Assert.Equal(DraftStepWording.PicturesMatched(["Bottom (replica)", "Main sheet"]), session.UndoDescription);
+            Assert.Empty(UseButtons(tab));
+            Assert.False(UseAllButton(tab).IsVisible);
+            Assert.Equal(ReadinessState.Done, tab.ReadinessForTests.Single(step => step.Kind == ReadinessStepKind.Match).State);
+        });
+    }
+
+    // ###########################################################################################
+    // A suggestion the draft moved past meanwhile - its picture given a CAD name another way - is
+    // taken as nothing: no step, nothing read again, and said.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_suggestion_the_draft_moved_past_is_no_step()
+    {
+        var board = new BoardData
+        {
+            Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }],
+        };
+
+        WriteDraft(NewBoard, board, "KiCad data/board.kicad_pcb");
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("999001", NewBoard, draftOnly: true);
+            TabDrafts tab = Tab(entry);
+            tab.BoardKiCadOverrideForTests = _ => Task.FromResult<KiCadProjectRoot?>(null);
+            var reloaded = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloaded.Add;
+
+            tab.ShowBoard(entry, board, "PAL", null);
+            await tab.ReadinessShownForTests;
+
+            DraftSession session = (await DraftEdits.OpenForChangeAsync(NewBoard))!;
+            session.Apply("By hand", content => content with { Board = SchematicRows.WithCadName(content.Board, new SchematicRowRef("Top", "Images/top.png"), "Elsewhere").Board });
+            string? undo = session.UndoDescription;
+
+            await tab.UseSuggestedMatchesAsync([new SchematicCadNameSuggestion("Top", "Images/top.png", "Board - PCB Top")]);
+            await tab.ReadinessShownForTests;
+
+            Assert.Equal("Elsewhere", session.Content.Board.Schematics[0].CadName);
+            Assert.Equal(undo, session.UndoDescription);
+            Assert.Empty(reloaded);
+            Assert.Equal(BoardReadiness.MatchesUsed([]), tab.ReadinessNoteForTests);
+        });
+    }
+
     // KiCad data with these chips, each a DIP-16 on the first PCB.
     private static KiCadProjectRoot KiCadWith(params string[] references) => new()
     {

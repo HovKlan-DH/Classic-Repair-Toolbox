@@ -910,6 +910,12 @@
 					<Button x:Name="PictureToolDoneButton"
 							Classes="Accept"
 							Content="Done" />
+					<!-- While aligning, with another picture to align (step 3, slice 3d - the plan: "Align:
+					     opens calibration on the Schematics tab with a Done - next picture button"). -->
+					<Button x:Name="PictureToolDoneNextButton"
+							Classes="Accept"
+							Content="Done - next picture"
+							IsVisible="False" />
 				</StackPanel>
 
 				<!-- THE COMPONENTS NOT MARKED ON THIS PICTURE YET (step 3, slice 3c - the plan: "Photos

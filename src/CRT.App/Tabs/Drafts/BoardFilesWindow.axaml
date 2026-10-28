@@ -407,6 +407,35 @@
 					</Border>
 				</StackPanel>
 
+				<!-- What the KiCad data holds, what an import left out, and what is left to do (CRT 4.0
+				     step 3, slice 3e - the plan: "drop the project folder and get a summary of what was
+				     found, what was ignored, and what is left to do"; KiCadImportSummary). -->
+				<Border x:Name="KiCadSummaryPanel"
+						BorderBrush="{DynamicResource Form_Border}"
+						BorderThickness="1"
+						Background="{DynamicResource Form_Bg}"
+						Padding="12"
+						IsVisible="False">
+					<StackPanel Spacing="6">
+						<TextBlock Text="Summary" FontWeight="Bold" />
+						<TextBlock x:Name="KiCadFoundText" TextWrapping="Wrap" />
+						<TextBlock x:Name="KiCadLeftOutText"
+								   TextWrapping="Wrap"
+								   FontSize="12"
+								   Opacity="0.8"
+								   IsVisible="False" />
+						<TextBlock x:Name="KiCadOlderText"
+								   TextWrapping="Wrap"
+								   FontWeight="SemiBold"
+								   Foreground="{DynamicResource Text_Fail_Fg}"
+								   IsVisible="False" />
+						<StackPanel x:Name="KiCadLeftToDoPanel" Spacing="2" IsVisible="False">
+							<TextBlock Text="Left to do" FontWeight="SemiBold" Margin="0,4,0,0" />
+							<TextBlock x:Name="KiCadLeftToDoText" TextWrapping="Wrap" />
+						</StackPanel>
+					</StackPanel>
+				</Border>
+
 				<!-- The matched/unmatched report -->
 				<Border x:Name="ReportPanel"
 						BorderBrush="{DynamicResource Form_Border}"

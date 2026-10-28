@@ -608,6 +608,12 @@ public sealed class FeedbackComposerTests
     // A pasted picture's PNG is encoded from the very bitmap shown, on the pool. Removed while that
     // ran (its bin, Backspace, Ctrl+A then Delete), the bitmap was disposed under the encoder,
     // which read freed memory and could end CRT. It is now let go only once the encoding is done.
+    //
+    // *** KNOWN INTERMITTENT (2026-10-28). *** Failed once in a full run - "Expected: 4, 4 / Actual:
+    // 1, 1" on the PixelSize assertion - and passed alone and in three full runs after it; the run's
+    // seed was not kept. A 1x1 bitmap is what the headless platform hands out for one DECODED from a
+    // stream, which nothing on this path does, so the shown bitmap read was another than the one
+    // pasted. Whoever picks this up: replay with the seed of a failing run (CLAUDE.md, "Tests").
     [Fact]
     public async Task A_pasted_picture_removed_while_its_PNG_is_encoded_is_let_go_only_once_the_encoding_is_done()
     {

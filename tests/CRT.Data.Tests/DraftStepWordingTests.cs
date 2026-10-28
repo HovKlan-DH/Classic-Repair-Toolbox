@@ -20,6 +20,8 @@ public sealed class DraftStepWordingTests
         Assert.Equal("Schematic image [Top] removed", DraftStepWording.SchematicRemoved("Top"));
         Assert.Equal("Schematic image [Top] renamed [Front]", DraftStepWording.SchematicRenamed("Top", "Front"));
         Assert.Equal("CAD name of [Top]", DraftStepWording.CadName("Top"));
+        Assert.Equal("CAD name of [Top]", DraftStepWording.PicturesMatched(["Top"]));
+        Assert.Equal("3 pictures matched to KiCad views", DraftStepWording.PicturesMatched(["Top", "Bottom", "Clock"]));
 
         // The component pane's own sections (CRT 4.0 step 2).
         Assert.Equal("Pictures of [U8]", DraftStepWording.ComponentPictures("U8"));
@@ -67,6 +69,7 @@ public sealed class DraftStepWordingTests
             DraftStepWording.SchematicRenamed("Top", "Front"),
             DraftStepWording.SchematicOrder,
             DraftStepWording.CadName("Top"),
+            DraftStepWording.PicturesMatched(["Top", "Bottom"]),
             DraftStepWording.KiCadFileRemoved,
             DraftStepWording.BroughtUpToDate,
             DraftStepWording.BoardFiles,

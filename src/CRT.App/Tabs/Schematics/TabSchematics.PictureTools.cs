@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Handlers.DataHandling;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace CRT;
@@ -19,6 +20,12 @@ namespace CRT;
 // The bar FOLLOWS the tool (FollowPictureTool, called wherever a tool starts or ends), so Esc, a
 // save and a board change all leave it right; when a tool started from the Contribute tab ends,
 // PictureToolEnded tells Main, which goes back there. A board load ends everything silently.
+//
+// "DONE - NEXT PICTURE" (step 3, slice 3d - the plan: "Align: opens calibration on the Schematics tab
+// with a Done - next picture button"): while aligning a picture asked for from the Contribute tab, and
+// another picture has a KiCad view and no alignment yet, the bar offers it - the alignment saved, the
+// next picture aligned at once (PictureToolStart.NextToAlign picks it), the Contribute tab gone back
+// to only when the last one ends.
 //
 // The floating menu that was contributor mode's (over an empty spot: "Enable component label
 // editor", "Calibrate KiCad traces") is now the menu a right-click on a COMPONENT opens for everyone:
@@ -62,9 +69,20 @@ public partial class TabSchematics
     // "Edit this component" on the component menu, with the component's label.
     internal event EventHandler<string>? EditComponentRequested;
 
+    // "Done - next picture": the picture it goes on to, while aligning - null with none left.
+    private string? thisNextToAlign;
+
+    // "Done - next picture" saved its alignment: the next picture to align, for Main to start - after
+    // reading the board again first when that waited for the tool (Main.PictureTools.cs).
+    internal event EventHandler<string>? AlignNextRequested;
+
+    // Stands in for the pictures the board's draft has KiCad aligned on - a test has no draft.
+    internal Func<IReadOnlyCollection<string>>? AlignedPicturesOverrideForTests { get; set; }
+
     private void WirePictureTools()
     {
         this.PictureToolDoneButton.Click += (_, _) => this.OnPictureToolDone();
+        this.PictureToolDoneNextButton.Click += (_, _) => this.OnPictureToolDoneNext();
         this.PictureToolCancelButton.Click += (_, _) => this.OnPictureToolCancel();
 
         this.MenuHighlightButton.Click += (_, _) => this.OnMenuHighlightClick();
@@ -169,13 +187,21 @@ public partial class TabSchematics
         {
             this.thisToolWasOn = true;
             this.thisRefusedTool = null;
+
+            // Aligning one picture of several asked for from the Contribute tab: "Done - next picture"
+            // while another is left to align.
+            this.thisNextToAlign = tool == PictureTool.AlignKiCad && this.thisToolFromWorkspace ? this.NextPictureToAlign() : null;
+
             this.ShowPictureToolBar(
                 PictureToolWording.Title(tool, this.GetCurrentSchematicName()),
                 PictureToolWording.Help(tool),
                 PictureToolWording.Cancel,
-                withDone: true);
+                withDone: true,
+                next: this.thisNextToAlign);
             return;
         }
+
+        this.thisNextToAlign = null;
 
         if (this.thisToolWasOn)
         {
@@ -204,13 +230,15 @@ public partial class TabSchematics
         }
     }
 
-    private void ShowPictureToolBar(string title, string help, string cancel, bool withDone)
+    private void ShowPictureToolBar(string title, string help, string cancel, bool withDone, string? next = null)
     {
         this.PictureToolTitleText.Text = title;
         this.PictureToolHelpText.Text = help;
         this.PictureToolHelpText.IsVisible = help.Length > 0;
         this.PictureToolCancelButton.Content = cancel;
         this.PictureToolDoneButton.IsVisible = withDone;
+        this.PictureToolDoneNextButton.IsVisible = next is not null;
+        ToolTip.SetTip(this.PictureToolDoneNextButton, next is null ? null : PictureToolWording.DoneNextTip(next));
         this.PictureToolBarBorder.IsVisible = true;
     }
 
@@ -221,6 +249,63 @@ public partial class TabSchematics
             this.ApplyLabelEditorChanges();
         else if (this.thisIsKiCadTraceCalibrationMode)
             this.ApplyKiCadTraceCalibration();
+    }
+
+    // "Done - next picture": the calibration's own save, then the next picture (AlignNextAfterSave).
+    private void OnPictureToolDoneNext()
+    {
+        if (this.thisIsKiCadTraceCalibrationMode && this.thisNextToAlign is { } next)
+        {
+            this.ApplyKiCadTraceCalibration(thenAlign: next);
+        }
+    }
+
+    // ###########################################################################################
+    // The picture "Done - next picture" goes on to: the next after this one, round to the start,
+    // whose CAD name finds a view of the board's KiCad data and which is not aligned yet - from the
+    // draft held in memory, where alignments are saved, else from the board's file.
+    // ###########################################################################################
+    private string? NextPictureToAlign()
+    {
+        IReadOnlyCollection<string>? aligned = this.AlignedPicturesOverrideForTests?.Invoke() ?? this.AlignedPicturesInDraft();
+
+        return PictureToolStart.NextToAlign(
+            this.currentThumbnails.Select(thumbnail => thumbnail.Name).ToList(),
+            this.GetCurrentSchematicName(),
+            picture => this.ResolveKiCadViewForSchematicName(picture) is not null,
+            picture => aligned is null
+                ? this.ResolveEffectiveKiCadCalibration(picture) is not null
+                : aligned.Contains(picture, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private List<string>? AlignedPicturesInDraft()
+    {
+        string cacheKey = this.MainWindow?.GetCurrentBoardEntry()?.ExcelDataFile?.Trim() ?? string.Empty;
+        DraftSession? session = cacheKey.Length == 0 ? null : DraftManager.Sessions.Find(DraftManager.DraftsRoot, cacheKey);
+
+        return session?.Content.Calibrations.Select(row => row.SchematicName?.Trim() ?? string.Empty).ToList();
+    }
+
+    // ###########################################################################################
+    // "Done - next picture", its alignment saved: the next picture asked for BEFORE the bar follows,
+    // so the tool's end is no end - the bar says the next is opening, and the Contribute tab is not
+    // gone back to. Main starts it (AlignNextRequested), reading the board first when a read waited
+    // for the tool to end - that read, run as the tool went off, forgot the request halfway. A tab no
+    // Main hosts starts it itself.
+    // ###########################################################################################
+    private void AlignNextAfterSave(string picture)
+    {
+        this.thisPendingTool = (PictureTool.AlignKiCad, picture, this.MainWindow?.GetCurrentBoardKey() ?? string.Empty);
+        this.FollowPictureTool();
+
+        if (this.AlignNextRequested is not null)
+        {
+            this.AlignNextRequested.Invoke(this, picture);
+            return;
+        }
+
+        this.SelectSchematicByName(picture);
+        this.TryStartPendingTool();
     }
 
     // Cancel, or Close: the tool's own cancel, or the request waiting or refused let go.

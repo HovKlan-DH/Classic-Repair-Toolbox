@@ -131,6 +131,90 @@ public sealed class MainPictureToolsTests : IDisposable
     }
 
     // ###########################################################################################
+    // "Done - next picture" (step 3, slice 3d) with a reload waiting for the tool: the board is read
+    // ONCE, now, with the NEXT picture to come back to - and the next picture's alignment started by
+    // that load. Run as the tool went off instead, the reload reset the tab and forgot the next
+    // picture halfway, leaving the Schematics tab with no tool and no way back. CRT stays on the
+    // Schematics tab throughout.
+    // ###########################################################################################
+    [Fact]
+    public void Done_next_picture_reads_a_waiting_board_once_with_the_next_picture()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainPictureToolsTests.BoardKey };
+            TabSchematics tab = window.TabSchematicsControl;
+
+            foreach ((string name, string cadName) in new[] { ("Top", "Board - PCB Top"), ("Bottom", "Board - PCB Bottom") })
+            {
+                tab.schematicByName[name] = new BoardSchematicEntry { SchematicName = name, CadName = cadName };
+                tab.currentThumbnails.Add(new Tabs.TabSchematics.SchematicThumbnail { Name = name });
+            }
+
+            // The top on screen, its image read (images are not decoded headlessly).
+            tab.SelectedThumbnail = tab.currentThumbnails[0];
+            tab.ImageSettledForTests("Top");
+            tab.currentFullResBitmap = new Avalonia.Media.Imaging.WriteableBitmap(
+                new Avalonia.PixelSize(200, 100), new Avalonia.Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            tab.UseKiCadProjectForTests(new KiCadProjectBundle
+            {
+                Root = new KiCadProjectRoot
+                {
+                    Project = new KiCadProjectInfo
+                    {
+                        Views =
+                        [
+                            new KiCadProjectView { DisplayName = "Board - PCB Top", Type = "pcb_top", SourceKind = "pcb", SourceIndex = 0 },
+                            new KiCadProjectView { DisplayName = "Board - PCB Bottom", Type = "pcb_bottom", SourceKind = "pcb", SourceIndex = 0 },
+                        ],
+                    },
+                    Pcb = [new KiCadPcb()],
+                },
+            });
+
+            var saved = new List<string>();
+            tab.KiCadCalibrationSaveOverrideForTests = row =>
+            {
+                saved.Add(row.SchematicName);
+                return Task.FromResult<string?>(null);
+            };
+            tab.AlignedPicturesOverrideForTests = () => saved;
+
+            window.StartPictureTool(PictureTool.AlignKiCad, "Top", readBoardFirst: false);
+            tab.KiCadSettled(hasProject: true);
+            Assert.True(tab.IsCalibrationModeForTests);
+
+            // The Contribute tab's saves left the board behind: its reload waits for the tool.
+            window.ReloadCurrentBoardFromDisk("Top");
+            Assert.True(window.IsReloadWaitingForToolForTests);
+
+            Click(tab, "PictureToolDoneNextButton");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Top"], saved);
+            Assert.False(window.IsReloadWaitingForToolForTests);
+            Assert.Equal("Bottom", UserSettings.GetLastSchematicForBoard(MainPictureToolsTests.BoardKey));
+            Assert.Same(window.SchematicsTabItem, window.MainTabControl.SelectedItem);
+
+            // What that load shows - a test's Main has no board to read, so its pictures are put back
+            // as the load puts them, the one to come back to selected and read - and then its end:
+            // aligning the bottom asked for, waiting for the KiCad data the load reads again.
+            foreach (string name in new[] { "Top", "Bottom" }.Where(name => !tab.currentThumbnails.Any(thumbnail => thumbnail.Name == name)))
+            {
+                tab.currentThumbnails.Add(new Tabs.TabSchematics.SchematicThumbnail { Name = name });
+            }
+
+            tab.SelectSchematicByName(UserSettings.GetLastSchematicForBoard(MainPictureToolsTests.BoardKey)!);
+            tab.ImageSettledForTests("Bottom");
+            window.DoWhatWasAskedAfterLoad(MainPictureToolsTests.BoardKey);
+
+            Assert.Equal("Bottom", tab.GetCurrentSchematicName());
+            Assert.Equal("Opening [Bottom]...", tab.GetControl<TextBlock>("PictureToolTitleText").Text);
+            Assert.Same(window.SchematicsTabItem, window.MainTabControl.SelectedItem);
+        });
+    }
+
+    // ###########################################################################################
     // The menu's first item: the component's highlight on, then off - what a right-click on a
     // component did by itself before the menu.
     // ###########################################################################################

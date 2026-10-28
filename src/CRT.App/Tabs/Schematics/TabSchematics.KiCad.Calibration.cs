@@ -319,12 +319,15 @@ public partial class TabSchematics
     //
     // Async since the save goes through the draft held in memory (2026-10-25), so guarded as a whole:
     // an async void has no caller to catch for it.
+    //
+    // `thenAlign`: "Done - next picture" - the picture aligned next once this is saved
+    // (TabSchematics.PictureTools.cs, AlignNextAfterSave).
     // ###########################################################################################
-    private async void ApplyKiCadTraceCalibration()
+    private async void ApplyKiCadTraceCalibration(string? thenAlign = null)
     {
         try
         {
-            await this.ApplyKiCadTraceCalibrationAsync();
+            await this.ApplyKiCadTraceCalibrationAsync(thenAlign);
         }
         catch (Exception ex)
         {
@@ -332,7 +335,7 @@ public partial class TabSchematics
         }
     }
 
-    private async Task ApplyKiCadTraceCalibrationAsync()
+    private async Task ApplyKiCadTraceCalibrationAsync(string? thenAlign)
     {
         if (!this.thisIsKiCadTraceCalibrationMode || this.currentFullResBitmap == null)
         {
@@ -345,7 +348,7 @@ public partial class TabSchematics
             ? entry.CadName?.Trim() ?? string.Empty
             : string.Empty;
 
-        if (string.IsNullOrWhiteSpace(cacheKey) || string.IsNullOrWhiteSpace(schematicName))
+        if ((string.IsNullOrWhiteSpace(cacheKey) && this.KiCadCalibrationSaveOverrideForTests is null) || string.IsNullOrWhiteSpace(schematicName))
         {
             return;
         }
@@ -399,7 +402,9 @@ public partial class TabSchematics
             MirrorY = mirrorY,
         };
 
-        string? failure = await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingDraft, async () =>
+        string? failure = this.KiCadCalibrationSaveOverrideForTests is { } saveForTests
+            ? await saveForTests(calibration)
+            : await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingDraft, async () =>
         {
             if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, cacheKey))
             {
@@ -469,7 +474,15 @@ public partial class TabSchematics
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.SchematicsContainer.Focus();
-        this.FollowPictureTool();
+
+        if (thenAlign is null)
+        {
+            this.FollowPictureTool();
+        }
+        else
+        {
+            this.AlignNextAfterSave(thenAlign);
+        }
 
         Logger.Info(
             $"KiCad trace calibration saved for schematic [{schematicName}] " +

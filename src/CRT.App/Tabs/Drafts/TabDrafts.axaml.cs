@@ -55,6 +55,8 @@ namespace CRT
     //                         board, and "What's missing" on an existing one
     //   TabDrafts.MarkAutomatically.cs - a picture's "Mark all automatically": every component's
     //                         rectangle from its KiCad footprint, on a picture aligned with KiCad
+    //   TabDrafts.Drop.cs   - pictures or the KiCad project folder dropped on the tab, added to the
+    //                         board shown through the window that manages them
     // ###########################################################################################
     public partial class TabDrafts : UserControl
     {
@@ -111,6 +113,9 @@ namespace CRT
             this.TableEditor.ReloadedFromOutside += this.OnTableSaved;
 
             this.WireComponentPane();
+
+            // Pictures or the KiCad project dropped anywhere on the tab (TabDrafts.Drop.cs).
+            this.WireDrop();
         }
 
         // ###########################################################################################
@@ -473,7 +478,10 @@ namespace CRT
         // judges the KiCad data against - are the DRAFT's, read from its workbook on disk
         // (BoardForFilesWindowAsync).
         // ###########################################################################################
-        private async Task ManageFilesAsync(HardwareBoardEntry entry, BoardFilesSection section)
+        //
+        // `toImport`: files dropped on the tab (TabDrafts.Drop.cs) - added as the window opens, as its
+        // own drop target adds them.
+        private async Task ManageFilesAsync(HardwareBoardEntry entry, BoardFilesSection section, IReadOnlyList<string>? toImport = null)
         {
             if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
             {
@@ -505,6 +513,11 @@ namespace CRT
             // The "Important signals" rows from the same draft, for the KiCad report's net names
             // (2026-10-10).
             window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, section, boardData?.KiCadImportantSignals);
+
+            if (toImport is { Count: > 0 })
+            {
+                window.ImportOnceOpen(toImport);
+            }
 
             await window.ShowDialog(ownerWindow);
 

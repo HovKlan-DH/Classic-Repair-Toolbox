@@ -70,6 +70,11 @@ namespace Handlers.DataHandling
         public const string Cancel = "Cancel";
         public const string Close = "Close";
 
+        // While aligning, with another picture to align (step 3, slice 3d).
+        public const string DoneNext = "Done - next picture";
+
+        public static string DoneNextTip(string picture) => $"Saves this alignment, then aligns KiCad on [{Trimmed(picture)}]";
+
         public static string Opening(string picture) => $"Opening [{Trimmed(picture)}]...";
 
         public static string Title(PictureTool tool, string picture) => tool == PictureTool.MarkComponents
@@ -123,6 +128,7 @@ namespace Handlers.DataHandling
             EditComponent, EditComponentTip, MarkAutomaticallyButton, MarkAutomaticallyTip, MarkAutomaticallyNeedsAlignTip,
             MarkedAutomatically(0, "A"), MarkedAutomatically(1, "A"), MarkedAutomatically(2, "A"), NotAligned("A"), NotABoardView("A"),
             KiCadNotRead, UnmarkedHeading(3), UnmarkedHelp, AllMarked, NoComponentsYet("A"), NoFootprintOnPicture("A"), PictureToolOn,
+            DoneNext, DoneNextTip("A"),
         ];
     }
 }

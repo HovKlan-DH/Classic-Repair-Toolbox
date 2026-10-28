@@ -207,6 +207,195 @@ public sealed class TabSchematicsPictureToolsTests
         });
     }
 
+    // ---- "Done - next picture" (step 3, slice 3d) -----------------------------------------------------
+
+    // ###########################################################################################
+    // A board of three pictures - its top and bottom with their KiCad views, a layout drawing with
+    // none - and KiCad data with the two views: calibration can start on either side, a stand-in
+    // bitmap for the picture shown (images are not decoded headlessly).
+    // ###########################################################################################
+    private static (TabSchematics Tab, List<string> Ended) CreateAligningTab()
+    {
+        BoardSchematicEntry[] schematics =
+        [
+            new() { SchematicName = "Top", SchematicImageFile = "top.png", CadName = "Board - PCB Top" },
+            new() { SchematicName = "Layout", SchematicImageFile = "layout.png" },
+            new() { SchematicName = "Bottom", SchematicImageFile = "bottom.png", CadName = "Board - PCB Bottom" },
+        ];
+
+        var tab = new TabSchematics { CurrentBoardDataOverrideForTests = new BoardData { Schematics = [.. schematics] } };
+
+        foreach (BoardSchematicEntry schematic in schematics)
+        {
+            tab.schematicByName[schematic.SchematicName] = schematic;
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = schematic.SchematicName });
+        }
+
+        tab.currentFullResBitmap = new Avalonia.Media.Imaging.WriteableBitmap(
+            new Avalonia.PixelSize(200, 100),
+            new Avalonia.Vector(96, 96),
+            Avalonia.Platform.PixelFormat.Bgra8888,
+            Avalonia.Platform.AlphaFormat.Premul);
+
+        tab.UseKiCadProjectForTests(new KiCadProjectBundle
+        {
+            Root = new KiCadProjectRoot
+            {
+                Project = new KiCadProjectInfo
+                {
+                    Views =
+                    [
+                        new KiCadProjectView { DisplayName = "Board - PCB Top", Type = "pcb_top", SourceKind = "pcb", SourceIndex = 0 },
+                        new KiCadProjectView { DisplayName = "Board - PCB Bottom", Type = "pcb_bottom", SourceKind = "pcb", SourceIndex = 0 },
+                    ],
+                },
+                Pcb = [new KiCadPcb()],
+            },
+        });
+
+        var ended = new List<string>();
+        tab.PictureToolEnded += (_, _) => ended.Add("ended");
+        return (tab, ended);
+    }
+
+    // "Align KiCad" on a picture: its image read and the KiCad data settled - calibration on.
+    private static void Align(TabSchematics tab, string picture)
+    {
+        tab.StartPictureTool(PictureTool.AlignKiCad, picture);
+        tab.KiCadSettled(hasProject: true);
+        tab.ImageSettledForTests(picture);
+
+        Assert.True(tab.IsCalibrationModeForTests);
+        Assert.Equal(picture, tab.GetCurrentSchematicName());
+    }
+
+    // ###########################################################################################
+    // The plan's "Align: opens calibration on the Schematics tab with a Done - next picture button":
+    // aligning the top, the bar offers the next picture with a view - the bottom, past the layout
+    // drawing, which has none. Pressed: the top's alignment saved, the bottom asked for at once - no
+    // end told in between, so CRT stays on the tab. On the last picture there is no next: Done ends
+    // it, and that end is told.
+    // ###########################################################################################
+    [Fact]
+    public void Done_next_picture_saves_this_alignment_and_aligns_the_next_picture()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, List<string> ended) = CreateAligningTab();
+            var saved = new List<string>();
+            tab.KiCadCalibrationSaveOverrideForTests = row =>
+            {
+                saved.Add(row.SchematicName);
+                return Task.FromResult<string?>(null);
+            };
+            tab.AlignedPicturesOverrideForTests = () => saved;
+
+            Align(tab, "Top");
+
+            Button next = tab.GetControl<Button>("PictureToolDoneNextButton");
+            Assert.True(next.IsVisible);
+            Assert.Equal(PictureToolWording.DoneNext, next.Content);
+            Assert.Contains("Accept", next.Classes);
+            Assert.Equal(PictureToolWording.DoneNextTip("Bottom"), ToolTip.GetTip(next));
+
+            Click(tab, "PictureToolDoneNextButton");
+
+            // Saved, and the bottom selected and waited for - the bar on it, no end told.
+            Assert.Equal(["Top"], saved);
+            Assert.False(tab.IsCalibrationModeForTests);
+            Assert.Equal("Bottom", tab.GetCurrentSchematicName());
+            Assert.Equal("Opening [Bottom]...", Text(tab, "PictureToolTitleText"));
+            Assert.True(BarShown(tab));
+            Assert.Empty(ended);
+
+            tab.ImageSettledForTests("Bottom");
+
+            Assert.True(tab.IsCalibrationModeForTests);
+            Assert.Equal("Align KiCad on [Bottom]", Text(tab, "PictureToolTitleText"));
+
+            // The top is aligned and the layout has no view: nothing after the bottom.
+            Assert.False(next.IsVisible);
+
+            Click(tab, "PictureToolDoneButton");
+
+            Assert.Equal(["Top", "Bottom"], saved);
+            Assert.False(tab.IsCalibrationModeForTests);
+            Assert.False(BarShown(tab));
+            Assert.Equal(["ended"], ended);
+        });
+    }
+
+    // ###########################################################################################
+    // With Main there, the next picture is MAIN's to start (AlignNextRequested): a board read again
+    // that waited for the tool to end is read first - run as the tool went off, its reset forgot the
+    // request halfway. Meanwhile the bar says the next is opening, and no end is told.
+    // ###########################################################################################
+    [Fact]
+    public void With_a_host_the_next_picture_is_asked_of_it()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, List<string> ended) = CreateAligningTab();
+            tab.KiCadCalibrationSaveOverrideForTests = _ => Task.FromResult<string?>(null);
+            tab.AlignedPicturesOverrideForTests = () => [];
+            var asked = new List<string>();
+            tab.AlignNextRequested += (_, picture) => asked.Add(picture);
+
+            Align(tab, "Top");
+            Click(tab, "PictureToolDoneNextButton");
+
+            Assert.Equal(["Bottom"], asked);
+            Assert.False(tab.IsCalibrationModeForTests);
+            Assert.Equal("Opening [Bottom]...", Text(tab, "PictureToolTitleText"));
+            Assert.Equal("Top", tab.GetCurrentSchematicName());
+            Assert.Empty(ended);
+        });
+    }
+
+    // ###########################################################################################
+    // A save that fails leaves calibration on, on THIS picture - nothing the user set up is lost, and
+    // the next picture is not gone on to.
+    // ###########################################################################################
+    [Fact]
+    public void A_failed_save_stays_on_this_picture()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, List<string> ended) = CreateAligningTab();
+            tab.KiCadCalibrationSaveOverrideForTests = _ => Task.FromResult<string?>("The draft could not be saved.");
+            tab.AlignedPicturesOverrideForTests = () => [];
+            var asked = new List<string>();
+            tab.AlignNextRequested += (_, picture) => asked.Add(picture);
+
+            Align(tab, "Top");
+            Click(tab, "PictureToolDoneNextButton");
+
+            Assert.True(tab.IsCalibrationModeForTests);
+            Assert.Equal("Top", tab.GetCurrentSchematicName());
+            Assert.Equal("Align KiCad on [Top]", Text(tab, "PictureToolTitleText"));
+            Assert.Empty(asked);
+            Assert.Empty(ended);
+        });
+    }
+
+    // ###########################################################################################
+    // Mark components has no next picture - the button is the alignment's alone.
+    // ###########################################################################################
+    [Fact]
+    public void Mark_components_offers_no_next_picture()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, _) = CreateAligningTab();
+
+            tab.StartPictureTool(PictureTool.MarkComponents, "Top");
+            tab.ImageSettledForTests("Top");
+
+            Assert.True(tab.IsLabelEditorModeForTests);
+            Assert.False(tab.GetControl<Button>("PictureToolDoneNextButton").IsVisible);
+        });
+    }
+
     // ###########################################################################################
     // The component menu: its name, and "Edit this component" - handed to whoever opens it, the
     // menu closed.

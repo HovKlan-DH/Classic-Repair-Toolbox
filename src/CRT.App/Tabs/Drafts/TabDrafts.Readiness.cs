@@ -24,6 +24,10 @@ namespace CRT
     //   - AN EXISTING BOARD shows what it lacks, each component a click away (BoardReadiness.Missing).
     //   - "ADD N FROM KICAD" (slice 3b) puts every component of the board's KiCad data the draft lacks
     //     into it in one step - with their values, categories, packages, pins and datasheet links.
+    //   - SUGGESTED MATCHES (slice 3d - the plan: "Match: suggested pairs ("...Top.png" with "PCB Top")
+    //     to confirm") are listed under the Match step, each picture with the KiCad view its name and
+    //     its file's name say it shows (SchematicCadNameSuggestions); "Use" takes one, "Use all N"
+    //     every one - one step either way.
     //
     // Worked out ONCE for each board shown and each time the right side goes back to the start panel -
     // never after every refresh of the drafts list, which runs whenever CRT comes to the front, and not
@@ -44,7 +48,17 @@ namespace CRT
         // Asked for while the tab was off screen - worked out when it is shown.
         private bool thisReadinessStale;
 
-        private readonly Dictionary<ReadinessStepKind, (TextBlock Icon, TextBlock Title, TextBlock Detail, Button Action)> thisReadinessRows = new();
+        private readonly Dictionary<ReadinessStepKind, (TextBlock Icon, TextBlock Title, TextBlock Detail, Button Action, StackPanel Text)> thisReadinessRows = new();
+
+        // ###########################################################################################
+        // The matches suggested under "Match pictures to KiCad views" (slice 3d), made once in its
+        // row: a line saying where they come from, a row per pair with its "Use", and "Use all N" -
+        // and the pairs shown, which "Use all" takes.
+        // ###########################################################################################
+        private sealed record MatchControls(StackPanel Panel, StackPanel Rows, Button UseAll);
+
+        private MatchControls? thisMatchControls;
+        private IReadOnlyList<SchematicCadNameSuggestion> thisShownMatches = [];
 
         // The steps shown - what a step's button acts on - and the board they are of.
         private IReadOnlyList<ReadinessStep> thisReadinessSteps = [];
@@ -263,7 +277,7 @@ namespace CRT
 
             foreach (ReadinessStep step in steps)
             {
-                (TextBlock icon, TextBlock title, TextBlock detail, Button action) = this.ReadinessRowFor(step.Kind);
+                (TextBlock icon, TextBlock title, TextBlock detail, Button action, StackPanel text) = this.ReadinessRowFor(step.Kind);
 
                 icon.Text = step.State switch
                 {
@@ -283,6 +297,11 @@ namespace CRT
                 string label = BoardReadiness.ActionOf(step);
                 action.Content = label;
                 action.IsVisible = label.Length > 0;
+
+                if (step.Kind == ReadinessStepKind.Match)
+                {
+                    this.ShowMatches(text, step.Matches ?? []);
+                }
             }
 
             bool noteShown = this.thisReadinessNote is { } note &&
@@ -296,7 +315,7 @@ namespace CRT
         }
 
         // A step's row - made the first time it is shown.
-        private (TextBlock Icon, TextBlock Title, TextBlock Detail, Button Action) ReadinessRowFor(ReadinessStepKind kind)
+        private (TextBlock Icon, TextBlock Title, TextBlock Detail, Button Action, StackPanel Text) ReadinessRowFor(ReadinessStepKind kind)
         {
             if (this.thisReadinessRows.TryGetValue(kind, out var row))
             {
@@ -326,10 +345,138 @@ namespace CRT
 
             this.ReadinessStepsPanel.Children.Add(grid);
 
-            row = (icon, title, detail, action);
+            row = (icon, title, detail, action, text);
             this.thisReadinessRows[kind] = row;
             return row;
         }
+
+        // ###########################################################################################
+        // The suggested matches under the Match step - a row per pair, changed in place (a row made
+        // again under a press threw that click away), "Use all N" for more than one.
+        // ###########################################################################################
+        private void ShowMatches(StackPanel text, IReadOnlyList<SchematicCadNameSuggestion> matches)
+        {
+            if (this.thisMatchControls is not { } controls)
+            {
+                if (matches.Count == 0)
+                {
+                    this.thisShownMatches = [];
+                    return;
+                }
+
+                var panel = new StackPanel { Spacing = 4, Margin = new Avalonia.Thickness(0, 6, 0, 0) };
+                var rows = new StackPanel { Spacing = 4 };
+                var useAll = new Button { HorizontalAlignment = HorizontalAlignment.Left, Classes = { "Accept" } };
+                ToolTip.SetTip(useAll, "Give every picture listed its suggested KiCad view - one step, so Undo takes them all back");
+                useAll.Click += (_, _) => this.RunGuarded(() => this.UseSuggestedMatchesAsync(this.thisShownMatches), "Use all suggestions");
+
+                panel.Children.Add(new TextBlock { Text = BoardReadiness.MatchesHeading, Classes = { "ReadinessDetail" } });
+                panel.Children.Add(rows);
+                panel.Children.Add(useAll);
+                text.Children.Add(panel);
+
+                controls = this.thisMatchControls = new MatchControls(panel, rows, useAll);
+            }
+
+            this.thisShownMatches = matches;
+            controls.Panel.IsVisible = matches.Count > 0;
+
+            InPlaceList.Sync(
+                controls.Rows.Children,
+                matches,
+                (control, match) => control is Grid { Tag: SchematicCadNameSuggestion shown } && shown == match,
+                this.MatchRow);
+
+            controls.UseAll.Content = BoardReadiness.UseAllMatches(matches.Count);
+            controls.UseAll.IsVisible = matches.Count > 1;
+        }
+
+        private Control MatchRow(SchematicCadNameSuggestion match)
+        {
+            var text = new TextBlock
+            {
+                Text = BoardReadiness.SuggestedMatch(match),
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var use = new Button { Content = BoardReadiness.UseMatch, Tag = match, Margin = new Avalonia.Thickness(8, 0, 0, 0), Classes = { "Accept" } };
+            ToolTip.SetTip(use, BoardReadiness.UseMatchTip(match));
+            use.Click += (_, _) => this.RunGuarded(() => this.UseSuggestedMatchesAsync([match]), "Use suggestion");
+
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Tag = match };
+            Grid.SetColumn(use, 1);
+            grid.Children.Add(text);
+            grid.Children.Add(use);
+            return grid;
+        }
+
+        // ###########################################################################################
+        // A suggested match used - one, or every one shown: the draft opened as every change opens it,
+        // and only the pairs it can still take (no CAD name on the picture, no picture with the view -
+        // the draft can have moved) taken as ONE step named for them, saved at once under the
+        // BusyOverlay. What came of it is said under the checklist; a change reads the board on screen
+        // again, so the Schematics tab draws the views.
+        // ###########################################################################################
+        internal Task UseSuggestedMatchesAsync(IReadOnlyList<SchematicCadNameSuggestion> wanted) =>
+            this.OnCurrentDraftAsync(async entry =>
+            {
+                string identity = entry.ExcelDataFile;
+                bool changed = false;
+
+                ReadinessNote? note = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.MatchingPictures, async () =>
+                {
+                    if (await DraftEdits.OpenForChangeAsync(identity) is not DraftSession session)
+                    {
+                        return null;
+                    }
+
+                    List<SchematicCadNameSuggestion> open = SchematicCadNameSuggestions.StillOpen(session.Content.Board, wanted);
+
+                    if (open.Count == 0)
+                    {
+                        return new ReadinessNote(identity, BoardReadiness.MatchesUsed([]), session.Content, GoesWhenSaved: false);
+                    }
+
+                    BoardContent before = session.Content;
+                    IReadOnlyList<SchematicCadNameSuggestion> taken = [];
+
+                    // One matching pass per working-out of the change (code review, 2026-10-28: two).
+                    DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                        identity,
+                        DraftStepWording.PicturesMatched(open.Select(match => match.SchematicName).ToList()),
+                        board =>
+                        {
+                            BoardData result = SchematicCadNameSuggestions.With(board, open, out IReadOnlyList<SchematicCadNameSuggestion> took);
+                            taken = took;
+                            return result;
+                        });
+
+                    if (outcome != DraftWorkbookEditOutcome.Saved)
+                    {
+                        return new ReadinessNote(identity, DraftSaveWording.EditNotSaved(outcome), session.Content, GoesWhenSaved: session.SaveState != DraftSaveState.Saved);
+                    }
+
+                    changed = !ReferenceEquals(session.Content, before);
+
+                    return new ReadinessNote(identity, BoardReadiness.MatchesUsed(changed ? taken : []), session.Content, GoesWhenSaved: false);
+                });
+
+                if (note is null)
+                {
+                    this.ShowDraftProblem(DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.NoDraft));
+                    return;
+                }
+
+                this.thisReadinessNote = note;
+
+                if (changed)
+                {
+                    this.AfterDraftChanged(entry);
+                }
+
+                this.ShowReadiness();
+            });
 
         private void OnReadinessActionClick(object? sender, RoutedEventArgs e)
         {

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace Handlers.DataHandling
 {
     // The two tools the Contribute tab starts on a picture (CRT 4.0 step 2, slice 6 - the plan:
@@ -72,6 +75,43 @@ namespace Handlers.DataHandling
                 _ when !pictureHasKiCadView => new(PictureToolStep.Refuse, PictureToolWording.NoKiCadView(picture)),
                 _ => new(PictureToolStep.Start),
             };
+        }
+
+        // ###########################################################################################
+        // "DONE - NEXT PICTURE" (CRT 4.0 step 3, slice 3d - the plan: "Align: opens calibration on the
+        // Schematics tab with a Done - next picture button"): the picture to align after `current` -
+        // the first after it in the pictures' order, round to the start, that has a KiCad view and is
+        // not aligned yet. Null when no other is left, and Done is the only way on.
+        // ###########################################################################################
+        public static string? NextToAlign(IReadOnlyList<string> pictures, string current, Func<string, bool> hasKiCadView, Func<string, bool> isAligned)
+        {
+            ArgumentNullException.ThrowIfNull(pictures);
+
+            string here = current?.Trim() ?? string.Empty;
+            int at = -1;
+
+            for (int index = 0; index < pictures.Count && at < 0; index++)
+            {
+                if (string.Equals(pictures[index]?.Trim(), here, StringComparison.OrdinalIgnoreCase))
+                {
+                    at = index;
+                }
+            }
+
+            for (int step = 1; step <= pictures.Count; step++)
+            {
+                string picture = pictures[(at + step + pictures.Count) % pictures.Count]?.Trim() ?? string.Empty;
+
+                if (picture.Length > 0 &&
+                    !string.Equals(picture, here, StringComparison.OrdinalIgnoreCase) &&
+                    hasKiCadView(picture) &&
+                    !isAligned(picture))
+                {
+                    return picture;
+                }
+            }
+
+            return null;
         }
     }
 }

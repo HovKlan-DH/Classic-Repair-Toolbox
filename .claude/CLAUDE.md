@@ -790,6 +790,61 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   .IsNewComponent` - the save's own rule, in the region it saves in; code review, 2026-10-26): it asked
   every rectangle, and one of a component with no category - picked, or marked automatically - could not
   be saved at all.
+- **Suggested matches** (step 3's slice 3d, 2026-10-28 - the plan: "Match: suggested pairs ("...Top.png"
+  with "PCB Top") to confirm"; the rule CRT.Data's `SchematicCadNameSuggestions`, the views as
+  `BoardKiCadFacts.ToMatch`): under the checklist's Match step, each picture with no CAD name and the
+  view no picture has that its NAME or its FILE's name says it shows - the same words, a side said in
+  words (top/front, bottom/back/solder) or KiCad's plot spellings (a name ENDING ".F"/".B", the layer
+  "F.Cu"/"B_Cu" - **never a lone letter**: "C64 Rev B" read as the bottom, code review 2026-10-28 - nor a
+  revision or model letter after a dot, "Rev.B") for a picture that is no
+  schematic, a sheet's name ENDING the words (KiCad plots "<project>-<parent>-<sheet>.png"). The surest
+  first; **two pairs equally sure of one picture or one view suggest neither** - no suggestion beats a
+  wrong one confirmed without looking. Measured on the five live KiCad boards, CAD names taken away: 34
+  suggestions, each the board's own (`SchematicCadNameSuggestionsTests` holds them). "Use" takes one,
+  "Use all N" every one - ONE step either way, only what the draft can still take
+  (`SchematicCadNameSuggestions.StillOpen`), saved at once; the rows changed in place (`InPlaceList`).
+- **"Done - next picture"** (slice 3d - the plan: "Align: opens calibration on the Schematics tab with a
+  Done - next picture button"): on the bar while aligning a picture the Contribute tab asked for, when
+  another picture has a KiCad view and no alignment in the draft (`PictureToolStart.NextToAlign` - the
+  next after it, round to the start). The alignment saved, the next picture is asked for BEFORE the bar
+  follows, so no end is told and CRT stays on the Schematics tab; a failed save stays on this picture.
+  **Main starts the next one** (`AlignNextRequested` -> `Main.AlignNext`): a board read again that waited
+  for the tool is read THEN, with the next picture to come back to, and the tool started by that load -
+  run as the tool went off, its reset forgot the next picture halfway.
+- **"Did you mean Commodore?"** (step 3's slice 3e, 2026-10-28; CRT.Data's `SimilarNames`, `NewBoardWindow`):
+  under the new-board form's Manufacturer and Hardware boxes, a name close to one CRT has - the same
+  letters, digits and "+" without regard to capitals or punctuation, or a slip away (1 letter for 4-7, 2
+  for longer; never in 3 letters or fewer, **never one that changes the model** - its numbers, "+" signs
+  and the letters after the last digit: "Commodore 65", "C128D", "Amiga 500+" are other machines) - with
+  "Use <name>". A machine is known by its listed name AND its folder ("C64" offers
+  "Commodore 64": typed as the folder, a board came under a second hardware in the drop-down lists - the
+  form's example was "C64", now "Commodore 64"). Two names equally close offer neither. Never blocks Create.
+- **Files dropped on the Contribute tab** (slice 3e; `TabDrafts.Drop.cs`, the rule `BoardDrop`): anywhere on
+  the tab, onto the board shown - pictures open "Schematic images", a KiCad project FOLDER "KiCad data",
+  each ADDING them as it opens (`BoardFilesWindow.ImportOnceOpen` - the window's own imports, never a
+  second copy); a folder with no KiCad file but pictures at its top is those pictures. **A hidden file is
+  never a picture nor a KiCad file** (`ContributionPackaging.IsAddablePictureFile`, the scanner's walk -
+  second code review, 2026-10-28: macOS's "._IMG_0001.JPG" beside every picture on a USB stick became rows
+  the server refused at Submit). The dropped folder is walked ONCE (`KiCadRawFileScanner.Probe`). **What opens nothing
+  is said on the tab's problem line, and makes no draft** (code review, 2026-10-28): a KiCad FILE on its own
+  (taken as its folder, a file from Downloads imported every project under it), a folder with neither
+  (an older KiCad's or EAGLE's project told what to do). Read under the BusyOverlay, **taken only by the
+  board it was dropped on**, and **never under "CRT has to be updated"** (the cover lies inside the tab, so
+  a drop reached it). The start panel says it can be done.
+- **The KiCad import's summary** (slice 3e - the plan: "drop the project folder and get a summary of what
+  was found, what was ignored, and what is left to do"; `KiCadImportSummary`, shown by the "KiCad data"
+  window): FOUND - the first PCB's components (`KiCadComponentTable`'s, as "Add N from KiCad" counts them),
+  its nets, the sheets; LEFT OUT - what the folder held that the import does not take, counted by kind,
+  said only right after an import in that window that COPIED something (the folder is a path on the
+  contributor's machine, stored nowhere); a schematic (.sch) or board (.brd) CRT cannot read is SAID with
+  what to do - an older KiCad's (told by its FIRST LINE, `KiCadRawFileScanner.IsOlderKiCadFile`) to save it
+  in a newer KiCad, another program's (EAGLE uses the same extensions) to import it into KiCad - such a
+  project used to get only "No KiCad files in that folder"; LEFT TO DO - the getting-ready steps after the
+  KiCad data still to do, by `BoardReadiness.Steps` on the draft held in memory, never a second copy of its
+  rules. **The folder is walked ONCE** (`KiCadRawFileScanner.ScanSplit`: taken, left out, older KiCad), and
+  **the walk, the copy and the report are ONE of the window's queued changes** under its wait (code review,
+  2026-10-28: walked outside the queue, the window could close meanwhile and the import landed unseen).
+  The KiCad half of the window is `BoardFilesWindow.KiCad.cs`.
 - **"Contribution in use"** (`Main.thisContributionInUse` - a draft, or unread news on something sent)
   is what the Drafts tab's visibility used to be: it decides whether CRT asks the API revision.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,

@@ -12,7 +12,8 @@ namespace CRT
     // Schematics tab in that tool (TabSchematics.PictureTools.cs, with its bar) - on the board as its
     // draft now is: read again first when the Contribute tab's saves left it behind, the picture
     // selected by that load (OnBoardShownUpToDate). When the tool ends - Done, Cancel or Close - CRT
-    // goes back to the Contribute tab it came from.
+    // goes back to the Contribute tab it came from; "Done - next picture" (step 3, slice 3d) goes on
+    // to the next picture's alignment instead (AlignNext).
     //
     // "Edit this component" on the menu a right-click on a component opens - for everyone - opens it
     // in the Contribute tab's pane.
@@ -31,6 +32,7 @@ namespace CRT
         private void WirePictureTools()
         {
             this.TabSchematicsControl.PictureToolEnded += (_, _) => this.OnPictureToolEnded();
+            this.TabSchematicsControl.AlignNextRequested += (_, picture) => this.AlignNext(picture);
             this.TabSchematicsControl.EditComponentRequested += (sender, label) => _ = this.EditComponentAsync(label);
 
             // After the tool's own end has run: the label editor's Done reads the board again itself,
@@ -84,6 +86,20 @@ namespace CRT
             this.thisPictureToolFromContribute = true;
             this.OnBoardShownUpToDate(readBoardFirst, picture, () => this.TabSchematicsControl.StartPictureTool(tool, picture));
             this.SwitchToSchematicsTab();
+        }
+
+        // ###########################################################################################
+        // "Done - next picture" (step 3, slice 3d): the alignment saved, the next picture's. A board
+        // read again that waited for the tool is read NOW, with that picture selected, and the tool
+        // started once it is in - run as the tool went off, it reset the tab and forgot the request.
+        // Still the tool the Contribute tab asked for: the last one's end goes back there.
+        // ###########################################################################################
+        private void AlignNext(string picture)
+        {
+            bool readBoardFirst = this.thisReloadWhenToolEnds is not null;
+            this.thisReloadWhenToolEnds = null;
+
+            this.OnBoardShownUpToDate(readBoardFirst, picture, () => this.TabSchematicsControl.StartPictureTool(PictureTool.AlignKiCad, picture));
         }
 
         private void OnPictureToolEnded()

@@ -490,6 +490,13 @@
 					<TextBlock x:Name="StartText"
 							   TextWrapping="Wrap"
 							   Text="Pick a component on the left to correct or add to what it says, or a part of the board. The table view shows the whole board as sheets." />
+					<!-- Files dropped anywhere on the tab are added to the board (TabDrafts.Drop.cs). -->
+					<TextBlock x:Name="DropHintText"
+							   TextWrapping="Wrap"
+							   FontSize="11"
+							   Opacity="0.75"
+							   Margin="0,4,0,0"
+							   Text="Drag pictures of the board, or its KiCad project folder, onto this tab to add them." />
 					<TextBlock x:Name="PublishedOnText"
 							   FontSize="11"
 							   Opacity="0.75"

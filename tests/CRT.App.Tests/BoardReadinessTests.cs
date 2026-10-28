@@ -333,4 +333,89 @@ public sealed class BoardReadinessTests
             BoardReadiness.AddedFromKiCad(new KiCadComponentsAdded(214, 40, 12)));
         Assert.Equal("Added 3 components from KiCad - 2 with a datasheet link.", BoardReadiness.AddedFromKiCad(new KiCadComponentsAdded(3, 0, 2)));
     }
+
+    // ---- suggested matches (slice 3d) -----------------------------------------------------------------
+
+    // ###########################################################################################
+    // The facts say of every view what matching needs: a side of the board or a sheet, and for a
+    // side the PCB file it comes from - as the loader names its views ("Issue 4 - PCB Top").
+    // ###########################################################################################
+    [Fact]
+    public void The_KiCad_facts_tell_each_views_side_and_its_PCB_file()
+    {
+        var root = new KiCadProjectRoot
+        {
+            Project = new KiCadProjectInfo
+            {
+                Views =
+                [
+                    new KiCadProjectView { DisplayName = "Issue 4 - PCB Top", Type = "pcb_top", SourceFile = "Issue 4.kicad_pcb" },
+                    new KiCadProjectView { DisplayName = "Issue 4 - PCB Bottom", Type = "PCB_BOTTOM", SourceFile = "Issue 4.kicad_pcb" },
+                    new KiCadProjectView { DisplayName = " Sheet 1 ", Type = "schematic", SourceFile = "issue4.kicad_sch" },
+                ],
+            },
+        };
+
+        BoardKiCadFacts facts = BoardKiCadFacts.Of(root);
+
+        Assert.Equal(
+            [
+                new KiCadViewToMatch("Issue 4 - PCB Top", KiCadViewSide.Top, "Issue 4"),
+                new KiCadViewToMatch("Issue 4 - PCB Bottom", KiCadViewSide.Bottom, "Issue 4"),
+                new KiCadViewToMatch("Sheet 1", KiCadViewSide.Sheet),
+            ],
+            facts.ToMatch);
+        Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"], facts.BoardViews);
+        Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom", "Sheet 1"], facts.Views);
+    }
+
+    // ###########################################################################################
+    // The plan's "Match: suggested pairs ("...Top.png" with "PCB Top") to confirm": the Match step
+    // carries the pairs once the KiCad data is read, and says to check them - never while it is read,
+    // and never without KiCad data.
+    // ###########################################################################################
+    [Fact]
+    public void The_match_step_offers_the_pictures_and_views_that_seem_to_go_together()
+    {
+        var board = new BoardData
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Top (replica)", SchematicImageFile = "Issue 4.F.png" },
+                new BoardSchematicEntry { SchematicName = "Bottom (replica)", SchematicImageFile = "Issue 4.B.png" },
+                new BoardSchematicEntry { SchematicName = "Photo", SchematicImageFile = "IMG_2001.jpg" },
+            ],
+        };
+
+        var facts = new BoardKiCadFacts(
+            [],
+            ["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"],
+            BoardViews: ["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"],
+            ToMatch: [new KiCadViewToMatch("Issue 4 - PCB Top", KiCadViewSide.Top, "Issue 4"), new KiCadViewToMatch("Issue 4 - PCB Bottom", KiCadViewSide.Bottom, "Issue 4")]);
+
+        ReadinessStep match = BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: true, facts).Single(step => step.Kind == ReadinessStepKind.Match);
+
+        Assert.Equal(
+            [new SchematicCadNameSuggestion("Top (replica)", "Issue 4.F.png", "Issue 4 - PCB Top"), new SchematicCadNameSuggestion("Bottom (replica)", "Issue 4.B.png", "Issue 4 - PCB Bottom")],
+            match.Matches);
+        Assert.Equal("0 of 3 pictures show a KiCad view - check the matches suggested below.", match.Detail);
+        Assert.Equal("Match pictures", BoardReadiness.ActionOf(match));
+
+        Assert.Null(BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: true, kiCad: null).Single(step => step.Kind == ReadinessStepKind.Match).Matches);
+        Assert.Null(BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: false, facts).Single(step => step.Kind == ReadinessStepKind.Match).Matches);
+        Assert.Null(BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: true, BoardKiCadFacts.Of(null)).Single(step => step.Kind == ReadinessStepKind.Match).Matches);
+    }
+
+    [Fact]
+    public void The_suggested_matches_are_said_in_words()
+    {
+        var top = new SchematicCadNameSuggestion("Top (replica)", "Issue 4.F.png", "Issue 4 - PCB Top");
+
+        Assert.Equal("[Top (replica)] shows [Issue 4 - PCB Top]", BoardReadiness.SuggestedMatch(top));
+        Assert.Equal("Give [Top (replica)] the KiCad view [Issue 4 - PCB Top]", BoardReadiness.UseMatchTip(top));
+        Assert.Equal("Use all 3 suggestions", BoardReadiness.UseAllMatches(3));
+        Assert.Equal("[Top (replica)] now shows [Issue 4 - PCB Top].", BoardReadiness.MatchesUsed([top]));
+        Assert.Equal("2 pictures now show their KiCad views.", BoardReadiness.MatchesUsed([top, top with { SchematicName = "Bottom" }]));
+        Assert.Equal("Those pictures, or their KiCad views, have been matched already.", BoardReadiness.MatchesUsed([]));
+    }
 }

@@ -33,6 +33,11 @@ namespace CRT
     // field still filled in - so a mis-click costs one more click, not the typing. The gate lives
     // here rather than in Main so that no caller can obtain a registration without it: this
     // window is the one way a new board's identity comes into being.
+    //
+    // *** "DID YOU MEAN COMMODORE?" (CRT 4.0 step 3, slice 3e). *** A manufacturer or machine written
+    // another way than CRT has it becomes a second one beside it in the drop-down lists, so a name
+    // close to one CRT has is offered under its box - a machine by its name or its folder, "C64"
+    // offering "Commodore 64" (SimilarNames). Never in the way: the name typed may be a new one.
     // ###########################################################################################
     public partial class NewBoardWindow : Window
     {
@@ -41,6 +46,11 @@ namespace CRT
         // main workbook's boards, any _UserContribution ones AND other drafts' registrations - so
         // this single check covers all three sources.
         private readonly HashSet<string> thisTakenIdentities = new(StringComparer.OrdinalIgnoreCase);
+
+        // The manufacturers and machines CRT has, for "Did you mean" (CRT 4.0 step 3, slice 3e): a
+        // machine by its name and by its folder ("C64" is "Commodore 64").
+        private List<KnownName> thisKnownManufacturers = [];
+        private List<KnownName> thisKnownHardware = [];
 
         // Replaces the maintainer agreement with a canned answer. Null in the app, which shows
         // NewBoardMaintainerWindow; set by headless tests that want to drive the create path
@@ -55,6 +65,10 @@ namespace CRT
             this.ManufacturerBox.TextChanged += this.OnAnyFieldChanged;
             this.HardwareBox.TextChanged += this.OnAnyFieldChanged;
             this.BoardBox.TextChanged += this.OnAnyFieldChanged;
+
+            // "Use Commodore": the name offered goes into its box.
+            this.ManufacturerDidYouMeanButton.Click += (_, _) => this.UseOffered(this.ManufacturerDidYouMeanButton, text => this.ManufacturerBox.Text = text);
+            this.HardwareDidYouMeanButton.Click += (_, _) => this.UseOffered(this.HardwareDidYouMeanButton, text => this.HardwareBox.Text = text);
 
             this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
 
@@ -80,15 +94,55 @@ namespace CRT
             // Offering the manufacturers already in use is what stops a typo ("Comodore") quietly
             // creating a second top-level folder beside the real one - the names are free text, so
             // nothing else would catch it.
-            this.ManufacturerBox.ItemsSource = existingBoards
+            List<string> manufacturers = existingBoards
                 .Select(entry => NewBoardIdentity.ExtractManufacturer(entry.ExcelDataFile))
                 .Where(manufacturer => !string.IsNullOrWhiteSpace(manufacturer))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(manufacturer => manufacturer, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            this.ManufacturerBox.ItemsSource = manufacturers;
+
+            this.thisKnownManufacturers = manufacturers.Select(manufacturer => new KnownName(manufacturer, manufacturer)).ToList();
+            this.thisKnownHardware = existingBoards
+                .Where(entry => !string.IsNullOrWhiteSpace(entry.HardwareName))
+                .SelectMany(entry => new[]
+                {
+                    new KnownName(entry.HardwareName, entry.HardwareName),
+                    new KnownName(NewBoardIdentity.ExtractHardware(entry.ExcelDataFile), entry.HardwareName),
+                })
+                .Distinct()
+                .ToList();
+
             this.UpdateValidation();
         }
+
+        // ###########################################################################################
+        // "Did you mean" under a box: shown while what it holds is close to a name CRT has
+        // (SimilarNames), its button putting that name in.
+        // ###########################################################################################
+        private void ShowDidYouMean(StackPanel panel, TextBlock question, Button use, string? typed, IReadOnlyList<KnownName> known)
+        {
+            string? offered = SimilarNames.DidYouMean(typed, known);
+
+            panel.IsVisible = offered is not null;
+            question.Text = offered is null ? string.Empty : SimilarNames.Question(offered);
+            use.Content = offered is null ? string.Empty : SimilarNames.UseButton(offered);
+            use.Tag = offered;
+        }
+
+        private void UseOffered(Button use, Action<string> put)
+        {
+            if (use.Tag is string offered)
+            {
+                put(offered);
+                this.UpdateValidation();
+            }
+        }
+
+        internal string? ManufacturerOfferedForTests => this.ManufacturerDidYouMeanPanel.IsVisible ? this.ManufacturerDidYouMeanButton.Tag as string : null;
+
+        internal string? HardwareOfferedForTests => this.HardwareDidYouMeanPanel.IsVisible ? this.HardwareDidYouMeanButton.Tag as string : null;
 
         // ###########################################################################################
         // The registration the current field values describe, or null when they are not valid. One
@@ -185,6 +239,9 @@ namespace CRT
         // ###########################################################################################
         private void UpdateValidation()
         {
+            this.ShowDidYouMean(this.ManufacturerDidYouMeanPanel, this.ManufacturerDidYouMeanText, this.ManufacturerDidYouMeanButton, this.ManufacturerBox.Text, this.thisKnownManufacturers);
+            this.ShowDidYouMean(this.HardwareDidYouMeanPanel, this.HardwareDidYouMeanText, this.HardwareDidYouMeanButton, this.HardwareBox.Text, this.thisKnownHardware);
+
             var registration = this.BuildRegistrationOrNull(out string validationMessage);
 
             this.CreateButton.IsEnabled = registration != null;
