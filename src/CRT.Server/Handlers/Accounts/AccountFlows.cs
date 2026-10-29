@@ -1,5 +1,6 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Email;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Accounts
 {
@@ -733,14 +734,18 @@ namespace CRT.Server.Handlers.Accounts
         {
             string refreshToken = SecureToken.Create();
 
+            // User-agent and IP come from the request and are therefore untrusted. The database
+            // columns are bounded, and an over-long value would throw on insert rather than being
+            // silently cut - so they are cut here, by the one shared rule, which never leaves half a
+            // character either: utf8mb4 refuses that too (code review, 2026-10-29).
             long sessionId = await store.CreateSessionAsync(
                 new NewSession(
                     accountId,
                     SecureToken.Hash(refreshToken),
                     now,
                     now + TimeSpan.FromDays(options.RefreshTokenDays),
-                    AccountFlows.Truncate(userAgent, 255),
-                    AccountFlows.Truncate(ipAddress, 45)),
+                    BoardViewRules.Clip(userAgent, 255),
+                    BoardViewRules.Clip(ipAddress, 45)),
                 cancellationToken);
 
             return new IssuedSession(
@@ -817,17 +822,6 @@ namespace CRT.Server.Handlers.Accounts
             string baseUrl = options.PublicApiBaseUrl!.TrimEnd('/');
 
             return $"{baseUrl}/accounts/{path}?token={Uri.EscapeDataString(token)}";
-        }
-
-        // User-agent and IP come from the request and are therefore untrusted. The database
-        // columns are bounded, and an over-long value would throw on insert rather than being
-        // silently cut - so cut it here, where it is a deliberate decision.
-        private static string? Truncate(string? value, int maximumLength)
-        {
-            if (string.IsNullOrEmpty(value))
-                return null;
-
-            return value.Length <= maximumLength ? value : value[..maximumLength];
         }
     }
 }

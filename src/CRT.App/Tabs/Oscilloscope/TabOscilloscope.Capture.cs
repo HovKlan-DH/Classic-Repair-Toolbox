@@ -57,6 +57,10 @@ namespace CRT
                             palette,
                             cancellationToken);
                     }
+
+                    // Every palette went through - what "Submit this model" tells the administrator
+                    // of the model as it was run (TabOscilloscope.ModelSubmit.cs).
+                    this.NoteSuitePassed(selectedOscilloscope);
                 },
                 CancellationToken.None);
             }

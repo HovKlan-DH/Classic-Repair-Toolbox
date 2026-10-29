@@ -303,6 +303,27 @@ namespace CRT.Server.Tests
             Assert.Single(store.Sessions);
         }
 
+        // ###########################################################################################
+        // *** A USER AGENT CUT TO ITS COLUMN NEVER ENDS IN HALF A CHARACTER (code review, 2026-10-29). ***
+        // Cut at 255 UTF-16 units, an emoji across the cut left a lone high surrogate, which MariaDB's
+        // utf8mb4 refuses - the session's insert failed, and with it the sign-in. The one shared helper
+        // (BoardViewRules.Clip) steps back off it.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_long_user_agent_is_cut_without_splitting_a_character()
+        {
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            string userAgent = new string('a', 254) + "\U0001F600 and more";
+
+            LoginOutcome outcome = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, userAgent, "192.0.2.1"),
+                store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.True(outcome.IsSuccess);
+            string stored = Assert.Single(store.NewSessions.Values).UserAgent!;
+            Assert.Equal(new string('a', 254), stored);
+        }
+
         [Fact]
         public async Task An_UNVERIFIED_account_can_still_log_in()
         {

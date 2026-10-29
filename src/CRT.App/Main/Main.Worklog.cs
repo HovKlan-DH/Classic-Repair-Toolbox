@@ -244,6 +244,13 @@ namespace CRT
             // come back on leaving it (Main.Maintainer.cs).
             this.ApplyMaintainerLayoutForSelection(e);
 
+            // "Draw trace" is the Schematics tab's: leaving the tab stops it (code review, 2026-10-29 -
+            // left on, the window's Escape went on taking a key meant for another tab).
+            if (!ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem))
+            {
+                this.TabSchematicsControl.SetDrawingTraces(false);
+            }
+
             if (this.MainTabControl?.SelectedItem is TabItem { Header: "Workbooks" })
             {
                 this.TabWorkbooks?.FocusSearchBox();

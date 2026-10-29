@@ -307,6 +307,52 @@ public sealed class LocalDataMigrationTests : IDisposable
         Assert.Equal("{ not json", File.ReadAllText(path));
     }
 
+    // ###########################################################################################
+    // *** WHAT COULD NOT BE READ MUST NOT BE WRITTEN OVER (code review, 2026-10-29). *** The
+    // Oscilloscope tab's model editor writes this file. A file that could not be read reads as "no
+    // models", and the editor's first save replaced it with the one model just made - the user's
+    // models gone; a CRT 3 search not made yet was ended by that file for good. So the load says
+    // when the file must not be written this run, and why.
+    // ###########################################################################################
+    [Fact]
+    public void An_own_models_file_that_cannot_be_read_must_not_be_written_this_run()
+    {
+        string path = this.thisSpace.WriteFile(OwnOscilloscopeFile.FileName, "{ not json");
+
+        OwnOscilloscopeFile.LoadOrFind(path, string.Empty, [], [], out string? notWritable);
+
+        Assert.NotNull(notWritable);
+        Assert.Contains("could not be read", notWritable);
+    }
+
+    [Fact]
+    public void A_CRT_3_search_not_made_yet_must_not_be_ended_by_a_write()
+    {
+        (DataTreeConversionTests.ExcelTree local, IReadOnlyList<MainDocument.OscilloscopeRow> published) = ScopeSituation();
+        using (local)
+        {
+            string path = this.thisSpace.Path_(OwnOscilloscopeFile.FileName);
+            File.WriteAllText(local.Full(DataTreeConversionTests.ExcelTree.MasterName), "not a workbook");
+
+            OwnOscilloscopeFile.LoadOrFind(path, local.DataRoot, published, [], out string? notWritable);
+
+            Assert.NotNull(notWritable);
+            Assert.Contains("CRT 3", notWritable);
+        }
+    }
+
+    [Fact]
+    public void A_file_read_or_made_may_be_written()
+    {
+        string path = this.thisSpace.Path_(OwnOscilloscopeFile.FileName);
+
+        OwnOscilloscopeFile.LoadOrFind(path, string.Empty, [], [], out string? made);
+        OwnOscilloscopeFile.LoadOrFind(path, string.Empty, [], [], out string? read);
+
+        Assert.Null(made);
+        Assert.Null(read);
+    }
+
     [Fact]
     public void Without_a_CRT_3_main_workbook_the_file_is_made_empty()
     {

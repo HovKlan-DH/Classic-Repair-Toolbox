@@ -36,6 +36,9 @@ namespace CRT
         //   TabOscilloscope.Capture.cs    - image folder selection, dump-image workflow, saving a
         //                                   captured oscilloscope image
         //   TabOscilloscope.TestSeams.cs  - pre-existing test seam (unchanged by this split)
+        //   TabOscilloscope.ModelEditor.cs - "My scope is not listed": a model of the user's own,
+        //                                   made from a similar one, edited with Try it per command
+        //   TabOscilloscope.ModelSubmit.cs - "Submit this model": an own model sent in for everybody
         // ###########################################################################################
 
         private double? thisLastTriggerLevelVolts;
@@ -82,6 +85,8 @@ namespace CRT
             this.VendorComboBox.SelectionChanged += (_, _) => this.PublishOscilloscopeSelectionInputs();
             this.SeriesOrModelComboBox.SelectionChanged += (_, _) => this.PublishOscilloscopeSelectionInputs();
             this.PublishOscilloscopeSelectionInputs();
+
+            this.InitializeModelEditor();
         }
 
         // ###########################################################################################
@@ -115,8 +120,16 @@ namespace CRT
         // ###########################################################################################
         private void OnVendorSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            this.InvalidateEstablishedOscilloscopeSession();
+            if (!this.thisKeepsSessionThroughListRefresh)
+            {
+                this.InvalidateEstablishedOscilloscopeSession();
+            }
 
+            this.ShowModelsOfSelectedVendor();
+        }
+
+        private void ShowModelsOfSelectedVendor()
+        {
             var selectedVendor = this.VendorComboBox.SelectedItem as string;
 
             var models = DataManager.Oscilloscopes
@@ -148,7 +161,10 @@ namespace CRT
         // ###########################################################################################
         private void OnSeriesOrModelSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            this.InvalidateEstablishedOscilloscopeSession();
+            if (!this.thisKeepsSessionThroughListRefresh)
+            {
+                this.InvalidateEstablishedOscilloscopeSession();
+            }
 
             var selectedVendor = this.VendorComboBox.SelectedItem as string;
             var selectedSeries = this.SeriesOrModelComboBox.SelectedItem as string;
@@ -164,12 +180,23 @@ namespace CRT
                 string.Equals(entry.Brand, selectedVendor, StringComparison.OrdinalIgnoreCase) &&
                 string.Equals(entry.SeriesOrModel, selectedSeries, StringComparison.OrdinalIgnoreCase));
 
-            if (selectedOscilloscope == null)
+            // The model editor's own refresh keeps the port the scope IS connected on: the model's
+            // port written into the box changed the endpoint, and the session went (code review,
+            // 2026-10-29 - TabOscilloscope.ModelEditor.cs). With nothing connected the box takes the
+            // model's port, as for any model picked - kept, "Connect" tried the port shown before.
+            if (selectedOscilloscope == null ||
+                (this.thisKeepsSessionThroughListRefresh && this.thisHasEstablishedOscilloscopeSession))
             {
                 return;
             }
 
-            if (int.TryParse(selectedOscilloscope.Port, out int port) &&
+            this.UseModelPort(selectedOscilloscope.Port);
+        }
+
+        // A model's port into the TCP port box - when it is a port at all.
+        private void UseModelPort(string modelPort)
+        {
+            if (int.TryParse(modelPort, out int port) &&
                 port >= 1 &&
                 port <= 65535)
             {
@@ -406,34 +433,19 @@ namespace CRT
             return command switch
             {
                 ScopeCommand.SetTriggerLevel => this.thisLastTriggerLevelVolts.HasValue
-                    ? FormatParameterizedCommand(baseCommandText, this.thisLastTriggerLevelVolts.Value)
+                    ? ScopeFormatting.FillValue(baseCommandText, this.thisLastTriggerLevelVolts.Value)
                     : string.Empty,
 
                 ScopeCommand.SetTimeDiv => this.thisLastTimeDivSeconds.HasValue
-                    ? FormatParameterizedCommand(baseCommandText, this.thisLastTimeDivSeconds.Value)
+                    ? ScopeFormatting.FillValue(baseCommandText, this.thisLastTimeDivSeconds.Value)
                     : string.Empty,
 
                 ScopeCommand.SetVoltsDiv => this.thisLastVoltsDivVolts.HasValue
-                    ? FormatParameterizedCommand(baseCommandText, this.thisLastVoltsDivVolts.Value)
+                    ? ScopeFormatting.FillValue(baseCommandText, this.thisLastVoltsDivVolts.Value)
                     : string.Empty,
 
                 _ => baseCommandText
             };
-        }
-
-        // ###########################################################################################
-        // Formats a SCPI command by replacing a "{0}" placeholder or appending the value.
-        // ###########################################################################################
-        private static string FormatParameterizedCommand(string baseCommandText, double value)
-        {
-            string formattedValue = ScopeFormatting.FormatScpiNumber(value);
-
-            if (baseCommandText.Contains("{0}", StringComparison.Ordinal))
-            {
-                return baseCommandText.Replace("{0}", formattedValue, StringComparison.Ordinal);
-            }
-
-            return $"{baseCommandText} {formattedValue}";
         }
 
         // ###########################################################################################
@@ -631,6 +643,7 @@ namespace CRT
             this.ConnectToOscilloscopeButton.IsEnabled = isEnabled;
             this.RunFullTestSuiteButton.IsEnabled = isEnabled &&
                 this.thisLastOscilloscopeConnectionState == true;
+            this.SetTryItButtonsEnabled(isEnabled);
         }
 
         // ###########################################################################################

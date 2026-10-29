@@ -74,7 +74,8 @@ namespace CRT.Server.Handlers.Submissions
                 "SELECT 1 FROM maintainers FOR UPDATE;",
                 "SELECT 1 FROM maintainer_invitations FOR UPDATE;",
                 "SELECT 1 FROM production_approvals FOR UPDATE;",
-                "SELECT 1 FROM boards FOR UPDATE;"
+                "SELECT 1 FROM boards FOR UPDATE;",
+                "SELECT 1 FROM oscilloscope_submissions FOR UPDATE;"
             ];
 
             foreach (string sql in locks)
@@ -124,7 +125,10 @@ namespace CRT.Server.Handlers.Submissions
                 // Mail still waiting to go to contributors and maintainers, and the rate limiter's
                 // counters (migrations 0022, 0023, 2026-10-13) - both about people the reset removes.
                 "DELETE FROM mail_outbox;",
-                "DELETE FROM rate_limit_events;"
+                "DELETE FROM rate_limit_events;",
+
+                // Oscilloscope models sent in from CRT (migration 0024) - contribution data too.
+                "DELETE FROM oscilloscope_submissions;"
             ];
 
             foreach (string sql in deletes)
@@ -181,13 +185,15 @@ namespace CRT.Server.Handlers.Submissions
                     (SELECT COUNT(*) FROM boards),
                     (SELECT COUNT(*) FROM audit),
                     (SELECT COUNT(*) FROM crt_board_views),
-                    (SELECT COUNT(*) FROM crt_api_calls);
+                    (SELECT COUNT(*) FROM crt_api_calls),
+                    (SELECT COUNT(*) FROM oscilloscope_submissions),
+                    (SELECT COALESCE(MAX(id), 0) FROM oscilloscope_submissions);
                 """;
 
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
 
             if (!await reader.ReadAsync(cancellationToken))
-                return new DataResetCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                return new DataResetCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
             int Count(int column) => Convert.ToInt32(reader.GetValue(column));
             long Id(int column) => Convert.ToInt64(reader.GetValue(column));
@@ -204,7 +210,9 @@ namespace CRT.Server.Handlers.Submissions
                 Boards: Count(8),
                 HistoryEntries: Count(9),
                 BoardViews: Count(10),
-                ApiUsageRows: Count(11));
+                ApiUsageRows: Count(11),
+                OscilloscopeModels: Count(12),
+                LastOscilloscopeModelId: Id(13));
         }
 
         private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)

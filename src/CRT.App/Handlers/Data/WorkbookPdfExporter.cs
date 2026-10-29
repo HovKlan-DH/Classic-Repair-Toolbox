@@ -1487,96 +1487,103 @@ namespace Handlers.DataHandling
             try
             {
                 using var stream = File.OpenRead(path);
-                using var reader = new BinaryReader(stream);
-
-                var signature = reader.ReadBytes(8);
-
-                // PNG: an 8-byte signature, then an IHDR chunk whose width and height are big-endian
-                // 32-bit integers at a fixed offset.
-                //
-                // ALL EIGHT signature bytes are checked, not just the \x89PNG that identifies the
-                // format. The last four (\r \n \x1a \n) are there precisely to detect a file damaged
-                // in transit - a line-ending-translating copy rewrites the \r\n pair, and \x1a is an
-                // MS-DOS end-of-file that truncates a text-mode read. Matching only the first four
-                // accepts exactly those damaged files, and since the dimensions are then read from a
-                // FIXED offset rather than by locating IHDR, whatever bytes sit at 16 become the
-                // image size: no exception, nothing logged, and every marked area on that schematic
-                // silently placed against a bogus size (a mangled file measured 12345x12345 in
-                // testing). Cheap to check, and the only thing standing between a corrupt file and a
-                // wrong answer that looks right.
-                if (IsPngSignature(signature))
-                {
-                    stream.Position = 16;
-                    int width = ReadBigEndianInt32(reader);
-                    int height = ReadBigEndianInt32(reader);
-                    return width > 0 && height > 0 ? (width, height) : null;
-                }
-
-                // JPEG: a chain of markers; the SOFn frame header carries the dimensions. Walked
-                // rather than assumed at a fixed offset, since the number and size of the preceding
-                // segments (EXIF, colour profiles) vary per file.
-                //
-                // WHICH MARKERS ARE FRAME HEADERS is the whole subtlety here, and getting it wrong
-                // is silent: the walker stops at the wrong marker, reads four arbitrary payload
-                // bytes as the dimensions, and every marked area on that schematic is then placed
-                // against a bogus image size - no exception, nothing logged, an overlay simply
-                // nowhere near the copper it marks.
-                //
-                // Of 0xC0..0xCF, FOUR are not frame headers and must be skipped as ordinary
-                // segments: C4 (DHT), C8 (JPG), CC (DAC) - and the range does NOT extend past CF
-                // into frame territory either, because CD/CE/CF are DNL/DHP/EXP, which carry no
-                // dimensions at the SOF offset. So the frame set is C0-C3, C5-C7, C9-CB only.
-                if (signature.Length >= 2 && signature[0] == 0xFF && signature[1] == 0xD8)
-                {
-                    stream.Position = 2;
-
-                    while (stream.Position < stream.Length - 1)
-                    {
-                        if (reader.ReadByte() != 0xFF)
-                            continue;
-
-                        byte marker = reader.ReadByte();
-
-                        // A run of 0xFF bytes is legal padding before a marker - skip to the last.
-                        while (marker == 0xFF && stream.Position < stream.Length)
-                            marker = reader.ReadByte();
-
-                        if (IsJpegFrameHeaderMarker(marker))
-                        {
-                            reader.ReadBytes(3); // segment length (2) + sample precision (1)
-                            int height = (reader.ReadByte() << 8) | reader.ReadByte();
-                            int width = (reader.ReadByte() << 8) | reader.ReadByte();
-                            return width > 0 && height > 0 ? (width, height) : null;
-                        }
-
-                        // STANDALONE markers carry no length word at all, so reading two bytes
-                        // after one of these would consume image data as a segment length and seek
-                        // to an arbitrary offset. 0x01 is TEM and 0xD0-0xD7 are the restart
-                        // markers; 0xD8 (SOI) and 0xD9 (EOI) are standalone too.
-                        if (marker == 0x00 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD9))
-                            continue;
-
-                        // Start of scan: entropy-coded image data follows, which is not a segment
-                        // chain and must not be walked. A SOF always precedes it in a valid file,
-                        // so reaching here means there is nothing more to find.
-                        if (marker == 0xDA)
-                            return null;
-
-                        int length = (reader.ReadByte() << 8) | reader.ReadByte();
-                        if (length < 2)
-                            return null;
-
-                        stream.Position += length - 2;
-                    }
-                }
-
-                return null;
+                return WorkbookPdfExporter.TryReadImageSize(stream);
             }
             catch (Exception ex)
             {
                 Logger.Warning($"Workbook export: could not read image dimensions for [{path}] - [{ex.Message}]");
                 return null;
             }
+        }
+
+        // The same from a picture's bytes in any stream that can seek - a file, or bytes held in
+        // memory (ImagePixelSize.FromBytes: the scope's screen picture). A header cut short throws.
+        internal static (int Width, int Height)? TryReadImageSize(Stream stream)
+        {
+            using var reader = new BinaryReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+
+            var signature = reader.ReadBytes(8);
+
+            // PNG: an 8-byte signature, then an IHDR chunk whose width and height are big-endian
+            // 32-bit integers at a fixed offset.
+            //
+            // ALL EIGHT signature bytes are checked, not just the \x89PNG that identifies the
+            // format. The last four (\r \n \x1a \n) are there precisely to detect a file damaged
+            // in transit - a line-ending-translating copy rewrites the \r\n pair, and \x1a is an
+            // MS-DOS end-of-file that truncates a text-mode read. Matching only the first four
+            // accepts exactly those damaged files, and since the dimensions are then read from a
+            // FIXED offset rather than by locating IHDR, whatever bytes sit at 16 become the
+            // image size: no exception, nothing logged, and every marked area on that schematic
+            // silently placed against a bogus size (a mangled file measured 12345x12345 in
+            // testing). Cheap to check, and the only thing standing between a corrupt file and a
+            // wrong answer that looks right.
+            if (IsPngSignature(signature))
+            {
+                stream.Position = 16;
+                int width = ReadBigEndianInt32(reader);
+                int height = ReadBigEndianInt32(reader);
+                return width > 0 && height > 0 ? (width, height) : null;
+            }
+
+            // JPEG: a chain of markers; the SOFn frame header carries the dimensions. Walked
+            // rather than assumed at a fixed offset, since the number and size of the preceding
+            // segments (EXIF, colour profiles) vary per file.
+            //
+            // WHICH MARKERS ARE FRAME HEADERS is the whole subtlety here, and getting it wrong
+            // is silent: the walker stops at the wrong marker, reads four arbitrary payload
+            // bytes as the dimensions, and every marked area on that schematic is then placed
+            // against a bogus image size - no exception, nothing logged, an overlay simply
+            // nowhere near the copper it marks.
+            //
+            // Of 0xC0..0xCF, FOUR are not frame headers and must be skipped as ordinary
+            // segments: C4 (DHT), C8 (JPG), CC (DAC) - and the range does NOT extend past CF
+            // into frame territory either, because CD/CE/CF are DNL/DHP/EXP, which carry no
+            // dimensions at the SOF offset. So the frame set is C0-C3, C5-C7, C9-CB only.
+            if (signature.Length >= 2 && signature[0] == 0xFF && signature[1] == 0xD8)
+            {
+                stream.Position = 2;
+
+                while (stream.Position < stream.Length - 1)
+                {
+                    if (reader.ReadByte() != 0xFF)
+                        continue;
+
+                    byte marker = reader.ReadByte();
+
+                    // A run of 0xFF bytes is legal padding before a marker - skip to the last.
+                    while (marker == 0xFF && stream.Position < stream.Length)
+                        marker = reader.ReadByte();
+
+                    if (IsJpegFrameHeaderMarker(marker))
+                    {
+                        reader.ReadBytes(3); // segment length (2) + sample precision (1)
+                        int height = (reader.ReadByte() << 8) | reader.ReadByte();
+                        int width = (reader.ReadByte() << 8) | reader.ReadByte();
+                        return width > 0 && height > 0 ? (width, height) : null;
+                    }
+
+                    // STANDALONE markers carry no length word at all, so reading two bytes
+                    // after one of these would consume image data as a segment length and seek
+                    // to an arbitrary offset. 0x01 is TEM and 0xD0-0xD7 are the restart
+                    // markers; 0xD8 (SOI) and 0xD9 (EOI) are standalone too.
+                    if (marker == 0x00 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD9))
+                        continue;
+
+                    // Start of scan: entropy-coded image data follows, which is not a segment
+                    // chain and must not be walked. A SOF always precedes it in a valid file,
+                    // so reaching here means there is nothing more to find.
+                    if (marker == 0xDA)
+                        return null;
+
+                    int length = (reader.ReadByte() << 8) | reader.ReadByte();
+                    if (length < 2)
+                        return null;
+
+                    stream.Position += length - 2;
+                }
+            }
+
+            return null;
         }
 
         // ###########################################################################################
@@ -1598,7 +1605,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static readonly byte[] PngSignature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
 
-        private static bool IsPngSignature(byte[] signature) =>
+        internal static bool IsPngSignature(byte[] signature) =>
             signature.Length >= PngSignature.Length &&
             signature.AsSpan(0, PngSignature.Length).SequenceEqual(PngSignature);
 

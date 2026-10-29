@@ -383,6 +383,7 @@ answer DataResetAnswer | .boardsDeleted number
 answer DataResetAnswer | .historyEntriesDeleted number
 answer DataResetAnswer | .invitationsDeleted number
 answer DataResetAnswer | .maintainersDeleted number
+answer DataResetAnswer | .oscilloscopeModelsDeleted number
 answer DataResetAnswer | .storedFilesRemoved number
 answer DataResetAnswer | .submissionsDeleted number
 answer DataResetPlanAnswer | (root) object
@@ -397,6 +398,7 @@ answer DataResetPlanAnswer | .invitations number
 answer DataResetPlanAnswer | .isEnabled boolean
 answer DataResetPlanAnswer | .maintainers number
 answer DataResetPlanAnswer | .notEnabledBecause string
+answer DataResetPlanAnswer | .oscilloscopeModels number
 answer DataResetPlanAnswer | .submissions number
 answer FindingsRefusalAnswer | (root) object
 answer FindingsRefusalAnswer | .error string
@@ -446,6 +448,28 @@ answer ManifestRebuildAnswer | .trees[].entries number
 answer ManifestRebuildAnswer | .trees[].message string
 answer ManifestRebuildAnswer | .trees[].skipped boolean
 answer ManifestRebuildAnswer | .trees[].tree string
+answer OscilloscopeModelDecisionAnswer | (root) object
+answer OscilloscopeModelDecisionAnswer | .betaChanged boolean
+answer OscilloscopeModelDecisionAnswer | .message string
+answer OscilloscopeModelDecisionAnswer | .problem string
+answer OscilloscopeModelDecisionAnswer | .stableChanged boolean
+answer OscilloscopeModelQueueAnswer | (root) object
+answer OscilloscopeModelQueueAnswer | .entries array of object
+answer OscilloscopeModelQueueAnswer | .entries[].clientVersion string
+answer OscilloscopeModelQueueAnswer | .entries[].contactEmail string
+answer OscilloscopeModelQueueAnswer | .entries[].contactName string
+answer OscilloscopeModelQueueAnswer | .entries[].fullTestSuitePassed boolean
+answer OscilloscopeModelQueueAnswer | .entries[].id number
+answer OscilloscopeModelQueueAnswer | .entries[].inBeta boolean
+answer OscilloscopeModelQueueAnswer | .entries[].message string
+answer OscilloscopeModelQueueAnswer | .entries[].publishedValues map of string
+answer OscilloscopeModelQueueAnswer | .entries[].seriesOrModel string
+answer OscilloscopeModelQueueAnswer | .entries[].submittedUtc string
+answer OscilloscopeModelQueueAnswer | .entries[].values map of string
+answer OscilloscopeModelQueueAnswer | .entries[].vendor string
+answer OscilloscopeModelSubmissionAnswer | (root) object
+answer OscilloscopeModelSubmissionAnswer | .id number
+answer OscilloscopeModelSubmissionAnswer | .message string
 answer ProductionListAnswer | (root) object
 answer ProductionListAnswer | .boards array of object
 answer ProductionListAnswer | .boards[].awaitsYou boolean
@@ -527,6 +551,7 @@ answer ReviewQueueAnswer | (root) object
 answer ReviewQueueAnswer | .canPublish boolean
 answer ReviewQueueAnswer | .count number
 answer ReviewQueueAnswer | .isAdministrator boolean
+answer ReviewQueueAnswer | .oscilloscopeModelsWaiting number
 answer ReviewQueueAnswer | .submissions array of object
 answer ReviewQueueAnswer | .submissions[].amendmentVersion number
 answer ReviewQueueAnswer | .submissions[].awaitsYou boolean
@@ -1057,6 +1082,12 @@ body POST /api/admin/maintainers/invite | .email string
 body POST /api/admin/maintainers/remove | (root) object
 body POST /api/admin/maintainers/remove | .accountId number
 body POST /api/admin/maintainers/remove | .boardId string
+body POST /api/admin/oscilloscope-models/publish | (root) object
+body POST /api/admin/oscilloscope-models/publish | .id number
+body POST /api/admin/oscilloscope-models/publish | .reason string
+body POST /api/admin/oscilloscope-models/reject | (root) object
+body POST /api/admin/oscilloscope-models/reject | .id number
+body POST /api/admin/oscilloscope-models/reject | .reason string
 body POST /api/admin/reset | (root) object
 body POST /api/admin/reset | .fingerprint string
 body POST /api/admin/unused-files/remove | (root) object
@@ -1481,6 +1512,14 @@ body POST /api/submissions | .rows.schematics[].schematicName string
 body POST /api/submissions | .rows.schematics[].thumbnailHighlightColor string
 body POST /api/submissions | .rows.schematics[].thumbnailHighlightOpacity string
 body POST /api/submissions | .summary string
+body POST /api/submissions/oscilloscope-models | (root) object
+body POST /api/submissions/oscilloscope-models | .contactEmail string
+body POST /api/submissions/oscilloscope-models | .contactName string
+body POST /api/submissions/oscilloscope-models | .fullTestSuitePassed boolean
+body POST /api/submissions/oscilloscope-models | .message string
+body POST /api/submissions/oscilloscope-models | .seriesOrModel string
+body POST /api/submissions/oscilloscope-models | .values map of string
+body POST /api/submissions/oscilloscope-models | .vendor string
 body POST /api/usage/board-views | (root) object
 body POST /api/usage/board-views | .batchId string
 body POST /api/usage/board-views | .cpu string
@@ -1538,6 +1577,7 @@ route GET /api/accounts/verify
 route GET /api/admin/accounts
 route GET /api/admin/api-usage
 route GET /api/admin/boards
+route GET /api/admin/oscilloscope-models
 route GET /api/admin/reset
 route GET /api/admin/unused-files
 route GET /api/health
@@ -1572,6 +1612,8 @@ route POST /api/admin/maintainers/invitations/withdraw
 route POST /api/admin/maintainers/invite
 route POST /api/admin/maintainers/remove
 route POST /api/admin/manifest/rebuild
+route POST /api/admin/oscilloscope-models/publish
+route POST /api/admin/oscilloscope-models/reject
 route POST /api/admin/reset
 route POST /api/admin/unused-files/remove
 route POST /api/feedback
@@ -1591,6 +1633,7 @@ route POST /api/review/submissions/{submissionId:long}/approve
 route POST /api/review/submissions/{submissionId:long}/reject
 route POST /api/review/submissions/{submissionId:long}/request-changes
 route POST /api/submissions
+route POST /api/submissions/oscilloscope-models
 route POST /api/submissions/{submissionId:long}/draft-discarded
 route POST /api/submissions/{submissionId:long}/finalise
 route POST /api/usage/board-views

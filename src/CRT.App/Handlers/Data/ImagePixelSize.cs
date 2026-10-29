@@ -43,6 +43,33 @@ namespace Handlers.DataHandling
             }
         }
 
+        // ###########################################################################################
+        // The same from a picture's BYTES - the scope's screen picture (ScopeCommandTrial
+        // .DescribePicture): PNG and JPEG by the export's reader, the others by their header. One
+        // reader of each header in CRT (code review, 2026-10-29: Try it read PNG by hand and JPEG not
+        // at all). Null when no size can be read.
+        // ###########################################################################################
+        public static (int Width, int Height)? FromBytes(byte[] bytes)
+        {
+            ArgumentNullException.ThrowIfNull(bytes);
+
+            try
+            {
+                using var stream = new MemoryStream(bytes, writable: false);
+
+                if (WorkbookPdfExporter.TryReadImageSize(stream) is { } pngOrJpeg)
+                {
+                    return pngOrJpeg;
+                }
+            }
+            catch (EndOfStreamException)
+            {
+                // A header cut short: the other types are asked below.
+            }
+
+            return ImagePixelSize.FromHeader(bytes.AsSpan(0, Math.Min(bytes.Length, 32)));
+        }
+
         // GIF, BMP and WebP from the file's first 32 bytes.
         internal static (int Width, int Height)? FromHeader(ReadOnlySpan<byte> header)
         {

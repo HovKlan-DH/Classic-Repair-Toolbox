@@ -4,6 +4,7 @@ using Handlers.OnlineHandling;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -169,6 +170,114 @@ namespace Handlers.Online
 
             return negotiation
                 ?? throw new SubmissionRejectedException(0, [], SubmissionClient.UnreadableReply);
+        }
+
+        // ###########################################################################################
+        // AN OSCILLOSCOPE MODEL OF THE USER'S OWN, SENT IN FOR EVERYBODY (CRT 4.0 step 5 - the
+        // Oscilloscope tab's "Submit this model"; the server's OscilloscopeModelFlows). One request,
+        // nothing to upload. Signed in on the Maintainer tab, it goes with the account (bearerToken),
+        // as a board submission does. Never throws for the server or the network: what kept it from
+        // going in is said in Problems - the server's own sentences when it refused it.
+        // ###########################################################################################
+        public async Task<OscilloscopeModelSendOutcome> SubmitOscilloscopeModelAsync(
+            OscilloscopeModelSubmissionRequest model,
+            CancellationToken cancellationToken = default,
+            string? bearerToken = null)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            try
+            {
+                using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.SubmissionRequestTimeout);
+                using HttpRequestMessage request = SubmissionClient.BuildOscilloscopeModelRequest(this.thisBaseUrl, model, bearerToken);
+                using HttpResponseMessage response = await http.SendAsync(request, cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                    if (SubmissionClient.SignalIfOutdated((int)response.StatusCode, body) is string outdated)
+                    {
+                        return new OscilloscopeModelSendOutcome(null, [outdated]);
+                    }
+
+                    IReadOnlyList<string> problems = SubmissionClient.ReadProblems(body);
+
+                    return new OscilloscopeModelSendOutcome(
+                        null,
+                        problems.Count > 0
+                            ? problems
+                            : [SubmissionClient.RefusalMessage(body, $"The server refused the model ({(int)response.StatusCode}).")]);
+                }
+
+                OscilloscopeModelSubmissionAnswer? answer =
+                    await SubmissionClient.TryReadAnswerAsync<OscilloscopeModelSubmissionAnswer>(response, cancellationToken);
+
+                return answer is null
+                    ? new OscilloscopeModelSendOutcome(null, [SubmissionClient.UnreadableModelReply])
+                    : new OscilloscopeModelSendOutcome(answer, []);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (TaskCanceledException)
+            {
+                return new OscilloscopeModelSendOutcome(null, ["The server did not answer in time - try again in a moment. Your model is unchanged."]);
+            }
+            catch (HttpRequestException ex)
+            {
+                return new OscilloscopeModelSendOutcome(null, [$"The server could not be reached ({ex.Message}). Your model is unchanged."]);
+            }
+        }
+
+        internal const string UnreadableModelReply =
+            "The server's reply could not be read. If your network asks you to sign in first (as in a hotel or a cafe), " +
+            "open a web page, sign in, and send again - your model is unchanged.";
+
+        // The model's request, apart from sending it so a test can read what goes out: the record as
+        // the review API's JSON (ReviewApiContract.WireSettings - the server's own), the
+        // Authorization header only with a token.
+        internal static HttpRequestMessage BuildOscilloscopeModelRequest(string baseUrl, OscilloscopeModelSubmissionRequest model, string? bearerToken)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/submissions/oscilloscope-models")
+            {
+                Content = JsonContent.Create(model, options: ReviewApiContract.WireSettings)
+            };
+
+            if (!string.IsNullOrWhiteSpace(bearerToken))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken.Trim());
+
+            return request;
+        }
+
+        // The sentences of a refusal's { "errors": [ "..." ] } - the oscilloscope model route's shape.
+        // Anything else is none, and never throws: JSON that is not an object (a proxy's answer) made
+        // TryGetProperty throw out of a send that answers every failure in words (code review,
+        // 2026-10-29).
+        internal static IReadOnlyList<string> ReadProblems(string body)
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(body);
+
+                if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                    !document.RootElement.TryGetProperty("errors", out JsonElement errors) ||
+                    errors.ValueKind != JsonValueKind.Array)
+                {
+                    return [];
+                }
+
+                return errors.EnumerateArray()
+                    .Where(error => error.ValueKind == JsonValueKind.String)
+                    .Select(error => error.GetString() ?? string.Empty)
+                    .Where(error => error.Length > 0)
+                    .ToList();
+            }
+            catch (JsonException)
+            {
+                return [];
+            }
         }
 
         // ###########################################################################################
@@ -616,6 +725,9 @@ namespace Handlers.Online
             }
         }
     }
+
+    // What sending an oscilloscope model in came to: the server's answer, or why it did not go.
+    public sealed record OscilloscopeModelSendOutcome(OscilloscopeModelSubmissionAnswer? Answer, IReadOnlyList<string> Problems);
 
     // ###########################################################################################
     // The hashes, plus anything that could not be hashed. Problems name the file, because one

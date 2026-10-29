@@ -37,6 +37,11 @@ namespace CRT.Server.Tests
             { "an invitation more", DataResetRulesTests.Counts with { Invitations = 3 } },
             { "a production approval more", DataResetRulesTests.Counts with { ProductionApprovals = 2 } },
             { "a board record more", DataResetRulesTests.Counts with { Boards = 8 } },
+
+            // Oscilloscope models sent in from CRT (code review, 2026-10-29): deleted by the reset, so
+            // one arriving after the counts were shown must not go unseen.
+            { "an oscilloscope model more", DataResetRulesTests.Counts with { OscilloscopeModels = 1 } },
+            { "one oscilloscope model swapped for another", DataResetRulesTests.Counts with { LastOscilloscopeModelId = 3 } },
         };
 
         [Theory]
@@ -76,6 +81,10 @@ namespace CRT.Server.Tests
                 (on.Submissions, on.Accounts, on.Administrators, on.Maintainers, on.Invitations, on.Boards, on.HistoryEntries, on.BoardViews, on.ApiUsageRows));
             Assert.True(on.IsEnabled);
             Assert.Null(on.NotEnabledBecause);
+            Assert.Equal(0, on.OscilloscopeModels);
+            Assert.Equal(3, DataResetRules.ToPlan(DataResetRulesTests.Counts with { OscilloscopeModels = 3 }, isEnabled: true).OscilloscopeModels);
+            Assert.Equal(3, DataResetRules.ToAnswer(DataResetRulesTests.Counts with { OscilloscopeModels = 3 }, 0).OscilloscopeModelsDeleted);
+            Assert.Contains("3 oscilloscope model(s)", DataResetRules.Detail(DataResetRulesTests.Counts with { OscilloscopeModels = 3 }));
 
             Assert.False(off.IsEnabled);
             Assert.Equal(DataResetRules.NotEnabledMessage, off.NotEnabledBecause);

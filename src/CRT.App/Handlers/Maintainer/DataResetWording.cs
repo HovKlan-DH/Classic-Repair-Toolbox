@@ -62,6 +62,7 @@ namespace Handlers.MaintainerHandling
             return
             [
                 DataResetWording.Line(plan.Submissions, "submission", "submissions", " - every one, whatever its state, with its uploaded files"),
+                DataResetWording.Line(plan.OscilloscopeModels, "oscilloscope model sent in from CRT", "oscilloscope models sent in from CRT", " - waiting or decided"),
                 DataResetWording.Line(plan.Accounts, "account", "accounts",
                     $" - every one but the administrators ({DataResetWording.Count(plan.Administrators, "administrator", "administrators")} kept)"),
                 DataResetWording.Line(plan.Maintainers, "maintainer of a board", "maintainers of a board", string.Empty),
@@ -84,6 +85,7 @@ namespace Handlers.MaintainerHandling
             (int Count, string One, string Many)[] parts =
             [
                 (answer.SubmissionsDeleted, "submission", "submissions"),
+                (answer.OscilloscopeModelsDeleted, "oscilloscope model", "oscilloscope models"),
                 (answer.AccountsDeleted, "account", "accounts"),
                 (answer.MaintainersDeleted, "maintainer", "maintainers"),
                 (answer.InvitationsDeleted, "invitation", "invitations"),

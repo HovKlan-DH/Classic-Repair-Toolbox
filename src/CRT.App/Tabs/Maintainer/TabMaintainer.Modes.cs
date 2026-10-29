@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -25,7 +26,9 @@ namespace CRT
     // in front (TabMaintainer.QueueRefresh.cs) the BETA list and the boards are read with the
     // queue, so the counts are right on whichever screen is shown. Choosing a screen reads its list
     // once more, so what it shows is current the moment it is chosen. The Review and BETA counts
-    // added up are the tab's own badge in CRT's row of tabs (2026-09-30), kept current off screen too.
+    // added up - with an administrator's oscilloscope models waiting, which the queue answer carries
+    // and the Account button shows - are the tab's own badge in CRT's row of tabs (2026-09-30), kept
+    // current off screen too.
     // ###########################################################################################
     public partial class TabMaintainer
     {
@@ -171,6 +174,7 @@ namespace CRT
             ("RebuildManifestsAdminView", "RebuildManifestsItem"),
             ("BoardDeletionAdminView", "DeleteBoardItem"),
             ("ApiUsageAdminView", "ApiUsageItem"),
+            ("OscilloscopeModelsAdminView", "OscilloscopeModelsItem"),
             ("DataResetAdminView", "ResetDataItem")
         ];
 
@@ -225,10 +229,39 @@ namespace CRT
             // title - no need to see it"). *** They said what each screen is and what its badge
             // counts; the labels and the badges say it well enough.
 
-            // The tab's own badge in CRT's row of tabs: the two attention badges added up.
-            this.TabAttention = review + (beta ?? 0);
+            // The administrator's oscilloscope models waiting, on the screen that holds them.
+            this.SetBadge("AccountBadge", "AccountBadgeText", MaintainerModes.AttentionBadge(this.thisOscilloscopeModelsWaiting));
+
+            // The tab's own badge in CRT's row of tabs: MaintainerModes.TabAttention - the attention
+            // badges added up, the models too, so "hide the tab while no work is waiting" never hides
+            // them (code review, 2026-10-29). One rule: the badge is that function's, never a sum here.
+            IEnumerable<ReviewQueueRow> queue = this.thisQueueEntries.Values.Select(entry => entry.Row);
+            IEnumerable<ProductionBoardRow>? betaRows = this.thisBetaKnown ? this.thisBeta : null;
+
+            this.QueueAttention = MaintainerModes.TabAttention(queue, betaRows);
+            this.TabAttention = MaintainerModes.TabAttention(queue, betaRows, this.thisOscilloscopeModelsWaiting);
             this.thisShowTabBadge?.Invoke(this.TabAttention);
         }
+
+        // The oscilloscope models waiting for the administrator - ReviewQueueResponse's, or the models
+        // screen's own read (UseOscilloscopeModelsWaiting); 0 for anybody else.
+        private int thisOscilloscopeModelsWaiting;
+
+        // The models screen read its list - after a decision, or Refresh: the badges say what it shows
+        // at once, not a minute later with the queue (code review, 2026-10-29).
+        private void UseOscilloscopeModelsWaiting(int waiting)
+        {
+            if (this.thisSession is null || !this.thisIsAdministrator)
+            {
+                return;
+            }
+
+            this.thisOscilloscopeModelsWaiting = Math.Max(0, waiting);
+            this.UpdateModeBadges();
+        }
+
+        // What waits in the two queues alone - which screen the tab opens on (ScreenOnOpening).
+        internal int QueueAttention { get; private set; }
 
         // ###########################################################################################
         // THE TAB'S BADGE IS MAIN'S TO DRAW (owner request, 2026-09-30) - it sits in CRT's row of
@@ -319,6 +352,7 @@ namespace CRT
             this.BoardDeletionAdmin.AfterDelete = this.AfterBoardDeletedAsync;
             this.BoardDeletionAdmin.BoardsListOrder = this.BoardsListOrder;
             this.ApiUsageAdmin.Initialize(this.thisClient, this.thisSession);
+            this.OscilloscopeModelsAdmin.Initialize(this.thisClient, this.thisSession);
             this.DataResetAdmin.Initialize(this.thisClient, this.thisSession);
             this.DataResetAdmin.AfterReset = this.AfterBoardDeletedAsync;
         }
@@ -345,6 +379,7 @@ namespace CRT
             this.RebuildManifestsAdmin.Initialize(null, null);
             this.BoardDeletionAdmin.Initialize(null, null);
             this.ApiUsageAdmin.Initialize(null, null);
+            this.OscilloscopeModelsAdmin.Initialize(null, null);
             this.DataResetAdmin.Initialize(null, null);
 
             this.thisMode = MaintainerMode.Review;
@@ -389,6 +424,8 @@ namespace CRT
         private BoardDeletionView BoardDeletionAdmin => this.FindControl<BoardDeletionView>("BoardDeletionAdminView")!;
 
         private ApiUsageView ApiUsageAdmin => this.FindControl<ApiUsageView>("ApiUsageAdminView")!;
+
+        private OscilloscopeModelsView OscilloscopeModelsAdmin => this.FindControl<OscilloscopeModelsView>("OscilloscopeModelsAdminView")!;
 
         private DataResetView DataResetAdmin => this.FindControl<DataResetView>("DataResetAdminView")!;
     }

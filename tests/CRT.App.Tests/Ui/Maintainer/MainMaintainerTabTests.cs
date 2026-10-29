@@ -215,6 +215,44 @@ public sealed class MainMaintainerTabTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** OSCILLOSCOPE MODELS WAITING ARE WORK TOO (code review, 2026-10-29). *** With "Hide the
+    // Maintainer tab while no work is waiting" ticked, the tab stayed hidden while models waited for
+    // the administrator - whose mail says to open it. They count in the tab's badge, and the Account
+    // screen's button says how many, where "Oscilloscope models" is.
+    // ###########################################################################################
+    [Fact]
+    public async Task Oscilloscope_models_waiting_show_the_tab_and_badge_the_Account_screen()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            UserSettings.EnableMaintainerTab = true;
+            UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting = true;
+
+            var window = new CRT.Main();
+            TabMaintainer tab = window.TabMaintainer;
+            tab.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(30), 7, "dh@example.com", "Dennis"));
+
+            tab.ApplyQueueResponse(new ReviewQueueResponse(true, [], true));
+            await tab.ApplyBetaListAsync(new ProductionListResponse(true, []), background: true);
+            Assert.False(window.MaintainerTabItem.IsVisible);
+
+            tab.ApplyQueueResponse(new ReviewQueueResponse(true, [], true, OscilloscopeModelsWaiting: 2));
+
+            Assert.True(window.MaintainerTabItem.IsVisible);
+            Assert.Equal("2", window.MaintainerTabBadgeForTests);
+            Assert.Equal("2", tab.GetControl<TextBlock>("AccountBadgeText").Text);
+            Assert.True(tab.GetControl<Border>("AccountBadge").IsVisible);
+
+            // The models screen read its list - after a decision, say - and the badges follow it at
+            // once, not a minute later with the queue (code review, 2026-10-29).
+            tab.GetControl<OscilloscopeModelsView>("OscilloscopeModelsAdminView").ShowModels(new OscilloscopeModelQueueAnswer([]));
+
+            Assert.Null(window.MaintainerTabBadgeForTests);
+            Assert.False(tab.GetControl<Border>("AccountBadge").IsVisible);
+        });
+    }
+
     // Beside the other contribution work - Contribute, Drafts, Maintainer - and before Configuration.
     [Fact]
     public void The_tab_sits_after_Drafts_and_before_Configuration()

@@ -7,6 +7,15 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="CRT.TabSchematics">
 
+	<UserControl.Styles>
+		<!-- The "Global settings" popover in the panels' own colours, as the panel it replaced. -->
+		<Style Selector="FlyoutPresenter.SchematicsSettings">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Panels_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Panels_Border}" />
+			<Setter Property="Padding" Value="10,8" />
+		</Style>
+	</UserControl.Styles>
+
 	<Grid x:Name="SchematicsInnerGrid">
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="*" MinWidth="80" />
@@ -249,6 +258,37 @@
 					</Border>
 				</StackPanel>
 
+				<!-- THE ONE-TIME TIP on moving and zooming (CRT 4.0 step 5 - the plan: "a middle-button
+				     drag pans too, with a one-time hint in the corner"): under the picture's name, put
+				     away by "Got it" or by the first pan, never shown again. TabSchematics.ViewTools.cs. -->
+				<Border x:Name="PanHintBorder"
+						IsVisible="False"
+						HorizontalAlignment="Left"
+						VerticalAlignment="Top"
+						Margin="10,44,10,0"
+						ZIndex="210"
+						Background="{DynamicResource Schematics_Panels_Bg}"
+						BorderBrush="{DynamicResource Schematics_Panels_Border}"
+						BorderThickness="1"
+						CornerRadius="4"
+						Padding="10,6"
+						PointerPressed="OnPanHintPointerPressed">
+					<StackPanel Orientation="Horizontal" Spacing="10">
+						<TextBlock x:Name="PanHintText"
+								   FontSize="11"
+								   MaxWidth="320"
+								   TextWrapping="Wrap"
+								   VerticalAlignment="Center"
+								   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+						<Button x:Name="PanHintGotItButton"
+								Content="Got it"
+								FontSize="11"
+								Padding="8,2"
+								VerticalAlignment="Center"
+								Click="OnPanHintGotItClick" />
+					</StackPanel>
+				</Border>
+
 				<!-- BOTTOM LEFT SETTINGS PANELS -->
 				<Grid HorizontalAlignment="Left"
 					  VerticalAlignment="Bottom"
@@ -258,34 +298,29 @@
 					  ColumnSpacing="8"
 					  ZIndex="200">
 
-					<!-- GLOBAL SETTINGS PANEL -->
-					<Border x:Name="GlobalSettingsPanel"
+					<!-- GLOBAL SETTINGS: a gear button whose popover holds them (CRT 4.0 step 5 - the plan:
+					     "Global settings become a gear button that opens a popover"). The rows are the
+					     panel's as they were, wired by name in TabSchematics.Settings.cs; the popover takes
+					     the panels' own colours (FlyoutPresenter.SchematicsSettings, above). -->
+					<Button x:Name="GlobalSettingsButton"
+							IsVisible="False"
 							Grid.Row="0"
 							Grid.Column="0"
 							HorizontalAlignment="Left"
 							VerticalAlignment="Bottom"
-							Background="{DynamicResource Schematics_Panels_Bg}"
-							BorderBrush="{DynamicResource Schematics_Panels_Border}"
-							BorderThickness="1"
-							CornerRadius="4"
-							Padding="8,8">
+							Padding="9,6"
+							ToolTip.Tip="Global settings">
+						<TextBlock Text="&#xf013;"
+								   FontFamily="{DynamicResource FontAwesomeSolid}"
+								   FontSize="14" />
+						<Button.Flyout>
+							<Flyout Placement="TopEdgeAlignedLeft" FlyoutPresenterClasses="SchematicsSettings">
 						<StackPanel Spacing="6">
 
-							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-								<TextBlock Grid.Column="0"
-										   Text="Global settings"
-										   FontSize="11"
-										   VerticalAlignment="Center"
-										   FontWeight="Bold"
-										   Foreground="{DynamicResource Schematics_Panels_Fg}" />
-								<Button x:Name="ToggleGlobalSettingsPanelButton"
-										Grid.Column="1"
-										Content="Collapse"
-										FontSize="9"
-										Padding="6,2"
-										HorizontalAlignment="Right"
-										VerticalAlignment="Top" />
-							</Grid>
+							<TextBlock Text="Global settings"
+									   FontSize="11"
+									   FontWeight="Bold"
+									   Foreground="{DynamicResource Schematics_Panels_Fg}" />
 
 							<StackPanel x:Name="GlobalSettingsListPanel" Spacing="4">
 
@@ -473,7 +508,9 @@
 
 							</StackPanel>
 						</StackPanel>
-					</Border>
+							</Flyout>
+						</Button.Flyout>
+					</Button>
 
 					<!-- LABELS VISIBLE PANEL -->
 					<Border x:Name="LabelsPanel"
@@ -638,6 +675,17 @@
 								   FontWeight="Normal"
 								   Foreground="{DynamicResource Schematics_Name_Fg}" />
 					</Border>
+
+					<!-- "DRAW TRACE" (CRT 4.0 step 5 - the plan: "Traces are drawn only with Draw trace"):
+					     traces are drawn and changed only while it is on; "Done drawing" or Escape stops.
+					     Shown with a picture. TabSchematics.ViewTools.cs. -->
+					<Button x:Name="DrawTraceButton"
+							IsVisible="False"
+							HorizontalAlignment="Right"
+							Content="Draw trace"
+							FontSize="11"
+							Padding="8,4"
+							Click="OnDrawTraceClick" />
 
 					<!-- DYNAMIC POLYLINE TRACES LIST PANEL -->
 					<Border x:Name="TracesPanel"

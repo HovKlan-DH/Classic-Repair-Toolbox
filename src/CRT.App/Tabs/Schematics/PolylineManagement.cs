@@ -611,6 +611,44 @@ namespace Tabs.TabSchematics
             this.PaletteColorsChanged?.Invoke(this.PaletteColors);
     }
 
+        // ###########################################################################################
+        // Drawing and changing traces stopped - "Draw trace" turned off (CRT 4.0 step 5): a trace
+        // being drawn is let go, a point being dragged stays where it is and is saved, nothing stays
+        // selected, and the colour palette goes away.
+        // ###########################################################################################
+        // `saveDrag` false - another board or picture: a point being dragged is dropped, never saved,
+        // as Reset does (code review, 2026-10-29: saved then, the old picture's traces went under the
+        // new board's key).
+        public void StopEditing(bool saveDrag = true)
+        {
+            if (this._tempDrawingLine != null)
+            {
+                this._tempDrawingLine.RemoveFromCanvas(this._canvas);
+                this._tempDrawingLine = null;
+            }
+
+            this._isDrawingNew = false;
+
+            if (this._draggingNodeIndex != -1)
+            {
+                this._draggingNodeIndex = -1;
+
+                if (saveDrag)
+                {
+                    this.TracesModified?.Invoke();
+                }
+            }
+
+            if (this._hoverMarker != null)
+                this._hoverMarker.IsVisible = false;
+
+            this.DeselectAll();
+            this.PaletteStateChanged?.Invoke(false, default);
+        }
+
+        // How many traces there are - for the tests.
+        internal int TraceCountForTests => this._polylines.Count;
+
         private void DeselectAll()
         {
             foreach (var poly in this._polylines) poly.SetSelected(false);

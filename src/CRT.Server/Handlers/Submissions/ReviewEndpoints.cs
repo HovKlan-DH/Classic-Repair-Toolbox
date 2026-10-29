@@ -789,6 +789,7 @@ namespace CRT.Server.Handlers.Submissions
             HttpContext context,
             IAccountStore accounts,
             ISubmissionStore submissions,
+            IOscilloscopeModelStore oscilloscopeModels,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
@@ -802,8 +803,14 @@ namespace CRT.Server.Handlers.Submissions
             IReadOnlyList<SubmissionRecord> queued =
                 await ReviewQueueFlow.ReadAsync(access!, submissions, ReviewEndpoints.DefaultQueueLimit, cancellationToken);
 
-            return Results.Ok(await ReviewQueueFlow.BuildAsync(
-                access!, queued, options.DataTreeRoot, submissions, accounts, cancellationToken));
+            ReviewQueueAnswer answer = await ReviewQueueFlow.BuildAsync(
+                access!, queued, options.DataTreeRoot, submissions, accounts, cancellationToken);
+
+            // The administrator's oscilloscope models waiting, for the tab's badge (code review, 2026-10-29).
+            return Results.Ok(answer with
+            {
+                OscilloscopeModelsWaiting = await OscilloscopeModelFlows.WaitingForAsync(access!, oscilloscopeModels, cancellationToken),
+            });
         }
 
         // ###########################################################################################

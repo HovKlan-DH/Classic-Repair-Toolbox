@@ -123,6 +123,8 @@ public partial class TabSchematics
         // of that exclusion.
         this.CancelWorklogEntryMode();
 
+        // No trace drawing under another tool (TabSchematics.ViewTools.cs).
+        this.SetDrawingTraces(false);
         this.thisIsLabelEditorMode = true;
         this.thisLastCreatedLabelEditorCategory = string.Empty;
 

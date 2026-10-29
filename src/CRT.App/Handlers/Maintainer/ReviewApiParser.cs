@@ -103,10 +103,13 @@ namespace Handlers.MaintainerHandling
                     rows.Add(row);
             }
 
+            long waiting = ReviewApiParser.Long(root, "oscilloscopeModelsWaiting") ?? 0;
+
             return new ReviewQueueResponse(
                 ReviewApiParser.Bool(root, "canPublish") ?? false,
                 rows,
-                ReviewApiParser.Bool(root, "isAdministrator") ?? false);
+                ReviewApiParser.Bool(root, "isAdministrator") ?? false,
+                (int)Math.Clamp(waiting, 0, int.MaxValue));
         }
 
         // ###########################################################################################

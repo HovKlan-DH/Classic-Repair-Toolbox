@@ -510,6 +510,9 @@ namespace CRT
                 // in use, now or later (code review, same day). Not awaited.
                 this.StartAppUpdateRequiredChecks();
 
+                // The scope models listed again by a data check: the Oscilloscope tab follows at once.
+                this.StartFollowingScopeModels();
+
                 await this.StartBackgroundSyncAsync();
 
                 // "--demo-notices": every notice once, after the launch check has said its piece

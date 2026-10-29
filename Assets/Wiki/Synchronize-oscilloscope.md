@@ -16,8 +16,9 @@ settings by hand for every pin you probe.
 ## Enabling it
 
 * Tick `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
-* Go to the "Oscilloscope" tab, fill in the details for your oscilloscope and connect to it - see
-  [Oscilloscope tab](Oscilloscope-tab).
+* Go to the "Oscilloscope" tab, pick your scope's vendor and series or model, type its address, and
+  press **Connect to oscilloscope**. Your scope is not in the list? See "My scope is not listed" at
+  the end of this page.
 * Click a component that has an oscilloscope baseline, and select one of its images.
 * In the component information window, make sure `Synchronize oscilloscope` is ticked. It is on by
   default, but it is only available while CRT is actually connected to the oscilloscope.
@@ -27,13 +28,14 @@ being sent are also shown on the image itself, as the `T/DIV`, `V/DIV` and `T:` 
 
 ## What is synchronized
 
-The values come from the `Component images` sheet in the board's own Excel data file:
+The values are the baseline's own, as the board's data holds them - the fields of a scope baseline
+in the component's pane on the "Contribute" tab:
 
-| Column  | Meaning       |
-| ------- | ------------- |
-| `T/DIV` | Time base     |
-| `V/DIV` | Volts/div     |
-| `T.LVL` | Trigger level |
+| Field           | Meaning       |
+| --------------- | ------------- |
+| `T/DIV`         | Time base     |
+| `V/DIV`         | Volts/div     |
+| `Trigger level` | Trigger level |
 
 Only the values that are actually filled in are sent - an image with just a `T/DIV` value will only
 have its time base synchronized, and the rest of your oscilloscope settings are left alone. An image
@@ -51,7 +53,8 @@ unit is required, and its capitals do not matter:
 * Voltage: `uV` (or `µV`), `mV`, `V` - for example `500mV`, `2V`, `1.5V`
 
 A `T/DIV` or `V/DIV` value is only sent when it matches one of the values your scope supports - the
-`TIME/DIV` and `VOLTS/DIV` lists for your scope model in the main Excel data file. A value that is
+time and volts per division steps of your scope's model (for a model of your own, under **Edit my
+model** on the "Oscilloscope" tab). A value that is
 not in the list is skipped, and the output on the "Oscilloscope" tab says
 `Could not map image T/DIV value [...] to a supported oscilloscope value` (or the same for
 VOLTS/DIV). The trigger level is sent as written.
@@ -66,12 +69,21 @@ VOLTS/DIV). The trigger level is sent as written.
   [controlling the oscilloscope from the keyboard](Controlling-oscilloscope-with-keyboard): let the
   image set the starting point, then fine-tune the time base or trigger level from the numpad.
 
-If your oscilloscope is not in the list, or it does not work properly, then please do investigate
-which **SCPI commands** work for your specific oscilloscope model, as this varies quite a lot - even
-within the same vendor. I do not know all oscilloscopes, nor do I have access to anything other than
-my own, so you will need to provide this data yourself. You can add and test the required data in
-the main Excel data file `Classic-Repair-Toolbox.v2.0.0.xlsx` in the sheet `Oscilloscope` - see
-[Main Excel](Main-Excel). Note that the launch-time data check replaces a changed data file with
-the server's copy at the next launch, unless **Check for new or updated data at application launch**
-is unticked in [Configuration](Configuration-tab) - so send your working entry to the developer
-through the [Feedback tab](Feedback-tab) as well.
+## My scope is not listed
+
+The **SCPI commands** a scope takes vary a lot - even between models of one vendor - so CRT knows only
+the models people have added. To add yours:
+
+1. On the "Oscilloscope" tab, choose the model most like yours (often one of the same vendor) and
+   press **My scope is not listed**.
+2. Give your model its vendor and name, and press **Create model**. It is a copy of the one you
+   started from, kept in a file of your own that the data check never puts back.
+3. Connect to your scope, then go through the commands with your scope's programming manual open.
+   **Try it** beside each command sends it and shows the scope's answer under it; a box is saved as
+   you leave it.
+4. **Run full test suite** tries every command in turn.
+5. **Submit this model** sends it to the administrator, who publishes it for everybody. You are mailed
+   either way.
+
+Your scope needs a network (LAN) port that takes SCPI commands - not every scope has one. A port
+that only works with the scope maker's own PC software, or a scope with only USB, cannot be used.

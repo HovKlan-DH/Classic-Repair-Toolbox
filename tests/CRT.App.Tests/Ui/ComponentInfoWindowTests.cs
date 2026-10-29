@@ -65,6 +65,26 @@ public class ComponentInfoWindowTests : IDisposable
         });
     }
 
+    // The popup's three helps that open a Wiki page read "Learn more" (CRT 4.0 step 5, the plan:
+    // "The remaining help buttons read 'Learn more'") - a link beside the tool it explains, never
+    // a bare "?" that does not say it opens a page.
+    [Theory]
+    [InlineData("MiniProHelpButton")]
+    [InlineData("SyncOscilloscopeHelpButton")]
+    [InlineData("NumpadOscilloscopeHelpButton")]
+    public void A_help_that_opens_a_Wiki_page_reads_Learn_more(string name)
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+            var button = window.GetControl<Avalonia.Controls.Button>(name);
+
+            Assert.Contains("LearnMore", button.Classes);
+            Assert.Equal("Learn more", ((Avalonia.Controls.TextBlock)button.Content!).Text);
+            Assert.Contains("Wiki", Assert.IsType<string>(Avalonia.Controls.ToolTip.GetTip(button)));
+        });
+    }
+
     // -----------------------------------------------------------------------------------------
     // The title line
     // -----------------------------------------------------------------------------------------

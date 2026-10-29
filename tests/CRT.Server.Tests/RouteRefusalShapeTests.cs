@@ -64,7 +64,10 @@ namespace CRT.Server.Tests
             Assert.Contains(asking, route => route.Method == "GET" && route.Pattern.EndsWith("{submissionId:long}", StringComparison.Ordinal));
             Assert.Contains(asking, route => route.Method == "POST" && route.Pattern.EndsWith(DraftDiscardContract.RouteSegment, StringComparison.Ordinal));
 
-            Assert.Equal(4, routes.Count(route => route.Policy == SubmissionEndpoints.RateLimitPolicy));
+            // Create, upload, the upload's state and finalise - and an oscilloscope model sent in
+            // (CRT 4.0 step 5), which sends too.
+            Assert.Equal(5, routes.Count(route => route.Policy == SubmissionEndpoints.RateLimitPolicy));
+            Assert.Contains(routes, route => route.Pattern == OscilloscopeModelEndpoints.Route && route.Policy == SubmissionEndpoints.RateLimitPolicy);
         }
 
         // A 1 GB board in upload-sized parts, a status question for each - all inside one hour's

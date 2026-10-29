@@ -113,6 +113,13 @@ namespace CRT.Server.Tests
             // Resetting the contribution data (2026-10-04): the fingerprint of the counts shown.
             { "POST", "/api/admin/reset", RequestBodyLimits.DefaultBytes },
 
+            // An oscilloscope model sent in from CRT (CRT 4.0 step 5): its name and some twenty
+            // commands of at most OscilloscopeModelRules.ValueLimit characters each in practice a few
+            // dozen - and the administrator's decision on one: an id and a reason.
+            { "POST", "/api/submissions/oscilloscope-models", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/oscilloscope-models/publish", RequestBodyLimits.DefaultBytes },
+            { "POST", "/api/admin/oscilloscope-models/reject", RequestBodyLimits.DefaultBytes },
+
             // One board's facts for the "Boards" screen: a board id and nothing else.
             { "POST", "/api/review/boards/detail", RequestBodyLimits.DefaultBytes },
             { "POST", "/api/review/boards/listing", RequestBodyLimits.DefaultBytes },

@@ -8,11 +8,13 @@ Record what you find on a board and what you did about it - and share the finish
 * [Daily use](Workbooks-Daily-use) - the worklog bar, the editor, marking areas on a schematic
 * [Browsing and search](Workbooks-Browsing-and-search) - find an older repair, and read the totals
 * [Export and your data](Workbooks-Export-and-data) - PDF/ZIP export, where files are stored, deleting
+* [Devices](Workbooks-Devices) - your own machines, each with its repairs, changes and photos
 
 ## The two words
 
 **Workbook** = one repair on one board.\
-**Worklog** = one thing you noted down inside that repair.
+**Worklog** = one thing you noted down inside that repair.\
+**Device** = one computer you own, if you like to keep its repairs together - see [Devices](Workbooks-Devices).
 
 ```
 Workbook  "Dead C64, no video - attic find"       #3, Open

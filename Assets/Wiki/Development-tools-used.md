@@ -13,9 +13,9 @@ I started out with GitHub Copilot, and now (2026-September) use Claude Code.
 NuGet packages used:
 
 - [Avalonia](https://avaloniaui.net/) - the user interface
-- [EPPlus](https://epplussoftware.com/) - reads and writes the Excel data files
+- [EPPlus](https://epplussoftware.com/) - reads the Excel data files of CRT 3, to take over a CRT 3 draft
 - [QuestPDF](https://www.questpdf.com/) - the workbook PDF export
-- [ProDataGrid](https://github.com/wieslawsoltes/ProDataGrid) - the table you edit a draft in on the Drafts tab, and the one maintainers review in on the Maintainer tab (an open-source continuation of Avalonia's own DataGrid)
+- [ProDataGrid](https://github.com/wieslawsoltes/ProDataGrid) - the table you edit a draft in on the Contribute tab (**Table view**), and the one maintainers review in on the Maintainer tab (an open-source continuation of Avalonia's own DataGrid)
 - [Velopack](https://github.com/velopack/velopack) - the installers and the in-application updater
 
 The contribution server, which receives submissions, feedback and the launch check-in, is written in C# with ASP.NET Core on .NET 10. It stores its data in MariaDB through [MySqlConnector](https://mysqlconnector.net/), and hashes account passwords with Argon2 ([Konscious.Security.Cryptography.Argon2](https://www.nuget.org/packages/Konscious.Security.Cryptography.Argon2)).

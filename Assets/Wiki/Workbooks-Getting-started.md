@@ -26,6 +26,7 @@ Click **Create new workbook** in the bar.
 
 * **Description** - required. The repair, in one line: `Dead C64, no video - top attic find`
 * **Note** - optional. Anything else: how the fault showed itself, where the board came from, etc.
+* **On my device** - None, or one of your own machines with this board. **Add device** beside it adds one - see [Devices](Workbooks-Devices).
 
 Click **Create workbook** (or Ctrl+Enter).
 

@@ -476,18 +476,13 @@
 						<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 							<Button x:Name="TestButton" Content="Test IC with MiniPro programmer" HorizontalAlignment="Left" Click="OnTestClick" />
 							<Button x:Name="MiniProHelpButton"
-									Classes="HelpIconButton"
+									Classes="LearnMore"
 									VerticalAlignment="Center"
-									ToolTip.Tip="Open help page for MiniPro programmer"
+									ToolTip.Tip="Opens the &quot;MiniPro programmer&quot; page of CRT's Wiki in your web browser"
 									Click="OnMiniProHelpClick">
-								<TextBlock Text="&#xf059;"
-										   Width="22"
-										   Height="22"
-										   FontFamily="{StaticResource FontAwesomeRegular}"
-										   FontSize="18"
-										   TextAlignment="Center"
-										   HorizontalAlignment="Center"
-										   VerticalAlignment="Center" />
+									<TextBlock Text="Learn more"
+									           FontSize="11"
+									           TextDecorations="Underline" />
 							</Button>
 						</StackPanel>
 					</StackPanel>
@@ -805,20 +800,15 @@
 								  IsChecked="True"
 								  FontSize="11"
 								  VerticalAlignment="Center" />
-						<Button Grid.Column="2"
-								x:Name="SyncOscilloscopeHelpButton"
-								Classes="HelpIconButton"
+						<Button x:Name="SyncOscilloscopeHelpButton"
+								Grid.Column="2"
+								Classes="LearnMore"
 								VerticalAlignment="Center"
-								ToolTip.Tip="Open help page for synchronizing the oscilloscope"
+								ToolTip.Tip="Opens the &quot;Synchronize oscilloscope&quot; page of CRT's Wiki in your web browser"
 								Click="OnSyncOscilloscopeHelpClick">
-							<TextBlock Text="&#xf059;"
-									   Width="22"
-									   Height="22"
-									   FontFamily="{StaticResource FontAwesomeRegular}"
-									   FontSize="18"
-									   TextAlignment="Center"
-									   HorizontalAlignment="Center"
-									   VerticalAlignment="Center" />
+								<TextBlock Text="Learn more"
+								           FontSize="11"
+								           TextDecorations="Underline" />
 						</Button>
 					</Grid>
 
@@ -833,20 +823,15 @@
 								  Content="Numpad controls oscilloscope"
 								  FontSize="11"
 								  VerticalAlignment="Center" />
-						<Button Grid.Column="2"
-								x:Name="NumpadOscilloscopeHelpButton"
-								Classes="HelpIconButton"
+						<Button x:Name="NumpadOscilloscopeHelpButton"
+								Grid.Column="2"
+								Classes="LearnMore"
 								VerticalAlignment="Center"
-								ToolTip.Tip="Open help page for numpad oscilloscope controls"
+								ToolTip.Tip="Opens the &quot;Controlling oscilloscope with keyboard&quot; page of CRT's Wiki in your web browser"
 								Click="OnNumpadOscilloscopeHelpClick">
-							<TextBlock Text="&#xf059;"
-									   Width="22"
-									   Height="22"
-									   FontFamily="{StaticResource FontAwesomeRegular}"
-									   FontSize="18"
-									   TextAlignment="Center"
-									   HorizontalAlignment="Center"
-									   VerticalAlignment="Center" />
+								<TextBlock Text="Learn more"
+								           FontSize="11"
+								           TextDecorations="Underline" />
 						</Button>
 					</Grid>
 

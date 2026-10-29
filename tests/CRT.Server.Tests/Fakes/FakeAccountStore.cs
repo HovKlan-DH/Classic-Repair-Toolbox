@@ -188,9 +188,13 @@ namespace CRT.Server.Tests.Fakes
         // Sessions.
         // -----------------------------------------------------------------------------------
 
+        // Each session as it was handed in - its user agent and address as the flow cut them.
+        public Dictionary<long, NewSession> NewSessions { get; } = [];
+
         public Task<long> CreateSessionAsync(NewSession session, CancellationToken cancellationToken = default)
         {
             long id = this.thisNextSessionId++;
+            this.NewSessions[id] = session;
 
             this.Sessions[id] = new SessionRecord(
                 id, session.AccountId, session.CreatedUtc, session.ExpiresUtc,

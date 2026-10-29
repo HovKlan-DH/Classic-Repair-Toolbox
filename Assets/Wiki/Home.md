@@ -1,50 +1,41 @@
 Documentation for **Classic Repair Toolbox** - everything that does not belong in the project [README](https://github.com/HovKlan-DH/Classic-Repair-Toolbox).
 
-New here? Start with [Getting started](Getting-started).
+New here? Start with [Getting started](Getting-started). CRT explains itself as you use it, so this Wiki is short: installing, the features with more to them than a screen can say, and the reference pages.
 
-## Using CRT at the bench
+## Installing
 
-* [Getting started](Getting-started) - what CRT does, and what to do after installing it
+* [Getting started](Getting-started) - install CRT, and what to do in your first ten minutes
+* [Installing application in Linux](Installing-application-in-Linux) - get it into your application menu
+* [Command-line parameters](Commandline-parameters) - move the data, workbooks or drafts folder elsewhere
+
+## At the bench
+
 * [Workbooks](Workbooks-tab) - record what you found and what you did, and export it as a PDF or ZIP
   - [Getting started](Workbooks-Getting-started)
   - [Daily use](Workbooks-Daily-use)
   - [Browsing and search](Workbooks-Browsing-and-search)
   - [Export and your data](Workbooks-Export-and-data)
-* [Synchronize oscilloscope](Synchronize-oscilloscope) - set your scope up like the one that took the baseline
+  - [Devices](Workbooks-Devices) - your own machines, each with its repairs
+* [Synchronize oscilloscope](Synchronize-oscilloscope) - set your scope up like the one that took the baseline, and add a scope CRT does not know
 * [Controlling oscilloscope with keyboard](Controlling-oscilloscope-with-keyboard) - drive the scope from the numpad
 * [MiniPro programmer](MiniPro-programmer) - test a logic IC or a C64 PLA out of the board
-* [Command-line parameters](Commandline-parameters) - move the data, workbooks or drafts folder elsewhere
-* [Installing application in Linux](Installing-application-in-Linux) - get it into your application menu
 
-## The tabs, one by one
+## Contributing and maintaining
 
-* [Schematics](Schematics-tab) - the board, its components and its traces
-* [Overview](Overview-tab) - every component as a list, and a printable bill of materials
-* [Resources](Resources-tab) - datasheets, manuals and links for this board
-* [Workbooks](Workbooks-tab) - record a repair from first fault to finished write-up
-* [Oscilloscope](Oscilloscope-tab) - connect to a network-capable scope
-* [Contribute](Contribute-tab) - fix or add board data, or a whole new board, from inside CRT
-* [Drafts](Drafts-tab) - your local edits, as a table you can edit, and sending them in for review
-* [Maintainer](Maintainer-tab) - review and publish what others send in, for maintainers only
-* [Configuration](Configuration-tab) - every setting, and where your files are
-* [Feedback](Feedback-tab) - send an issue or a question to the developer
-* [About](About-tab) - versions, links and who contributed this board's data
+Correcting a board, or adding a new one, is done on the "Contribute" tab, which walks you through it.
 
-## Contributing data
+* [View boards from online source](View-boards-from-online-source) - see a board as everybody else sees it, without your own drafts
+* [Maintainer tab](Maintainer-tab) - review and publish what others send in, for maintainers only
 
-* [Contribute data via CRT](Contribute-data-via-CRT) - fix or add board data, or a whole new board, and send it in for review
-  - [View boards from online source](View-boards-from-online-source) - see a board as everybody else sees it, without your own drafts
-* [Add a new board with KiCad data](Add-new-board-with-KiCad-data) - the full walkthrough
-* [Explanation of data files](Explanation-of-data-files) - reference for every file and column:
-  - [Main Excel](Main-Excel)
-  - [Board Excel](Board-Excel)
-  - [Board JSON](Board-JSON)
-  - [KiCad folder](KiCad-folder)
-  - [Scope baseline folder](Scope-baseline-folder)
+## Reference
+
+* [Explanation of data files](Explanation-of-data-files) - what the board data is made of, and where it lives
+  - [Board JSON](Board-JSON) - one board's file
+  - [KiCad folder](KiCad-folder) - the KiCad files that make traces clickable
+* [Information collected](Information-collected) - what CRT sends, and why
 
 ## About the project
 
 * [Compiling yourself from source](Compiling-yourself-from-source)
 * [Development tools used](Development-tools-used)
-* [Information collected](Information-collected)
 * [Inspiration for creating application](Inspiration-for-creating-application)

@@ -528,8 +528,14 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         </StackPanel>
                     </Button>
 
+                    <!-- The administrator's oscilloscope models waiting (Account > "Oscilloscope models"). -->
                     <Button x:Name="AccountModeButton" Classes="ScreenTab" Click="OnModeClick">
-                        <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Account}" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Account}" VerticalAlignment="Center" />
+                            <Border x:Name="AccountBadge" Classes="ModeBadge Attention" IsVisible="False">
+                                <TextBlock x:Name="AccountBadgeText" />
+                            </Border>
+                        </StackPanel>
                     </Button>
                 </WrapPanel>
             </Border>
@@ -709,6 +715,17 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                     <TextBlock Classes="AdminLock" Text="&#xf023;" />
                                 </StackPanel>
                                 <TextBlock Text="Which CRT versions still call each route of the server" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </ListBoxItem>
+
+                        <!-- Oscilloscope models sent in from CRT (CRT 4.0 step 5, 2026-10-29). -->
+                        <ListBoxItem x:Name="OscilloscopeModelsItem" Classes="ListEntry AdminOnly">
+                            <StackPanel Spacing="1">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Oscilloscope models" FontSize="13" />
+                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                </StackPanel>
+                                <TextBlock Text="Models sent in from CRT, to publish for everybody or turn down" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
@@ -982,6 +999,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                 <local:RebuildManifestsView x:Name="RebuildManifestsAdminView" IsVisible="False" />
                 <local:BoardDeletionView x:Name="BoardDeletionAdminView" IsVisible="False" />
                 <local:ApiUsageView x:Name="ApiUsageAdminView" IsVisible="False" />
+                <local:OscilloscopeModelsView x:Name="OscilloscopeModelsAdminView" IsVisible="False" />
                 <local:DataResetView x:Name="DataResetAdminView" IsVisible="False" />
 
                 <!-- "Server version" (owner request, 2026-10-04; every maintainer's since the same

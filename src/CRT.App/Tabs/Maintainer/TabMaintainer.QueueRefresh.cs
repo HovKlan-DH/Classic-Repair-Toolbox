@@ -31,7 +31,8 @@ namespace CRT
     // its own "never disturb what is open" rule (TabMaintainer.Beta.cs, .Boards.cs).
     //
     // OFF SCREEN, THE BADGE'S TWO LISTS ONLY (owner request, 2026-09-30): the tab's badge in CRT's
-    // row of tabs counts the queue and the BETA list, so while it can be seen those two are read
+    // row of tabs counts the queue and the BETA list (the queue answer carrying an administrator's
+    // oscilloscope models waiting too), so while it can be seen those two are read
     // every minute with the tab on another tab or CRT behind another window - the same background
     // reads, the same rules. QueueRefreshRules.MinuteCheck decides which.
     // ###########################################################################################

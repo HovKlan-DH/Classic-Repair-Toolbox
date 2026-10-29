@@ -137,7 +137,10 @@ public partial class TabSchematics
             return false;
         }
 
+        // No trace drawing under another tool (TabSchematics.ViewTools.cs).
+        this.SetDrawingTraces(false);
         this.thisIsWorklogEntryMode = true;
+        this.FollowToolsInDrawTrace();
         this.thisWorklogEntryWorkbookId = workbookId;
         this.thisWorklogEntryNextId = WorklogManager.PeekNextEntryId(workbookId);
         this.thisIsDrawingWorklogEntryRectangle = false;
@@ -170,6 +173,7 @@ public partial class TabSchematics
         }
 
         this.thisIsWorklogEntryMode = false;
+        this.FollowToolsInDrawTrace();
         this.thisIsDrawingWorklogEntryRectangle = false;
         this.thisWorklogEntryDraftRectangle = null;
         this.thisWorklogEntryFinalRectangle = null;

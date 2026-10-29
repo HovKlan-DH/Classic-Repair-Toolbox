@@ -705,6 +705,34 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource Button_Cancel_Border}" />
 		</Style>
 
+		<!-- "LEARN MORE" (CRT 4.0 step 5 - the plan: "The remaining help buttons read 'Learn more'"):
+		     a button that opens a page of CRT's Wiki, beside the setting or the tool it explains. It
+		     looks like a link - the link colour, underlined, no box - so it reads as "a page about
+		     this", not as an action on the setting. Its pages are AppConfig's WikiPage* names, which
+		     WikiHelpPageNamesTests holds to real pages. The "?" icon stays only where it shows a
+		     tooltip and opens nothing. -->
+		<Style Selector="Button.LearnMore">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="2,0" />
+			<Setter Property="MinHeight" Value="0" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="Foreground" Value="{DynamicResource Link_Fg}" />
+		</Style>
+
+		<Style Selector="Button.LearnMore /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<Style Selector="Button.LearnMore:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Foreground" Value="{DynamicResource LinkHover_Fg}" />
+		</Style>
+
+		<Style Selector="Button.LearnMore:pressed /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
 		<!-- ### -->
 
 		<!-- Give the ColorPicker in "Schematics" tab its visual layout -->

@@ -15,10 +15,13 @@ namespace Handlers.MaintainerHandling
     // IsAdministrator is what shows the "Maintainers" button; the server refuses the screen's
     // requests from anyone else regardless. Trailing with a default so an older server that does
     // not send it reads as "not an administrator", which hides a button rather than a queue.
+    // OscilloscopeModelsWaiting: the administrator's models waiting (ReviewQueueAnswer's) - 0 from
+    // an older server.
     public sealed record ReviewQueueResponse(
         bool CanPublish,
         IReadOnlyList<ReviewQueueRow> Submissions,
-        bool IsAdministrator = false);
+        bool IsAdministrator = false,
+        int OscilloscopeModelsWaiting = 0);
 
     // ###########################################################################################
     // The administrator's lists (Phase 6 roles). View types, like everything else in this file.

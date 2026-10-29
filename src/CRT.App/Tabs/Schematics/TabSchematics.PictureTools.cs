@@ -179,6 +179,8 @@ public partial class TabSchematics
     // ###########################################################################################
     private void FollowPictureTool()
     {
+        this.FollowToolsInDrawTrace();
+
         PictureTool? onNow = this.thisIsLabelEditorMode ? PictureTool.MarkComponents
             : this.thisIsKiCadTraceCalibrationMode ? PictureTool.AlignKiCad
             : null;

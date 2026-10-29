@@ -20,7 +20,7 @@ namespace CRT.Server.Handlers.Submissions
     // administrator, 404 no such board or account, 400 a grant the rules refuse (unverified,
     // locked, already an administrator).
     // ###########################################################################################
-    public static class AdminEndpoints
+    public static partial class AdminEndpoints
     {
         public static void MapAdminEndpoints(this WebApplication app)
         {
@@ -72,6 +72,9 @@ namespace CRT.Server.Handlers.Submissions
 
             // Which CRT versions call which route (owner request, 2026-10-04) - see ApiUsageFlow.
             admin.MapGet("/api-usage", AdminEndpoints.GetApiUsageAsync);
+
+            // Oscilloscope models sent in from CRT (CRT 4.0 step 5) - AdminEndpoints.OscilloscopeModels.cs.
+            AdminEndpoints.MapOscilloscopeModelRoutes(admin);
         }
 
         // ###########################################################################################

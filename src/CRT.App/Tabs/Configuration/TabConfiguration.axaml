@@ -254,18 +254,13 @@
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableMiniproExperimentalModeHelpButton"
 						Grid.Column="1"
-						Classes="HelpIconButton"
+						Classes="LearnMore"
 						VerticalAlignment="Center"
-						ToolTip.Tip="Open help page for MiniPro programmer"
+						ToolTip.Tip="Opens the &quot;MiniPro programmer&quot; page of CRT's Wiki in your web browser"
 						Click="OnEnableMiniproExperimentalModeHelpClick">
-					<TextBlock Text="&#xf059;"
-							   Width="22"
-							   Height="22"
-							   FontFamily="{StaticResource FontAwesomeRegular}"
-							   FontSize="18"
-							   TextAlignment="Center"
-							   HorizontalAlignment="Center"
-							   VerticalAlignment="Center" />
+						<TextBlock Text="Learn more"
+						           FontSize="12"
+						           TextDecorations="Underline" />
 				</Button>
 			</Grid>
 
@@ -284,18 +279,13 @@
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableWorklogHelpButton"
 						Grid.Column="1"
-						Classes="HelpIconButton"
+						Classes="LearnMore"
 						VerticalAlignment="Center"
-						ToolTip.Tip="Open help page for Workbooks"
+						ToolTip.Tip="Opens the &quot;Workbooks&quot; page of CRT's Wiki in your web browser"
 						Click="OnEnableWorklogHelpClick">
-					<TextBlock Text="&#xf059;"
-							   Width="22"
-							   Height="22"
-							   FontFamily="{StaticResource FontAwesomeRegular}"
-							   FontSize="18"
-							   TextAlignment="Center"
-							   HorizontalAlignment="Center"
-							   VerticalAlignment="Center" />
+						<TextBlock Text="Learn more"
+						           FontSize="12"
+						           TextDecorations="Underline" />
 				</Button>
 			</Grid>
 
@@ -347,18 +337,13 @@
 						  ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a board where you have unpublished local edits" />
 				<Button x:Name="ViewOfficialPublishedOnlyHelpButton"
 						Grid.Column="1"
-						Classes="HelpIconButton"
+						Classes="LearnMore"
 						VerticalAlignment="Center"
-						ToolTip.Tip="Open help page for viewing boards as they come from the online source"
+						ToolTip.Tip="Opens the &quot;View boards from online source&quot; page of CRT's Wiki in your web browser"
 						Click="OnViewOfficialPublishedOnlyHelpClick">
-					<TextBlock Text="&#xf059;"
-							   Width="22"
-							   Height="22"
-							   FontFamily="{StaticResource FontAwesomeRegular}"
-							   FontSize="18"
-							   TextAlignment="Center"
-							   HorizontalAlignment="Center"
-							   VerticalAlignment="Center" />
+						<TextBlock Text="Learn more"
+						           FontSize="12"
+						           TextDecorations="Underline" />
 				</Button>
 			</Grid>
 
@@ -370,18 +355,13 @@
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableMaintainerTabHelpButton"
 						Grid.Column="1"
-						Classes="HelpIconButton"
+						Classes="LearnMore"
 						VerticalAlignment="Center"
-						ToolTip.Tip="Open help page for the Maintainer tab"
+						ToolTip.Tip="Opens the &quot;Maintainer tab&quot; page of CRT's Wiki in your web browser"
 						Click="OnEnableMaintainerTabHelpClick">
-					<TextBlock Text="&#xf059;"
-							   Width="22"
-							   Height="22"
-							   FontFamily="{StaticResource FontAwesomeRegular}"
-							   FontSize="18"
-							   TextAlignment="Center"
-							   HorizontalAlignment="Center"
-							   VerticalAlignment="Center" />
+						<TextBlock Text="Learn more"
+						           FontSize="12"
+						           TextDecorations="Underline" />
 				</Button>
 			</Grid>
 

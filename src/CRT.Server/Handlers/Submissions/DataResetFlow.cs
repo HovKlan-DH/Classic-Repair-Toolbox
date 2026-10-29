@@ -14,6 +14,8 @@ namespace CRT.Server.Handlers.Submissions
     // *** WHAT GOES (owner decisions, 2026-10-04) ***
     //   - every submission, whatever its state, with everything the schema hangs off it (files,
     //     payloads, findings, approvals, amendments, discards, BETA returns, change summaries);
+    //   - every oscilloscope model sent in from CRT (migration 0024), waiting or decided - counted,
+    //     shown and held to the fingerprint like the submissions (code review, 2026-10-29);
     //   - every account that is not an administrator, with its sessions and tokens ("yes, just
     //     delete them as I need real data anyway"), and so every maintainer and invitation;
     //   - every production approval and every BOARD RECORD - see below;

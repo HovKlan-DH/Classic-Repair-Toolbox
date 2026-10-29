@@ -25,6 +25,22 @@ namespace Handlers.Oscilloscope
         }
 
         // ###########################################################################################
+        // A Set command with its value: "{0}" replaced by the value, or the value added after a
+        // space when the command has no "{0}". The palettes and the model editor's Try it alike.
+        // ###########################################################################################
+        public static string FillValue(string baseCommandText, double value)
+        {
+            string formattedValue = ScopeFormatting.FormatScpiNumber(value);
+
+            if (baseCommandText.Contains("{0}", StringComparison.Ordinal))
+            {
+                return baseCommandText.Replace("{0}", formattedValue, StringComparison.Ordinal);
+            }
+
+            return $"{baseCommandText} {formattedValue}";
+        }
+
+        // ###########################################################################################
         // Formats a voltage value into a compact engineering string.
         // ###########################################################################################
         public static string FormatVoltage(double volts)

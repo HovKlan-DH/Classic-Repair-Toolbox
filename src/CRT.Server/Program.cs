@@ -302,6 +302,10 @@ namespace CRT.Server
             // ---------------------------------------------------------------------------------
             services.AddSingleton<ISubmissionStore, MySqlSubmissionStore>();
 
+            // Oscilloscope models sent in from CRT (CRT 4.0 step 5, migration 0024) - see
+            // OscilloscopeModelFlows.
+            services.AddSingleton<IOscilloscopeModelStore, MySqlOscilloscopeModelStore>();
+
             // Every contributor route's per-address limit (code review, 2026-10-13) - see
             // SubmissionEndpoints.MapSubmissionEndpoints.
             services.AddSubmissionRateLimit();
@@ -431,6 +435,7 @@ namespace CRT.Server
             // ---------------------------------------------------------------------------------
             app.MapAccountEndpoints();
             app.MapSubmissionEndpoints();
+            app.MapOscilloscopeModelEndpoints();
             app.MapReviewEndpoints();
             app.MapAdminEndpoints();
             app.MapProductionEndpoints();

@@ -1,103 +1,103 @@
 [Wiki Home](Home)
 
-Everything CRT knows about hardware is data, not code - so adding a board is a data job, not a programming job. This page shows which file holds what.
+What CRT's board data is made of, and where it lives - for the curious. You never need to edit
+these files: every change to a board is made in CRT, on the "Contribute" tab.
 
 ---
 
-## The layout
+## The data folder
+
+CRT keeps the downloaded data in a `Data v4` folder:
+
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data v4`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Data v4`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data v4`
+
+**Open data folder** on the "Configuration" tab opens it, and `--data-root` moves it - see
+[Command-line parameters](Commandline-parameters). A folder called `Data` beside it is CRT 3's,
+which CRT 4 only reads (to take over your CRT 3 drafts and scope models) and never changes.
 
 ```
-<data root>/
-├── Classic-Repair-Toolbox.v2.0.0.xlsx                    ← every hardware + board, and every scope
-│
-├── Commodore/C64/250407/                                 ← one folder per board
-│   ├── Data C64 250407 v2.0.0.xlsx                       ← what the components ARE
-│   ├── Data C64 250407 v2.0.0.json                       ← WHERE they are on the images
-│   ├── Board Layout 250407 NTSC.png                      ← schematic images
-│   ├── C64 250407 PCB Replica.1.1 Top.png
-│   │
-│   ├── KiCad data/                                        ← optional - makes traces clickable
-│   └── Scope baseline/                                    ← optional - scope images from a good board
-│
-├── Commodore/Shared files/                               ← files any Commodore board can use
-└── Generic shared files/                                 ← files any board can use
+Data v4/
+├── Classic-Repair-Toolbox.v4.0.0.json     <- the main file: every board, every oscilloscope
+├── Commodore/
+│   └── C64/
+│       └── 250407/
+│           └── board.json                 <- one board, everything about it
+├── ZX Spectrum/ ...
+├── Files/
+│   ├── 82/
+│   │   └── 829d81899b3c...ca07.png        <- every file's bytes, stored once
+│   └── ...
+└── MiniPro/
+    └── IC tests/                          <- the IC tests the MiniPro programmer runs
 ```
 
-The C64 `250407` board is the reference implementation. **When in doubt, copy what it does.**
+## One board, one file
 
-A file that several boards use lives in a shared folder rather than in one board's folder:
-`<Manufacturer>/Shared files/` for that manufacturer's boards, and `Generic shared files/` for every
-board. A board's rows can point at files in its own folder and in these two shared folders. A file
-in another board's folder can be used too, but only exactly as it is.
+Each board has a folder of its own - `Commodore/C64/250407` - holding just its `board.json`.
+That one file is the whole board: its pictures, its components and their pins, pictures, scope
+baselines, files and links, its credits and important signals, where each component is marked on
+each picture, and how each picture lines up with the KiCad data. See [Board JSON](Board-JSON).
 
-### Your own work is a draft
+The folder's path is the board's **id**, which is how everything else - the main file, your
+drafts, your workbooks - names it.
 
-You never edit the data root itself - the online sync keeps it equal to the published data. Every
-board you change, and every board you add with **Add a new board**, is a **draft**: a folder of the
-same shape in your own drafts folder (see [Command-line parameters](Commandline-parameters) for where
-that is). The sync never touches it.
+## Files are a board's own, stored once
 
-```
-<drafts root>/
-└── Commodore/C64/250407/
-    ├── Data C64 250407 v2.0.0.xlsx                       ← the same files as a published board
-    ├── Data C64 250407 v2.0.0.json
-    ├── ...
-    └── .crt-draft.json                                    ← bookkeeping; leave this one alone
-```
+Every file a board uses - a picture, a datasheet, a scope screenshot - has a name of the board's
+own, such as `Component images/7406.png`. The board's file lists each name with the file's
+SHA-256 checksum, and the bytes are stored under that checksum in `Files/`: `Files/82/829d...ca07.png`.
 
-You send a draft with **Submit** on the [Drafts tab](Drafts-tab). Once a maintainer has accepted it,
-it is published to the BETA source first, and then to the stable source everyone downloads from -
-see [Contribute data via CRT](Contribute-data-via-CRT).
+So a file used by eleven boards is downloaded and stored once, while each board still owns its copy:
+replacing the 7406 datasheet on one board makes new bytes under a new checksum, and the other ten
+boards are untouched. To bring the same change to them, the "Contribute" tab's **Also on other
+boards** offers it to each board, as a change of its own.
 
-## Which file do I need?
+## The main file
 
-| I want to | File |
-| --- | --- |
-| Add my board to the drop-downs | None - use **Add a new board** on the Contribute or Drafts tab. A maintainer adds it to the [Main Excel](Main-Excel) when it is published |
-| Say what a component is - name, value, part number, datasheet | [Board Excel](Board-Excel) |
-| Make a component light up on a schematic image | [Board JSON](Board-JSON) |
-| Make the copper traces clickable | [KiCad folder](KiCad-folder) |
-| Add scope readings from a known good board | [Scope baseline folder](Scope-baseline-folder) |
-| Do all of the above for a brand new board | [Add a new board with KiCad data](Add-new-board-with-KiCad-data) - the walkthrough |
+`Classic-Repair-Toolbox.v4.0.0.json` holds two lists:
 
-## The one thing to understand
+* **boards** - CRT's hardware and board drop-downs, top to bottom: each board's id, the hardware and
+  board names it is listed under, and the hardware notes the "Overview" tab shows
+* **oscilloscopes** - every scope model CRT knows: its vendor, series or model, network port, the wait
+  between commands, the SCPI command for each thing CRT asks the scope, and the time and volts per
+  division steps the numpad keys move through
 
-Two files in a board folder share a name - the `.xlsx` and the `.json`:
+Your own scope models are in a file of your own beside your settings,
+`Classic-Repair-Toolbox.own-oscilloscopes.json`, made and edited with **My scope is not listed** on
+the "Oscilloscope" tab - see [Synchronize oscilloscope](Synchronize-oscilloscope#my-scope-is-not-listed).
+The data check never touches it.
 
-> **The Excel file says *what* a component is. The JSON file says *where* it is.**
+The version in the main file's name is the first CRT version that reads it. A CRT reads the newest
+main file at or below its own version.
 
-CRT finds the JSON by taking the Excel path and swapping the extension. So if you rename or version-bump one, **rename the other in the same go.**
+## How CRT keeps it up to date
 
-> [!WARNING]
-> Nothing crashes if you forget. The board still opens and the component list is still complete - but every highlight on every schematic is silently gone. The logfile then has a `Board highlight JSON file not found` line, and a "not marked on any schematic" warning for every component.
+When CRT starts, and **Check for new or updated data at application launch** is ticked on the
+"Configuration" tab, it fetches the list of every file in the online data with its checksum
+(`dataChecksums.json`), and downloads what is new or changed: the main file and the board files
+first, everything else in the background while you work. **Delete orphan and non-used files** removes
+files the online data no longer has.
 
-## Rules for every Excel file
+"Online data" is the stable source, or the BETA source when **Download data from the BETA source
+instead of the stable source** is ticked - the BETA source carries what maintainers have accepted,
+before it is published to everybody.
 
-These apply to [Main Excel](Main-Excel) and [Board Excel](Board-Excel) alike.
+## Your drafts
 
-* **Column headers must be spelled exactly** (capital letters do not matter). CRT finds the header
-  row by its names, so the rows above it and the order of the columns are free - but a sheet that
-  lacks one of its required headers is read as empty, and the logfile says `Header row not found`.
-* **Blank rows are skipped.** They do no harm, and CRT leaves them out when it saves the file.
-* **All paths use `/`, never `\`** - so they work on Linux and macOS too.
-* **Folder and file names are case-sensitive**, for the same reason.
-* **Every cell is read as the text it shows. Write numbers with a dot** (`0.3`, `1.4V`), never a comma.
-* **No formatting carries over.** Colours, bold and italic in Excel do nothing in CRT. When CRT saves
-  a draft, or the server publishes a board, the file is written afresh: only the values in the
-  documented columns are kept.
-* **Check your work in the draft's table.** "Edit in table format" on the Drafts tab marks every
-  problem on its cell, with the same rules the server uses when you submit. For the boards you
-  have downloaded, the logfile lists the same problems at each launch.
+A change you make to a board goes into your own **draft** of it, in a `Drafts` folder beside your
+settings (`--drafts-root` moves it). A draft is laid out like the data: the board's folder, holding its
+own `board.json` with your changes, and a `Files` folder with only the files you added. CRT saves it by
+itself, and deletes it once your change is published to the stable source.
 
-## If it does not work
+## Your workbooks and devices
 
-| What you see | Almost always means |
-| --- | --- |
-| Your board is not in the drop-downs | Its folder is not in your drafts folder, or CRT could not take it in - the logfile says why (usually several Excel files in one board folder) |
-| Board opens, but nothing highlights | The `.json` name no longer matches the `.xlsx` - check the logfile |
-| One component never highlights | Its label is spelled differently in the two files, or its `Region` excludes yours |
-| Components highlight, but no copper lights up | The board label is not the KiCad reference designator |
-| Your files vanished or changed back after a sync | They were edited in the data root, which the sync keeps equal to the published data. Work in a draft instead |
+Your repairs are not board data and never leave your machine - see
+[Workbooks: export and your data](Workbooks-Export-and-data).
 
-The application is deliberately forgiving: bad data is a warning, not a crash. **That makes the draft's table - and, for downloaded boards, the logfile - the review tool for this whole job.**
+## CRT 2 and 3
+
+CRT 2 and 3 read the board data from Excel files - a main workbook and one workbook per board, with a
+JSON file beside each for the coordinates. That data is frozen as it was when CRT 4 came out: CRT 2 and
+3 keep showing it, and are told to update to contribute.

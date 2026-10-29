@@ -1,12 +1,19 @@
-### At the bench
+### Installing
 
 [Getting started](Getting-started)
+
+[Install on Linux](Installing-application-in-Linux)
+
+[Command-line parameters](Commandline-parameters)
+
+### At the bench
 
 [Workbooks](Workbooks-tab)
 - [Getting started](Workbooks-Getting-started)
 - [Daily use](Workbooks-Daily-use)
 - [Browsing and search](Workbooks-Browsing-and-search)
 - [Export and data](Workbooks-Export-and-data)
+- [Devices](Workbooks-Devices)
 
 [Synchronize oscilloscope](Synchronize-oscilloscope)
 
@@ -14,38 +21,17 @@
 
 [MiniPro programmer](MiniPro-programmer)
 
-[Command-line parameters](Commandline-parameters)
-
-[Install on Linux](Installing-application-in-Linux)
-
-### The tabs
-- [Schematics](Schematics-tab)
-- [Overview](Overview-tab)
-- [Resources](Resources-tab)
-- [Workbooks](Workbooks-tab)
-- [Oscilloscope](Oscilloscope-tab)
-- [Contribute](Contribute-tab)
-- [Drafts](Drafts-tab)
-- [Maintainer](Maintainer-tab)
-- [Configuration](Configuration-tab)
-- [Feedback](Feedback-tab)
-- [About](About-tab)
-
 ### Contributing
-- [Via CRT](Contribute-data-via-CRT)
-  - [View boards from online source](View-boards-from-online-source)
-- [Add a board (KiCad)](Add-new-board-with-KiCad-data)
+- [View boards from online source](View-boards-from-online-source)
+- [Maintainer tab](Maintainer-tab)
 
-### Data files
-- [Overview](Explanation-of-data-files)
-  - [Main Excel](Main-Excel)
-  - [Board Excel](Board-Excel)
+### Reference
+- [Data files](Explanation-of-data-files)
   - [Board JSON](Board-JSON)
   - [KiCad folder](KiCad-folder)
-  - [Scope baseline](Scope-baseline-folder)
+- [Information collected](Information-collected)
 
 ### Project
 - [Build from source](Compiling-yourself-from-source)
 - [Tools used](Development-tools-used)
-- [Information collected](Information-collected)
 - [Inspiration](Inspiration-for-creating-application)

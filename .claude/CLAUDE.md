@@ -164,7 +164,18 @@ is user-visible is a judgement call). When a page starts documenting new code, a
 `Synchronize-oscilloscope`, `Maintainer-tab` and `View-boards-from-online-source`. They are named
 once, in `AppConfig` (`WikiPage*` plus `WikiPageUrl`). Renaming or deleting one breaks a button in
 builds already installed, which no update can fix, so `WikiHelpPageNamesTests` asserts each name
-still matches a file in `Assets/Wiki/`. Add an entry there for any new help button.
+still matches a file in `Assets/Wiki/`. Add an entry there for any new help button. **Since CRT 4.0
+such a button reads "Learn more"** (App.axaml's `LearnMore` class - a link, underlined; the plan:
+"The remaining help buttons read 'Learn more'"); the "?" icon (`HelpIconButton`) is left only where it
+shows a tooltip and opens nothing.
+
+**The Wiki is SHORT since CRT 4.0** (the plan: "The Wiki shrinks to installing, the reference pages,
+and the six pages installed CRTs open"; 2026-10-29) - the screens explain themselves, so a tab or a
+contributing flow gets no page of its own. Fourteen pages left the mirror then (`Schematics-tab`,
+`Contribute-tab`, `Drafts-tab`, `Main-Excel`, ... - listed in [Assets/Wiki/README.md](../Assets/Wiki/README.md)),
+to be deleted from the live Wiki on release day; do not add them back without being asked. **The
+mirror describes 4.0 from that day, so its pages are pasted on release day**, not before - the live
+Wiki describes what everybody runs.
 
 **Some old Wiki pages are deliberately not mirrored** (orphans superseded by newer pages) - see
 [Assets/Wiki/README.md](../Assets/Wiki/README.md). Do not add them back without being asked.
@@ -582,7 +593,8 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   WHERE THE BYTES LIE, their length and write time - never by name, which another board's file or bytes
   put back share - and a load from before the cache was let go keeps nothing (`Generation`). **A
   picture's own size comes from its header for every type CRT shows** (`ImagePixelSize`: PNG, JPEG,
-  GIF, BMP, WebP); with it unknown, the preview draws no marks rather than wrong ones.
+  GIF, BMP, WebP - `FromBytes` for bytes in memory, the scope's screen picture; the ONE reader of picture
+  headers, never a copy beside it); with it unknown, the preview draws no marks rather than wrong ones.
   **Contributor mode is GONE** (slice 6, 2026-10-26 - the plan: "Mark components and Align KiCad open
   the Schematics tab in that tool, with a bar and a Done button. Right-clicking a component offers
   Edit this component to everyone."). **Each picture card has "Mark components" and "Align KiCad"**
@@ -610,7 +622,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   spot opens nothing; inside a tool the bar has Done and Cancel. **What the mode switched on besides
   its menu is "Write a detailed log" on the Configuration tab** (`UserSettings.DetailedLog` - the
   log's debug lines and every board's data checked at launch), STORED as `contributorMode`, so
-  whoever had the mode on keeps it. The Wiki still describes contributor mode (step 5).
+  whoever had the mode on keeps it.
   **"Copy from another board"** (slice 5, 2026-10-26; `ComponentPane.Copy.cs`, `ComponentCopy`): the
   same part - the same PART NUMBER, trimmed, capitals ignored - on the OTHER published boards of this
   machine (`TabDrafts.FindOnOtherBoardsAsync`, read on the pool under the BusyOverlay; never the board
@@ -1353,6 +1365,31 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 | `TabSchematics.KiCad*.cs` | KiCad load, panels, rendering, render cache, geometry, hit-testing, calibration |
 | `TabSchematics.Settings.cs` | Board-level and global setting rows |
 | `TabSchematics.PictureTools.cs` | "Mark components"/"Align KiCad" asked for from the Contribute tab, their bar (Done/Cancel), and the right-click menu on a component ("Edit this component") |
+| `TabSchematics.ViewTools.cs` | Panning with the right OR middle button (`TryBeginPan`, every mode) and the one-time tip saying so; "Draw trace" |
+
+**The view's small tools** (CRT 4.0 step 5's slice 5a, 2026-10-29): **traces are drawn and changed
+ONLY while "Draw trace" is on** (the plan: "Traces are drawn only with Draw trace") - off, a press on
+the picture never starts, bends or deletes a trace (a right-click on one pans, a left one selects),
+and `PolylineManagement` is not consulted at all; Escape stops it at WINDOW level
+(`Main.OnMainKeyDownCloseSinglePopup` - the component filter usually holds the focus) **but only while
+the Schematics tab is shown** - elsewhere Escape is the box's it was pressed in (code review,
+2026-10-29) - and so do leaving the tab, another tool, another board and no picture (also one with no
+file). **Another board or no picture DROPS a point being dragged, never saves it**
+(`SetDrawingTraces(false, navigating: true)` -> `StopEditing(saveDrag: false)`): saved, the old
+picture's traces went under the new board's key. **A picture's traces are its own** (third review,
+2026-10-29): a picture switch lets the last ones go AT ONCE (`LetGoOfTraces` - before the decode, which
+left them editable under the new name), they are read with the picture (`ReadTracesFor`), and they are
+changed or SAVED only while they are the chosen picture's (`TracesAreThePictures` - the save handler and
+`CanEditTraces` in the input; none chosen or none read is never a match). **While another tool is on** (the label editor, a
+worklog area, aligning KiCad) **"Draw trace" is greyed out, its tooltip saying why**
+(`FollowToolsInDrawTrace`, from `FollowPictureTool` and the worklog area's begin and cancel) - and a press
+on it greyed out is not the picture's (`IsPointerOnDrawTraceButton`: a disabled button takes no pointer,
+and the label editor lost its selection); "Done
+drawing" is PLAIN - it turns a mode off and saves nothing (second review, 2026-10-29). **A middle drag pans as the right one does**, and only a
+right click that did not move is a click (the component menu). **The one-time tip** sits under the
+picture's name until "Got it" or the first pan (`UserSettings.SchematicsPanHintSeen`). **"Global
+settings" are a gear button's popover** (`FlyoutPresenter.SchematicsSettings` in the panels' colours),
+the rows the panel had; the gear shows only while a row does - every row is a KiCad one.
 
 #### Maintainer (`Tabs/Maintainer/`, logic in `Handlers/Maintainer/`)
 
@@ -1375,8 +1412,12 @@ quick card). **Find the right partial here before grepping** (the map is repeate
   `Main.ShareMaintainerSignIn`): the Feedback tab and the Submit dialog use the account's address,
   read only, and submissions go with the account's token. `ContactAddress` is the one rule. It stays
   shared whatever the Configuration tab says, until signing out.
-- **The tab's badge** (`MaintainerModes.TabAttention`): the two queues' attention counts ADDED UP. No
-  tooltips on it. A 401 clears what it counts.
+- **The tab's badge** (`MaintainerModes.TabAttention`): the two queues' attention counts ADDED UP - and,
+  for the administrator, the oscilloscope models waiting (the queue answer's `OscilloscopeModelsWaiting`,
+  badged on the Account button too; 2026-10-29), and the models screen's own read sets that count at
+  once (`OscilloscopeModelsView.ModelsWaitingRead`). One rule: `UpdateModeBadges` calls
+  `MaintainerModes.TabAttention`. Which screen the tab OPENS on is the two queues' alone
+  (`QueueAttention`). No tooltips on it. A 401 clears what it counts.
 - **The minute check** (`QueueRefreshRules.MinuteCheck`): everything while on screen with CRT in
   front; otherwise only the queue and the BETA list while the badge can be seen. Every request slides
   the 30-day session (accepted with the request). Nothing open is reloaded unless its row changed.
@@ -1388,7 +1429,7 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 - **Account**: every maintainer has "My account" (name, address, password, Sign out -
   `MyAccountView`; the session alone is enough, no current password - an accepted risk) and "Server
   version". The administrator's own entries (Maintainers, Order of boards, Unused files, Rebuild
-  checksum manifests, Delete a board, API usage, Reset contribution data) carry the padlock and are
+  checksum manifests, Delete a board, API usage, Oscilloscope models, Reset contribution data) carry the padlock and are
   taken OUT of the list for anybody else (`ShowAdministratorEntries` - not `IsVisible = false`, which a
   `VirtualizingStackPanel` undoes).
 - **The submission view IS the table** (`BoardTableEditor.Open(BoardTableDocument)`, document mode;
@@ -1712,8 +1753,8 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   new data since slice 3c (`ComponentPopupContent`, `OverviewHtmlBuilder.BuildRows`).
 - **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
   empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
-  files by their Excel-tree paths), and the Wiki's 4.0 pages (step 5 - `Assets/Wiki/` still describes
-  3.x, Excel included, on purpose until the release).
+  files by their Excel-tree paths), and pasting the Wiki's 4.0 pages and deleting the fourteen it no
+  longer has (`Assets/Wiki/README.md`, "Pages removed at CRT 4.0").
 
 ### External integrations (`Handlers/`)
 
@@ -1724,6 +1765,73 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
 - `Oscilloscope/IScopeClient` - the seam the Oscilloscope tab's sequencing takes; `ScopeScpiClient` is
   the untested TCP boundary. `ScopeCommandResolver`/`ScopeValueMapper` turn the master workbook's
   command strings into scope interactions.
+- **"My scope is not listed" is an editor** (CRT 4.0 step 5's slice 5b, 2026-10-29;
+  `TabOscilloscope.ModelEditor.cs` - the plan: "start from a similar model and edit each command with
+  Try it, then run the full test suite"): a model of the user's OWN made from the one shown
+  (`OscilloscopeModelRules.CopyOf` - every value, under a name no other model has, capitals aside:
+  the drop-downs pick a model by name), kept in `OwnOscilloscopeFile` beside the settings, never the
+  synced data. Every value is `ScopeModelFields`' (the main file's own key for it; a new value of the
+  entry needs a field - `ScopeModelFieldsTests` counts them). **A model's values are mapped ONCE**
+  (third review, 2026-10-29: four copies - `From`'s list, the resolver's switch, the editor's setter
+  switch, the reflection): `OscilloscopeModelValues` (name <-> row property) is the map - the fields
+  read and write by key (`Get`/`Set`), `OscilloscopeEntry.From` copies every row value by property
+  name and answers `ValueOf(name)`, which `ScopeCommandResolver.GetCommandText` reads for a command's
+  field (`OscilloscopeEntryTests` fails on a row value the entry lacks). A box is SAVED AS IT IS LEFT or on Enter
+  (`DataManager.SaveOwnScopeModelsAsync` - listed at once, written off the UI thread, the latest list
+  last), Escape puts it back, a setting CRT could not use is held back with its reason. **Try it**
+  (`ScopeCommandTrial`) sends the command as typed over the tab's session: a Set command sets the value
+  the scope HAS (read with the model's Read command first), a command that answers nothing is followed
+  by the model's Finished and Last error (a non-zero error number = not taken), a query that does not
+  answer in 10 s drops the session. **The editor's own refresh of the drop-downs keeps the connection**
+  (`thisKeepsSessionThroughListRefresh` - connect with the similar model, try your own at once; the
+  TCP port typed stays, the model's is not written over it); choosing another model closes the editor.
+  **At every launch a model published under an own model's name takes it over** - exactly the same, the
+  own copy goes; different, it stays as "<model> (my version)" (`OscilloscopeModelRules.Reconciled`,
+  the file written back). **An own-models file that could not be read is NEVER written that run**
+  (`DataManager.OwnScopeModelsProblem`, from `OwnOscilloscopeFile.LoadOrFind(..., out notWritable)` - a
+  file broken or held, or 3.x's search not made): "Create model" says why and saves nothing (code
+  review, 2026-10-29: its first save replaced the unreadable file with the one model). **What is held of
+  the file - list, problem, read - is forgotten only where the FILE changes** (`UseOwnOscilloscopesPath`,
+  from `LoadFrom`/`InitializeAsync`), never at a reload's start (second review: a failed read looked like
+  another file there, the problem was lifted, and a model made during the data check was written over
+  it). **ONE RULE carries the rest: the list changes and the file is written only once the file was
+  READ WELL** (`_ownScopeModelsReadFrom`; a file not read yet - no main file at launch - is refused too,
+  `OwnScopeModelsNotReadYet`). So `LoadOwnScopeModels` is three steps (third review: a reference check
+  and a held-list juggle went): the file read only while no read went well (nothing can have changed
+  since, so the read simply becomes the list); reconciled under the lock WITH THE LIST HELD NOW (an edit
+  made meanwhile is reconciled, never undone); written back by the save's own write
+  (`WriteHeldOwnScopeModels`, under the one gate - the latest list, in turn). **The published models stay
+  listed until the new main file is read** - only one that cannot be read takes them out
+  (`NoPublishedScopeModels`). **As soon as a load lists the models the tab follows**
+  (`DataManager.ScopeModelsListed`, raised on the load's thread, subscribed by `Main.StartAsync` only and
+  posted to `TabOscilloscope.FollowScopeModelsReloaded` - not after the whole data check; fourth review,
+  2026-10-29): drop-downs made again keeping the session - unless the selection lands on another model
+  than the one shown, which ends it - an own model shown follows ITS rename
+  (`DataManager.OwnScopeModelRenamedTo`, from `Reconciled(..., out renamed)` - never a guess from a
+  name's start), an editor whose model was taken over closes and says so. **An action on the model
+  edited follows first** when no own model has its name any more (`EditedModelRowFollowingReload` - a
+  box left, a name, Try it, a send), so a change typed in between lands in the renamed model. A
+  delete the file did not take puts the model back and says so (`PutBackOwnScopeModels`). **The TCP port
+  box follows the model shown** - picked, made, or its "Network port" changed - **except while a session
+  is open**, which the box's change would end.
+- **"Submit this model" sends an own model in for everybody** (slice 5b's second half, 2026-10-29;
+  `TabOscilloscope.ModelSubmit.cs`, `SubmissionClient.SubmitOscilloscopeModelAsync`; the plan: "Submit
+  this model sends it to the administrator's queue ... a new kind of submission on the server"). One
+  request, `POST /api/submissions/oscilloscope-models`: the model's values keyed by the MAIN FILE'S OWN
+  NAMES (`OscilloscopeModelValues` - a dictionary key is never put through the naming policy), the
+  address as `ContactAddress` chooses it (signed in on the Maintainer tab: the account's, read only,
+  sent WITH the token - a session the server ended meanwhile is then taken as that address, as the
+  Submit dialog's), a message, and whether "Run full test suite" went through on the model AS IT IS NOW
+  (`OscilloscopeModelValues.Fingerprint` - CRT.Data, every value - of the row the run's entry was made
+  from, `OscilloscopeEntry.Row`; set at the end of a full run, said at once in an open send panel - a
+  change since makes it not so; told, decides nothing). Every check is `OscilloscopeModelRules.SubmissionProblems`, asked by CRT before it
+  sends and by the server when it takes it (a command is one line; a value name the server does not
+  know is refused; Identify is needed). Sent, the editor says when (`UserSettings.OscilloscopeModelsSent`).
+  **The administrator decides on the Account screen's "Oscilloscope models"** (padlocked;
+  `OscilloscopeModelsView`, words `OscilloscopeModelsDisplay`): each model a card - sender in bold, the
+  suite line, the message, every value beside the published model of its name, the changes marked -
+  with Publish and Reject (a reason needed, mailed). The server's side is "Oscilloscope models sent in"
+  under the contribution service below.
 - `MiniPro/` - `IMiniproRunner` (`MiniproProcessRunner` spawns the bundled `minipro.exe`, Windows
   only; `MockMiniproRunner` simulates). **The demo mode proves nothing about a test's vectors** -
   `MockMiniproRunner` passes whatever they say. The IC test catalogue (`Assets/Data/.../MiniPro/IC
@@ -1845,6 +1953,45 @@ Load-bearing, and easy to undo by accident:
   the invitation that would is refused for it); an unverified or locked account is left alone. The approver is named on the pool row and the audit, and
   told the outcome (`ReviewDecisionAnswer.MaintainerNote`). It runs after the publish and never fails
   it. "Create board"'s `NewBoardMaintainerWindow` is the agreement this acts on.
+- **Oscilloscope models sent in** (server 4.2.0, migration 0024, 2026-10-29; `OscilloscopeModelFlows`,
+  `OscilloscopeModelEndpoints`, `AdminEndpoints.OscilloscopeModels.cs`): a NEW KIND of submission with a
+  table of its own (`oscilloscope_submissions`) - nothing of the board pipeline applies. Sending needs no
+  account (a typed address, or the signed-in account's), is under the contributor routes' SENDING limit,
+  and at most `MaxPerAddress` (10) a day per INTERNET CONNECTION (`ConnectionOf`: an IPv4 address, an
+  IPv6 /64 - all that is stored; the refusal says "internet connection", never "this address"),
+  **counted and kept as ONE step** (`SendGate` - the service is one process; third review, Security: a
+  burst all counted under the limit), and **at most `MaxWaiting` (100) wait at once from everybody**
+  (fourth review, Security: a whole IPv6 prefix holds thousands of /64s, each model mailed to every
+  administrator); **names are matched by `OscilloscopeModelRules.SameName`, never the table's collation**
+  (utf8mb4_unicode_ci ignores accents - the store selects and filters in C#); a newer model of the same name from the same contributor - the
+  same account, or WITHOUT one the same typed address AND connection (an address alone is no proof) -
+  marks the PENDING one `replaced`; the administrators are mailed. What is stored is cut by `BoardViewRules.Clip`, the one
+  rule (never half a character - utf8mb4 refuses one; the sign-in's user agent too). **The administrator
+  alone decides** (the `/api/admin` group). **Publish writes the BETA and the stable main files AT ONCE**
+  (owner decision 2026-10-24: "published with one click"), as "Order of boards" does - in place of the
+  model of its name (`MasterListing.PutOscilloscope`; only a CRT 4.0 main file takes one), each changed
+  tree's manifest rebuilt (`BoardOrderFlow.RebuildAsync`), under the `PublishLock`; BETA first, never
+  rolled back. **A stable source that could not take the model leaves it IN BETA**
+  (`OscilloscopeModelStates.InBeta`, a state of its own - no migration, the column is a VARCHAR):
+  still listed (`inBeta` on its queue entry, the card offering Publish alone), the BETA write audited,
+  its contributor not mailed yet, never replaced by a newer copy, and **never rejected** - it cannot be
+  taken back out of BETA; Publish again finishes it (BETA, holding it, writes nothing) - code reviews,
+  2026-10-29: marked published the retry was refused for good, left pending a Reject or a newer copy
+  took it out of the list while BETA kept it. A manifest not rebuilt is said in `Problem`, and the
+  contributor's mail then promises no next launch. What was written is recorded published (or in BETA)
+  even when a newer copy marked it replaced meanwhile (`DecideAsync(evenIfReplaced)`, `MarkInBetaAsync`).
+  **A publish that writes BETA settles every OTHER copy of its name still in BETA** - replaced, out of
+  the list (`ReplaceInBetaOfNameAsync`; third review: its "Publish again" wrote older commands back over
+  the newer model in both trees) - once both trees are written, guarded (a database failing there fails
+  nothing written), and a copy ANOTHER contributor sent is mailed (`OscilloscopeModelSuperseded`). The
+  administrator's answer promises the next launch only as the mail does (manifests rebuilt). **Reject needs a reason and takes the `PublishLock` too**, so no
+  decision lands in the middle of a publish. The contributor is mailed either way; no mail fails what it
+  follows. A reason typed on a card outlives a decision on another (`OscilloscopeModelsView.ShowModels`).
+  **The models waiting are the administrator's work**: `GET /api/review/queue` carries
+  `OscilloscopeModelsWaiting` (`OscilloscopeModelFlows.WaitingForAsync`, 0 for anybody else), counted in
+  the tab's badge and on the Account button - "hide the tab while no work is waiting" hid them. The data
+  reset counts, shows, fingerprints and deletes the table like the submissions. `contact_email` is
+  VARCHAR(320), as every email column (`EmailColumnsMigrationTests`).
 - **The Boards screen is for every maintainer, every board** (`CanReviewAnything`) - do not narrow
   WHICH boards without asking. **The ADDRESSES in it are narrowed** (`CanSeeAddressesOf`): a new field
   carrying a person must follow `AddressesHidden`; the flow's test serialises the whole answer and fails

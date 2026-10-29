@@ -43,7 +43,7 @@ I use this for the [CRT Fun facts](https://classic-repair-toolbox.dk/funfacts/) 
 
 ## When you submit a contribution
 
-Nothing you edit leaves your computer until you click **Submit** on the "Drafts" tab. A submission sends:
+Nothing you edit leaves your computer until you click **Submit** on the "Contribute" tab. A submission sends:
 
 - The board's data and files, as your draft has them
 - The description you write
@@ -53,11 +53,27 @@ Nothing you edit leaves your computer until you click **Submit** on the "Drafts"
 
 Your email address is shown only to the maintainers of that board and to the administrator. Maintainers of other boards never see it - at most the name on your account, if you were signed in when you sent it.
 
+The server keeps the IP address a submission came from, only to limit how many submissions one address can send in a day.
+
+The Submit dialog offers to credit you for your work. A credit you tick goes into the board's data with the name and the contact you give it - and the board's credits are shown to everybody who uses CRT. Nothing is credited unless you tick it.
+
+## When you send in an oscilloscope model
+
+**Submit this model** on the "Oscilloscope" tab sends:
+
+- The model: its vendor, its name and every command and setting of it
+- Your email address (your account's, when you are signed in on the "Maintainer" tab), so you are told whether it was published
+- Your name, if you give one, and your message
+- Whether CRT's full test suite went through on the model
+- The CRT version
+
+Only the administrator sees it. The server keeps the IP address it came from - of an IPv6 address only its network part - for two things only: to limit how many models one internet connection can send in a day, and, when you are not signed in, to know that a newer copy of your model sent from the same connection and address replaces the one still waiting. A published model is part of CRT's data for everybody - without your name or address.
+
 While a submission is still open, CRT asks the server how it is getting on - at launch, and every minute while CRT's window is open and not minimised - using its number and the private code CRT was given when you sent it.
 
 ## When you discard a draft you have submitted
 
-If you discard a draft on the "Drafts" tab while something you sent from it is still being reviewed - waiting, or published to the BETA source but not yet to everyone - CRT tells the server that you discarded your draft. The maintainers of that board then see it beside your contribution, so they can check with you before publishing it. It does not withdraw what you sent.
+If you discard a draft (**Discard draft** on the "Contribute" tab) while something you sent from it is still being reviewed - waiting, or published to the BETA source but not yet to everyone - CRT tells the server that you discarded your draft. The maintainers of that board then see it beside your contribution, so they can check with you before publishing it. It does not withdraw what you sent.
 
 It sends only the number of that contribution and the private code CRT was given when you sent it (which proves the contribution is yours), nothing else. Without an internet connection it waits, and is sent the next time CRT starts and can reach the server.
 
@@ -84,6 +100,6 @@ With "Check for new or updated data at application launch" ticked in the "Config
 
 Every time CRT talks to the server - the check-in, sending board views or feedback, submitting a contribution - it says which CRT version it is. The server counts, per day, how many times each CRT version used each part of the server. Nothing else is kept: no IP address, no account and no user or installation ID.
 
-While you have drafts on the "Drafts" tab, or the "Maintainer" tab is turned on, CRT also asks the server once when it starts (or when either first comes into use) whether this CRT is still new enough for it, so those tabs can say so if CRT has to be updated. That request carries the CRT version and nothing else.
+While you have drafts, or the "Maintainer" tab is turned on, CRT also asks the server once when it starts (or when either first comes into use) whether this CRT is still new enough for it, so those tabs can say so if CRT has to be updated. That request carries the CRT version and nothing else.
 
 I use this to see when an old part of the server is no longer used by anybody, so it can be retired. A CRT version that still uses a retired part is told to update, instead of failing.

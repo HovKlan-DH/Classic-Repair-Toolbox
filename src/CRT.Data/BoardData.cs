@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 
 namespace Handlers.DataHandling
 {
@@ -537,5 +538,59 @@ namespace Handlers.DataHandling
 
         public string DefaultFileExtension { get; init; } = string.Empty;
         public string Notes { get; init; } = string.Empty;
+
+        // A model of the user's own (OwnOscilloscopeFile) - the Oscilloscope tab edits only those.
+        public bool IsOwn { get; init; }
+
+        // The main file's row this entry was made from (From) - every value of the model by the main
+        // file's own names (OscilloscopeModelValues.Of), what "Submit this model" says the suite went
+        // through on. Rows are copied when changed, never changed in place.
+        public MainDocument.OscilloscopeRow? Row { get; init; }
+
+        // Every text value of the main file's row with the entry's property of the same name - what From
+        // copies, and ValueOf reads. A row value with no entry property of its name is left out here,
+        // and OscilloscopeEntryTests fails on it.
+        private static readonly IReadOnlyList<(System.Reflection.PropertyInfo Row, System.Reflection.PropertyInfo Entry)> RowValues =
+            typeof(MainDocument.OscilloscopeRow)
+                .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Where(property => property.PropertyType == typeof(string))
+                .Select(property => (Row: property, Entry: typeof(OscilloscopeEntry).GetProperty(property.Name)))
+                .Where(pair => pair.Entry is { PropertyType: var type } && type == typeof(string))
+                .Select(pair => (pair.Row, pair.Entry!))
+                .ToList();
+
+        // The entry's property of each value by the main file's name for it (OscilloscopeModelValues).
+        private static readonly IReadOnlyDictionary<string, System.Reflection.PropertyInfo> ByValueName =
+            OscilloscopeModelValues.Names
+                .Select(name => (Name: name, Entry: typeof(OscilloscopeEntry).GetProperty(OscilloscopeModelValues.PropertyOf(name).Name)))
+                .Where(pair => pair.Entry is not null)
+                .ToDictionary(pair => pair.Name, pair => pair.Entry!, System.StringComparer.Ordinal);
+
+        // ###########################################################################################
+        // One model of the main file, as the Oscilloscope tab takes it - the published list's and
+        // the user's own alike, and the model editor's Try it on the model as it is being edited.
+        // EVERY value of the row is copied, by its property's name - never a list of them here (code
+        // review, 2026-10-29: OscilloscopeModelValues is the one map of a model's values).
+        // ###########################################################################################
+        public static OscilloscopeEntry From(MainDocument.OscilloscopeRow scope, bool isOwn = false)
+        {
+            System.ArgumentNullException.ThrowIfNull(scope);
+
+            var entry = new OscilloscopeEntry { IsOwn = isOwn, Row = scope };
+
+            foreach ((System.Reflection.PropertyInfo row, System.Reflection.PropertyInfo own) in OscilloscopeEntry.RowValues)
+            {
+                own.SetValue(entry, (string?)row.GetValue(scope) ?? string.Empty);
+            }
+
+            return entry;
+        }
+
+        // The value the main file names `name` ("identify", "dumpImage" ... - OscilloscopeModelValues)
+        // - what ScopeCommandResolver sends for a command.
+        public string ValueOf(string name) =>
+            OscilloscopeEntry.ByValueName.TryGetValue(name, out System.Reflection.PropertyInfo? property)
+                ? (string?)property.GetValue(this) ?? string.Empty
+                : throw new System.ArgumentOutOfRangeException(nameof(name), name, "No value of an oscilloscope model goes by this name.");
     }
 }

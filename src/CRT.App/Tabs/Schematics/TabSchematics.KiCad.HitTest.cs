@@ -568,6 +568,10 @@ public partial class TabSchematics
         this.CheckBoardShowTracesOnSelectedComponent.IsEnabled = hasKiCadTraces;
 
         this.UpdateSchematicsInteractiveCadTraceHoverHoldShiftVisualState(isHoldShiftEnabled);
+
+        // The gear only while its popover has a setting to show (CRT 4.0 step 5) - every row is a
+        // KiCad one, so a board without KiCad data has none, and an empty popover is no setting.
+        this.GlobalSettingsButton.IsVisible = this.GlobalSettingsListPanel.Children.Any(row => row.IsVisible);
     }
 
     // ###########################################################################################

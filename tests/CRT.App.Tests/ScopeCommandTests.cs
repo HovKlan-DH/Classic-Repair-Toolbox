@@ -47,6 +47,29 @@ public class ScopeCommandTests
         Assert.Equal(":TIM:SCAL {0}", ScopeCommandResolver.GetCommandText(entry, ScopeCommand.SetTimeDiv));
     }
 
+    // ###########################################################################################
+    // EVERY command sends the value named after it (code review, 2026-10-29). Which value a command
+    // sends is ScopeModelFields' key for it, read off the entry by that name - a key paired with the
+    // wrong command (queryTimeDiv for QueryVoltsDiv) would send every T/DIV step as a volts command,
+    // and three commands tested by hand would never see it. Every value told apart from the others.
+    // ###########################################################################################
+    [Fact]
+    public void Every_command_sends_the_value_of_the_model_named_after_it()
+    {
+        var row = new MainDocument.OscilloscopeRow { Brand = "Rigol", SeriesOrModel = "DS1054Z" };
+
+        foreach (string name in OscilloscopeModelValues.Names)
+            OscilloscopeModelValues.Set(row, name, $"{name} value");
+
+        OscilloscopeEntry entry = OscilloscopeEntry.From(row);
+
+        foreach (ScopeCommand command in AllCommands)
+        {
+            string expected = (string)typeof(MainDocument.OscilloscopeRow).GetProperty(command.ToString())!.GetValue(row)!;
+            Assert.Equal(expected, ScopeCommandResolver.GetCommandText(entry, command));
+        }
+    }
+
     [Fact]
     public void GetCommandText_returns_empty_for_a_command_the_scope_does_not_define()
     {

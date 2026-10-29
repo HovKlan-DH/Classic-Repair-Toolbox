@@ -65,7 +65,8 @@ One folder per workbook, holding everything belonging to it:
 
 ```
 Workbooks/
-├── index.json                  <- bookkeeping (the next workbook number)
+├── index.json                  <- bookkeeping (the next workbook and device numbers)
+├── device_1/                   <- one of your devices - see Devices
 ├── workbook_1/
 │   ├── index.json              <- the workbook
 │   ├── worklog_1/

@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CRT.OscilloscopeModelsView">
+
+    <!--
+    OSCILLOSCOPE MODELS (CRT 4.0 step 5, 2026-10-29 - the plan: "Submit this model sends it to the
+    administrator's queue on the Maintainer tab, which publishes it into the main file for
+    everybody"). ADMINISTRATOR ONLY, like every padlocked entry on the Account screen.
+
+    Each model waiting is a card: its name, whether it is new or replaces the published model of its
+    name, who sent it, whether CRT's full test suite went through on it, the contributor's message,
+    and every value beside the published model's (the changes marked). Publish writes it into the
+    BETA and the stable main files at once; Reject needs a reason, which the contributor is mailed.
+    The words are OscilloscopeModelsDisplay's; the server's OscilloscopeModelFlows decides. A
+    handful of cards, so a ScrollViewer.
+    -->
+    <DockPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="HeadingText"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   Margin="0,0,0,8" />
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="ExplanationText"
+                   TextWrapping="Wrap"
+                   Opacity="0.8"
+                   Margin="0,0,0,12" />
+
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Margin="0,0,0,12">
+            <Button x:Name="RefreshButton"
+                    Content="Refresh"
+                    Click="OnRefreshClick" />
+        </StackPanel>
+
+        <TextBlock DockPanel.Dock="Top"
+                   x:Name="MessageText"
+                   TextWrapping="Wrap"
+                   IsVisible="False"
+                   Margin="0,0,0,8" />
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="ModelsPanel"
+                        Spacing="12"
+                        Margin="0,0,12,0" />
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

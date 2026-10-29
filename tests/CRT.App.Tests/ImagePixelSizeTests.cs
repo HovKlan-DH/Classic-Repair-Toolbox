@@ -87,4 +87,20 @@ public sealed class ImagePixelSizeTests
         Assert.Null(ImagePixelSize.TryRead(null));
         Assert.Null(ImagePixelSize.TryRead(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".gif")));
     }
+
+    // From bytes held in memory - the scope's screen picture: PNG and JPEG by the export's reader,
+    // the rest by their header; a header cut short, or no picture, gives none and never throws.
+    [Fact]
+    public void A_picture_s_bytes_give_its_size_whatever_its_kind()
+    {
+        byte[] png = [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R', 0, 0, 3, 32, 0, 0, 1, 224];
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x01, 0xE0, 0x03, 0x20, 0x03];
+        byte[] gif = Padded((byte)'G', (byte)'I', (byte)'F', (byte)'8', (byte)'9', (byte)'a', 0xA0, 0x0F, 0xB8, 0x0B);
+
+        Assert.Equal((800, 480), ImagePixelSize.FromBytes(png));
+        Assert.Equal((800, 480), ImagePixelSize.FromBytes(jpeg));
+        Assert.Equal((4000, 3000), ImagePixelSize.FromBytes(gif));
+        Assert.Null(ImagePixelSize.FromBytes([0xFF, 0xD8, 0xFF, 0xE0]));
+        Assert.Null(ImagePixelSize.FromBytes([]));
+    }
 }

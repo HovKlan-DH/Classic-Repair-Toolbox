@@ -57,7 +57,9 @@ namespace CRT.Server.Handlers.Submissions
         int Boards,
         int HistoryEntries,
         int BoardViews,
-        int ApiUsageRows);
+        int ApiUsageRows,
+        int OscilloscopeModels = 0,
+        long LastOscilloscopeModelId = 0);
 
     public sealed record DataResetResult(DataResetCounts Deleted, IReadOnlyList<long> SubmissionIds);
 }

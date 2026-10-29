@@ -34,6 +34,11 @@ namespace CRT
             return (snapshot.Host, snapshot.Port);
         }
 
+        // As if "Connect to oscilloscope" had gone through - the flag alone, no socket is opened.
+        internal void MarkSessionEstablishedForTests() => this.thisHasEstablishedOscilloscopeSession = true;
+
+        internal bool IsSessionEstablishedForTests => this.thisHasEstablishedOscilloscopeSession;
+
         // ###########################################################################################
         // Runs one command palette against the supplied client - the real ExecutePaletteAsync, with
         // only the client swapped for a fake.

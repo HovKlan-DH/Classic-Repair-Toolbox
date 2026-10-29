@@ -100,7 +100,7 @@ namespace CRT.Server.Handlers.Submissions
             var problems = new List<string>();
 
             if (betaEdit.Changed && beta is not null)
-                await BoardOrderFlow.RebuildAsync(beta, writeManifest, problems).ConfigureAwait(false);
+                await BoardOrderFlow.RebuildAsync(beta, writeManifest, problems, BoardOrderFlow.WhatChanged).ConfigureAwait(false);
 
             bool? stableChanged = null;
 
@@ -124,7 +124,7 @@ namespace CRT.Server.Handlers.Submissions
                     else if (stableEdit.Changed)
                     {
                         stableChanged = true;
-                        await BoardOrderFlow.RebuildAsync(stable, writeManifest, problems).ConfigureAwait(false);
+                        await BoardOrderFlow.RebuildAsync(stable, writeManifest, problems, BoardOrderFlow.WhatChanged).ConfigureAwait(false);
                     }
                 }
             }
@@ -202,14 +202,20 @@ namespace CRT.Server.Handlers.Submissions
             return held.SetEquals(sent);
         }
 
+        // What CRT would not download from a tree whose manifest could not be rebuilt.
+        private const string WhatChanged = "the new order";
+
         // ###########################################################################################
-        // One tree's manifest, on the pool (it hashes the whole tree); a failure is a problem line.
-        // Takes no token: it only ever runs after a list was written (see SetAsync).
+        // One tree's manifest, on the pool (it hashes the whole tree); a failure is a problem line
+        // naming `whatChanged` - what CRT will not download until it is rebuilt. Takes no token: it
+        // only ever runs after a main file was written (see SetAsync, and OscilloscopeModelFlows'
+        // publish, which writes the main files the same way).
         // ###########################################################################################
-        private static async Task RebuildAsync(
+        internal static async Task RebuildAsync(
             UnusedFileFlows.DataTree tree,
             Func<UnusedFileFlows.DataTree, int> writeManifest,
-            List<string> problems)
+            List<string> problems,
+            string whatChanged)
         {
             int entries;
 
@@ -227,7 +233,7 @@ namespace CRT.Server.Handlers.Submissions
                 string source = tree.Name == UnusedFileFlows.Beta ? "BETA" : "the stable source";
 
                 problems.Add(
-                    $"The checksum manifest of {source} could not be rebuilt, so CRT will not download the new order from there yet - " +
+                    $"The checksum manifest of {source} could not be rebuilt, so CRT will not download {whatChanged} from there yet - " +
                     "use " + MaintainerScreenWording.AccountQuoted + " > \"Rebuild checksum manifests\".");
             }
         }

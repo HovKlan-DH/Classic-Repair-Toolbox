@@ -25,7 +25,7 @@
 				</Grid>
 
 				<Grid Grid.Row="1"
-					  RowDefinitions="Auto,Auto"
+					  RowDefinitions="Auto,Auto,Auto"
 					  Margin="0,12,0,0">
 					<TextBlock Grid.Row="0"
 							   Text="Series or model"
@@ -34,6 +34,28 @@
 					<ComboBox Grid.Row="1"
 							  x:Name="SeriesOrModelComboBox"
 							  HorizontalAlignment="Stretch" />
+
+					<!-- The model editor (TabOscilloscope.ModelEditor.cs): a model of the user's own,
+					     made from the one shown, and edited when it is the user's. -->
+					<StackPanel Grid.Row="2"
+								Margin="0,8,0,0"
+								Spacing="6">
+						<Button x:Name="ScopeNotListedButton"
+								Content="My scope is not listed"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnScopeNotListedClick" />
+						<Button x:Name="EditMyModelButton"
+								Content="Edit my model"
+								IsVisible="False"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnEditMyModelClick" />
+					</StackPanel>
 				</Grid>
 
 				<StackPanel Grid.Row="2"
@@ -145,8 +167,260 @@
 
 		<Border Grid.Column="2"
 				Padding="0">
-			<Grid RowDefinitions="Auto,*">
-				<TextBox Grid.Row="1"
+			<!-- The model editor above the output while it is open, the splitter between them; the
+			     row heights are set by ShowModelEditor - never new RowDefinitions. -->
+			<Grid x:Name="OutputColumnGrid"
+				  RowDefinitions="0,0,*">
+
+				<Border Grid.Row="0"
+						x:Name="ModelEditorBorder"
+						IsVisible="False"
+						Padding="16,12,16,8">
+					<Border.Styles>
+						<Style Selector="TextBlock.ModelHeading">
+							<Setter Property="FontSize" Value="14" />
+							<Setter Property="FontWeight" Value="Bold" />
+						</Style>
+						<Style Selector="TextBlock.ModelIntro">
+							<Setter Property="FontSize" Value="11" />
+							<Setter Property="Opacity" Value="0.75" />
+							<Setter Property="TextWrapping" Value="Wrap" />
+						</Style>
+						<Style Selector="TextBlock.FieldLabel">
+							<Setter Property="FontSize" Value="11" />
+							<Setter Property="Margin" Value="0,6,0,2" />
+						</Style>
+						<Style Selector="TextBlock.FieldHelp">
+							<Setter Property="FontSize" Value="11" />
+							<Setter Property="Opacity" Value="0.75" />
+							<Setter Property="TextWrapping" Value="Wrap" />
+						</Style>
+						<Style Selector="TextBlock.FieldProblem">
+							<Setter Property="FontSize" Value="11" />
+							<Setter Property="TextWrapping" Value="Wrap" />
+							<Setter Property="Foreground" Value="{DynamicResource Text_Warning_Fg}" />
+						</Style>
+						<Style Selector="TextBlock.TrialReply">
+							<Setter Property="FontSize" Value="11" />
+							<Setter Property="FontFamily" Value="Consolas" />
+							<Setter Property="TextWrapping" Value="Wrap" />
+							<Setter Property="Foreground" Value="{DynamicResource Text_Success_Fg}" />
+						</Style>
+						<Style Selector="TextBlock.TrialReply.failed">
+							<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
+						</Style>
+					</Border.Styles>
+
+					<Grid RowDefinitions="Auto,*">
+						<Grid Grid.Row="0"
+							  ColumnDefinitions="*,Auto"
+							  Margin="0,0,0,8">
+							<StackPanel Grid.Column="0"
+										Spacing="2">
+								<TextBlock x:Name="ModelEditorHeading"
+										   Classes="ModelHeading"
+										   Text="My scope is not listed" />
+								<TextBlock x:Name="ModelEditorIntro"
+										   Classes="ModelIntro" />
+								<TextBlock x:Name="ModelEditorSaveStateText"
+										   Classes="ModelIntro"
+										   IsVisible="False" />
+							</StackPanel>
+							<Button Grid.Column="1"
+									x:Name="ModelEditorCloseButton"
+									Content="Close"
+									VerticalAlignment="Top"
+									FontSize="12"
+									Padding="8,4"
+									Click="OnModelEditorCloseClick" />
+						</Grid>
+
+						<ScrollViewer Grid.Row="1"
+									  HorizontalScrollBarVisibility="Disabled"
+									  VerticalScrollBarVisibility="Auto">
+							<StackPanel Margin="0,0,12,0"
+										Spacing="4">
+
+								<!-- A new model: the one it starts from and its name. -->
+								<StackPanel x:Name="NewModelPanel"
+											Spacing="2">
+									<TextBlock Classes="FieldLabel"
+											   Text="Start from" />
+									<ComboBox x:Name="StartFromComboBox"
+											  HorizontalAlignment="Stretch" />
+									<Grid ColumnDefinitions="*,8,*">
+										<StackPanel Grid.Column="0">
+											<TextBlock Classes="FieldLabel"
+													   Text="Vendor" />
+											<TextBox x:Name="NewModelVendorTextBox"
+													 FontSize="12"
+													 PlaceholderText="Rigol" />
+										</StackPanel>
+										<StackPanel Grid.Column="2">
+											<TextBlock Classes="FieldLabel"
+													   Text="Series or model" />
+											<TextBox x:Name="NewModelNameTextBox"
+													 FontSize="12"
+													 PlaceholderText="DS1054Z" />
+										</StackPanel>
+									</Grid>
+									<TextBlock x:Name="NewModelProblemText"
+											   Classes="FieldProblem"
+											   IsVisible="False" />
+									<Button x:Name="CreateModelButton"
+											Classes="Accept"
+											Content="Create model"
+											Margin="0,8,0,0"
+											FontSize="12"
+											Padding="8,4"
+											Click="OnCreateModelClick" />
+								</StackPanel>
+
+								<!-- A model of the user's own: its name, then every value
+								     (ScopeModelFields), each saved as it is left. -->
+								<StackPanel x:Name="EditModelPanel"
+											IsVisible="False"
+											Spacing="2">
+									<Grid ColumnDefinitions="*,8,*">
+										<StackPanel Grid.Column="0">
+											<TextBlock Classes="FieldLabel"
+													   Text="Vendor" />
+											<TextBox x:Name="ModelVendorTextBox"
+													 FontSize="12" />
+										</StackPanel>
+										<StackPanel Grid.Column="2">
+											<TextBlock Classes="FieldLabel"
+													   Text="Series or model" />
+											<TextBox x:Name="ModelNameTextBox"
+													 FontSize="12" />
+										</StackPanel>
+									</Grid>
+									<TextBlock x:Name="ModelNameProblemText"
+											   Classes="FieldProblem"
+											   IsVisible="False" />
+
+									<StackPanel x:Name="ModelFieldsPanel"
+												Spacing="2" />
+
+									<StackPanel Orientation="Horizontal"
+												Margin="0,12,0,0"
+												Spacing="8">
+										<Button x:Name="ModelRunFullTestSuiteButton"
+												Content="Run full test suite"
+												IsEnabled="False"
+												FontSize="12"
+												Padding="8,4"
+												Click="OnRunFullTestSuiteClick" />
+										<Button x:Name="SubmitModelButton"
+												Classes="Accept"
+												Content="Submit this model"
+												FontSize="12"
+												Padding="8,4"
+												Click="OnSubmitModelClick" />
+										<Button x:Name="DeleteModelButton"
+												Classes="Danger"
+												Content="Delete model"
+												FontSize="12"
+												Padding="8,4"
+												Click="OnDeleteModelClick" />
+									</StackPanel>
+
+									<TextBlock x:Name="ModelSentText"
+											   Classes="ModelIntro"
+											   Margin="0,6,0,0"
+											   IsVisible="False" />
+
+									<!-- "Submit this model" (TabOscilloscope.ModelSubmit.cs): sent in for
+									     everybody, to the administrator's queue. -->
+									<Border x:Name="SubmitModelPanel"
+											IsVisible="False"
+											Margin="0,10,0,0"
+											Padding="12"
+											BorderThickness="1"
+											CornerRadius="4"
+											BorderBrush="{DynamicResource Panel_Border}">
+										<StackPanel Spacing="2">
+											<TextBlock Classes="ModelHeading"
+													   Text="Send this model in for everybody" />
+											<TextBlock x:Name="SubmitModelIntroText"
+													   Classes="ModelIntro" />
+											<TextBlock x:Name="SubmitModelSuiteText"
+													   Classes="FieldHelp"
+													   Margin="0,6,0,0" />
+											<TextBlock Classes="FieldLabel"
+													   Text="Your email address" />
+											<TextBox x:Name="SubmitModelEmailTextBox"
+													 FontSize="12"
+													 PlaceholderText="you@example.com" />
+											<TextBlock x:Name="SubmitModelEmailNoteText"
+													   Classes="FieldHelp" />
+											<TextBlock Classes="FieldLabel"
+													   Text="Your name (if you like)" />
+											<TextBox x:Name="SubmitModelNameTextBox"
+													 FontSize="12" />
+											<TextBlock Classes="FieldLabel"
+													   Text="Message to the administrator" />
+											<TextBox x:Name="SubmitModelMessageTextBox"
+													 FontSize="12"
+													 MinHeight="60"
+													 AcceptsReturn="True"
+													 TextWrapping="Wrap"
+													 PlaceholderText="Your scope's exact model and firmware, and anything that did not work" />
+											<TextBlock x:Name="SubmitModelProblemText"
+													   Classes="FieldProblem"
+													   IsVisible="False" />
+											<StackPanel Orientation="Horizontal"
+														Margin="0,8,0,0"
+														Spacing="8">
+												<Button x:Name="SendModelButton"
+														Classes="Accept"
+														Content="Send"
+														FontSize="12"
+														Padding="8,4"
+														Click="OnSendModelClick" />
+												<Button x:Name="CancelSendModelButton"
+														Content="Cancel"
+														FontSize="12"
+														Padding="8,4"
+														Click="OnCancelSendModelClick" />
+											</StackPanel>
+										</StackPanel>
+									</Border>
+
+									<StackPanel x:Name="DeleteModelConfirmPanel"
+												IsVisible="False"
+												Margin="0,8,0,0"
+												Spacing="6">
+										<TextBlock x:Name="DeleteModelConfirmText"
+												   Classes="ModelIntro" />
+										<StackPanel Orientation="Horizontal"
+													Spacing="8">
+											<Button x:Name="ConfirmDeleteModelButton"
+													Classes="Danger"
+													Content="Delete it"
+													FontSize="12"
+													Padding="8,4"
+													Click="OnConfirmDeleteModelClick" />
+											<Button x:Name="KeepModelButton"
+													Content="Keep it"
+													FontSize="12"
+													Padding="8,4"
+													Click="OnKeepModelClick" />
+										</StackPanel>
+									</StackPanel>
+								</StackPanel>
+							</StackPanel>
+						</ScrollViewer>
+					</Grid>
+				</Border>
+
+				<GridSplitter Grid.Row="1"
+							  x:Name="ModelEditorSplitter"
+							  IsVisible="False"
+							  ResizeDirection="Rows"
+							  HorizontalAlignment="Stretch" />
+
+				<TextBox Grid.Row="2"
 					 x:Name="OutputTextBox"
 					 Margin="0,0,0,0"
 					 IsReadOnly="True"

@@ -1219,6 +1219,47 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
+        // Account > "Oscilloscope models" (CRT 4.0 step 5): the models sent in from CRT and waiting,
+        // and the administrator's decision on one. A publish writes the BETA and the stable main
+        // files, so a timeout is said as one that may have happened (PostProductionAsync).
+        // ###########################################################################################
+        public async Task<ReviewApiResult<OscilloscopeModelQueueAnswer>> GetOscilloscopeModelsAsync(
+            ReviewSession session,
+            CancellationToken cancellationToken = default)
+        {
+            return await this
+                .SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Get, ReviewApiRoutes.AdminOscilloscopeModels(this.thisBaseAddress)),
+                    ReviewApiParser.ParseOscilloscopeModelQueue,
+                    session,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public Task<ReviewApiResult<OscilloscopeModelDecisionAnswer>> PublishOscilloscopeModelAsync(
+            ReviewSession session,
+            long id,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminOscilloscopeModelPublish(this.thisBaseAddress),
+                new OscilloscopeModelDecisionRequest(id, null),
+                ReviewApiParser.ParseOscilloscopeModelDecision,
+                session,
+                cancellationToken);
+
+        public Task<ReviewApiResult<OscilloscopeModelDecisionAnswer>> RejectOscilloscopeModelAsync(
+            ReviewSession session,
+            long id,
+            string reason,
+            CancellationToken cancellationToken = default) =>
+            this.PostProductionAsync(
+                ReviewApiRoutes.AdminOscilloscopeModelReject(this.thisBaseAddress),
+                new OscilloscopeModelDecisionRequest(id, reason),
+                ReviewApiParser.ParseOscilloscopeModelDecision,
+                session,
+                cancellationToken);
+
+        // ###########################################################################################
         // A request body: one of CRT.Data's ReviewApiContract records, in the JSON the server reads
         // (ReviewApiContract.WireSettings, which the server applies too). Serialised by its RUNTIME
         // type, since callers pass it as `object`. Internal so ReviewWireContractTests can send

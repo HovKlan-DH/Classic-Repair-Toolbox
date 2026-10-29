@@ -30,6 +30,8 @@ The search box runs across the top of the tab and filters both sides - see "Find
 
 One card per repair, newest first. **Click a card** to switch to that workbook - the bar, the board and "Add worklog" all follow it.
 
+Above the workbooks, "My devices" lists your own machines, whatever board is shown; a device's card opens its page in place of the workbook - see [Devices](Workbooks-Devices).
+
 Which workbooks are listed depends on the scope setting in "Configuration": this board only (default), or all boards. With all boards, each card also names its board, and clicking one from another board switches the application to it.
 
 ## ② Board pane

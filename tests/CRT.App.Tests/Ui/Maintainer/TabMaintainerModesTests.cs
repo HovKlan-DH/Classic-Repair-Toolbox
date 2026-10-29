@@ -116,7 +116,7 @@ public sealed class TabMaintainerModesTests
                 Assert.False(TabMaintainerModesTests.Shown(main, other), other);
 
             Assert.Equal(
-                ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "ResetDataItem"],
+                ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "OscilloscopeModelsItem", "ResetDataItem"],
                 main.FindControl<ListBox>("AccountList")!.Items.OfType<ListBoxItem>().Select(item => item.Name));
 
             main.FindControl<ListBox>("AccountList")!.SelectedItem = main.FindControl<ListBoxItem>("BoardOrderItem");
@@ -317,7 +317,7 @@ public sealed class TabMaintainerModesTests
     }
 
     private static readonly string[] AllAccountEntries =
-        ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "ResetDataItem"];
+        ["MyAccountItem", "ServerVersionItem", "MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "OscilloscopeModelsItem", "ResetDataItem"];
 
     // ###########################################################################################
     // *** EVERY ADMINISTRATOR'S ENTRY CARRIES THE PADLOCK, AND NOTHING ELSE DOES (owner request,
@@ -344,7 +344,7 @@ public sealed class TabMaintainerModesTests
             TabMaintainerModesTests.Mode(main, MaintainerMode.Account);
             Dispatcher.UIThread.RunJobs();
 
-            string[] administrators = ["MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "ResetDataItem"];
+            string[] administrators = ["MaintainersItem", "BoardOrderItem", "UnusedFilesItem", "RebuildManifestsItem", "DeleteBoardItem", "ApiUsageItem", "OscilloscopeModelsItem", "ResetDataItem"];
 
             foreach (ListBoxItem item in main.FindControl<ListBox>("AccountList")!.Items.OfType<ListBoxItem>())
             {

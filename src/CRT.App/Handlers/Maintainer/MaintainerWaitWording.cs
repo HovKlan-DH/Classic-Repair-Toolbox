@@ -110,6 +110,13 @@ namespace Handlers.MaintainerHandling
 
         public const string ReadingApiUsage = "Reading which CRT versions call which route...";
 
+        // Account > "Oscilloscope models" (CRT 4.0 step 5).
+        public const string ReadingOscilloscopeModels = "Reading the oscilloscope models sent in...";
+
+        public const string PublishingOscilloscopeModel = "Publishing the model into the BETA and the stable data...";
+
+        public const string RejectingOscilloscopeModel = "Turning the model down...";
+
         // ###########################################################################################
         // What a click or a choice that failed in CRT ITSELF says (code review, 2026-10-13) - an
         // exception, not a refusal from the server, which is always said in the server's own words.

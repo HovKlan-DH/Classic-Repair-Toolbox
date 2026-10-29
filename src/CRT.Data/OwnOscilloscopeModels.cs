@@ -67,8 +67,8 @@ namespace Handlers.DataHandling
         private static string Key(MainDocument.OscilloscopeRow model) => $"{model.Brand.Trim()}\n{model.SeriesOrModel.Trim()}";
 
         // The commands and lists; the brand and model are what identify a model, and were matched
-        // already (ignoring capitals).
-        private static bool SameValues(MainDocument.OscilloscopeRow a, MainDocument.OscilloscopeRow b) =>
+        // already (ignoring capitals). OscilloscopeModelRules.Reconciled asks it too.
+        internal static bool SameValues(MainDocument.OscilloscopeRow a, MainDocument.OscilloscopeRow b) =>
             OwnOscilloscopeModels.Values
                 .Where(property => property.Name is not (nameof(MainDocument.OscilloscopeRow.Brand) or nameof(MainDocument.OscilloscopeRow.SeriesOrModel)))
                 .All(property => string.Equals(
@@ -76,7 +76,7 @@ namespace Handlers.DataHandling
                     ((string?)property.GetValue(b))?.Trim(),
                     StringComparison.Ordinal));
 
-        private static MainDocument.OscilloscopeRow Copy(MainDocument.OscilloscopeRow model)
+        internal static MainDocument.OscilloscopeRow Copy(MainDocument.OscilloscopeRow model)
         {
             var copy = new MainDocument.OscilloscopeRow();
 

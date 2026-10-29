@@ -68,7 +68,7 @@ namespace CRT
     // with its own file map, and BoardPlacementView), and under Account MyAccountView (the name,
     // address, password and Sign out) and the administrator's MaintainerPoolView, BoardOrderView,
     // UnusedFilesView, RebuildManifestsView, BoardDeletionView (with DeleteBoardWindow, its
-    // confirmation), ApiUsageView and DataResetView. A
+    // confirmation), ApiUsageView, OscilloscopeModelsView and DataResetView. A
     // board's table can hold a change not sent, so HasUnsavedTableEdits
     // and sign-out ask about it too. Every async event handler of the tab and of those panels runs
     // its work through HandlerGuard.cs, so an exception is logged and said, never the end of CRT.
@@ -578,6 +578,9 @@ namespace CRT
             this.SetAdministrator(response.IsAdministrator);
             this.thisQueueKnown = true;
 
+            // The administrator's oscilloscope models waiting count as work too (code review, 2026-10-29).
+            this.thisOscilloscopeModelsWaiting = response.IsAdministrator ? Math.Max(0, response.OscilloscopeModelsWaiting) : 0;
+
             ReviewQueueRow? kept = this.ApplyQueue(background);
 
             // The Review button counts the boards waiting for this account - the list just built.
@@ -609,6 +612,7 @@ namespace CRT
             // leave a rejected token sitting on disk to be retried next launch.
             this.UseSession(null);
             this.thisQueueKnown = false;
+            this.thisOscilloscopeModelsWaiting = 0;
             ReviewSessionStore.Forget();
 
             // The session is over, so an open table could not be saved any more.

@@ -71,6 +71,10 @@ namespace CRT
     //   retire any") reads which CRT versions called each route when chosen, and on its own Refresh
     //   and days box (ApiUsageView).
     //
+    //   "Oscilloscope models" (CRT 4.0 step 5, 2026-10-29) reads the models sent in from CRT and waiting,
+    //   when chosen and on its own Refresh; each is published or turned down there
+    //   (OscilloscopeModelsView).
+    //
     //   "Reset contribution data", THE LAST ENTRY (2026-10-04: a clean start at go-live), reads the
     //   counts when chosen; nothing is deleted before RESET is typed and the button pressed, and
     //   only while the server's switch is on (DataResetView).
@@ -94,6 +98,9 @@ namespace CRT
         {
             this.MyAccountDetail.AccountChanged = this.ApplyAccount;
             this.MyAccountDetail.SignOutRequested = this.SignOutAsync;
+
+            // What the models screen reads is what the badges count (TabMaintainer.Modes.cs).
+            this.OscilloscopeModelsAdmin.ModelsWaitingRead = this.UseOscilloscopeModelsWaiting;
 
             this.ShowAdministratorEntries(false);
         }
@@ -120,6 +127,8 @@ namespace CRT
                 await this.BoardDeletionAdmin.LoadAsync();
             else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("ApiUsageItem")))
                 await this.ApiUsageAdmin.LoadAsync();
+            else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("OscilloscopeModelsItem")))
+                await this.OscilloscopeModelsAdmin.LoadAsync();
             else if (ReferenceEquals(chosen, this.FindControl<ListBoxItem>("ResetDataItem")))
                 await this.DataResetAdmin.LoadAsync();
         }
@@ -325,6 +334,7 @@ namespace CRT
             this.RebuildManifestsAdmin.Clear();
             this.BoardDeletionAdmin.Clear();
             this.ApiUsageAdmin.Clear();
+            this.OscilloscopeModelsAdmin.Clear();
             this.DataResetAdmin.Clear();
         }
     }

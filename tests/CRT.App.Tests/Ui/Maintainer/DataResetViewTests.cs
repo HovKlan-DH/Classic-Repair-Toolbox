@@ -89,7 +89,7 @@ public sealed class DataResetViewTests
 
             await server.View.LoadAsync();
 
-            Assert.Equal(8, server.View.CountLinesForTests().Count);
+            Assert.Equal(9, server.View.CountLinesForTests().Count);
             Assert.StartsWith("[14] submissions", server.View.CountLinesForTests()[0], StringComparison.Ordinal);
             Assert.Null(server.View.SwitchedOffForTests);
             Assert.Equal(DataResetWording.ResetButton, server.View.ResetButtonForTests.Content);
@@ -118,7 +118,7 @@ public sealed class DataResetViewTests
 
             await server.View.LoadAsync();
 
-            Assert.Equal(8, server.View.CountLinesForTests().Count);
+            Assert.Equal(9, server.View.CountLinesForTests().Count);
             Assert.Equal("Resetting is switched off on this server.", server.View.SwitchedOffForTests);
             Assert.False(server.View.ConfirmBoxForTests.IsEnabled);
 

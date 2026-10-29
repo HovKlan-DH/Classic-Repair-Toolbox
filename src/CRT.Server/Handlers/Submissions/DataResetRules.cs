@@ -29,9 +29,10 @@ namespace CRT.Server.Handlers.Submissions
             "The reset could not be done, and nothing was deleted - the database refused it. The service's log says why.";
 
         // ###########################################################################################
-        // *** WHAT THE FINGERPRINT COVERS. *** The submissions and the accounts by count AND highest
-        // id - a count alone stays the same when one goes and another arrives - and the maintainers,
-        // invitations, production approvals and board records by count.
+        // *** WHAT THE FINGERPRINT COVERS. *** The submissions, the accounts and the oscilloscope
+        // models sent in (code review, 2026-10-29) by count AND highest id - a count alone stays the
+        // same when one goes and another arrives - and the maintainers, invitations, production
+        // approvals and board records by count.
         //
         // NOT the history, the board views or the API usage counts: they grow by themselves (a
         // sign-in writes history, CRTs report board views every 15 minutes, API usage is written every
@@ -53,7 +54,9 @@ namespace CRT.Server.Handlers.Submissions
                 counts.Maintainers,
                 counts.Invitations,
                 counts.ProductionApprovals,
-                counts.Boards);
+                counts.Boards,
+                counts.OscilloscopeModels,
+                counts.LastOscilloscopeModelId);
 
             return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
         }
@@ -74,7 +77,8 @@ namespace CRT.Server.Handlers.Submissions
                 counts.HistoryEntries,
                 counts.BoardViews,
                 counts.ApiUsageRows,
-                isEnabled ? null : DataResetRules.NotEnabledMessage);
+                isEnabled ? null : DataResetRules.NotEnabledMessage,
+                counts.OscilloscopeModels);
         }
 
         public static DataResetAnswer ToAnswer(DataResetCounts deleted, int storedFilesRemoved)
@@ -90,7 +94,8 @@ namespace CRT.Server.Handlers.Submissions
                 deleted.HistoryEntries,
                 deleted.BoardViews,
                 deleted.ApiUsageRows,
-                storedFilesRemoved);
+                storedFilesRemoved,
+                deleted.OscilloscopeModels);
         }
 
         // The detail of the reset's own history row - what went, in one line.
@@ -100,7 +105,8 @@ namespace CRT.Server.Handlers.Submissions
 
             return string.Create(
                 CultureInfo.InvariantCulture,
-                $"{deleted.Submissions} submission(s), {deleted.Accounts} account(s), {deleted.Maintainers} maintainer(s), " +
+                $"{deleted.Submissions} submission(s), {deleted.OscilloscopeModels} oscilloscope model(s), " +
+                $"{deleted.Accounts} account(s), {deleted.Maintainers} maintainer(s), " +
                 $"{deleted.Invitations} invitation(s), {deleted.ProductionApprovals} production approval(s), " +
                 $"{deleted.Boards} board record(s), {deleted.HistoryEntries} history row(s), " +
                 $"{deleted.BoardViews} board view(s) and {deleted.ApiUsageRows} API usage row(s) deleted; " +

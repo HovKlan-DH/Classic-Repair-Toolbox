@@ -431,9 +431,11 @@ public class WorkbookZipExportTests : IDisposable
     // ###########################################################################################
     private static (int Width, int Height)? TryReadImageSize(string path)
     {
+        // The path's overload - a Stream one beside it reads bytes held in memory (ImagePixelSize.FromBytes).
         var method = typeof(WorkbookPdfExporter).GetMethod(
             "TryReadImageSize",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static,
+            [typeof(string)])!;
 
         return ((int, int)?)method.Invoke(null, new object[] { path });
     }

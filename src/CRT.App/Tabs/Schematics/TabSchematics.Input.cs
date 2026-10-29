@@ -106,7 +106,7 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Handles right-click for panning on the schematic view and selection toggling on release.
+    // Handles a right or middle drag for panning on the schematic view and selection toggling on release.
     // Left-click selects hovered component, single-click opens component info popup, and while the
     // new KiCad trace calibration mode is active the same pointer pipeline is reused for moving and
     // resizing the temporary calibration box.
@@ -124,7 +124,7 @@ public partial class TabSchematics
             return;
         }
 
-        if (this.IsPointerInsideSchematicsMenu(point) || this.IsPointerInsideNewLabelPrompt(point))
+        if (this.IsPointerInsideSchematicsMenu(point) || this.IsPointerInsideNewLabelPrompt(point) || this.IsPointerOnDrawTraceButton(point))
         {
             e.Handled = true;
             return;
@@ -143,17 +143,9 @@ public partial class TabSchematics
 
         if (this.thisIsKiCadTraceCalibrationMode)
         {
-            if (pointer.Properties.IsRightButtonPressed)
+            // The right or the middle button pans (TabSchematics.ViewTools.cs).
+            if (this.TryBeginPan(e, pointer, point))
             {
-                this.isPanning = true;
-                this.panStartPoint = point;
-                this.panStartMatrix = this.schematicsMatrix;
-
-                this.HideSchematicsHoverUi();
-                this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
-
-                e.Pointer.Capture(this.SchematicsContainer);
-                e.Handled = true;
                 return;
             }
 
@@ -203,17 +195,9 @@ public partial class TabSchematics
 
         if (this.thisIsLabelEditorMode)
         {
-            if (pointer.Properties.IsRightButtonPressed)
+            // The right or the middle button pans (TabSchematics.ViewTools.cs).
+            if (this.TryBeginPan(e, pointer, point))
             {
-                this.isPanning = true;
-                this.panStartPoint = point;
-                this.panStartMatrix = this.schematicsMatrix;
-
-                this.HideSchematicsHoverUi();
-                this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
-
-                e.Pointer.Capture(this.SchematicsContainer);
-                e.Handled = true;
                 return;
             }
 
@@ -275,17 +259,9 @@ public partial class TabSchematics
 
         if (this.thisIsWorklogEntryMode)
         {
-            if (pointer.Properties.IsRightButtonPressed)
+            // The right or the middle button pans (TabSchematics.ViewTools.cs).
+            if (this.TryBeginPan(e, pointer, point))
             {
-                this.isPanning = true;
-                this.panStartPoint = point;
-                this.panStartMatrix = this.schematicsMatrix;
-
-                this.HideSchematicsHoverUi();
-                this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
-
-                e.Pointer.Capture(this.SchematicsContainer);
-                e.Handled = true;
                 return;
             }
 
@@ -323,24 +299,16 @@ public partial class TabSchematics
                 (point.X * inv.M11) + (point.Y * inv.M21) + inv.M31,
                 (point.X * inv.M12) + (point.Y * inv.M22) + inv.M32);
 
-            if (this.polylineManager != null && this.polylineManager.OnPointerPressed(point, localPoint, pointer, hoveringComponent))
+            if (this.CanEditTraces && this.polylineManager != null && this.polylineManager.OnPointerPressed(point, localPoint, pointer, hoveringComponent))
             {
                 e.Handled = true;
                 return;
             }
         }
 
-        if (pointer.Properties.IsRightButtonPressed)
+        // The right or the middle button pans (TabSchematics.ViewTools.cs).
+        if (this.TryBeginPan(e, pointer, point))
         {
-            this.isPanning = true;
-            this.panStartPoint = point;
-            this.panStartMatrix = this.schematicsMatrix;
-
-            this.HideSchematicsHoverUi();
-            this.SchematicsContainer.Cursor = new Cursor(StandardCursorType.SizeAll);
-
-            e.Pointer.Capture(this.SchematicsContainer);
-            e.Handled = true;
             return;
         }
 
@@ -387,7 +355,7 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Translates the schematics image while the right mouse button is held down.
+    // Translates the schematics image while the right or middle mouse button is held down.
     // Routes movement and shift key state to Polyline Manager, label editor, and the new KiCad
     // trace calibration box interaction mode.
     // ###########################################################################################
@@ -478,7 +446,7 @@ public partial class TabSchematics
                 (point.X * inv.M11) + (point.Y * inv.M21) + inv.M31,
                 (point.X * inv.M12) + (point.Y * inv.M22) + inv.M32);
 
-            if (this.polylineManager != null && this.polylineManager.OnPointerMoved(localPoint, isShiftDown))
+            if (this.CanEditTraces && this.polylineManager != null && this.polylineManager.OnPointerMoved(localPoint, isShiftDown))
             {
                 e.Handled = true;
                 return;
@@ -544,7 +512,7 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Exits pan mode when the right mouse button is released, finalizes label-editor operations,
+    // Exits pan mode when the right or middle mouse button is released, finalizes label-editor operations,
     // and handles the new KiCad trace calibration move/resize workflow including empty-space
     // right-click access to Apply or Discard actions.
     // Keeps keyboard focus on the schematics control while KiCad trace calibration mode is active.
@@ -660,7 +628,7 @@ public partial class TabSchematics
                 (point.X * inv.M11) + (point.Y * inv.M21) + inv.M31,
                 (point.X * inv.M12) + (point.Y * inv.M22) + inv.M32);
 
-            if (this.polylineManager != null && this.polylineManager.OnPointerReleased(point, localPoint))
+            if (this.CanEditTraces && this.polylineManager != null && this.polylineManager.OnPointerReleased(point, localPoint))
             {
                 e.Handled = true;
                 return;
@@ -683,7 +651,7 @@ public partial class TabSchematics
         e.Pointer.Capture(null);
 
         var delta = point - this.panStartPoint;
-        bool isStationaryRightClick = Math.Abs(delta.X) < 4 && Math.Abs(delta.Y) < 4;
+        bool isStationaryRightClick = !this.thisPanIsMiddleButton && Math.Abs(delta.X) < 4 && Math.Abs(delta.Y) < 4;
 
         if (isStationaryRightClick)
         {
@@ -779,6 +747,14 @@ public partial class TabSchematics
     private void OnSchematicsKeyDown(object? sender, KeyEventArgs e)
     {
         this.UpdateInteractiveCadTraceHoverShiftState(e.KeyModifiers);
+
+        // Escape stops "Draw trace" (TabSchematics.ViewTools.cs).
+        if (this.thisIsDrawingTraces && e.Key == Key.Escape)
+        {
+            this.SetDrawingTraces(false);
+            e.Handled = true;
+            return;
+        }
 
         if (this.thisIsWorklogEntryMode)
         {

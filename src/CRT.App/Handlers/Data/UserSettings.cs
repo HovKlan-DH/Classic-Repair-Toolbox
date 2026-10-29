@@ -227,7 +227,15 @@ namespace Handlers.DataHandling
         [JsonPropertyName("schematicsLabelSelectedOnly")] public bool SchematicsLabelSelectedOnly { get; set; } = false;
         [JsonPropertyName("schematicsLabelsPanelExpanded")] public bool SchematicsLabelsPanelExpanded { get; set; } = true;
         [JsonPropertyName("schematicsBoardSettingsPanelExpanded")] public bool SchematicsBoardSettingsPanelExpanded { get; set; } = true;
-        [JsonPropertyName("schematicsGlobalSettingsPanelExpanded")] public bool SchematicsGlobalSettingsPanelExpanded { get; set; } = true;
+        // The Schematics view's one-time tip on moving and zooming the picture, seen and put away
+        // (CRT 4.0 step 5). "Global settings" is a gear button since then - its old "expanded" key
+        // in a settings file is left unread.
+        [JsonPropertyName("schematicsPanHintSeen")] public bool SchematicsPanHintSeen { get; set; }
+
+        // When each of the user's own oscilloscope models was last sent in (CRT 4.0 step 5, "Submit
+        // this model"), by "<vendor>\n<series or model>" lower-cased - the date as yyyy-MM-dd. Only
+        // shown in the model editor; the outcome comes by mail.
+        [JsonPropertyName("oscilloscopeModelsSent")] public Dictionary<string, string> OscilloscopeModelsSent { get; set; } = new();
         [JsonPropertyName("schematicsNetConnectionsPanelExpanded")] public bool SchematicsNetConnectionsPanelExpanded { get; set; } = true;
         [JsonPropertyName("schematicsShowTracesOnComponentSelect")] public bool SchematicsShowTracesOnComponentSelect { get; set; } = true;
         [JsonPropertyName("blinkSelected")] public bool BlinkSelected { get; set; } = false;
@@ -626,11 +634,26 @@ namespace Handlers.DataHandling
             set { _data.SchematicsBoardSettingsPanelExpanded = value; Save(); }
         }
 
-        public static bool SchematicsGlobalSettingsPanelExpanded
+        public static bool SchematicsPanHintSeen
         {
-            get => _data.SchematicsGlobalSettingsPanelExpanded;
-            set { _data.SchematicsGlobalSettingsPanelExpanded = value; Save(); }
+            get => _data.SchematicsPanHintSeen;
+            set { _data.SchematicsPanHintSeen = value; Save(); }
         }
+
+        // When the user's own oscilloscope model `vendor` + `seriesOrModel` was last sent in - null
+        // when never (see OscilloscopeModelsSent above).
+        public static string? GetOscilloscopeModelSent(string vendor, string seriesOrModel) =>
+            (_data.OscilloscopeModelsSent ??= new()).TryGetValue(UserSettings.ScopeModelKey(vendor, seriesOrModel), out string? date) ? date : null;
+
+        public static void SetOscilloscopeModelSent(string vendor, string seriesOrModel, string date)
+        {
+            (_data.OscilloscopeModelsSent ??= new())[UserSettings.ScopeModelKey(vendor, seriesOrModel)] = date;
+            Logger.Info($"Setting changed: [OscilloscopeModelsSent] [{vendor.Trim()} {seriesOrModel.Trim()}] [{date}]");
+            Save();
+        }
+
+        private static string ScopeModelKey(string vendor, string seriesOrModel) =>
+            $"{vendor.Trim()}\n{seriesOrModel.Trim()}".ToLowerInvariant();
 
         public static bool BlinkSelected
         {
@@ -824,7 +847,8 @@ namespace Handlers.DataHandling
         // *** HIDE THE MAINTAINER TAB WHILE NOTHING IS WAITING (owner request, 2026-10-01). *** With
         // this on, the tab is shown only while its badge has a number - the badge counts exactly the
         // work this account has to do (MaintainerModes.TabAttention: the review queue plus BETA >
-        // Prod), so no badge means nothing to do and a tab that is only in the way.
+        // Prod, and an administrator's oscilloscope models waiting), so no badge means nothing to do
+        // and a tab that is only in the way.
         //
         // OFF by default, and it does nothing at all unless EnableMaintainerTab is on too - this
         // narrows that setting rather than replacing it. A maintainer who wants the tab permanently
@@ -1746,7 +1770,7 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [Region] [{Region}]");
                 Logger.Info($"        [SchematicsLabelsPanelExpanded] [{SchematicsLabelsPanelExpanded}]");
                 Logger.Info($"        [SchematicsBoardSettingsPanelExpanded] [{SchematicsBoardSettingsPanelExpanded}]");
-                Logger.Info($"        [SchematicsGlobalSettingsPanelExpanded] [{SchematicsGlobalSettingsPanelExpanded}]");
+                Logger.Info($"        [SchematicsPanHintSeen] [{SchematicsPanHintSeen}]");
                 Logger.Info($"        [SchematicsShowTracesOnComponentSelect] [{SchematicsShowTracesOnComponentSelect}]");
                 Logger.Info($"        [SchematicsNetConnectionsPanelExpanded] [{SchematicsNetConnectionsPanelExpanded}]");
                 Logger.Info($"        [SchematicsImportantSignalsPanelExpanded] [{SchematicsImportantSignalsPanelExpanded}]");

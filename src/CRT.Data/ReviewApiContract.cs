@@ -314,11 +314,16 @@ namespace Handlers.DataHandling
     // echoing it to a maintainer would let them act as the contributor. The contact email is here
     // because it is the only way to reply - contributors have no account.
     // ###########################################################################################
+    // OscilloscopeModelsWaiting: for an administrator, the oscilloscope models sent in from CRT that
+    // wait for a decision (Account > "Oscilloscope models") - counted with the tab's badge, so
+    // "Hide the Maintainer tab while no work is waiting" never hides them (code review, 2026-10-29).
+    // Zero for anybody else, and from an older server.
     public sealed record ReviewQueueAnswer(
         bool CanPublish,
         bool IsAdministrator,
         int Count,
-        IReadOnlyList<ReviewQueueEntry> Submissions);
+        IReadOnlyList<ReviewQueueEntry> Submissions,
+        int OscilloscopeModelsWaiting = 0);
 
     public sealed record ReviewQueueEntry(
         long Id,
@@ -962,7 +967,8 @@ namespace Handlers.DataHandling
         int HistoryEntries,
         int BoardViews,
         int ApiUsageRows,
-        string? NotEnabledBecause = null);
+        string? NotEnabledBecause = null,
+        int OscilloscopeModels = 0);
 
     public sealed record DataResetAnswer(
         int SubmissionsDeleted,
@@ -973,7 +979,8 @@ namespace Handlers.DataHandling
         int HistoryEntriesDeleted,
         int BoardViewsDeleted,
         int ApiUsageRowsDeleted,
-        int StoredFilesRemoved);
+        int StoredFilesRemoved,
+        int OscilloscopeModelsDeleted = 0);
 
     // ###########################################################################################
     // WHICH CRT VERSIONS CALL WHICH ROUTE (owner request, 2026-10-04: "how about tracking the API
@@ -1045,4 +1052,60 @@ namespace Handlers.DataHandling
     // zero. Null from a server that does not say.
     // ###########################################################################################
     public sealed record ServerStatusAnswer(int? UnsentMails = null);
+
+    // ###########################################################################################
+    // AN OSCILLOSCOPE MODEL OF A USER'S OWN, SENT IN FOR EVERYBODY (CRT 4.0 step 5 - the plan:
+    // "Submit this model sends it to the administrator's queue on the Maintainer tab, which publishes
+    // it into the main file for everybody. This is a new kind of submission on the server").
+    //
+    // A model travels as its vendor, its series or model, and its other values keyed by the main
+    // file's own names for them ("port", "identify", "dumpImage" ... - OscilloscopeModelValues), so a
+    // value a later CRT adds needs no new field here. Every check is OscilloscopeModelRules
+    // .SubmissionProblems, CRT's before it sends and the server's when it takes it.
+    //
+    //   POST /api/submissions/oscilloscope-models   - the contributor's; no account needed, as for a
+    //                                                 board. FullTestSuitePassed is CRT's word that
+    //                                                 "Run full test suite" went through on the model
+    //                                                 as sent - shown to the administrator, decides
+    //                                                 nothing.
+    //   GET  /api/admin/oscilloscope-models         - the models waiting, each with the published
+    //                                                 model of its name when there is one. InBeta: a
+    //                                                 publish wrote it into BETA and the stable source
+    //                                                 could not take it - Publish again finishes it,
+    //                                                 and it cannot be rejected (2026-10-29).
+    //   POST /api/admin/oscilloscope-models/publish - into the BETA and the stable main files at once.
+    //   POST /api/admin/oscilloscope-models/reject  - with the reason the contributor is mailed.
+    // ###########################################################################################
+    public sealed record OscilloscopeModelSubmissionRequest(
+        string? Vendor,
+        string? SeriesOrModel,
+        IReadOnlyDictionary<string, string>? Values,
+        string? ContactEmail,
+        string? ContactName,
+        string? Message,
+        bool FullTestSuitePassed);
+
+    public sealed record OscilloscopeModelSubmissionAnswer(long Id, string Message);
+
+    public sealed record OscilloscopeModelQueueAnswer(IReadOnlyList<OscilloscopeModelQueueEntry> Entries);
+
+    public sealed record OscilloscopeModelQueueEntry(
+        long Id,
+        DateTimeOffset SubmittedUtc,
+        string Vendor,
+        string SeriesOrModel,
+        IReadOnlyDictionary<string, string> Values,
+        string ContactName,
+        string ContactEmail,
+        string Message,
+        bool FullTestSuitePassed,
+        string ClientVersion,
+        IReadOnlyDictionary<string, string>? PublishedValues = null,
+        bool InBeta = false);
+
+    public sealed record OscilloscopeModelDecisionRequest(long Id, string? Reason);
+
+    // BetaChanged/StableChanged as BoardOrderAnswer's: StableChanged null when the server has no
+    // stable source. Problem: what did not happen after BETA's main file was written.
+    public sealed record OscilloscopeModelDecisionAnswer(bool BetaChanged, bool? StableChanged, string Message, string? Problem = null);
 }

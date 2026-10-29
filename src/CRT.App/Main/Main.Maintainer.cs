@@ -107,6 +107,7 @@ namespace CRT
 
             this.TabFeedback.UseMaintainerAccount(account);
             this.TabDrafts.UseMaintainerAccount(account);
+            this.TabOscilloscopeControl.UseMaintainerAccount(account);
         }
 
         // ###########################################################################################

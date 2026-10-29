@@ -11,8 +11,8 @@ _not_ available on the "Oscilloscope" tab itself.
 To enable and use the controls, do this:
 
 * Tick `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
-* Go to the "Oscilloscope" tab, fill in the details for your oscilloscope and connect to it - see
-  [Oscilloscope tab](Oscilloscope-tab).
+* Go to the "Oscilloscope" tab, pick your scope's vendor and series or model, type its address, and
+  press **Connect to oscilloscope**.
 * Click a component that has an oscilloscope baseline (images depicting a working board), and
   select one of its images.
 * In the component information window, tick `Numpad controls oscilloscope`. The checkbox is only
@@ -33,8 +33,8 @@ A few things worth knowing:
 * The left/right arrow keys also keep their normal meaning, and will navigate to the previous/next
   image.
 * The up/down arrow keys move the trigger level in steps of 0.25 V.
-* `+` and `-` step the time base to the next value in your scope's `TIME/DIV` list, and `1` and `2`
-  only work when `1V` and `2V` are in its `VOLTS/DIV` list.
+* `+` and `-` step the time base to the next of your scope model's time per division steps, and `1`
+  and `2` only work when `1V` and `2V` are among its volts per division steps.
 * A capture is saved in the **Image save folder** on the "Oscilloscope" tab - an
   `Oscilloscope images` folder beside CRT's data folder, unless you choose another with
   **Select folder**. The capture is shown in the window as a "User image", saved in
@@ -42,14 +42,8 @@ A few things worth knowing:
   board has a workbook - an **Attach image to worklog** button lets you file it in a repair - see
   [Workbooks: daily use](Workbooks-Daily-use).
 
-If your oscilloscope is not in the list, or it does not work properly, then please do investigate
-which **SCPI commands** work for your specific oscilloscope model, as this varies quite a lot - even
-within the same vendor. I do not know all oscilloscopes, nor do I have access to anything other than
-my own, so you will need to provide this data yourself. You can add and test the required data in
-the main Excel data file `Classic-Repair-Toolbox.v2.0.0.xlsx` in the sheet `Oscilloscope` - see
-[Main Excel](Main-Excel). Note that the
-`TIME/DIV` and `VOLTS/DIV` value lists must be filled in as well as the command columns - the
-stepping keys resolve their target from those lists, and do nothing if the current value is not
-found there. Also note that the launch-time data check replaces a changed data file with the
-server's copy at the next launch, unless **Check for new or updated data at application launch** is
-unticked in [Configuration](Configuration-tab).
+If your scope is not in the list, or does not work properly, make a model of your own: **My scope
+is not listed** on the "Oscilloscope" tab - see
+[Synchronize oscilloscope](Synchronize-oscilloscope#my-scope-is-not-listed). Fill in both lists of
+steps as well as the commands: the stepping keys find the next value in those lists, and do nothing
+when the scope's current value is not in them.

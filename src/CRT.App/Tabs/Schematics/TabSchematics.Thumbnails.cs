@@ -173,6 +173,10 @@ public partial class TabSchematics
 
             this.CancelWorklogEntryMode();
 
+            // The last picture's traces let go AT ONCE - a point being dragged dropped, never saved -
+            // and the new one's read with its picture (TabSchematics.ViewTools.cs, code review, 2026-10-29).
+            this.LetGoOfTraces();
+
             // A picture tool waiting for this picture starts once its image is read (TabSchematics.PictureTools.cs).
             this.thisImageSettledFor = null;
 
@@ -217,6 +221,8 @@ public partial class TabSchematics
 
             if (selected == null || string.IsNullOrEmpty(selected.ImageFilePath))
             {
+                // No picture to show: no drawing on it either (code review, 2026-10-29).
+                this.ShowViewToolsForPicture(false);
                 this.ImageSettled(selected?.Name, shown: false);
                 return;
             }
@@ -242,6 +248,9 @@ public partial class TabSchematics
             this.currentFullResBitmap?.Dispose();
             this.currentFullResBitmap = bitmap;
             this.SchematicsImage.Source = bitmap;
+
+            // "Draw trace" and the one-time tip follow the picture (TabSchematics.ViewTools.cs).
+            this.ShowViewToolsForPicture(bitmap != null);
 
             if (bitmap != null)
             {
@@ -270,12 +279,8 @@ public partial class TabSchematics
             this.SchematicsHoverHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
             this.SchematicsHoverHighlightsOverlay.InvalidateVisual();
 
-            // Populate trace database for this exact board/schematic setup immediately before render logic finishes 
-            if (this.polylineManager != null && !string.IsNullOrEmpty(boardKey))
-            {
-                var loaded = TraceStorage.GetTraces(boardKey, selected.Name);
-                this.polylineManager.ImportTraces(loaded);
-            }
+            // Populate trace database for this exact board/schematic setup immediately before render logic finishes
+            this.ReadTracesFor(boardKey, selected.Name);
 
             // Defer a clamp call so the engine can measure and center the new image layout
             // immediately instead of waiting for a window resize or banner collapse.

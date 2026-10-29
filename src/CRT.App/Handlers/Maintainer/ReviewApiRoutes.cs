@@ -217,6 +217,17 @@ namespace Handlers.MaintainerHandling
         public static string AdminDataReset(string baseAddress) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/reset";
 
+        // Oscilloscope models sent in from CRT (CRT 4.0 step 5): the waiting ones, and the
+        // administrator's decision on one - POSTed, a model id and a reason.
+        public static string AdminOscilloscopeModels(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/oscilloscope-models";
+
+        public static string AdminOscilloscopeModelPublish(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/oscilloscope-models/publish";
+
+        public static string AdminOscilloscopeModelReject(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/oscilloscope-models/reject";
+
         // Which CRT versions call which route, over the last `days` days (2026-10-04).
         public static string AdminApiUsage(string baseAddress, int days) =>
             $"{ReviewApiRoutes.Normalise(baseAddress)}/api/admin/api-usage?days={days.ToString(System.Globalization.CultureInfo.InvariantCulture)}";

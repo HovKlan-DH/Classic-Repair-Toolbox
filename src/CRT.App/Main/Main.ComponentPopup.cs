@@ -484,6 +484,18 @@ namespace CRT
                 return;
             }
 
+            // "Draw trace" stops on Escape wherever the keyboard is (TabSchematics.ViewTools.cs): the
+            // tab's own handler sees no key while the component filter holds the focus. Only while
+            // the Schematics tab is shown (code review, 2026-10-29): on another tab, Escape belongs to
+            // the box it was pressed in - a picture's name put back, a table cell.
+            if (this.TabSchematicsControl.IsDrawingTraces &&
+                ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem))
+            {
+                this.TabSchematicsControl.SetDrawingTraces(false);
+                e.Handled = true;
+                return;
+            }
+
             if (UserSettings.MultipleInstancesForComponentPopup)
                 return;
 

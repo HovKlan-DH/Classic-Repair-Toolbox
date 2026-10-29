@@ -23,9 +23,11 @@ Puts the downloaded data (schematics, board data, images - close to 1 GB) somewh
 
 Default if you do not use it:
 
-* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data`
-* Linux: `~/.local/share/Classic-Repair-Toolbox/Data`
-* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data`
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data v4`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Data v4`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data v4`
+
+CRT 4 keeps its data in `Data v4`, beside the `Data` folder CRT 3 used. CRT 4 only reads that older folder - to take over what you made in CRT 3: your drafts, and oscilloscope models you added - and you can delete it once you no longer use CRT 3.
 
 Good to know:
 

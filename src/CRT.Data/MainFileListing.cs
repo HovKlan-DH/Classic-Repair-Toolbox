@@ -144,6 +144,43 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // `model` in place of the oscilloscope of its name, or after the last - a model exactly as
+        // it is there writes nothing. A field of the entry replaced that this CRT does not know is
+        // kept (the model sent in cannot say anything about it).
+        // ###########################################################################################
+        public static MasterListingEdit PutOscilloscope(string mainPath, MainDocument.OscilloscopeRow model, DateTimeOffset? nowUtc)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            if (string.IsNullOrWhiteSpace(model.Brand) || string.IsNullOrWhiteSpace(model.SeriesOrModel))
+                return MasterListingEdit.Failed("An oscilloscope model needs its vendor and its series or model.");
+
+            if (!MainFileListing.TryOpen(mainPath, out MainDocument? document, out string why))
+                return MasterListingEdit.Failed($"The main data file could not be opened: {why}");
+
+            int existing = document!.Oscilloscopes.FindIndex(scope => OscilloscopeModelRules.IsNamed(scope, model.Brand, model.SeriesOrModel));
+
+            if (existing < 0)
+            {
+                document.Oscilloscopes.Add(model);
+                return MainFileListing.Save(document, mainPath, nowUtc);
+            }
+
+            MainDocument.OscilloscopeRow current = document.Oscilloscopes[existing];
+
+            if (current.Brand == model.Brand && current.SeriesOrModel == model.SeriesOrModel &&
+                OwnOscilloscopeModels.SameValues(current, model))
+            {
+                return MasterListingEdit.Done(changed: false);
+            }
+
+            model.Unknown = current.Unknown;
+            document.Oscilloscopes[existing] = model;
+
+            return MainFileListing.Save(document, mainPath, nowUtc);
+        }
+
+        // ###########################################################################################
         // The rows as CRT and the server read them: one per listed board, names trimmed, its hardware
         // name carried down from the row above when its own is blank (the Excel sheet's rule, kept for
         // a hand-edited file). THE one reading of the list - CRT's drop-downs (DataManager) and the

@@ -28,6 +28,41 @@ namespace Handlers.MaintainerHandling
             ReviewApiParser.Read<DataResetAnswer>(json);
 
         // ###########################################################################################
+        // GET /api/admin/oscilloscope-models (CRT 4.0 step 5). Refused without a list. An entry
+        // without its name is left out rather than shown blank; missing values and words read empty.
+        // ###########################################################################################
+        public static OscilloscopeModelQueueAnswer? ParseOscilloscopeModelQueue(string? json)
+        {
+            OscilloscopeModelQueueAnswer? answer = ReviewApiParser.Read<OscilloscopeModelQueueAnswer>(json);
+
+            if (answer?.Entries is null)
+                return null;
+
+            return answer with
+            {
+                Entries = answer.Entries
+                    .Where(entry => entry is not null && !string.IsNullOrWhiteSpace(entry.Vendor) && !string.IsNullOrWhiteSpace(entry.SeriesOrModel))
+                    .Select(entry => entry with
+                    {
+                        Values = entry.Values ?? new System.Collections.Generic.Dictionary<string, string>(),
+                        ContactName = entry.ContactName ?? string.Empty,
+                        ContactEmail = entry.ContactEmail ?? string.Empty,
+                        Message = entry.Message ?? string.Empty,
+                        ClientVersion = entry.ClientVersion ?? string.Empty,
+                    })
+                    .ToList()
+            };
+        }
+
+        // POST /api/admin/oscilloscope-models/publish and /reject - refused without its sentence.
+        public static OscilloscopeModelDecisionAnswer? ParseOscilloscopeModelDecision(string? json)
+        {
+            OscilloscopeModelDecisionAnswer? answer = ReviewApiParser.Read<OscilloscopeModelDecisionAnswer>(json);
+
+            return string.IsNullOrWhiteSpace(answer?.Message) ? null : answer;
+        }
+
+        // ###########################################################################################
         // GET /api/admin/api-usage. Refused without a route list - every server that has the route
         // maps routes, so an answer with none is not one. A route or version without its name is left
         // out rather than shown blank; missing lists read as empty.

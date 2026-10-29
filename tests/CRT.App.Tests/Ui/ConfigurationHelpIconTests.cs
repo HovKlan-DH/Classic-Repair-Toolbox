@@ -5,12 +5,13 @@ using CRT;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
-// The Configuration tab's help icons - the small "?" buttons that sit beside a setting.
+// The Configuration tab's help beside a setting - two kinds, with two looks (CRT 4.0 step 5, the
+// plan: "The remaining help buttons read 'Learn more'"):
 //
-// Two flavours share the same "HelpIconButton" look but do different things: the MiniPro/Workbooks
-// ones OPEN a wiki page (Click, tested only for existence - see below), while the ALPHA/BETA
-// notification ones show their explanation as a TOOLTIP instead, since there is no wiki page for a
-// single checkbox's meaning. Both are worth pinning for the same reason: a button silently dropped
+//   - "Learn more" (the LearnMore class, a link) OPENS a Wiki page - MiniPro, Workbooks, the online
+//     source and the Maintainer tab (Click, tested only for existence - see below);
+//   - the small "?" (HelpIconButton) shows its explanation as a TOOLTIP and opens nothing - the
+//     ALPHA/BETA notifications, which have no Wiki page for a single check box's meaning. Both are worth pinning for the same reason: a button silently dropped
 // from the markup, or one left with no icon or no tip text in it, is invisible until someone opens
 // the tab and looks.
 //
@@ -22,11 +23,20 @@ namespace ClassicRepairToolbox.Tests.Ui;
 [Collection("HeadlessUi")]
 public sealed class ConfigurationHelpIconTests
 {
-    // The Font Awesome "circle-question" glyph the other help buttons on this tab already use.
+    // The Font Awesome "circle-question" glyph of a help icon that shows a tooltip.
     private const string HelpGlyph = "\uf059";
 
+    // A button that opens a Wiki page: a link reading "Learn more".
+    private static void AssertLearnMore(Button button)
+    {
+        Assert.Contains("LearnMore", button.Classes);
+        Assert.DoesNotContain("HelpIconButton", button.Classes);
+        Assert.Equal("Learn more", ((TextBlock)button.Content!).Text);
+        Assert.Contains("Wiki", Assert.IsType<string>(ToolTip.GetTip(button)));
+    }
+
     [Fact]
-    public void The_workbooks_setting_has_a_help_icon_beside_it()
+    public void The_workbooks_setting_has_Learn_more_beside_it()
     {
         UiTest.Run(() =>
         {
@@ -34,10 +44,9 @@ public sealed class ConfigurationHelpIconTests
 
             var helpButton = tab.GetControl<Button>("EnableWorklogHelpButton");
 
-            // The same styling and the same glyph the MiniPro help button carries, so the two read
-            // as one affordance rather than as two different kinds of control.
-            Assert.Contains("HelpIconButton", helpButton.Classes);
-            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            // The same look the MiniPro help carries, so the two read as one affordance rather than
+            // as two different kinds of control.
+            ConfigurationHelpIconTests.AssertLearnMore(helpButton);
         });
     }
 
@@ -63,7 +72,7 @@ public sealed class ConfigurationHelpIconTests
     // WikiHelpPageNamesTests holds to a real page).
     // ###########################################################################################
     [Fact]
-    public void The_maintainer_setting_has_a_help_icon_beside_it()
+    public void The_maintainer_setting_has_Learn_more_beside_it()
     {
         UiTest.Run(() =>
         {
@@ -71,8 +80,7 @@ public sealed class ConfigurationHelpIconTests
 
             var helpButton = tab.GetControl<Button>("EnableMaintainerTabHelpButton");
 
-            Assert.Contains("HelpIconButton", helpButton.Classes);
-            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            ConfigurationHelpIconTests.AssertLearnMore(helpButton);
         });
     }
 
@@ -98,7 +106,7 @@ public sealed class ConfigurationHelpIconTests
     // names it.
     // ###########################################################################################
     [Fact]
-    public void The_online_source_setting_has_a_help_icon_beside_it_and_its_new_name()
+    public void The_online_source_setting_has_Learn_more_beside_it_and_its_new_name()
     {
         UiTest.Run(() =>
         {
@@ -107,8 +115,7 @@ public sealed class ConfigurationHelpIconTests
             var helpButton = tab.GetControl<Button>("ViewOfficialPublishedOnlyHelpButton");
             var checkBox = tab.GetControl<CheckBox>("ViewOfficialPublishedOnlyCheckBox");
 
-            Assert.Contains("HelpIconButton", helpButton.Classes);
-            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            ConfigurationHelpIconTests.AssertLearnMore(helpButton);
             Assert.Same(checkBox.GetVisualParent(), helpButton.GetVisualParent());
             Assert.Equal(
                 "View boards as published online (hide my draft changes)",
@@ -119,7 +126,7 @@ public sealed class ConfigurationHelpIconTests
     // The pattern this one was copied from, asserted alongside it so a change to either is made to
     // both rather than leaving the two help icons looking different.
     [Fact]
-    public void The_minipro_setting_still_has_its_matching_help_icon()
+    public void The_minipro_setting_has_its_matching_Learn_more()
     {
         UiTest.Run(() =>
         {
@@ -127,8 +134,7 @@ public sealed class ConfigurationHelpIconTests
 
             var helpButton = tab.GetControl<Button>("EnableMiniproExperimentalModeHelpButton");
 
-            Assert.Contains("HelpIconButton", helpButton.Classes);
-            Assert.Equal(HelpGlyph, ((TextBlock)helpButton.Content!).Text);
+            ConfigurationHelpIconTests.AssertLearnMore(helpButton);
         });
     }
 
@@ -212,7 +218,7 @@ public sealed class ConfigurationHelpIconTests
 
             var helpButtons = tab.GetLogicalDescendants()
                 .OfType<Button>()
-                .Where(button => button.Classes.Contains("HelpIconButton"))
+                .Where(button => button.Classes.Contains("HelpIconButton") || button.Classes.Contains("LearnMore"))
                 .ToList();
 
             Assert.NotEmpty(helpButtons);

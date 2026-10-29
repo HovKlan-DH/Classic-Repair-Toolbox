@@ -478,7 +478,7 @@ namespace CRT.Server.Handlers.Submissions
             return SecureToken.HashesEqual(submission.UploadTokenHash, SecureToken.Hash(presented));
         }
 
-        private static async Task<AccountRecord?> AuthenticateAsync(
+        internal static async Task<AccountRecord?> AuthenticateAsync(
             HttpContext context,
             IAccountStore accounts,
             CancellationToken cancellationToken)

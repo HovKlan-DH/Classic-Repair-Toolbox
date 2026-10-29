@@ -6,30 +6,15 @@ namespace Handlers.Oscilloscope
     public static class ScopeCommandResolver
     {
         // ###########################################################################################
-        // Resolves a scope command enum to the SCPI command text defined by the selected scope entry.
+        // Resolves a scope command enum to the SCPI command text defined by the selected scope entry:
+        // the value its editor field names (ScopeModelFields - the command's key, the main file's name
+        // for it), read off the entry by that name. No switch of its own (code review, 2026-10-29).
         // ###########################################################################################
         public static string GetCommandText(OscilloscopeEntry oscilloscopeEntry, ScopeCommand command)
         {
-            return command switch
-            {
-                ScopeCommand.Identify => oscilloscopeEntry.Identify,
-                ScopeCommand.DrainErrorQueue => oscilloscopeEntry.DrainErrorQueue,
-                ScopeCommand.OperationComplete => oscilloscopeEntry.OperationComplete,
-                ScopeCommand.ClearStatistics => oscilloscopeEntry.ClearStatistics,
-                ScopeCommand.QueryActiveTrigger => oscilloscopeEntry.QueryActiveTrigger,
-                ScopeCommand.Stop => oscilloscopeEntry.Stop,
-                ScopeCommand.Single => oscilloscopeEntry.Single,
-                ScopeCommand.Run => oscilloscopeEntry.Run,
-                ScopeCommand.QueryTriggerMode => oscilloscopeEntry.QueryTriggerMode,
-                ScopeCommand.QueryTriggerLevel => oscilloscopeEntry.QueryTriggerLevel,
-                ScopeCommand.SetTriggerLevel => oscilloscopeEntry.SetTriggerLevel,
-                ScopeCommand.QueryTimeDiv => oscilloscopeEntry.QueryTimeDiv,
-                ScopeCommand.SetTimeDiv => oscilloscopeEntry.SetTimeDiv,
-                ScopeCommand.QueryVoltsDiv => oscilloscopeEntry.QueryVoltsDiv,
-                ScopeCommand.SetVoltsDiv => oscilloscopeEntry.SetVoltsDiv,
-                ScopeCommand.DumpImage => oscilloscopeEntry.DumpImage,
-                _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unknown scope command")
-            };
+            ArgumentNullException.ThrowIfNull(oscilloscopeEntry);
+
+            return oscilloscopeEntry.ValueOf(ScopeModelFields.Of(command).Key);
         }
 
         // ###########################################################################################

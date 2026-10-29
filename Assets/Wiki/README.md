@@ -98,24 +98,42 @@ superseded by a page that is here:
 | `Data-files` | `Explanation-of-data-files` and its children |
 | `Compiling-yourself` | `Compiling-yourself-from-source` |
 | `Classic-Repair-Toolbox-documentation` | `Home` |
-| `Contribute-data` | `Contribute-data-via-CRT` |
+| `Contribute-data` | the "Contribute" tab itself (CRT 4.0) |
 | `MiniPro-programmer-how‐to` | `MiniPro-programmer` |
 
 They still exist in the Wiki and are untouched. If any should be kept alive, mirror it here first
 so it stops being edited in two places.
 
+## Pages removed at CRT 4.0
+
+CRT 4.0 explains itself on screen (the 4.0 plan: "The Wiki shrinks to installing, the reference
+pages, and the six pages installed CRTs open"), so these fourteen pages were taken out of this
+folder on 2026-10-29. **Delete them from the live Wiki on release day**, once 4.0 is out - until
+then the live pages still describe CRT 3, which is what everybody runs:
+
+| Wiki page | What took its place |
+| --- | --- |
+| `Schematics-tab`, `Overview-tab`, `Resources-tab`, `Oscilloscope-tab`, `Configuration-tab`, `Feedback-tab`, `About-tab` | The tabs themselves; `Getting-started` gives the tour |
+| `Contribute-tab`, `Drafts-tab`, `Contribute-data-via-CRT`, `Add-new-board-with-KiCad-data` | The "Contribute" tab, which walks a contributor through a change and a new board |
+| `Main-Excel`, `Board-Excel` | `Explanation-of-data-files` and `Board-JSON` - the Excel data is frozen for CRT 2 and 3 |
+| `Scope-baseline-folder` | A component's scope baselines on the "Contribute" tab |
+
+None of them is opened by a button in a released CRT (see below). Do not add them back without the
+project owner asking.
+
 ## The in-app help links
 
-These six Wiki pages are opened by seven "?" buttons in the shipped application:
+These six Wiki pages are opened by seven buttons in the shipped application - "?" icons up to CRT
+3, **Learn more** from CRT 4:
 
 | Page | Opened from |
 | --- | --- |
-| `Workbooks-tab` | Configuration tab, "?" beside "Enable Workbooks tab" |
-| `MiniPro-programmer` | Configuration tab, "?" beside "Enable MiniPro programmer functionality"; and the component popup, "?" beside "Test IC with MiniPro programmer" |
-| `Controlling-oscilloscope-with-keyboard` | Component popup, "?" beside "Numpad controls oscilloscope" |
-| `Synchronize-oscilloscope` | Component popup, "?" beside "Synchronize oscilloscope" |
-| `Maintainer-tab` | Configuration tab, "?" beside "Enable Maintainer tab" |
-| `View-boards-from-online-source` | Configuration tab, "?" beside "View boards as published online (hide my draft changes)" |
+| `Workbooks-tab` | Configuration tab, beside "Enable Workbooks tab" |
+| `MiniPro-programmer` | Configuration tab, beside "Enable MiniPro programmer functionality"; and the component popup, beside "Test IC with MiniPro programmer" |
+| `Controlling-oscilloscope-with-keyboard` | Component popup, beside "Numpad controls oscilloscope" |
+| `Synchronize-oscilloscope` | Component popup, beside "Synchronize oscilloscope" |
+| `Maintainer-tab` | Configuration tab, beside "Enable Maintainer tab" |
+| `View-boards-from-online-source` | Configuration tab, beside "View boards as published online (hide my draft changes)" |
 
 Renaming or deleting one of those pages breaks a button in a released build, which no update can
 fix for versions already installed.

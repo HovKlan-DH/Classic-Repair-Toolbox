@@ -1265,11 +1265,13 @@ public sealed class ReviewWireContractTests
                 [
                     new ReviewQueueEntry(4, "Commodore/C64/250407", "approved", "Corrected U8.", "c@example.com", "r1", created, null, TouchesSharedFiles: true, IsNewBoard: false, AwaitsYou: true),
                     new ReviewQueueEntry(5, "Amstrad/CPC464/Z70200", "pending", null, null, "", created, null, TouchesSharedFiles: false, IsNewBoard: true, AwaitsYou: false)
-                ])));
+                ],
+                OscilloscopeModelsWaiting: 3)));
 
         Assert.True(queue!.CanPublish);
         Assert.True(queue.IsAdministrator);
         Assert.Equal(2, queue.Submissions.Count);
+        Assert.Equal(3, queue.OscilloscopeModelsWaiting);
 
         ReviewQueueRow first = queue.Submissions[0];
         Assert.Equal(4, first.Id);
@@ -1842,5 +1844,68 @@ public sealed class ReviewWireContractTests
         Assert.DoesNotContain(
             typeof(HealthStatus).GetProperties(),
             property => property.Name.Contains("Mail", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ###########################################################################################
+    // AN OSCILLOSCOPE MODEL SENT IN (CRT 4.0 step 5): what the Oscilloscope tab sends arrives with
+    // its values under the main file's own names - a value's name is never put through the naming
+    // policy, or "dumpImage" would arrive as something the server refuses - and the administrator's
+    // list and decisions read back as the server wrote them.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_oscilloscope_model_sent_in_arrives_with_every_value_under_its_own_name()
+    {
+        var model = new MainDocument.OscilloscopeRow { Brand = "Voltcraft", SeriesOrModel = "DOV702", Identify = "*IDN?", DumpImage = ":DISP:DATA?" };
+        var sent = new OscilloscopeModelSubmissionRequest("Voltcraft", "DOV702", OscilloscopeModelValues.Of(model), "anna@example.com", "Anna", "Firmware 1.2", true);
+
+        using HttpRequestMessage request = Handlers.Online.SubmissionClient.BuildOscilloscopeModelRequest("https://example.invalid/api", sent, bearerToken: null);
+        string body = await request.Content!.ReadAsStringAsync();
+
+        OscilloscopeModelSubmissionRequest received = JsonSerializer.Deserialize<OscilloscopeModelSubmissionRequest>(body, ReviewWireContractTests.Server)!;
+
+        Assert.Equal("https://example.invalid/api/submissions/oscilloscope-models", request.RequestUri!.ToString());
+        Assert.Null(request.Headers.Authorization);
+        Assert.Equal("DOV702", received.SeriesOrModel);
+        Assert.Equal(":DISP:DATA?", received.Values!["dumpImage"]);
+        Assert.Equal(OscilloscopeModelValues.Names.Count, received.Values.Count);
+        Assert.True(received.FullTestSuitePassed);
+        Assert.Empty(OscilloscopeModelRules.SubmissionProblems(received.Vendor, received.SeriesOrModel, received.Values, received.Message));
+
+        OscilloscopeModelSubmissionAnswer answer = new(41, "Sent.");
+        Assert.Equal(answer, JsonSerializer.Deserialize<OscilloscopeModelSubmissionAnswer>(ReviewWireContractTests.Answer(answer), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    }
+
+    [Fact]
+    public void The_oscilloscope_models_waiting_and_a_decision_on_one_read_as_the_server_wrote_them()
+    {
+        var entry = new OscilloscopeModelQueueEntry(
+            41,
+            ReviewWireContractTests.Decided,
+            "Rigol",
+            "DS1000Z",
+            new Dictionary<string, string> { ["dumpImage"] = ":DISP:DATA? PNG" },
+            "Anna",
+            "anna@example.com",
+            "Firmware 1.2",
+            true,
+            "CRT 4.0.0",
+            new Dictionary<string, string> { ["dumpImage"] = ":DISP:DATA?" });
+
+        OscilloscopeModelQueueAnswer list = ReviewApiParser.ParseOscilloscopeModelQueue(
+            ReviewWireContractTests.Answer(new OscilloscopeModelQueueAnswer([entry])))!;
+
+        OscilloscopeModelQueueEntry read = Assert.Single(list.Entries);
+        Assert.Equal(41, read.Id);
+        Assert.Equal(ReviewWireContractTests.Decided, read.SubmittedUtc);
+        Assert.Equal(":DISP:DATA? PNG", read.Values["dumpImage"]);
+        Assert.Equal(":DISP:DATA?", read.PublishedValues!["dumpImage"]);
+        Assert.True(read.FullTestSuitePassed);
+        Assert.Equal("CRT 4.0.0", read.ClientVersion);
+
+        Assert.Equal(41, ReviewWireContractTests.Received<OscilloscopeModelDecisionRequest>(new OscilloscopeModelDecisionRequest(41, "No picture command.")).Id);
+        Assert.Equal("No picture command.", ReviewWireContractTests.Received<OscilloscopeModelDecisionRequest>(new OscilloscopeModelDecisionRequest(41, "No picture command.")).Reason);
+
+        OscilloscopeModelDecisionAnswer decided = new(true, false, "Rigol DS1000Z is published.", "The stable source has no main data file.");
+        Assert.Equal(decided, ReviewApiParser.ParseOscilloscopeModelDecision(ReviewWireContractTests.Answer(decided)));
     }
 }

@@ -109,6 +109,19 @@ public sealed class MaintainerModesTests
         Assert.Equal(3, MaintainerModes.TabAttention(queue, beta));
     }
 
+    // The administrator's oscilloscope models waiting are work too - with nothing in either queue,
+    // they alone keep the tab shown (code review, 2026-10-29).
+    [Fact]
+    public void The_tabs_badge_counts_the_oscilloscope_models_waiting()
+    {
+        Assert.Equal(2, MaintainerModes.TabAttention(null, null, oscilloscopeModels: 2));
+        Assert.Equal(0, MaintainerModes.TabAttention(null, null, oscilloscopeModels: -1));
+        Assert.True(MaintainerModes.TabIsShown(
+            enabled: true, onlyWhenWaiting: true, badgeKnown: true,
+            attention: MaintainerModes.TabAttention([], [], oscilloscopeModels: 1),
+            selected: false, unsavedEdits: false));
+    }
+
     // "Until it is fully processed": nothing waiting for THIS account - including a board that
     // waits only for the other approver, in either list - is no badge at all.
     [Fact]

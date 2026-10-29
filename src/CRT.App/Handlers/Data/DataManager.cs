@@ -27,6 +27,28 @@ namespace Handlers.DataHandling
         public static List<HardwareBoardEntry> HardwareBoards { get; private set; } = [];
         public static List<OscilloscopeEntry> Oscilloscopes { get; private set; } = new();
 
+        // The models Oscilloscopes is made of, as rows of the main file: the published ones, then the
+        // user's own (OwnOscilloscopeFile) - what the Oscilloscope tab's model editor starts from and
+        // changes. Each list is replaced whole, never changed in place.
+        public static IReadOnlyList<MainDocument.OscilloscopeRow> PublishedScopeModels { get; private set; } = [];
+
+        public static IReadOnlyList<MainDocument.OscilloscopeRow> OwnScopeModels { get; private set; } = [];
+
+        // One read or write of the own models' file at a time, the latest list last.
+        private static readonly System.Threading.SemaphoreSlim OwnScopeModelsWriteGate = new(1, 1);
+
+        // The two lists and the three facts below change together under this - the load on the pool,
+        // the editor on the UI thread.
+        private static readonly object OwnScopeModelsLock = new();
+
+        // The own models' file the list held was read from - null until a read went well. A reload of
+        // the same file keeps the list held (LoadOwnScopeModels).
+        private static string? _ownScopeModelsReadFrom;
+
+        // Why the user's own models must not be changed this run - their file could not be read at
+        // launch (OwnOscilloscopeFile.LoadOrFind) - or null. The model editor says it and saves nothing.
+        public static string? OwnScopeModelsProblem { get; private set; }
+
         public static string ResolvedMainExcelFileName { get; private set; } = string.Empty;
         public static bool DataUpdateRequiresAppUpdate { get; private set; }
 
@@ -254,10 +276,10 @@ namespace Handlers.DataHandling
 
             _dataRoot = ResolveDataRoot(args);
             _legacyDataRoot = DataManager.FindLegacyDataRoot();
-            _ownOscilloscopesPath = Path.Combine(
+            DataManager.UseOwnOscilloscopesPath(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 AppConfig.AppFolderName,
-                OwnOscilloscopeFile.FileName);
+                OwnOscilloscopeFile.FileName));
             Logger.Info($"Data root is [{_dataRoot}]");
 
             bool isNewRoot = !Directory.Exists(_dataRoot);
@@ -659,27 +681,56 @@ namespace Handlers.DataHandling
         // no online sync and no seeding - the test suite uses it to load a temporary data root
         // instead of the user's real one.
         // ###########################################################################################
-        internal static void LoadFrom(string dataRoot, string mainExcelFileName)
+        internal static void LoadFrom(string dataRoot, string mainExcelFileName, string ownOscilloscopesPath = "")
         {
             _dataRoot = dataRoot;
             _legacyDataRoot = string.Empty;
-            _ownOscilloscopesPath = string.Empty;
+            DataManager.UseOwnOscilloscopesPath(ownOscilloscopesPath);
             ResolvedMainExcelFileName = mainExcelFileName;
             LoadMainExcel();
         }
 
         // ###########################################################################################
+        // The own-models file CRT works with from now on. Another file (a test's load) - or none -
+        // holds nothing of the last one: the list, its problem and the read are forgotten HERE, where
+        // the file changes, never at a reload's start (code review, 2026-10-29: cleared there, a file
+        // that had failed to read looked like another file, and a model made while the manual data
+        // check ran was written over it).
+        // ###########################################################################################
+        private static void UseOwnOscilloscopesPath(string path)
+        {
+            lock (OwnScopeModelsLock)
+            {
+                if (string.IsNullOrWhiteSpace(path) || !string.Equals(_ownOscilloscopesPath, path, StringComparison.Ordinal))
+                {
+                    OwnScopeModels = [];
+                    OwnScopeModelsProblem = null;
+                    _ownScopeModelsReadFrom = null;
+                    _ownScopeModelRenames.Clear();
+                }
+
+                _ownOscilloscopesPath = path;
+            }
+        }
+
+        // ###########################################################################################
         // Reads the hardware, board and oscilloscope definitions from the main file, then merges in
         // the boards that exist only as drafts.
+        //
+        // *** THE MODEL LISTS STAY AS THEY ARE UNTIL THE NEW MAIN FILE IS READ (code review,
+        // 2026-10-29). *** Emptied at the start, a manual data check left the model editor with no
+        // published model for as long as it ran: a name was checked against the own models alone, and
+        // the drop-downs it rebuilt had none of the published ones. Only a main file that cannot be read
+        // takes the published models out.
         // ###########################################################################################
         private static void LoadMainExcel()
         {
             HardwareBoards = new List<HardwareBoardEntry>();
-            Oscilloscopes = new List<OscilloscopeEntry>();
 
             if (string.IsNullOrEmpty(ResolvedMainExcelFileName))
             {
                 Logger.Warning("No compatible main data file matched the current application version");
+                DataManager.NoPublishedScopeModels();
                 return;
             }
 
@@ -688,6 +739,7 @@ namespace Handlers.DataHandling
             if (!File.Exists(excelPath))
             {
                 Logger.Warning($"Main data file not found - [{excelPath}]");
+                DataManager.NoPublishedScopeModels();
                 return;
             }
 
@@ -708,6 +760,7 @@ namespace Handlers.DataHandling
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
             {
                 Logger.Warning($"Failed to load main data file - [{ex.Message}]");
+                DataManager.NoPublishedScopeModels();
                 return;
             }
 
@@ -743,55 +796,255 @@ namespace Handlers.DataHandling
                 Logger.Info($"    [{boardEntry.ExcelDataFile}]");
             }
 
-            // The user's own models after the published ones - found once in 3.x's main workbook
-            // (OwnOscilloscopeFile). Only at a real launch: a test's load has no file of the user's.
+            DataManager.BeforeOwnScopeModelsForTests?.Invoke();
+            DataManager.LoadOwnScopeModels(main.Oscilloscopes);
+
+            Logger.Info($"Loaded [{Oscilloscopes.Count}] oscilloscope definitions from main data file - [{OwnScopeModels.Count}] of them your own");
+            DataManager.ScopeModelsListed?.Invoke();
+        }
+
+        // ###########################################################################################
+        // THE SCOPE MODELS LISTED AGAIN - raised by every load of the main file, ON THE THREAD IT RAN
+        // ON (a manual data check's is the pool's), once the lists hold the new models. Main follows it
+        // on the Oscilloscope tab (FollowScopeModelsReloaded) - at once, not after the whole data check
+        // (code review, 2026-10-29: in between, a change typed into a model the reload had renamed was
+        // dropped). Subscribed only by Main.StartAsync, so a test's load reaches nobody.
+        // ###########################################################################################
+        public static event Action? ScopeModelsListed;
+
+        // Run just before the own models are taken up - a test's way to look at the lists while a
+        // reload is under way (DataManagerTests). Never set by CRT.
+        internal static Action? BeforeOwnScopeModelsForTests { get; set; }
+
+        // What the loads of this run renamed own models to ("<model> (my version)"): the name a model
+        // goes by now, by its vendor and the name it had - null when it was not renamed. The
+        // Oscilloscope tab follows a renamed model by this, never by guessing from a name's start.
+        public static string? OwnScopeModelRenamedTo(string vendor, string seriesOrModel)
+        {
+            lock (OwnScopeModelsLock)
+            {
+                return DataManager._ownScopeModelRenames.TryGetValue($"{vendor.Trim()}\n{seriesOrModel.Trim()}", out string? renamed) ? renamed : null;
+            }
+        }
+
+        // Under OwnScopeModelsLock; capitals aside, as model names are.
+        private static readonly Dictionary<string, string> _ownScopeModelRenames = new(StringComparer.OrdinalIgnoreCase);
+
+        // ###########################################################################################
+        // THE USER'S OWN MODELS, beside the `published` ones just read - found once in 3.x's main
+        // workbook (OwnOscilloscopeFile); a test's load has no file of the user's. Three steps, each
+        // simple because of ONE RULE: the editor changes the list only once its file was read
+        // (SaveOwnScopeModelsAsync refuses before), and CRT is the file's only writer.
+        //
+        //   1. THE FILE, READ ONCE (code review, 2026-10-29). A reload (the manual data check, on the
+        //      pool) reads it again only while no read went well - so nothing can have been changed
+        //      or written since, and what it reads simply becomes the list. Read once, the list held
+        //      is the truth: reading it again could put back an older list than one just saved.
+        //   2. RECONCILED, IN ONE STEP WITH THE LIST HELD NOW: a model published since under an own
+        //      model's name takes it over, or names it apart (OscilloscopeModelRules.Reconciled). An
+        //      edit made meanwhile is reconciled with the rest - never undone, never waited for.
+        //   3. WRITTEN BACK when that changed it, by the save's own write: the latest list, in turn.
+        //
+        // *** WHAT COULD NOT BE READ IS NEVER WRITTEN (code review, 2026-10-29). *** A file that could
+        // not be read reads as "no models"; OwnScopeModelsProblem then says why, and nothing writes the
+        // file this run - neither the reconcile here nor the editor.
+        // ###########################################################################################
+        private static void LoadOwnScopeModels(IReadOnlyList<MainDocument.OscilloscopeRow> published)
+        {
+            string path = _ownOscilloscopesPath;
             var notes = new List<string>();
-            IReadOnlyList<MainDocument.OscilloscopeRow> own = OwnOscilloscopeFile.LoadOrFind(
-                _ownOscilloscopesPath,
-                _legacyDataRoot,
-                main.Oscilloscopes,
-                notes);
+
+            if (!DataManager.OwnScopeModelsFileRead(path))
+            {
+                OwnScopeModelsWriteGate.Wait();
+
+                try
+                {
+                    IReadOnlyList<MainDocument.OscilloscopeRow> read =
+                        OwnOscilloscopeFile.LoadOrFind(path, _legacyDataRoot, published, notes, out string? problem);
+
+                    lock (OwnScopeModelsLock)
+                    {
+                        OwnScopeModels = read.ToList();
+                        OwnScopeModelsProblem = problem;
+                        _ownScopeModelsReadFrom = problem is null && !string.IsNullOrWhiteSpace(path) ? path : null;
+                    }
+                }
+                finally
+                {
+                    OwnScopeModelsWriteGate.Release();
+                }
+            }
+
+            bool changed;
+
+            lock (OwnScopeModelsLock)
+            {
+                PublishedScopeModels = published.ToList();
+
+                (IReadOnlyList<MainDocument.OscilloscopeRow> reconciled, changed) =
+                    OscilloscopeModelRules.Reconciled(OwnScopeModels, published, out IReadOnlyList<(string Vendor, string From, string To)> renamed);
+                DataManager.ListScopeModelsCore(reconciled);
+
+                foreach ((string vendor, string from, string to) in renamed)
+                {
+                    DataManager._ownScopeModelRenames[$"{vendor}\n{from}"] = to;
+                }
+            }
+
+            if (changed && !string.IsNullOrWhiteSpace(path))
+            {
+                OwnScopeModelsWriteGate.Wait();
+
+                try
+                {
+                    if (DataManager.WriteHeldOwnScopeModels(path) is string failure)
+                    {
+                        notes.Add($"Your own oscilloscope models could not be written to [{path}] ({failure}).");
+                    }
+                }
+                finally
+                {
+                    OwnScopeModelsWriteGate.Release();
+                }
+            }
 
             foreach (string note in notes)
             {
                 Logger.Warning(note);
             }
-
-            Oscilloscopes = main.Oscilloscopes
-                .Concat(own)
-                .Where(scope => !string.IsNullOrWhiteSpace(scope.SeriesOrModel))
-                .Select(DataManager.ToOscilloscopeEntry)
-                .ToList();
-
-            Logger.Info($"Loaded [{Oscilloscopes.Count}] oscilloscope definitions from main data file - [{own.Count}] of them your own");
         }
 
-        // One oscilloscope of the main file, as the Oscilloscope tab takes it.
-        private static OscilloscopeEntry ToOscilloscopeEntry(MainDocument.OscilloscopeRow scope) => new()
+        // Whether the own-models file at `path` was read, and well - the one thing that lets the list
+        // change and the file be written.
+        private static bool OwnScopeModelsFileRead(string path)
         {
-            Brand = scope.Brand,
-            SeriesOrModel = scope.SeriesOrModel,
-            Port = scope.Port,
-            Identify = scope.Identify,
-            DrainErrorQueue = scope.DrainErrorQueue,
-            OperationComplete = scope.OperationComplete,
-            ClearStatistics = scope.ClearStatistics,
-            QueryActiveTrigger = scope.QueryActiveTrigger,
-            Stop = scope.Stop,
-            Single = scope.Single,
-            Run = scope.Run,
-            QueryTriggerMode = scope.QueryTriggerMode,
-            QueryTriggerLevel = scope.QueryTriggerLevel,
-            SetTriggerLevel = scope.SetTriggerLevel,
-            QueryTimeDiv = scope.QueryTimeDiv,
-            SetTimeDiv = scope.SetTimeDiv,
-            QueryVoltsDiv = scope.QueryVoltsDiv,
-            SetVoltsDiv = scope.SetVoltsDiv,
-            DumpImage = scope.DumpImage,
-            TimeDivList = scope.TimeDivList,
-            VoltsDivList = scope.VoltsDivList,
-            DebounceTime = scope.DebounceTime,
-        };
+            lock (OwnScopeModelsLock)
+            {
+                return !string.IsNullOrWhiteSpace(path) && string.Equals(_ownScopeModelsReadFrom, path, StringComparison.Ordinal);
+            }
+        }
+
+        // ###########################################################################################
+        // The list held NOW written to `path` - null when written, else why not. Under the write gate,
+        // so writes follow each other and the file ends with the latest list (a save waiting behind
+        // another is never overtaken by an older list). A file not read well is never written.
+        // ###########################################################################################
+        private static string? WriteHeldOwnScopeModels(string path)
+        {
+            IReadOnlyList<MainDocument.OscilloscopeRow> toWrite;
+
+            lock (OwnScopeModelsLock)
+            {
+                if (!string.Equals(_ownScopeModelsReadFrom, path, StringComparison.Ordinal))
+                {
+                    return OwnScopeModelsProblem ?? DataManager.OwnScopeModelsNotReadYet;
+                }
+
+                toWrite = OwnScopeModels;
+            }
+
+            try
+            {
+                OwnOscilloscopeFile.Write(path, toWrite);
+                Logger.Info($"Saved [{toWrite.Count}] oscilloscope models of your own to [{path}]");
+                return null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning($"Your own oscilloscope models could not be written to [{path}] - [{ex.Message}]");
+                return ex.Message;
+            }
+        }
+
+        internal const string OwnScopeModelsNotReadYet =
+            "Your own oscilloscope models have not been read yet, so CRT changes none of them - nothing is lost. Run the data check, or start CRT again.";
+
+        // ###########################################################################################
+        // A change of the user's own models that the file did not take, taken back out of the lists -
+        // `held` is what the file still holds. Nothing is written. The model editor's delete uses it:
+        // a model the file keeps must not leave the lists (it came back at the next start).
+        // ###########################################################################################
+        public static void PutBackOwnScopeModels(IReadOnlyList<MainDocument.OscilloscopeRow> held)
+        {
+            ArgumentNullException.ThrowIfNull(held);
+
+            lock (OwnScopeModelsLock)
+            {
+                DataManager.ListScopeModelsCore(held);
+            }
+        }
+
+        // No main file read: no published model, the own ones as held.
+        private static void NoPublishedScopeModels()
+        {
+            lock (OwnScopeModelsLock)
+            {
+                PublishedScopeModels = [];
+                DataManager.ListScopeModelsCore(OwnScopeModels);
+            }
+
+            DataManager.ScopeModelsListed?.Invoke();
+        }
+
+        // The published models, then `own` - each list replaced whole. Under OwnScopeModelsLock.
+        private static void ListScopeModelsCore(IReadOnlyList<MainDocument.OscilloscopeRow> own)
+        {
+            OwnScopeModels = own.ToList();
+            Oscilloscopes = PublishedScopeModels
+                .Select(scope => OscilloscopeEntry.From(scope))
+                .Concat(OwnScopeModels.Select(scope => OscilloscopeEntry.From(scope, isOwn: true)))
+                .Where(scope => !string.IsNullOrWhiteSpace(scope.SeriesOrModel))
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // THE USER'S OWN MODELS CHANGED by the Oscilloscope tab's model editor: listed at once (on the
+        // UI thread, like every reader of the lists), then written to the user's file off it - null
+        // when written, else what kept it from being written. Writes follow each other, so the file
+        // ends with the latest list. A test's load has no file: the list alone changes.
+        //
+        // While the file could not be read (OwnScopeModelsProblem), or was not read yet, NOTHING
+        // changes - the list nor the file - and the reason is answered (code review, 2026-10-29: the
+        // editor's first save replaced an unreadable file with the one model just made).
+        // ###########################################################################################
+        public static async Task<string?> SaveOwnScopeModelsAsync(IReadOnlyList<MainDocument.OscilloscopeRow> own)
+        {
+            ArgumentNullException.ThrowIfNull(own);
+
+            string path = _ownOscilloscopesPath;
+
+            lock (OwnScopeModelsLock)
+            {
+                if (OwnScopeModelsProblem is string problem)
+                {
+                    return problem;
+                }
+
+                if (!string.IsNullOrWhiteSpace(path) && !string.Equals(_ownScopeModelsReadFrom, path, StringComparison.Ordinal))
+                {
+                    return DataManager.OwnScopeModelsNotReadYet;
+                }
+
+                DataManager.ListScopeModelsCore(own);
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            await OwnScopeModelsWriteGate.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                return await Task.Run(() => DataManager.WriteHeldOwnScopeModels(path)).ConfigureAwait(false);
+            }
+            finally
+            {
+                OwnScopeModelsWriteGate.Release();
+            }
+        }
 
         // ###########################################################################################
         // Appends every draft-only board to an entry list, skipping any whose hardware/board name

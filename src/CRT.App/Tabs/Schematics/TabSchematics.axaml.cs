@@ -47,6 +47,9 @@
 //                                             picture from the Contribute tab, with their bar
 //                                             (Done/Cancel), and the menu a right-click on a
 //                                             component opens ("Edit this component")
+//   TabSchematics.ViewTools.cs                Panning with the right or middle button and the
+//                                             one-time tip saying so, and "Draw trace" - traces
+//                                             drawn and changed only while it is on
 //
 // They are one partial class, so state is shared; each field is declared in the part
 // that owns it.
@@ -223,10 +226,6 @@ public partial class TabSchematics : UserControl
         this.LabelsListPanel.IsVisible = isLabelsExpanded;
         this.ToggleLabelsPanelButton.Content = isLabelsExpanded ? "Collapse" : "Expand";
 
-        bool isGlobalSettingsExpanded = UserSettings.SchematicsGlobalSettingsPanelExpanded;
-        this.GlobalSettingsListPanel.IsVisible = isGlobalSettingsExpanded;
-        this.ToggleGlobalSettingsPanelButton.Content = isGlobalSettingsExpanded ? "Collapse" : "Expand";
-
         bool isImportantSignalsExpanded = UserSettings.SchematicsImportantSignalsPanelExpanded;
         this.UpdateImportantSignalsPanelExpandedState(isImportantSignalsExpanded);
         this.UpdateImportantSignalsClearButtonState(false);
@@ -349,14 +348,6 @@ public partial class TabSchematics : UserControl
             UserSettings.SchematicsLabelsPanelExpanded = willBeExpanded;
         };
 
-        this.ToggleGlobalSettingsPanelButton.Click += (s, e) =>
-        {
-            bool willBeExpanded = !this.GlobalSettingsListPanel.IsVisible;
-            this.GlobalSettingsListPanel.IsVisible = willBeExpanded;
-            this.ToggleGlobalSettingsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
-            UserSettings.SchematicsGlobalSettingsPanelExpanded = willBeExpanded;
-        };
-
         this.ToggleImportantSignalsPanelButton.Click += (s, e) =>
         {
             bool willBeExpanded = !this.ImportantSignalsListPanel.IsVisible;
@@ -392,7 +383,8 @@ public partial class TabSchematics : UserControl
             var boardKey = this.MainWindow?.GetCurrentBoardKey();
             var schematicName = this.SelectedThumbnail?.Name;
 
-            if (!string.IsNullOrEmpty(boardKey) && !string.IsNullOrEmpty(schematicName))
+            // Only under the picture they were read for (TabSchematics.ViewTools.cs).
+            if (!string.IsNullOrEmpty(boardKey) && !string.IsNullOrEmpty(schematicName) && this.TracesAreThePictures)
             {
                 var export = this.polylineManager.ExportTraces();
                 TraceStorage.SaveTraces(boardKey, schematicName, export);
@@ -673,7 +665,9 @@ public partial class TabSchematics : UserControl
             return overlayRect.Contains(containerPoint);
         }
 
-        return IsInsideVisibleOverlay(this.GlobalSettingsPanel) ||
+        return IsInsideVisibleOverlay(this.GlobalSettingsButton) ||
+               IsInsideVisibleOverlay(this.DrawTraceButton) ||
+               IsInsideVisibleOverlay(this.PanHintBorder) ||
                IsInsideVisibleOverlay(this.LabelsPanel) ||
                IsInsideVisibleOverlay(this.ImportantSignalsPanel) ||
                IsInsideVisibleOverlay(this.TracesPanel) ||
@@ -716,6 +710,11 @@ public partial class TabSchematics : UserControl
     // ###########################################################################################
     public void ResetSchematicsViewer()
     {
+        // Another board: no trace being drawn - a point being dragged dropped, never saved under the
+        // new board - and the picture's tip and tool button gone until a picture is shown
+        // (TabSchematics.ViewTools.cs).
+        this.HideViewToolsForNoPicture();
+
         this.thisIsKiCadOverlayRefreshQueued = false;
         this.thisKiCadOverlayRefreshRequestVersion = 0;
         this.thisKiCadOverlayLastRenderedVersion = 0;
@@ -771,7 +770,7 @@ public partial class TabSchematics : UserControl
 
         this.CancelThumbnailDrags();
 
-        this.polylineManager?.Reset();
+        this.LetGoOfTraces();
         this.SchematicsLabelsCanvas.Children.Clear();
         this.ResetComponentLabelVisualCaches();
         this.ResetWorklogOverlays();

@@ -567,6 +567,108 @@ namespace CRT.Server.Handlers.Email
         }
 
         // ###########################################################################################
+        // AN OSCILLOSCOPE MODEL SENT IN FROM CRT (CRT 4.0 step 5, 2026-10-29 - OscilloscopeModelFlows):
+        // waiting, to the administrators; published, and not going in, to the contributor. Shaped like
+        // the board mails: greeted by name, the model named in bold inside brackets, the other
+        // person's words quoted, the contact line last.
+        // ###########################################################################################
+        public static EmailMessage OscilloscopeModelWaiting(
+            string toAddress,
+            string modelName,
+            long submissionId,
+            string? contributorMessage,
+            bool fullTestSuitePassed,
+            string? recipientName = null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(recipientName)
+                .Paragraph(
+                    "A contributor has sent in an oscilloscope model, ",
+                    MailText.Named($"[{modelName}]"),
+                    $", for everybody (model #{submissionId}). " +
+                    (fullTestSuitePassed
+                        ? "CRT's full test suite went through on it."
+                        : "CRT's full test suite was not run on it as it was sent, or did not go through.") +
+                    " The contributor wrote:")
+                .Quote(contributorMessage, "(no message given)")
+                .Paragraph(
+                    "Open CRT, go to the \"Maintainer\" tab, then " + EmailTemplates.AccountScreenQuoted +
+                    " > \"Oscilloscope models\", to publish it or to say why it will not go in.")
+                .WithContactLine()
+                .ToMessage(toAddress, "An oscilloscope model is waiting for you");
+        }
+
+        // `everybodyGetsItNow`: false while a checksum manifest is still to be rebuilt - CRT does not
+        // take the new main file until it is, so no next launch is promised (code review, 2026-10-29).
+        public static EmailMessage OscilloscopeModelPublished(
+            string toAddress,
+            string modelName,
+            string? contributorName = null,
+            bool everybodyGetsItNow = true)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(contributorName)
+                .Paragraph(
+                    "Thank you for the oscilloscope model you sent in, ",
+                    MailText.Named($"[{modelName}]"),
+                    everybodyGetsItNow
+                        ? ". It is published, and everybody using CRT gets it with the next data check at launch."
+                        : ". It is published. The data still has to be made ready for download, so it reaches everybody using CRT " +
+                          "a little later - there is nothing for you to do.")
+                .Paragraph(
+                    "Once your CRT has it too, your own copy of the model goes by itself - unless yours differs from what was " +
+                    "published, and then it stays beside it as \"(my version)\".")
+                .WithContactLine()
+                .ToMessage(toAddress, "Your oscilloscope model is published");
+        }
+
+        public static EmailMessage OscilloscopeModelRejected(
+            string toAddress,
+            string modelName,
+            string reason,
+            string? contributorName = null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(contributorName)
+                .Paragraph(
+                    "The administrator has looked at the oscilloscope model you sent in, ",
+                    MailText.Named($"[{modelName}]"),
+                    ", and it will not be going in as it is. The reason given was:")
+                .Quote(reason, "(no reason was given)")
+                .Paragraph(
+                    "Your model is still in CRT on your own computer, and nothing has been deleted. You can change it on the " +
+                    "\"Oscilloscope\" tab and send it in again.")
+                .WithContactLine()
+                .ToMessage(toAddress, "Your oscilloscope model was not published");
+        }
+
+        // A model of the user's in BETA, waiting for the stable source, whose place another
+        // contributor's model of the same name took (OscilloscopeModelFlows - code review, 2026-10-29).
+        public static EmailMessage OscilloscopeModelSuperseded(
+            string toAddress,
+            string modelName,
+            string? contributorName = null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(contributorName)
+                .Paragraph(
+                    "Thank you for the oscilloscope model you sent in, ",
+                    MailText.Named($"[{modelName}]"),
+                    ". It was on its way to being published, but another model of the same name has been published since, " +
+                    "and it takes the place of yours.")
+                .Paragraph(
+                    "Your model is still in CRT on your own computer, and nothing has been deleted. Once your CRT has the " +
+                    "published model, yours stays beside it as \"(my version)\" if it differs - and you can send it in again " +
+                    "from the \"Oscilloscope\" tab.")
+                .WithContactLine()
+                .ToMessage(toAddress, "Another model of your oscilloscope's name was published");
+        }
+
+        // ###########################################################################################
         // Sent to each MAINTAINER of a board when a submission to it is queued (Phase 6 task 11,
         // 2026-09-25) - or to the administrators, when the board has no maintainers or the
         // submission changes shared files.

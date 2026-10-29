@@ -198,7 +198,7 @@ public partial class TabSchematics
             }
         }
 
-        IncludeOverlay(this.GlobalSettingsPanel, reserveBottom: true);
+        IncludeOverlay(this.GlobalSettingsButton, reserveBottom: true);
         IncludeOverlay(this.LabelsPanel, reserveBottom: true);
         IncludeOverlay(this.ImportantSignalsPanel, reserveBottom: true);
         IncludeOverlay(this.TracesPanel, reserveBottom: true);

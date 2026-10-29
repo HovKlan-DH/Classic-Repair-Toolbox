@@ -516,6 +516,21 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // An oscilloscope model put into the main file's oscilloscopes (CRT 4.0 step 5: a user's model
+        // published for everybody) - in place of the model of its name (vendor and series or model,
+        // capitals aside) or after the last. Only a CRT 4.0 main file takes one: the Excel
+        // generations are frozen.
+        // ###########################################################################################
+        public static MasterListingEdit PutOscilloscope(string masterPath, MainDocument.OscilloscopeRow model, DateTimeOffset? nowUtc = null)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            return MainFileListing.IsMainFile(masterPath)
+                ? MainFileListing.PutOscilloscope(masterPath, model, nowUtc)
+                : MasterListingEdit.Failed("Only a CRT 4.0 main file takes an oscilloscope model - the Excel generations are frozen.");
+        }
+
+        // ###########################################################################################
         // Puts the file's rows in the order `boardIdsInOrder` gives (ArrangeAs). The rows move, the
         // places do not: the k-th listed row of the new order lands where the k-th listed row was,
         // so a blank line or a heading between rows stays where it is. A row moves WHOLE - its values,

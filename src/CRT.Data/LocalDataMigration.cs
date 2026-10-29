@@ -299,9 +299,29 @@ namespace Handlers.DataHandling
             string path,
             string oldDataRoot,
             IReadOnlyList<MainDocument.OscilloscopeRow> published,
-            List<string> notes)
+            List<string> notes) =>
+            OwnOscilloscopeFile.LoadOrFind(path, oldDataRoot, published, notes, out _);
+
+        // ###########################################################################################
+        // The same, saying when the file must NOT be written this run, and why (code review,
+        // 2026-10-29): it could not be read - written, it would replace models nobody could read with
+        // the list held, which is none - or the search of 3.x's workbook could not be made, which a
+        // file would end for good. Null when it may be written. The Oscilloscope tab's model editor
+        // writes nothing while it is not null.
+        // ###########################################################################################
+        public const string NotReadText =
+            "Your own oscilloscope models could not be read when CRT started, so CRT changes none of them until it can - nothing is lost. ";
+
+        public static IReadOnlyList<MainDocument.OscilloscopeRow> LoadOrFind(
+            string path,
+            string oldDataRoot,
+            IReadOnlyList<MainDocument.OscilloscopeRow> published,
+            List<string> notes,
+            out string? notWritable)
         {
             ArgumentNullException.ThrowIfNull(notes);
+
+            notWritable = null;
 
             if (string.IsNullOrWhiteSpace(path))
                 return [];
@@ -313,6 +333,8 @@ namespace Handlers.DataHandling
                 if (!searched)
                 {
                     notes.Add("Your own oscilloscope models from CRT 3 could not be read - looked for again at the next start.");
+                    notWritable = OwnOscilloscopeFile.NotReadText +
+                        "CRT 3's main data file, where they are, is open in another program or broken. Close it, and start CRT again.";
                     return found;
                 }
 
@@ -335,6 +357,8 @@ namespace Handlers.DataHandling
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
             {
                 notes.Add($"Your own oscilloscope models in [{path}] could not be read ({ex.Message}).");
+                notWritable = OwnOscilloscopeFile.NotReadText +
+                    $"The file [{path}] could not be read ({ex.Message}). Put it right or move it away, and start CRT again.";
                 return [];
             }
         }

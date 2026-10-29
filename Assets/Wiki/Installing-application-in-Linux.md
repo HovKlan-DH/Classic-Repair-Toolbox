@@ -13,7 +13,7 @@ chmod +x Classic-Repair-Toolbox.AppImage
 ./Classic-Repair-Toolbox.AppImage
 ```
 
-The first start copies the hardware data (close to 1 GB) out of the AppImage into `~/.local/share/Classic-Repair-Toolbox/Data`, so it takes a while. Your settings, log, workbooks and drafts live beside it in `~/.local/share/Classic-Repair-Toolbox/`. To keep the data somewhere else, see [Command-line parameters](Commandline-parameters).
+The first start copies the hardware data (close to 1 GB) out of the AppImage into `~/.local/share/Classic-Repair-Toolbox/Data v4`, so it takes a while. Your settings, log, workbooks and drafts live beside it in `~/.local/share/Classic-Repair-Toolbox/`. To keep the data somewhere else, see [Command-line parameters](Commandline-parameters).
 
 If you want to have the CRT application and icon available in your desktop's application menu, then you can install it with an application manager like e.g. **Gear Lever**. Just open **Gear Lever** and drag the CRT file in to it, and afterwards you will be able to access it nice and easily:
 

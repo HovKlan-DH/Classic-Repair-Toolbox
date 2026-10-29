@@ -222,6 +222,16 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // THE SCOPE MODELS LISTED AGAIN (DataManager.ScopeModelsListed - a manual data check reads the
+        // main file again on the pool): an own model may have been taken over or renamed by one
+        // published since, and the Oscilloscope tab follows AT ONCE, not after the whole check (code
+        // review, 2026-10-29: in between, a change typed into the renamed model was dropped). Called
+        // once from StartAsync; the static event reaches no test.
+        // ###########################################################################################
+        private void StartFollowingScopeModels() =>
+            DataManager.ScopeModelsListed += () => Dispatcher.UIThread.Post(this.TabOscilloscopeControl.FollowScopeModelsReloaded);
+
+        // ###########################################################################################
         // Syncs any remaining non-Excel files and returns the number of files that changed.
         // ###########################################################################################
         private async Task<int> SyncRemainingFilesAsync()

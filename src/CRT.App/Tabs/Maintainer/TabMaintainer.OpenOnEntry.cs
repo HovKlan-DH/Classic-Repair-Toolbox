@@ -102,7 +102,7 @@ namespace CRT
         // already read says yes - one list is enough for that - and "no" needs both lists read
         // (BadgeKnown). A BETA list that cannot be read then never holds back a queue that has work.
         // ###########################################################################################
-        private bool WaitingIsKnown => this.TabAttention > 0 || this.BadgeKnown;
+        private bool WaitingIsKnown => this.QueueAttention > 0 || this.BadgeKnown;
 
         // ###########################################################################################
         // Decides the screen of an opening, once WaitingIsKnown. Moved here without reading - the
@@ -116,7 +116,7 @@ namespace CRT
 
             this.thisOpeningScreenPending = false;
 
-            MaintainerMode screen = MaintainerModes.ScreenOnOpening(this.thisMode, this.TabAttention, this.IsSomethingOpenOnShownScreen);
+            MaintainerMode screen = MaintainerModes.ScreenOnOpening(this.thisMode, this.QueueAttention, this.IsSomethingOpenOnShownScreen);
 
             if (screen != MaintainerMode.Boards)
                 return;
@@ -134,7 +134,7 @@ namespace CRT
         // submission only for an opening that will show it (TabMaintainer.Prefetch.cs).
         private MaintainerMode ScreenOnNextOpening =>
             this.WaitingIsKnown
-                ? MaintainerModes.ScreenOnOpening(this.thisMode, this.TabAttention, this.IsSomethingOpenOnShownScreen)
+                ? MaintainerModes.ScreenOnOpening(this.thisMode, this.QueueAttention, this.IsSomethingOpenOnShownScreen)
                 : this.thisMode;
 
         private void RememberSubmission(long id)

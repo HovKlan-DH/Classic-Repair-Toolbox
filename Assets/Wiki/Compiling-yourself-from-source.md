@@ -177,9 +177,9 @@ the "Configuration" tab, which it is by default.
 
 | Platform | Data folder |
 | --- | --- |
-| Windows | `%LOCALAPPDATA%\Classic-Repair-Toolbox\Data` |
-| Linux | `~/.local/share/Classic-Repair-Toolbox/Data` |
-| macOS | `~/Library/Application Support/Classic-Repair-Toolbox/Data` |
+| Windows | `%LOCALAPPDATA%\Classic-Repair-Toolbox\Data v4` |
+| Linux | `~/.local/share/Classic-Repair-Toolbox/Data v4` |
+| macOS | `~/Library/Application Support/Classic-Repair-Toolbox/Data v4` |
 
 ## The MiniPro IC programmer
 

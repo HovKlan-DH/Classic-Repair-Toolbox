@@ -10,7 +10,7 @@ The strip above the tabs, visible on every tab.
 
 | Control | Does |
 | --- | --- |
-| Workbook drop-down | Which workbook you are working in |
+| Workbook drop-down | Which workbook you are working in - `#3 \| Breadbin #2 - No video (C64/250407)` names its device too |
 | Status pill | Open or Closed |
 | **Show worklogs** | Draws the markers on the schematic |
 | **Add worklog** | Start marking an area (see below) |
@@ -22,6 +22,8 @@ Beside the status pill the bar says how many worklogs the workbook holds and whe
 On a board with no workbook yet, the bar reads "No repairs recorded for this board", and **Show worklogs** and **Add worklog** stay hidden until you create one.
 
 The drop-down lists workbooks from **all** boards. Picking one from another board switches the application to that board first.
+
+Once you have a device, the **Device** drop-down above **Hardware** shows the device the bar's workbook is on, and picking a device goes to its repair - see [Devices](Workbooks-Devices).
 
 ## Adding a worklog
 

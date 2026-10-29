@@ -69,9 +69,14 @@ namespace Handlers.MaintainerHandling
         // Counting distinct boards would say 2 and leave the maintainer adding the buttons up to 3.
         // Nothing waiting for this account in either - including a submission waiting only for the
         // other approver - is no badge.
+        //
+        // *** THE ADMINISTRATOR'S OSCILLOSCOPE MODELS WAITING COUNT TOO (code review, 2026-10-29), ***
+        // badged on the Account button that holds them: with "hide the tab while no work is waiting"
+        // ticked, the tab stayed hidden while they waited. Which screen the tab OPENS on is still the
+        // two queues' alone (ScreenOnOpening).
         // ###########################################################################################
-        public static int TabAttention(IEnumerable<ReviewQueueRow>? queue, IEnumerable<ProductionBoardRow>? beta) =>
-            MaintainerModes.ReviewAttention(queue) + MaintainerModes.BetaAttention(beta);
+        public static int TabAttention(IEnumerable<ReviewQueueRow>? queue, IEnumerable<ProductionBoardRow>? beta, int oscilloscopeModels = 0) =>
+            MaintainerModes.ReviewAttention(queue) + MaintainerModes.BetaAttention(beta) + Math.Max(0, oscilloscopeModels);
 
         // ###########################################################################################
         // WHETHER THE TAB IS SHOWN AT ALL (owner request, 2026-10-01: "Show only Maintainer tab when
@@ -142,7 +147,9 @@ namespace Handlers.MaintainerHandling
         // when opening the "Maintainer" tab, then go to "Systems" and show the last selected system").
         //
         // `shown` is the screen on show as the tab is opened (Review after signing in), `attention`
-        // the tab's badge (TabAttention) and `somethingOpen` whether something is open on that screen
+        // what waits in the TWO QUEUES (TabMaintainer.QueueAttention - never the tab's badge, which
+        // counts the administrator's oscilloscope models too: those alone would keep the tab off
+        // Boards, on an empty queue) and `somethingOpen` whether something is open on that screen
         // - a submission or a BETA board. Boards when nothing waits for this account in EITHER
         // queue - "awaiting" is the badge's own sense, so a submission waiting only for the other
         // approver does not keep the tab on a queue - else the screen on show.

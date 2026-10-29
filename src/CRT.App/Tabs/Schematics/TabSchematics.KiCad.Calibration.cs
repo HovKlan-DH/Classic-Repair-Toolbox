@@ -248,6 +248,9 @@ public partial class TabSchematics
         this.CancelWorklogEntryMode();
 
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
+
+        // No trace drawing under another tool (TabSchematics.ViewTools.cs).
+        this.SetDrawingTraces(false);
         this.thisIsKiCadTraceCalibrationMode = true;
 
         // Entering the mode switches the active calibration source, so anything recorded from the
