@@ -67,43 +67,23 @@ namespace CRT
             if (workbook == null)
                 return;
 
-            if (TopLevel.GetTopLevel(this) is not { StorageProvider: { } storageProvider })
+            if (TopLevel.GetTopLevel(this) is not { StorageProvider: not null })
                 return;
 
             this.thisIsExportingWorkbook = true;
 
             try
             {
-                var document = this.BuildExportDocument(workbook);
+                var document = await this.BuildExportDocumentAsync(workbook);
                 string extension = asZip ? "zip" : "pdf";
 
-                var fileType = asZip
-                    ? new FilePickerFileType("ZIP archive (PDF + photos and files)")
-                    {
-                        Patterns = new[] { "*.zip" },
-                        MimeTypes = new[] { "application/zip" },
-                        AppleUniformTypeIdentifiers = new[] { "public.zip-archive" }
-                    }
-                    : new FilePickerFileType("PDF document")
-                    {
-                        Patterns = new[] { "*.pdf" },
-                        MimeTypes = new[] { "application/pdf" },
-                        AppleUniformTypeIdentifiers = new[] { "com.adobe.pdf" }
-                    };
+                string? path = await this.PickExportPathAsync(
+                    asZip,
+                    asZip ? "Export workbook as ZIP" : "Export workbook as PDF",
+                    WorkbookExportModel.BuildFileBaseName(document));
 
-                var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-                {
-                    Title = asZip ? "Export workbook as ZIP" : "Export workbook as PDF",
-                    SuggestedFileName = WorkbookExportModel.BuildFileBaseName(document),
-                    DefaultExtension = extension,
-                    ShowOverwritePrompt = true,
-                    FileTypeChoices = new[] { fileType }
-                });
-
-                if (file == null)
+                if (path == null)
                     return;
-
-                string path = file.Path.LocalPath;
 
                 // Not every picker backend appends the default extension to a name typed without
                 // one, and the format here is the button's rather than the file name's - so the
@@ -160,6 +140,43 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // The save dialog every export of this tab opens - a workbook's, and a device's history
+        // (TabWorkbooks.DeviceHistory.cs): the button's format the one file type offered, the
+        // overwrite asked about. One copy, so the two cannot come to differ (code review,
+        // 2026-10-29). The path picked, or null.
+        // ###########################################################################################
+        private async Task<string?> PickExportPathAsync(bool asZip, string title, string suggestedName)
+        {
+            if (TopLevel.GetTopLevel(this) is not { StorageProvider: { } storageProvider })
+                return null;
+
+            var fileType = asZip
+                ? new FilePickerFileType("ZIP archive (PDF + photos and files)")
+                {
+                    Patterns = new[] { "*.zip" },
+                    MimeTypes = new[] { "application/zip" },
+                    AppleUniformTypeIdentifiers = new[] { "public.zip-archive" }
+                }
+                : new FilePickerFileType("PDF document")
+                {
+                    Patterns = new[] { "*.pdf" },
+                    MimeTypes = new[] { "application/pdf" },
+                    AppleUniformTypeIdentifiers = new[] { "com.adobe.pdf" }
+                };
+
+            var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+            {
+                Title = title,
+                SuggestedFileName = suggestedName,
+                DefaultExtension = asZip ? "zip" : "pdf",
+                ShowOverwritePrompt = true,
+                FileTypeChoices = new[] { fileType }
+            });
+
+            return file?.Path.LocalPath;
+        }
+
+        // ###########################################################################################
         // Assembles the export document for one workbook.
         //
         // Reads the entries FRESH (WorklogManager.GetEntries, not the within-pass cache): an export
@@ -168,17 +185,18 @@ namespace CRT
         // session. Unlike the summary strip this runs once per click, so the extra read costs
         // nothing worth saving.
         //
-        // The schematic image paths are resolved here, from this tab's board data, because
+        // The schematic image paths are resolved here (PicturesOfBoardAsync), because
         // WorkbookExportModel deliberately knows nothing about BoardData or the data root.
         // ###########################################################################################
-        private WorkbookExportModel.Document BuildExportDocument(WorkbookRecord workbook)
+        private async Task<WorkbookExportModel.Document> BuildExportDocumentAsync(WorkbookRecord workbook)
         {
             var entries = WorklogManager.GetEntries(workbook.Id);
+            IReadOnlyDictionary<string, string> pictures = await this.PicturesOfBoardAsync(workbook.BoardKey);
 
             return WorkbookExportModel.Build(
                 workbook,
                 entries,
-                this.BuildSchematicImagePaths(),
+                pictures,
                 entryId => WorklogManager.GetEntryAttachmentsFolderPath(workbook.Id, entryId),
                 DateTime.Now,
 
@@ -189,40 +207,28 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Maps each of the current board's schematic names to its image file on disk.
-        //
-        // GroupBy before ToDictionary for the same reason RefreshBoardPreviews does it: board Excel
-        // files arrive from classic-repair-toolbox.dk independently of app releases and are not
-        // checked for duplicate schematic names, so a bare ToDictionary throws on the first
-        // duplicate - which here would take down the export of an otherwise perfectly good workbook.
-        // First wins, matching the board pane.
+        // Where each picture of the board `boardKey` names lies, by its name (BoardPicturePaths, the
+        // Schematics tab's rule - bug found 2026-10-29: joined to the data root, every 4.0 export went
+        // out without its board pictures). The board shown's as CRT holds them once worked out; any
+        // other - or the board shown before its load has worked them out - read from its board file
+        // (code review, 2026-10-29: the export went out without them, with nothing said). Every
+        // export of this tab - a workbook's and a device's history - takes them so.
         // ###########################################################################################
-        private Dictionary<string, string> BuildSchematicImagePaths()
+        private Task<IReadOnlyDictionary<string, string>> PicturesOfBoardAsync(string? boardKey)
         {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string shownBoardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
 
-            var schematics = this.CurrentBoardDataForPreviews?.Schematics;
-            if (schematics == null)
-                return result;
-
-            foreach (var group in schematics
-                .Where(s => !string.IsNullOrWhiteSpace(s.SchematicName) && !string.IsNullOrWhiteSpace(s.SchematicImageFile))
-                .GroupBy(s => s.SchematicName, StringComparer.OrdinalIgnoreCase))
-            {
-                var schematic = group.First();
-                result[group.Key] = Path.Combine(
-                    DataManager.DataRoot,
-                    schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar));
-            }
-
-            return result;
+            return string.Equals(boardKey ?? string.Empty, shownBoardKey, StringComparison.OrdinalIgnoreCase) &&
+                   this.ShownBoardPicturePaths() is { } shown
+                ? Task.FromResult(shown)
+                : ReadPicturesOfBoardAsync(boardKey ?? string.Empty, this.BoardRootsNow());
         }
 
         // Lets the headless tests build the very document an export would write, without a file
         // picker and without writing anything - the same override-then-real seam the rest of this
         // tab uses. The PDF/ZIP writing itself is not covered: it needs QuestPDF to produce bytes,
         // and asserting on those tests the library rather than this app.
-        internal WorkbookExportModel.Document BuildExportDocumentForTests(WorkbookRecord workbook) =>
-            this.BuildExportDocument(workbook);
+        internal Task<WorkbookExportModel.Document> BuildExportDocumentForTestsAsync(WorkbookRecord workbook) =>
+            this.BuildExportDocumentAsync(workbook);
     }
 }

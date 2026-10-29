@@ -172,15 +172,35 @@ namespace Handlers.DataHandling
             string dataRoot,
             string draftsRoot,
             string excelDataFile,
-            bool preferPublished)
+            bool preferPublished) =>
+            DraftBoardSource.ResolveViewed(dataRoot, draftsRoot, excelDataFile, preferPublished).DraftFolder;
+
+        // ###########################################################################################
+        // The board as it is VIEWED, from ONE resolution: the board file read (ResolveViewedPath's
+        // answer), the draft folder its files are found in (ViewedDraftFolder's), and whether it is a
+        // new board with no published copy - for a reader needing them together, never resolving
+        // the board twice nor copying either rule beside it (code review, 2026-10-29: a device's
+        // history did both). The two methods above and below answer from this.
+        // ###########################################################################################
+        public static ViewedBoard ResolveViewed(
+            string dataRoot,
+            string draftsRoot,
+            string excelDataFile,
+            bool preferPublished,
+            bool? listedAsPublished = null)
         {
             BoardSourceSelection source = DraftBoardSource.Resolve(
-                dataRoot, draftsRoot, excelDataFile, preferPublished);
+                dataRoot, draftsRoot, excelDataFile, preferPublished, listedAsPublished);
 
-            return source.IsDraft
-                ? DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile)
-                : string.Empty;
+            return new ViewedBoard(
+                source.WorkbookPath.Length > 0 ? source.WorkbookPath : DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile),
+                source.IsDraft ? DraftFolderLayout.GetBoardFolder(draftsRoot, excelDataFile) : string.Empty,
+                source.IsNewBoard);
         }
+
+        // A board as viewed: the board file read, the draft folder its files are found in (empty for
+        // none), and whether it has no published copy.
+        public sealed record ViewedBoard(string BoardFile, string DraftFolder, bool IsNewBoard);
 
         // ###########################################################################################
         // The workbook whose SIDECAR holds the calibrations and highlights being SHOWN - the read
@@ -196,15 +216,8 @@ namespace Handlers.DataHandling
             string dataRoot,
             string draftsRoot,
             string excelDataFile,
-            bool preferPublished)
-        {
-            BoardSourceSelection source = DraftBoardSource.Resolve(
-                dataRoot, draftsRoot, excelDataFile, preferPublished);
-
-            return source.WorkbookPath.Length > 0
-                ? source.WorkbookPath
-                : DraftBoardSource.PublishedPathOf(dataRoot, excelDataFile);
-        }
+            bool preferPublished) =>
+            DraftBoardSource.ResolveViewed(dataRoot, draftsRoot, excelDataFile, preferPublished).BoardFile;
 
         // ###########################################################################################
         // Whether a board has a local draft at all - the question the Drafts tab asks of every

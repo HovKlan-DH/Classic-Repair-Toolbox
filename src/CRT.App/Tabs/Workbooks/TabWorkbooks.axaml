@@ -643,21 +643,37 @@
 						<TextBlock x:Name="DeviceOriginText" Classes="WorkbooksMuted" FontSize="11" TextWrapping="Wrap" />
 					</StackPanel>
 
+					<!-- Edit and Delete, and under them "Export history" (slice 4d,
+					     TabWorkbooks.DeviceHistory.cs) - two buttons, the format the button's, as the
+					     workbook's own export has. -->
 					<StackPanel Grid.Column="1"
-								Orientation="Horizontal"
 								Spacing="4"
 								VerticalAlignment="Top"
 								Margin="8,0,0,0">
-						<Button x:Name="EditDeviceButton"
-								Classes="WorkbookHeaderAction"
-								Content="Edit device"
-								FontSize="11"
-								Click="OnEditDeviceClick" />
-						<Button x:Name="DeleteDeviceButton"
-								Classes="Danger WorkbookHeaderAction"
-								Content="Delete device"
-								FontSize="11"
-								Click="OnDeleteDeviceClick" />
+						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+							<Button x:Name="EditDeviceButton"
+									Classes="WorkbookHeaderAction"
+									Content="Edit device"
+									FontSize="11"
+									Click="OnEditDeviceClick" />
+							<Button x:Name="DeleteDeviceButton"
+									Classes="Danger WorkbookHeaderAction"
+									Content="Delete device"
+									FontSize="11"
+									Click="OnDeleteDeviceClick" />
+						</StackPanel>
+						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+							<Button x:Name="ExportHistoryButton"
+									Classes="WorkbookHeaderAction"
+									Content="Export history to PDF"
+									FontSize="11"
+									Click="OnExportHistoryClick" />
+							<Button x:Name="ExportHistoryZipButton"
+									Classes="WorkbookHeaderAction"
+									Content="Export history to ZIP"
+									FontSize="11"
+									Click="OnExportHistoryZipClick" />
+						</StackPanel>
 					</StackPanel>
 				</Grid>
 

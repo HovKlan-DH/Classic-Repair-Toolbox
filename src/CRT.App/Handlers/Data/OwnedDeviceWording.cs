@@ -28,6 +28,25 @@ namespace Handlers.DataHandling
         public const string NoPhotosYet = "No photos yet.";
 
         // ###########################################################################################
+        // The picker beside the board drop-downs (slice 4c): its heading, and what it shows while the
+        // workbook in the bar is on no device - plus the choice "Create new workbook" and "On my
+        // device" put before the devices.
+        // ###########################################################################################
+        public const string PickerHeading = "Device";
+
+        public const string NoDevicePicked = "No device";
+
+        public const string NoDeviceChoice = "None";
+
+        // "Create new workbook"'s title for a repair started on a device ("New repair", or a device
+        // picked that has none yet).
+        public static string NewRepairTitle(string deviceName) => $"New repair on {deviceName.Trim()}";
+
+        // The worklog bar's words for a repair on a device - "Breadbin #2 - No video" (the plan).
+        public static string BarText(string deviceName, string repairTitle) =>
+            repairTitle.Trim().Length == 0 ? deviceName.Trim() : $"{deviceName.Trim()} - {repairTitle.Trim()}";
+
+        // ###########################################################################################
         // Said after "Add photos": how many went in, and how many could not (code review, 2026-10-28:
         // photos that could not be copied were dropped without a word).
         // ###########################################################################################
@@ -80,6 +99,23 @@ namespace Handlers.DataHandling
 
         // No count: the line under it starts with "2 repairs" (OwnedDeviceRepairs.HeadlineStats).
         public const string RepairsHeading = "Repairs";
+
+        // ###########################################################################################
+        // "Export history" (slice 4d): what the exported document calls itself, and its list of
+        // repairs - "#12 No video (Open, started 2026-09-28, 3 worklogs)", or none recorded. In
+        // brackets, as a title may hold " - " itself ("No video - VIC socket").
+        // ###########################################################################################
+        public const string HistoryLabel = "Device history";
+
+        public const string NoRepairsRecorded = "No repairs recorded.";
+
+        public static string HistoryRepairLine(int workbookId, string title, string status, string dateText, int worklogCount)
+        {
+            string worklogs = worklogCount == 1 ? "1 worklog" : $"{worklogCount.ToString(CultureInfo.InvariantCulture)} worklogs";
+            string name = title.Trim().Length == 0 ? "(untitled)" : title.Trim();
+
+            return $"#{workbookId.ToString(CultureInfo.InvariantCulture)} {name} ({status}, {dateText}, {worklogs})";
+        }
 
         public static string ChangesHeading(int count) =>
             count == 0 ? "Changes made to it" : $"Changes made to it ({count.ToString(CultureInfo.InvariantCulture)})";

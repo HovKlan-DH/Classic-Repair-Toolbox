@@ -34,8 +34,12 @@ namespace Handlers.DataHandling
     // called once at startup in App.OnFrameworkInitializationCompleted rather than at the export
     // call site, so a missing call fails on launch in development rather than in a user's hands at
     // their first export.
+    //
+    // Two parts: this one (a workbook, and everything the drawing shares) and
+    // WorkbookPdfExporter.History.cs (a device's history - every repair in one document, CRT 4.0
+    // step 4).
     // ###########################################################################################
-    public static class WorkbookPdfExporter
+    public static partial class WorkbookPdfExporter
     {
         // ###########################################################################################
         // Every QuestPDF setting the export depends on, in one place, so the app and the tests
@@ -259,28 +263,35 @@ namespace Handlers.DataHandling
             if (document == null)
                 throw new ArgumentNullException(nameof(document));
 
-            Document.Create(container =>
+            Document.Create(container => container.Page(page => ComposePage(
+                page,
+                e => ComposeHeader(e, document),
+                e => ComposeContent(e, document)))).GeneratePdf(outputPath);
+        }
+
+        // ###########################################################################################
+        // One page of an export as every export lays it out - A4, its margins and type, a header on
+        // every page, and the page number at the foot. A workbook's export and a device's history
+        // (WorkbookPdfExporter.History.cs) differ only in their header and content.
+        // ###########################################################################################
+        private static void ComposePage(PageDescriptor page, Action<IContainer> header, Action<IContainer> content)
+        {
+            page.Size(PageSizes.A4);
+            page.Margin(1.5f, Unit.Centimetre);
+            page.DefaultTextStyle(x => x.FontSize(10).FontColor(Colors.Black));
+
+            page.Header().Element(header);
+            page.Content().Element(content);
+
+            // A page number on every page: this document is printed and handed over, and a
+            // dropped sheet from a ten-page repair report is otherwise undetectable.
+            page.Footer().AlignCenter().Text(text =>
             {
-                container.Page(page =>
-                {
-                    page.Size(PageSizes.A4);
-                    page.Margin(1.5f, Unit.Centimetre);
-                    page.DefaultTextStyle(x => x.FontSize(10).FontColor(Colors.Black));
-
-                    page.Header().Element(e => ComposeHeader(e, document));
-                    page.Content().Element(e => ComposeContent(e, document));
-
-                    // A page number on every page: this document is printed and handed over, and a
-                    // dropped sheet from a ten-page repair report is otherwise undetectable.
-                    page.Footer().AlignCenter().Text(text =>
-                    {
-                        text.DefaultTextStyle(x => x.FontSize(8).FontColor(LabelColor));
-                        text.CurrentPageNumber();
-                        text.Span(" / ");
-                        text.TotalPages();
-                    });
-                });
-            }).GeneratePdf(outputPath);
+                text.DefaultTextStyle(x => x.FontSize(8).FontColor(LabelColor));
+                text.CurrentPageNumber();
+                text.Span(" / ");
+                text.TotalPages();
+            });
         }
 
         // ###########################################################################################
@@ -307,6 +318,29 @@ namespace Handlers.DataHandling
             if (document == null)
                 throw new ArgumentNullException(nameof(document));
 
+            WriteArchive(
+                outputPath,
+                $"{WorkbookExportModel.BuildFileBaseName(document)}.pdf",
+                pdfPath => WritePdf(document, pdfPath),
+                (archive, usedEntryNames) => AddAttachments(archive, usedEntryNames, document, string.Empty, WorkbookExportName));
+        }
+
+        // What each export calls itself in the log - a file left out is reported against the export
+        // it was for (code review, 2026-10-29: a device photo was logged as a workbook's).
+        private const string WorkbookExportName = "Workbook export";
+
+        private const string HistoryExportName = "Device history export";
+
+        // ###########################################################################################
+        // An export's ZIP: its PDF under `pdfEntryName`, then whatever `addFiles` puts beside it - a
+        // workbook's attachments, or a device history's photos and every repair's attachments.
+        // ###########################################################################################
+        private static void WriteArchive(
+            string outputPath,
+            string pdfEntryName,
+            Action<string> writePdf,
+            Action<ZipArchive, HashSet<string>> addFiles)
+        {
             // The PDF is generated to a temp file and copied in, rather than being written into the
             // archive stream: QuestPDF's GeneratePdf(path) is the API this app uses everywhere else,
             // and a temp file keeps a failed PDF from leaving a half-written entry in the archive.
@@ -314,7 +348,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                WritePdf(document, tempPdf);
+                writePdf(tempPdf);
 
                 if (File.Exists(outputPath))
                     File.Delete(outputPath);
@@ -333,45 +367,10 @@ namespace Handlers.DataHandling
                 // keep them apart.
                 var usedEntryNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                string pdfEntryName = $"{WorkbookExportModel.BuildFileBaseName(document)}.pdf";
                 archive.CreateEntryFromFile(tempPdf, pdfEntryName);
                 usedEntryNames.Add(pdfEntryName);
 
-                foreach (var section in document.Sections)
-                {
-                    foreach (var entry in section.Entries)
-                    {
-                        string folder = BuildEntryFolderName(entry);
-
-                        foreach (var attachment in entry.Photos.Concat(entry.Files))
-                        {
-                            string entryPath = UniqueEntryName(usedEntryNames, $"{folder}/{attachment.FileName}");
-
-                            // The name is RESERVED BEFORE the write, not recorded after it.
-                            // CreateEntryFromFile creates the archive entry and then streams the
-                            // source into it, so a file that is locked or truncated part-way
-                            // through throws with the entry already in the archive. Recording the
-                            // name only on success would then hand the same path to a later
-                            // attachment - writing a duplicate entry, which is exactly what this
-                            // set exists to prevent, and which most unzip tools resolve by
-                            // silently overwriting one with the other.
-                            usedEntryNames.Add(entryPath);
-
-                            try
-                            {
-                                archive.CreateEntryFromFile(attachment.FullPath, entryPath);
-                            }
-                            catch (Exception ex)
-                            {
-                                // One unreadable attachment (locked by another process, or removed
-                                // between the model being built and this loop) must not lose the
-                                // customer the whole archive - the PDF is already in it.
-                                Logger.Warning(
-                                    $"Workbook export: could not add attachment [{attachment.FullPath}] to the archive - [{ex.Message}]");
-                            }
-                        }
-                    }
-                }
+                addFiles(archive, usedEntryNames);
             }
             finally
             {
@@ -384,6 +383,56 @@ namespace Handlers.DataHandling
                 {
                     // A temp file left behind is not worth failing an otherwise-successful export.
                 }
+            }
+        }
+
+        // Every photo and file attached to `document`'s worklogs, each under its worklog's folder -
+        // inside `prefix` (a folder of the archive ending in "/", or empty for its top).
+        private static void AddAttachments(
+            ZipArchive archive,
+            HashSet<string> usedEntryNames,
+            WorkbookExportModel.Document document,
+            string prefix,
+            string exportName)
+        {
+            foreach (var section in document.Sections)
+            {
+                foreach (var entry in section.Entries)
+                {
+                    string folder = prefix + BuildEntryFolderName(entry);
+
+                    foreach (var attachment in entry.Photos.Concat(entry.Files))
+                    {
+                        AddFile(archive, usedEntryNames, attachment.FullPath, $"{folder}/{attachment.FileName}", exportName);
+                    }
+                }
+            }
+        }
+
+        // One file into the archive under `desiredName`, or a free name beside it - and one that
+        // cannot be read logged against `exportName` and left out, the archive kept.
+        private static void AddFile(ZipArchive archive, HashSet<string> usedEntryNames, string sourcePath, string desiredName, string exportName)
+        {
+            string entryPath = UniqueEntryName(usedEntryNames, desiredName);
+
+            // The name is RESERVED BEFORE the write, not recorded after it. CreateEntryFromFile
+            // creates the archive entry and then streams the source into it, so a file that is locked
+            // or truncated part-way through throws with the entry already in the archive. Recording
+            // the name only on success would then hand the same path to a later attachment - writing
+            // a duplicate entry, which is exactly what this set exists to prevent, and which most
+            // unzip tools resolve by silently overwriting one with the other.
+            usedEntryNames.Add(entryPath);
+
+            try
+            {
+                archive.CreateEntryFromFile(sourcePath, entryPath);
+            }
+            catch (Exception ex)
+            {
+                // One unreadable attachment (locked by another process, or removed between the model
+                // being built and this loop) must not lose the customer the whole archive - the PDF
+                // is already in it.
+                Logger.Warning($"{exportName}: could not add [{sourcePath}] to the archive - [{ex.Message}]");
             }
         }
 
@@ -438,7 +487,10 @@ namespace Handlers.DataHandling
         // The workbook's Open/Closed status is drawn as the SAME outlined pill the app shows, not
         // as a word in the run of metadata - see ComposeStatePill.
         // ###########################################################################################
-        private static void ComposeHeader(IContainer container, WorkbookExportModel.Document document)
+        //
+        // A device's history starts each repair with this block too, without the export date - the
+        // history's own header says it once (withExportDate).
+        private static void ComposeHeader(IContainer container, WorkbookExportModel.Document document, bool withExportDate = true)
         {
             container.Column(column =>
             {
@@ -457,21 +509,30 @@ namespace Handlers.DataHandling
                     if (!string.IsNullOrWhiteSpace(document.BoardKey))
                         text.Span($"  \u00b7  {document.BoardKey.Replace("|", " \u00b7 ")}");
 
-                    // The WORD comes from the same rule the two on-screen surfaces use
-                    // (WorklogEntryScope.FormatWorkbookDateLine), so a closed workbook reads
-                    // "ended" here too; only the DATE is formatted the document's own way. This
-                    // line said "started" unconditionally while the app already said "ended" for
-                    // the same workbook.
-                    bool hasEnded = !WorklogManager.IsWorkbookStatusOpen(document.Status) && document.EndDate != null;
+                    text.Span($"  \u00b7  {WorkbookDateText(document)}");
 
-                    text.Span(hasEnded
-                        ? $"  \u00b7  ended {FormatDate(document.EndDate!.Value)}"
-                        : $"  \u00b7  started {FormatDate(document.StartDate)}");
-                    text.Span($"  \u00b7  exported {FormatDate(document.GeneratedAt)}");
+                    if (withExportDate)
+                        text.Span($"  \u00b7  exported {FormatDate(document.GeneratedAt)}");
                 });
 
                 column.Item().PaddingTop(6).LineHorizontal(1).LineColor(RuleColor);
             });
+        }
+
+        // ###########################################################################################
+        // "ended 2026-10-04" for a closed workbook, else "started 2026-09-28". The WORD comes from the
+        // same rule the two on-screen surfaces use (WorklogEntryScope.FormatWorkbookDateLine), so a
+        // closed workbook reads "ended" here too; only the DATE is formatted the document's own way.
+        // This line said "started" unconditionally while the app already said "ended" for the same
+        // workbook.
+        // ###########################################################################################
+        private static string WorkbookDateText(WorkbookExportModel.Document document)
+        {
+            bool hasEnded = !WorklogManager.IsWorkbookStatusOpen(document.Status) && document.EndDate != null;
+
+            return hasEnded
+                ? $"ended {FormatDate(document.EndDate!.Value)}"
+                : $"started {FormatDate(document.StartDate)}";
         }
 
         private static void ComposeContent(IContainer container, WorkbookExportModel.Document document)
@@ -528,13 +589,20 @@ namespace Handlers.DataHandling
         // different kinds of pill running together in one row read as one long list of five, with
         // nothing marking where "what kind of work" ends and "how it is progressing" begins.
         // ###########################################################################################
-        private static void ComposeSummary(IContainer container, WorkbookSummary.Totals totals, string currencyCode)
+        //
+        // A device's history passes its OWN headline - its repairs, their time and cost, how many
+        // are open (OwnedDeviceRepairs.HeadlineStats, the device page's line) - over the same rows.
+        private static void ComposeSummary(
+            IContainer container,
+            WorkbookSummary.Totals totals,
+            string currencyCode,
+            IReadOnlyList<WorkbookSummary.Stat>? headline = null)
         {
             container.Background(PanelColor).CornerRadius(3).Padding(10).Column(column =>
             {
                 column.Spacing(5);
                 column.Item().Text("Summary").FontSize(11).Bold().FontColor(HeadingColor);
-                column.Item().Element(e => ComposeStatLine(e, WorkbookSummary.BuildHeadlineStats(totals, currencyCode), 10));
+                column.Item().Element(e => ComposeStatLine(e, headline ?? WorkbookSummary.BuildHeadlineStats(totals, currencyCode), 10));
 
                 column.Item().PaddingTop(2).Row(row =>
                 {
@@ -1199,15 +1267,20 @@ namespace Handlers.DataHandling
         //
         // Two to a row: one per row wastes half a page on a phone photo, and more than two makes
         // the detail in a board close-up unreadable.
+        //
+        // A device's own photos in its history are drawn the same way (ComposePhotoGrid).
         // ###########################################################################################
-        private static void ComposePhotos(IContainer container, WorkbookExportModel.Entry entry)
+        private static void ComposePhotos(IContainer container, WorkbookExportModel.Entry entry) =>
+            ComposePhotoGrid(container, entry.Photos);
+
+        private static void ComposePhotoGrid(IContainer container, IReadOnlyList<WorkbookExportModel.Attachment> photos)
         {
             container.PaddingTop(4).Column(column =>
             {
                 column.Spacing(6);
                 column.Item().Text("Photos").FontSize(8).Bold().FontColor(LabelColor);
 
-                foreach (var chunk in entry.Photos.Chunk(2))
+                foreach (var chunk in photos.Chunk(2))
                 {
                     column.Item().Row(row =>
                     {

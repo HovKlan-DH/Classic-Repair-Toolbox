@@ -28,6 +28,24 @@ namespace Handlers.DataHandling
             workbook?.OwnedDeviceId is { } id ? devices.FirstOrDefault(device => device.Id == id) : null;
 
         // ###########################################################################################
+        // The repair a device is worked on through when it is picked beside the board drop-downs (the
+        // plan: "Choosing a machine selects its board and its open repair"): its newest OPEN repair,
+        // on whichever board that was made; with none open, its newest repair on the board it has
+        // now; else none - it has no repair to work on yet.
+        //
+        // Only a repair on a board CRT can show counts (`canShow`, by board key): one on a board a
+        // later sync removed cannot be opened, and picking the device did nothing at all (code
+        // review, 2026-10-29).
+        // ###########################################################################################
+        public static WorkbookRecord? RepairToWorkOn(OwnedDeviceRecord device, IEnumerable<WorkbookRecord> workbooks, Func<string, bool> canShow)
+        {
+            List<WorkbookRecord> repairs = Of(device.Id, workbooks).Where(repair => canShow(repair.BoardKey)).ToList();
+
+            return repairs.FirstOrDefault(repair => WorklogManager.IsWorkbookStatusOpen(repair.Status))
+                ?? repairs.FirstOrDefault(repair => string.Equals(repair.BoardKey, device.BoardKey, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // ###########################################################################################
         // The devices a workbook can be put on: those with the workbook's board (a repair was made
         // on a board, and a device has one), plus the device it is on already - its board may have
         // been swapped since. Capitals in the board key aside, as every board-key lookup does.
@@ -46,10 +64,21 @@ namespace Handlers.DataHandling
         public sealed record History(int RepairCount, int OpenRepairCount, WorkbookSummary.Totals Totals);
 
         public static History Summarize(IReadOnlyList<WorkbookRecord> repairs, Func<int, IEnumerable<WorklogEntryRecord>> entriesOf) =>
-            new(
-                repairs.Count,
-                repairs.Count(repair => WorklogManager.IsWorkbookStatusOpen(repair.Status)),
-                WorkbookSummary.Summarize(repairs.SelectMany(repair => entriesOf(repair.Id))));
+            Summarize(repairs.Select(repair => new Repair(repair.Status, entriesOf(repair.Id))));
+
+        // One repair as it is counted: its status and its worklogs - a workbook record's, or an
+        // exported history's document's (DeviceHistoryExportModel), so both count by this one rule.
+        public sealed record Repair(string Status, IEnumerable<WorklogEntryRecord> Worklogs);
+
+        public static History Summarize(IEnumerable<Repair> repairs)
+        {
+            List<Repair> counted = repairs.ToList();
+
+            return new History(
+                counted.Count,
+                counted.Count(repair => WorklogManager.IsWorkbookStatusOpen(repair.Status)),
+                WorkbookSummary.Summarize(counted.SelectMany(repair => repair.Worklogs)));
+        }
 
         // ###########################################################################################
         // The repairs line under a device's name, as parts so the numbers can be bold: "3 repairs -

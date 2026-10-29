@@ -291,6 +291,13 @@ namespace CRT
             var activeWorkbook = WorklogManager.ResolveActiveWorkbook(workbooks, UserSettings.GetActiveWorkbookId(boardKey));
             bool hasWorkbook = activeWorkbook != null;
 
+            // The user's devices, read ONCE too - for the device picker, the bar naming a repair's
+            // device and the Workbooks tab's "My devices". Not read at all with the worklog off.
+            List<OwnedDeviceRecord> devices = UserSettings.EnableWorklog ? OwnedDeviceStore.GetAll() : [];
+
+            // Kept for a device pick (Main.Devices.cs) - nothing is read a second time for it.
+            this.thisWorkbooksLastRead = allWorkbooks;
+
             // The Workbooks tab's list is rebuilt from here rather than from its own wiring: this
             // method is already the single place worklog state is refreshed from - board changes,
             // entry saves, workbook creation and closure all reach it - so the tab cannot go stale
@@ -316,9 +323,9 @@ namespace CRT
                 // TabWorkbooks.RefreshWorkbooks).
                 bool showAllBoards = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
 
-                // Every workbook too, for a device's page - read here already, never a second time
-                // there (code review, 2026-10-28).
-                this.TabWorkbooks?.RefreshWorkbooks(showAllBoards ? allWorkbooks : workbooks, allWorkbooks);
+                // Every workbook too, for a device's page, and the devices - read here already, never
+                // a second time there (code review, 2026-10-28).
+                this.TabWorkbooks?.RefreshWorkbooks(showAllBoards ? allWorkbooks : workbooks, allWorkbooks, devices);
             }
 
             this.WorklogNoJobText.IsVisible = !hasWorkbook;
@@ -373,6 +380,10 @@ namespace CRT
                 // else happened to rebuild them. Reported as the marker not updating.
                 this.TabSchematicsControl.RefreshWorklogEntriesListForCurrentWorkbook();
             }
+
+            // The device picker above Hardware, before the workbook picker below: that one's items
+            // name a repair's device from what this fills in (Main.Devices.cs).
+            this.FillDevicePicker(devices, activeWorkbook);
 
             // The picker lists EVERY workbook on every board, not just this board's own workbooks in
             // "workbooks" above - selecting one for a different board is how the bar can jump there
@@ -468,10 +479,9 @@ namespace CRT
                 if (string.IsNullOrWhiteSpace(boardKey))
                     return;
 
-                var dialog = new CreateWorkbookWindow();
-                dialog.Initialize(boardKey);
-
-                var record = await dialog.ShowDialog<WorkbookRecord?>(this);
+                // The one place the form is opened (Main.Devices.cs) - a device added in it is shown
+                // whatever it closes with.
+                var record = await this.ShowCreateWorkbookAsync(this, boardKey, this.DeviceForNewWorkbook(boardKey));
                 if (record == null)
                     return;
 

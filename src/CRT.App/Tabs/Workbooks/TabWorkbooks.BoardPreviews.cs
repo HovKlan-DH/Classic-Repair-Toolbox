@@ -54,6 +54,13 @@ namespace CRT
         private const string NoWorklogsForBoardMessage =
             "No worklogs recorded yet for any schematics in this board.";
 
+        // The workbook HAS worklogs on the board's pictures and none could be drawn: said, never a
+        // blank pane (code review, 2026-10-29) - CRT still finding where the board's pictures lie, or
+        // those pictures not where the board says.
+        private const string FindingPicturesMessage = "Finding the board's pictures...";
+
+        private const string PicturesNotFoundMessage = "The pictures these worklogs are on could not be found.";
+
         // The schematic currently selected in the board pane - drives the entry list on the right.
         // Null means none selected (before the first RefreshBoardPreviews call, or the workbook has
         // no entries at all). RefreshBoardPreviews defaults this to the first schematic it builds a
@@ -352,18 +359,29 @@ namespace CRT
                 this.thisSelectedSchematicName = entriesBySchematic[0].Key;
             }
 
+            // Where the pictures lie, once for the pass (ShownBoardPicturePaths) - null while CRT is
+            // still working them out for the board.
+            IReadOnlyDictionary<string, string>? foundPaths = entriesBySchematic.Count > 0 ? this.ShownBoardPicturePaths() : null;
+            IReadOnlyDictionary<string, string> picturePaths = foundPaths ?? NoPicturePaths;
+
             foreach (var group in entriesBySchematic)
             {
                 var schematic = schematicsByName[group.Key];
                 bool isSelected = string.Equals(group.Key, this.thisSelectedSchematicName, StringComparison.OrdinalIgnoreCase);
-                var preview = this.BuildSchematicPreview(schematic, group.ToList(), this.thisSelectedWorkbookId, isSelected);
+                var preview = this.BuildSchematicPreview(schematic, picturePaths, group.ToList(), this.thisSelectedWorkbookId, isSelected);
                 if (preview == null)
                     continue;
 
                 this.BoardPreviewPanel.Children.Add(preview);
             }
 
-            this.NoBoardPreviewsText.IsVisible = entriesBySchematic.Count == 0;
+            this.NoBoardPreviewsText.IsVisible = this.BoardPreviewPanel.Children.Count == 0;
+
+            // Worklogs on the board's pictures, and not one drawn: said (code review, 2026-10-29).
+            if (entriesBySchematic.Count > 0)
+            {
+                this.NoBoardPreviewsText.Text = foundPaths is null ? FindingPicturesMessage : PicturesNotFoundMessage;
+            }
 
             // Three different reasons this pane can be empty, and they must not be described with
             // one another's wording.
@@ -374,7 +392,7 @@ namespace CRT
             // list and a non-zero count above a pane with nothing in it and no top-line at all.
             // Without this the user is looking at three result cards and a blank rectangle, with
             // nothing saying the results are simply not on this board.
-            if (this.thisSelectedWorkbookId <= 0 && this.thisHasWorkbooksOnOtherBoardsOnly)
+            else if (this.thisSelectedWorkbookId <= 0 && this.thisHasWorkbooksOnOtherBoardsOnly)
             {
                 this.NoBoardPreviewsText.Text =
                     "The matching workbooks are on other boards. Click one to switch to its board.";
@@ -841,13 +859,35 @@ namespace CRT
             var schematic = this.CurrentBoardDataForPreviews?.Schematics
                 ?.FirstOrDefault(s => string.Equals(s.SchematicName, entry.SchematicName, StringComparison.OrdinalIgnoreCase));
 
-            if (string.IsNullOrWhiteSpace(schematic?.SchematicImageFile))
+            if (string.IsNullOrWhiteSpace(schematic?.SchematicImageFile) ||
+                this.ShownBoardPicturePaths() is not { } paths ||
+                !paths.TryGetValue(schematic.SchematicName, out string? path))
                 return null;
 
-            return this.GetOrDecodeSchematicBitmap(Path.Combine(
-                DataManager.DataRoot,
-                schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar)));
+            return this.GetOrDecodeSchematicBitmap(path);
         }
+
+        // ###########################################################################################
+        // Where each picture of the board shown lies, by its name - BoardPicturePaths', the Schematics
+        // tab's rule: in CRT 4.0 a row NAMES a file of its board, its bytes stored under their checksum
+        // (bug found 2026-10-29: joined to the data root, no 4.0 picture was found - no board on the
+        // pane, none in an export). Main's, for the board it LOADED (LoadedBoardPictures - worked out
+        // by that load, off the UI thread); a test's board by the same rule. Null while the board's
+        // load has not worked them out yet (the pane is redrawn when it has) - never another board's.
+        // ###########################################################################################
+        private IReadOnlyDictionary<string, string>? ShownBoardPicturePaths()
+        {
+            if (this.CurrentBoardDataOverrideForTests is { } board)
+            {
+                string? identity = Main.FindEntryForBoardKey(this.BoardKeyOverrideForTests ?? string.Empty)?.ExcelDataFile;
+                string draftFolder = string.IsNullOrWhiteSpace(identity) ? string.Empty : DraftManager.GetViewedBoardFolder(identity);
+                return BoardPicturePaths.ByName(board, DataManager.DataRoot, draftFolder, string.IsNullOrWhiteSpace(identity) ? null : identity);
+            }
+
+            return this.MainWindow?.CurrentBoardPicturePaths;
+        }
+
+        private static readonly IReadOnlyDictionary<string, string> NoPicturePaths = new Dictionary<string, string>();
 
         // ###########################################################################################
         // The fourth row on an entry's detail card: total time spent and total cost (both summed
@@ -991,14 +1031,16 @@ namespace CRT
         // An instance method, not static: each badge's click handler needs to reach
         // OnPreviewBadgePointerPressed on THIS tab.
         // ###########################################################################################
-        private Border? BuildSchematicPreview(BoardSchematicEntry schematic, List<WorklogEntryRecord> entries, int workbookId, bool isSelected)
+        private Border? BuildSchematicPreview(
+            BoardSchematicEntry schematic,
+            IReadOnlyDictionary<string, string> picturePaths,
+            List<WorklogEntryRecord> entries,
+            int workbookId,
+            bool isSelected)
         {
-            if (string.IsNullOrWhiteSpace(schematic.SchematicImageFile))
+            if (string.IsNullOrWhiteSpace(schematic.SchematicImageFile) ||
+                !picturePaths.TryGetValue(schematic.SchematicName, out string? fullPath))
                 return null;
-
-            string fullPath = Path.Combine(
-                DataManager.DataRoot,
-                schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar));
 
             var bitmap = this.GetOrDecodeSchematicBitmap(fullPath);
             if (bitmap == null)

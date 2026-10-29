@@ -167,6 +167,39 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A CRT 4.0 BOARD'S PICTURE (bug found 2026-10-29). *** A 4.0 picture row NAMES a file of its
+    // board ("Images/top.png"), its bytes stored under their checksum. The Schematics tab finds them
+    // through DraftFileResolver; this pane joined the name to the data root and found nothing, so on
+    // 4.0 data no workbook showed its board.
+    // ###########################################################################################
+    [Fact]
+    public void A_40_boards_picture_is_shown_from_where_its_bytes_are_stored()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Recap", "")!;
+        WorklogManager.AddEntry(workbook.Id, "Sheet 1", new Avalonia.Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
+
+        BoardData boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "Images/top.png" });
+
+        try
+        {
+            PublishedBoardTree.Load(this.thisWorkspace.Path_("Data"), this.thisBoardKey, boardData, ("Images/top.png", OnePixelPng));
+
+            UiTest.Run(() =>
+            {
+                var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+                var image = ((Control)Assert.Single(PreviewPanel(tab).Children)).GetSelfAndVisualDescendants().OfType<Image>().Single();
+                Assert.NotNull(image.Source);
+            });
+        }
+        finally
+        {
+            PublishedBoardTree.Unload(this.thisWorkspace.Path_("Empty"));
+        }
+    }
+
     [Fact]
     public void A_schematic_with_one_entry_gets_one_preview_with_the_images_bitmap()
     {
@@ -397,6 +430,32 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
 
             var caption = ((Control)previews[0]).GetSelfAndVisualDescendants().OfType<TextBlock>().First();
             Assert.Equal("OK Sheet", caption.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // Worklogs on pictures none of which can be drawn: the pane SAYS so rather than standing blank
+    // with no word (code review, 2026-10-29). While CRT is still working out where the board's
+    // pictures lie, it says that instead (Main's map not there yet - not reachable without Main).
+    // ###########################################################################################
+    [Fact]
+    public void Worklogs_whose_pictures_cannot_be_found_are_said_to_be()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Missing file", "")!;
+        WorklogManager.AddEntry(workbook.Id, "Missing Sheet", new Avalonia.Rect(0, 0, 10, 10), "No image", "", "Note", "Open", Array.Empty<string>());
+
+        var boardData = BuildBoardData(
+            new BoardSchematicEntry { SchematicName = "Missing Sheet", SchematicImageFile = this.thisWorkspace.Path_("does-not-exist.png") });
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey, boardData, workbook.Id);
+
+            Assert.Empty(PreviewPanel(tab).Children);
+            TextBlock said = tab.GetControl<TextBlock>("NoBoardPreviewsText");
+            Assert.True(said.IsVisible);
+            Assert.Equal("The pictures these worklogs are on could not be found.", said.Text);
         });
     }
 

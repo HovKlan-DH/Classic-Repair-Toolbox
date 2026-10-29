@@ -34,6 +34,8 @@ namespace CRT
     //   TabWorkbooks.Devices.cs      "My devices" above the workbooks, a device's page in place of
     //                                the workbook, and "On my device" under a workbook's title
     //                                (CRT 4.0 step 4)
+    //   TabWorkbooks.DeviceHistory.cs "Export history" on a device's page - every repair in one PDF
+    //                                or ZIP
     //
     // What IS real:
     //   - the left panel, listing the workbooks WorklogManager holds for the selected board,
@@ -633,8 +635,12 @@ namespace CRT
         private double thisSearchBoxNaturalRightPadding = double.NaN;
 
         // allWorkbooks: every board's, when the caller has read them (Main.RefreshWorklogBar has) - a
-        // device's page lists its repairs on any board from them, never reading them again.
-        public void RefreshWorkbooks(List<WorkbookRecord>? boardWorkbooks = null, List<WorkbookRecord>? allWorkbooks = null)
+        // device's page lists its repairs on any board from them, never reading them again. devices:
+        // the user's devices, likewise.
+        public void RefreshWorkbooks(
+            List<WorkbookRecord>? boardWorkbooks = null,
+            List<WorkbookRecord>? allWorkbooks = null,
+            List<OwnedDeviceRecord>? devices = null)
         {
             if (this.WorkbookListPanel == null)
                 return;
@@ -665,7 +671,7 @@ namespace CRT
             this.thisAllWorkbooksThisPass = allWorkbooks;
 
             // "My devices" first: the workbook cards below name the device each repair is on.
-            this.RefreshDeviceList();
+            this.RefreshDeviceList(devices);
 
             string boardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
 

@@ -26,6 +26,10 @@ namespace CRT
         private IReadOnlyList<HardwareBoardEntry> thisBoards = [];
         private OwnedDeviceRecord? thisEditing;
 
+        // The board kept among the choices though CRT may no longer list it: the device's own when
+        // editing, the fixed one when adding for a repair.
+        private string? thisKeptBoardKey;
+
         // The record that reached disk - what the dialog closes with. For the tests, which show the
         // window without an owner and so cannot read a ShowDialog result.
         internal OwnedDeviceRecord? Saved { get; private set; }
@@ -41,12 +45,20 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // A new device, on `boardKey` (the board shown) when CRT lists it.
+        // A new device, on `boardKey` (the board shown) when CRT lists it. `boardFixed`: the device
+        // is for a repair on that board ("Add device" in "Create new workbook"), so its hardware and
+        // board are shown, not to be changed - a device with another board is no device for it.
         // ###########################################################################################
-        public void Initialize(IReadOnlyList<HardwareBoardEntry> boards, string? boardKey)
+        public void Initialize(IReadOnlyList<HardwareBoardEntry> boards, string? boardKey, bool boardFixed = false)
         {
             this.thisBoards = boards ?? [];
+
+            // A fixed board is kept even when CRT no longer lists it (code review, 2026-10-29: the
+            // locked box fell back to another board, and the device was saved there).
+            this.thisKeptBoardKey = boardFixed ? boardKey : null;
             this.FillChoices(boardKey, region: string.Empty, OwnedDeviceStatus.Working);
+            this.HardwareComboBox.IsEnabled = !boardFixed;
+            this.BoardComboBox.IsEnabled = !boardFixed;
             this.UpdateSaveEnabled();
         }
 
@@ -56,6 +68,7 @@ namespace CRT
         public void InitializeForEdit(OwnedDeviceRecord device, IReadOnlyList<HardwareBoardEntry> boards)
         {
             this.thisEditing = device;
+            this.thisKeptBoardKey = device.BoardKey;
             this.thisBoards = boards ?? [];
 
             this.Title = "Edit device";
@@ -126,8 +139,8 @@ namespace CRT
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            // The device's own board, when CRT no longer lists it.
-            if (this.thisEditing is { } device && Split(device.BoardKey) is var (ownHardware, ownBoard) &&
+            // The device's own board - or the fixed one - when CRT no longer lists it.
+            if (this.thisKeptBoardKey is { } kept && Split(kept) is var (ownHardware, ownBoard) &&
                 string.Equals(ownHardware, hardware, StringComparison.OrdinalIgnoreCase) &&
                 ownBoard.Length > 0 && !boards.Contains(ownBoard, StringComparer.OrdinalIgnoreCase))
             {

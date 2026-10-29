@@ -826,19 +826,19 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
     // right board and the right entries, which is the part that can silently regress.
     // ###########################################################################################
     [Fact]
-    public void The_export_document_is_built_from_the_tabs_own_board_data_and_entries()
+    public async Task The_export_document_is_built_from_the_tabs_own_board_data_and_entries()
     {
         this.LoadWorklog();
         int entryId = this.CreateWorkbookWithEntry("Sheet 1", "Issue", "Closed", out int workbookId);
         string imagePath = this.WriteSchematicImage("sheet1.png");
         var boardData = BuildBoardData("Sheet 1", imagePath);
 
-        UiTest.Run(() =>
+        await UiTest.RunAsync(async () =>
         {
             var tab = BuildTab(this.thisBoardKey, boardData, workbookId);
             var workbook = WorklogManager.GetWorkbooksForBoard(this.thisBoardKey).Single(w => w.Id == workbookId);
 
-            var document = tab.BuildExportDocumentForTests(workbook);
+            var document = await tab.BuildExportDocumentForTestsAsync(workbook);
 
             Assert.Equal("Repair job", document.Title);
             Assert.Equal(1, document.Totals.WorklogCount);
@@ -853,22 +853,86 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A CRT 4.0 BOARD'S PICTURE IN AN EXPORT (bug found 2026-10-29). *** The picture row NAMES a
+    // file of its board; joined to the data root it was found nowhere, and every 4.0 export went out
+    // without its board pictures. It is where its bytes are stored, as the Schematics tab finds it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_40_boards_picture_reaches_the_export_from_where_its_bytes_are_stored()
+    {
+        this.LoadWorklog();
+        this.CreateWorkbookWithEntry("Sheet 1", "Issue", "Open", out int workbookId);
+        BoardData boardData = BuildBoardData("Sheet 1", "Images/top.png");
+
+        try
+        {
+            Dictionary<string, string> stored = PublishedBoardTree.Load(
+                this.thisWorkspace.Path_("Data"), this.thisBoardKey, boardData, ("Images/top.png", OnePixelPng));
+
+            await UiTest.RunAsync(async () =>
+            {
+                var tab = BuildTab(this.thisBoardKey, boardData, workbookId);
+                var workbook = WorklogManager.GetWorkbooksForBoard(this.thisBoardKey).Single(w => w.Id == workbookId);
+
+                var section = Assert.Single((await tab.BuildExportDocumentForTestsAsync(workbook)).Sections);
+                Assert.Equal(stored["Images/top.png"], section.SchematicImagePath);
+            });
+        }
+        finally
+        {
+            PublishedBoardTree.Unload(this.thisWorkspace.Path_("Empty"));
+        }
+    }
+
+    // ###########################################################################################
+    // An export made before CRT has worked out the board's pictures - its load still running, or
+    // the board not the one shown - reads them from the board's file, as a device's history does
+    // (code review, 2026-10-29: the PDF went out without its board, with nothing said).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_workbook_export_before_the_board_is_read_still_gets_its_pictures()
+    {
+        this.LoadWorklog();
+        this.CreateWorkbookWithEntry("Sheet 1", "Issue", "Open", out int workbookId);
+
+        try
+        {
+            Dictionary<string, string> stored = PublishedBoardTree.Load(
+                this.thisWorkspace.Path_("Data"), this.thisBoardKey, BuildBoardData("Sheet 1", "Images/top.png"), ("Images/top.png", OnePixelPng));
+
+            await UiTest.RunAsync(async () =>
+            {
+                var tab = new TabWorkbooks { BoardKeyOverrideForTests = this.thisBoardKey };
+                tab.RefreshWorkbooks();
+                var workbook = WorklogManager.GetWorkbooksForBoard(this.thisBoardKey).Single(w => w.Id == workbookId);
+
+                var section = Assert.Single((await tab.BuildExportDocumentForTestsAsync(workbook)).Sections);
+                Assert.Equal(stored["Images/top.png"], section.SchematicImagePath);
+            });
+        }
+        finally
+        {
+            PublishedBoardTree.Unload(this.thisWorkspace.Path_("Empty"));
+        }
+    }
+
     // The exported file name identifies the workbook without carrying its title - see
     // WorkbookExportModel.BuildFileBaseName. Checked through the tab so the board key it puts in
     // the name is the one the tab is actually showing.
     [Fact]
-    public void The_suggested_export_file_name_names_the_workbook_and_its_board()
+    public async Task The_suggested_export_file_name_names_the_workbook_and_its_board()
     {
         this.LoadWorklog();
         this.CreateWorkbookWithEntry("Sheet 1", "Note", "Open", out int workbookId);
         var boardData = BuildBoardData("Sheet 1", this.WriteSchematicImage("sheet1.png"));
 
-        UiTest.Run(() =>
+        await UiTest.RunAsync(async () =>
         {
             var tab = BuildTab(this.thisBoardKey, boardData, workbookId);
             var workbook = WorklogManager.GetWorkbooksForBoard(this.thisBoardKey).Single(w => w.Id == workbookId);
 
-            string name = WorkbookExportModel.BuildFileBaseName(tab.BuildExportDocumentForTests(workbook));
+            string name = WorkbookExportModel.BuildFileBaseName(await tab.BuildExportDocumentForTestsAsync(workbook));
 
             Assert.StartsWith($"Workbook_{workbookId}_", name);
             Assert.DoesNotContain("Repair job", name);

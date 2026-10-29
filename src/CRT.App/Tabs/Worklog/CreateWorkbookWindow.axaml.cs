@@ -6,6 +6,7 @@ using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT
 {
@@ -14,7 +15,8 @@ namespace CRT
     // note). Serves two purposes with the same layout, matching WorklogAddLinkWindow's own
     // add/edit split:
     //   - creating a new workbook (the default): the id shown is only a preview of what
-    //     WorklogManager.CreateWorkbook will allocate, and OnCreateClick calls that. Returns the
+    //     WorklogManager.CreateWorkbook will allocate, and OnCreateClick calls that - on the device
+    //     picked under "On my device", which can be a new one (CRT 4.0 step 4). Returns the
     //     created WorkbookRecord via ShowDialog, or null when cancelled.
     //   - editing an existing one, via InitializeForEdit: the real id is shown, the fields are
     //     pre-filled, and OnCreateClick calls WorklogManager.UpdateWorkbook instead. Returns the
@@ -33,6 +35,7 @@ namespace CRT
         public CreateWorkbookWindow()
         {
             this.InitializeComponent();
+            this.thisCreateTitle = this.Title;
 
             this.WorkbookIdPreviewText.Text = $"#{WorklogManager.PeekNextId()}";
 
@@ -51,30 +54,25 @@ namespace CRT
         // Must be called before showing the dialog in CREATE mode: sets the board the new workbook
         // belongs to. Not used in edit mode - the workbook being edited already has a board.
         //
-        // The repair can go on one of the user's devices with this board (CRT 4.0 step 4): "None"
-        // and those devices are offered, `ownedDeviceId` preselected ("New repair" on a device's
-        // page). With no device on this board there is nothing to ask.
+        // It asks which of the user's devices the repair is on (CRT 4.0 step 4 - the plan: "one of
+        // yours on this board, a new one, or none"): "None" and the devices with this board, and
+        // beside them "Add device" - a button, never an item of the list (code review, 2026-10-29:
+        // reaching "A new device" with the Down key opened the dialog). `ownedDeviceId` preselected -
+        // and so named in the title ("New repair on Breadbin #2", ShowDeviceInTitle).
+        // `devices`: the user's devices as the caller read them (Main's refresh, the Workbooks tab's)
+        // - else they are read here.
         // ###########################################################################################
-        public void Initialize(string boardKey, int? ownedDeviceId = null)
+        public void Initialize(string boardKey, int? ownedDeviceId = null, IReadOnlyList<OwnedDeviceRecord>? devices = null)
         {
             this.thisBoardKey = boardKey;
 
-            List<OwnedDeviceRecord> devices = OwnedDeviceStore.GetAll()
+            List<OwnedDeviceRecord> onThisBoard = (devices ?? OwnedDeviceStore.GetAll())
                 .Where(device => device.Id == ownedDeviceId ||
                                  string.Equals(device.BoardKey, boardKey, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            var choices = new List<DeviceChoice> { new(null, "None") };
-            choices.AddRange(devices.Select(device => new DeviceChoice(device.Id, device.Name)));
-
-            this.DeviceComboBox.ItemsSource = choices;
-            this.DeviceComboBox.SelectedItem = choices.FirstOrDefault(choice => choice.Id == ownedDeviceId) ?? choices[0];
-            this.DevicePanel.IsVisible = devices.Count > 0;
-
-            if (devices.FirstOrDefault(device => device.Id == ownedDeviceId) is { } device)
-            {
-                this.Title = $"New repair on {device.Name}";
-            }
+            this.FillDeviceChoices(onThisBoard.Select(device => new DeviceChoice(device.Id, device.Name)), ownedDeviceId);
+            this.DevicePanel.IsVisible = true;
         }
 
         // One entry of the device drop-down - its label is what the list shows.
@@ -83,8 +81,100 @@ namespace CRT
             public override string ToString() => this.Label;
         }
 
+        // Stands in for "Add device" in a test, which cannot show a dialog - null in the app.
+        internal Func<Task<OwnedDeviceRecord?>>? AddDeviceOverrideForTests { get; set; }
+
+        // What "Add device" last started, for a test to wait on.
+        internal Task LastNewDeviceForTests { get; private set; } = Task.CompletedTask;
+
+        // Whether a device was added here - it is on disk whether or not a workbook is created.
+        internal bool DeviceAdded { get; private set; }
+
+        // "None", then `devices` - `selectId` selected, else "None".
+        private void FillDeviceChoices(IEnumerable<DeviceChoice> devices, int? selectId)
+        {
+            var choices = new List<DeviceChoice> { new(null, OwnedDeviceWording.NoDeviceChoice) };
+            choices.AddRange(devices);
+
+            this.DeviceComboBox.ItemsSource = choices;
+            this.DeviceComboBox.SelectedItem = choices.FirstOrDefault(choice => choice.Id == selectId) ?? choices[0];
+            this.ShowDeviceInTitle();
+        }
+
+        private void OnDeviceSelectionChanged(object? sender, SelectionChangedEventArgs e) => this.ShowDeviceInTitle();
+
+        // ###########################################################################################
+        // The title names the device the repair goes on - "New repair on Breadbin #2" - else it is the
+        // form's own (code review, 2026-10-29: it stayed on the device while the repair went on none).
+        // ###########################################################################################
+        private void ShowDeviceInTitle()
+        {
+            if (this.thisEditingWorkbook is null)
+            {
+                this.Title = this.DeviceComboBox.SelectedItem is DeviceChoice { Id: not null } choice
+                    ? OwnedDeviceWording.NewRepairTitle(choice.Label)
+                    : this.thisCreateTitle;
+            }
+        }
+
+        // The form's title when the repair is on no device - the markup's own, read as the window is
+        // made, never a second copy of the words (code review, 2026-10-29).
+        private readonly string? thisCreateTitle;
+
+        private void OnAddDeviceClick(object? sender, RoutedEventArgs e) => this.LastNewDeviceForTests = this.AddNewDeviceAsync();
+
+        // ###########################################################################################
+        // "Add device": the form on THIS board, not to be changed there - and the device it adds picked
+        // for the repair. One that comes back on another board is no device for this repair (code
+        // review, 2026-10-29: a C64 repair was filed on a C128 device) and is not listed; nothing
+        // added, the choice stays as it was. Either way a device added is on disk (DeviceAdded).
+        // ###########################################################################################
+        private async Task AddNewDeviceAsync()
+        {
+            OwnedDeviceRecord? added = null;
+
+            try
+            {
+                if (this.AddDeviceOverrideForTests is { } add)
+                {
+                    added = await add();
+                }
+                else
+                {
+                    var dialog = new OwnedDeviceWindow();
+                    dialog.Initialize(DataManager.HardwareBoards, this.thisBoardKey, boardFixed: true);
+                    added = await dialog.ShowDialog<OwnedDeviceRecord?>(this);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave the click: App lets such an exception end CRT.
+                Logger.Critical($"Adding a device for a new workbook failed - [{ex}]");
+            }
+
+            if (added is null)
+            {
+                return;
+            }
+
+            this.DeviceAdded = true;
+
+            if (!string.Equals(added.BoardKey.Trim(), this.thisBoardKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            List<DeviceChoice> devices = (this.DeviceComboBox.ItemsSource as IEnumerable<DeviceChoice> ?? [])
+                .Where(choice => choice.Id is not null)
+                .ToList();
+
+            devices.Add(new DeviceChoice(added.Id, added.Name));
+            this.FillDeviceChoices(devices, added.Id);
+        }
+
         // The device picked, or null for none.
-        internal int? ChosenDeviceId => this.DevicePanel.IsVisible ? (this.DeviceComboBox.SelectedItem as DeviceChoice)?.Id : null;
+        internal int? ChosenDeviceId =>
+            this.DevicePanel.IsVisible ? (this.DeviceComboBox.SelectedItem as DeviceChoice)?.Id : null;
 
         // The record the dialog closed with - for the tests, which cannot read a ShowDialog result.
         internal WorkbookRecord? Created { get; private set; }

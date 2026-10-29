@@ -377,6 +377,40 @@ public sealed class DraftBoardSourceTests : IDisposable
             DraftBoardSource.ResolveWritablePath(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey));
     }
 
+    // ###########################################################################################
+    // The board as viewed, from ONE resolution - the board file, the draft folder its files are
+    // found in, and whether it is a new board - and the two rules above answer from it (code review,
+    // 2026-10-29: a device's history copied both beside them).
+    // ###########################################################################################
+    [Fact]
+    public void The_board_as_viewed_is_its_file_its_files_folder_and_whether_it_is_new_from_one_resolution()
+    {
+        this.WritePublishedWorkbook();
+        this.WriteDraft();
+
+        DraftBoardSource.ViewedBoard shown = DraftBoardSource.ResolveViewed(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: false);
+        Assert.Equal(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftBoardSourceTests.BoardKey), shown.BoardFile);
+        Assert.Equal(DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftBoardSourceTests.BoardKey), shown.DraftFolder);
+        Assert.False(shown.IsNewBoard);
+
+        DraftBoardSource.ViewedBoard published = DraftBoardSource.ResolveViewed(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: true);
+        Assert.Equal(DraftBoardSource.PublishedPathOf(this.DataRoot, DraftBoardSourceTests.BoardKey), published.BoardFile);
+        Assert.Equal(string.Empty, published.DraftFolder);
+    }
+
+    [Fact]
+    public void A_new_boards_view_says_it_is_new()
+    {
+        this.WriteDraft(registration: new NewBoardRegistration
+        {
+            HardwareName = "C64",
+            BoardName = "250407",
+            ExcelDataFile = DraftBoardSourceTests.BoardKey,
+        });
+
+        Assert.True(DraftBoardSource.ResolveViewed(this.DataRoot, this.DraftsRoot, DraftBoardSourceTests.BoardKey, preferPublished: false).IsNewBoard);
+    }
+
     [Fact]
     public void A_stray_folder_with_no_marker_gives_no_draft_folder_to_search()
     {

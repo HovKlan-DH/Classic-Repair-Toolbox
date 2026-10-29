@@ -40,17 +40,38 @@ namespace Handlers.DataHandling
             }
 
             IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? files = DraftFiles.ListedIn(boardFile);
+            this.Keep(boardFile, stamp, files);
+            return files;
+        }
 
+        // ###########################################################################################
+        // `boardFile`'s whole document, for a caller that needs its rows too - its list of files kept
+        // from that SAME read, so a lookup after it reads the file no second time (code review,
+        // 2026-10-29: a device's history parsed each other board's file twice). Null when there is
+        // no board file there or it cannot be read.
+        // ###########################################################################################
+        public BoardDocument? ReadDocument(string? boardFile)
+        {
+            if (string.IsNullOrWhiteSpace(boardFile) || !File.Exists(boardFile))
+                return null;
+
+            string stamp = BoardDataReader.FileStamp(boardFile);
+            BoardDocument? document = BoardFiles.ReadDocument(boardFile);
+
+            this.Keep(boardFile, stamp, document is null ? null : DraftFiles.FilesOf(document));
+            return document;
+        }
+
+        // A read's list, kept only when the file is still as it was when its stamp was taken.
+        private void Keep(string boardFile, string stamp, IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? files)
+        {
             lock (this.thisGate)
             {
                 this.ReadsForTests++;
 
-                // Kept only when the file is still as it was when its stamp was taken.
                 if (BoardDataReader.FileStamp(boardFile) == stamp)
                     this.thisRead[boardFile] = (stamp, files);
             }
-
-            return files;
         }
     }
 }

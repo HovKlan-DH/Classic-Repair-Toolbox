@@ -333,13 +333,22 @@ namespace Handlers.DataHandling
             if (BoardFiles.ReadDocument(boardFile) is not BoardDocument document)
                 return null;
 
+            Dictionary<string, BoardDocument.StoredFileRow> files = DraftFiles.FilesOf(document);
+
+            if (BoardDataReader.FileStamp(boardFile) == stamp)
+                DraftFiles.Lists[boardFile] = (stamp, files);
+
+            return files;
+        }
+
+        // A board document's files by name, capitals aside - the first of a name kept. ListedIn's
+        // answer, and BoardFileListings.ReadDocument's from a document read for its rows too.
+        internal static Dictionary<string, BoardDocument.StoredFileRow> FilesOf(BoardDocument document)
+        {
             var files = new Dictionary<string, BoardDocument.StoredFileRow>(StringComparer.OrdinalIgnoreCase);
 
             foreach (BoardDocument.StoredFileRow file in document.Files)
                 files.TryAdd(file.Name, file);
-
-            if (BoardDataReader.FileStamp(boardFile) == stamp)
-                DraftFiles.Lists[boardFile] = (stamp, files);
 
             return files;
         }

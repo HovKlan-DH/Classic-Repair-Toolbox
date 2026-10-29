@@ -34,6 +34,67 @@ public sealed class OwnedDeviceRepairsTests
     }
 
     // ###########################################################################################
+    // A device picked beside the board drop-downs is worked on through its newest OPEN repair, on
+    // whichever board that was made - the plan: "Choosing a machine selects its board and its open
+    // repair". Other devices' repairs never count.
+    // ###########################################################################################
+    [Fact]
+    public void A_device_is_worked_on_through_its_newest_open_repair_on_any_board()
+    {
+        WorkbookRecord[] workbooks =
+        [
+            Workbook(1, 7, status: "Open"),
+            Workbook(2, 7, board: "Commodore 64|250425", status: "Open"),
+            Workbook(3, 7, status: "Closed"),
+            Workbook(4, 8, status: "Open"),
+            Workbook(5, null, status: "Open"),
+        ];
+
+        Assert.Equal(2, OwnedDeviceRepairs.RepairToWorkOn(Device(7), workbooks, Anywhere)!.Id);
+    }
+
+    // Every board can be shown - the rule's question, answered for the cases that are not about it.
+    private static bool Anywhere(string boardKey) => true;
+
+    // ###########################################################################################
+    // A repair on a board CRT cannot show (a later sync removed it) cannot be opened, so it is not
+    // the one worked on - the next one is (code review, 2026-10-29: picking the device did nothing).
+    // ###########################################################################################
+    [Fact]
+    public void A_repair_on_a_board_CRT_cannot_show_is_passed_over()
+    {
+        WorkbookRecord[] workbooks =
+        [
+            Workbook(1, 7, status: "Closed"),
+            Workbook(2, 7, board: "Commodore 64|gone", status: "Open"),
+        ];
+
+        bool CanShow(string boardKey) => boardKey != "Commodore 64|gone";
+
+        Assert.Equal(1, OwnedDeviceRepairs.RepairToWorkOn(Device(7), workbooks, CanShow)!.Id);
+        Assert.Null(OwnedDeviceRepairs.RepairToWorkOn(Device(7), workbooks, _ => false));
+    }
+
+    // With none open, its newest repair on the board it has NOW (capitals aside) - one on a board
+    // swapped out is no longer the device being worked on. With neither, none: there is no repair
+    // to work on yet.
+    [Fact]
+    public void With_nothing_open_a_device_is_worked_on_through_its_newest_repair_on_its_board()
+    {
+        WorkbookRecord[] workbooks =
+        [
+            Workbook(1, 7, status: "Closed"),
+            Workbook(2, 7, board: "COMMODORE 64|250407", status: "Closed"),
+            Workbook(3, 7, board: "Commodore 64|250425", status: "Closed"),
+            Workbook(4, 8, status: "Open"),
+        ];
+
+        Assert.Equal(2, OwnedDeviceRepairs.RepairToWorkOn(Device(7), workbooks, Anywhere)!.Id);
+        Assert.Null(OwnedDeviceRepairs.RepairToWorkOn(Device(7, board: "Commodore 128|310378"), workbooks, Anywhere));
+        Assert.Null(OwnedDeviceRepairs.RepairToWorkOn(Device(9), workbooks, Anywhere));
+    }
+
+    // ###########################################################################################
     // A workbook goes on a device with its board (capitals aside) - and stays offered the device it
     // is on, whose board may have been swapped since.
     // ###########################################################################################

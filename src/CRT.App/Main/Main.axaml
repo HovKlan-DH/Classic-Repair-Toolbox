@@ -95,6 +95,21 @@
 					<RowDefinition Height="Auto" />
 				</Grid.RowDefinitions>
 
+				<!-- The device worked on (CRT 4.0 step 4, Main.Devices.cs): above Hardware, as picking one
+				     selects its board and its repair. Shown while the worklog is on and the user has a
+				     device; it shows the device the workbook in the worklog bar is on. -->
+				<StackPanel x:Name="DevicePickerPanel"
+							Grid.Row="0"
+							IsVisible="False">
+					<TextBlock x:Name="DevicePickerHeadingText"
+							   FontSize="11"
+							   Foreground="{DynamicResource Fg}" />
+					<ComboBox x:Name="DevicePickerComboBox"
+							  HorizontalAlignment="Stretch"
+							  Margin="0,8,0,0"
+							  SelectionChanged="OnDevicePickerSelectionChanged" />
+				</StackPanel>
+
 				<!-- Hardware, Board and Category selectors -->
 				<Grid Grid.Row="1"
 					  Margin="0,8,0,0">

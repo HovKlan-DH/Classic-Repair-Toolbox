@@ -94,17 +94,18 @@ namespace CRT
         internal bool IsDevicePageShown => this.DevicePageScroller?.IsVisible == true;
 
         // ###########################################################################################
-        // "My devices" read again and drawn - every device a card, the one whose page is shown
-        // marked. A device that has gone (deleted elsewhere) takes its page with it.
+        // "My devices" drawn - every device a card, the one whose page is shown marked - from the
+        // devices the caller read (Main.RefreshWorklogBar's), else read again. A device that has gone
+        // (deleted elsewhere) takes its page with it.
         // ###########################################################################################
-        private void RefreshDeviceList()
+        private void RefreshDeviceList(List<OwnedDeviceRecord>? devices = null)
         {
             if (this.DeviceListPanel == null)
             {
                 return;
             }
 
-            this.thisDevices = OwnedDeviceStore.GetAll();
+            this.thisDevices = devices ?? OwnedDeviceStore.GetAll();
 
             if (this.thisSelectedDeviceId is { } shown && this.thisDevices.All(device => device.Id != shown))
             {
@@ -607,15 +608,14 @@ namespace CRT
         {
             try
             {
-                if (TopLevel.GetTopLevel(this) is not Window owner || this.SelectedDevice is not { } device || device.BoardKey.Length == 0)
+                if (TopLevel.GetTopLevel(this) is not Window owner || this.MainWindow is not { } main ||
+                    this.SelectedDevice is not { } device || device.BoardKey.Length == 0)
                 {
                     return;
                 }
 
-                var dialog = new CreateWorkbookWindow();
-                dialog.Initialize(device.BoardKey, device.Id);
-
-                if (await dialog.ShowDialog<WorkbookRecord?>(owner) is { } created)
+                // Main's one way of opening the form - a device added in it is shown however it closes.
+                if (await main.ShowCreateWorkbookAsync(owner, device.BoardKey, device.Id) is { } created)
                 {
                     this.OpenRepair(created);
                 }
@@ -785,7 +785,7 @@ namespace CRT
                 return;
             }
 
-            var items = new List<CreateWorkbookWindow.DeviceChoice> { new(null, "None") };
+            var items = new List<CreateWorkbookWindow.DeviceChoice> { new(null, OwnedDeviceWording.NoDeviceChoice) };
             items.AddRange(choices.Select(device => new CreateWorkbookWindow.DeviceChoice(device.Id, device.Name)));
 
             this.thisApplyingWorkbookDevice = true;

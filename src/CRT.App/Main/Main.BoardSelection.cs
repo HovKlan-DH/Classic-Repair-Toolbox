@@ -258,6 +258,7 @@ namespace CRT
             this.SetComponentHighlightRects(new(StringComparer.OrdinalIgnoreCase));
 
             this._currentBoardData = null;
+            this._currentBoardPictures = null;
             this._currentBoardDraftSummary = BoardDraftSummary.Empty;
             this.UpdateRegionButtonsState();
             this.PopulateBoardInfoSection(null, null);
@@ -324,6 +325,11 @@ namespace CRT
             }
 
             this._currentBoardData = boardData;
+
+            // The VIEWED draft folder: empty under "view boards as officially published", so the
+            // schematic images follow the workbook the toggle chose rather than the draft's. Read
+            // once for the whole load (code review, 2026-10-29: twice, each a marker file read).
+            string draftBoardFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
 
             // A schematic image renamed - in the board's published data or in this user's draft:
             // their own worklogs and settings that name it follow, before anything below reads them
@@ -418,10 +424,6 @@ namespace CRT
 
             this._suppressComponentHighlightUpdate = false;
 
-            // The VIEWED draft folder: empty under "view boards as officially published", so the
-            // schematic images follow the workbook the toggle chose rather than the draft's.
-            string draftBoardFolder = DraftManager.GetViewedBoardFolder(entry.ExcelDataFile);
-
             // ###########################################################################################
             // *** EVERYTHING THE POOL NEEDS IS READ HERE, ON THE UI THREAD (code review, 2026-10-13). ***
             // The background half read the hardware and board drop-downs (through the KiCad paths'
@@ -446,6 +448,45 @@ namespace CRT
                 {
                     Task<List<string>> rawPathsCopied = Task.Run(() => Main.KiCadRawPathsFor(dataRoot, draftBoardFolder, excelDataFile));
 
+                    // ###########################################################################################
+                    // EVERY picture's place - hidden ones too - FIRST, each resolved once, by the one rule
+                    // every surface uses (BoardPicturePaths; a file attached only in a local draft found
+                    // there - see DraftFileResolver). The Workbooks tab's map is made from it and handed
+                    // over NOW, before the thumbnails decode, the pane redrawn with it (code reviews,
+                    // 2026-10-29: worked out on the UI thread; and a failure further on - a picture name
+                    // twice breaks the dictionary below - took the Workbooks tab's pictures with it). A
+                    // failure here leaves that tab no pictures, said on its pane, the thumbnails none.
+                    // ###########################################################################################
+                    var listings = new BoardFileListings();
+                    List<BoardPicturePaths.PlacedPicture> placed;
+
+                    try
+                    {
+                        placed = BoardPicturePaths.Place(boardData, dataRoot, draftBoardFolder, excelDataFile, listings);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Warning($"Could not find where the pictures of [{excelDataFile}] lie - [{ex.Message}]");
+                        placed = [];
+                    }
+
+                    var pictures = new LoadedBoardPictures(boardData, BoardPicturePaths.ByName(placed));
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (loadVersion == this._boardSelectionLoadVersion)
+                        {
+                            this._currentBoardPictures = pictures;
+
+                            // Not with the worklog off: the pane is not shown, and is drawn again as it
+                            // comes back (ApplyWorklogBarVisibility).
+                            if (UserSettings.EnableWorklog)
+                            {
+                                this.TabWorkbooks?.RefreshBoardPreviewsForCurrentSelection();
+                            }
+                        }
+                    });
+
                     var highlightRects = HighlightRectBuilder.BuildHighlightRects(boardData, region);
 
                     bool IsSchematicVisible(string schematicName) =>
@@ -459,16 +500,10 @@ namespace CRT
                             schematic => schematic,
                             StringComparer.OrdinalIgnoreCase);
 
-                    // Each visible schematic's image file. One attached only in a local draft (not
-                    // yet synced under Data/) is resolved by the same official-first/draft-fallback
-                    // rule every other BoardData File value uses - see DraftFileResolver.
-                    var images = boardData.Schematics
-                        .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicImageFile))
-                        .Where(schematic => IsSchematicVisible(schematic.SchematicName))
-                        .Select(schematic => (
-                            Name: schematic.SchematicName,
-                            FullPath: DraftFileResolver.Resolve(dataRoot, draftBoardFolder, schematic.SchematicImageFile, entry.ExcelDataFile) ??
-                                Path.Combine(dataRoot, schematic.SchematicImageFile.Replace('/', Path.DirectorySeparatorChar))))
+                    // Each visible schematic's image file - from the places worked out above.
+                    var images = placed
+                        .Where(picture => IsSchematicVisible(picture.Name))
+                        .Select(picture => (Name: picture.Name, FullPath: picture.Path))
                         .ToList();
 
                     // The board shown before, unchanged on disk: its thumbnails as they were. Otherwise
@@ -751,17 +786,29 @@ namespace CRT
         // than each running their own FirstOrDefault, so a change to the key's shape is a change in
         // exactly two places rather than three.
         // ###########################################################################################
-        private static HardwareBoardEntry? FindEntryForBoardKey(string boardKey) =>
+        internal static HardwareBoardEntry? FindEntryForBoardKey(string boardKey) =>
             DataManager.HardwareBoards.FirstOrDefault(e =>
                 string.Equals($"{e.HardwareName}|{e.BoardName}", boardKey, StringComparison.OrdinalIgnoreCase));
 
         // ###########################################################################################
+        // The entry a board key names, when the DROP-DOWNS list it: neither its hardware nor the board
+        // unticked in the Configuration tab's list (CatalogueVisibility, the drop-downs' own rule).
+        // Selecting one they do not list blanked them (code review, 2026-10-29) - so a board key is
+        // turned into a selection only through here.
+        // ###########################################################################################
+        internal static HardwareBoardEntry? FindListedEntryForBoardKey(string boardKey) =>
+            FindEntryForBoardKey(boardKey) is { } entry &&
+            CatalogueVisibility.IsBoardVisible(UserSettings.CatalogueUncheckedKeysSnapshot, entry.HardwareName, entry.BoardName)
+                ? entry
+                : null;
+
+        // ###########################################################################################
         // Reverses a board key into the two drop-down names, for the worklog picker jumping to a
-        // workbook's board when it differs from the one on screen.
+        // workbook's board when it differs from the one on screen - only a board the drop-downs list.
         // ###########################################################################################
         private static bool TryResolveHardwareAndBoardForBoardKey(string boardKey, out string hardwareName, out string boardName)
         {
-            var entry = FindEntryForBoardKey(boardKey);
+            var entry = FindListedEntryForBoardKey(boardKey);
 
             hardwareName = entry?.HardwareName ?? string.Empty;
             boardName = entry?.BoardName ?? string.Empty;

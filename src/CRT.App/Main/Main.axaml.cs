@@ -34,6 +34,7 @@ namespace CRT
         //   Main.BoardSelection.cs    - hardware/board drop-downs, board loading, catalogue visibility
         //   Main.SchematicsWindows.cs - detached thumbnails window, fullscreen schematics window
         //   Main.Worklog.cs           - worklog bar, workbook activation, worklog entry mode
+        //   Main.Devices.cs           - the device picker above Hardware, and the bar naming a repair's device
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
@@ -83,6 +84,15 @@ namespace CRT
         private bool _suppressBoardHardwareSelectionReload;
 
         private BoardData? _currentBoardData;
+
+        // The pictures of _currentBoardData, where each lies - worked out by its load, off the UI
+        // thread, and handed over as it lands (LoadedBoardPictures). Cleared as a load begins.
+        private LoadedBoardPictures? _currentBoardPictures;
+
+        // The board shown's pictures by name - null until its load has worked them out, and never
+        // another board's (LoadedBoardPictures.PathsFor).
+        internal IReadOnlyDictionary<string, string>? CurrentBoardPicturePaths =>
+            this._currentBoardPictures?.PathsFor(this._currentBoardData);
 
         // Snapshotted alongside _currentBoardData in LoadSelectedBoardAsync, from
         // DataManager.LastLoadedDraftSummary right after that same board's LoadBoardDataAsync call
@@ -360,7 +370,9 @@ namespace CRT
             this.ComponentFilterListBox.SelectionChanged += this.OnComponentFilterSelectionChanged;
 
             // Renders each workbook as "#{Id} | {Title} (hardware/board)", e.g. "#3 | Black screen
-            // (C64/250469)" - the short folder-derived label from FormatBoardKeyForDisplay, not the
+            // (C64/250469)", a repair on one of the user's devices "#3 | Breadbin #2 - Black screen
+            // (C64/250469)" (WorkbookPickerText, Main.Devices.cs). The board is the short
+            // folder-derived label from FormatBoardKeyForDisplay, not the
             // full Excel-sheet names ("Commodore 64" / "250469 (short board)"), which read fine as a
             // combo box's own dedicated row but ran too long once several workbooks from different
             // boards sit side by side in one dropdown. The board suffix itself is what the plain-text
@@ -375,9 +387,12 @@ namespace CRT
                 {
                     Text = workbook == null
                         ? string.Empty
-                        : $"#{workbook.Id} | {workbook.Title} ({FormatBoardKeyForDisplay(workbook.BoardKey)})",
+                        : WorkbookPickerText(workbook, this.DeviceNameOf(workbook)),
                     FontSize = 12,
                 });
+
+            // The device picker above Hardware (Main.Devices.cs).
+            this.WireDevicePicker();
 
             var versionString = AppConfig.AppDisplayVersionString;
             var assembly = Assembly.GetExecutingAssembly();
@@ -758,6 +773,9 @@ namespace CRT
             this.TabSchematicsControl.CancelWorklogEntryMode();
             this.TabSchematicsControl.SetShowWorklogEntriesList(false, 0);
             this._worklogShowEntriesWorkbookId = 0;
+
+            // The device picker is the worklog's too.
+            this.DevicePickerPanel.IsVisible = false;
 
             this.MoveSelectionOffHiddenTab(this.WorkbooksTabItem);
         }

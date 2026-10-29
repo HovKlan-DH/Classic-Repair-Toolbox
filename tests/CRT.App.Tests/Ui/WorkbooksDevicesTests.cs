@@ -423,8 +423,9 @@ public sealed class WorkbooksDevicesTests : IDisposable
     }
 
     // ###########################################################################################
-    // "Create new workbook" asks which of the user's devices with this board the repair is on -
-    // preselected for "New repair" on a device's page - and asks nothing with none.
+    // "Create new workbook" asks which device the repair is on - the plan: "one of yours on this
+    // board, a new one, or none" - with "New repair" on a device's page preselecting it and naming
+    // it in the title.
     // ###########################################################################################
     [Fact]
     public void Create_new_workbook_puts_the_repair_on_the_device_picked()
@@ -439,6 +440,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
 
             Assert.True(window.GetControl<StackPanel>("DevicePanel").IsVisible);
             Assert.Equal(["None", "Breadbin #2"], window.GetControl<ComboBox>("DeviceComboBox").Items.Select(item => item!.ToString()));
+            Assert.Equal("Breadbin #2", window.GetControl<ComboBox>("DeviceComboBox").SelectedItem!.ToString());
             Assert.Equal("New repair on Breadbin #2", window.Title);
 
             window.CreateForTests("No video");
@@ -447,8 +449,10 @@ public sealed class WorkbooksDevicesTests : IDisposable
         });
     }
 
+    // With no device on this board, "None" and "Add device" are still offered - starting a repair is
+    // where a new device comes up. The form's own title stays its own.
     [Fact]
-    public void Create_new_workbook_asks_nothing_with_no_device_on_the_board()
+    public void Create_new_workbook_offers_a_new_device_with_none_on_the_board()
     {
         this.AddDevice("C64C silver", this.thisOtherBoardKey);
 
@@ -457,11 +461,275 @@ public sealed class WorkbooksDevicesTests : IDisposable
             var window = new CreateWorkbookWindow();
             window.Initialize(this.thisBoardKey);
 
-            Assert.False(window.GetControl<StackPanel>("DevicePanel").IsVisible);
+            Assert.True(window.GetControl<StackPanel>("DevicePanel").IsVisible);
+            Assert.Equal(["None"], window.GetControl<ComboBox>("DeviceComboBox").Items.Select(item => item!.ToString()));
+            Assert.Equal("None", window.GetControl<ComboBox>("DeviceComboBox").SelectedItem!.ToString());
+            Assert.Equal("Add device", window.GetControl<Button>("AddDeviceButton").Content);
+            Assert.Equal("Create new workbook", window.Title);
 
             window.CreateForTests("No video");
 
             Assert.Null(window.Created!.OwnedDeviceId);
+        });
+    }
+
+    // ###########################################################################################
+    // "Add device" beside the list opens "Add device" on this board - and the device it adds is
+    // picked for the repair, which goes on it; nothing added, the choice stays as it was.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_device_added_from_Create_new_workbook_gets_the_repair()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CreateWorkbookWindow();
+            window.Initialize(this.thisBoardKey);
+            window.AddDeviceOverrideForTests = () => Task.FromResult<OwnedDeviceRecord?>(this.AddDevice("Plus/4 #1"));
+
+            window.GetControl<Button>("AddDeviceButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await window.LastNewDeviceForTests;
+
+            ComboBox choices = window.GetControl<ComboBox>("DeviceComboBox");
+            Assert.Equal(["None", "Plus/4 #1"], choices.Items.Select(item => item!.ToString()));
+            Assert.Equal("Plus/4 #1", choices.SelectedItem!.ToString());
+            Assert.True(window.DeviceAdded);
+
+            window.CreateForTests("Black screen");
+
+            Assert.Equal(OwnedDeviceStore.GetAll().Single().Id, window.Created!.OwnedDeviceId);
+        });
+    }
+
+    [Fact]
+    public async Task No_device_added_leaves_the_choice_as_it_was()
+    {
+        OwnedDeviceRecord device = this.AddDevice();
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CreateWorkbookWindow();
+            window.Initialize(this.thisBoardKey, device.Id);
+            window.AddDeviceOverrideForTests = () => Task.FromResult<OwnedDeviceRecord?>(null);
+
+            window.GetControl<Button>("AddDeviceButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await window.LastNewDeviceForTests;
+
+            ComboBox choices = window.GetControl<ComboBox>("DeviceComboBox");
+            Assert.Equal(["None", "Breadbin #2"], choices.Items.Select(item => item!.ToString()));
+            Assert.Equal("Breadbin #2", choices.SelectedItem!.ToString());
+            Assert.False(window.DeviceAdded);
+
+            window.CreateForTests("No video");
+
+            Assert.Equal(device.Id, window.Created!.OwnedDeviceId);
+            Assert.Single(OwnedDeviceStore.GetAll());
+        });
+    }
+
+    // ###########################################################################################
+    // Arrowing through "On my device" only picks a device - it never opens "Add device" (code review,
+    // 2026-10-29: "A new device" was an item of the list, and reaching it with the Down key opened
+    // the dialog).
+    // ###########################################################################################
+    [Fact]
+    public void Going_through_the_device_list_never_opens_Add_device()
+    {
+        this.AddDevice();
+        bool opened = false;
+
+        UiTest.Run(() =>
+        {
+            var window = new CreateWorkbookWindow();
+            window.Initialize(this.thisBoardKey);
+            window.AddDeviceOverrideForTests = () =>
+            {
+                opened = true;
+                return Task.FromResult<OwnedDeviceRecord?>(null);
+            };
+
+            ComboBox choices = window.GetControl<ComboBox>("DeviceComboBox");
+
+            for (int index = 0; index < choices.ItemCount; index++)
+            {
+                choices.SelectedIndex = index;
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.False(opened);
+        });
+    }
+
+    // ###########################################################################################
+    // A device that comes back from "Add device" on ANOTHER board is no device for this repair: not
+    // listed, not picked (code review, 2026-10-29: a C64 repair was filed on a C128 device). Its
+    // board is this board's in that form, so only a stand-in can bring one back - the rule holds all
+    // the same.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_device_added_on_another_board_is_not_picked_for_this_repair()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CreateWorkbookWindow();
+            window.Initialize(this.thisBoardKey);
+            window.AddDeviceOverrideForTests = () => Task.FromResult<OwnedDeviceRecord?>(this.AddDevice("C128D", this.thisOtherBoardKey));
+
+            window.GetControl<Button>("AddDeviceButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await window.LastNewDeviceForTests;
+
+            ComboBox choices = window.GetControl<ComboBox>("DeviceComboBox");
+            Assert.Equal(["None"], choices.Items.Select(item => item!.ToString()));
+            Assert.Equal("None", choices.SelectedItem!.ToString());
+
+            window.CreateForTests("No video");
+
+            Assert.Null(window.Created!.OwnedDeviceId);
+        });
+    }
+
+    // "Add device" opened from a repair keeps the repair's board - the hardware and board are shown,
+    // not changeable.
+    [Fact]
+    public void Add_device_for_a_repair_keeps_the_repairs_board()
+    {
+        HardwareBoardEntry[] boards =
+        [
+            new() { HardwareName = "Commodore 64", BoardName = "250407" },
+            new() { HardwareName = "Commodore 128", BoardName = "310378" },
+        ];
+
+        UiTest.Run(() =>
+        {
+            var window = new OwnedDeviceWindow();
+            window.Initialize(boards, "Commodore 64|250407", boardFixed: true);
+
+            Assert.False(window.GetControl<ComboBox>("HardwareComboBox").IsEnabled);
+            Assert.False(window.GetControl<ComboBox>("BoardComboBox").IsEnabled);
+            Assert.Equal("Commodore 64|250407", window.Details().BoardKey);
+        });
+    }
+
+    // ###########################################################################################
+    // The repair's board kept even when CRT no longer lists it - it is the board the device is for
+    // (code review, 2026-10-29: the locked Board box fell back to another board, or none, and the
+    // device was saved there without a word).
+    // ###########################################################################################
+    [Fact]
+    public void Add_device_for_a_repair_keeps_a_board_CRT_no_longer_lists()
+    {
+        HardwareBoardEntry[] boards = [new() { HardwareName = "Commodore 64", BoardName = "250425" }];
+
+        UiTest.Run(() =>
+        {
+            var listedHardware = new OwnedDeviceWindow();
+            listedHardware.Initialize(boards, "Commodore 64|250407", boardFixed: true);
+            Assert.Equal("Commodore 64|250407", listedHardware.Details().BoardKey);
+
+            var unlistedHardware = new OwnedDeviceWindow();
+            unlistedHardware.Initialize(boards, "Commodore 128|310378", boardFixed: true);
+            Assert.Equal("Commodore 128|310378", unlistedHardware.Details().BoardKey);
+        });
+    }
+
+    // ###########################################################################################
+    // The history of a device whose repair is on the board shown, before CRT has finished reading
+    // that board (or could not): its pictures read from its board file, as any other board's (code
+    // review, 2026-10-29: those repairs went out without their board).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_repair_on_the_board_shown_before_it_is_read_still_gets_its_pictures()
+    {
+        OwnedDeviceRecord device = this.AddDevice();
+        WorkbookRecord repair = WorklogManager.CreateWorkbook(this.thisBoardKey, "No video", string.Empty, device.Id)!;
+        WorklogManager.AddEntry(repair.Id, "Sheet 1", new Avalonia.Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
+
+        var board = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "Images/top.png" }] };
+
+        try
+        {
+            Dictionary<string, string> stored = PublishedBoardTree.Load(
+                this.thisWorkspace.Path_("Data"), this.thisBoardKey, board, ("Images/top.png", [1, 2, 3]));
+
+            await UiTest.RunAsync(async () =>
+            {
+                TabWorkbooks tab = this.BuildTab();
+                tab.SelectDevice(device.Id);
+
+                DeviceHistoryExportModel.Document history = (await tab.BuildDeviceHistoryForTestsAsync())!;
+
+                Assert.Equal(stored["Images/top.png"], Assert.Single(Assert.Single(history.Repairs).Sections).SchematicImagePath);
+            });
+        }
+        finally
+        {
+            PublishedBoardTree.Unload(this.thisWorkspace.Path_("Empty"));
+        }
+    }
+
+    // ###########################################################################################
+    // A workbook whose index.json names no board ("boardKey": null - hand-edited or damaged) costs
+    // that repair its board pictures, never the whole history (code review, 2026-10-29: the export
+    // threw, and no file was written for any repair).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_repair_naming_no_board_is_still_in_the_history()
+    {
+        OwnedDeviceRecord device = this.AddDevice();
+        WorkbookRecord repair = WorklogManager.CreateWorkbook(this.thisBoardKey, "No video", string.Empty, device.Id)!;
+
+        string index = Path.Combine(WorklogManager.WorkbookRoot, WorklogManager.BuildWorkbookFolderName(repair.Id), "index.json");
+        File.WriteAllText(index, File.ReadAllText(index).Replace($"\"{this.thisBoardKey}\"", "null", StringComparison.Ordinal));
+        Assert.Null(WorklogManager.GetAllWorkbooks().Single(each => each.Id == repair.Id).BoardKey);
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabWorkbooks tab = this.BuildTab();
+            tab.SelectDevice(device.Id);
+
+            DeviceHistoryExportModel.Document history = (await tab.BuildDeviceHistoryForTestsAsync())!;
+
+            Assert.Equal(repair.Id, Assert.Single(history.Repairs).WorkbookId);
+        });
+    }
+
+    // ###########################################################################################
+    // The title names the device the repair goes on - and follows the drop-down (code review,
+    // 2026-10-29: "New repair on Breadbin #2" stayed while the repair went on none).
+    // ###########################################################################################
+    [Fact]
+    public void The_title_follows_the_device_picked()
+    {
+        OwnedDeviceRecord device = this.AddDevice();
+
+        UiTest.Run(() =>
+        {
+            var window = new CreateWorkbookWindow();
+            window.Initialize(this.thisBoardKey, device.Id);
+            Assert.Equal("New repair on Breadbin #2", window.Title);
+
+            ComboBox choices = window.GetControl<ComboBox>("DeviceComboBox");
+            choices.SelectedIndex = 0;
+            Assert.Equal("Create new workbook", window.Title);
+
+            choices.SelectedIndex = 1;
+            Assert.Equal("New repair on Breadbin #2", window.Title);
+        });
+    }
+
+    // Editing a workbook asks nothing about devices - "On my device" under its title does that.
+    [Fact]
+    public void Edit_workbook_asks_no_device()
+    {
+        this.AddDevice();
+
+        UiTest.Run(() =>
+        {
+            WorkbookRecord workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "No video", string.Empty)!;
+
+            var window = new CreateWorkbookWindow();
+            window.InitializeForEdit(workbook);
+
+            Assert.False(window.GetControl<StackPanel>("DevicePanel").IsVisible);
         });
     }
 
@@ -554,5 +822,116 @@ public sealed class WorkbooksDevicesTests : IDisposable
             Assert.Equal("Commodore 64|250407", saved.BoardKey);
             Assert.Equal("Board changed from Commodore 64 - 250466 to Commodore 64 - 250407", Assert.Single(saved.Changes).Text);
         });
+    }
+
+    // ###########################################################################################
+    // "EXPORT HISTORY" (slice 4d - the plan: "Export history puts every repair into one PDF or
+    // ZIP"): the device page's two buttons, the file suggested by the device's name, written where it
+    // was picked with the button's own extension - and nothing when the dialog is called off.
+    // ###########################################################################################
+    [Fact]
+    public async Task Export_history_writes_the_devices_history_to_the_file_picked()
+    {
+        WorkbookPdfExporter.ConfigureQuestPdf();
+        OwnedDeviceRecord device = this.AddDevice();
+        WorkbookRecord repair = WorklogManager.CreateWorkbook(this.thisBoardKey, "No video", string.Empty, device.Id)!;
+        WorklogManager.AddEntry(repair.Id, "Sheet 1", new Avalonia.Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
+
+        string target = Path.Combine(this.thisWorkspace.Root, "Exports", "history");
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var asked = new List<(bool AsZip, string Suggested)>();
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabWorkbooks tab = this.BuildTab();
+            tab.SelectDevice(device.Id);
+
+            Assert.Equal("Export history to PDF", tab.GetControl<Button>("ExportHistoryButton").Content);
+            Assert.Equal("Export history to ZIP", tab.GetControl<Button>("ExportHistoryZipButton").Content);
+
+            tab.PickHistoryPathOverrideForTests = (asZip, suggested) =>
+            {
+                asked.Add((asZip, suggested));
+                return Task.FromResult<string?>(target);
+            };
+
+            await tab.ExportDeviceHistoryAsync(asZip: false);
+        });
+
+        (bool asZip, string suggested) = Assert.Single(asked);
+        Assert.False(asZip);
+        Assert.StartsWith($"Device_{device.Id}_Breadbin-2_", suggested);
+        Assert.True(new FileInfo(target + ".pdf").Length > 0);
+    }
+
+    [Fact]
+    public async Task Export_history_called_off_writes_nothing()
+    {
+        OwnedDeviceRecord device = this.AddDevice();
+        string exports = this.thisWorkspace.Path_("Exports");
+        Directory.CreateDirectory(exports);
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabWorkbooks tab = this.BuildTab();
+            tab.SelectDevice(device.Id);
+            tab.PickHistoryPathOverrideForTests = (_, _) => Task.FromResult<string?>(null);
+
+            await tab.ExportDeviceHistoryAsync(asZip: true);
+        });
+
+        Assert.Empty(Directory.GetFiles(exports));
+    }
+
+    // ###########################################################################################
+    // Each repair is drawn on ITS board's pictures: the board shown's as CRT holds them, another
+    // board's read from its board file (CRT 4.0's stored picture here), and one on a board CRT no
+    // longer lists without - never every repair on the board shown's pictures.
+    // ###########################################################################################
+    [Fact]
+    public async Task Each_repair_in_the_history_is_drawn_on_its_own_boards_pictures()
+    {
+        OwnedDeviceRecord device = this.AddDevice();
+        string gone = "Commodore 64|gone " + Guid.NewGuid().ToString("N");
+
+        WorkbookRecord onShown = WorklogManager.CreateWorkbook(this.thisBoardKey, "No video", string.Empty, device.Id)!;
+        WorkbookRecord onOther = WorklogManager.CreateWorkbook(this.thisOtherBoardKey, "Before the swap", string.Empty, device.Id)!;
+        WorkbookRecord onGone = WorklogManager.CreateWorkbook(gone, "Long ago", string.Empty, device.Id)!;
+
+        foreach (WorkbookRecord repair in new[] { onShown, onOther, onGone })
+        {
+            WorklogManager.AddEntry(repair.Id, "Sheet 1", new Avalonia.Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
+        }
+
+        string shownPicture = this.Picture("shown.png");
+        var shownBoard = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = shownPicture }] };
+        var otherBoard = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "Images/top.png" }] };
+
+        try
+        {
+            Dictionary<string, string> stored = PublishedBoardTree.Load(
+                this.thisWorkspace.Path_("Data"), this.thisOtherBoardKey, otherBoard, ("Images/top.png", [1, 2, 3]));
+
+            await UiTest.RunAsync(async () =>
+            {
+                TabWorkbooks tab = this.BuildTab();
+                tab.CurrentBoardDataOverrideForTests = shownBoard;
+                tab.SelectDevice(device.Id);
+
+                DeviceHistoryExportModel.Document history = (await tab.BuildDeviceHistoryForTestsAsync())!;
+
+                string? PictureOf(WorkbookRecord repair) =>
+                    Assert.Single(history.Repairs.Single(each => each.WorkbookId == repair.Id).Sections).SchematicImagePath;
+
+                Assert.Equal([onShown.Id, onOther.Id, onGone.Id], history.Repairs.Select(each => each.WorkbookId));
+                Assert.Equal(shownPicture, PictureOf(onShown));
+                Assert.Equal(stored["Images/top.png"], PictureOf(onOther));
+                Assert.Null(PictureOf(onGone));
+            });
+        }
+        finally
+        {
+            PublishedBoardTree.Unload(this.thisWorkspace.Path_("Empty"));
+        }
     }
 }

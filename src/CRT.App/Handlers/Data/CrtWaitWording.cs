@@ -96,6 +96,9 @@ namespace Handlers.DataHandling
         public static string ExportingWorkbook(bool asZip) =>
             asZip ? "Exporting the workbook to a ZIP file..." : "Exporting the workbook to a PDF...";
 
+        public static string ExportingDeviceHistory(bool asZip) =>
+            asZip ? "Exporting the device's history to a ZIP file..." : "Exporting the device's history to a PDF...";
+
         public static string CheckingSubmission(int number, int total) =>
             string.Create(CultureInfo.InvariantCulture, $"Checking your contributions with the server ({number} of {total})...");
 

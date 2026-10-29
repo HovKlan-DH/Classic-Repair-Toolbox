@@ -1270,11 +1270,67 @@ repair on one board; it holds worklogs.
   device" saves from a box, never from a focused button. An action on the page
   reads the devices AGAIN before drawing it (`ShowDeviceAgain` - drawn from the old list, a change
   added did not show). "New repair" is "Create new workbook" with the device
-  preselected, then opens it on its board; that form offers the user's devices with the board ("None"
-  first) whenever one has it. Under a workbook's title "On my device" puts it on a device with its
+  preselected, then opens it on its board; that form ALWAYS asks the device when creating (the plan:
+  "one of yours on this board, a new one, or none"): "None" and the devices with the board, and an
+  "Add device" BUTTON beside them - never an item of the list (code review, 2026-10-29: reaching "A new
+  device" with the Down key opened the dialog) - whose form keeps THIS board (`boardFixed`) and picks
+  what it adds; one on another board is not offered. Its title follows the device picked ("New repair
+  on <name>"). **A device added there is on disk even when the form is then cancelled**: the form is
+  opened ONLY through `Main.ShowCreateWorkbookAsync` (the bar, "New repair", a device picked with no
+  repair), which shows it whatever the form closes with (`AfterCreateWorkbookForm`) - no caller to
+  forget it. Under a workbook's title "On my device" puts it on a device with its
   board, or the one it is on. "Delete device" asks, and its repairs stay. Words: `OwnedDeviceWording`.
-  **Not yet**: the device picker beside the board drop-downs and the bar's "Breadbin #2 - No video"
-  (slice 4c), "Export history" (4d).
+  **The device picker above Hardware** (slice 4c, `Main.Devices.cs`; shown while the worklog is on and a
+  device exists) **has no state of its own**: it shows the device the worklog bar's workbook is on, "No
+  device" otherwise - so it can never name another repair than the one "Add worklog" writes into.
+  Picking one activates the repair `OwnedDeviceRepairs.RepairToWorkOn` names (newest OPEN, any board;
+  else newest on its board now - only on a board CRT can show, `Main.CanShowBoard`), its board selected
+  first; a device with none gets its board and "New repair on <name>" - cancelled, the picker goes back.
+  **A board key becomes a drop-down selection only through `Main.FindListedEntryForBoardKey`** - a
+  board the drop-downs LIST, not unticked in the Configuration tab's list (code review, 2026-10-29:
+  selecting a hidden one blanked them, the bar's own workbook picker too) - and a device's board
+  switched to must be the one SELECTED afterwards, or no repair is started (it went on the board still
+  shown). **A pick is made from the OPEN list**: closed, the arrow keys and the wheel do nothing (each
+  step was a board load, and a dialog could open mid-scroll); the device already shown chosen again
+  (an item clicked, Enter or Space) is a pick too - no selection change says so
+  (`OnDevicePickerPropertyChanged`). **The click is counted on the TUNNEL route**: the ComboBox closes
+  its list in its own bubble handler, so a bubble handler saw it closed and never counted a click
+  (second review, 2026-10-29). A selection change is the pick, never also the close after it. A pick
+  whose board switch lands nowhere (the board in other capitals) draws the bar again, so the picker
+  goes back.
+  A pick and the forms it opens use what the last `RefreshWorklogBar` read (`thisWorkbooksLastRead`,
+  `thisDevicesLastRead`), never a second read of every folder. The bar's workbook picker reads "#3 | Breadbin #2
+  - No video (C64/250407)" (`Main.WorkbookPickerText`), and its "Create new workbook" preselects the
+  device worked on when it has the board shown. `RefreshWorklogBar` reads the devices ONCE (none with
+  the worklog off) for the picker, the bar and the Workbooks tab.
+  **"Export history"** (slice 4d, `TabWorkbooks.DeviceHistory.cs`; content `DeviceHistoryExportModel`,
+  drawing `WorkbookPdfExporter.History.cs`): two buttons on the device's page, PDF or ZIP, as a
+  workbook's export. The device heads every page; first what it is, the summary of every repair
+  (`OwnedDeviceRepairs.HeadlineStats` over the workbook's own panel), the list of repairs, its changes
+  and photos; then every repair OLDEST FIRST, from a fresh page, drawn by the workbook export's own
+  `ComposeHeader`/`ComposeContent` - never a second drawing of a repair. **Each repair is on ITS
+  board's pictures**: the board shown's as CRT holds them, any other's read from its board file as
+  viewed (`DraftBoardSource` + `BoardDataReader.LoadAsync`, off the UI thread - never
+  `DataManager.LoadBoardDataAsync`, whose statics Main reads after its own load). The ZIP: the PDF,
+  "device photos/", and each repair's files under "workbook_<id>/worklog_<id>/".
+- **A board's pictures are found by ONE rule, `BoardPicturePaths`** (the Schematics tab's thumbnails,
+  the Workbooks tab's board pane, a workbook's export, a device's history): in CRT 4.0 a picture row
+  NAMES a file of its board, its bytes stored under their checksum (`DraftFileResolver`), else an
+  Excel-era path under the data root. The Workbooks tab joined the name to the data root by itself
+  until 2026-10-29 - on 4.0 data its pane showed no board and every export went out without one.
+  **The Workbooks tab takes Main's map for the board it LOADED** (`Main.CurrentBoardPicturePaths`,
+  `LoadedBoardPictures`): worked out FIRST in the load's pool pass (`BoardPicturePaths.Place` - each
+  picture resolved once, the thumbnails taken from the same list; guarded, so a later failure in that
+  pass cannot take the tab's pictures with it), handed over BEFORE the thumbnails decode (the pane
+  redrawn with it, with the worklog on), cleared as a load begins, and answering only for the board
+  it was made for (`PathsFor`). Worked out again from the drop-downs at draw time, a refresh between a
+  board change and its load resolved the old board's names against the new board's file. Null while
+  not worked out: the pane says "Finding the board's pictures...", and worklogs whose pictures none
+  could be drawn are SAID, never a blank pane. **Both exports take a board's pictures one way**
+  (`TabWorkbooks.PicturesOfBoardAsync`): Main's map for the board shown once there, else read from the
+  board's file as viewed (`DraftBoardSource.ResolveViewed` - board file, draft folder and new-board
+  from ONE resolution; `BoardFileListings.ReadDocument` - rows and file list from ONE read). Both open
+  one save dialog (`TabWorkbooks.PickExportPathAsync`).
 
 #### Schematics (`Tabs/Schematics/`)
 

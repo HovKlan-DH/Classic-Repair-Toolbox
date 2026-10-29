@@ -55,6 +55,24 @@ public sealed class OwnedDeviceWordingTests
         Assert.Equal("Notes and photos (1 photo)", OwnedDeviceWording.PhotosHeading(1));
     }
 
+    // The plan's own words: "The bar reads 'Breadbin #2 - No video'".
+    [Fact]
+    public void The_bar_names_the_device_then_the_repair()
+    {
+        Assert.Equal("Breadbin #2 - No video", OwnedDeviceWording.BarText(" Breadbin #2 ", " No video "));
+        Assert.Equal("Breadbin #2", OwnedDeviceWording.BarText("Breadbin #2", "  "));
+        Assert.Equal("New repair on Breadbin #2", OwnedDeviceWording.NewRepairTitle(" Breadbin #2 "));
+    }
+
+    // An exported history's list of repairs: id, title, then in brackets its state, its date words
+    // and its worklogs - bracketed, as a title may hold " - " itself.
+    [Fact]
+    public void A_repair_in_the_history_is_listed_by_what_it_is_and_how_far_it_got()
+    {
+        Assert.Equal("#12 No video - VIC socket (Open, started 2026-09-28, 3 worklogs)", OwnedDeviceWording.HistoryRepairLine(12, " No video - VIC socket ", "Open", "started 2026-09-28", 3));
+        Assert.Equal("#4 (untitled) (Closed, ended 2026-10-04, 1 worklog)", OwnedDeviceWording.HistoryRepairLine(4, "", "Closed", "ended 2026-10-04", 1));
+    }
+
     [Fact]
     public void Every_sentence_is_plain_ASCII_and_calls_it_a_device()
     {
@@ -71,6 +89,14 @@ public sealed class OwnedDeviceWordingTests
             OwnedDeviceWording.PhotosAdded(0, 3),
             OwnedDeviceWording.DeleteQuestion("Breadbin", 2),
             OwnedDeviceWording.BoardSwapped("Commodore 64|250407", "Commodore 64|250425"),
+            OwnedDeviceWording.PickerHeading,
+            OwnedDeviceWording.NoDevicePicked,
+            OwnedDeviceWording.NoDeviceChoice,
+            OwnedDeviceWording.NewRepairTitle("Breadbin"),
+            OwnedDeviceWording.BarText("Breadbin", "No video"),
+            OwnedDeviceWording.HistoryLabel,
+            OwnedDeviceWording.NoRepairsRecorded,
+            OwnedDeviceWording.HistoryRepairLine(12, "No video", "Open", "started 2026-09-28", 3),
             .. OwnedDeviceStatus.All,
         ];
 
