@@ -39,10 +39,10 @@ public sealed class SchematicRemovalTests : IDisposable
     [Fact]
     public void The_question_names_the_image_and_says_what_goes_and_that_Undo_brings_it_back()
     {
-        Assert.Equal("Remove [PCB; Top] from your draft?", SchematicRemoval.Question("PCB; Top"));
+        Assert.Equal("Delete [PCB; Top] from the board in your draft?", SchematicRemoval.Question("PCB; Top"));
 
         Assert.Equal(
-            "Its highlights for 37 components and its KiCad calibration go with it. Undo at the top of the Contribute tab brings them back.",
+            "Its highlights for 37 components and its KiCad calibration go with it. \"Undo\" at the top of the \"Contribute\" tab brings them back.",
             SchematicRemoval.WhatGoes(new SchematicRemovalLoss(37, true)));
 
         Assert.StartsWith("Its highlights for 1 component go with it.", SchematicRemoval.WhatGoes(new SchematicRemovalLoss(1, false)));

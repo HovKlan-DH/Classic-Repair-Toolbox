@@ -374,7 +374,12 @@ public sealed class BoardDataChecksTests
             ComponentImages = [Image("U1", $"{Board}/gone.png"), Image("U1", $"{Board}/Main.PNG")],
             ComponentHighlights = [Highlight("Nowhere", "U1"), new ComponentHighlightEntry { SchematicName = "Main", BoardLabel = "U1", X = "1,5", Y = "0", Width = "1", Height = "1" }],
             ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Tool", File = $"{Board}/tool.exe" }],
-            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U1", Name = "Bad", Url = "ftp://example.com" }]
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U1", Name = "Bad", Url = "ftp://example.com" }],
+
+            // A field a row of the board's own lists needs, empty (BoardRowRequired, 2026-11-01).
+            BoardLinks = [new BoardLinkEntry { Category = "Forums", Url = "https://www.lemon64.com" }],
+            Credits = [new CreditEntry { NameOrHandle = "Anna" }],
+            KiCadImportantSignals = [new KiCadImportantSignalEntry { KiCadNetName = "/RESET" }]
         };
 
         // Everything the rows name, less the one that is missing - and with "Main.PNG" carried as
@@ -585,6 +590,128 @@ public sealed class BoardDataChecksTests
         Assert.Equal(LaterDuplicate, duplicates[2].Message);
     }
 
+    // ###########################################################################################
+    // *** A FIELD A ROW OF THE BOARD'S OWN LISTS NEEDS IS AN ERROR ON ITS CELL, TO THE TABLE AND TO
+    // THE SERVER ALIKE (owner request, 2026-11-01: "These errors must be flagged in 'Board status' and
+    // then it should not be possible to submit the draft board"). *** BoardRowRequired: a board file
+    // its category and name (its file is "file.unreferenced"), a link its category, name and address,
+    // a credit what it is for and the name or handle, an important signal its net and name - each
+    // empty one an error naming its sheet, row and column; which part of a credit and its contact may
+    // stay empty.
+    // ###########################################################################################
+    [Fact]
+    public void A_field_a_row_of_the_boards_own_lists_needs_is_an_error_on_its_cell_in_both_scopes()
+    {
+        var rows = new BoardCheckRows(
+            [MainSchematic], [], [], [], [],
+            BoardLocalFiles:
+            [
+                new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = $"{Board}/manual.pdf" },
+                new BoardLocalFileEntry { Name = "Notes", File = $"{Board}/notes.txt" },
+            ],
+            ComponentLinks: [],
+            BoardLinks: [new BoardLinkEntry { Category = "Forums" }],
+            Credits:
+            [
+                new CreditEntry { Category = "Schematic image", NameOrHandle = "Anna" },
+                new CreditEntry { SubCategory = "Top", Contact = "a forum" },
+            ],
+            ImportantSignals: [new KiCadImportantSignalEntry { KiCadNetName = "/RESET", DisplayName = " " }]);
+
+        foreach (BoardCheckScope scope in new[] { BoardCheckScope.Everything, BoardCheckScope.Submission })
+        {
+            List<(string? Sheet, int Index, string? Column)> empty = BoardDataChecks
+                .Check(rows, new SuppliedFileLookup([MainSchematic.SchematicImageFile, $"{Board}/manual.pdf", $"{Board}/notes.txt"]), scope)
+                .Where(problem => problem.Code == "row.required_empty")
+                .Select(problem =>
+                {
+                    Assert.Equal(BoardProblemLevel.Error, problem.Level);
+                    return (problem.Sheet, problem.Index, problem.Column);
+                })
+                .ToList();
+
+            Assert.Equal(
+                [
+                    (BoardWorkbookSchema.SheetBoardLocalFiles, 1, BoardWorkbookSchema.ColCategory),
+                    (BoardWorkbookSchema.SheetBoardLinks, 0, BoardWorkbookSchema.ColName),
+                    (BoardWorkbookSchema.SheetBoardLinks, 0, BoardWorkbookSchema.ColUrl),
+                    (BoardWorkbookSchema.SheetCredits, 1, BoardWorkbookSchema.ColCategory),
+                    (BoardWorkbookSchema.SheetCredits, 1, BoardWorkbookSchema.ColNameOrHandle),
+                    (BoardWorkbookSchema.SheetKiCadImportantSignals, 0, BoardWorkbookSchema.ColDisplayName),
+                ],
+                empty);
+        }
+
+        // Counted per list for Board status - and every one of those columns is one error.
+        BoardRowsIncomplete incomplete = BoardRowRequired.Of(new BoardData
+        {
+            BoardLocalFiles = [.. rows.BoardLocalFiles],
+            BoardLinks = [.. rows.BoardLinks],
+            Credits = [.. rows.Credits!],
+            KiCadImportantSignals = [.. rows.ImportantSignals!],
+        });
+
+        Assert.Equal(new BoardRowsIncomplete(Files: 1, Links: 1, Credits: 1, Signals: 1, Errors: 6), incomplete);
+    }
+
+    // ###########################################################################################
+    // *** THE ONE RULE FOR A LINK'S ADDRESS (code review, 2026-11-01). *** The component pane marks what
+    // this refuses (BoardDataChecks.IsRefusedLink): "www.lemon64.com" and "mailto:" open from their
+    // "Open link" (LinkTarget), and nothing on the row said Submit would refuse them. An empty address
+    // is no refused one - BoardRowRequired decides whether it must be there. And the error says what
+    // to write: "CRT will not open anything else" was untrue of the mailto: its own row opens.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("https://www.lemon64.com", false)]
+    [InlineData("http://www.lemon64.com", false)]
+    [InlineData("HTTPS://www.lemon64.com", false)]
+    [InlineData("www.lemon64.com", true)]
+    [InlineData("mailto:anna@example.org", true)]
+    [InlineData("ftp://example.org/x", true)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    [InlineData(null, false)]
+    public void A_link_the_check_refuses_is_the_one_the_rule_names(string? address, bool refused)
+    {
+        Assert.Equal(refused, BoardDataChecks.IsRefusedLink(address));
+
+        BoardCheckRows rows = Rows(boardLinks: [new BoardLinkEntry { Category = "Forums", Name = "Lemon64", Url = address ?? string.Empty }]);
+        List<BoardDataProblem> errors = Everything(rows).Where(problem => problem.Code == "link.not_web").ToList();
+
+        Assert.Equal(refused ? 1 : 0, errors.Count);
+
+        if (refused)
+        {
+            Assert.Contains("Write the whole address", errors[0].Message);
+            Assert.DoesNotContain("will not open", errors[0].Message);
+        }
+    }
+
+    // A submission sent with such a row is refused - the server's own check, as the table says.
+    [Fact]
+    public void A_submission_with_a_credit_missing_its_name_is_refused()
+    {
+        var manifest = new SubmissionManifest
+        {
+            BoardId = Board,
+            Manufacturer = "Commodore",
+            Hardware = "C64",
+            Board = "250407",
+            Summary = "A credit.",
+            Rows = new SubmissionRows
+            {
+                Schematics = [new BoardSchematicEntry { SchematicName = "Main", SchematicImageFile = $"{Board}/main.png" }],
+                Credits = [new CreditEntry { Category = "Schematic image" }],
+            },
+        };
+
+        ValidationFinding finding = Assert.Single(SubmissionValidator.Validate(manifest, [$"{Board}/main.png"]), finding => finding.Code == "row.required_empty");
+
+        Assert.Equal(ValidationSeverity.Error, finding.Severity);
+        Assert.Equal(BoardWorkbookSchema.ColNameOrHandle, finding.Subject);
+        Assert.False(SubmissionValidator.CanBeQueued([finding]));
+    }
+
     // ------------------------------------------------------------------ Unfinished work (CRT 4.0 step 1)
 
     // ###########################################################################################
@@ -595,19 +722,148 @@ public sealed class BoardDataChecksTests
     // must never become refusals (Every_error_the_table_finds_is_one_the_server_refuses).
     // ###########################################################################################
     [Fact]
-    public void A_component_with_no_category_is_a_warning_in_the_table_and_nothing_to_the_server()
+    public void A_component_with_no_category_is_an_error_in_the_table_and_to_the_server()
     {
+        // An error since 2026-11-01 (owner decision: "No components must have an empty category").
         BoardCheckRows rows = Rows(components: [new ComponentEntry { BoardLabel = "U1" }, Component("U2")]);
 
-        BoardDataProblem warning = Assert.Single(Everything(rows), problem => problem.Code == "component.no_category");
+        BoardDataProblem error = Assert.Single(Everything(rows), problem => problem.Code == "component.no_category");
 
-        Assert.Equal(BoardProblemLevel.Warning, warning.Level);
-        Assert.Equal(BoardWorkbookSchema.SheetComponents, warning.Sheet);
-        Assert.Equal(0, warning.Index);
-        Assert.Equal(BoardWorkbookSchema.ColCategory, warning.Column);
-        Assert.Contains("[U1]", warning.Message, StringComparison.Ordinal);
+        Assert.Equal(BoardProblemLevel.Error, error.Level);
+        Assert.Equal(BoardWorkbookSchema.SheetComponents, error.Sheet);
+        Assert.Equal(0, error.Index);
+        Assert.Equal(BoardWorkbookSchema.ColCategory, error.Column);
+        Assert.Contains("[U1]", error.Message, StringComparison.Ordinal);
 
-        Assert.DoesNotContain(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "component.no_category");
+        Assert.Contains(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "component.no_category");
+    }
+
+    // ###########################################################################################
+    // A PIN MUST BE ON THE COMPONENT'S CASE (owner request, 2026-11-01: "if I e.g. put pin 48 on a 24 pin
+    // package, this is an error") - a scope baseline's and a pinout's, to the table and the server alike.
+    // ###########################################################################################
+    [Fact]
+    public void A_scope_baseline_on_a_pin_the_case_does_not_have_is_an_error_on_its_cell()
+    {
+        BoardCheckRows rows = Rows(
+            components: [new ComponentEntry { BoardLabel = "U1", Category = "IC", Package = "DIP-24" }],
+            images:
+            [
+                new ComponentImageEntry { BoardLabel = "U1", Pin = "24", TimeDiv = "1ms", File = $"{Board}/a.png" },
+                new ComponentImageEntry { BoardLabel = "U1", Pin = "48", TimeDiv = "1ms", File = $"{Board}/b.png" },
+            ]);
+
+        BoardDataProblem error = Assert.Single(Everything(rows), problem => problem.Code == "pin.outside_package");
+
+        Assert.Equal(BoardProblemLevel.Error, error.Level);
+        Assert.Equal(BoardWorkbookSchema.SheetComponentImages, error.Sheet);
+        Assert.Equal(1, error.Index);
+        Assert.Equal(BoardWorkbookSchema.ColPin, error.Column);
+        Assert.Contains("DIP-24", error.Message, StringComparison.Ordinal);
+        Assert.Contains("pin 48", error.Message, StringComparison.Ordinal);
+
+        Assert.Contains(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "pin.outside_package");
+    }
+
+    [Fact]
+    public void A_pin_of_the_pinout_the_case_does_not_have_is_an_error_too()
+    {
+        BoardCheckRows rows = Rows(components: [new ComponentEntry { BoardLabel = "U1", Category = "IC", Package = "TO-92" }]) with
+        {
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "3" }, new ComponentPinEntry { BoardLabel = "U1", Pin = "4" }],
+        };
+
+        BoardDataProblem error = Assert.Single(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "pin.outside_package");
+
+        Assert.Equal(BoardWorkbookSchema.SheetComponentPins, error.Sheet);
+        Assert.Equal(1, error.Index);
+    }
+
+    // The submission's rows reach the check: a server taking only the table's word would miss them.
+    [Fact]
+    public void The_servers_rows_carry_the_pins_to_the_check()
+    {
+        var submitted = new SubmissionRows
+        {
+            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC", Package = "DIP-8" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "9" }],
+        };
+
+        Assert.Contains(
+            BoardDataChecks.Check(BoardCheckRows.From(submitted), null, BoardCheckScope.Submission),
+            problem => problem.Code == "pin.outside_package");
+    }
+
+    // A case CRT cannot count, no package, a pin named and not numbered: nothing to say. "2 [64K]" is how
+    // four published baselines write pin 2.
+    [Theory]
+    [InlineData("", "99")]
+    [InlineData("SIP", "99")]
+    [InlineData("Other", "99")]
+    [InlineData("DIP-8", "A1")]
+    [InlineData("DIP-8", "2 [64K]")]
+    [InlineData("DIP-8", "12V")]
+    public void What_cannot_be_told_is_no_problem(string package, string pin)
+    {
+        BoardCheckRows rows = Rows(
+            components: [new ComponentEntry { BoardLabel = "U1", Category = "IC", Package = package }],
+            images: [new ComponentImageEntry { BoardLabel = "U1", Pin = pin, TimeDiv = "1ms", File = $"{Board}/a.png" }]);
+
+        Assert.DoesNotContain(Everything(rows), problem => problem.Code == "pin.outside_package");
+    }
+
+    // Each region has a case of its own, when the component has a row of its own per region - a row for
+    // every region is on all of them, so every one of them has to refuse it.
+    [Fact]
+    public void A_pin_is_judged_by_the_case_of_its_own_region()
+    {
+        ComponentEntry[] twins =
+        [
+            new ComponentEntry { BoardLabel = "U1", Category = "IC", Region = "PAL", Package = "DIP-40" },
+            new ComponentEntry { BoardLabel = "U1", Category = "IC", Region = "NTSC", Package = "DIP-24" },
+        ];
+
+        Assert.Null(BoardDataChecks.PackageRefusing(twins, "U1", "PAL", "30"));
+        Assert.Equal("DIP-24", BoardDataChecks.PackageRefusing(twins, "U1", "NTSC", "30"));
+        Assert.Null(BoardDataChecks.PackageRefusing(twins, "U1", "", "30"));
+        Assert.Equal("DIP-40", BoardDataChecks.PackageRefusing(twins, "u1", "", "41"));
+        Assert.Null(BoardDataChecks.PackageRefusing(twins, "U99", "", "41"));
+    }
+
+    // ###########################################################################################
+    // *** Security (code review, 2026-11-01): A SUBMISSION'S REGIONS REACH THE PUBLISH AS SENT, and a
+    // reviewer reads only whether the board has any. *** "x" turned the PAL/NTSC switch on unseen, and a
+    // JSON null made every Approve of it throw. Refused where every rule is, so the table says it too.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("x")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void A_region_that_is_neither_PAL_nor_NTSC_is_refused(string? region)
+    {
+        var submitted = new SubmissionRows { Regions = ["PAL", region!] };
+
+        BoardDataProblem problem = Assert.Single(
+            BoardDataChecks.Check(BoardCheckRows.From(submitted), null, BoardCheckScope.Submission),
+            found => found.Code == "regions.unknown");
+
+        Assert.Equal(BoardProblemLevel.Error, problem.Level);
+
+        Assert.Contains(
+            BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["PAL", region!] }), null, BoardCheckScope.Everything),
+            found => found.Code == "regions.unknown");
+    }
+
+    // Null keeps what is published, empty clears it, and PAL and NTSC are what CRT sends.
+    [Fact]
+    public void What_a_board_may_say_about_its_regions_is_no_problem()
+    {
+        foreach (List<string>? regions in new List<string>?[] { null, [], ["PAL", "NTSC"] })
+        {
+            Assert.DoesNotContain(
+                BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = regions }), null, BoardCheckScope.Submission),
+                found => found.Code == "regions.unknown");
+        }
     }
 
     [Fact]

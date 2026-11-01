@@ -58,6 +58,7 @@ namespace Handlers.Geometry
                 state.OverlayColor.ToString(),
                 state.OppositeTraceColor.ToString(),
                 KiCadOverlayCacheKeys.Number(state.TranslatedOpacity),
+                KiCadOverlayCacheKeys.Number(state.OppositeTranslatedOpacity),
                 state.ShowOppositeSideTraces.ToString(),
                 state.ShowZones.ToString(),
                 state.IsCalibrationMode.ToString(),
@@ -148,6 +149,9 @@ namespace Handlers.Geometry
         public Color OverlayColor { get; init; }
         public Color OppositeTraceColor { get; init; }
         public double TranslatedOpacity { get; init; }
+
+        // The other side's traces at an opacity of their own (2026-10-30, TraceColours).
+        public double OppositeTranslatedOpacity { get; init; }
         public bool ShowOppositeSideTraces { get; init; }
         public bool ShowZones { get; init; }
         public bool IsCalibrationMode { get; init; }

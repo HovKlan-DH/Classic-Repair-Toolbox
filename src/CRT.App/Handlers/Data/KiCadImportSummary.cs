@@ -18,8 +18,8 @@ namespace Handlers.DataHandling
     //     3D models, Gerbers, hidden files never among them... A schematic or board CRT cannot read
     //     (.sch, .brd) is SAID so, with what to do about it - an older KiCad's (told by its first line)
     //     and EAGLE's alike - such a project used to read only "No KiCad files in that folder".
-    //   - LEFT TO DO: the getting-ready steps after the KiCad data, by the checklist's own rules
-    //     (BoardReadiness) - never a second copy of them.
+    //   - LEFT TO DO: what the board still needs now its KiCad data is in, by BoardReadiness' rules -
+    //     never a second copy of them.
     //
     // PURE: words only, so they are tested without a display.
     // ###########################################################################################
@@ -53,6 +53,66 @@ namespace Handlers.DataHandling
         ];
 
         public const string NothingLeftToDo = "Nothing - the board is in step with its KiCad data.";
+
+        // ###########################################################################################
+        // THE BOARD'S KiCad FILES, COUNTED BY KIND (owner request, 2026-10-30: "KiCad data" in the left
+        // column showed 4, read as "4 KiCad pictures" - the Summary must say where the number comes from).
+        // The same names the column counts (ContributeBoardParts.KiCadFileCount): "The board has 4 KiCad
+        // files - the number beside KiCad data on the left: 1 PCB file, 2 schematic files and 1 project
+        // file." - "" for none.
+        // ###########################################################################################
+        // The board's KiCad file names by kind (Board status counts them too, 2026-11-01) - what they end
+        // in; anything else is "other".
+        public static (int Pcb, int Schematic, int Project, int Other) KindsOf(IReadOnlyCollection<string> names)
+        {
+            ArgumentNullException.ThrowIfNull(names);
+
+            int pcb = names.Count(name => name.EndsWith(".kicad_pcb", StringComparison.OrdinalIgnoreCase));
+            int schematic = names.Count(name => name.EndsWith(".kicad_sch", StringComparison.OrdinalIgnoreCase));
+            int project = names.Count(name => name.EndsWith(".kicad_pro", StringComparison.OrdinalIgnoreCase));
+
+            return (pcb, schematic, project, names.Count - pcb - schematic - project);
+        }
+
+        public static string Files(IEnumerable<string> names)
+        {
+            ArgumentNullException.ThrowIfNull(names);
+
+            List<string> kiCad = ContributeBoardParts.KiCadFileNames(names);
+
+            if (kiCad.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            (int pcb, int sch, int pro, int other) = KiCadImportSummary.KindsOf(kiCad);
+
+            var kinds = new List<string>();
+
+            if (pcb > 0)
+            {
+                kinds.Add(KiCadImportSummary.Count(pcb, "PCB file", "PCB files"));
+            }
+
+            if (sch > 0)
+            {
+                kinds.Add(KiCadImportSummary.Count(sch, "schematic file", "schematic files"));
+            }
+
+            if (pro > 0)
+            {
+                kinds.Add(KiCadImportSummary.Count(pro, "project file", "project files"));
+            }
+
+            if (other > 0)
+            {
+                kinds.Add(KiCadImportSummary.Count(other, "other file", "other files"));
+            }
+
+            string listed = kinds.Count == 1 ? kinds[0] : $"{string.Join(", ", kinds.Take(kinds.Count - 1))} and {kinds[^1]}";
+
+            return $"The board has {KiCadImportSummary.Count(kiCad.Count, "KiCad file", "KiCad files")} - the number beside \"Files\" under \"KiCad\" on the left: {listed}.";
+        }
 
         // ###########################################################################################
         // What the KiCad data holds: "Found 1 PCB with 214 components and 380 nets, and 24 schematic
@@ -175,30 +235,34 @@ namespace Handlers.DataHandling
                 : "No KiCad files in that folder. Only modern .kicad_pcb / .kicad_pro / .kicad_sch files are imported - sub-folders are searched too.";
 
         // ###########################################################################################
-        // What is left to do once the KiCad data is in: the getting-ready steps after it that still
-        // have something to do, by the checklist's rules (BoardReadiness.Steps) - none for a step that
-        // is done, optional, or skipped.
+        // What is left to do once the KiCad data is in (BoardReadiness.WorkLeftAfterKiCad), in the order
+        // it gets done - nothing for what is done.
         // ###########################################################################################
-        public static List<string> LeftToDo(IReadOnlyList<ReadinessStep> steps)
+        public static List<string> LeftToDo(KiCadWorkLeft left)
         {
-            ArgumentNullException.ThrowIfNull(steps);
+            ArgumentNullException.ThrowIfNull(left);
 
-            return steps
-                .Where(step => step.State is ReadinessState.Next or ReadinessState.Later)
-                .Select(step => step.Kind switch
-                {
-                    ReadinessStepKind.Match => "Match each picture to the KiCad view it shows.",
-                    ReadinessStepKind.Align => "Align the KiCad copper on each picture that shows a view.",
-                    ReadinessStepKind.Components when step.FromKiCad > 0 =>
-                        $"Add the {KiCadImportSummary.Count(step.FromKiCad, "component", "components")} of the KiCad data not on the board yet.",
-                    ReadinessStepKind.Components => "Add the board's components.",
-                    ReadinessStepKind.Mark => "Mark the components on the pictures.",
-                    ReadinessStepKind.Signals => "Pick the important signals - CRT suggests them from the KiCad net names.",
-                    _ => string.Empty,
-                })
-                .Where(line => line.Length > 0)
-                .ToList();
+            (bool ToDo, string Line)[] steps =
+            [
+                (left.Match, "Match each picture to the KiCad view it shows."),
+                (left.Align, "Align the KiCad copper on each picture that shows a view."),
+                (left.Components, left.NotOnBoard > 0
+                    ? $"Add the {KiCadImportSummary.Count(left.NotOnBoard, "component", "components")} of the KiCad data not on the board yet."
+                    : "Add the board's components."),
+                (left.Mark, "Mark the components on the pictures."),
+                (left.Signals, "Pick the important KiCad signals - CRT suggests them from the KiCad net names."),
+            ];
+
+            return steps.Where(step => step.ToDo).Select(step => step.Line).ToList();
         }
+
+        // ###########################################################################################
+        // The summary's button for the KiCad components the board still lacks - imported with "Add the
+        // KiCad components to the board" unticked, or deleted since (2026-11-01; Board status's "Add N
+        // from KiCad" until then).
+        // ###########################################################################################
+        public static string AddComponentsButton(int count) =>
+            $"Add {KiCadImportSummary.Count(count, "component", "components")} from KiCad";
 
         // ---- the kinds ------------------------------------------------------------------------------
 

@@ -6,14 +6,38 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // The board's own lists the component pane shows (slice 4a) - one at a time, in place of a component.
+    // Files and Links were one part ("Files and links") until 2026-10-29 (owner request: one entry each
+    // in the Contribute tab's left column).
     internal enum PaneBoardPart
     {
-        FilesAndLinks,
+        Files,
+        Links,
         Credits,
         ImportantSignals,
 
-        // The pictures and their colours (slice 4b).
+        // The schematic images and their colours (slice 4b) - "Pictures" on screen until 2026-10-29.
         Pictures,
+
+        // The regions the board comes in, and its component categories (2026-11-01).
+        Regions,
+        Categories,
+    }
+
+    // ###########################################################################################
+    // THE PAGES OF A COMPONENT, its tabs over the pane (owner decision, 2026-11-01: "the functionality in
+    // this is too massive, if all data is filled, so I think we need to split this into multiple menu
+    // items" - as tabs on the right, so the left column keeps its room for the component list). In the
+    // order the tabs stand.
+    // ###########################################################################################
+    internal enum ComponentPage
+    {
+        Basics,
+        Replacements,
+        Pinout,
+        Pictures,
+        Baselines,
+        Files,
+        Links,
     }
 
     // ###########################################################################################
@@ -48,7 +72,7 @@ namespace Handlers.DataHandling
         }
 
         public static string NotOnBoard(string label) =>
-            $"[{label}] is not on the board in your draft any more. If that was not meant, Undo in the draft's header brings it back.";
+            $"[{label}] is not on the board in your draft any more. If that was not meant, \"Undo\" in the draft's header brings it back.";
 
         // ---- the component as a whole (slice 3c) -----------------------------------------------------
 
@@ -74,39 +98,201 @@ namespace Handlers.DataHandling
                 ? $"This board already has [{label?.Trim()}] - pick it in the list on the left to change it."
                 : null;
 
-        // Under a new component's empty category - it is added all the same.
+        // Under a new component's empty category - every component needs one (owner decision, 2026-11-01).
         public const string NoCategoryYet =
-            "Without a category it is not in the component list beside the schematics - only here. It can be given one later.";
+            "Every component needs a category - pick one of the board's, or type a new one.";
+
+        // ---- a component's label (2026-11-01) --------------------------------------------------------
+
+        // Why a label typed for the component open cannot be taken - null when it can.
+        public static string? LabelProblem(string? typed, IEnumerable<string?> otherLabels)
+        {
+            string wanted = typed?.Trim() ?? string.Empty;
+
+            if (wanted.Length == 0)
+            {
+                return "A component needs a label - the one printed on the board.";
+            }
+
+            return otherLabels.Any(other => string.Equals(other?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+                ? $"This board already has [{wanted}] - a label names one component."
+                : null;
+        }
+
+        // ---- regions (2026-11-01) ---------------------------------------------------------------------
+
+        // What a row of a board with regions says it applies to - the words of its drop-down list.
+        public const string AllRegions = "All regions";
+
+        // The choices, and a word the board already holds that is not one of them.
+        public static IReadOnlyList<string> AppliesToChoices(string? region)
+        {
+            string own = region?.Trim() ?? string.Empty;
+
+            return own.Length == 0 || BoardRegions.All.Contains(own, StringComparer.OrdinalIgnoreCase)
+                ? [AllRegions, .. BoardRegions.All]
+                : [AllRegions, .. BoardRegions.All, own];
+        }
+
+        public static string AppliesToOf(string? region)
+        {
+            string own = region?.Trim() ?? string.Empty;
+
+            return own.Length == 0 ? AllRegions : BoardRegions.All.FirstOrDefault(each => string.Equals(each, own, StringComparison.OrdinalIgnoreCase)) ?? own;
+        }
+
+        public static string RegionOfAppliesTo(string? choice) =>
+            string.Equals(choice, AllRegions, StringComparison.Ordinal) ? string.Empty : choice?.Trim() ?? string.Empty;
+
+        // A row changed to the other region leaves what this one shows - said, or it reads as gone.
+        public static string MovedToRegion(string region) =>
+            $"Moved to {region.Trim()} - it no longer shows here, as this is the other region. Pick {region.Trim()} above to see it.";
+
+        // A component or its pins made the same in every region: what went, and how to get it back.
+        public static string MadeTheSameInEveryRegion(string what, string region) =>
+            $"{what} now the same in every region, as {region.Trim()} had it. \"Undo\" brings the other region's back.";
+
+        // "Different per region" ticked on a component with no pins: nothing to tell apart yet, so no step.
+        public const string NoPinsToTellApart = "It has no pins yet, so there is nothing to tell apart per region - add its pins first.";
+
+        // ... taken off while the region shown has none: its pins would be every region's, so all would go.
+        public static string NoPinsInRegion(string region) =>
+            $"{region.Trim()} has no pins of its own to make the same in every region. Pick the region whose pins it should be, and take \"Different per region\" off there.";
+
+        public const string RegionsHasOnBoard =
+            "This board comes in PAL and NTSC versions";
+
+        // Why the tick cannot be taken away while rows say a region.
+        public static string RegionsInUse(int rows) => rows == 1
+            ? "1 row of this board says PAL or NTSC, so this stays ticked until it applies to all regions."
+            : $"{rows.ToString(CultureInfo.InvariantCulture)} rows of this board say PAL or NTSC, so this stays ticked until they apply to all regions.";
+
+        // ---- the board's categories (2026-11-01) ------------------------------------------------------
+
+        public static string CategoryCount(int components) =>
+            components == 1 ? "1 component" : $"{components.ToString(CultureInfo.InvariantCulture)} components";
+
+        public const string CategoryUnused = "No component yet";
+
+        public const string CategoryRowsNeedOne =
+            "These components have no category. Type one here - or the name of one the board has - and they all go under it.";
+
+        public const string CategoryNameEmpty = "A category needs a name.";
+
+        public const string CategoryDeleteNeedsAnother =
+            "There is no other category to move its components to - add one first.";
+
+        public static string CategoryDeleteAsk(int components) =>
+            components == 1
+                ? "Its component needs a category - which one should it move to?"
+                : $"Its {components.ToString(CultureInfo.InvariantCulture)} components need a category - which one should they move to?";
+
+        public static string CategoryAlreadyThere(string name) => $"This board already has the category [{name.Trim()}].";
+
+        // ---- TEMPORARY: the tool that makes pinouts of scope baselines ---------------------------------
+        // *** REMOVED BEFORE CRT 4.0 GOES LIVE - see BaselinePinMigration. ***
+
+        public const string MigrationNote =
+            "Temporary, until CRT 4.0 goes live: make the pins from the scope baselines - each pin's number and signal name, and the package when that is certain. What you typed stays, and \"Undo\" takes it back.";
+
+        public const string MigrationNothing = "The pins already have everything the scope baselines say.";
+
+        public static string MigratedBoard(int components) =>
+            components == 1
+                ? "Made the pins of 1 component from its scope baselines. \"Undo\" takes it back."
+                : $"Made the pins of {components.ToString(CultureInfo.InvariantCulture)} components from their scope baselines. \"Undo\" takes them all back.";
 
         public static string ShowOnBoardTip(string label, bool marked) =>
             marked
-                ? $"Show [{label}] on the schematics - the Schematics tab, with only this component selected"
+                ? $"Show [{label}] on the schematics - the \"Schematics\" tab, with only this component selected"
                 : $"[{label}] is not marked on any picture yet, so there is nothing to show";
 
         public static string DeleteTip(string label) =>
-            $"Take [{label}] off the board in your draft - every row of it in every region, with its pictures, scope baselines, pins and files. Undo brings it back.";
+            $"Take [{label}] off the board in your draft - every row of it in every region, with its pictures, scope baselines, pins and files. \"Undo\" brings it back.";
 
         // Offered while the step that deleted it is the latest one.
         public static string BringBack(string label) => $"Bring [{label}] back";
 
         // ---- the board's own lists (slice 4a) -------------------------------------------------------
 
+        // A board part's headline names its group, as the left column's tree does (owner request,
+        // 2026-11-01: "Board" and "KiCad" over the entries) - a component has its own "Files" and "Links".
         public static string Title(PaneBoardPart part) => part switch
         {
-            PaneBoardPart.FilesAndLinks => "Files and links",
-            PaneBoardPart.Credits => "Credits",
-            PaneBoardPart.Pictures => "Pictures",
-            _ => "Important signals",
+            PaneBoardPart.Files => "Board: Files",
+            PaneBoardPart.Links => "Board: Links",
+            PaneBoardPart.Credits => "Board: Credits",
+            PaneBoardPart.Pictures => SchematicImages,
+            PaneBoardPart.Regions => "Board: Regions",
+            PaneBoardPart.Categories => "Board: Categories",
+            _ => ImportantSignals,
         };
+
+        // A component's page as its tab says it, with how many it holds when it holds any.
+        public static string PageTitle(ComponentPage page, int count)
+        {
+            string name = page switch
+            {
+                ComponentPage.Basics => "Basics",
+                ComponentPage.Replacements => "Replacement parts",
+                ComponentPage.Pinout => "Pinout",
+                ComponentPage.Pictures => "Pictures",
+                ComponentPage.Baselines => "Scope baseline",
+                ComponentPage.Files => "Files",
+                _ => "Links",
+            };
+
+            return count > 0 ? ComponentPaneWording.Heading(name, count) : name;
+        }
+
+        // A tab marked because of what is on its page.
+        public const string PageHasErrorTip = "Something on this page stops the draft being submitted";
+
+        // What the board's pictures are called wherever the part is named (owner requests, 2026-10-29:
+        // "rename 'Pictures' to 'Schematic images'", and 2026-11-01: "'Board: Schematic images'").
+        public const string SchematicImages = "Board: Schematic images";
+
+        // And its important signals (owner requests, 2026-11-01: "rename 'Important KiCad signals' to
+        // 'KiCad: Important signals'") - each lights up a net of the board's KiCad data. The undo steps
+        // keep the plain words (DraftStepWording.ImportantSignals), the sheet its stored name.
+        public const string ImportantSignals = "KiCad: Important signals";
+
+        // Under the KiCad views "KiCad: Files" lists - where a picture is matched to one, the part named
+        // as the left column names it (code review, 2026-10-30: it still said "Pictures").
+        public const string KiCadViewsHint =
+            "Each of these can be matched to one picture of the board. Pick it under \"Shows KiCad view\" on the picture's card - \"" +
+            SchematicImages + "\" on the left of the \"Contribute\" tab.";
 
         // Under an important signal whose net the Schematics tab's panel will not find.
         public static string NetNotFound(string net) =>
-            $"[{net.Trim()}] is no net in the board's KiCad data - the Schematics tab will not light this signal up.";
+            $"[{net.Trim()}] is no net in the board's KiCad data - the \"Schematics\" tab will not light this signal up.";
 
+        // A signal's net is picked from the board's KiCad data, never typed (owner request, 2026-10-29).
         public const string NoKiCadNets =
-            "The board has no KiCad data yet, so there is no net to pick from. A net can still be typed.";
+            "The board has no KiCad data yet, so there is no net to pick from - add the board's KiCad project under \"KiCad: Files\" first.";
 
         public const string ReadingKiCadNets = "Reading the board's KiCad nets...";
+
+        // "Add signal" beside the net picker: what it does, or why it is greyed out.
+        public const string AddSignalTip = "Add an important signal on this KiCad net - then give it the name people know it by";
+
+        // Under a link's address the checks refuse (BoardDataChecks.IsRefusedLink).
+        public const string LinkNotWeb = "Write the whole address, starting with http:// or https://";
+
+        public const string PickANetTip ="Pick one of the board's KiCad nets that is not an important signal yet";
+
+        public const string AddSignalNeedsKiCadTip = "Needs the board's KiCad data - there is no net to pick from yet";
+
+        // The pane's title over a board part - its name and how many it holds, the one headline of the
+        // part (owner request, 2026-10-29: "two headlines for the same").
+        public static string PartTitle(PaneBoardPart part, int count) => ComponentPaneWording.Heading(ComponentPaneWording.Title(part), count);
+
+        // "Open" on a board file or link that could not be opened.
+        public static string FileNotOpened(string? name) =>
+            $"[{name?.Trim()}] could not be opened - CRT opens documents, pictures and text files only.";
+
+        public static string LinkNotOpened(string? name) =>
+            $"[{name?.Trim()}] has no web address CRT can open.";
 
         // What the "Changed" mark says of a component, and of a board part.
         public const string ComponentChangedTip =
@@ -157,7 +343,7 @@ namespace Handlers.DataHandling
         public static string MeasuringNotesLine(bool hasNotes) =>
             hasNotes
                 ? "How this board's baselines were measured:"
-                : $"How this board's baselines were measured is not written down yet - add a file to the board under Files and links, in the category \"{ScopeMeasurementFiles.Category}\".";
+                : $"How this board's baselines were measured is not written down yet - add a file to the board under \"Board: Files\", in the category \"{ScopeMeasurementFiles.Category}\".";
 
         // ---- copy from another board (slice 5) --------------------------------------------------------
 
@@ -191,11 +377,11 @@ namespace Handlers.DataHandling
         // under each - and what happens to them.
         // ###########################################################################################
         public const string AlsoFilesIntro =
-            "The files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's Undo takes it back. A board whose draft has a version of its own keeps it.";
+            "The files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's \"Undo\" takes it back. A board whose draft has a version of its own keeps it.";
 
-        // The board's own files: the same, offered under Files and links.
+        // The board's own files: the same, offered under Files.
         public const string AlsoBoardFilesIntro =
-            "The board files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's Undo takes it back. A board whose draft has a version of its own keeps it.";
+            "The board files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's \"Undo\" takes it back. A board whose draft has a version of its own keeps it.";
 
         public const string AlsoBoardFilesNothingChanged =
             "Your draft replaces none of the board's files yet - pick another file for one with Change file first.";
@@ -252,7 +438,7 @@ namespace Handlers.DataHandling
             $"[{name?.Trim()}] is not on this machine yet - it comes with the next data update.";
 
         public const string CaptureFailed =
-            "Nothing came from the oscilloscope - the Oscilloscope tab says why.";
+            "Nothing came from the oscilloscope - the \"Oscilloscope\" tab says why.";
 
         public const string NotAnImage =
             "That file is no picture CRT can show - pick a PNG, JPEG, GIF, BMP or WebP.";
@@ -260,12 +446,12 @@ namespace Handlers.DataHandling
         public const string FileNotCopied =
             "The file could not be copied into your draft - see the log for why.";
 
-        // ---- the board's pictures (step 3 - the "Schematic images" window, moved inline) ------------
+        // ---- the board's schematic images (step 3 - the "Schematic images" window, moved inline) ----
 
-        // `notCopied`: pictures picked that could not be copied in - said, for they got no card.
+        // `notCopied`: images picked that could not be copied in - said, for they got no card.
         public static string PicturesAdded(int count, int notCopied = 0)
         {
-            string added = count == 1 ? "Added 1 picture." : $"Added {count.ToString(CultureInfo.InvariantCulture)} pictures.";
+            string added = count == 1 ? "Added 1 schematic image." : $"Added {count.ToString(CultureInfo.InvariantCulture)} schematic images.";
 
             return notCopied switch
             {
@@ -278,21 +464,99 @@ namespace Handlers.DataHandling
         public const string NoPicturesToAdd =
             "Nothing was added - pick PNG, JPEG, GIF, BMP or WebP files.";
 
+        // "Delete" since 2026-10-29 (owner question: "will that actually not delete the schematic
+        // image?"): the image leaves the board, and its file the draft - the contributor's own copy,
+        // where it was picked from, is never touched.
         public static string PictureRemoved(string name) =>
-            $"Removed [{name.Trim()}]. Undo at the top of the tab takes it back.";
+            $"Deleted [{name.Trim()}] from the board. \"Undo\" at the top of the tab brings it back.";
+
+        // ---- the previews on a schematic image's card (2026-10-29) ----------------------------------
+
+        public const string ThisSideTracesTip =
+            "Draw every trace on this side of the board on the preview, in the color of the traces on this side - on the \"Schematics\" tab only the traces of the net lit up are drawn so";
+
+        public const string OtherSideTracesTip =
+            "Draw every trace on the board's other side on the preview, in the color of the traces on the other side - on the \"Schematics\" tab only the traces of the net lit up are drawn so";
+
+        // Why the traces cannot be shown - the image names no KiCad view, or is not aligned with it.
+        public const string ShowTracesNeedsAlignTip =
+            "Needs KiCad data, a KiCad view of a side of the board picked for this image, and KiCad aligned on it (\"Align KiCad data\")";
+
+        // The KiCad options of an image with no KiCad data (owner request, 2026-10-29: "if the
+        // schematic image has no KiCad data, then the KiCad (traces) options should be disabled").
+        public const string TraceColourTip = "With KiCad data: the color of a lit trace on the board's other side";
+
+        // Each side's traces have a colour and an opacity of their own (owner request, 2026-10-30).
+        public const string ThisSideTraceColourTip =
+            "With KiCad data: the color of a lit trace on the image's own side - the Schematic image color until one is picked";
+
+        public const string ThisSideTraceOpacityTip = "With KiCad data: how strongly a lit trace on the image's own side shows";
+
+        public const string OtherSideTraceOpacityTip = "With KiCad data: how strongly a lit trace on the board's other side shows";
+
+        public const string TraceColourNeedsKiCadTip =
+            "Only for an image with KiCad data - the board's KiCad project, and a KiCad view picked for this image";
+
+        public const string ReadingTraces = "Reading the board's KiCad traces...";
+
+        // ###########################################################################################
+        // Under the ticks, once the traces are read: a side ticked that has no copper says so - "" when
+        // every side ticked has some (or none is ticked).
+        // ###########################################################################################
+        public static string TracesNote(bool thisSide, int thisSideCount, bool otherSide, int otherSideCount)
+        {
+            bool thisEmpty = thisSide && thisSideCount == 0;
+            bool otherEmpty = otherSide && otherSideCount == 0;
+
+            return (thisEmpty, otherEmpty) switch
+            {
+                (true, true) => "The board's KiCad data has no trace on either side of this image.",
+                (true, false) => "The board's KiCad data has no trace on this side of the image.",
+                (false, true) => "The board's KiCad data has no trace on the other side of this image.",
+                _ => string.Empty,
+            };
+        }
 
         // ---- important signals suggested ----------------------------------------------------------
 
         public static string SignalSuggestionsHeading(int count) =>
             $"Suggested from the KiCad nets ({count.ToString(CultureInfo.InvariantCulture)})";
 
+        // The name is a box since 2026-10-30 (owner request) - said here, so it reads as one to change.
         public const string SignalSuggestionsIntro =
-            "Nets of this board whose names say what they are - a supply, ground, a clock, reset, a bus line. Add the ones worth checking first; Show on board lights a net up on the Schematics tab, so you can see which it is.";
+            "Nets of this board whose names say what they are - a supply, ground, a clock, reset, a bus line. Add the ones worth checking first - change a name before adding it if you want another; \"Show on board\" lights a net up on the \"Schematics\" tab, so you can see which it is.";
+
+        // The board's other nets, under the suggestions (owner request, 2026-11-01).
+        public static string OtherNetsHeading(int count) =>
+            $"Other KiCad nets ({count.ToString(CultureInfo.InvariantCulture)})";
+
+        public const string OtherNetsIntro =
+            "Every other net of this board, each with a proposed name you can change. \"Add\" makes it an important KiCad signal under that name; \"Show on board\" lights it up on the \"Schematics\" tab.";
+
+        // What a new component needs next (owner request, 2026-11-01).
+        public const string NewComponentMarkNote =
+            "After adding it, mark it by hand on at least one schematic image: press \"Mark components manually\" on the image under \"Board: Schematic images\". A component marked on no image is flagged as an orphan, as CRT cannot point it out on the board.";
+
+        // Under a picture's thumbnail, once it shows a KiCad view (owner requests, 2026-11-01).
+        public static string PictureComponentsAvailable(int count) =>
+            $"- {ComponentPaneWording.Components(count)} available from KiCad data";
+
+        public static string PictureComponentsAutomaticallyMarked(int count) =>
+            $"- {ComponentPaneWording.Components(count)} automatically marked from KiCad data";
+
+        public static string PictureComponentsManuallyMarked(int count) =>
+            $"- {ComponentPaneWording.Components(count)} manually marked";
+
+        // After the number, which is bold.
+        public static string PictureComponentsMarkedWords(int count) => count == 1 ? " component marked" : " components marked";
+
+        private static string Components(int count) =>
+            count == 1 ? "1 component" : $"{count.ToString(CultureInfo.InvariantCulture)} components";
 
         // ---- fill from KiCad ----------------------------------------------------------------------
 
         public static string FillFromKiCadTip(string label) =>
-            $"Add every pin the board's KiCad data has for [{label.Trim()}], with the name and direction its symbol gives it, and fill in the names and directions still empty - nothing you typed is changed. Undo takes it back.";
+            $"Add every pin the board's KiCad data has for [{label.Trim()}], with the name and direction its symbol gives it, and fill in the names and directions still empty - nothing you typed is changed. \"Undo\" takes it back.";
 
         public const string NothingToFillFromKiCad =
             "The pins already have everything the board's KiCad data has for this component.";

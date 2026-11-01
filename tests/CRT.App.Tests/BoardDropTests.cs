@@ -119,6 +119,22 @@ public sealed class BoardDropTests : IDisposable
         Assert.Equal(BoardDrop.LeftBesideKiCad(2), drop.Note);
     }
 
+    // ###########################################################################################
+    // What the drop says names the board's images as the start panel's hint does - "schematic
+    // images", never "pictures" (code review, 2026-10-30: the hint was renamed, these were not).
+    // ###########################################################################################
+    [Fact]
+    public void What_a_drop_says_names_schematic_images_as_the_start_panel_does()
+    {
+        foreach (string said in new[] { BoardDrop.NothingUsable, BoardDrop.LeftBesideKiCad(1), BoardDrop.LeftBesideKiCad(3), BoardDrop.LeftWithoutPictures(1), BoardDrop.LeftWithoutPictures(2) })
+        {
+            Assert.DoesNotContain("picture", said, StringComparison.OrdinalIgnoreCase);
+        }
+
+        Assert.StartsWith("Drop schematic images of the board", BoardDrop.NothingUsable, StringComparison.Ordinal);
+        Assert.EndsWith("Drop schematic images on their own to add them.", BoardDrop.LeftBesideKiCad(2), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Nothing_usable_is_nothing()
     {
@@ -160,7 +176,7 @@ public sealed class BoardDropTests : IDisposable
 
         BoardDrop none = BoardDrop.OnDisk([empty]);
         Assert.Equal(BoardDropKind.Nothing, none.Kind);
-        Assert.Equal("That folder holds neither KiCad files nor pictures CRT can show. " + BoardDrop.NothingUsable, none.Problem);
+        Assert.Equal("That folder holds neither KiCad files nor images CRT can show. " + BoardDrop.NothingUsable, none.Problem);
 
         // Another program's project is told how KiCad imports it.
         BoardDrop other = BoardDrop.OnDisk([eagle]);

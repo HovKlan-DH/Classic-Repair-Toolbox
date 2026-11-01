@@ -28,7 +28,7 @@ namespace Handlers.DataHandling
 
             List<string> lines =
             [
-                "On the schematics (highlights are not in any sheet - fix them with the label editor on the Schematics tab):"
+                "On the schematics (highlights are not in any sheet - fix them with \"Mark components manually\" under \"Board: Schematic images\"):"
             ];
 
             lines.AddRange(problems

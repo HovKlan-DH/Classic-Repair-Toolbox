@@ -117,7 +117,7 @@
 					</Grid>
 
 					<StackPanel Orientation="Horizontal"
-								Spacing="8">
+								Spacing="6">
 						<Button x:Name="SelectOscilloscopeImageFolderButton"
 								Content="Select folder"
 								HorizontalAlignment="Stretch"
@@ -304,7 +304,7 @@
 
 									<StackPanel Orientation="Horizontal"
 												Margin="0,12,0,0"
-												Spacing="8">
+												Spacing="6">
 										<Button x:Name="ModelRunFullTestSuiteButton"
 												Content="Run full test suite"
 												IsEnabled="False"
@@ -371,7 +371,7 @@
 													   IsVisible="False" />
 											<StackPanel Orientation="Horizontal"
 														Margin="0,8,0,0"
-														Spacing="8">
+														Spacing="6">
 												<Button x:Name="SendModelButton"
 														Classes="Accept"
 														Content="Send"
@@ -394,7 +394,7 @@
 										<TextBlock x:Name="DeleteModelConfirmText"
 												   Classes="ModelIntro" />
 										<StackPanel Orientation="Horizontal"
-													Spacing="8">
+													Spacing="6">
 											<Button x:Name="ConfirmDeleteModelButton"
 													Classes="Danger"
 													Content="Delete it"

@@ -106,12 +106,13 @@ public sealed class DraftStatusReaderTests : IDisposable
 
     // ###########################################################################################
     // Case 18 (owner request, 2026-10-03: "Flagged" became warnings; cases agreed with the project
-    // owner). A draft's row counts its duplicate rows as warnings, one per row. A row the save
-    // leaves out (an important signal missing its net) is never in the FILE as such - reading the
-    // workbook drops it, exactly as saving does - so only an open table can count it.
+    // owner). A draft's row counts its duplicate rows as warnings, one per row. An important signal
+    // missing its net was left out by the save and counted by no row; since 2026-11-01 it is kept, and
+    // the field it needs is an ERROR the row counts (BoardRowRequired - owner request: "it should not
+    // be possible to submit the draft board").
     // ###########################################################################################
     [Fact]
-    public void A_drafts_row_counts_its_duplicate_rows_as_warnings_but_not_a_row_the_save_leaves_out()
+    public void A_drafts_row_counts_its_duplicate_rows_as_warnings_and_a_signal_missing_its_net_as_an_error()
     {
         this.WritePublished(DraftStatusReaderTests.BoardWith(1));
 
@@ -128,7 +129,7 @@ public sealed class DraftStatusReaderTests : IDisposable
         DraftStatus? status = this.Status();
         string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
 
-        Assert.Equal(new BoardProblemCounts(0, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+        Assert.Equal(new BoardProblemCounts(1, 3), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
     }
 
     // The same answer the table gives, and remembered: a draft nobody touched is not read again.

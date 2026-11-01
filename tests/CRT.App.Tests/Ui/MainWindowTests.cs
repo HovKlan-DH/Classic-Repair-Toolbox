@@ -797,9 +797,16 @@ public sealed class MainWindowTests : IDisposable
             main.ReportDataSyncFile("Commodore/C64/250407/pcb.png");
 
             string[] lines = NoticeEmphasis.TextOf(text).Split('\n');
-            Assert.Equal(3, lines.Length);
+            Assert.Equal(2, lines.Length);
             Assert.Equal("Downloading file [2] of [9] from the stable source:", lines[1]);
-            Assert.Equal("Commodore/C64/250407/pcb.png", lines[2]);
+
+            // The file on a line of its own, never wrapped (owner report, 2026-11-01) - a long path
+            // loses its middle folders, never its file name.
+            TextBlock file = main.GetControl<TextBlock>("DataCheckBannerFileText");
+            Assert.True(file.IsVisible);
+            Assert.Equal("Commodore/C64/250407/pcb.png", file.Text);
+            Assert.Equal(Avalonia.Media.TextWrapping.NoWrap, file.TextWrapping);
+            Assert.Same(Avalonia.Media.TextTrimming.PathSegmentEllipsis, file.TextTrimming);
 
             // The heading's source name, the counts and the line's source in bold (owner request,
             // 2026-10-11) - the heading names whichever source the settings say.
@@ -809,6 +816,77 @@ public sealed class MainWindowTests : IDisposable
             main.ReportDataSyncStatus("Sync complete (0 new, 0 updated, 0 failed, 0 invalid)");
             Assert.Equal("Downloading file [2] of [9] from the stable source:", NoticeEmphasis.TextOf(text).Split('\n')[1]);
         });
+    }
+
+    // ###########################################################################################
+    // *** THE CARD KEEPS ITS WIDEST WHILE FILES COME IN (owner report, 2026-11-01: "can flicker
+    // quite heavily, if the file names makes the panel shrink and enlarge constantly"). *** A long
+    // path widens it; a short one after it leaves it as wide; DataCheckWidthHeldFor after it last grew
+    // it goes back to the width of its words; and a finished check lets go at once.
+    // ###########################################################################################
+    [Fact]
+    public void The_data_check_card_keeps_its_widest_while_files_come_in()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main { Width = 1600, Height = 900 };
+            var timers = new NoticeTimers();
+            main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+            main.Show();
+
+            try
+            {
+                var card = main.GetControl<Border>("DataCheckBanner");
+
+                // Room for a path wider than the card's other lines, whatever the test's font measures -
+                // at the stack's usual cap the headless font fills it with the heading alone.
+                Settle(main);
+                main.GetControl<StackPanel>("NoticeStack").MaxWidth = 1200;
+
+                main.BeginDataSyncProgress();
+                main.ReportDataSyncStatus("Downloading file [1] of [3] from the stable source:");
+                main.ReportDataSyncFile("a.png");
+                Settle(main);
+                double narrow = card.Bounds.Width;
+
+                main.ReportDataSyncFile("Commodore/C64/250407/Files/3f/3f2a9c0d81e4b77a2c5d0e9f1a2b3c4d5e6f7a8b9c0d1e2f.png");
+                Settle(main);
+                double wide = card.Bounds.Width;
+                Assert.True(wide > narrow, $"{wide} > {narrow}");
+
+                // A short file after it: as wide as it was.
+                main.ReportDataSyncFile("b.png");
+                Settle(main);
+                Assert.Equal(wide, card.Bounds.Width);
+
+                // Held for a moment only - then the width of its words again.
+                timers.RunWidthHolds();
+                Settle(main);
+                Assert.Equal(narrow, card.Bounds.Width);
+
+                // A finished check is never held.
+                main.ReportDataSyncFile("Commodore/C64/250407/Files/3f/3f2a9c0d81e4b77a2c5d0e9f1a2b3c4d5e6f7a8b9c0d1e2f.png");
+                Settle(main);
+                main.FinishDataCheck(3, atLaunch: true);
+                Assert.Equal(0, card.MinWidth);
+                Assert.False(main.GetControl<TextBlock>("DataCheckBannerFileText").IsVisible);
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+
+        // A layout pass, the jobs it queued, and another pass for the MinWidth they set.
+    private static void Settle(Window window)
+    {
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
     }
 
     // Nothing changed: the card says so and goes by itself - the launch check's usual outcome.
@@ -1034,6 +1112,9 @@ public sealed class MainWindowTests : IDisposable
 
         public int HideCount => this.thisHides.Count;
 
+        // The data-check card's width holds (2026-11-01).
+        private readonly List<Action> thisWidthHolds = new();
+
         public IDisposable Schedule(Action elapsed, TimeSpan after)
         {
             if (after == CRT.Main.NoticeGoesAfter)
@@ -1041,7 +1122,24 @@ public sealed class MainWindowTests : IDisposable
                 this.thisHides.Add(elapsed);
             }
 
+            if (after == CRT.Main.DataCheckWidthHeldFor)
+            {
+                this.thisWidthHolds.Add(elapsed);
+            }
+
             return new CancelOnDispose();
+        }
+
+        // Every hold taken so far ended - only the latest acts; the ones it replaced do nothing.
+        public void RunWidthHolds()
+        {
+            List<Action> holds = this.thisWidthHolds.ToList();
+            this.thisWidthHolds.Clear();
+
+            foreach (Action hold in holds)
+            {
+                hold();
+            }
         }
 
         public void RunHides()

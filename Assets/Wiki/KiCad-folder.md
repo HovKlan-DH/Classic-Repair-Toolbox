@@ -16,22 +16,30 @@ KiCad data/Pages/vic.kicad_sch
 
 ## Adding it to a board
 
-On the "Contribute" tab, drop the KiCad project's **folder** onto the tab - or open **KiCad data**
-in the board's parts on the left and import it there. CRT copies in only the files it reads, and
-says what it found (components, nets, sheets), what it left out, and what is left to do.
+On the "Contribute" tab, drop the KiCad project's **folder** onto the tab - or open **Files** under
+**KiCad** on the left (it shows how many KiCad files the board has) and import it there, on the right
+of the tab. CRT copies in only the files it reads, and says what it found (components,
+nets, sheets), what it left out, and what is left to do.
+
+While **Add the KiCad components to the board** is ticked (it is, until you untick it), the import
+also adds every component of the KiCad board that the board does not have yet, with its package and
+pins where the footprint says them - one step, so **Undo** takes them all back. Imported without it,
+the summary offers **Add N components from KiCad**.
 
 From there CRT does most of the rest for you:
 
-* **Add N from KiCad** adds every component of the KiCad board that the board does not have yet,
-  with its package and pins where the footprint says them
 * each picture card's **Shows KiCad view** ties a picture to a KiCad view (a side of the board, or a
-  schematic sheet) - and the new board's checklist suggests the pairs it can tell from the names
-* **Align KiCad** on a picture card lines the KiCad view up with the picture
-* **Mark all automatically** draws each component's rectangle on an aligned picture of a side of the
-  board, from its footprint
+  schematic sheet) - and **Overview** suggests the pairs it can tell from the names
+* **Align KiCad data** on a picture card lines the KiCad view up with the picture. On a picture of a side
+  of the board with nothing marked on it yet, pressing **Done** there also marks every component on
+  it from its footprint - one step, so **Undo** takes it back
+* **Mark all components automatically from KiCad** marks the components still missing on an aligned picture of a
+  side of the board, for instance after you added more components
+* each picture card sets the color and opacity of the traces on **this side** and on the **other
+  side** of the board, as the "Schematics" tab draws them when a net lights up
 * **Fill from KiCad** in a component's pins adds each pin's number and name, and shows the net it is
   on
-* **Important signals** suggests signals from the net names
+* **Important signals** under **KiCad** suggests signals from the net names
 
 ## Rules
 

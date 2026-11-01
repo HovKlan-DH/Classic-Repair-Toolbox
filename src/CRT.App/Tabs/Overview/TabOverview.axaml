@@ -345,7 +345,7 @@
 		            HorizontalAlignment="Right"
 		            VerticalAlignment="Bottom"
 		            Margin="0,0,12,12"
-		            Spacing="8">
+		            Spacing="6">
 			<Button Classes="Accept OverviewFloatingPrintButton"
 			        Content="Print BOM"
 			        Click="OnPrintComponentQuantitiesClick" />

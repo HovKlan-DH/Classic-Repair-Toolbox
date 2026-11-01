@@ -276,6 +276,10 @@ namespace Handlers.DataHandling
         public List<ComponentPinEntry>? ComponentPins { get; set; }
         public List<ComponentReplacementEntry>? ComponentReplacements { get; set; }
 
+        // The regions the board says it comes in (BoardRegions, 2026-11-01). Null, as above: "not
+        // sent", which keeps what is published.
+        public List<string>? Regions { get; set; }
+
         // The KiCad trace calibration, which is per-schematic rather than per-component. Included
         // because a contributor who calibrates a board's traces has done substantial work that
         // would otherwise not travel with their submission.

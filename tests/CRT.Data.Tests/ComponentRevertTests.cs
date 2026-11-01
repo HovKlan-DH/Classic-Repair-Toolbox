@@ -83,6 +83,91 @@ public sealed class ComponentRevertTests
         Assert.Equal("CPU", reverted.Components[1].Description);
     }
 
+    // ###########################################################################################
+    // *** UNDOING A COMPONENT LEAVES THE IMAGES IN THEIR ORDER (code review, 2026-11-01). *** A board
+    // file holds the pictures first and the scope baselines after them, so a component's two kinds of
+    // rows do not stand together. Put back together, its baseline went before the baselines ahead of it,
+    // and "Review changes" said "Order of the component pictures changed" under "The board", with
+    // nothing there to take it back.
+    // ###########################################################################################
+    [Fact]
+    public void Undoing_a_component_puts_its_pictures_and_baselines_back_among_their_own_kind()
+    {
+        static ComponentImageEntry Baseline(string label, string note = "") =>
+            new() { BoardLabel = label, Pin = "1", Name = "Baseline", TimeDiv = "1mS", File = $"Scope baseline/{label}.png", Note = note };
+
+        BoardData published = Board(Component("U7"), Component("U8"), Component("U9"));
+        published.ComponentImages.AddRange([Picture("U7", "Top"), Picture("U8", "Top"), Picture("U9", "Top"), Baseline("U7"), Baseline("U8"), Baseline("U9")]);
+
+        BoardData draft = Board(Component("U7"), Component("U8"), Component("U9"));
+        draft.ComponentImages.AddRange([Picture("U7", "Top"), Picture("U8", "Top"), Picture("U9", "Top"), Baseline("U7"), Baseline("U8", note: "Mine"), Baseline("U9")]);
+
+        BoardData reverted = ComponentRevert.ToPublished(draft, published, "U8");
+
+        Assert.Equal(
+            published.ComponentImages.Select(image => image.File),
+            reverted.ComponentImages.Select(image => image.File));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(published, reverted));
+
+        // With its picture removed in the draft, the picture comes back among the pictures all the same.
+        BoardData pictureRemoved = Board(Component("U7"), Component("U8"), Component("U9"));
+        pictureRemoved.ComponentImages.AddRange([Picture("U7", "Top"), Picture("U9", "Top"), Baseline("U7"), Baseline("U8", note: "Mine"), Baseline("U9")]);
+
+        Assert.Equal(
+            published.ComponentImages.Select(image => image.File),
+            ComponentRevert.ToPublished(pictureRemoved, published, "U8").ComponentImages.Select(image => image.File));
+    }
+
+    // The same for any list: a component's rows that do not stand together go back where each was.
+    [Fact]
+    public void A_components_rows_that_do_not_stand_together_go_back_where_each_was()
+    {
+        static ComponentEntry InRegion(string label, string region, string description = "") =>
+            new() { BoardLabel = label, Region = region, Category = "IC", Description = description };
+
+        BoardData published = Board(InRegion("U1", "PAL"), InRegion("U2", "PAL"), InRegion("U1", "NTSC"));
+        BoardData draft = Board(InRegion("U1", "PAL", "Mine"), InRegion("U2", "PAL"), InRegion("U1", "NTSC"));
+
+        BoardData reverted = ComponentRevert.ToPublished(draft, published, "U1");
+
+        Assert.Equal(["U1 PAL", "U2 PAL", "U1 NTSC"], reverted.Components.Select(row => $"{row.BoardLabel} {row.Region}"));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(published, reverted));
+    }
+
+    // ###########################################################################################
+    // A component dragged elsewhere AND edited: its values and its place go back (code review, 2026-11-01).
+    // The first row went where the draft had moved it, so "Order of the components changed" stayed with
+    // nothing to take it back, and the draft still counted as holding work.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_dragged_elsewhere_goes_back_where_it_was()
+    {
+        BoardData published = Board(Component("U1"), Component("U8", "CPU"), Component("U9"));
+        BoardData draft = Board(Component("U8", "6510"), Component("U1"), Component("U9"));
+
+        BoardData reverted = ComponentRevert.ToPublished(draft, published, "U8");
+
+        Assert.Equal(["U1", "U8", "U9"], Labels(reverted));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(published, reverted));
+
+        // Published first, dragged down: first again.
+        BoardData firstAgain = ComponentRevert.ToPublished(Board(Component("U8"), Component("U1", "Mine"), Component("U9")), published, "U1");
+        Assert.Equal(["U1", "U8", "U9"], Labels(firstAgain));
+    }
+
+    // What the draft added or relabelled in front of it stays in front of it - nothing else moves.
+    [Fact]
+    public void A_row_the_published_board_lacks_stays_where_it_stood_beside_the_component()
+    {
+        BoardData published = Board(Component("U1"), Component("U8", "CPU"), Component("U9"));
+
+        BoardData added = Board(Component("U1"), Component("U2"), Component("U8", "6510"), Component("U9"));
+        Assert.Equal(["U1", "U2", "U8", "U9"], Labels(ComponentRevert.ToPublished(added, published, "U8")));
+
+        BoardData relabelled = Board(Component("U1x"), Component("U8", "6510"), Component("U9"));
+        Assert.Equal(["U1x", "U8", "U9"], Labels(ComponentRevert.ToPublished(relabelled, published, "U8")));
+    }
+
     // Undoing a relabelled component brings its old label back, with its marks.
     [Fact]
     public void A_relabelled_component_goes_back_under_its_old_label()

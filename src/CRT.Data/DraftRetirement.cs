@@ -196,6 +196,19 @@ namespace Handlers.DataHandling
                 return false;
             }
 
+            // Rows in another order are work too (owner decision, 2026-10-30) - one that never
+            // reached stable keeps its draft.
+            if (BoardRowOrder.DiffersFrom(published, draft))
+            {
+                return false;
+            }
+
+            // And so is what it says about the board's regions (2026-11-01).
+            if (BoardRegions.Differ(published, draft))
+            {
+                return false;
+            }
+
             // The calibrations, which live only in the sidecar - compared through ReviewSummary,
             // the same comparison a maintainer is shown, so "unchanged" means one thing everywhere.
             if (!DraftRetirement.CalibrationsMatch(status, draft, published))

@@ -387,12 +387,20 @@ namespace CRT
             }
             else
             {
+                var seenCategories = UserSettings.GetSeenCategories(boardKey);
+
                 for (int i = 0; i < categories.Count; i++)
                 {
-                    if (savedCategories.Contains(categories[i], StringComparer.OrdinalIgnoreCase))
+                    if (SavedCategoryFilter.IsTicked(categories[i], savedCategories, seenCategories))
                     {
                         this.CategoryFilterListBox.Selection.Select(i);
                     }
+                }
+
+                // Saved before what was seen was kept: what comes after this shows.
+                if (seenCategories == null)
+                {
+                    UserSettings.SetSeenCategories(boardKey, categories);
                 }
             }
 
@@ -687,7 +695,7 @@ namespace CRT
                 .Cast<string>()
                 .ToList() ?? new List<string>();
 
-            UserSettings.SetSelectedCategories(boardKey, selected);
+            UserSettings.SetSelectedCategories(boardKey, selected, this.CategoryFilterListBox.ItemsSource?.Cast<string>() ?? selected);
 
             if (this._currentBoardData != null)
             {

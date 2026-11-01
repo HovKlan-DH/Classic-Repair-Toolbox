@@ -811,13 +811,36 @@ public sealed class TabDraftsTests : IDisposable
             Assert.Same(row.SubmitCommand, Named("Submit").Command);
             Assert.Same(row.DiscardCommand, Named("Discard draft").Command);
 
-            // Every button of the header in a column of its own - two sharing an index draw on top
-            // of each other, and nothing throws.
-            var rowButtons = new[] { "What changed", "Review changes", "Submit", "Discard draft" }
+            // ###########################################################################################
+            // ONE ROW OF BUTTONS (owner request, 2026-10-30: "Saved", Undo and Redo on one line and four
+            // buttons under them, "not aligned or anything"): every button on one line, left to right
+            // with none over another - Undo, Redo, then "Table view", set apart, before "Review
+            // changes", Submit and "Discard draft".
+            // ###########################################################################################
+            List<Button> toolbar = new[] { "Undo", "Redo", "Table view", "Review changes", "Submit", "Discard draft" }
                 .Select(Named)
                 .ToList();
 
-            Assert.Equal(rowButtons.Count, rowButtons.Select(Grid.GetColumn).Distinct().Count());
+            Point TopLeft(Button button) => button.TranslatePoint(new Point(0, 0), tab)!.Value;
+
+            Assert.All(toolbar, button => Assert.True(button.Bounds.Width > 0, $"[{button.Content}] is not laid out"));
+            Assert.All(toolbar, button => Assert.Equal(TopLeft(toolbar[0]).Y + toolbar[0].Bounds.Height / 2, TopLeft(button).Y + button.Bounds.Height / 2, 1));
+
+            for (int i = 1; i < toolbar.Count; i++)
+            {
+                Assert.True(
+                    TopLeft(toolbar[i]).X >= TopLeft(toolbar[i - 1]).X + toolbar[i - 1].Bounds.Width,
+                    $"[{toolbar[i]}] should stand right of [{toolbar[i - 1]}], not on it");
+            }
+
+            Button tableView = Named("Table view");
+            Button review = Named("Review changes");
+            Assert.True(
+                TopLeft(review).X - (TopLeft(tableView).X + tableView.Bounds.Width) >= 24,
+                "Table view should stand apart from the draft's own actions");
+
+            // "What changed" is in that row too, shown only while the published board moved.
+            Assert.False(Named("What changed").IsVisible);
 
             Assert.DoesNotContain(buttons, button => (button.Content as string) is "Edit in table format" or "Schematic images");
             Assert.Same(tab.GetControl<Button>("TableViewButton"), Named("Table view"));
@@ -944,7 +967,7 @@ public sealed class TabDraftsTests : IDisposable
 
             var board = new BoardData
             {
-                Components = [new ComponentEntry { BoardLabel = "U0" }],
+                Components = [new ComponentEntry { BoardLabel = "U0", Category = "IC" }],
                 ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" }]
             };
 
@@ -983,7 +1006,7 @@ public sealed class TabDraftsTests : IDisposable
             string workbook = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA);
             CachedWorkbooks.Write(workbook, new BoardData
             {
-                Components = [new ComponentEntry { BoardLabel = "U0" }],
+                Components = [new ComponentEntry { BoardLabel = "U0", Category = "IC" }],
                 ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" }]
             });
             File.SetLastWriteTimeUtc(workbook, DateTime.UtcNow.AddMinutes(1));
@@ -1012,7 +1035,7 @@ public sealed class TabDraftsTests : IDisposable
             TabDrafts tab = TabWithTwoDrafts();
 
             // U0 is marked on no schematic: a warning.
-            var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U0" }] };
+            var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U0", Category = "IC" }] };
 
             Assert.False(await tab.StopForErrorsAsync(EntryA(tab), board));
             Assert.False(tab.IsTableOpen);
@@ -1959,6 +1982,7 @@ public sealed class TabDraftsTests : IDisposable
     [Theory]
     [InlineData("Review changes")]
     [InlineData("Discard draft")]
+    [InlineData("Table view")]
     [InlineData("Add component")]
     public void A_click_on_a_rows_button_survives_the_list_being_read_again_mid_click(string label)
     {
@@ -1972,7 +1996,9 @@ public sealed class TabDraftsTests : IDisposable
             tab.RefreshDrafts();
             tab.ShowBoard(entry, new BoardData(), "PAL", null);
 
-            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            // Tall enough for "Add component" under the left column's entries - a button below the
+            // window takes no press.
+            var window = new Window { Content = tab, Width = 1300, Height = 720 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 

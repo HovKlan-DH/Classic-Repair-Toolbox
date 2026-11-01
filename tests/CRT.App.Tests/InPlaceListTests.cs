@@ -6,7 +6,7 @@ namespace ClassicRepairToolbox.Tests;
 // InPlaceList - changing a shown list without replacing the items still on screen (2026-10-10):
 // a ComboBox whose items are replaced lets go of its selection (the "Schematic images" window's CAD
 // name drop-downs), and a row replaced between a click's press and release loses the click (the
-// Drafts tab's list). Pure list work, tested on plain lists - BoardFilesWindowTests and
+// Drafts tab's list). Pure list work, tested on plain lists - KiCadDataPanelTests and
 // TabDraftsTests cover the two lists on screen.
 // ###########################################################################################
 public sealed class InPlaceListTests
@@ -66,6 +66,29 @@ public sealed class InPlaceListTests
 
         Assert.Equal(["B", "A"], Names(items));
         Assert.Same(a, items[1]);
+    }
+
+    // ###########################################################################################
+    // *** A KEPT ITEM NO ENTRY SHOWS ANY MORE IS KEPT NO LONGER (code review, 2026-10-30). *** The
+    // component open in the pane renamed: its item showed no entry, yet every item after it was made
+    // again around it - and it went at the end all the same. Only it is made again now; the others
+    // keep their objects.
+    // ###########################################################################################
+    [Fact]
+    public void A_kept_item_no_entry_shows_is_replaced_alone()
+    {
+        Item a = new("A");
+        Item b = new("B");
+        Item c = new("C");
+        Item d = new("D");
+        var items = new List<Item> { a, b, c, d };
+
+        Sync(items, ["A", "B renamed", "C", "D"], keep: b);
+
+        Assert.Equal(["A", "B renamed", "C", "D"], Names(items));
+        Assert.Same(a, items[0]);
+        Assert.Same(c, items[2]);
+        Assert.Same(d, items[3]);
     }
 
     [Fact]

@@ -241,6 +241,22 @@ namespace Handlers.MaintainerHandling
                     named ? (section.Renamed ?? []).Select(row => $"{row.From} to {row.To}").ToList() : []);
             }
 
+            // The lists it put in another order (2026-10-30 - order is a change).
+            if ((changes.Reordered ?? []).Count > 0)
+            {
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun("Order", IsCount: false)], IsHeading: true));
+
+                foreach (string sheet in changes.Reordered!)
+                    lines.Add(new HistoryChangeLine([new ReviewNoteRun(BoardRowOrder.OrderChangedLine(sheet), IsCount: false)], IsHeading: false));
+            }
+
+            // What it said about the board's regions (2026-11-01).
+            if (changes.RegionsNow is bool regions)
+            {
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun("Regions", IsCount: false)], IsHeading: true));
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun(BoardRegions.ChangedLine(regions), IsCount: false)], IsHeading: false));
+            }
+
             FileChanges files = changes.Files ?? FileChanges.None;
 
             if (files.HasChanges)

@@ -10,6 +10,28 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class ImportantSignalSuggestionsTests
 {
+    // ###########################################################################################
+    // EVERY NET IS TO BE SEEN (owner request, 2026-11-01: "as the last data in here I would like to see
+    // all other nets not already used ... so all nets will be visible in here"): the nets neither a row
+    // nor a suggestion has. A row, a suggestion and an other net together are the board's nets.
+    // ###########################################################################################
+    [Fact]
+    public void The_other_nets_are_every_net_neither_a_row_nor_a_suggestion_has()
+    {
+        KiCadNetChoices choices = KiCadNetNames.Choices([("/RESET", "RESET", false), ("PHI2", "PHI2", false), ("N$12", "N$12", false), ("U7_3", "U7_3", false)]);
+        KiCadImportantSignalEntry[] rows = [new() { DisplayName = "My clock", KiCadNetName = "PHI2" }];
+
+        List<string> others = ImportantSignalSuggestions.OtherNets(choices, rows);
+
+        Assert.Equal(["N$12", "U7_3"], others);
+        Assert.Equal(
+            choices.Names.Order(StringComparer.Ordinal),
+            rows.Select(row => row.KiCadNetName)
+                .Concat(ImportantSignalSuggestions.For(choices, rows).Select(row => row.KiCadNetName))
+                .Concat(others)
+                .Order(StringComparer.Ordinal));
+    }
+
     [Theory]
     [InlineData("+5V", "+5VDC")]
     [InlineData("5V", "+5VDC")]
@@ -90,6 +112,26 @@ public sealed class ImportantSignalSuggestionsTests
                 "D1:D1",
             ],
             ImportantSignalSuggestions.For(choices, existing).Select(row => $"{row.DisplayName}:{row.KiCadNetName}"));
+    }
+
+    // ###########################################################################################
+    // A NEW SIGNAL PICKS ITS NET (owner request, 2026-10-29 - the row's net is shown as text, never
+    // typed): every net of the board in the picker's order but the ones a row has, by the panel's
+    // rule (" d0 " is D0); the name it starts with is its suggestion's, else the net as CRT spells it.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_signal_picks_from_every_net_no_row_has_and_starts_with_its_suggested_name()
+    {
+        KiCadNetChoices choices = Choices("D0", "D1", "Net-(U8-Pad3)", "~{RESET}");
+
+        Assert.Equal(
+            ["D1", "Net-(U8-Pad3)", "~{RESET}"],
+            ImportantSignalSuggestions.NetsToAdd(choices, [new() { DisplayName = "Data", KiCadNetName = " d0 " }]));
+        Assert.Empty(ImportantSignalSuggestions.NetsToAdd(KiCadNetChoices.None, []));
+
+        Assert.Equal("RESET", ImportantSignalSuggestions.StartingNameOf("~{RESET}"));
+        Assert.Equal("Net-(U8-Pad3)", ImportantSignalSuggestions.StartingNameOf("Net-(U8-Pad3)"));
+        Assert.Equal("~SYNC", ImportantSignalSuggestions.StartingNameOf("~{SYNC}"));
     }
 
     [Fact]

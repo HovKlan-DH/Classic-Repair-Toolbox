@@ -182,7 +182,7 @@ public partial class TabSchematics : UserControl
         this.SchematicsContainer.ScrollGesture += this.OnSchematicsScrollGesture;
 
         // Parked worklog pills sit in the schematic panel's top-right corner and step aside for
-        // the "Netlist names" panel. Subscribed here rather than calling the layout from each of
+        // the "KiCad nets" panel. Subscribed here rather than calling the layout from each of
         // the six places that set IsVisible - a seventh would be added one day and quietly not
         // move the pills. Bounds covers the panel resizing to fit a longer net name, and the
         // container's own Bounds covers the window or splitter being dragged.
@@ -737,7 +737,7 @@ public partial class TabSchematics : UserControl
         ((MatrixTransform)this.SchematicsKiCadOverlayCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
 
         this.KiCadNetConnectionsPanel.IsVisible = false;
-        this.KiCadNetConnectionsHeaderTextBlock.Text = "Netlist name";
+        this.KiCadNetConnectionsHeaderTextBlock.Text = "KiCad nets";
         this.KiCadNetConnectionsList.ItemsSource = null;
         this.UpdateKiCadNetConnectionsClearButtonState(false);
 

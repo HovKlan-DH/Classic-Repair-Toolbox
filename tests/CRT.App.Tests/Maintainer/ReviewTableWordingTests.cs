@@ -77,7 +77,7 @@ public sealed class ReviewTableWordingTests
 
         // A board already published is the server's BETA tree - newer than the stable source, so
         // it is named (owner request, 2026-10-05).
-        Assert.StartsWith("Coloured against the board in the BETA source.",
+        Assert.StartsWith("Colored against the board in the BETA source.",
             ReviewTableWording.OpenedMessage(new ReviewTableData(0, ReviewTableWordingTests.Submitted(), ReviewTableWordingTests.Submitted())));
     }
 

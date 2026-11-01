@@ -22,8 +22,16 @@
 	     THE PANELS ARE SWAPPED IN CODE, not by a wizard: Confirm -> Progress -> Outcome. One window
 	     that changes its contents keeps the dialog in one place on screen and means Cancel has one
 	     meaning throughout.
+
+	     THE PANELS SCROLL, THE BUTTONS STAY (owner report, 2026-11-01: "it seems to take full height,
+	     and where it has no scrollbars, so I cannot see the submit button"): the window is no taller
+	     than its screen (SubmitDraftWindow.OnOpened, DialogPlacement) and centred over CRT whenever
+	     its size changes.
 	     ########################################################################################### -->
-	<StackPanel Margin="18" Spacing="4">
+	<Grid Margin="18,18,18,18" RowDefinitions="*,Auto">
+
+	<ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled">
+	<StackPanel Spacing="4">
 
 		<TextBlock x:Name="HeaderText"
 				   Text="Submit contribution"
@@ -101,7 +109,7 @@
 					   Opacity="0.75"
 					   FontSize="12"
 					   Margin="0,2,0,10"
-					   Text="You get an email when your contribution has been reviewed, and a maintainer can write to you if they need to ask something. The outcome is also shown in &quot;My submissions&quot; on the Contribute tab. There is no account to create and no password to choose." />
+					   Text="You get an email when your contribution has been reviewed, and a maintainer can write to you if they need to ask something. The outcome is also shown in &quot;My submissions&quot; on the &quot;Contribute&quot; tab. There is no account to create and no password to choose." />
 
 			<TextBlock Text="What did you change?"
 					   FontWeight="Bold"
@@ -145,7 +153,7 @@
 				<TextBlock TextWrapping="Wrap"
 						   Opacity="0.75"
 						   FontSize="12"
-						   Text="For the work you are sending - the About tab shows the credits to everybody once it is published. Untick what you do not want, or leave the name empty for no credit." />
+						   Text="For the work you are sending - the &quot;About&quot; tab shows the credits to everybody once it is published. Untick what you do not want, or leave the name empty for no credit." />
 				<StackPanel x:Name="CreditChoicesPanel" Spacing="2" Margin="0,4,0,4" />
 				<Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto,Auto">
 					<TextBlock Grid.Row="0" Grid.Column="0" Text="Name or handle" FontSize="12" />
@@ -193,10 +201,13 @@
 			<TextBlock x:Name="OutcomeText" TextWrapping="Wrap" />
 			<StackPanel x:Name="FindingsPanel" Spacing="3" Margin="0,6,0,0" />
 		</StackPanel>
+	</StackPanel>
+	</ScrollViewer>
 
 		<!-- ============================ BUTTONS ============================ -->
-		<StackPanel Orientation="Horizontal"
-					Spacing="8"
+		<StackPanel Grid.Row="1"
+					Orientation="Horizontal"
+					Spacing="6"
 					HorizontalAlignment="Right"
 					Margin="0,16,0,0">
 
@@ -211,5 +222,5 @@
 					IsDefault="True"
 					Click="OnSubmitClick" />
 		</StackPanel>
-	</StackPanel>
+	</Grid>
 </Window>

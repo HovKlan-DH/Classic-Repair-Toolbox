@@ -257,7 +257,7 @@ public partial class TabSchematics
         this.ClearKiCadOverlay();
 
         this.KiCadNetConnectionsPanel.IsVisible = false;
-        this.KiCadNetConnectionsHeaderTextBlock.Text = "Netlist name";
+        this.KiCadNetConnectionsHeaderTextBlock.Text = "KiCad nets";
         this.KiCadNetConnectionsList.ItemsSource = null;
         this.UpdateKiCadNetConnectionsClearButtonState(false);
 
@@ -552,7 +552,7 @@ public partial class TabSchematics
 
     // ###########################################################################################
     // Clears all explicit KiCad trace selections and any selected Important signals so shared nets
-    // can always be cleared from the Netlist names panel regardless of where they were added from.
+    // can always be cleared from the KiCad nets panel regardless of where they were added from.
     // ###########################################################################################
     private void ClearAllKiCadTraceSelections()
     {

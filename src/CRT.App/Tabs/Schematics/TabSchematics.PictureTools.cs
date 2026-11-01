@@ -21,6 +21,10 @@ namespace CRT;
 // save and a board change all leave it right; when a tool started from the Contribute tab ends,
 // PictureToolEnded tells Main, which goes back there. A board load ends everything silently.
 //
+// "BACK TO CONTRIBUTE" (owner request, 2026-10-29): after the Contribute tab's "Show on board" - a
+// component, or a net lit up - a bar over the picture says what was shown from there and goes back
+// (ShowBackToContribute; Main decides when it comes and goes).
+//
 // "DONE - NEXT PICTURE" (step 3, slice 3d - the plan: "Align: opens calibration on the Schematics tab
 // with a Done - next picture button"): while aligning a picture asked for from the Contribute tab, and
 // another picture has a KiCad view and no alignment yet, the bar offers it - the alignment saved, the
@@ -76,14 +80,28 @@ public partial class TabSchematics
     // reading the board again first when that waited for the tool (Main.PictureTools.cs).
     internal event EventHandler<string>? AlignNextRequested;
 
+    // An alignment the Contribute tab asked for was saved with Done or "Done - next picture": the
+    // picture's name, its image file and the alignment it had (null for its first) - Main marks its
+    // components, or moves those KiCad drew, once the tool hands back to the Contribute tab (owner
+    // requests, 2026-11-01; Main.PictureTools.cs).
+    internal event EventHandler<(string Picture, string ImageFile, KiCadCalibrationEntry? AlignedFrom)>? AlignedFromWorkspace;
+
     // Stands in for the pictures the board's draft has KiCad aligned on - a test has no draft.
     internal Func<IReadOnlyCollection<string>>? AlignedPicturesOverrideForTests { get; set; }
+
+    // What "Show on board" on the Contribute tab showed here - the bar offers the way back while it is
+    // set (ShowBackToContribute, from Main); null for no bar.
+    private string? thisShownFromContribute;
+
+    // "Back to Contribute" pressed - Main goes back to the Contribute tab.
+    internal event EventHandler? BackToContributeRequested;
 
     private void WirePictureTools()
     {
         this.PictureToolDoneButton.Click += (_, _) => this.OnPictureToolDone();
         this.PictureToolDoneNextButton.Click += (_, _) => this.OnPictureToolDoneNext();
         this.PictureToolCancelButton.Click += (_, _) => this.OnPictureToolCancel();
+        this.BackToContributeButton.Click += (_, _) => this.BackToContributeRequested?.Invoke(this, EventArgs.Empty);
 
         this.MenuHighlightButton.Click += (_, _) => this.OnMenuHighlightClick();
         this.MenuEditComponentButton.Click += (_, _) => this.OnMenuEditComponentClick();
@@ -224,6 +242,7 @@ public partial class TabSchematics
         }
 
         this.PictureToolBarBorder.IsVisible = false;
+        this.FollowBackToContribute();
 
         if (this.thisToolFromWorkspace)
         {
@@ -242,7 +261,33 @@ public partial class TabSchematics
         this.PictureToolDoneNextButton.IsVisible = next is not null;
         ToolTip.SetTip(this.PictureToolDoneNextButton, next is null ? null : PictureToolWording.DoneNextTip(next));
         this.PictureToolBarBorder.IsVisible = true;
+        this.FollowBackToContribute();
     }
+
+    // ###########################################################################################
+    // "Back to Contribute" (owner request, 2026-10-29): `what` was shown here from the Contribute tab
+    // ("[U8]", "the net [PHI2]") - the bar says so and offers the way back; null takes it away. Main
+    // decides when (Main.PictureTools.cs). A picture tool's bar takes its place - the tool goes back
+    // by itself.
+    // ###########################################################################################
+    internal void ShowBackToContribute(string? what)
+    {
+        this.thisShownFromContribute = string.IsNullOrWhiteSpace(what) ? null : what;
+        this.FollowBackToContribute();
+    }
+
+    private void FollowBackToContribute()
+    {
+        this.BackToContributeText.Text = this.thisShownFromContribute is { } what ? PictureToolWording.ShownFromContribute(what) : string.Empty;
+        this.BackToContributeBorder.IsVisible = this.thisShownFromContribute is not null && !this.PictureToolBarBorder.IsVisible;
+    }
+
+    internal bool IsBackToContributeShownForTests => this.BackToContributeBorder.IsVisible;
+
+    internal string BackToContributeTextForTests => this.BackToContributeText.Text ?? string.Empty;
+
+    internal void PressBackToContributeForTests() =>
+        this.BackToContributeButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 
     // Done: the tool's own save into the draft - the bar follows once it has ended.
     private void OnPictureToolDone()

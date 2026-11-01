@@ -24,6 +24,8 @@ namespace Handlers.DataHandling
 
         public const string SavingDraft = "Saving to your local draft...";
 
+        public const string RenamingBoard = "Renaming the board...";
+
         public const string SavingLabels = "Saving the component labels to your draft...";
 
         public const string OpeningTable = "Opening the table...";
@@ -72,13 +74,13 @@ namespace Handlers.DataHandling
 
         public const string CheckingKiCadMatches = "Checking what the KiCad data lines up with...";
 
-        // "Add N from KiCad" on a new board's checklist (step 3).
+        // The KiCad components added to the board (step 3).
         public const string AddingKiCadComponents = "Adding the components from the KiCad data to your draft...";
 
         // "Mark all automatically" on a picture aligned with KiCad (step 3).
         public const string MarkingFromKiCad = "Drawing the components' rectangles from the KiCad data...";
 
-        // A suggested match used on a new board's checklist (step 3).
+        // A suggested match used on Board status (step 3).
         public const string MatchingPictures = "Matching the pictures to their KiCad views...";
 
         // Files dropped on the Contribute tab, looked at before their window opens (step 3).

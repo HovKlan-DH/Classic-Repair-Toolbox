@@ -6,7 +6,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // ###########################################################################################
 // Files dropped on the Contribute tab (TabDrafts.Drop.cs - CRT 4.0 step 3, slice 3e): pictures of the
 // board go into the Pictures part as its "Add pictures" adds them (ComponentPaneTests), its KiCad
-// project folder opens "KiCad data" importing it (BoardFilesWindowTests); nothing usable is said on
+// project folder opens "KiCad data" importing it (KiCadDataPanelTests); nothing usable is said on
 // the tab's line.
 // ###########################################################################################
 [Collection("HeadlessUi")]
@@ -94,7 +94,7 @@ public sealed class TabDraftsDropTests : IDisposable
             Assert.Equal(PaneBoardPart.Pictures, tab.ComponentPaneForTests.BoardPart);
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, Board)!;
             Assert.Equal(["Top", "Under side"], session.Content.Board.Schematics.Select(row => row.SchematicName));
-            Assert.Equal("Picture added", session.UndoDescription);
+            Assert.Equal("Schematic image added", session.UndoDescription);
             Assert.False(session.HasUnsavedChanges);
             Assert.Equal(["Top", "Under side"], tab.ComponentPaneForTests.BoardPicturesForTests.Select(row => row.Name));
         });

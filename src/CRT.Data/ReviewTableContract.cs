@@ -47,7 +47,8 @@ namespace Handlers.DataHandling
 
                 // Not sent reads as none here; the publish keeps the published ones (PublishMerge).
                 ComponentPins = [.. rows.ComponentPins ?? []],
-                ComponentReplacements = [.. rows.ComponentReplacements ?? []]
+                ComponentReplacements = [.. rows.ComponentReplacements ?? []],
+                Regions = [.. rows.Regions ?? []]
             };
         }
 
@@ -70,7 +71,8 @@ namespace Handlers.DataHandling
                 Credits = board.Credits.ToList(),
                 KiCadImportantSignals = board.KiCadImportantSignals.ToList(),
                 ComponentPins = board.ComponentPins.ToList(),
-                ComponentReplacements = board.ComponentReplacements.ToList()
+                ComponentReplacements = board.ComponentReplacements.ToList(),
+                Regions = board.Regions.ToList()
             };
         }
 
@@ -142,7 +144,10 @@ namespace Handlers.DataHandling
                 // Table sheets too since CRT 4.0 (2026-10-25) - an edit that does not carry them
                 // leaves the submission's as they are.
                 ComponentPins = edited.ComponentPins?.ToList() ?? current.ComponentPins,
-                ComponentReplacements = edited.ComponentReplacements?.ToList() ?? current.ComponentReplacements
+                ComponentReplacements = edited.ComponentReplacements?.ToList() ?? current.ComponentReplacements,
+
+                // No sheet of the table - the submission's, whatever a request says.
+                Regions = current.Regions
             };
         }
 

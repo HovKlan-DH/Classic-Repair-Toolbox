@@ -87,17 +87,25 @@ namespace Handlers.DataHandling
     // picture under its own name, or adding KiCad files read "0 rows changed" and its Submit button
     // said "There is nothing to send yet. Add some data to this board first." - while the Wiki's
     // KiCad walkthrough sends exactly such a draft.
+    //
+    // *** AND LISTS WHOSE ORDER CHANGED (owner decision, 2026-10-30: "a change of (any) order should
+    // also be submitted as a change") - BoardRowOrder.ReorderedSheets, against the published board as
+    // the rows are counted. A draft whose only work is files moved up or down can be submitted.
+    //
+    // *** AND WHAT THE BOARD SAYS ABOUT ITS REGIONS (2026-11-01) - no row, so the rows did not count it,
+    // and a board ticked "comes in PAL and NTSC" had nothing to send.
     // ###########################################################################################
-    public readonly record struct DraftOtherChanges(int Files, int Calibrations)
+    public readonly record struct DraftOtherChanges(int Files, int Calibrations, int Reordered = 0, bool Regions = false)
     {
-        public bool Any => this.Files > 0 || this.Calibrations > 0;
+        public bool Any => this.Files > 0 || this.Calibrations > 0 || this.Reordered > 0 || this.Regions;
 
-        // "2 files changed", "KiCad calibration changed", "1 file and 2 KiCad calibrations changed".
+        // "2 files changed", "KiCad calibration changed", "1 file and 2 KiCad calibrations changed" -
+        // and "order of a list changed" after them, or alone.
         public string Describe()
         {
             string files = this.Files == 1 ? "1 file" : $"{this.Files} files";
 
-            return (this.Files > 0, this.Calibrations) switch
+            string described = (this.Files > 0, this.Calibrations) switch
             {
                 (true, 0) => $"{files} changed",
                 (true, 1) => $"{files} and a KiCad calibration changed",
@@ -106,6 +114,20 @@ namespace Handlers.DataHandling
                 (false, > 1) => $"{this.Calibrations} KiCad calibrations changed",
                 _ => string.Empty,
             };
+
+            if (this.Reordered > 0)
+            {
+                string order = this.Reordered == 1 ? "order of a list changed" : $"order of {this.Reordered} lists changed";
+
+                described = described.Length == 0 ? order : $"{described}, {order}";
+            }
+
+            if (this.Regions)
+            {
+                described = described.Length == 0 ? "regions changed" : $"{described}, regions changed";
+            }
+
+            return described;
         }
     }
 
@@ -225,8 +247,20 @@ namespace Handlers.DataHandling
                 files = 1;
             }
 
-            return new DraftOtherChanges(files, DraftStatusReader.ChangedCalibrations(status, based));
+            BoardData? draftBoard = BoardReadsByStamp.Read(status.WorkbookPath);
+            BoardData? publishedBoard = BoardReadsByStamp.Read(status.PublishedWorkbookPath);
+
+            return new DraftOtherChanges(
+                files,
+                DraftStatusReader.ChangedCalibrations(status, based),
+                DraftStatusReader.ReorderedLists(draftBoard, publishedBoard),
+                draftBoard is not null && publishedBoard is not null && BoardRegions.Differ(publishedBoard, draftBoard));
         }
+
+        // How many of the draft's lists stand in another order than the published board's - the rows'
+        // own measure (published as it is now), as BoardDataDiffer counts them.
+        private static int ReorderedLists(BoardData? draft, BoardData? published) =>
+            draft is null || published is null ? 0 : BoardRowOrder.ReorderedSheets(published, draft).Count;
 
         private static int ChangedFiles(DraftStatus status, string folder, string? publishedFolder, DraftBase? based)
         {

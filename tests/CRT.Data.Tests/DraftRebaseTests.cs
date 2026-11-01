@@ -239,6 +239,40 @@ public sealed class DraftRebaseTests
         Assert.Empty(result.Conflicts);
     }
 
+    // ###########################################################################################
+    // *** THE CONTRIBUTOR'S ORDER IS KEPT (code review, 2026-10-30). *** Order became a change that
+    // day (owner decision: "a change of (any) order should also be submitted as a change"), but the
+    // merge laid every section out in the update's order - so "Bring my draft up to date" threw away
+    // files the contributor had moved up or down, without a word. A section they put in another
+    // order keeps theirs, a row only the update brought staying after the row it followed; a section
+    // left in the base's order follows the update's.
+    // ###########################################################################################
+    [Fact]
+    public void A_section_the_contributor_reordered_keeps_its_order_and_one_left_alone_follows_the_update()
+    {
+        static BoardLocalFileEntry BoardFile(string name) =>
+            new() { Category = "Docs", Name = name, File = $"Board local files/{name}.pdf" };
+
+        BoardData based = Board([Component("U1"), Component("U2"), Component("U3")]);
+        based.BoardLocalFiles.AddRange([BoardFile("A"), BoardFile("B"), BoardFile("C")]);
+
+        // The contributor moved C first among the files, and left the components alone.
+        BoardData draft = Board([Component("U1"), Component("U2"), Component("U3")]);
+        draft.BoardLocalFiles.AddRange([BoardFile("C"), BoardFile("A"), BoardFile("B")]);
+
+        // The update added a file after A, and put the components in another order.
+        BoardData published = Board([Component("U3"), Component("U1"), Component("U2")], revision: "2026-10-01");
+        published.BoardLocalFiles.AddRange([BoardFile("A"), BoardFile("A2"), BoardFile("B"), BoardFile("C")]);
+
+        DraftRebaseResult result = Merge(based, draft, published);
+
+        Assert.Equal(["C", "A", "A2", "B"], result.Board.BoardLocalFiles.Select(file => file.Name).ToArray());
+        Assert.Equal(["U3", "U1", "U2"], Labels(result.Board));
+        Assert.Equal(1, result.ChangesKept);
+        Assert.Empty(result.Conflicts);
+        Assert.Equal([BoardWorkbookSchema.SheetBoardLocalFiles], BoardRowOrder.ReorderedSheets(published, result.Board));
+    }
+
     [Fact]
     public void Duplicate_rows_are_kept_pair_by_pair()
     {

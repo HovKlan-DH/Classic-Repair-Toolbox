@@ -95,7 +95,7 @@ namespace CRT.Server.Tests
             Assert.Equal("For CRT you are now the maintainer of the [Commodore / C64 / 250469] board", mail.Subject);
             Assert.StartsWith("Hi Anna,", mail.Body, StringComparison.Ordinal);
             Assert.Contains("as you agreed when you created it, you are now its maintainer", mail.Body, StringComparison.Ordinal);
-            Assert.Contains("\"Enable Maintainer tab\"", mail.Body, StringComparison.Ordinal);
+            Assert.Contains("turns on the \"Maintainer\" tab", mail.Body, StringComparison.Ordinal);
 
             // The board's history reads it as the administrator's own grant does - by the approver.
             AuditEntry granted = Assert.Single(world.Accounts.Audit);

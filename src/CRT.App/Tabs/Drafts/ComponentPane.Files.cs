@@ -138,20 +138,35 @@ namespace CRT
         // For tests, in place of opening a file with the program the system has for it.
         internal Action<string, string?>? OpenFileOverrideForTests { get; set; }
 
-        // A "Scope measurements" file opened - found as every file of the draft is (DraftFileResolver),
-        // and handed to the launcher with the root it was found under.
+        // A "Scope measurements" file opened.
         private void OnMeasuringNoteClick(object? sender, RoutedEventArgs e)
         {
-            if (sender is not Control { Tag: BoardLocalFileEntry note } || this.thisSession is not { } session)
+            if (sender is Control { Tag: BoardLocalFileEntry note })
+            {
+                this.OpenFileOfBoard(note.File, note.Name);
+            }
+        }
+
+        // ###########################################################################################
+        // A file the board names opened with the program the system has for it - found as every file of
+        // the draft is (DraftFileResolver: a new file lying in the draft folder, the draft's store, the
+        // published board's), and handed to the launcher with the root it was found under. The Files
+        // part's "Open" too (2026-10-29). `name` is what the person reads, said when it cannot be.
+        // ###########################################################################################
+        internal void OpenFileOfBoard(string? file, string? name)
+        {
+            this.ShowMessage(null);
+
+            if (this.thisSession is not { } session)
             {
                 return;
             }
 
             string draftFolder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, session.ExcelDataFile);
 
-            if (DraftFileResolver.ResolveWithSource(DataManager.DataRoot, draftFolder, note.File, session.ExcelDataFile) is not { } found)
+            if (DraftFileResolver.ResolveWithSource(DataManager.DataRoot, draftFolder, file, session.ExcelDataFile) is not { } found)
             {
-                this.ShowMessage(ComponentPaneWording.FileNotFound(note.Name));
+                this.ShowMessage(ComponentPaneWording.FileNotFound(name));
                 return;
             }
 
@@ -161,16 +176,17 @@ namespace CRT
                 return;
             }
 
-            ExternalTargetLauncher.TryOpen(found.FullPath, found.Root);
+            if (!ExternalTargetLauncher.TryOpen(found.FullPath, found.Root))
+            {
+                this.ShowMessage(ComponentPaneWording.FileNotOpened(name));
+            }
         }
 
+        // How many each holds is its tab's to say (ShowPageTabs).
         private void ShowImageAndFileHeadings()
         {
-            this.BaselinesHeading.Text = ComponentPaneWording.Heading("Scope baselines", this.thisBaselines.Count);
             this.NoBaselinesText.IsVisible = this.thisBaselines.Count == 0;
-            this.PicturesHeading.Text = ComponentPaneWording.Heading("Pictures", this.thisPictures.Count);
             this.NoPicturesText.IsVisible = this.thisPictures.Count == 0;
-            this.FilesHeading.Text = ComponentPaneWording.Heading("Files", this.thisFiles.Count);
             this.NoFilesText.IsVisible = this.thisFiles.Count == 0;
         }
 
@@ -298,14 +314,35 @@ namespace CRT
 
                 List<string> copied = copies.Copied.ToList();
                 copies.Keep();
-                change(copied);
-                this.ShowEmptyLines();
-                this.LoadThumbnails();
 
-                await this.SaveNowAsync();
+                this.thisFilesArriving = true;
+
+                try
+                {
+                    change(copied);
+                    this.ShowEmptyLines();
+                    await this.SaveNowAsync();
+                }
+                finally
+                {
+                    this.thisFilesArriving = false;
+                }
+
+                this.LoadThumbnails();
+                this.LoadPreviews();
                 return true;
             });
         }
+
+        // ###########################################################################################
+        // *** NO PICTURE IS READ WHILE THE FILES JUST COPIED IN ARE ON THEIR WAY INTO THE DRAFT (owner
+        // report, 2026-11-01: a new board's pictures showed as grey boxes until the part was opened
+        // again). *** A copy lies in the draft folder until the save lists it and moves it into the
+        // draft's store (DraftFiles); a preview read meanwhile found it there, and the save took it away
+        // before it was decoded - read as a picture that does not decode, never asked for again. So the
+        // thumbnails and previews are read once that save is done (AddToDraftAsync).
+        // ###########################################################################################
+        private bool thisFilesArriving;
 
         // The names the board's files have - none of them is given to a file added here.
         private List<string> TakenNames() =>
@@ -382,9 +419,9 @@ namespace CRT
 
             await this.AddToDraftAsync(path, name, () =>
             {
+                // For every region, as nearly all of them are - its "Applies to" narrows it.
                 this.thisPictures.Add(new ComponentPanePictureRow
                 {
-                    Region = this.thisRowRegion,
                     Name = Path.GetFileNameWithoutExtension(path),
                     File = name,
                 });
@@ -582,6 +619,13 @@ namespace CRT
             this.NewBaselineTriggerBox.Text = last?.TriggerLevel ?? string.Empty;
             this.NewBaselineThumbnail.Source = null;
 
+            // Its region: the one shown, as nearly all baselines are of one region (owner decision,
+            // 2026-11-01) - on a board that has regions.
+            string region = this.RegionForNewBaseline();
+            this.NewBaselineRegionPanel.IsVisible = this.RegionSwitchPanel.IsVisible;
+            this.NewBaselineRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(region);
+            this.NewBaselineRegionBox.SelectedItem = ComponentPaneWording.AppliesToOf(region);
+
             this.NewBaselinePanel.IsVisible = true;
             this.AddBaselineButtons.IsVisible = false;
             this.ShowNewBaselineState();
@@ -625,12 +669,25 @@ namespace CRT
                 this.NewBaselineTimeDivBox.Text,
                 this.NewBaselineVoltsDivBox.Text,
                 this.NewBaselineTriggerBox.Text,
-                this.thisNewBaselineSource);
+                this.thisNewBaselineSource) ?? this.NewBaselinePinProblem();
 
             this.NewBaselineProblemText.Text = problem ?? string.Empty;
             this.NewBaselineProblemText.IsVisible = problem is not null;
             this.AddNewBaselineButton.IsEnabled = problem is null;
         }
+
+        // The region the new baseline's drop-down list says - blank for every region.
+        private string NewBaselineRegion() =>
+            this.NewBaselineRegionPanel.IsVisible
+                ? ComponentPaneWording.RegionOfAppliesTo(this.NewBaselineRegionBox.SelectedItem as string)
+                : string.Empty;
+
+        // The new baseline's pin, when the component's case has none such (owner request, 2026-11-01).
+        private string? NewBaselinePinProblem() =>
+            this.thisSession is { } session &&
+            BoardDataChecks.PackageRefusing(session.Content.Board.Components, this.thisLabel, this.NewBaselineRegion(), this.NewBaselinePinBox.Text) is { } package
+                ? BoardDataChecks.PinNotOnPackage(this.NewBaselinePinBox.Text, package)
+                : null;
 
         private async void OnChooseNewBaselineScreenshotClick(object? sender, RoutedEventArgs e)
         {
@@ -766,7 +823,8 @@ namespace CRT
                     this.NewBaselineTimeDivBox.Text,
                     this.NewBaselineVoltsDivBox.Text,
                     this.NewBaselineTriggerBox.Text,
-                    source) is not null)
+                    source) is not null ||
+                this.NewBaselinePinProblem() is not null)
             {
                 return;
             }
@@ -779,7 +837,7 @@ namespace CRT
 
             var baseline = new ComponentImageEntry
             {
-                Region = this.thisRowRegion,
+                Region = this.NewBaselineRegion(),
                 Pin = pin,
                 Name = signal,
                 File = name,
@@ -807,7 +865,7 @@ namespace CRT
         // (PaneImageCache).
         private void LoadThumbnails()
         {
-            if (this.thisSession is not { } session)
+            if (this.thisSession is not { } session || this.thisFilesArriving)
             {
                 return;
             }
@@ -895,7 +953,7 @@ namespace CRT
     // goes back in while an edit would make it no baseline (ComponentPane.CommitBaselines). Where it
     // comes from is picked, never cleared, as a pin's direction is.
     // ###########################################################################################
-    public sealed class ComponentPaneBaselineRow : ComponentPaneRowBase, IComponentPaneThumbnailRow
+    public sealed class ComponentPaneBaselineRow : ComponentPaneRegionalRow, IComponentPaneThumbnailRow
     {
         private string thisPin = string.Empty;
         private string thisName = string.Empty;
@@ -908,11 +966,13 @@ namespace CRT
         private string thisNote = string.Empty;
         private string thisFile = string.Empty;
         private string thisProblem = string.Empty;
+        private string thisPinProblem = string.Empty;
         private Bitmap? thisThumbnail;
 
-        public string Region { get; init; } = string.Empty;
-
         public ComponentImageEntry Committed { get; set; } = new();
+
+        // Held back, the draft still has it where it was - whatever its "Applies to" says by now.
+        public override string RegionInDraft => this.Committed.Region ?? string.Empty;
 
         public string Pin { get => this.thisPin; set => this.Set(ref this.thisPin, value ?? string.Empty); }
 
@@ -956,6 +1016,20 @@ namespace CRT
         }
 
         public bool HasProblem => this.thisProblem.Length > 0;
+
+        // A pin the component's case does not have - an error, marked on its box (ShowPinProblems).
+        public string PinProblem => this.thisPinProblem;
+
+        public bool PinOutside => this.thisPinProblem.Length > 0;
+
+        // The case that has no such pin - null when it can be on it.
+        public void UseCaseThatRefuses(string? package)
+        {
+            if (this.Set(ref this.thisPinProblem, package is null ? string.Empty : BoardDataChecks.PinNotOnPackage(this.thisPin, package), nameof(this.PinProblem)))
+            {
+                this.Raise(nameof(this.PinOutside));
+            }
+        }
 
         public Bitmap? Thumbnail
         {
@@ -1012,15 +1086,13 @@ namespace CRT
     // One picture as the pane holds it - what the pane does not show of the row (a pin, a reading a
     // picture may carry) kept from the row it was read from.
     // ###########################################################################################
-    public sealed class ComponentPanePictureRow : ComponentPaneRowBase, IComponentPaneThumbnailRow
+    public sealed class ComponentPanePictureRow : ComponentPaneRegionalRow, IComponentPaneThumbnailRow
     {
         private ComponentImageEntry thisRead = new();
         private string thisName = string.Empty;
         private string thisNote = string.Empty;
         private string thisFile = string.Empty;
         private Bitmap? thisThumbnail;
-
-        public string Region { get; init; } = string.Empty;
 
         public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
 

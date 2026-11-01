@@ -212,7 +212,7 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph("To accept it:")
                 .Steps(
                     ["Install Classic Repair Toolbox (CRT) from ", MailText.Link(EmailTemplates.CrtDownloadUrl, EmailTemplates.CrtDownloadUrl), ", or use the one you already have."],
-                    ["In CRT's \"Configuration\" tab, tick \"Enable Maintainer tab\"."],
+                    ["In CRT's \"Configuration\" tab, tick the box that turns on the \"Maintainer\" tab."],
                     ["Open the \"Maintainer\" tab and choose \"I have an invitation\"."],
                     ["Paste the code, and pick the name others will see and a password."])
                 .Paragraph($"The code works for {validDays} days and can only be used once.")
@@ -247,7 +247,7 @@ namespace CRT.Server.Handlers.Email
                     "for everybody who uses the data. You get an email when somebody sends one.")
                 .Paragraph("To review them:")
                 .Steps(
-                    ["In CRT's \"Configuration\" tab, tick \"Enable Maintainer tab\"."],
+                    ["In CRT's \"Configuration\" tab, tick the box that turns on the \"Maintainer\" tab."],
                     ["Open the \"Maintainer\" tab and sign in with this email address and your password."])
                 .WithContactLine()
                 .ToMessage(toAddress, $"For CRT you are now the maintainer of the [{board}] board");

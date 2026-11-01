@@ -9,8 +9,9 @@ change is made in CRT, on the "Contribute" tab, which writes this file for you.
 Data v4/Commodore/C64/250407/board.json
 ```
 
-The file opens with the board's names and the date of its last change, then one list per kind of
-data. Each list has one entry per line, so two versions of a board compare line by line:
+The file opens with the board's names and the date of its last change - and, on a board set to come
+in PAL and NTSC versions, `"regions": ["PAL", "NTSC"]` - then one list per kind of data. Each list has
+one entry per line, so two versions of a board compare line by line:
 
 ```json
 {
@@ -38,9 +39,9 @@ data. Each list has one entry per line, so two versions of a board compare line 
 
 | List | One entry per | What it holds |
 | --- | --- | --- |
-| `schematics` | Picture of the board | Its name, its image file, the colours and opacities components are marked in (on the picture, on its thumbnail, and on the other side's traces), and the KiCad view it shows (`cadName`) |
-| `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category, region (`PAL`, `NTSC` or empty for both), short description - and, from CRT 4, its package and repair notes |
-| `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Input, Output, Power, Ground ...) |
+| `schematics` | Picture of the board | Its name, its image file, the colors and opacities components are marked in (on the picture and on its thumbnail), how lit KiCad traces are drawn on it (this side's color and opacity, the other side's color and opacity - left out until set, and then the picture's highlight is used), and the KiCad view it shows (`cadName`) |
+| `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category (every component needs one), region (`PAL`, `NTSC` or empty for both), short description - and, from CRT 4, its package and repair notes |
+| `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Input, Output, Analog output, Power, Ground, Unknown ...) |
 | `componentReplacements` | Replacement part | Its part number, whether it is a drop-in or needs changes, what to change, and where that is known from |
 | `componentImages` | Picture of a component | A photo, a pinout, a render - with its name and a note |
 | `scopeBaselines` | Oscilloscope reading of one pin | The pin, the reading expected, the screenshot, the scope settings it was taken with (`timeDiv`, `voltsDiv`, `triggerLevel`), what the machine was doing and where the reading comes from |
@@ -54,7 +55,16 @@ data. Each list has one entry per line, so two versions of a board compare line 
 | `files` | File of the board | The board's name for it, its SHA-256 and size |
 
 A component on a board with regional variants can have one entry per region; everything that
-belongs to one component - its pins, pictures, baselines - names it by its board label and region.
+belongs to one component - its pins, pictures, baselines - names it by its board label and region, and
+an empty region is for both. A board without `regions` counts as having them when any entry says `PAL`
+or `NTSC`.
+
+Some entries need fields filled in: a component its category; a board file its category, name and file; a board link its
+category, name and address; a credit what it is for and the name or handle; an important signal its
+name and its KiCad net. The "Contribute" tab marks an empty one where you type it, "Board: Overview"
+lists it, and a board with one cannot be submitted until it is filled in. A link's address must be
+the whole address, starting with `http://` or `https://`. A pin - of a component's pinout or of a scope
+baseline - must be on the component's package: a DIP-24 has no pin 48.
 
 ## Files are named by the board
 

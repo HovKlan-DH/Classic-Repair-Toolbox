@@ -346,14 +346,14 @@ namespace Handlers.DataHandling
         {
             this.ProblemChecksRun++;
 
-            // Each sheet's rows as a save writes them - live, not blank, and mapped (an incomplete
-            // important signal is dropped on save, so it is not checked either) - with the row each
+            // Each sheet's rows as a save writes them - live, not blank, and mapped - with the row each
             // entry came from, so a problem's index finds its row again. Each row's mapping is
             // remembered until one of its cells changes (code review, 2026-10-04: every edit mapped
-            // every row of all nine sheets again), so an edit maps just its own row.
+            // every row of all nine sheets again), so an edit maps just its own row. No mapper drops a
+            // row since 2026-11-01 - an important signal missing a half was left out, said as a
+            // warning; it is kept now, and a field it needs is an error on its cell (BoardRowRequired).
             var rowsBySheet = new Dictionary<string, List<BoardTableRow>>(StringComparer.Ordinal);
             var entriesBySheet = new Dictionary<string, List<object>>(StringComparer.Ordinal);
-            var leftOut = new List<(BoardTableCell Cell, BoardDataProblem Problem)>();
 
             foreach (BoardTableSheet sheet in this.Sheets)
             {
@@ -372,10 +372,6 @@ namespace Handlers.DataHandling
                     {
                         rows.Add(row);
                         entries.Add(mapped[0]);
-                    }
-                    else
-                    {
-                        leftOut.Add(BoardTableDocument.LeftOutWhenSaving(row));
                     }
                 }
 
@@ -403,11 +399,6 @@ namespace Handlers.DataHandling
 
             var byCell = new Dictionary<BoardTableCell, List<BoardDataProblem>>();
             var outside = new List<BoardDataProblem>();
-
-            foreach ((BoardTableCell cell, BoardDataProblem problem) in leftOut)
-            {
-                byCell[cell] = [problem];
-            }
 
             foreach (BoardDataProblem problem in problems)
             {
@@ -446,43 +437,8 @@ namespace Handlers.DataHandling
                 sheet.CountProblemRows();
             }
 
-            this.Problems = [.. problems, .. leftOut.Select(item => item.Problem)];
+            this.Problems = problems;
             this.ProblemsOutsideSheets = outside;
-        }
-
-        // ###########################################################################################
-        // *** A ROW THE SAVE LEAVES OUT IS A WARNING (owner request, 2026-10-03: "Should flagged now
-        // be treated as warnings?"; cases agreed with the project owner). *** It was a violet
-        // "Flagged" row. The checks never see it - they read the rows a save writes, and this is
-        // the one kind it does not - so the table tells it itself, on the first empty value it
-        // needs (BoardWorkbookSchema.RequiredColumns: only an important signal can be one today).
-        // ###########################################################################################
-        private static (BoardTableCell Cell, BoardDataProblem Problem) LeftOutWhenSaving(BoardTableRow row)
-        {
-            List<string> missing = BoardWorkbookSchema.RequiredColumns(row.Sheet.Name)
-                .Where(column =>
-                {
-                    int index = BoardTableDocument.ColumnIndex(row.Sheet, column);
-                    return index >= 0 && row.Cells[index].Text.Length == 0;
-                })
-                .ToList();
-
-            string message = missing.Count == 0
-                ? "This row is left out when saving, because a value it needs is missing."
-                : $"This row is left out when saving, because {BoardDataChecks.ListOf(missing)} {(missing.Count == 1 ? "is" : "are")} empty.";
-
-            int column = missing.Count == 0 ? 0 : BoardTableDocument.ColumnIndex(row.Sheet, missing[0]);
-
-            var problem = new BoardDataProblem(
-                BoardProblemLevel.Warning,
-                "row.incomplete",
-                row.Cells[0].Text,
-                message,
-                row.Sheet.Name,
-                -1,
-                missing.Count == 0 ? null : missing[0]);
-
-            return (row.Cells[Math.Max(column, 0)], problem);
         }
 
         private static List<T> EntriesOf<T>(Dictionary<string, List<object>> entriesBySheet, string sheet) =>

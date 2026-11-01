@@ -32,7 +32,7 @@ The file is not opened after export - you get it where you saved it. If an expor
 
 * A header: the workbook description and status, its number, board, when it started (or ended), and the date it was exported.
 * The workbook note, then the totals.
-* One section per schematic, in alphabetical order - the first follows the totals, every later one starts on a new page. Each shows the schematic at full page width with the marked areas drawn on it in their category colours.
+* One section per schematic, in alphabetical order - the first follows the totals, every later one starts on a new page. Each shows the schematic at full page width with the marked areas drawn on it in their category colors.
 * Then each worklog on that schematic: its title, category and state, description, components in scope (finished ones marked "(done)"), work done, comments, links, the names of its attached files, and its photos.
 
 Each photo is shown with its file name and comment, so a recipient can find that exact file in the ZIP. Web links in the text, and the worklog's links, are clickable in the PDF.

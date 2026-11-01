@@ -89,7 +89,7 @@ public partial class TabSchematics
         {
             Content = component.Label,
             Tag = component.Label,
-            Margin = new Thickness(0, 0, 6, 4),
+            Margin = new Thickness(0, 0, Handlers.Theming.ButtonRow.Gap, 4),
             Focusable = false,
         };
 

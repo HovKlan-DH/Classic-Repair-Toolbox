@@ -140,7 +140,7 @@ namespace CRT.Server.Handlers.Submissions
                     Code = "amend.file_unknown",
                     Subject = path,
                     Message = $"[{path}] is neither in this submission nor in the published data. A change made " +
-                        "in the Maintainer tab can only use files that are already there."
+                        "in the \"Maintainer\" tab can only use files that are already there."
                 });
             }
 

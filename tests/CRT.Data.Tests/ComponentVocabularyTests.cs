@@ -36,7 +36,8 @@ public sealed class ComponentVocabularyTests
     {
         Assert.Equal(["Known-good board", "Datasheet", "Service manual", "Other"], ComponentVocabulary.BaselineSources);
         Assert.Equal(["Drop-in", "Needs changes"], ComponentVocabulary.ReplacementKinds);
-        Assert.Equal("Other", ComponentVocabulary.PinDirections[^1]);
+        // "Unknown" last (owner request, 2026-11-01).
+        Assert.Equal("Unknown", ComponentVocabulary.PinDirections[^1]);
         Assert.Equal("Other", ComponentVocabulary.Packages[^1]);
         Assert.Contains("DIP-40", ComponentVocabulary.Packages);
         Assert.Contains("TO-220", ComponentVocabulary.Packages);
@@ -115,5 +116,58 @@ public sealed class ComponentVocabularyTests
 
         Assert.Equal(["1mV", "2mV", "5mV", "10mV", "20mV", "50mV", "100mV", "200mV", "500mV", "1V", "2V", "5V", "10V"], ComponentVocabulary.VoltDivisions);
         Assert.Equal(ComponentVocabulary.TimeDivisions.Count, ComponentVocabulary.TimeDivisions.Distinct().Count());
+    }
+
+    // ---- a pin against its case (owner request, 2026-11-01) --------------------------------------
+
+    [Theory]
+    [InlineData("48", 48)]
+    [InlineData(" 2 ", 2)]
+    [InlineData("2 [64K]", 2)]
+    [InlineData("2[64K]", 2)]
+    public void A_pins_number_is_what_its_text_starts_with(string pin, int number)
+    {
+        Assert.Equal(number, ComponentVocabulary.PinNumberOf(pin));
+    }
+
+    [Theory]
+    [InlineData("A1")]
+    [InlineData("")]
+    [InlineData(null)]
+    [InlineData("123456789012")]
+    // Digits running straight into letters are a name: a regulator's "12V" is no pin 12, and "1A" is one
+    // of a 7400's named pins (code review, 2026-11-01).
+    [InlineData("12V")]
+    [InlineData("5VDC")]
+    [InlineData("1A")]
+    public void A_pin_starting_with_no_number_has_none(string? pin)
+    {
+        Assert.Null(ComponentVocabulary.PinNumberOf(pin));
+    }
+
+    [Theory]
+    [InlineData("DIP-24", "24", true)]
+    [InlineData("DIP-24", "48", false)]
+    [InlineData("DIP-24", "0", false)]
+    [InlineData("DIP-24 wide", "25", false)]
+    [InlineData("TO-92", "3", true)]
+    [InlineData("TO-92", "4", false)]
+    [InlineData("", "48", true)]
+    [InlineData("SIP", "48", true)]
+    [InlineData("DIP-24", "A1", true)]
+    [InlineData("DIP-24", "", true)]
+    [InlineData("TO-220", "12V", true)]
+    public void A_pin_is_off_its_case_only_when_both_are_known(string package, string pin, bool on)
+    {
+        Assert.Equal(on, ComponentVocabulary.IsOnPackage(package, pin));
+    }
+
+    // A pin carrying a voltage level as its signal - owner question, 2026-11-01.
+    [Fact]
+    public void Analog_signals_have_words_of_their_own_beside_the_supply()
+    {
+        Assert.Contains("Analog input", ComponentVocabulary.PinDirections);
+        Assert.Contains("Analog output", ComponentVocabulary.PinDirections);
+        Assert.Contains("Power", ComponentVocabulary.PinDirections);
     }
 }

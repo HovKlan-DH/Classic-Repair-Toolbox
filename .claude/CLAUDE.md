@@ -359,6 +359,13 @@ platform - no display, so it runs on CI. `TestAppBuilder.cs` is a `CRT.App` subc
 - **Do NOT add `Avalonia.Headless.XUnit`** to get `[AvaloniaFact]` - its adapter is built against an
   older xunit v3 extensibility API, untried against the 4.x this suite runs. `UiTest` drives the same
   session API directly.
+- **A seam handing out the task a handler ALSO awaits does not wait for the handler** (2026-11-01: three tests failed at
+  random, under load). `LastModelSaveForTests`, `SaveInFlightForTests` and the like are the inner save: already done, the
+  test's `await` carries on before the handler's continuation - posted to the dispatcher, perhaps not yet - has run, and
+  `RunJobs` does not close that gap. Poll for what the continuation does. Never prove "off this thread" by comparing thread ids
+  (a pool thread free at its await runs the work itself - 7,258 of 20,000 when measured), and wait for a background read
+  before deleting its file (Windows refuses). **A wait that gives up says so** (the tabs' `Until` asserts): half a second and
+  silence failed later as something else.
 - **Know what these catch.** The XAML compiler already fails on a renamed `x:Name` and a broken
   `avares://` path, while a missing `StaticResource` is silently tolerated at runtime - so construction
   tests guard constructor logic, not markup. Prefer interaction tests that assert observable state
@@ -389,6 +396,12 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 - **No button label has "..."** (owner rule, 2026-10-03). A button says what it does in plain words,
   whether or not it opens a window. Status lines and placeholders are not buttons. **Machine-checked:**
   `ButtonLabelTests`. A Wiki page naming a button uses the same label.
+- **Buttons side by side are 6px apart, everywhere** (owner request, 2026-10-30: "the same horizontal
+  spacing ... everywhere in UI"): a row's `Spacing`/`ItemSpacing` is 6, a row spaced by margins has a
+  right margin of 6, two buttons in a Grid stand either side of a 6px column; code uses
+  `Handlers/Theme/ButtonRow.Gap`. A gap that SETS A GROUP APART (the header's "Table view") is wider on
+  purpose. Segmented switches, screen tabs and link buttons are not such rows. **Machine-checked:**
+  `ButtonSpacingTests`.
 - **A button's colour says what it does, and only two do** (owner decision, 2026-10-13: "Throw-away
   and danger equals this IndianRed, while Accept/save/update is a green'ish button"). App.axaml's
   `Accept` class (green, `Button_Ok_*`) for a button that goes ahead - saves, submits, sends, adds,
@@ -420,6 +433,10 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   stays until closed (2026-10-13, `Main.SettingsNotice.cs` says why). The launch check MUST say something - silence
   was reported as a bug. The stack is at most half the tabs' width (`NoticeStackGeometry`), and a
   card that has just appeared lets clicks through for half a second, the tooltip lesson again.
+  **The data check's card says the file downloaded on a line of its own, never wrapped**
+  (`PathSegmentEllipsis` - the middle folders go, never the file name), **and keeps its widest for
+  `Main.DataCheckWidthHeldFor` (3 s) after it last grew** (owner report, 2026-11-01: it flickered as
+  every file's path made it shrink and grow; `WireDataCheckWidthHold`, the notices' own timers).
 - **Every wait the user watches runs under `BusyOverlay`** (owner decision, 2026-09-28). One per
   window, the last child of its root Grid (`Main`, and each dialog that waits); the Maintainer tab
   has none of its own. Find it with `BusyOverlay.For`/`RunAsync(this, ...)`. It blocks clicks AND
@@ -434,6 +451,18 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   pressed something - closing the table, submitting, quitting - IS under it (`TabDrafts.SaveTableNowAsync`).
 - **User-visible punctuation is plain ASCII** (hyphens, straight quotes) unless an app label already
   has a character such as "·".
+- **A tab, a menu or a button named in the UI is in quotes** (owner request, 2026-11-01: "when there is a reference to a
+  tab, a menu or a button then it must be encapsulated with """): `the "Schematics" tab`, `under "Schematic images"`, `press
+  "Align KiCad data"`, `"Undo" takes it back` - sentences, tooltips, a label's own words (`Enable "Workbooks" tab`) and the
+  server's. A name that only opens a heading or a title ("Align KiCad data on [Top]") is the label itself. **Machine-checked:**
+  `UiReferenceQuotingTests` (every tab, and a list of names that cannot be anything else, a sentence carried over to the next
+  line read as one); a word that is also plain English
+  ("the board's KiCad data", "Try again in a moment") is left to whoever writes it.
+- **User-visible text says "color", never "colour"** (owner request, repeated 2026-10-30: "always use the
+  American 'color' spelling") - in the app, the undo steps' names and the Wiki alike. Code comments and
+  stored names (`PictureColours`, `traceHighlightColor`) are not text anybody reads. **Machine-checked:**
+  `AmericanSpellingTests` (string literals in `src/`, and the markup's text attributes); grep the Wiki
+  by hand.
 - Biggest files, for context budgeting: `Tabs/Schematics/ComponentInfoWindow.axaml.cs`, `Handlers/Data/UserSettings.cs`,
   `Handlers/Data/WorklogManager.cs`, `Tabs/Schematics/TabSchematics.Worklog.cs`,
   `Handlers/Data/DataManager.cs` (~1,700-2,200 lines each). Read the part you need.
@@ -472,10 +501,60 @@ its title IndianRed while a draft exists (`ContributeTabTitle`/`hasDrafts` in Ma
 it shows (`Main.ShowBoardInContributeTab` -> `TabDrafts.ShowBoard`, `TabDrafts.Workspace.cs`). From
 top to bottom: "My drafts" (a drop-down list that SELECTS that board in CRT and goes back to its
 placeholder), "My submissions", "Add a new board"; the shown board's draft header - or, with no draft,
-a line saying the first change makes one; then a left column of the board's parts with counts
-(`ContributeBoardParts` - KiCad data opens its window; Pictures, Important signals, Files and links
-and Credits open in the pane since slices 4a/4b), the component list with its own search, "Add
-component" and "Table view"; and on the right ONE of the table, the component pane or a start panel.
+a line saying the first change makes one - **naming no hardware and no board** (owner request,
+2026-10-30: the drop-down lists in the top-left corner already say it; the row's first line is its
+summary, "18 rows changed" and the badges) - and **under it ONE row of buttons, the header's toolbar**
+(owner request, 2026-10-30: "Saved", Undo and Redo on one line with four buttons under them, "not
+aligned or anything"): Undo and Redo on the left, then on the right **"Table view", set apart, BEFORE
+"Review changes"**, Submit and "Discard draft" (`HeaderToolbar` - NOT in the row's template: its
+DataContext is the draft's row, set by `ShowHeader`, so its buttons are never made again under a press;
+"Table view" shows with no draft too, the rest only with one). The save state ("Saved", "Could not save
+- ..." with Try again) is the row's status at its top right. **"Review changes" is greyed out with
+nothing to review** (`DraftListItem.CanReviewChanges` - the same "has something" Submit asks; owner
+request, 2026-10-30). **Over a board with a draft, App.axaml's notice panel says the draft is local**,
+seen by nobody until submitted and reviewed (`LocalDraftNotice`, words
+`ContributeBoardParts.LocalDraftNotice`; owner request, 2026-10-30). Then a left column, **a tree** (owner decisions,
+2026-11-01; "Board contents" until then): **"Board" over "Overview", "Name", "Regions", "KiCad" over "Files" and
+"Important signals", then "Schematic images", "Categories", "Files", "Links" and "Credits"** - "Board" and "KiCad" are
+headings, no entries. **A page's headline and a sentence naming an entry say its group too** ("Board: Overview",
+"Board: Name", "KiCad: Files", "KiCad: Important signals", "Board: Schematic images", "Board: Credits" - the code and
+the notes below still say "Board status", "Board name" and "KiCad data" for them; "Overview" alone also names a tab, so
+never a bare "Overview" in a sentence). Counts beside them - the KiCad files (its FILES counted, read off the UI thread -
+`TabDrafts.ShowKiCadCount`, `ContributeBoardParts.KiCadFileCount`; for a draft held in memory counted
+again only when its file list changes or "KiCad data" catches up - `thisKiCadCountedFrom`, code review
+2026-10-30: every edit in the pane walked the KiCad folder; the KiCad panel's Summary says where that
+number comes from, `KiCadImportSummary.Files` by the same names), and the rest (`ContributeBoardParts`; KiCad data opens its panel, the
+rest open in the pane). **The important signals are named `ComponentPaneWording.ImportantSignals`** where the entry is
+meant, and "Important KiCad signals" in the plain words of the undo steps and "Review changes"
+(`DraftStepWording.ImportantSignals`); the sheet keeps its stored name, "Important signals". **Its entries carry no
+tooltip** (owner request, 2026-10-30). **Another board shown selects "Overview"** (owner report, 2026-11-01). On the
+right ONE of the table, the component pane, the KiCad data panel, Board name or Board status. **No page there has a Close button** (owner request, 2026-10-30: "remove
+those 'Close' buttons on all those pages, as they are not needed anymore"): "Board status" is the way
+back (`TabDrafts.ShowBoardStatusAsync` - closes the pane, the KiCad panel and the table, each as its
+own close does, and the components' list), and it is SELECTED whenever nothing else is open. Only the
+new component's form keeps its Cancel (`ComponentPane.CloseRequested`) - it adds nothing. **The splitter beside the left column is a 4px column in the global GridSplitter style**, as
+the Schematics tab's (owner request, 2026-10-30: "bulky and visible" - `TabDrafts.SplitterWidth`; the
+previews' handle on a picture card is drawn the same, a 4px bar in the `Splitter` brush). **The components are a panel of their own BELOW the tree, always there** (owner decisions, 2026-10-29
+and 2026-11-01; `ComponentsListPanel`) - the search, the ListBox and "Add component", taking the room left; on a low
+window the tree scrolls instead (`TabDrafts.ComponentListKeepsAtLeast`). **The entry open on the right is shown
+selected, worked out from the pane every time** (`TabDrafts.ShowNavSelection` - never a flag beside the pane): a
+component open is selected in the list, a board part in the tree. **While
+the table is open the left column and its splitter are GONE** - the table takes the whole workspace,
+the column back at its width when it closes (`TabDrafts.ShowWorkspaceColumns`, from `ShowWorkspace`
+and `ApplyTableMode`; the columns' widths change, never the columns). The list
+is ONE collection changed in place (`InPlaceList.Sync`) - replaced, it scrolled to its top and let go
+of its selection after every save; a selection set from code to follow the pane opens nothing
+(`thisFollowingComponentSelection`). **A selection the arrow keys move opens its component only once the
+keys pause** (`TabDrafts.ComponentKeyPause`; Enter at once, a click at once - code review, 2026-10-30:
+each component passed was opened and saved under the BusyOverlay, which took the next key);
+`ShowNavSelection` leaves the list where the keys put it while that waits. **"Pictures" is "Schematic
+images" wherever the part is named**
+(owner request, 2026-10-29 - `ComponentPaneWording.SchematicImages`; the undo steps, "Review changes"
+and the readiness step too; a COMPONENT's pictures stay pictures), and **Files and Links are two
+parts** (`PaneBoardPart.Files`/`Links`, "Files and links" until then). **The left column's width is
+dragged at its splitter and kept PER BOARD** - a board never dragged on takes the width dragged last
+(`ContributeWidths`, `UserSettings.ContributeNavWidthFor`, `TabDrafts.Splitters.cs`; seams handed in by
+`Initialize`, so a test's tab never touches the settings).
 **The table and the pane are views of the board SHOWN** - showing another board closes them
 (`CloseTableForAnotherBoard`, `CloseComponent`), and the left column reads the draft as they
 left it (`BoardForList`, the pane's "Changed" marks in `thisChangedHere` until Main shows the board
@@ -488,6 +567,50 @@ holds** (`SaveDueDraftsNoEditorHoldsAsync` over `DraftSessions.Due`, started by 
 table and the pane save their own, whose Saved events the row and the board on screen follow. Every
 pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
 
+- **A COMPONENT'S PAGES ARE TABS OVER THE PANE** (owner decision, 2026-11-01: "too massive, if all data is filled" - tabs on
+  the right, so the left column keeps its room for the list; `ComponentPane.Pages.cs`, App.axaml's
+  `ScreenTab`, moved there from the Maintainer tab): Basics, Replacement parts, Pinout, Pictures, Scope baseline, Files,
+  Links, each saying how many it holds and red while something on it stops Submit. One shows; **every section stays
+  filled behind its tab**, so what the pane commits is what it always was (a test reaching a hidden section's row
+  CONTROLS calls `ShowPage` first: no container is made in a section not shown). **The page stays as another component
+  is picked.** Its **label is a box under Basics** (owner report, 2026-11-01: "unable to rename"; there was none):
+  renamed on Enter or when left, never on a typing pause, every row moving with it (`ComponentPaneEdits.WithLabel`,
+  rectangles too - `DraftEditRules` follows only a row whose other cells stayed); a label another component has stays
+  in its box with the reason; an undo of it finds the component again (`FollowRelabelInDraft`); the rows are not read again
+  (`ShowRelabelled` - a pin just added and a baseline held back went with them, code review 2026-11-01). Worklogs on this
+  machine keep the old label, as for a rename in the table.
+- **REGIONS** (owner decisions, 2026-11-01: PAL and NTSC or none, stored and published, on a page of their own;
+  `BoardRegions` - THE ONE RULE, replacing `HasExplicitRegionComponents`, which asked the component rows alone, so regional
+  baselines on a board with no regional component hid the buttons and one region's baselines for good). "Board: Regions" is
+  one tick, `regions` in the board file (written only when set - every other board keeps its bytes; no conversion: a board
+  without it is worked out from its rows), not removable while a row says a region. It travels as `SubmissionRows.Regions`
+  (null keeps what is published, as the pins; anything but PAL or NTSC in it is the error `regions.unknown` on both sides -
+  code review, 2026-11-01, Security: it reached the publish as sent, server 7.0.0), counts as a change of the draft (`DraftOtherChanges`, retirement, "made only
+  to look") and is said in "Review changes", the review and the board's history (`RegionsNow`). **On top of a component's
+  pages the switch under the component list again - it IS that switch** (`RegionPicked` -> `Main.PickRegion` ->
+  `TabDrafts.UseRegion`). A page lists what the region shown shows. **Baselines, pictures and replacement parts have
+  "Applies to" per row** (`ComponentPaneRegionalRow`; a row moved out of the region shown is let go of here and said -
+  left, it was filed again at the next commit); **Basics and Pinout a "Different per region" tick**, as those are sets
+  (`WithRegionalRows`, `WithRegionalPins` - no step, the reason said, for a component with no pins, or one taken off in a region
+  with none, which deleted every pin; code review, 2026-11-01). A new baseline starts in the region shown, as 99% are; a new picture in all,
+  as 99% are; a new pin with its set - **a component's row per region says nothing of its pins**, the tick does.
+- **"BOARD: CATEGORIES"** (owner request, 2026-11-01; `ComponentPane.RegionsAndCategories.cs`, `BoardCategoryEdits`):
+  rename, add, delete. **No list is stored** (owner decision: "kept until first used"): a category is the word its
+  components carry, so a rename or delete is one step changing those rows - named as another it joins it, under its
+  spelling; deleting asks where its components go. One no component uses is held by the pane per board until something
+  does or CRT closes, and offered in the category boxes. Rows stay where they stand, so no order changes. **Component
+  categories only** - a file's, link's or credit's are their own lists'. **The filter beside the schematics follows**
+  (code review, 2026-11-01): a category it has never seen is ticked, however it came - renamed, typed, edited in the table, a
+  data update (`SavedCategoryFilter`; what the board had when it was chosen is kept, `SeenCategoriesByBoard`) - and one moved here
+  keeps its components shown, even under a category the filter had unticked (`UserSettings.FollowCategoryMove`).
+- **What Submit refuses, added 2026-11-01 (errors on both sides, server 6.0.0):** `component.no_category` ("No components
+  must have an empty category" - the form's "Add component" needs one too; marked on the box, and on "Categories") and
+  `pin.outside_package` (a baseline's or a pinout's pin past its package's count - `BoardDataChecks.PackageRefusing`, whose
+  region rule is that a row for every region must be off EVERY region's case; nothing said for a case CRT cannot count, no
+  package, or a pin named rather than numbered; "2 [64K]" is pin 2, while digits running straight into a letter are a name -
+  a regulator's "12V", a 7400's "1A" - `ComponentVocabulary.PinNumberOf`).
+- **Directions: "Analog input" and "Analog output" for a pin carrying a voltage level as its signal, "Power" for the supply
+  pin, "Unknown" last** (owner question, 2026-11-01) - `ComponentVocabulary.PinDirections`.
 - **A component opens in the COMPONENT PANE** (CRT 4.0 step 2's slice 3a, 2026-10-25;
   `ComponentPane`, `TabDrafts.Component.cs`; the plan: "A component opens in a pane, never in a
   maximized window"): Basics (friendly name, technical name, part number, category, package, the
@@ -540,15 +663,14 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   "Scope measurements"** (owner decision, 2026-10-26: "Do what you recommend" - the live trees already
   keep it so, five boards with "Introduction to ... scope measurements" texts; NO board field, no wire
   or server change; `ScopeMeasurementFiles`): linked above a component's baselines in the pane and
-  under a baseline in the popup, edited under Files and links like any board file.
+  under a baseline in the popup, edited under Files like any board file.
   **The component as a whole is the pane's too; the component editor's window is GONE** (slice 3c,
   2026-10-26; `ComponentPane.Whole.cs` - the plan: "The 2,200-line component editor is replaced, not
   adapted"). **"Add component" opens the pane's form** (`TabDrafts.AddComponentAsync` ->
   `ComponentPane.ShowNew`): the board label, the region only on a board with regional components, the
   category; nothing goes into the draft until "Add component" there, then ONE step
   (`ComponentPaneEdits.WithNewComponent` - placed by `ComponentPlacement`; a label the board has in ANY
-  region refused with the reason, `ContributionPackaging.ValidateNewComponent`; no category said and
-  allowed - the Contribute tab lists it anyway). **A component of one region opened while CRT shows the
+  region refused with the reason, `ContributionPackaging.ValidateNewComponent`; a category needed since 2026-11-01). **A component of one region opened while CRT shows the
   other is worked on in its own region** (`ShowComponent` - else every section read back empty and each
   commit filed its rows again). **"Delete component"** is `ComponentBoardWriter.ApplyComponentDelete` -
   every row, every region - as ONE step, and "Bring [U8] back" undoes it while it is the latest step.
@@ -556,7 +678,13 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   pane, then `Main.ShowComponentOnBoard`: the Schematics tab with ONLY that component selected
   (`TabSchematics.ShowOnlyComponent`) - when the pane's saves left the board on screen behind, it is
   read again first and selected once that load has its highlights (`ShowComponentAskedForAfterLoad`),
-  the catch-up handed over so leaving the tab reads nothing again. **"Preview popup"** opens the popup
+  the catch-up handed over so leaving the tab reads nothing again. **There a bar offers "Back to
+  Contribute"** (owner request, 2026-10-29; a net lit up offers it too - `Main.OfferBackToContribute`,
+  `TabSchematics.ShowBackToContribute`), **KHAKI** (owner request, 2026-10-30: "make this more visible
+  - maybe use the standard(?) Khaki color for the panel, to show this is a temporary thing";
+  `Schematics_TemporaryBar_*`, the Khaki of the image's name): the pane is still open where it was. It goes once the Contribute
+  tab is shown again, another board is shown (the same board read again keeps it), or a picture tool
+  starts (whose own end goes back); a tool's bar takes its place while up. **"Preview popup"** opens the popup
   on the draft AS HELD IN MEMORY with the draft's folder whatever "view boards as officially published"
   says (`Main.OpenComponentPreview` -> `ShowComponentInfoPopup`, the popups' one path). **The popup and
   the Overview show the new data**: the package on the category line, repair notes with clickable links,
@@ -564,23 +692,132 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   a baseline's machine state and source (`ComponentPopupContent`); the Overview has a Package column and
   its Notes are the repair notes, else the first image's note as before (`OverviewHtmlBuilder.BuildRows`).
   **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
-  `TabDrafts.OpenBoardPartAsync`): the left column's "Files and links", "Credits" and "Important
-  signals" show one of them in place of a component (`PaneBoardPart`) - Pictures too since slice 4b;
-  KiCad data still opens its window. Each list is ONE step when changed (`BoardPartEdits`, replaced as a whole);
-  files, links and credits are listed and written GROUPED BY CATEGORY (`BoardPartEdits.Grouped`), and
-  a list differing only by its order is the SAME board, so opening and leaving a part changes nothing.
-  A board file added goes to "Board local files/" under a free name and is saved at once, as a
-  component's. An important signal picks its net from the board's KiCad nets, read on the pool
+  `TabDrafts.OpenBoardPartAsync`): the left column's "Files", "Links", "Credits" and "Important
+  signals" show one of them in place of a component (`PaneBoardPart`) - Schematic images too since
+  slice 4b; KiCad data opens a panel of its own there (below). Each list is ONE step when changed
+  (`BoardPartEdits`, replaced as a whole); **a list is shown and written in the board's OWN order** -
+  grouped by category until 2026-10-30 - so the board's list as the pane shows it is the SAME board,
+  and opening and leaving a part changes nothing. **A file, a link, a credit or an important signal
+  MOVES up or down past ANY row, whatever its category** (owner requests, 2026-10-29 and 2026-10-30:
+  "the entire line moving up/down, and not only within its own category ... I also want to be able to
+  rearrange the categories") - **DRAGGED by its handle**, Font Awesome's up-down (U+F338) at the row's
+  right edge under the HAND cursor (the north/south one until 2026-11-01 - owner request: make it clear
+  it can be grabbed), the row a dashed placeholder while it moves (owner request,
+  2026-10-30: "instead of having the up/down arrows, then please have a 'North/South' icon and then drag
+  the whole line up/down, just alike in the workbook for photos. It should show a placeholder when
+  dragging"; `ListRowDrag`, the Maintainer tab's own; the Schematic images' cards keep Move up/Move down
+  - "those panels are much larger"), or **Alt+Up / Alt+Down in its boxes** (`OnBoardPartKeyDown`, the
+  focus kept in the same box; `BoardPartEdits.CanMove`/`Moved`, `ComponentPane.MoveRow`). A drop or a
+  move is the list's ONE step; the rows are replaced only after `ResetRowDrags`. **A FIELD A ROW NEEDS
+  IS AN ERROR, MARKED ON ITS BOX** (owner requests, 2026-10-30: "'What' and 'Name or handle' must be set
+  ... In 'Links' then all 3 fields must be filled ... Same for 'Files' ... the 'Important signal name'
+  must not be empty"; and 2026-11-01: "highlight the problematic cell with a helper what is missing ...
+  These errors must be flagged in 'Board status' and then it should not be possible to submit the draft
+  board"): a file and a link all three, a credit "What" and "Name or handle", a signal its net and its
+  name - **CRT.Data's `BoardRowRequired`, the ONE rule**: `BoardDataChecks` makes each empty one the
+  error `row.required_empty` on its cell in BOTH scopes (the table, the draft's row, `StopForErrorsAsync`
+  - and the server refuses it; a submission's credits and important signals are checked since, server
+  5.0.0); Board status lists each list with such rows (`BoardGapKind.Incomplete*`, its button opening the
+  list), the errors row counting the others. **The pane puts the row into the draft AS IT IS** and frames
+  the empty box red with "Required before submitting" under it (`...Missing` on the row, the `Missing` and
+  `Required` styles); a row with nothing typed in it is no row - the category "Add link" offers from the row above is no
+  typing (`ComponentPaneBoardLinkRow.OfferedCategory`; code review, 2026-11-01). Until 2026-11-01 the pane held such a row
+  back with a line under it - so nothing but the pane knew - and the table DROPPED an important signal
+  missing a half on save (a warning, "left out when saving"); **no mapper drops a row now**
+  (`BoardWorkbookSchemaTests`). `BoardPartRequired` only names the fields by the pane's headings. "Add
+  file" fills every field - the last row's category, else "Resources" (`BoardPartRequired.NewFile`).
+  **A LINK'S ADDRESS SUBMIT WOULD REFUSE IS MARKED THE SAME WAY** (code review, 2026-11-01:
+  `BoardDataChecks.IsRefusedLink`, the rule of the error `link.not_web`, on a board's links and a
+  component's, the helper `ComponentPaneWording.LinkNotWeb`) - "Open link" opens "www.lemon64.com", as
+  `LinkTarget` adds the scheme, and nothing on the row said Submit would not take it.
+  **ORDER IS A CHANGE** (owner decision,
+  2026-10-30: "a change of (any) order should also be submitted as a change" - `BoardRowOrder`, below):
+  **a board part's "Changed" mark is the differ's answer for that section OR its order**
+  (`ComponentPane.ListDiffers`). **"Open file" on a file and "Open link" on a link** (owner requests,
+  2026-10-29, and 2026-10-30 for the labels - "Open" until then): a file found as every file of the draft is (`ComponentPane.OpenFileOfBoard` - the "Scope
+  measurements" notes' path too), a link by `LinkTarget`'s rule (the PDF export's - a scheme added when
+  typed without one; mailto: as it stands, any other "scheme://" no link), both through `ExternalTargetLauncher`. **The part's ONE headline is the pane's
+  title with its count** ("Files (3)", `ComponentPaneWording.PartTitle`; owner request, 2026-10-29: two
+  headlines for the same thing) - a row not in the draft yet not counted (its `Committed` null). A board file added goes to "Board local files/" under a free name and
+  is saved at once, as a component's. **An important signal's KiCad net is SHOWN AS TEXT, first, and
+  never typed** (owner request, 2026-10-29: "they should not be editable ... switch the columns"): a new
+  signal PICKS its net under the list from the board's nets no row has
+  (`ImportantSignalSuggestions.NetsToAdd`; "Add signal" on only for one of them), and comes named as it
+  would be suggested (`StartingNameOf`) - the name is the row's box. The nets are read on the pool
   (`TabDrafts.ReadNetChoicesAsync` - the files the Schematics tab draws, `KiCadProjectLoader`) and
-  handed over once read (`UseNetChoices`); one the panel will not find says so under it
+  handed over once read (`UseNetChoices`); without KiCad data there is nothing to pick; a row naming a
+  net the panel will not find (from the table, or older data) says so under it
   (`KiCadNetChoices.Finds` - `KiCadNetNames`' one rule). A heading row's button column shares its
   width with the rows' (`SharedSizeGroup`, in a `Grid.IsSharedSizeScope` panel) - an empty Auto column
   in the heading widened its star columns, and the labels stood off their boxes.
   **Pictures and their colours** (slice 4b, 2026-10-26; `ComponentPane.BoardPictures.cs`, the left
-  column's "Pictures"): a card per picture with a preview of the picture and the components marked on
-  it (`PicturePreview`, every position `PicturePreviewGeometry`), drawn in the colours as they are
-  picked - a colour picker and opacity slider for the marked components and for the thumbnail, a
-  picker for the other side's trace - and "Use for all pictures". ONE step for every picture's
+  column's "Schematic images"): a card per picture - a bordered panel of its own, its name box under
+  "Schematic name" - with a preview of the picture and the components marked on it (`PicturePreview`,
+  every position `PicturePreviewGeometry`), drawn in the colours as they are picked - a colour picker
+  and opacity slider for "Schematic image" ("Selected components" until 2026-10-30) and "Thumbnail",
+  and **a colour picker and opacity slider for "Traces on this side" and for "Traces on the other side"**
+  (owner request, 2026-10-30 - before, this side's copper took the highlight colour and both sides its
+  opacity + a quarter; that is still what a blank column draws) - and "Use for all schematic images".
+  **The traces' colours are ONE rule, `TraceColours.Resolve`** (CRT.App's `Handlers/Geometry`), which the
+  Schematics tab's copper (`TabSchematics.KiCad.Render.cs`) and the cards' previews both draw by; their
+  columns are the board file's `traceHighlightColor`, `traceHighlightOpacity`,
+  `oppositeTraceHighlightOpacity` (`BoardSchematicEntry`, written only when filled - server 5.0.0). **The previews** (owner's pick, 2026-10-29;
+  `ComponentPane.PicturePreviews.cs`): the big one ZOOMS - Ctrl+scroll at the pointer (the wheel alone
+  scrolls the cards), drag to move, double-click whole - and, ZOOMED only, asks for the picture decoded
+  sharper (`SharperWanted`, `PicturePreviewGeometry.SharpWidth` steps, ONE card's sharp image held at a
+  time - asked on every resize, widening the previews decoded every card; one decode per card at a
+  time, the widest asked meanwhile next, a decode never shown disposed; asked again at the next zoom, or
+  once the pointer RESTS on it (`PicturePreview.PointerRest` - asked as it passed, two zoomed cards took
+  the one sharp image from each other), once another card took it). Shown whole, the pictures are read
+  for the previews' width in `PicturePreviewGeometry.WholeWidth` steps - again only when a drag of the
+  width ENDS past one, only while the pictures part is open, never for a card already being read as
+  wide (`WantsPreviewFor`); never wider than the picture itself (`NoWiderThanThePicture`, the sharp
+  reads' cap too); one read held per picture (the narrower let go of, `PaneImageCache.Forget`), and **a
+  wider one held serves narrower previews with no read** (`TryGetWiderRead`; code review, 2026-11-01:
+  every card made again decoded from disk once they were dragged narrow); a wider read that fails
+  blanks nothing and may be asked again. Under it a thumbnail-sized
+  one in the Thumbnail colours; "Traces preview" ("Traces on the preview" until 2026-10-30) has two
+  ticks, "This side" and "Other side" (owner request, 2026-10-29: "so we can have both in preview") -
+  this side's copper in its colour (blank: the Schematic image colour, its blank DeepSkyBlue, the tab's
+  for copper - not IndianRed, the rectangles'), drawn OVER the other side's, the tab's order, each side
+  at its own opacity (`PicturePreview.ThisSideTraceOpacity`/`OtherSideTraceOpacity`); both sides read ONCE
+  (`TabDrafts.PreviewTracesAsync` - "Mark all automatically"'s plan, `KiCadPreviewTraces` placing them as
+  the tab places copper; the cards asking at once share ONE read of the KiCad project,
+  `ReadKiCadForPreviewsAsync`), the ticks kept by name AND file while the part is open - never put back
+  on an image that can no longer show traces - a read answers only while it is the latest for its card
+  (`TracesAsk`), and another KiCad view picked lets go of what was read, ticked or not (`ForgetTraces`).
+  **An image with no KiCad data
+  SHOWS NO KiCad controls** (owner requests, 2026-10-29 and 2026-10-30: "less disabled elements to
+  relate to"): the traces' colors and opacities, "Traces preview", "Align KiCad" and "Mark all
+  automatically from KiCad" are HIDDEN unless the board has KiCad files and the image a view picked
+  (`HasKiCadData`); shown, the ticks and Mark all are greyed out until KiCad is aligned
+  (`CanShowTraces`, `CanMarkAutomatically`), the reason in their tooltips. **Mark all is hidden on a
+  picture showing a SCHEMATIC SHEET** (`ShowsMarkAutomatically` - nothing to mark from KiCad there),
+  and **a picture showing a side of the board, not aligned yet, says what comes next** in the amber
+  notice under its KiCad view (owner report, 2026-11-01: "it is not clear that I must first do the
+  'Align KiCad', before I can do the 'Mark all automatically from KiCad'"; `AlignsFirst`,
+  `PictureToolWording.AlignFirst`). Which views are sides of the board the pane is handed with the views
+  (`UseKiCadViews(..., boardSides)`, `BoardKiCadFacts.BoardViewsOf`); null while not known - unknown hides
+  neither. Highlights are
+  drawn with the Schematics tab's edge rule (`SchematicHighlightsOverlay`: the edge 1.4 x the fill).
+  The previews' width is dragged at any card's handle, the same on every card, kept per board as the
+  left column's is (`ContributeWidths`) - **and never takes the settings beside them below
+  `ContributeWidths.SettingsMinWidth`** (owner report, 2026-10-30: dragged to 0px): a drag stops there,
+  and narrower cards show the previews narrower, the width chosen kept (`PreviewShown`,
+  `ComponentPane.UseCardsWidth` from the cards' SizeChanged). **Under the thumbnail, once a picture shows a KiCad view, how many components that view
+  shows and how many are marked on it** (owner request, 2026-11-01; `KiCadComponentTable.CountsByView` - a side by
+  marking's own `IsOnSide`, a sheet by its parts - handed over with the views, `UseKiCadViews`; the marks of the
+  region shown), in the default text color, not a hint's grey (owner request: "must be more visible"). **Told apart
+  once any is by hand** (owner request: "If any components have been manually marked, then I think it should show
+  like this"): **a mark is KiCad's while it lies exactly where its footprint puts it under the picture's alignment**
+  (`KiCadFootprintMarks.CountAutomatic`, `ViewFootprints`) - told from the rectangle, so NO board file changes; one
+  moved by hand, or on a picture not aligned, is manual, and a schematic sheet has no automatic line. **The card's
+  buttons** (owner request, 2026-11-01: "the user most likely will NOT manually mark components when KiCad data is
+  available"): "Align KiCad data" ("Align KiCad" until then) and "Mark all components automatically from KiCad" beside
+  it, then "Mark components manually" ("Mark components") on a row of its own; "Delete schematic image" and "Use colors
+  for all schematic images". **The Schematic images part takes the
+  pane's whole width**; every other part and the component keep `ComponentPane.ReadableWidth` (980) -
+  under that cap a wide preview was what squeezed the settings. ONE step for every picture's
   colours (`BoardPartEdits.WithPictureColours`, by name AND image file); written as the board keeps
   them, a colour by NAME when it has one (`RectGeometry.ColorText`), an opacity as "30%"
   (`PictureColours.OpacityText`). **A picker writing back the colour it shows writes nothing** (the
@@ -644,7 +881,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   (`ComponentCopy.Sources`): the region's row whatever its part number was the other region's chip.
   **"Also on other boards" takes the FILES the draft replaced too** (2026-10-26 - the plan's "This
   datasheet is also used by 11 other boards - change it there too?"; `ChangedFiles`, no part number
-  needed): a component's file or picture, or a board file under Files and links (its own button
+  needed): a component's file or picture, or a board file under Files (its own button
   there), whose row - paired by its NAME - cites other bytes than published is offered to every other
   published board listing the SAME BYTES (by SHA-256; the live trees share 2,333 files so), where one
   of its component files, pictures or board files cites them - never a scope baseline's or a
@@ -692,22 +929,31 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   `ComponentPane.SignalSuggestions.cs`): once the nets are read, every net whose WHOLE name says what it
   is - a supply, ground, a clock, a control line, a bus line - is suggested under the name the live
   boards use ("+5VDC", "9VAC", "Ground", "Clock; PHI2", "RESET", "A0"); a net a row has is never
-  offered (`KiCadNetChoices.NormalizedOf` - the panel's rule). "Add" and "Add all suggestions" are one
-  step each, taken after what the boxes hold is in (a net just typed is not added twice). **The list
-  is changed in place** (`InPlaceList.Sync`): every box left commits the signals, and a list rebuilt
-  then threw away the "Add" a press had gone down on. "Show on board" is off on a board without KiCad
+  offered (`KiCadNetChoices.NormalizedOf` - the panel's rule). **A suggestion's name is a BOX**, changed
+  before it is added (owner request, 2026-10-30: "show the suggested names in an input text field") -
+  added under what it holds, the suggested name when it is emptied (`ComponentPaneSignalSuggestion
+  .NameToAdd`). "Add" and "Add all suggestions" are one step each, taken after what the boxes hold is in
+  (a net just typed is not added twice). **The list is changed in place** (`InPlaceList.Sync`, a
+  suggestion kept by its net and suggested name - `IsTheSameSuggestion` - so a name typed survives):
+  every box left commits the signals, and a list rebuilt then threw away the "Add" a press had gone down
+  on. "Show on board" is off on a board without KiCad
   data - there is nothing to light. "Show on board" on a row or a suggestion is `Main.ShowNetOnBoard` ->
   `TabSchematics.ShowOnlyNet`: only that net lit (locked, as a click on its trace locks it; every
   component selected let go of and the highlights rebuilt - one selected only on the schematic kept
   its nets lit), on the
   board read again first when the pane's saves left it behind; while the board's KiCad data is still
   loading it WAITS for `KiCadSettled` (the load lets go of every locked net), and a board load drops it.
+  **Every other net is listed last** (owner request, 2026-11-01: "all other nets not already used ...
+  below the 'Suggested' ones, so all nets will be visible in here"; `ImportantSignalSuggestions.OtherNets`,
+  `OtherNetsItemsControl`): each with the name it would be added under in a box (owner request, 2026-11-01: "a proposed net
+  name in an input field"; `ImportantSignalSuggestions.StartingNameOf`), "Show on board" and "Add".
+  A board has hundreds, so the list is a `VirtualizingStackPanel` and changed in place.
   **Credits know who is at the keyboard** (owner decisions, 2026-10-26: "Yes, let us try that", "Do it
   now"): a credit name and contact are REMEMBERED (`UserSettings.CreditName`/`CreditContact`, set
   together by `RememberCreditIdentity` - a blank name changes nothing; NEVER the contact email, since
-  credits are shown to everybody). The Credits part's **"Add me"** adds a row by them (the pane's
-  `CreditIdentity`/`RememberCreditIdentity` seams, the settings handed in by `TabDrafts.Initialize`),
-  and remembers the name once the row is in the draft. **The Submit dialog offers a credit for the
+  credits are shown to everybody). **The Credits part has no "Add me"** (owner decision, 2026-10-29:
+  "Remove the button entirely - there is already the 'Add credit' button") - the name is remembered by
+  the Submit dialog's credits below, and used there and by "Submit this model". **The Submit dialog offers a credit for the
   work sent, BEFORE sending** (`CreditSuggestions.For` - the draft against the published board, each
   kind of change its category in the board's own spelling; `SubmitDraftWindow.AddCreditsFirstAsync`):
   ticked ones go into the draft as one "Credits" step and are saved, and the board and fingerprint
@@ -726,41 +972,105 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   right-click), a board part, the table - goes again when that closes with nothing in it**
   (`TabDrafts.LetGoOfDraftMadeOnlyToLook`; code review, 2026-10-26): nothing waiting to be saved, no
   change against the published board, never a new board's, never one there before - **nor one holding
-  its rows in another ORDER** (`BoardRowOrder`, every sheet; code review 2026-10-28: pictures moved and
-  the draft went with the new order). Order still counts for nothing else - Submit of an order-only
-  draft stays the owner decision on order not yet taken.
-- **The start panel says how far the board is** (CRT 4.0 step 3's slice 3a, 2026-10-26;
-  `TabDrafts.Readiness.cs`, every rule and word `BoardReadiness`): a NEW board (`IsDraftOnly`) gets
-  "Getting this board ready" - the plan's nine steps, each DONE by what the draft held in memory holds
-  (never a box ticked), the KiCad project optional (without it matching, aligning and signals are
-  skipped, no button), the first step left NEXT, "Check and submit" next once nothing else is and never
-  done - with a button to the tool that does each (Add component and Submit green). An EXISTING board
-  gets "What's missing": no short description, marked on no picture, pins but no scope baseline - each
-  component a button opening it in the pane, the first `ListedAtMost` named. **Worked out ONCE per board
-  shown and when the start panel comes back** (`ShowStartPanel`; ShowBoard skips its own when that did
-  it), never on every `RefreshDrafts`, and **not while the tab is off screen** - then when it is shown
-  (`IsOnScreen`, `ShowReadinessIfStale` from `OnAttachedToVisualTree`; code review, 2026-10-26); from the
-  SESSION's content when the board has one (the pane's saves leave the board shown behind). The KiCad
-  facts (`BoardKiCadFacts`) arrive a moment later through `ReadBoardKiCadAsync` **into the same rows**,
-  and **"What's missing"'s groups and buttons are made once too** (`InPlaceList.Sync`) - a control made
-  again under a press threw the click away; a newer ask wins (`thisReadinessAsk`). A board's last facts
-  are KEPT and shown while they are read again (`thisReadinessFacts` - the button flicked to "Add
-  component"); another board's checklist goes AT ONCE (`HideSteps`), and with no draft to open none
-  shows. **KiCad files that could not be read are NOT empty KiCad data** (`BoardKiCadFacts.Read`): the
-  KiCad step says so (`KiCadUnreadable`), matching, aligning and signals need data CRT can read.
-  **Matching never holds the list up** once a picture shows a view: every picture or every view matched
-  is done, anything between Optional - CRT cannot know a photo shows no view (code review, 2026-10-26).
-- **"Add N from KiCad"** (step 3's slice 3b, 2026-10-26 - the plan: "one press adds every KiCad
-  component that isn't on the board yet"; the rule CRT.Data's `KiCadBoardComponents`, the KiCad types
-  handed over by `KiCadComponentTable`, the button `TabDrafts.AddFromKiCadAsync`): the components step's
-  button while the KiCad data has components the board lacks (`ReadinessStep.FromKiCad`), else "Add
-  component". **The components are the FIRST PCB file's footprints, once per reference** (a project
+  its rows in another ORDER** (`BoardRowOrder`; code review 2026-10-28: pictures moved and the draft went
+  with the new order). **Until its first change it is not shown as a draft at all** (owner request, 2026-11-01: "It should
+  not show it as draft until I have done my first edit, whatever that might be"; `TabDrafts.ShowsAsDraft`, `IsUntouchedLook`):
+  no row, no "Discard draft", no red tab title, the no-draft line in the header - though its folder exists and what was
+  opened stays open on it (`ApplyTableMode`). Its session's `Changed` shows it at once; a write the session does not see is
+  found as the list is read again. Quitting lets it go (`LetGoOfUntouchedDraftOnQuit`), and so does installing an update, once
+  the download is in (`Main.BeforeUpdateRestartAsync` - the restart exits without a Closing event; code review, 2026-11-01), closing
+  what is open on it, as that restart can still fail (`LetGoOfUntouchedDraftBeforeRestart`).
+- **ORDER IS A CHANGE** (owner decision, 2026-10-30: "a change of (any) order should also be submitted as
+  a change"; CRT.Data's `BoardRowOrder` - the lists of `ReviewSummary.AllSections` but the component
+  highlights, whose order nobody sees; only rows BOTH boards have are compared). It is counted BESIDE
+  `BoardDataDiffer`, which still counts rows (a moved row is none added, changed or removed - the table
+  colours none). **Component images are compared as a board file holds them, the pictures first and the
+  scope baselines after them, each kind among its own** (`AsAFileHolds`; code review, 2026-11-01: a
+  baseline dragged among the pictures was said to be an order the save then lost); and **"Undo changes
+  to [U8]" puts each row back where it was** (`ComponentRevert.Restore`/`RestoreImages`: a component's
+  rows that do not stand together went back together, an order change nothing could take back). It is
+  asked by: the draft's row and Submit (`DraftOtherChanges.Reordered`, against the published board
+  as rows are counted), "Review changes" and the Submit dialog ("Order of the files changed",
+  `DraftChangeSummary`), the board parts' "Changed" mark, retirement (a draft in another order is NOT
+  retired), and the maintainer's side - the server's summary (`ReviewChangeSummary.ReorderedSections`,
+  the wire's `reorderedSections`), a line above the submission's table (`ReviewNotInTable`) and the
+  board's History (`SubmissionChanges.Reordered`). The server publishes a submission's rows as sent, so
+  the order reaches the published board with it. **"Bring my draft up to date" keeps a section the
+  contributor reordered in their order** (`DraftRebase`, code review 2026-10-30 - it took the update's
+  and the reorder was lost); a section left in the base's order follows the update's.
+- **"Board name" is the left column's first entry and a page of its own** (owner request, 2026-11-01: "how
+  to edit those details again afterwards - I think this should be the very first item";
+  `TabDrafts.BoardName.cs`, `BoardNamePanel`). **The fields and every rule about them are ONE control,
+  `BoardNameFields`, shared with "Add a new board"**. **A new board's names and notes change there until
+  it is sent for review.** Its names ARE its identity and its folder ("<Manufacturer>/<Hardware>/<Board>/
+  board.json"), so a change moves the draft (`DraftBoardRename`: the folder whole, then the marker and the
+  board file; never over anything, all or nothing, capitals alone through a name in between, emptied parents
+  removed). What the draft holds is settled first; its session closes only once the folder has moved, or its
+  names changed - its Undo steps go then, which the page says, and never for notes alone or a rename refused (code review, 2026-11-01). **`Main.AfterBoardRenamed` carries over what this machine files under "{hardware}|{board}"**
+  (`BoardKeyMove`: settings - `UserSettings.MoveBoard` finds every "...ByBoard" dictionary BY THAT NAME, so a
+  new one follows by itself and `BoardKeyMoveTests` proves it - traces, workbooks, devices) and shows the board
+  by the steps a board just made takes. **A published board's name is only shown**, why said, and no
+  draft is made (owner decision, 2026-11-01: "a published board should not (for now) be renamable" - the
+  server and every CRT find it by the name, so renaming one would need the server). **Sent for review, a new board keeps its name while a maintainer has it**
+  (under a new name a submission would be a second board). **Only a decision against it frees the name**
+  (`SubmissionReceiptPresenter.IsDecidedAgainst`; code review, 2026-11-01): accepted and published are final too, and the
+  board then reads as published (`IsInPublishedData`) on a machine that has not synced it yet. Never while a picture tool is on.
+- **"Board status" is a panel per part of the board, new or published** (owner request, 2026-11-01: "each
+  point in its own panel with a headline, then an explanation what this is about, a button for it and
+  lastly also a status where it will count the data for it, if any ... some coloring and the checkmark icon
+  or a 'missing to do' icon"; it replaced the new board's checklist and "What's missing";
+  `TabDrafts.Readiness.cs`, every rule and word `BoardStatusPage`). Board name, KiCad data, Schematic images,
+  Important KiCad signals, Components, Files, Links, Credits. **Every error and warning is said on the panel it is
+  about** (owner request, 2026-11-01: "it should have the errors and warnings directly per section"; `BoardStatusPage.PartOf`
+  by its sheet, a highlight's the images'; the checks `DraftStatusReader.ProblemsOf`, on the draft held in memory, off the
+  UI thread): the first `ListedAtMost` in full, the rest counted, and "Show in the table" on its sheet. A warning leaves no
+  panel done or optional, an error makes it one. What the page says another way is not said twice - a row's required field
+  (its list's line), a component marked nowhere (the group of buttons). Only what is about no part keeps "Errors and
+  warnings", first, only while there is any. **A panel is Done, ToDo, Error or Optional** (`BoardStatusState`
+  - by what the board holds, never a box ticked), its frame and icon saying so (`Border.StatusPanel`; the
+  icons differ in shape too), a line off in its tone. **The KiCad project is optional**: without it its panel
+  and the signals' are Optional, nothing held against the board. **The Schematic images panel counts in the
+  owner's words** (owner decision, 2026-11-01: "25 images known by KiCad data", "4 images added", "2 KiCad files
+  mapped", "1 KiCad file aligned" - a picture card keeps "Shows KiCad view"): what is counted is the views, so a
+  PCB file - ALWAYS read as two, its top and its bottom, `KiCadRawProjectLoader.BuildProjectViews` - is 2 images
+  and, both sides mapped, "2 KiCad files mapped". **"Net" is one connection**, a netlist the list of them (the
+  Schematics tab's "Netlist names" panel became "KiCad nets" that day). **"Can be marked automatically" is a footprint to mark from** (none with no PCB
+  file); **"known by KiCad, marked by hand" is a schematic symbol no footprint has**
+  (`KiCadBoardComponents.OnlyInSchematic`). **"Not on the board yet" is the KiCad data's components the board has none
+  of** (owner request, 2026-11-01 - on the KiCad panel too, the very list "KiCad data" shows, `KiCadReferenceMatcher.Build`'s
+  `componentReferences`; "not labelled yet" until then, which is NOT "not marked": a component can be on the board and marked
+  nowhere). **Under Schematic images the suggested matches, under Components what
+  each lacks, a button per component** (`BoardReadiness.Missing`'s groups, the first `ListedAtMost` named).
+  A row with a field it needs empty (`BoardRowRequired`) is an Error on its list's panel. **Worked out ONCE per board shown and when the page comes back** (`ShowStartPanel`;
+  ShowBoard skips its own when that did it), never on every `RefreshDrafts`, and **not while the tab is off
+  screen** - then when it is shown (`IsOnScreen`, `ShowReadinessIfStale` from `OnAttachedToVisualTree`; code
+  review, 2026-10-26); from the SESSION's content when the board has one (the pane's saves leave the board
+  shown behind). The KiCad facts arrive a moment later through `ReadBoardKiCadAsync` **into the same panels**:
+  every panel and button is made once and changed in place (`CreateStatusRows`, `InPlaceList.Sync`) - a control
+  made again under a press threw the click away; a newer ask wins (`thisReadinessAsk`). A board's last facts
+  and KiCad files are KEPT and shown while they are read again; "not known yet" is said, no count guessed.
+  **KiCad files that could not be read are NOT empty KiCad data** (`BoardKiCadFacts.Read`): an Error on the KiCad
+  panel. A new board whose draft cannot be opened shows no panels.
+- **The KiCad components added to the board** (step 3's slice 3b, 2026-10-26 - the plan: "one press
+  adds every KiCad component that isn't on the board yet"; the rule CRT.Data's `KiCadBoardComponents`,
+  the KiCad types handed over by `KiCadComponentTable`, the one implementation
+  `TabDrafts.AddFromKiCadToAsync`). **Since 2026-11-01 THE KiCad IMPORT ADDS THEM** (owner request: "I
+  instead do think it should add all components when importing the KiCad data ... Have checkbox if it
+  should add all data automatically also?"): while "KiCad data"'s **"Add the KiCad components to the
+  board"** is ticked - ticked until unticked, remembered (`UserSettings.KiCadImportAddsComponents`,
+  handed in as `TabDrafts.KiCadImportAddsComponents`) - an import runs it as part of its queued change
+  (`KiCadDataPanel.AddKiCadComponents`, the panel catching up as the change ends, the report's labels
+  following); the summary says what came of it and offers the rest, **"Add N components from KiCad"**
+  (`KiCadImportSummary.AddComponentsButton`). Board status's "Add N from KiCad" (the components step's
+  button, and its gap) went. **The components are the FIRST PCB file's footprints, once per reference** (a project
   with no PCB, its symbols) - never a placeholder ("REF**", "#PWR", "U?"), a footprint with no numbered
-  pad (a logo), a mounting hole, a fiducial or a net tie; the checklist's "N found in KiCad" counts the
+  pad (a logo), a mounting hole (what a footprint IS, by its library or own name - owner report, 2026-11-01: a D-sub's
+  "..._MountingHolesOffset8.20mm" is a connector, and the Open128 lost four), a fiducial or a net tie; Board status counts the
   very same ones (`BoardKiCadFacts`). **The category is what the live boards use for the reference
   prefix** (measured on the stable tree: C Capacitor, R/RP Resistor, U*/IC IC, CR/D/DP Diode, CN/P
-  Connector, Q/TR Transistor; KiCad's convention where they have none - J a Connector, JP Misc; the rest
-  Misc). **The package only when the footprint's NAME says it and its pads agree** (a name STARTING
+  Connector, Q/TR Transistor; the rest Misc). **J is a jumper, Misc** (owner decision, 2026-10-31: "the
+  'J' component should be a 'Misc' category, as it is a jumper" - 30 of the live boards' 32 J parts, and
+  every J of the shipped KiCad projects; KiCad's own libraries' J connector is changed by hand). **The package only when the footprint's NAME says it and its pads agree** (a name STARTING
   "DIP16", "PDIP-40", "DIP-14_W7.62mm" with that many pads - "SOIC-DIP-8" and "Oscillator_DIP-14" are
   none; a 24/28-pin DIP "wide" by W15.24 in its name or pin 1 and the last pin 600 mil apart; SIP; TO-92
   and TO-220 with three pads) - else empty. The value is KiCad's ("~" none). A
@@ -770,20 +1080,26 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   by `ComponentPlacement` (new categories chips first), saved at once under the BusyOverlay - **counted
   and named on the draft as the change finds it** (`DraftEdits.OpenForChangeAsync` first: a file
   written outside read, what editors hold handed over); only a change reads the board on screen again.
-  What came of it is said under the checklist (`BoardReadiness.AddedFromKiCad`) **only while the draft
+  What came of it is said over Board status's panels (`BoardReadiness.AddedFromKiCad`) **only while the draft
   is the content it was said of** (`ReadinessNote` - an Undo takes it); no draft to open is said on the
   tab's problem line. The
   loader reads each footprint's name, value and datasheet (`KiCadPcbFootprint.FootprintName`/`Value`/
   `Datasheet`). On the shipped KiCad data every chip gets its package but 250469's PLA (its own footprint).
-- **"Mark all automatically"** (step 3's slice 3c, 2026-10-26 - the plan: "on aligned PCB pictures,
+- **"Mark all automatically from KiCad"** ("from KiCad" on the button since 2026-10-30 - owner request:
+  what it marks from was not clear; `PictureToolWording.MarkAutomaticallyButton`) (step 3's slice 3c,
+  2026-10-26 - the plan: "on aligned PCB pictures,
   Mark all automatically draws each component's rectangle from its footprint"; `Handlers/Geometry/
   KiCadFootprintMarks`, `TabDrafts.MarkAutomatically.cs`): a green button on each picture card in the
   Pictures part, on for a picture with a CAD name AND a calibration in the draft; whether its view is a
   SIDE OF THE BOARD (pcb_top/pcb_bottom, never a schematic sheet) is decided with the KiCad data read
-  (`KiCadFootprintMarks.Plan` - the first thing missing is said under the part's heading). **The board's
+  (`KiCadFootprintMarks.Plan` - the first thing missing is said under the part's heading). The card is
+  its name AND its image file (`KiCadFootprintMarks.PictureRow` - of two pictures of one name, the one
+  pressed; code review, 2026-10-30), as for its traces; the Schematics tab's picture tools still go by
+  name, as its highlights and alignments are filed. **The board's
   world bounds and the mapping onto the picture are the Schematics tab's own** - its
-  `GetKiCadPcbWorldBounds` and `MapKiCadWorldToImagePixel` call `KiCadFootprintMarks.PcbWorldBounds`/
-  `WorldToImagePixel` - so a rectangle lands where the copper is drawn; never a second copy of either.
+  `GetKiCadPcbWorldBounds`, `MapKiCadWorldToImagePixel` and `MapKiCadWorldLengthToLocal` call
+  `KiCadFootprintMarks.PcbWorldBounds`/`WorldToImagePixel`/`WorldLengthOnPicture` (the last the card
+  previews' trace width too) - so a rectangle lands where the copper is drawn; never a second copy of any.
   A rectangle is the footprint's pads (each turned by its own angle) with 0.5 mm around and at least 2 mm
   across, in whole pixels cut to the picture (a corner a hair off a pixel IS that pixel - float noise
   added one). Only components the board HAS, seen from the picture's side (a through-hole pad from both,
@@ -793,8 +1109,23 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   2026-10-26: the label editor's Done writes its picture's rectangles as it holds them, and the marks
   went without a word). Nothing marked is said for what it is (`KiCadMarkPlan.WhyNothing`: no components
   yet, no footprint on the picture, all marked already), and the note under the part goes once the draft
-  moves on (`DropPicturesNoteIfMovedOn` - an Undo takes it). The checklist's Mark step offers it once a
-  picture is aligned with a SIDE OF THE BOARD (`BoardKiCadFacts.BoardViews` - never a schematic sheet).
+  moves on (`DropPicturesNoteIfMovedOn` - an Undo takes it).
+  **"Align KiCad"'s Done MARKS THE PICTURE BY ITSELF, without asking** (owner request, 2026-11-01 -
+  "OK, make that"; `TabDrafts.MarkAfterAligningAsync`): every picture aligned with Done (or "Done - next
+  picture") on a tool the Contribute tab asked for is told (`TabSchematics.AlignedFromWorkspace`, only
+  after the alignment SAVED) and kept by Main (`thisAlignedToMark`, cleared as a tool starts); once the
+  tool hands back to the Contribute tab, each of the board still shown is marked as "Mark all" marks
+  (`Main.MarkPicturesAlignedAsync`) - but on its first alignment a picture with ANY mark already is left alone
+  (its marks were drawn; another round is asked for with the button - `KiCadFootprintMarks.HasMarks`), a schematic sheet
+  is passed over without a word (`KiCadMarkPlan.NotABoardSide`), and what came of it says the alignment
+  is in too (`PictureToolWording.MarkedAfterAligning`). The board shown is asked before EACH picture
+  (code review, 2026-11-01: each is marked on whatever board is shown then). ONE step per picture, which
+  Undo takes back. "Mark all" stays for later rounds. **ALIGNED AGAIN, THE MARKS KiCad DREW MOVE WITH IT** (owner request,
+  2026-11-01: "if I then again do the Align KiCad then it seems it will not readjust the components, which I think it
+  should"; `KiCadFootprintMarks.Realigned`, the alignment before handed on by `AlignedFromWorkspace`): a mark exactly where
+  its footprint lay under the alignment before goes where it lies now, one now off the picture goes, a footprint newly on it
+  gets one (only newly: one that lay on it all along with no mark had it deleted on purpose, and it stays deleted); a mark
+  anywhere else was moved or drawn by hand, and stays. No mark of KiCad's on the picture: left alone. ONE step.
 - **The label editor lists the components not marked on its picture** (slice 3c - the plan: "Photos and
   scanned schematics use the label editor as today, with the unmarked components listed beside it";
   `TabSchematics.LabelEditor.Unmarked.cs`, `UnmarkedComponents`): IN the picture tool's bar (the editor
@@ -807,7 +1138,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   be saved at all.
 - **Suggested matches** (step 3's slice 3d, 2026-10-28 - the plan: "Match: suggested pairs ("...Top.png"
   with "PCB Top") to confirm"; the rule CRT.Data's `SchematicCadNameSuggestions`, the views as
-  `BoardKiCadFacts.ToMatch`): under the checklist's Match step, each picture with no CAD name and the
+  `BoardKiCadFacts.ToMatch`): under Board status's Schematic images, each picture with no CAD name and the
   view no picture has that its NAME or its FILE's name says it shows - the same words, a side said in
   words (top/front, bottom/back/solder) or KiCad's plot spellings (a name ENDING ".F"/".B", the layer
   "F.Cu"/"B_Cu" - **never a lone letter**: "C64 Rev B" read as the bottom, code review 2026-10-28 - nor a
@@ -837,7 +1168,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
 - **Files dropped on the Contribute tab** (slice 3e; `TabDrafts.Drop.cs`, the rule `BoardDrop`): anywhere on
   the tab, onto the board shown - pictures go into the Pictures part, opened for them, as its "Add
   pictures" adds them (`ComponentPane.AddPicturesAsync`), a KiCad project FOLDER opens "KiCad data"
-  importing it as it opens (`BoardFilesWindow.ImportOnceOpen` - the window's own import, never a second
+  importing it as it opens (`KiCadDataPanel.ImportOnceOpen` - the panel's own import, never a second
   copy); a folder with no KiCad file but pictures at its top is those pictures. **Everything dropped
   counts, and what is left out is said** (`BoardDrop.Note`, on the tab's line; code review 2026-10-28 -
   the first folder decided alone): a KiCad project folder is taken on its own, one at a time; else every
@@ -860,35 +1191,41 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   contributor's machine, stored nowhere); a schematic (.sch) or board (.brd) CRT cannot read is SAID with
   what to do - an older KiCad's (told by its FIRST LINE, `KiCadRawFileScanner.IsOlderKiCadFile`) to save it
   in a newer KiCad, another program's (EAGLE uses the same extensions) to import it into KiCad - such a
-  project used to get only "No KiCad files in that folder"; LEFT TO DO - the getting-ready steps after the
-  KiCad data still to do, by `BoardReadiness.Steps` on the draft held in memory, never a second copy of its
-  rules. **The folder is walked ONCE** (`KiCadRawFileScanner.ScanSplit`: taken, left out, older KiCad), and
+  project used to get only "No KiCad files in that folder"; LEFT TO DO - what the board still needs now
+  its KiCad data is in, by `BoardReadiness.WorkLeftAfterKiCad` on the draft held in memory, never a second
+  copy of its rules. **The folder is walked ONCE** (`KiCadRawFileScanner.ScanSplit`: taken, left out, older KiCad), and
   **the walk, the copy and the report are ONE of the window's queued changes** under its wait (code review,
   2026-10-28: walked outside the queue, the window could close meanwhile and the import landed unseen).
-  The window is "KiCad data" alone since step 3; its KiCad part is `BoardFilesWindow.KiCad.cs`.
+  It is "KiCad data" alone since step 3; its KiCad part is `KiCadDataPanel.KiCad.cs`.
 - **"Contribution in use"** (`Main.thisContributionInUse` - a draft, or unread news on something sent)
   is what the Drafts tab's visibility used to be: it decides whether CRT asks the API revision.
 The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainerWindow`,
-`SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `BoardFilesWindow`,
+`SubmitDraftWindow`, `DraftDriftWindow`, `MySubmissionsWindow`, `KiCadDataPanel` (a panel since
+2026-10-30, not a window),
 `DiscardDraftWindow`, `ForgetSubmissionWindow`, `RemoveSchematicWindow`).
 
 - **The pictures are added, named, matched, ordered and removed ON THEIR CARDS** in the Pictures part
   (CRT 4.0 step 3, 2026-10-28 - the plan: "Pictures: today's Schematic images content, moved inline";
   owner: "do what is best for having the best UX for the user. It should be as easy as possible";
-  `ComponentPane.BoardPictureList.cs`). **The "Schematic images" window is GONE**; `BoardFilesWindow` is
-  "KiCad data" alone, and the checklist's picture steps open the Pictures part. "Add pictures" (or
+  `ComponentPane.BoardPictureList.cs`). **The "Schematic images" window is GONE**; `KiCadDataPanel` is
+  "KiCad data" alone. "Add pictures" (or
   pictures dropped on the tab) copies each in at the board's top under a name of the board's own
   (`ComponentPaneFileNames.ForBoardPicture`), named after its file and never a name a picture has
   (`BoardPictureEdits`) - ONE step, saved at once; never a hidden file; **only the pictures actually
   copied get a card** (`DraftPickedFiles.Copied` - one locked or gone is said, code review 2026-10-28).
+  **No card or thumbnail is read until that save is done** (`ComponentPane.thisFilesArriving`, from
+  `AddToDraftAsync`; owner report 2026-11-01: a new board's pictures were grey boxes) - a copy lies in
+  the draft folder until the save lists it and moves it into the store, and a read in between lost it.
   The name box renames on Enter or when left (Escape puts the name back) through `SchematicRename.Plan`
   and `ApplyWithFollow` - **never on a pause in typing** (`CommitHeld(fromTyping)`: a pause after "Top"
   saved or refused half a name). **A name refused stays in its box** with the reason, and the part
-  stays open on it (`KeepsRefusedPictureName`) - the pane's Close, another part, a component or the
-  table asked for (`OpenPaneAsync`, `OpenTableAsync`); only another board shown closes it. The pictures'
-  undo steps and "Review changes" say "Picture [Top] ..." and "KiCad view of [Top]"
-  (`DraftStepWording`, `DraftChangeSummary`), and Remove asks "Remove picture" with Undo to bring back
-  what goes with it (`SchematicRemoval.WhatGoes`). **"Shows KiCad view"** picks the CAD name
+  stays open on it (`KeepsRefusedPictureName`) - "Board status", another part, a component or the
+  table asked for (`ShowBoardStatusAsync`, `OpenPaneAsync`, `OpenTableAsync`); only another board shown
+  closes it. The pictures'
+  undo steps and "Review changes" say "Schematic image [Top] ..." and "KiCad view of [Top]"
+  (`DraftStepWording`, `DraftChangeSummary`), and **"Delete"** ("Remove" until 2026-10-29 - the image
+  leaves the board and its file the draft; the contributor's own copy is never touched) asks "Delete
+  schematic image" with Undo to bring back what goes with it (`SchematicRemoval.WhatGoes`). **"Shows KiCad view"** picks the CAD name
   from the board's views, read by the host off the UI thread from the project the Schematics tab draws,
   ASKED by the pane when the part opens and again whenever the draft's KiCad files change while it is
   open (`KiCadViewsWanted`, numbered like the pins' ask - an older read is never taken;
@@ -905,11 +1242,29 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   its box loses focus - on the PRESS of another card's button - and cards made again would throw that
   click away; only adding, moving and removing show the cards again. Left unused by the window's going,
   with their tests: `KiCadRawProjectLoader.LoadViewDisplayNamesAsync` and CRT.Data's `SchematicOrder`.
+- **"KiCad data" is a PANEL on the right of the Contribute tab, not a window** (owner request,
+  2026-10-30: "I do not understand why the 'KiCad data' opens in a new window? ... it should just show
+  up in the 'normal' content area"; `KiCadDataPanel`, the BoardFilesWindow until then, hosted by
+  `TabDrafts.KiCad.cs` in `KiCadPanelHost`). ONE thing on the right at a time: opening it closes the
+  table and the pane (what they hold saved), and opening either, or "Components", closes it; a NEW
+  panel is made for each opening, as the window was. Its waits run under Main's BusyOverlay
+  (`BusyOverlay.For` finds the window it is in) - it has none of its own; a test hosts it in a window
+  with one (`KiCadDataPanelTests.Hosted`). **Each change it makes is caught up with AS IT ENDS**
+  (`KiCadDataPanel.DraftChanged` -> `CatchUpAfterBoardFiles`: the row, the left column's count, the
+  board on screen read again) - a window did that as it closed, and a panel can stay open while the
+  contributor goes to the Schematics tab. **And it follows what moves the draft under it**
+  (`KiCadDataPanel.FollowDraft`, from `TabDrafts.AfterDraftChanged`; code review, 2026-11-01): the
+  header's Undo and Redo and "Undo changes to" stand beside it, so its labels, signals, summary and
+  report are read again, queued with its own changes, and what the last add said goes. It has no Close
+  of its own - another entry of the left column closes it. **Closing waits for its queue** (`WaitForChangesAsync`) -
+  except another board shown or its draft discarded, which cannot be called off: it goes at once
+  (`CloseKiCadNow`), its changes end by themselves and are still caught up with, and a draft made only
+  to open it is let go of only when nothing is still being written into it. Quitting waits for it too
+  (`SaveDraftEditorsNowAsync`).
 - **Every change "KiCad data" makes to the draft is ONE queued change** (code review, 2026-10-10;
-  `BoardFilesWindow.DraftChanges.cs`): applied to the draft held in memory and saved off the UI thread
-  under the window's BusyOverlay (`ChangeDraftAsync`), each after the one before it (a click whose
-  press came before the overlay still lands). **Closing waits for the queue.** A test waits for
-  `DraftChanging`.
+  `KiCadDataPanel.DraftChanges.cs`): applied to the draft held in memory and saved off the UI thread
+  under CRT's BusyOverlay (`ChangeDraftAsync`), each after the one before it (a click whose press came
+  before the overlay still lands). A test waits for `DraftChanging`.
 - **What hangs on a schematic's NAME follows it in every draft write** (owner request, 2026-10-10;
   `DraftWorkbookStore.EditCore`): the sidecar files highlights and the KiCad calibration by schematic
   name, so a rename moves them and a deletion drops them - the server's own rule for a table edit
@@ -931,8 +1286,13 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   It is used only when CRT has nothing remembered for the board; then a name the board HAS stays.
   **Every sidecar writer passes the list on** (`BoardSidecarWriter` builds the whole file; a list it
   is not handed is gone).
-- **The KiCad data window lists every KiCad net name** (a click copies it) and the Important signals
-  rows naming no net. `KiCadNetNames.Resolver` IS the Schematics tab's Important signals panel's rule
+- **The KiCad data panel lists every KiCad net** (nothing to click since 2026-11-01 - owner request: "drop
+  that 'copy' option ... as this will not be useful", every net has its "Add" under Important KiCad signals;
+  one an important signal uses is a FILLED green badge with white text - owner report, 2026-10-29: green text on grey was
+  "almost impossible to see"; "The 45 nets in green ...", `KiCadImportedFiles.UsedNetNamesSentence`) and the Important
+  signals rows naming no net. **With no import of the draft's own, its file list says whether the board
+  HAS KiCad data** (`KiCadImportedFiles.StateLine` - owner report, 2026-10-29: "No KiCad data imported
+  yet" on a board with published KiCad files). `KiCadNetNames.Resolver` IS the Schematics tab's Important signals panel's rule
   - change it there, never beside it. **Its whole report reads the files the Schematics tab draws
   from - the published "KiCad data" AND the draft's** (`KiCadRawFileScanner.ScanBoard`); its file
   list (what Remove deletes) stays the draft's. KiCad's "no net" is the LOADER's mark
@@ -948,6 +1308,10 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   matches its LATEST submission, Submit is greyed out with the reason - unless that submission never
   finished sending. An empty fingerprint never blocks. `TabDrafts.SubmitAsync` checks again after
   settling the table's edits.
+- **The Submit dialog is no taller than its screen, and centred over CRT whenever its size changes**
+  (owner report, 2026-11-01: "I cannot see the submit button", and its progress panel stood at the top):
+  its panels scroll, the buttons below them (`SubmitDraftWindow.OnOpened`, `DialogPlacement`) - a window
+  sized to its content keeps its top edge as it shrinks.
 - **What a submit sends is the draft WORKBOOK read from disk** (`TabDrafts.BoardToSendAsync`) - the
   file its fingerprint is taken from. Never `DataManager.LoadBoardDataAsync` there: it answered from
   its cache (an image renamed for a board not selected in the drop-down lists went to the queue
@@ -995,9 +1359,11 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   refused at Submit, fixable nowhere in the table), and the rename alone is no change of the component.
   **The Submit dialog shows the same summary** ("Your changes") and **Discard draft lists what is lost**
   (`AsLines(max: 12)`) - the words are `DraftChangeSummary`'s, nowhere else.
-- **Unfinished work is saved** (the plan: "Only Submit asks for problems to be fixed"): a missing
-  category, an image row with neither file nor note, a picture CRT cannot show are left to the table's
-  checks. A file goes in its kind's usual folder (`ContributionFileLocations.DefaultFolderFor`, through
+- **Unfinished work is saved** (the plan: "Only Submit asks for problems to be fixed"): a category
+  emptied, an image row with neither file nor note, a picture CRT cannot show are left to the checks. One exception holds a row back in the pane instead: a scope baseline without its pin, a
+  setting and a screenshot (else it is a picture). A row of the board's files, links, credits or
+  important signals with a field it needs empty goes in, an error (`BoardRowRequired`, above - held back
+  too until 2026-11-01). A file goes in its kind's usual folder (`ContributionFileLocations.DefaultFolderFor`, through
   `ComponentPaneFileNames`). **A save not made takes its copied files back** (`DraftPickedFiles` - a
   file a copy replaced is set aside in `.crt-set-aside` and put back; code review, 2026-10-26): left
   lying in the draft folder, the next write by ANY editor took them in after "could not be saved". A
@@ -1017,7 +1383,8 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   made every later run "already up to date". Bringing up to date also removes untouched copies of files
   the merged board no longer cites, and follows the update's own renames (`FollowUpdateRenames`). Files named `.crt-*` are bookkeeping
   (`DraftFolderLayout.IsDraftOnlyFile`). Files and calibrations count for Submit (`DraftOtherChanges`,
-  measured against the base); only row ORDER does not.
+  measured against the base) - and row ORDER since 2026-10-30 (`BoardRowOrder`, against the published
+  board, as rows are counted).
 - **Every editor changes the ONE draft held in memory** (CRT 4.0 step 1, 2026-10-25; `DraftEdits`):
   the component pane, the label editor, the KiCad calibration and "KiCad data" hand their
   change to the draft's `DraftSession` and save it at once. **Only handing over what the table holds
@@ -1036,8 +1403,10 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   "Bring my draft up to date", Remove of a KiCad file - goes through `DraftEdits.WriteFileDirectlyAsync`
   (held changes collected on the UI thread, saved first, the file read back; bringing up to date
   clears the history, measured against the old base); a KiCad import takes its files in with
-  `TakeInNewFilesAsync`. "KiCad data" still has the table saved before it opens
-  (`SettleTableEditsAsync`), so a table that cannot save is asked about once, not behind every click.
+  `TakeInNewFilesAsync`. "KiCad data" settles what the table, the pane and the draft hold before it
+  opens (`SettleTableEditsAsync`, while they are all still open, so Cancel leaves them as they were -
+  the panel's move from a window dropped it, code review 2026-11-01), so a change that cannot be saved
+  is asked about once, not behind every click.
 - **Each draft's row counts problems too** (`DraftStatusReader.CountProblemsCached`), and the list is
   read again when the tab is shown or CRT's window is activated - when an Excel edit arrives.
   **That read keeps every unchanged row** (`TabDrafts.KeepUnchangedRows` - `InPlaceList.KeepUnchanged` -
@@ -1142,11 +1511,12 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
 - **The checks are in the table** (`BoardDataChecks`, one rule set with the server): **an error in the
   table is a refusal at submit** (`Every_error_the_table_finds_is_one_the_server_refuses`); a new local
   rule is a warning. A problem cell gets a corner triangle drawn as ONE background brush; a problem in
-  no row is a line above the table. Duplicates and rows a save drops are WARNINGS (owner decision
-  2026-10-03), marked on every row of the set. Submit on a draft with errors sends nothing and opens
-  its table on them. Two warnings are the table's alone (the Everything scope, never the server's;
-  2026-10-25, since unfinished work is saved): `component.no_category` (it is not in
-  the component list without one) and `image.not_displayable`.
+  no row is a line above the table. Duplicates are WARNINGS (owner decision 2026-10-03), marked on every
+  row of the set; a save drops no row since 2026-11-01 (an important signal missing a half was the one,
+  a warning; `BoardTableRowState.Incomplete` went with it, `BoardWorkbookSchemaTests` holding that no
+  mapper drops a row with any text in it) - a field a row needs is an error (`BoardRowRequired`). Submit on a draft with errors sends nothing and opens
+  its table on them. One warning is the table's alone (the Everything scope, never the server's;
+  2026-10-25, since unfinished work is saved): `image.not_displayable`.
 - **The search box** (`BoardTableSearch`, the Workbooks tab's `WorklogSearchQuery` grammar, every
   cell): decided ONCE when typed; a search finding nothing anywhere keeps only the current sheet with
   `NothingFoundLine`. **The marks are the table's own, NOT ProDataGrid's**: every data column is a
@@ -1173,11 +1543,14 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
 - **Row order is what the user sees, and new components are PLACED** (`ComponentPlacement`: a new
   component goes into its category in natural label order, a new category last, an edited one stays
   put; a regional twin straight after its twin). **Order is NOT a change `BoardDataDiffer` counts** -
-  making it one is an owner decision not yet taken.
+  it is counted beside it, by `BoardRowOrder` (owner decision, 2026-10-30: order is a change - see
+  "ORDER IS A CHANGE" above); the table colours no row that only moved.
 - **Hover cards** (`BoardTableEditor.FilePreview.cs`): pointing at a FILE cell opens a card at once -
   a `Popup` in the window's overlay layer, light dismiss OFF, beside the cell. Every text tooltip is
   instant (`CellToolTipDelay`) and NOT hit-testable, so the pointer reaches the cell below. The bytes
-  come from the host's `IBoardTableFileSource`.
+  come from the host's `IBoardTableFileSource`. **A changed COLOR cell shows both colors in the same card** (owner request,
+  2026-11-01: "a popup showing the colors 'Changed from' and 'Changed to'"; `BoardTableEditor.ColourChange.cs`, the rule
+  `BoardTableColourCells`): a swatch and its text per side, "(not set)" for a blank one - no bytes needed, so with or without a source.
 - **Every cell wraps; a double-click on a heading's edge fits the column to every row**
   (`BoardTableEditor.TextWrap.cs`, `ColumnAutoFitGeometry`; the grid's own fit measured only built rows).
 - **The current cell has no fill and a 2px dashed red frame** (the template's `CurrencyVisual`
@@ -1468,7 +1841,9 @@ the rows the panel had; the gear shows only while a row does - every row is a Ki
   (`BeforeApprovingNotice`; owner request, 2026-10-09: "The UI should have a uniform and consistent
   look"). Both sit DIRECTLY ABOVE their view switch, said whichever view is open, and both are
   App.axaml's `Border.Notice` with a `TextBlock.NoticeIcon` and `TextBlock.NoticeText` -
-  a new "why this cannot be done now" panel uses those classes, never its own colours. The read-only
+  a new "why this cannot be done now" panel uses those classes, never its own colours. **The words are
+  NOT bold and the icon stands in the MIDDLE of them** (owner request, 2026-10-30, of the Contribute
+  tab's local-draft notice - the same look everywhere; a person named keeps the bold of its own run). The read-only
   reason comes from the board's DETAIL (`BoardDetailAnswer.MayEdit`/`MayNotEditReason`, the table's
   own rule on the server) or BETA's table, whichever was read last - so it is there before Board data
   is read. The line above BETA's table says what happened and what the table is, never why it is
@@ -1594,7 +1969,7 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   asked again): `Main.KiCadRawPathsFor` runs on the pool while the thumbnails decode, and the
   Schematics tab keeps the paths its load used (`thisCurrentKiCadRawPaths`) - never ask for them
   per render; the KiCad data window reads its list and its report from one read on the pool
-  (`BoardFilesWindow.ReadKiCadAsync`). **A replaced copy gets a LATER write time than the one it
+  (`KiCadDataPanel.ReadKiCadAsync`). **A replaced copy gets a LATER write time than the one it
   replaced** (`BoardKiCadFolder.Copy`): `KiCadProjectLoader` keeps its parse by path and write time,
   File.Copy keeps the source's, and two sources written in one clock tick served the old parse.
   Only the types the loaders read are copied, the cache is in the user's OWN app data
@@ -1751,6 +2126,11 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   board-level "how the baselines were measured" is NOT a field: it is the board's "Scope measurements"
   files (owner decision, 2026-10-26; `ScopeMeasurementFiles`). The popup and the Overview tab show the
   new data since slice 3c (`ComponentPopupContent`, `OverviewHtmlBuilder.BuildRows`).
+- **TEMPORARY - TO REMOVE BEFORE GO-LIVE** (owner request, 2026-11-01): `BaselinePinMigration`, the tool making
+  pinouts of scope baselines (the "Pinout" page's Notice panel, per component and for the whole board). Delete it, its panel
+  (`MigrationPanel`), its part of `ComponentPane.Pages.cs`, the `Migration*`/`Migrated*` words and
+  `DraftStepWording.PinsFromBaselines*`. **`BaselinePinMigrationTests` fails a release version while it is there**, which
+  stops the release workflow.
 - **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
   empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
   files by their Excel-tree paths), and pasting the Wiki's 4.0 pages and deleting the fourteen it no

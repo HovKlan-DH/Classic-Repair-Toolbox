@@ -48,6 +48,7 @@ namespace Handlers.DataHandling
                 HardwareName = board.HardwareName,
                 BoardName = board.BoardName,
                 RevisionDate = board.RevisionDate,
+                Regions = board.Regions.ToList(),
                 Schematics = board.Schematics.Select(row => new BoardDocument.SchematicRow
                 {
                     Name = row.SchematicName,
@@ -58,6 +59,9 @@ namespace Handlers.DataHandling
                     ThumbnailHighlightColor = row.ThumbnailHighlightColor,
                     ThumbnailHighlightOpacity = row.ThumbnailHighlightOpacity,
                     CadName = row.CadName,
+                    TraceHighlightColor = BoardDocumentMapping.WhenGiven(row.TraceHighlightColor),
+                    TraceHighlightOpacity = BoardDocumentMapping.WhenGiven(row.TraceHighlightOpacity),
+                    OppositeTraceHighlightOpacity = BoardDocumentMapping.WhenGiven(row.OppositeTraceHighlightOpacity),
                 }).ToList(),
                 Components = board.Components.Select(row => new BoardDocument.ComponentRow
                 {
@@ -198,6 +202,7 @@ namespace Handlers.DataHandling
                 HardwareName = document.HardwareName,
                 BoardName = document.BoardName,
                 RevisionDate = document.RevisionDate,
+                Regions = document.Regions.ToList(),
                 Schematics = document.Schematics.Select(row => new BoardSchematicEntry
                 {
                     SchematicName = row.Name,
@@ -208,6 +213,9 @@ namespace Handlers.DataHandling
                     ThumbnailHighlightColor = row.ThumbnailHighlightColor,
                     ThumbnailHighlightOpacity = row.ThumbnailHighlightOpacity,
                     CadName = row.CadName,
+                    TraceHighlightColor = row.TraceHighlightColor ?? string.Empty,
+                    TraceHighlightOpacity = row.TraceHighlightOpacity ?? string.Empty,
+                    OppositeTraceHighlightOpacity = row.OppositeTraceHighlightOpacity ?? string.Empty,
                 }).ToList(),
                 Components = document.Components.Select(row => new ComponentEntry
                 {

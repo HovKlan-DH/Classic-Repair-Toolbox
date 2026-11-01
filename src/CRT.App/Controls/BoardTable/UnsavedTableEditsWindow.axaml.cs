@@ -85,7 +85,7 @@ namespace CRT
                 UnsavedTableEditsPrompt.DraftNotWritten =>
                     "Your latest changes to the draft could not be saved: its file could not be written - " +
                     "another program may have it open. Cancel to stay (close the file there, then " +
-                    "press Try again) - or discard the changes that could not be saved.",
+                    "press \"Try again\") - or discard the changes that could not be saved.",
                 UnsavedTableEditsPrompt.LeavingUpdateRequired =>
                     "The table has changes that are not sent yet, and they cannot be sent until CRT is updated - " +
                     "the server turns this version of CRT away. Discard them, or cancel to keep CRT open and " +

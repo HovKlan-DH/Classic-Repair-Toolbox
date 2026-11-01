@@ -476,7 +476,7 @@
 						     own content and the four edges did not line up between the two rows,
 						     which read as untidy. See the Button.WorkbookHeaderAction style for why
 						     that width is measured rather than hardcoded. -->
-						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+						<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
 							<Button x:Name="EditWorkbookButton"
 									Classes="WorkbookHeaderAction"
 									Content="Edit workbook"
@@ -501,7 +501,7 @@
 						     Deliberately NO icon on either: the fa-regular file-pdf glyph rendered
 						     as a blank box in the shipped font subset. Plain text labels say what
 						     these do without depending on a glyph being present. -->
-						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+						<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
 							<Button x:Name="ExportWorkbookButton"
 									Classes="WorkbookHeaderAction"
 									Content="Export to PDF"
@@ -650,7 +650,7 @@
 								Spacing="4"
 								VerticalAlignment="Top"
 								Margin="8,0,0,0">
-						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+						<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
 							<Button x:Name="EditDeviceButton"
 									Classes="WorkbookHeaderAction"
 									Content="Edit device"
@@ -662,7 +662,7 @@
 									FontSize="11"
 									Click="OnDeleteDeviceClick" />
 						</StackPanel>
-						<StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Right">
+						<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
 							<Button x:Name="ExportHistoryButton"
 									Classes="WorkbookHeaderAction"
 									Content="Export history to PDF"

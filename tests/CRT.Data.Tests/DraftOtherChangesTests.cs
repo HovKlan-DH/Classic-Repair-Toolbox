@@ -179,4 +179,46 @@ public sealed class DraftOtherChangesTests : IDisposable
     {
         Assert.Equal(expected, new DraftOtherChanges(files, calibrations).Describe());
     }
+
+    // ###########################################################################################
+    // *** LISTS IN ANOTHER ORDER ARE WORK (owner decision, 2026-10-30: "a change of (any) order should
+    // also be submitted as a change"). *** A draft whose only work is files moved up or down can be
+    // submitted - Any - and its row says so, after the files and calibrations.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(0, 0, 1, "order of a list changed")]
+    [InlineData(0, 0, 2, "order of 2 lists changed")]
+    [InlineData(1, 0, 1, "1 file changed, order of a list changed")]
+    [InlineData(0, 1, 3, "KiCad calibration changed, order of 3 lists changed")]
+    public void Lists_in_another_order_are_a_change_and_are_said(int files, int calibrations, int reordered, string expected)
+    {
+        var changes = new DraftOtherChanges(files, calibrations, reordered);
+
+        Assert.True(changes.Any);
+        Assert.Equal(expected, changes.Describe());
+    }
+
+    // The draft's lists are read against the published board, as its rows are counted.
+    [Fact]
+    public void A_draft_with_its_components_in_another_order_counts_one_list()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(this.PublishedWorkbook)!);
+        BoardWorkbookWriter.Write(this.PublishedWorkbook, new BoardData
+        {
+            RevisionDate = "2026-09-01",
+            Components = [new ComponentEntry { BoardLabel = "U8" }, new ComponentEntry { BoardLabel = "U9" }],
+        });
+        BoardDataReader.ClearAllCache();
+
+        Assert.True(DraftSeeder.SeedFromPublishedFile(this.DraftsRoot, this.DataRoot, BoardKey).Created);
+        Assert.Equal(0, this.Count().Reordered);
+
+        BoardData draft = BoardDataReader.ReadWorkbookUncached(this.DraftWorkbook)!;
+        draft.Components.Reverse();
+        BoardWorkbookWriter.Write(this.DraftWorkbook, draft);
+        BoardDataReader.ClearAllCache();
+
+        Assert.Equal(1, this.Count().Reordered);
+        Assert.True(this.Count().Any);
+    }
 }

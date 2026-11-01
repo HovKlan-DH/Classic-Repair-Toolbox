@@ -56,7 +56,7 @@ namespace CRT.Server.Tests
                 {
                     RevisionDate = "2026-August-21",
                     Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = BoardEditFlowTests.Sheet }],
-                    Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" }],
+                    Components = [new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" }],
                     BoardLocalFiles =
                     [
                         new BoardLocalFileEntry { Category = "Service", Name = "Manual", File = BoardEditFlowTests.Manual },
@@ -174,7 +174,7 @@ namespace CRT.Server.Tests
             BoardTableAnswer table = (await this.ReadAsync(store, withStable: false)).Answer!;
 
             SubmissionRows rows = SubmissionRowsBoard.FromBoard(SubmissionRowsBoard.ToBoard(table.Rows));
-            rows.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-02" };
+            rows.Components[0] = new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-02" };
             edit?.Invoke(rows);
 
             return new BoardEditRequest(BoardEditFlowTests.BoardId, table.Fingerprint, reason, rows, removals ?? []);
@@ -297,7 +297,7 @@ namespace CRT.Server.Tests
             BoardEditRequest request = await this.EditedAsync(store);
 
             BoardData beta = await this.BetaBoardAsync();
-            beta.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA (changed meanwhile)", TechnicalNameOrValue = "906114-01" };
+            beta.Components[0] = new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA (changed meanwhile)", TechnicalNameOrValue = "906114-01" };
             BoardWorkbookWriter.Write(this.WorkbookPath, beta);
 
             BoardEditOutcome check = await this.CheckAsync(store, request);
@@ -334,7 +334,7 @@ namespace CRT.Server.Tests
                 landed = true;
 
                 BoardData beta = await this.BetaBoardAsync();
-                beta.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA (published meanwhile)", TechnicalNameOrValue = "906114-01" };
+                beta.Components[0] = new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA (published meanwhile)", TechnicalNameOrValue = "906114-01" };
                 BoardWorkbookWriter.Write(this.WorkbookPath, beta);
             };
 
@@ -561,6 +561,7 @@ namespace CRT.Server.Tests
             ComponentEntry u8 = rows.Components[0];
             rows.Components[0] = new ComponentEntry
             {
+                Category = "IC",
                 BoardLabel = u8.BoardLabel,
                 FriendlyName = name,
                 TechnicalNameOrValue = u8.TechnicalNameOrValue,

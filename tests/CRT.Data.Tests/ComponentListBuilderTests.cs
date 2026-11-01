@@ -197,6 +197,35 @@ public class ComponentListBuilderTests
         Assert.Single(ComponentListBuilder.BuildComponentItems(board, "PAL", null, "U1 | PLA"));
     }
 
+    // ###########################################################################################
+    // The search's one rule, for a list already built (code review, 2026-10-30: the Contribute tab
+    // built its list twice per refresh, once only to count): narrowing the whole list by MatchesSearch
+    // gives what the search itself builds, whatever the words.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("u")]
+    [InlineData("PLA")]
+    [InlineData("U1    pla")]
+    [InlineData("U1 | PLA")]
+    [InlineData("nothing")]
+    public void Narrowing_the_whole_list_by_the_search_rule_gives_what_the_search_builds(string search)
+    {
+        var board = Board(
+            Component(boardLabel: "U1", friendly: "PLA", technical: "906114"),
+            Component(boardLabel: "U2", friendly: "CPU", region: "NTSC"),
+            Component(boardLabel: "U3", friendly: "VIC", region: "PAL"),
+            Component(boardLabel: "R1", technical: "10k"));
+
+        List<ComponentListItem> all = ComponentListBuilder.BuildComponentItems(board, "PAL");
+        List<ComponentListItem> searched = ComponentListBuilder.BuildComponentItems(board, "PAL", null, search);
+
+        Assert.Equal(
+            searched.Select(item => item.SelectionKey),
+            all.Where(item => ComponentListBuilder.MatchesSearch(item.DisplayText, search)).Select(item => item.SelectionKey));
+    }
+
     // -------------------------------------------------------------- category filter
 
     [Fact]
@@ -314,35 +343,6 @@ public class ComponentListBuilderTests
             .BuildComponentItems(board, "", draftedBoardLabels: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "u1" }).Single();
 
         Assert.True(item.IsDrafted);
-    }
-
-    // -------------------------------------------------------------- HasExplicitRegionComponents
-
-    // This is what decides whether the PAL/NTSC switch is offered at all.
-    [Theory]
-    [InlineData("PAL", true)]
-    [InlineData("NTSC", true)]
-    [InlineData("pal", true)]
-    [InlineData("  NTSC  ", true)]
-    [InlineData("", false)]
-    [InlineData("SECAM", false)]
-    public void A_board_offers_the_region_switch_only_for_PAL_or_NTSC_components(string region, bool expected)
-    {
-        var board = Board(Component(boardLabel: "U1", region: region));
-
-        Assert.Equal(expected, ComponentListBuilder.HasExplicitRegionComponents(board));
-    }
-
-    [Fact]
-    public void A_null_board_has_no_explicit_region_components()
-    {
-        Assert.False(ComponentListBuilder.HasExplicitRegionComponents(null));
-    }
-
-    [Fact]
-    public void A_board_with_no_components_has_no_explicit_region_components()
-    {
-        Assert.False(ComponentListBuilder.HasExplicitRegionComponents(Board()));
     }
 
     // -------------------------------------------------------------- IsSupportedKiCadRawFile

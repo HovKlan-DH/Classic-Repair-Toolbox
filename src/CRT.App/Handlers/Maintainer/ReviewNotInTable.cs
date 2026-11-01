@@ -76,6 +76,16 @@ namespace Handlers.MaintainerHandling
                     if (section.TotalChanges > 0 && !ReviewNotInTable.TableSheets.Contains(section.Section))
                         lines.AddRange(ReviewNotInTable.DescribeSection(section));
                 }
+
+                // *** A LIST PUT IN ANOTHER ORDER (owner decision, 2026-10-30: order is a change). ***
+                // The table colours no row that only moved, so a submission whose work is the order
+                // of its files would read as nothing at all.
+                foreach (string sheet in changes.ReorderedSections)
+                    lines.Add(new ReviewNoteLine(BoardRowOrder.OrderChangedLine(sheet), ReviewNoteKind.Change));
+
+                // No row says this either - the board's regions (2026-11-01).
+                if (changes.RegionsNow is bool regions)
+                    lines.Add(new ReviewNoteLine(BoardRegions.ChangedLine(regions), ReviewNoteKind.Change));
             }
 
             foreach (ReviewFindingView finding in findings)

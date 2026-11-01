@@ -14,6 +14,17 @@ namespace Handlers.DataHandling
         public string ThumbnailHighlightColor { get; init; } = string.Empty;
         public string ThumbnailHighlightOpacity { get; init; } = string.Empty;
 
+        // ###########################################################################################
+        // How the KiCad traces are drawn on this picture (owner request, 2026-10-30: "be able to set
+        // the 'this side' trace color + the opacity for 'this side' and 'other side' traces"). New in
+        // CRT 4.0, never in the Excel generations, and blank means as before: this side's traces in
+        // the highlight colour, both sides at the highlight opacity plus a quarter
+        // (TraceColours.Resolve, the one rule the Schematics tab and the pane's previews draw by).
+        // ###########################################################################################
+        public string TraceHighlightColor { get; init; } = string.Empty;
+        public string TraceHighlightOpacity { get; init; } = string.Empty;
+        public string OppositeTraceHighlightOpacity { get; init; } = string.Empty;
+
         // This row with another CAD name and every other column as it was - what picking a KiCad
         // name in the "Schematic images" window writes (2026-10-10). A column left out of this
         // copy would be erased from the workbook, silently; BoardSchematicEntryTests compares
@@ -32,7 +43,10 @@ namespace Handlers.DataHandling
             this.SchematicHighlightOpacity,
             this.OppositeTraceHighlightColor,
             this.ThumbnailHighlightColor,
-            this.ThumbnailHighlightOpacity);
+            this.ThumbnailHighlightOpacity,
+            this.TraceHighlightColor,
+            this.TraceHighlightOpacity,
+            this.OppositeTraceHighlightOpacity);
 
         // This row with other colours and every other column as it was. Same rule as WithCadName.
         public BoardSchematicEntry WithColours(PictureColours colours) => new()
@@ -45,6 +59,9 @@ namespace Handlers.DataHandling
             OppositeTraceHighlightColor = colours.OppositeTraceColor,
             ThumbnailHighlightColor = colours.ThumbnailHighlightColor,
             ThumbnailHighlightOpacity = colours.ThumbnailHighlightOpacity,
+            TraceHighlightColor = colours.TraceColor,
+            TraceHighlightOpacity = colours.TraceOpacity,
+            OppositeTraceHighlightOpacity = colours.OppositeTraceOpacity,
         };
 
         private BoardSchematicEntry With(string schematicName, string cadName) => new()
@@ -57,6 +74,9 @@ namespace Handlers.DataHandling
             OppositeTraceHighlightColor = this.OppositeTraceHighlightColor,
             ThumbnailHighlightColor = this.ThumbnailHighlightColor,
             ThumbnailHighlightOpacity = this.ThumbnailHighlightOpacity,
+            TraceHighlightColor = this.TraceHighlightColor,
+            TraceHighlightOpacity = this.TraceHighlightOpacity,
+            OppositeTraceHighlightOpacity = this.OppositeTraceHighlightOpacity,
         };
     }
 
@@ -81,6 +101,29 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public string Package { get; init; } = string.Empty;
         public string RepairNotes { get; init; } = string.Empty;
+
+        // This row of a relabelled component, every other value as it was. BoardSchematicEntryTests
+        // compares every property by reflection.
+        public ComponentEntry WithBoardLabel(string boardLabel) => this.With(boardLabel, this.Region, this.Category);
+
+        // This row in another region - a component told apart per region, or no longer.
+        public ComponentEntry WithRegion(string region) => this.With(this.BoardLabel, region, this.Category);
+
+        // This row under another category (BoardCategoryEdits).
+        public ComponentEntry WithCategory(string category) => this.With(this.BoardLabel, this.Region, category);
+
+        private ComponentEntry With(string boardLabel, string region, string category) => new()
+        {
+            BoardLabel = boardLabel,
+            FriendlyName = this.FriendlyName,
+            TechnicalNameOrValue = this.TechnicalNameOrValue,
+            PartNumber = this.PartNumber,
+            Category = category,
+            Region = region,
+            Description = this.Description,
+            Package = this.Package,
+            RepairNotes = this.RepairNotes,
+        };
     }
 
     public class ComponentImageEntry
@@ -105,6 +148,24 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public string MachineState { get; init; } = string.Empty;
         public string Source { get; init; } = string.Empty;
+
+        // This row of a relabelled component, every other value as it was. BoardSchematicEntryTests
+        // compares every property by reflection.
+        public ComponentImageEntry WithBoardLabel(string boardLabel) => new()
+        {
+            BoardLabel = boardLabel,
+            Region = this.Region,
+            Pin = this.Pin,
+            Name = this.Name,
+            ExpectedOscilloscopeReading = this.ExpectedOscilloscopeReading,
+            File = this.File,
+            Note = this.Note,
+            TimeDiv = this.TimeDiv,
+            VoltsDiv = this.VoltsDiv,
+            TriggerLevelVolts = this.TriggerLevelVolts,
+            MachineState = this.MachineState,
+            Source = this.Source,
+        };
     }
 
     // ###########################################################################################
@@ -120,6 +181,20 @@ namespace Handlers.DataHandling
         public string Pin { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Direction { get; init; } = string.Empty;
+
+        // This pin of a relabelled component, or in another region - every other value as it was.
+        public ComponentPinEntry WithBoardLabel(string boardLabel) => this.With(boardLabel, this.Region);
+
+        public ComponentPinEntry WithRegion(string region) => this.With(this.BoardLabel, region);
+
+        private ComponentPinEntry With(string boardLabel, string region) => new()
+        {
+            BoardLabel = boardLabel,
+            Region = region,
+            Pin = this.Pin,
+            Name = this.Name,
+            Direction = this.Direction,
+        };
     }
 
     // ###########################################################################################
@@ -137,6 +212,17 @@ namespace Handlers.DataHandling
         public string Kind { get; init; } = string.Empty;
         public string Changes { get; init; } = string.Empty;
         public string Source { get; init; } = string.Empty;
+
+        // This part of a relabelled component, every other value as it was.
+        public ComponentReplacementEntry WithBoardLabel(string boardLabel) => new()
+        {
+            BoardLabel = boardLabel,
+            Region = this.Region,
+            PartNumber = this.PartNumber,
+            Kind = this.Kind,
+            Changes = this.Changes,
+            Source = this.Source,
+        };
     }
 
     public class ComponentHighlightEntry
@@ -160,6 +246,18 @@ namespace Handlers.DataHandling
             Height = this.Height,
         };
 
+        // This row where `other` lies, every other value as it was - KiCad aligned again (owner request,
+        // 2026-11-01; KiCadFootprintMarks.Realigned).
+        public ComponentHighlightEntry WithRectangleOf(ComponentHighlightEntry other) => new()
+        {
+            SchematicName = this.SchematicName,
+            BoardLabel = this.BoardLabel,
+            X = other.X,
+            Y = other.Y,
+            Width = other.Width,
+            Height = other.Height,
+        };
+
         // This rectangle on a relabelled component, every other value as it was (ComponentRelabel,
         // code review 2026-10-13).
         public ComponentHighlightEntry WithBoardLabel(string boardLabel) => new()
@@ -178,6 +276,9 @@ namespace Handlers.DataHandling
         public string BoardLabel { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
+
+        // This file of a relabelled component, every other value as it was.
+        public ComponentLocalFileEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, File = this.File };
     }
 
     public class ComponentLinkEntry
@@ -185,6 +286,9 @@ namespace Handlers.DataHandling
         public string BoardLabel { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Url { get; init; } = string.Empty;
+
+        // This link of a relabelled component, every other value as it was.
+        public ComponentLinkEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, Url = this.Url };
     }
 
     public class BoardLocalFileEntry
@@ -302,6 +406,12 @@ namespace Handlers.DataHandling
         public List<ComponentReplacementEntry> ComponentReplacements { get; init; } = new();
 
         // ###########################################################################################
+        // The regions this board says it comes in - PAL and NTSC, or none (owner decisions, 2026-11-01).
+        // Ask BoardRegions.Has, never this: empty on a board that has not said, whose rows then decide.
+        // ###########################################################################################
+        public List<string> Regions { get; init; } = new();
+
+        // ###########################################################################################
         // The same board with a different revision date - used by the publish, which stamps the
         // date it actually published on (added 2026-09-23).
         //
@@ -328,6 +438,7 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
+            Regions = this.Regions,
         };
 
         // ###########################################################################################
@@ -357,6 +468,7 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
+            Regions = this.Regions,
         };
 
         // The same board under another "# Hardware:" / "# Board:" caption - the publish, for a board
@@ -379,6 +491,7 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
+            Regions = this.Regions,
         };
 
         // ###########################################################################################
@@ -409,6 +522,29 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
             ComponentPins = componentPins ?? this.ComponentPins,
             ComponentReplacements = componentReplacements ?? this.ComponentReplacements,
+            Regions = this.Regions,
+        };
+
+        // The same board saying it comes in other regions (BoardRegions.WithRegions). Lists shared, as
+        // WithRevisionDate's are.
+        public BoardData WithRegions(List<string> regions) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = this.HardwareName,
+            BoardName = this.BoardName,
+            Schematics = this.Schematics,
+            Components = this.Components,
+            ComponentImages = this.ComponentImages,
+            ComponentHighlights = this.ComponentHighlights,
+            ComponentLocalFiles = this.ComponentLocalFiles,
+            ComponentLinks = this.ComponentLinks,
+            BoardLocalFiles = this.BoardLocalFiles,
+            BoardLinks = this.BoardLinks,
+            Credits = this.Credits,
+            KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
+            Regions = regions ?? new(),
         };
 
         // ###########################################################################################
@@ -437,6 +573,7 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = kiCadImportantSignals ?? this.KiCadImportantSignals,
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
+            Regions = this.Regions,
         };
 
         // The same board with different highlights - used when a save drops the highlights of a
@@ -458,6 +595,7 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = this.KiCadImportantSignals,
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
+            Regions = this.Regions,
         };
     }
 

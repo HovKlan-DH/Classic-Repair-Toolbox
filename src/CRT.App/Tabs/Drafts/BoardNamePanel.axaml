@@ -1,0 +1,64 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.BoardNamePanel">
+
+	<Grid RowDefinitions="Auto,*">
+		<!-- The part's headline, as the component pane's and "KiCad data"'s. -->
+		<Border Grid.Row="0"
+				BorderBrush="{DynamicResource Table_BorderRowLine}"
+				BorderThickness="0,0,0,1"
+				Padding="0,0,0,8"
+				Margin="0,0,0,4">
+			<StackPanel Spacing="2">
+				<TextBlock Text="Board: Name"
+						   FontSize="16"
+						   FontWeight="Bold" />
+				<TextBlock x:Name="IntroText"
+						   TextWrapping="Wrap"
+						   FontSize="11"
+						   Opacity="0.75" />
+			</StackPanel>
+		</Border>
+
+		<ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+			<StackPanel Spacing="10" Margin="4,8,12,12" MaxWidth="560" HorizontalAlignment="Left">
+
+				<!-- Why this board's name cannot be changed here - App.axaml's notice, as every such panel. -->
+				<Border x:Name="WhyNotPanel" Classes="Notice" IsVisible="False">
+					<Grid ColumnDefinitions="Auto,*">
+						<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+						<TextBlock x:Name="WhyNotText" Grid.Column="1" Classes="NoticeText" />
+					</Grid>
+				</Border>
+
+				<local:BoardNameFields x:Name="Fields" />
+
+				<!-- Hidden until there is something to say. -->
+				<TextBlock x:Name="ValidationText"
+						   TextWrapping="Wrap"
+						   IsVisible="False"
+						   FontWeight="Bold"
+						   Foreground="{DynamicResource Text_Fail_Fg}" />
+
+				<StackPanel x:Name="SavePanel" Orientation="Horizontal" Spacing="6">
+					<Button x:Name="SaveButton"
+							Classes="Accept"
+							Content="Save board name"
+							IsEnabled="False"
+							Click="OnSaveClick" />
+					<TextBlock x:Name="SavedText"
+							   VerticalAlignment="Center"
+							   FontSize="11"
+							   Opacity="0.75"
+							   IsVisible="False" />
+				</StackPanel>
+
+				<TextBlock x:Name="MovesText"
+						   TextWrapping="Wrap"
+						   FontSize="11"
+						   Opacity="0.75" />
+			</StackPanel>
+		</ScrollViewer>
+	</Grid>
+</UserControl>

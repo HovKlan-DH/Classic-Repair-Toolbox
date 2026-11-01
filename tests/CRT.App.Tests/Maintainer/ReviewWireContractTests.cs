@@ -1562,6 +1562,69 @@ public sealed class ReviewWireContractTests
         Assert.Equal(new ReviewAmendmentView(2, "m@example.com", ReviewWireContractTests.Decided), detail.Amendment);
     }
 
+    // ###########################################################################################
+    // The lists a submission put in another order (2026-10-30 - order is a change) ride on its
+    // summary: the server's ReviewChangeSummary writes them, the Maintainer tab's parser reads them -
+    // and a summary from a server that does not say reads as none.
+    // ###########################################################################################
+    [Fact]
+    public void The_lists_in_another_order_arrive_with_the_submissions_summary()
+    {
+        var answer = new SubmissionDetailAnswer(
+            CanPublish: true,
+            Approval: new ApprovalStatus([ApproverRole.Maintainer], [], [ApproverRole.Maintainer], ApproverRole.Maintainer, CanApprove: true, ApprovalPublishes: true),
+            Submission: new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "Files reordered.", "c@example.com", "", ReviewWireContractTests.Decided, null, false),
+            Manifest: new SubmissionManifest { BoardId = "Commodore/C64/250407" },
+            Contributor: new ReviewContributorFacts("c@example.com", "C", Published: 0, Waiting: 1, ChangesRequested: 0, Rejected: 0),
+            Findings: [],
+            Changes: new ReviewChangeSummary(false, null, [], [BoardWorkbookSchema.SheetBoardLocalFiles]),
+            PublishedFiles: [],
+            PublishedHashes: new Dictionary<string, string>(),
+            SchematicImages: new Dictionary<string, string>(),
+            SubmittedFiles: [],
+            Removals: new FileRemovalPreview([], null),
+            Amendment: null);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer));
+
+        Assert.Equal([BoardWorkbookSchema.SheetBoardLocalFiles], detail!.Changes!.ReorderedSections);
+        Assert.True(detail.Changes.HasChanges);
+
+        ReviewSubmissionDetail? older = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer with { Changes = new ReviewChangeSummary(false, null, []) }));
+        Assert.Empty(older!.Changes!.ReorderedSections);
+    }
+
+    // ###########################################################################################
+    // What a submission says of the board's regions (2026-11-01) rides on its summary the same way -
+    // and a summary from a server that does not say reads as no change.
+    // ###########################################################################################
+    [Fact]
+    public void A_change_of_the_boards_regions_arrives_with_the_submissions_summary()
+    {
+        var answer = new SubmissionDetailAnswer(
+            CanPublish: true,
+            Approval: new ApprovalStatus([ApproverRole.Maintainer], [], [ApproverRole.Maintainer], ApproverRole.Maintainer, CanApprove: true, ApprovalPublishes: true),
+            Submission: new ReviewQueueEntry(4, "Commodore/C64/250407", "pending", "Regions.", "c@example.com", "", ReviewWireContractTests.Decided, null, false),
+            Manifest: new SubmissionManifest { BoardId = "Commodore/C64/250407" },
+            Contributor: new ReviewContributorFacts("c@example.com", "C", Published: 0, Waiting: 1, ChangesRequested: 0, Rejected: 0),
+            Findings: [],
+            Changes: new ReviewChangeSummary(false, null, [], null, RegionsNow: true),
+            PublishedFiles: [],
+            PublishedHashes: new Dictionary<string, string>(),
+            SchematicImages: new Dictionary<string, string>(),
+            SubmittedFiles: [],
+            Removals: new FileRemovalPreview([], null),
+            Amendment: null);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer));
+
+        Assert.True(detail!.Changes!.RegionsNow);
+        Assert.True(detail.Changes.HasChanges);
+
+        ReviewSubmissionDetail? older = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer with { Changes = new ReviewChangeSummary(false, null, []) }));
+        Assert.Null(older!.Changes!.RegionsNow);
+    }
+
     // GET /api/health (2026-10-04): the version Account > "Server version" shows.
     [Fact]
     public void The_health_answer_gives_the_server_version()

@@ -9,6 +9,70 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class KiCadComponentTableTests
 {
+    // ###########################################################################################
+    // HOW MANY COMPONENTS EACH VIEW SHOWS (owner request, 2026-11-01): a side of the board by marking's
+    // own rule - a through-hole part on both, a surface part on its own side, no mounting hole - and a
+    // sheet by the parts drawn on it, each once however many units it has, no power symbol.
+    // ###########################################################################################
+    [Fact]
+    public void Each_view_counts_the_components_it_shows()
+    {
+        static KiCadPcbPad Pad(string layer) => new() { Number = "1", Layers = [layer] };
+
+        var root = new KiCadProjectRoot
+        {
+            Project = new KiCadProjectInfo
+            {
+                Views =
+                [
+                    new KiCadProjectView { DisplayName = "Board - PCB Top", Type = "pcb_top", SourceIndex = 0 },
+                    new KiCadProjectView { DisplayName = "Board - PCB Bottom", Type = "pcb_bottom", SourceIndex = 0 },
+                    new KiCadProjectView { DisplayName = "Main", Type = "schematic", SourceIndex = 0 },
+                    new KiCadProjectView { DisplayName = "Nowhere", Type = "schematic", SourceIndex = 9 },
+                ],
+            },
+            Pcb =
+            [
+                new KiCadPcb
+                {
+                    Footprints =
+                    [
+                        new KiCadPcbFootprint { Reference = "U1", Pads = [Pad("*.Cu")] },
+                        new KiCadPcbFootprint { Reference = "C1", Pads = [Pad("F.Cu")] },
+                        new KiCadPcbFootprint { Reference = "C2", Pads = [Pad("B.Cu")] },
+                        new KiCadPcbFootprint { Reference = "H1", FootprintName = "MountingHole:MountingHole_3mm", Pads = [Pad("*.Cu")] },
+                    ],
+                },
+            ],
+            Schematics =
+            [
+                new KiCadSchematic
+                {
+                    Symbols =
+                    [
+                        new KiCadSchematicSymbol { Reference = "U1" },
+                        new KiCadSchematicSymbol { Reference = "U1" },
+                        new KiCadSchematicSymbol { Reference = "#PWR01" },
+                        new KiCadSchematicSymbol { Reference = "Y1" },
+                    ],
+                },
+            ],
+        };
+
+        Dictionary<string, int> counts = KiCadComponentTable.CountsByView(root);
+
+        Assert.Equal(2, counts["board - pcb top"]);
+        Assert.Equal(2, counts["Board - PCB Bottom"]);
+        Assert.Equal(2, counts["Main"]);
+        Assert.Equal(0, counts["Nowhere"]);
+
+        // Y1 has no footprint: it can only be marked by hand.
+        Assert.Equal(["Y1"], KiCadComponentTable.OnlyInSchematic(root));
+
+        Assert.Empty(KiCadComponentTable.CountsByView(null));
+        Assert.Empty(KiCadComponentTable.OnlyInSchematic(null));
+    }
+
     private static KiCadPcbPad Pad(string number, double x, double y, string net = "", string function = "") => new()
     {
         Number = number,

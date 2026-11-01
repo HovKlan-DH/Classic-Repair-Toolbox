@@ -79,6 +79,7 @@ namespace Handlers.DataHandling
                 KiCadImportantSignals = [.. rows.KiCadImportantSignals],
                 ComponentPins = [.. rows.ComponentPins ?? published?.ComponentPins ?? []],
                 ComponentReplacements = [.. rows.ComponentReplacements ?? published?.ComponentReplacements ?? []],
+                Regions = [.. rows.Regions ?? published?.Regions ?? []],
             };
         }
 

@@ -147,7 +147,8 @@ namespace Handlers.DataHandling
                     // Always sent, empty when the board has none - null is an older client's
                     // "not sent" (see SubmissionRows.ComponentPins).
                     ComponentPins = merged.ComponentPins.ToList(),
-                    ComponentReplacements = merged.ComponentReplacements.ToList()
+                    ComponentReplacements = merged.ComponentReplacements.ToList(),
+                    Regions = merged.Regions.ToList()
                 }
             };
 
@@ -335,7 +336,8 @@ namespace Handlers.DataHandling
                 Credits = [.. rows.Credits],
                 KiCadImportantSignals = [.. rows.KiCadImportantSignals],
                 ComponentPins = [.. rows.ComponentPins ?? []],
-                ComponentReplacements = [.. rows.ComponentReplacements ?? []]
+                ComponentReplacements = [.. rows.ComponentReplacements ?? []],
+                Regions = [.. rows.Regions ?? []]
             };
         }
     }

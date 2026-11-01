@@ -112,4 +112,56 @@ public sealed class MainShowOnBoardTests : IDisposable
             Assert.Empty(MainShowOnBoardTests.Selected(window));
         });
     }
+
+    // ###########################################################################################
+    // "Back to Contribute" (owner request, 2026-10-29: "there should be a 'Back' button or alike, so
+    // the use can easily see they can go back to same place as before"): "Show on board" offers it on
+    // the Schematics tab; pressing it goes back to the Contribute tab, and being back takes it away.
+    // ###########################################################################################
+    [Fact]
+    public void Show_on_board_offers_the_way_back_and_going_back_takes_it_away()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainShowOnBoardTests.BoardKey };
+            window.ComponentFilterListBox.ItemsSource = MainShowOnBoardTests.Items();
+
+            window.ShowComponentOnBoard("U8", readBoardFirst: false);
+
+            Assert.True(window.TabSchematicsControl.IsBackToContributeShownForTests);
+            Assert.Equal("Showing [U8] from the \"Contribute\" tab", window.TabSchematicsControl.BackToContributeTextForTests);
+
+            // KHAKI, so it stands out as there only for the moment (owner request, 2026-10-30: "please
+            // make this more visible - maybe use the standard(?) Khaki color for the panel").
+            Avalonia.Controls.Border bar = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Border>(window.TabSchematicsControl, "BackToContributeBorder")!;
+            Assert.Equal(Avalonia.Media.Colors.Khaki, ((Avalonia.Media.ISolidColorBrush)bar.Background!).Color);
+
+            window.TabSchematicsControl.PressBackToContributeForTests();
+
+            Assert.Same(window.ContributeTabItem, window.MainTabControl.SelectedItem);
+            Assert.False(window.TabSchematicsControl.IsBackToContributeShownForTests);
+            Assert.False(window.IsBackToContributeOfferedForTests);
+        });
+    }
+
+    // A net lit up offers it too; the same board read again keeps it, another board takes it away.
+    [Fact]
+    public void The_way_back_stays_while_the_board_is_read_again_and_goes_with_another_board()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainShowOnBoardTests.BoardKey };
+
+            window.ShowNetOnBoard("PHI2", readBoardFirst: false);
+            Assert.Equal("Showing the net [PHI2] from the \"Contribute\" tab", window.TabSchematicsControl.BackToContributeTextForTests);
+
+            window.ShowBoardInContributeTab(null);
+            Assert.True(window.TabSchematicsControl.IsBackToContributeShownForTests);
+
+            window.BoardKeyOverrideForTests = "Commodore 64|250425";
+            window.ShowBoardInContributeTab(null);
+            Assert.False(window.TabSchematicsControl.IsBackToContributeShownForTests);
+            Assert.Same(window.SchematicsTabItem, window.MainTabControl.SelectedItem);
+        });
+    }
 }

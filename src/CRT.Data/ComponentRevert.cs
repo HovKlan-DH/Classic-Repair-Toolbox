@@ -17,8 +17,11 @@ namespace Handlers.DataHandling
     // so "Undo changes to U08" brings U8 back. The rest of the draft is left exactly as it is.
     //
     // The rows go back WHERE THEY WERE: in place of the draft's rows of the component, or - when the
-    // draft removed it - after the row the published board has before them. Order is no change the
-    // differ counts, but a component put back at the end of its sheet would read as moved.
+    // draft removed it - after the row the published board has before them; and a row of it that did
+    // not stand with the one before it, after the row it stood after (code review, 2026-11-01). Order
+    // is a change (BoardRowOrder), so a component put back anywhere else reads as moved - in "Review
+    // changes", with nothing there to take it back. Its pictures and scope baselines go back each among
+    // their own kind: a board file holds the pictures first and the baselines after them.
     //
     // A FILE OF THE COMPONENT REPLACED UNDER ITS OWN NAME goes back too (code review, 2026-10-26) -
     // not by the rows, which name it the same, but by the draft's list of files, which the caller
@@ -153,7 +156,7 @@ namespace Handlers.DataHandling
                 BoardName = draft.BoardName,
                 Schematics = draft.Schematics,
                 Components = ComponentRevert.Restore(draft.Components, before.Components, row => Of(row.BoardLabel)),
-                ComponentImages = ComponentRevert.Restore(draft.ComponentImages, before.ComponentImages, row => Of(row.BoardLabel)),
+                ComponentImages = ComponentRevert.RestoreImages(draft.ComponentImages, before.ComponentImages, row => Of(row.BoardLabel)),
                 ComponentHighlights = ComponentRevert.Restore(draft.ComponentHighlights, publishedHere.ComponentHighlights, row => Of(row.BoardLabel)),
                 ComponentLocalFiles = ComponentRevert.Restore(draft.ComponentLocalFiles, before.ComponentLocalFiles, row => Of(row.BoardLabel)),
                 ComponentLinks = ComponentRevert.Restore(draft.ComponentLinks, before.ComponentLinks, row => Of(row.BoardLabel)),
@@ -163,55 +166,86 @@ namespace Handlers.DataHandling
                 BoardLinks = draft.BoardLinks,
                 Credits = draft.Credits,
                 KiCadImportantSignals = draft.KiCadImportantSignals,
+                Regions = draft.Regions,
             };
         }
 
         // ###########################################################################################
-        // One section: the draft's rows without the component's, the published rows of it put back
-        // where the draft's first one was - or, with none, right after the row the published section
-        // has before them (by identity, BoardDraftNaturalKeys), else first.
+        // The images, each kind among its own - as a board file holds them (BoardDocumentMapping), so a
+        // component's pictures and baselines, which do not stand together, go back where each was.
+        // ###########################################################################################
+        private static List<ComponentImageEntry> RestoreImages(
+            List<ComponentImageEntry> draftRows,
+            List<ComponentImageEntry> publishedRows,
+            Func<ComponentImageEntry, bool> ofComponent)
+        {
+            List<ComponentImageEntry> Kind(List<ComponentImageEntry> rows, bool baselines) =>
+                rows.Where(row => ComponentImageKinds.IsScopeBaseline(row) == baselines).ToList();
+
+            return
+            [
+                .. ComponentRevert.Restore(Kind(draftRows, baselines: false), Kind(publishedRows, baselines: false), ofComponent),
+                .. ComponentRevert.Restore(Kind(draftRows, baselines: true), Kind(publishedRows, baselines: true), ofComponent),
+            ];
+        }
+
+        // ###########################################################################################
+        // One section: the draft's rows without the component's, each published row of it put back right
+        // after the row the published section has before it (by identity, BoardDraftNaturalKeys) - the row
+        // of the component before it when they stood together - else first.
+        //
+        // *** THE FIRST ROW TOO (code review, 2026-11-01). *** It went where the draft's first one was, so a
+        // component dragged elsewhere kept that place: "Order of the components changed" stayed, with nothing
+        // to take it back. But what the published board does not have - a row the draft added or relabelled -
+        // that stood in front of the component stays in front of it: nothing else moves.
         // ###########################################################################################
         private static List<T> Restore<T>(List<T> draftRows, List<T> publishedRows, Func<T, bool> ofComponent)
             where T : class
         {
-            List<T> restored = publishedRows.Where(ofComponent).ToList();
             int firstOwn = draftRows.FindIndex(row => ofComponent(row));
+            int keptInFront = firstOwn < 0 ? 0 : draftRows.Take(firstOwn).Count(row => !ofComponent(row));
 
-            List<T> kept = draftRows.Where(row => !ofComponent(row)).ToList();
+            var published = new HashSet<string>(publishedRows.Select(BoardDraftNaturalKeys.ForRow), StringComparer.OrdinalIgnoreCase);
 
-            if (restored.Count == 0)
-                return kept;
+            List<T> rows = draftRows.Where(row => !ofComponent(row)).ToList();
+            bool first = true;
 
-            int at;
-
-            if (firstOwn >= 0)
+            for (int publishedIndex = 0; publishedIndex < publishedRows.Count; publishedIndex++)
             {
-                // The draft's rows before the first of the component's that are kept.
-                at = draftRows.Take(firstOwn).Count(row => !ofComponent(row));
-            }
-            else
-            {
-                int publishedFirst = publishedRows.FindIndex(row => ofComponent(row));
+                if (!ofComponent(publishedRows[publishedIndex]))
+                    continue;
 
-                var keptKeys = kept
-                    .Select((row, index) => (Key: BoardDraftNaturalKeys.ForRow(row), Index: index))
-                    .GroupBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(group => group.Key, group => group.First().Index, StringComparer.OrdinalIgnoreCase);
+                int at = ComponentRevert.AfterTheRowBefore(rows, publishedRows, publishedIndex);
 
-                at = 0;
-
-                for (int index = publishedFirst - 1; index >= 0; index--)
+                while (first && at < keptInFront && !published.Contains(BoardDraftNaturalKeys.ForRow(rows[at])))
                 {
-                    if (keptKeys.TryGetValue(BoardDraftNaturalKeys.ForRow(publishedRows[index]), out int keptIndex))
-                    {
-                        at = keptIndex + 1;
-                        break;
-                    }
+                    at++;
                 }
+
+                rows.Insert(at, publishedRows[publishedIndex]);
+                first = false;
             }
 
-            kept.InsertRange(at, restored);
-            return kept;
+            return rows;
+        }
+
+        // Where a published row goes in `rows`: after the nearest row before it in the published section
+        // that `rows` holds - else first.
+        private static int AfterTheRowBefore<T>(List<T> rows, List<T> publishedRows, int publishedIndex)
+            where T : class
+        {
+            var positions = rows
+                .Select((row, index) => (Key: BoardDraftNaturalKeys.ForRow(row), Index: index))
+                .GroupBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last().Index, StringComparer.OrdinalIgnoreCase);
+
+            for (int index = publishedIndex - 1; index >= 0; index--)
+            {
+                if (positions.TryGetValue(BoardDraftNaturalKeys.ForRow(publishedRows[index]), out int position))
+                    return position + 1;
+            }
+
+            return 0;
         }
     }
 }

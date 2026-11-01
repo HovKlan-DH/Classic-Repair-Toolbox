@@ -12,13 +12,19 @@ namespace Handlers.DataHandling
     // "DodgerBlue" - the live trees use names), an opacity as a percentage ("30%"). Blank is CRT's
     // own default, drawn as it always has been (RectGeometry.ParseColorOrDefault). The words are
     // compared trimmed: a colour picked again as it was is no change.
+    //
+    // The traces' own colour and both sides' opacities came later (owner request, 2026-10-30), last
+    // and blank unless given - blank draws as before (TraceColours.Resolve).
     // ###########################################################################################
     public sealed record PictureColours(
         string HighlightColor,
         string HighlightOpacity,
         string OppositeTraceColor,
         string ThumbnailHighlightColor,
-        string ThumbnailHighlightOpacity)
+        string ThumbnailHighlightOpacity,
+        string TraceColor = "",
+        string TraceOpacity = "",
+        string OppositeTraceOpacity = "")
     {
         // Every value trimmed, as it is written.
         public PictureColours Trimmed() => new(
@@ -26,7 +32,10 @@ namespace Handlers.DataHandling
             this.HighlightOpacity?.Trim() ?? string.Empty,
             this.OppositeTraceColor?.Trim() ?? string.Empty,
             this.ThumbnailHighlightColor?.Trim() ?? string.Empty,
-            this.ThumbnailHighlightOpacity?.Trim() ?? string.Empty);
+            this.ThumbnailHighlightOpacity?.Trim() ?? string.Empty,
+            this.TraceColor?.Trim() ?? string.Empty,
+            this.TraceOpacity?.Trim() ?? string.Empty,
+            this.OppositeTraceOpacity?.Trim() ?? string.Empty);
 
         // ###########################################################################################
         // An opacity as the board keeps it: a whole percentage, "30%" - from a fraction (0.3) or a

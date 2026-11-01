@@ -159,6 +159,26 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
     }
 
+    // ###########################################################################################
+    // *** ROWS IN ANOTHER ORDER ARE WORK (owner decision, 2026-10-30). *** Every row as published, but
+    // the contributor moved them - an order stable does not have yet is not "reached stable", and the
+    // draft holding it is the only copy of it.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_holding_its_rows_in_another_order_is_NOT_retirable()
+    {
+        BoardData published = DraftRetirementTests.BoardWith("CPU");
+        published.Components.Add(new ComponentEntry { BoardLabel = "U9", Description = "VIC" });
+
+        BoardData draft = DraftRetirementTests.BoardWith("CPU");
+        draft.Components.Insert(0, new ComponentEntry { BoardLabel = "U9", Description = "VIC" });
+
+        this.WritePublished(published);
+        this.WriteDraft(draft);
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
     [Fact]
     public void A_draft_with_an_EXTRA_row_is_NOT_retirable()
     {

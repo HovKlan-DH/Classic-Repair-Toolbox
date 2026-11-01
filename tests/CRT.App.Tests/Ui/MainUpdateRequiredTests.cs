@@ -358,7 +358,7 @@ public sealed class MainUpdateRequiredTests : IDisposable
             };
 
             int installs = 0;
-            window.DownloadAndInstallOverrideForTests = () =>
+            window.DownloadAndInstallOverrideForTests = _ =>
             {
                 installs++;
                 return Task.FromResult(false);
@@ -392,6 +392,55 @@ public sealed class MainUpdateRequiredTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** THE RESTART EXITS WITHOUT A CLOSING EVENT, SO WHAT QUITTING LETS GO OF GOES HERE TOO (code
+    // review, 2026-11-01). *** A draft only looked at came back after the update as a draft of the
+    // contributor's - but only once the download is in: after a failed one CRT carries on, on that draft.
+    // ###########################################################################################
+    [Fact]
+    public async Task Installing_the_update_lets_go_of_a_draft_only_looked_at_just_before_the_restart()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string excelDataFile = "Commodore/C64/250407/board.json";
+            DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
+
+            var (window, _) = BuildWindow(ClientVersionContract.ApiRevision, pendingVersion: "3.1.0");
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = excelDataFile };
+
+            window.TabDrafts.HardwareBoardsOverrideForTests = [entry];
+            window.TabDrafts.PublishedBoardOverrideForTests = _ => null;
+            window.TabDrafts.EnsureDraftOverrideForTests = _ =>
+            {
+                string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
+                Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+                CachedWorkbooks.Write(boardFile, new BoardData());
+                DraftMarkerStore.Save(DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, excelDataFile), new DraftMarker { BoardKey = excelDataFile });
+                return Task.FromResult(true);
+            };
+
+            window.TabDrafts.ShowBoard(entry, new BoardData(), "PAL", null);
+            await window.TabDrafts.OpenBoardPartAsync(PaneBoardPart.Credits);
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile));
+
+            window.DownloadAndInstallOverrideForTests = _ => Task.FromResult(false);
+            await window.InstallPendingUpdateAsync();
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile));
+
+            // The download in and the restart itself failing: CRT carries on, so nothing may stay open on
+            // the draft that has gone (code review, 2026-11-01).
+            window.DownloadAndInstallOverrideForTests = async beforeRestart =>
+            {
+                await beforeRestart();
+                return false;
+            };
+
+            await window.InstallPendingUpdateAsync();
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile));
+            Assert.False(window.TabDrafts.IsComponentOpen);
+        });
+    }
+
     // The Maintainer tab's tables too - asked without a Save while the tab is covered, since a save
     // would be turned away (LeavingUpdateRequired).
     [Fact]
@@ -420,7 +469,7 @@ public sealed class MainUpdateRequiredTests : IDisposable
             };
 
             int installs = 0;
-            window.DownloadAndInstallOverrideForTests = () =>
+            window.DownloadAndInstallOverrideForTests = _ =>
             {
                 installs++;
                 return Task.FromResult(false);

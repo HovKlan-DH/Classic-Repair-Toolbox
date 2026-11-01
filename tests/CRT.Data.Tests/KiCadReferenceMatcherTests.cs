@@ -206,28 +206,47 @@ public sealed class KiCadReferenceMatcherTests
     {
         var report = Build(new[] { "U8", "C15" }, new[] { "U8", "C15" });
 
-        Assert.Contains("All 2 labelled components match", report.Summary);
+        Assert.Contains("All 2 components on the board match", report.Summary);
     }
 
     [Fact]
-    public void The_summary_covers_a_board_with_nothing_labelled_yet()
+    public void The_summary_covers_a_board_with_nothing_on_it_yet()
     {
         var report = Build(Array.Empty<string>(), new[] { "U8", "C15" });
 
-        Assert.Contains("No components are labelled yet", report.Summary);
+        Assert.Contains("No components are on the board yet", report.Summary);
         Assert.Contains("2 components", report.Summary);
     }
 
     [Theory]
-    [InlineData(1, "component")]
-    [InlineData(2, "components")]
-    public void The_summary_gets_its_singular_and_plural_right(int unmatchedCount, string expectedWord)
+    [InlineData(1, "1 of 2 components on the board found no match")]
+    [InlineData(2, "2 of 3 components on the board found no match")]
+    public void The_summary_counts_what_found_no_match(int unmatchedCount, string expected)
     {
         var labels = Enumerable.Range(1, unmatchedCount).Select(i => $"X{i}").Append("U8").ToArray();
 
         var report = Build(labels, new[] { "U8" });
 
-        Assert.Contains($"labelled {expectedWord} found no match", report.Summary);
+        Assert.Contains(expected, report.Summary);
+    }
+
+    // ###########################################################################################
+    // What is left to add is the KiCad data's COMPONENTS (owner report, 2026-11-01: a logo and a net tie
+    // stood among "6 components are not labelled yet" on the Open128, and no press could ever add them).
+    // A label on one still matches: what lights up copper is every footprint.
+    // ###########################################################################################
+    [Fact]
+    public void Only_a_component_is_left_to_add_but_any_footprint_matches()
+    {
+        var report = KiCadReferenceMatcher.Build(
+            new[] { "NT1", "U1" },
+            new[] { "U1", "U2", "LOGO3", "NT1" },
+            pcbFileCount: 1,
+            viewDisplayNames: null,
+            componentReferences: new[] { "U1", "U2" });
+
+        Assert.Equal(new[] { "U2" }, report.UnusedReferences);
+        Assert.Equal(new[] { "NT1", "U1" }, report.MatchedLabels);
     }
 
     // ------------------------------------------------------------------------ View names

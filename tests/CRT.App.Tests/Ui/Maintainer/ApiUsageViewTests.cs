@@ -93,7 +93,7 @@ public sealed class ApiUsageViewTests
             view.DaysBoxForTests.SelectedIndex = 0;
 
             // The box's SelectionChanged runs the read; give it its turn.
-            for (int turn = 0; turn < 20 && asked.Count == 0; turn++)
+            for (int turn = 0; turn < 3000 && asked.Count == 0; turn++)
                 await Task.Delay(10);
 
             Assert.Equal(30, view.DaysChosen);

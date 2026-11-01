@@ -39,8 +39,9 @@ public sealed class BoardTableEditorTests : IDisposable
     // a component deleted and one added were identical but for their label, which reads as one
     // component relabelled (BoardDataDiffer.PairRenamedRows, 2026-10-04) - not the deletion and
     // addition these tests set up.
+    // With a category - a component without one is an error of its own (component.no_category).
     private static ComponentEntry Component(string label, string friendlyName = "") =>
-        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = $"part {label}" };
+        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = $"part {label}", Category = "IC" };
 
     private static BoardData Board(params ComponentEntry[] components) => new() { Components = [.. components] };
 
@@ -829,7 +830,13 @@ public sealed class BoardTableEditorTests : IDisposable
             this.thisNow += DraftSession.SaveDelay;
             editor.SaveIfDueForTests();
             Assert.Equal(DraftWorkbookEditOutcome.Saved, await editor.SaveInFlightForTests!);
-            Dispatcher.UIThread.RunJobs();
+
+            // The table goes on after the very save awaited here, queued on this thread - and an await
+            // that finds the save already done comes back before it has run.
+            for (int attempt = 0; attempt < 500 && saved == 0; attempt++)
+            {
+                await Task.Delay(2);
+            }
 
             Assert.Equal("CPU 6510", this.NameOnDisk("U1"));
             Assert.Equal(DraftSaveWording.Saved, SaveState(editor));

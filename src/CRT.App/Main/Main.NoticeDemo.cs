@@ -91,7 +91,7 @@ namespace CRT
                     NoticeEmphasis.Show(
                         this.SourceSwitchBannerText,
                         "Commodore / C64 / 250407 is now published to the stable source. You are downloading data from " +
-                        "the BETA source - you can switch back to the stable source on the Configuration tab.");
+                        "the BETA source - you can switch back to the stable source on the \"Configuration\" tab.");
                     this.SourceSwitchBanner.IsVisible = true;
                 }
                 await wait(TimeSpan.FromSeconds(5));

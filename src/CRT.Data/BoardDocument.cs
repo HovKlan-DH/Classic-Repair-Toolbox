@@ -41,6 +41,11 @@ namespace Handlers.DataHandling
         // The board's hand-maintained revision date ("2026-October-4"), the server's at a publish.
         [JsonPropertyName("revisionDate")] public string RevisionDate { get; set; } = string.Empty;
 
+        // The regions the board says it comes in (BoardRegions; owner decision, 2026-11-01). Written
+        // only when it says any (DataTreeJson.Write), so every other board keeps its bytes; absent, its
+        // rows decide.
+        [JsonPropertyName("regions")] public List<string> Regions { get; set; } = new();
+
         [JsonPropertyName("schematics")] public List<SchematicRow> Schematics { get; set; } = new();
 
         [JsonPropertyName("components")] public List<ComponentRow> Components { get; set; } = new();
@@ -89,6 +94,18 @@ namespace Handlers.DataHandling
             [JsonPropertyName("thumbnailHighlightColor")] public string ThumbnailHighlightColor { get; set; } = string.Empty;
             [JsonPropertyName("thumbnailHighlightOpacity")] public string ThumbnailHighlightOpacity { get; set; } = string.Empty;
             [JsonPropertyName("cadName")] public string CadName { get; set; } = string.Empty;
+
+            // How the KiCad traces are drawn on the picture (2026-10-30), written only when filled - so
+            // the rows of a board that has none read as they always did, line for line.
+            [JsonPropertyName("traceHighlightColor"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? TraceHighlightColor { get; set; }
+
+            [JsonPropertyName("traceHighlightOpacity"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? TraceHighlightOpacity { get; set; }
+
+            [JsonPropertyName("oppositeTraceHighlightOpacity"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? OppositeTraceHighlightOpacity { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 

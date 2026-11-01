@@ -141,6 +141,12 @@ namespace CRT
             {
                 this.thisMainWindow?.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
             }
+
+            // "KiCad data" stays on screen beside the header's Undo and Redo (code review, 2026-11-01).
+            if (this.thisKiCadPanel is { } kiCad && this.IsKiCadOpenFor(entry))
+            {
+                kiCad.FollowDraft();
+            }
         }
 
         // ---- Review changes -----------------------------------------------------------------------

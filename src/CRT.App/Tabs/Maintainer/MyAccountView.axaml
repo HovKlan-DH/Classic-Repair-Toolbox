@@ -69,7 +69,7 @@
                     <TextBlock Text="New email address" Opacity="0.7" Margin="0,4,0,0" />
                     <TextBox x:Name="NewEmailTextBox" TextChanged="OnTextChanged" />
 
-                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
                         <Button x:Name="SendCodeButton"
                                 Classes="Accept"
                                 Content="Send code"

@@ -178,6 +178,132 @@ namespace Handlers.DataHandling
             return board.WithComponentSections(components: components);
         }
 
+        // ---- its label (owner report, 2026-11-01: "unable to rename the component label") ----------
+
+        // ###########################################################################################
+        // The board with the component `from` under the label `to`: every row of it, every region, its
+        // pictures, baselines, pins, replacement parts, files, links and rectangles. Its rectangles are
+        // moved here - DraftEditRules follows a relabel only for a row whose other cells stayed, and one
+        // that has twin rows or another change would have left them behind.
+        //
+        // The same board when `to` is blank, says the same, or names another component in any region -
+        // a label names one component (ContributionPackaging.ValidateNewComponent says why to the person
+        // typing). Capitals alone are a change, as what the board calls it.
+        // ###########################################################################################
+        public static BoardData WithLabel(BoardData board, string? from, string? to)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string source = from?.Trim() ?? string.Empty;
+            string wanted = ComponentPaneEdits.Normalised(ComponentField.FriendlyName, to);
+
+            if (source.Length == 0 || wanted.Length == 0 || string.Equals(source, wanted, StringComparison.Ordinal) ||
+                !board.Components.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source)))
+            {
+                return board;
+            }
+
+            if (!ComponentPaneEdits.SameLabel(source, wanted) &&
+                board.Components.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)))
+            {
+                return board;
+            }
+
+            return board
+                .WithComponentSections(
+                    components: board.Components.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList(),
+                    componentImages: board.ComponentImages.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList(),
+                    componentLocalFiles: board.ComponentLocalFiles.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList(),
+                    componentLinks: board.ComponentLinks.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList(),
+                    componentPins: board.ComponentPins.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList(),
+                    componentReplacements: board.ComponentReplacements.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList())
+                .WithComponentHighlights(board.ComponentHighlights.Select(row => ComponentPaneEdits.SameLabel(row.BoardLabel, source) ? row.WithBoardLabel(wanted) : row).ToList());
+        }
+
+        // ---- told apart per region (owner decision, 2026-11-01) --------------------------------------
+
+        // Whether the component has a row of its own per region.
+        public static bool IsRegional(BoardData board, string? label)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            return board.Components.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, label?.Trim() ?? string.Empty) && !string.IsNullOrWhiteSpace(row.Region));
+        }
+
+        // ###########################################################################################
+        // The component told apart per region, or no longer. On: a row per region, each starting as the
+        // one row it had. Off: the row `region` shows is the one row, for every region, and the others
+        // go - "Undo" brings them back. One step; the same board when it already reads so.
+        // ###########################################################################################
+        public static BoardData WithRegionalRows(BoardData board, string? label, string? region, bool regional)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string wanted = label?.Trim() ?? string.Empty;
+
+            if (ComponentPaneEdits.RowShown(board, wanted, region) is not ComponentEntry shown ||
+                ComponentPaneEdits.IsRegional(board, wanted) == regional)
+            {
+                return board;
+            }
+
+            List<ComponentEntry> rows = regional
+                ? BoardRegions.All.Select(each => shown.WithRegion(each)).ToList()
+                : [shown.WithRegion(string.Empty)];
+
+            return board.WithComponentSections(components: ComponentPaneEdits.ReplaceInScope(
+                board.Components,
+                row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted),
+                rows));
+        }
+
+        // Whether the component's pins differ per region - a set of pins of each's own.
+        public static bool PinsAreRegional(BoardData board, string? label)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            return board.ComponentPins.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, label?.Trim() ?? string.Empty) && !string.IsNullOrWhiteSpace(row.Region));
+        }
+
+        // ###########################################################################################
+        // The component's pins told apart per region, or no longer. On: each region starts with a copy
+        // of the pins for every region. Off: the pins `region` shows are the pins of every region, the
+        // others go. One step; the same board when it already reads so, when there is nothing to tell
+        // apart yet - the first pin typed afterwards is the row's own - and when `region` shows no pins:
+        // made the same from nothing, every pin of the component went (code review, 2026-11-01).
+        // ###########################################################################################
+        public static BoardData WithRegionalPins(BoardData board, string? label, string? region, bool regional)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string wanted = label?.Trim() ?? string.Empty;
+
+            if (ComponentPaneEdits.PinsAreRegional(board, wanted) == regional ||
+                !board.ComponentPins.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)))
+            {
+                return board;
+            }
+
+            List<ComponentPinEntry> shown = ComponentPaneEdits.PinsOf(board, wanted, region);
+
+            if (!regional && shown.Count == 0)
+            {
+                return board;
+            }
+
+            List<ComponentPinEntry> rows = regional
+                ? BoardRegions.All.SelectMany(each => board.ComponentPins
+                        .Where(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted))
+                        .Select(row => row.WithRegion(each)))
+                    .ToList()
+                : shown.Select(row => row.WithRegion(string.Empty)).ToList();
+
+            return board.WithComponentSections(componentPins: ComponentPaneEdits.ReplaceInScope(
+                board.ComponentPins,
+                row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted),
+                rows));
+        }
+
         // Whether the component has a highlight on any picture - what "Show on board" can show.
         public static bool IsMarkedOnAPicture(BoardData board, string? label)
         {

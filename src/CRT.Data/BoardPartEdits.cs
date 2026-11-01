@@ -14,46 +14,18 @@ namespace Handlers.DataHandling
     // history, as ComponentPaneEdits' are:
     //
     //   - A LIST is replaced as a whole: every value trimmed, a row with nothing in it left out.
-    //   - Files, links and credits are kept GROUPED BY CATEGORY (Grouped - the categories in the order
-    //     they first appear, a row's place inside its category kept), as the pane shows them. Order is
-    //     no change the differ counts, and a list that differs only by its order returns THE SAME board,
-    //     so opening and closing a part changes nothing.
+    //   - A LIST IS WRITTEN IN THE ORDER THE PANE SHOWS IT, and the pane shows it as the board has it
+    //     (owner request, 2026-10-30: "please have the entire line moving up/down, and not only within
+    //     its own category ... I also want to be able to rearrange the categories"). Files, links and
+    //     credits were kept grouped by category until then, a row moving only inside its group; now a
+    //     row moves past any other (Moved), so a category is rearranged by moving its rows. The order
+    //     is a change (owner decision, the same day - BoardRowOrder): Submit sends it.
     //   - An edit that changes nothing returns THE SAME board, which DraftSession takes as no step.
     //
     // PURE: takes a board, returns a board, touches no files.
     // ###########################################################################################
     public static class BoardPartEdits
     {
-        // ###########################################################################################
-        // `rows` grouped by their category - trimmed, capitals ignored - the categories in the order
-        // they first appear and every row's place inside its category kept. What the pane lists, and
-        // the order a list is written in.
-        // ###########################################################################################
-        public static List<T> Grouped<T>(IEnumerable<T> rows, Func<T, string?> categoryOf)
-        {
-            ArgumentNullException.ThrowIfNull(rows);
-            ArgumentNullException.ThrowIfNull(categoryOf);
-
-            var groups = new List<(string Key, List<T> Rows)>();
-
-            foreach (T row in rows)
-            {
-                string key = categoryOf(row)?.Trim().ToUpperInvariant() ?? string.Empty;
-                int index = groups.FindIndex(group => string.Equals(group.Key, key, StringComparison.Ordinal));
-
-                if (index < 0)
-                {
-                    groups.Add((key, [row]));
-                }
-                else
-                {
-                    groups[index].Rows.Add(row);
-                }
-            }
-
-            return groups.SelectMany(group => group.Rows).ToList();
-        }
-
         // The categories of `rows`, once each whatever their capitals, in the order they first appear -
         // offered as a category is typed, so a new row joins a group rather than starting a twin of it.
         public static List<string> CategoriesOf<T>(IEnumerable<T> rows, Func<T, string?> categoryOf)
@@ -68,6 +40,55 @@ namespace Handlers.DataHandling
                 .ToList();
         }
 
+        // ###########################################################################################
+        // MOVING A ROW (owner requests, 2026-10-29: "I need a possibility to reorder the list elements";
+        // 2026-10-30: "the entire line moving up/down, and not only within its own category") - files,
+        // links, credits and important signals. A row moves one place past the row next to it, whatever
+        // its category. `rows` in the order the pane shows them; `by` -1 up, +1 down.
+        // ###########################################################################################
+        public static bool CanMove<T>(IReadOnlyList<T> rows, int index, int by)
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+
+            int target = index + by;
+
+            return by is -1 or 1 &&
+                index >= 0 && index < rows.Count &&
+                target >= 0 && target < rows.Count;
+        }
+
+        // `rows` with the row at `index` moved one place by `by` - as they were when it cannot move
+        // (CanMove).
+        public static List<T> Moved<T>(IReadOnlyList<T> rows, int index, int by)
+        {
+            List<T> moved = rows.ToList();
+
+            if (BoardPartEdits.CanMove(rows, index, by))
+            {
+                (moved[index], moved[index + by]) = (moved[index + by], moved[index]);
+            }
+
+            return moved;
+        }
+
+        // ###########################################################################################
+        // A row with nothing in it - left out of the list written, and so not counted where the list
+        // is (the pane's title over the part; code review, 2026-10-30: "Add credit" made "Credits (4)"
+        // of a board with three, an empty row never written).
+        // ###########################################################################################
+        public static bool IsBlank(BoardLocalFileEntry row) =>
+            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.File);
+
+        public static bool IsBlank(BoardLinkEntry row) =>
+            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.Url);
+
+        public static bool IsBlank(CreditEntry row) =>
+            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.SubCategory) &&
+            string.IsNullOrWhiteSpace(row.NameOrHandle) && string.IsNullOrWhiteSpace(row.Contact);
+
+        public static bool IsBlank(KiCadImportantSignalEntry row) =>
+            string.IsNullOrWhiteSpace(row.DisplayName) && string.IsNullOrWhiteSpace(row.KiCadNetName);
+
         // ---- the board's files and links ----------------------------------------------------------
 
         public static BoardData WithBoardFiles(BoardData board, IReadOnlyList<BoardLocalFileEntry> files)
@@ -75,18 +96,17 @@ namespace Handlers.DataHandling
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(files);
 
-            List<BoardLocalFileEntry> rows = BoardPartEdits.Grouped(
-                files
-                    .Select(row => new BoardLocalFileEntry
-                    {
-                        Category = row.Category?.Trim() ?? string.Empty,
-                        Name = row.Name?.Trim() ?? string.Empty,
-                        File = row.File?.Trim() ?? string.Empty,
-                    })
-                    .Where(row => row.Category.Length > 0 || row.Name.Length > 0 || row.File.Length > 0),
-                row => row.Category);
+            List<BoardLocalFileEntry> rows = files
+                .Select(row => new BoardLocalFileEntry
+                {
+                    Category = row.Category?.Trim() ?? string.Empty,
+                    Name = row.Name?.Trim() ?? string.Empty,
+                    File = row.File?.Trim() ?? string.Empty,
+                })
+                .Where(row => !BoardPartEdits.IsBlank(row))
+                .ToList();
 
-            return BoardPartEdits.SameAsGrouped(board.BoardLocalFiles, rows, row => row.Category, row => string.Join('\u001F', row.Category, row.Name, row.File))
+            return BoardPartEdits.SameRows(board.BoardLocalFiles, rows, row => string.Join('\u001F', row.Category, row.Name, row.File))
                 ? board
                 : board.WithBoardSections(boardLocalFiles: rows);
         }
@@ -96,18 +116,17 @@ namespace Handlers.DataHandling
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(links);
 
-            List<BoardLinkEntry> rows = BoardPartEdits.Grouped(
-                links
-                    .Select(row => new BoardLinkEntry
-                    {
-                        Category = row.Category?.Trim() ?? string.Empty,
-                        Name = row.Name?.Trim() ?? string.Empty,
-                        Url = row.Url?.Trim() ?? string.Empty,
-                    })
-                    .Where(row => row.Category.Length > 0 || row.Name.Length > 0 || row.Url.Length > 0),
-                row => row.Category);
+            List<BoardLinkEntry> rows = links
+                .Select(row => new BoardLinkEntry
+                {
+                    Category = row.Category?.Trim() ?? string.Empty,
+                    Name = row.Name?.Trim() ?? string.Empty,
+                    Url = row.Url?.Trim() ?? string.Empty,
+                })
+                .Where(row => !BoardPartEdits.IsBlank(row))
+                .ToList();
 
-            return BoardPartEdits.SameAsGrouped(board.BoardLinks, rows, row => row.Category, row => string.Join('\u001F', row.Category, row.Name, row.Url))
+            return BoardPartEdits.SameRows(board.BoardLinks, rows, row => string.Join('\u001F', row.Category, row.Name, row.Url))
                 ? board
                 : board.WithBoardSections(boardLinks: rows);
         }
@@ -119,19 +138,18 @@ namespace Handlers.DataHandling
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(credits);
 
-            List<CreditEntry> rows = BoardPartEdits.Grouped(
-                credits
-                    .Select(row => new CreditEntry
-                    {
-                        Category = row.Category?.Trim() ?? string.Empty,
-                        SubCategory = row.SubCategory?.Trim() ?? string.Empty,
-                        NameOrHandle = row.NameOrHandle?.Trim() ?? string.Empty,
-                        Contact = row.Contact?.Trim() ?? string.Empty,
-                    })
-                    .Where(row => row.Category.Length > 0 || row.SubCategory.Length > 0 || row.NameOrHandle.Length > 0 || row.Contact.Length > 0),
-                row => row.Category);
+            List<CreditEntry> rows = credits
+                .Select(row => new CreditEntry
+                {
+                    Category = row.Category?.Trim() ?? string.Empty,
+                    SubCategory = row.SubCategory?.Trim() ?? string.Empty,
+                    NameOrHandle = row.NameOrHandle?.Trim() ?? string.Empty,
+                    Contact = row.Contact?.Trim() ?? string.Empty,
+                })
+                .Where(row => !BoardPartEdits.IsBlank(row))
+                .ToList();
 
-            return BoardPartEdits.SameAsGrouped(board.Credits, rows, row => row.Category, row => string.Join('\u001F', row.Category, row.SubCategory, row.NameOrHandle, row.Contact))
+            return BoardPartEdits.SameRows(board.Credits, rows, row => string.Join('\u001F', row.Category, row.SubCategory, row.NameOrHandle, row.Contact))
                 ? board
                 : board.WithBoardSections(credits: rows);
         }
@@ -196,7 +214,7 @@ namespace Handlers.DataHandling
                     DisplayName = row.DisplayName?.Trim() ?? string.Empty,
                     KiCadNetName = row.KiCadNetName?.Trim() ?? string.Empty,
                 })
-                .Where(row => row.DisplayName.Length > 0 || row.KiCadNetName.Length > 0)
+                .Where(row => !BoardPartEdits.IsBlank(row))
                 .ToList();
 
             static string Key(KiCadImportantSignalEntry row) => string.Join('\u001F', row.DisplayName?.Trim(), row.KiCadNetName?.Trim());
@@ -207,12 +225,12 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Whether `rows` are the board's `before` as the pane shows them - grouped, every value trimmed
-        // - so a list the pane did not change is no change, however the board had it ordered.
+        // Whether `rows` are the board's `before` - in the same order, every value trimmed - so a list
+        // the pane did not change is no change.
         // ###########################################################################################
-        private static bool SameAsGrouped<T>(IEnumerable<T> before, IReadOnlyList<T> rows, Func<T, string?> categoryOf, Func<T, string> key)
+        private static bool SameRows<T>(IEnumerable<T> before, IReadOnlyList<T> rows, Func<T, string> key)
         {
-            List<string> shown = BoardPartEdits.Grouped(before, categoryOf)
+            List<string> shown = before
                 .Select(key)
                 .Select(BoardPartEdits.Trimmed)
                 .ToList();

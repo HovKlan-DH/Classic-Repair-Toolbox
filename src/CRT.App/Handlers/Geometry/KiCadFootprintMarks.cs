@@ -23,10 +23,16 @@ namespace Handlers.Geometry
     //   - ONLY COMPONENTS THE BOARD HAS, NOT MARKED ON THIS PICTURE YET: a mark already drawn - by hand,
     //     perhaps moved to fit the photo - is never moved or doubled. A rectangle off the picture is
     //     none; one partly on it is cut to the picture, in whole pixels.
+    //   - A MARK IS KiCad's WHILE IT LIES EXACTLY WHERE ITS FOOTPRINT PUTS IT (owner requests, 2026-11-01),
+    //     under the alignment it was drawn from - told from the rectangle, so no board file changes.
+    //     Aligned again, those move with the alignment (Realigned); under a card's thumbnail, those are
+    //     the automatic ones (CountAutomatic).
     // ###########################################################################################
     // What "Mark all automatically" works with for one picture - the PCB it shows, from which side,
-    // its alignment and its size - or why it cannot (Problem, said to the contributor).
-    internal sealed record KiCadMarkPlan(string Picture, KiCadPcb? Pcb, bool Bottom, KiCadCalibrationValues Calibration, int Width, int Height, string? Problem)
+    // its alignment and its size - or why it cannot (Problem, said to the contributor). NotABoardSide:
+    // the picture shows a schematic sheet - nothing to mark from KiCad, and the marking that follows
+    // an alignment says nothing of it (2026-11-01).
+    internal sealed record KiCadMarkPlan(string Picture, KiCadPcb? Pcb, bool Bottom, KiCadCalibrationValues Calibration, int Width, int Height, string? Problem, bool NotABoardSide = false)
     {
         // The marks for `board` as it is - worked out again on the draft as a change finds it.
         public List<ComponentHighlightEntry> Marks(BoardData board) =>
@@ -55,6 +61,10 @@ namespace Handlers.Geometry
         }
     }
 
+    // Where one side of a board's footprints lie in the world - by label, capitals ignored - and that
+    // PCB's world bounds: what tells a mark KiCad drew on a picture, with its alignment and its size.
+    internal sealed record KiCadViewFootprints(Rect WorldBounds, IReadOnlyDictionary<string, Rect> ByLabel);
+
     internal static class KiCadFootprintMarks
     {
         // Around a footprint's pads, and the least a rectangle is across - in KiCad's millimetres.
@@ -65,16 +75,17 @@ namespace Handlers.Geometry
         // What marking `picture` from KiCad works with: the picture as the draft has it, the KiCad view
         // its CAD name names - a side of the board, never a schematic sheet - its alignment in the
         // draft, and the image's size (`pixelSize`, from its header). The first thing missing is the
-        // reason it cannot, in the contributor's words.
+        // reason it cannot, in the contributor's words. `imageFile`, when given, picks the picture among
+        // two of the same name (PictureRow) - its KiCad view is that row's.
         // ###########################################################################################
-        public static KiCadMarkPlan Plan(BoardContent content, string picture, KiCadProjectRoot? root, (int Width, int Height)? pixelSize)
+        public static KiCadMarkPlan Plan(BoardContent content, string picture, KiCadProjectRoot? root, (int Width, int Height)? pixelSize, string? imageFile = null)
         {
             ArgumentNullException.ThrowIfNull(content);
 
             string name = picture?.Trim() ?? string.Empty;
             KiCadMarkPlan Cannot(string problem) => new(name, null, false, default, 0, 0, problem);
 
-            if (content.Board.Schematics.FirstOrDefault(row => string.Equals(row.SchematicName?.Trim(), name, StringComparison.OrdinalIgnoreCase)) is not { } row)
+            if (KiCadFootprintMarks.PictureRow(content.Board, name, imageFile) is not { } row)
             {
                 return Cannot(PictureToolWording.PictureNotFound(name));
             }
@@ -101,12 +112,11 @@ namespace Handlers.Geometry
                 return Cannot(PictureToolWording.NoKiCadView(name));
             }
 
-            bool top = string.Equals(shown.Type, "pcb_top", StringComparison.OrdinalIgnoreCase);
-            bool bottom = string.Equals(shown.Type, "pcb_bottom", StringComparison.OrdinalIgnoreCase);
+            KiCadViewSide side = BoardKiCadFacts.SideOf(shown);
 
-            if (!top && !bottom)
+            if (side == KiCadViewSide.Sheet)
             {
-                return Cannot(PictureToolWording.NotABoardView(name));
+                return Cannot(PictureToolWording.NotABoardView(name)) with { NotABoardSide = true };
             }
 
             if (shown.SourceIndex < 0 || shown.SourceIndex >= root.Pcb.Count)
@@ -122,11 +132,53 @@ namespace Handlers.Geometry
             return new KiCadMarkPlan(
                 row.SchematicName!.Trim(),
                 root.Pcb[shown.SourceIndex],
-                bottom,
-                new KiCadCalibrationValues(calibration.ScaleX, calibration.ScaleY, calibration.OffsetX, calibration.OffsetY, calibration.MirrorX, calibration.MirrorY),
+                side == KiCadViewSide.Bottom,
+                KiCadFootprintMarks.ValuesOf(calibration),
                 size.Width,
                 size.Height,
                 Problem: null);
+        }
+
+        public static KiCadCalibrationValues ValuesOf(KiCadCalibrationEntry calibration)
+        {
+            ArgumentNullException.ThrowIfNull(calibration);
+
+            return new KiCadCalibrationValues(calibration.ScaleX, calibration.ScaleY, calibration.OffsetX, calibration.OffsetY, calibration.MirrorX, calibration.MirrorY);
+        }
+
+        // ###########################################################################################
+        // The picture named `picture` - capitals ignored - and, of two sharing the name, the one whose
+        // image is `imageFile` (a card on the Contribute tab is told apart so - SchematicRows.RefOf);
+        // the first of the name when no file is given or none has it. Null for none of the name. Its
+        // highlights and alignment are filed by NAME, so two of a name share those.
+        // ###########################################################################################
+        public static BoardSchematicEntry? PictureRow(BoardData board, string? picture, string? imageFile = null)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string name = picture?.Trim() ?? string.Empty;
+            string file = imageFile?.Trim() ?? string.Empty;
+            List<BoardSchematicEntry> named = board.Schematics
+                .Where(row => string.Equals(row.SchematicName?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            return (file.Length == 0
+                       ? null
+                       : named.FirstOrDefault(row => string.Equals(row.SchematicImageFile?.Trim(), file, StringComparison.OrdinalIgnoreCase)))
+                   ?? named.FirstOrDefault();
+        }
+
+        // ###########################################################################################
+        // Whether any component is marked on `picture` (capitals ignored, as highlights are filed) - the
+        // marking that follows an alignment leaves such a picture alone (2026-11-01): its marks were
+        // drawn, by hand or from KiCad, and one more round is the contributor's to ask for.
+        // ###########################################################################################
+        public static bool HasMarks(BoardData board, string? picture)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string name = picture?.Trim() ?? string.Empty;
+            return board.ComponentHighlights.Any(row => string.Equals(row.SchematicName?.Trim(), name, StringComparison.OrdinalIgnoreCase));
         }
 
         // ###########################################################################################
@@ -243,6 +295,20 @@ namespace Handlers.Geometry
             return new Point(
                 calibration.OffsetX + (nx * calibration.ScaleX * pixelWidth),
                 calibration.OffsetY + (ny * calibration.ScaleY * pixelHeight));
+        }
+
+        // ###########################################################################################
+        // A KiCad world LENGTH (a trace's width) on a picture drawn `width` x `height`, aligned with
+        // these scales: the mean of the two axes' scales, a mirror making no difference. The Schematics
+        // tab's MapKiCadWorldLengthToLocal and a card's preview (KiCadPreviewTraces) both call it, so a
+        // trace is as wide on the card as on the tab (code review, 2026-10-30: the card had a copy).
+        // ###########################################################################################
+        public static double WorldLengthOnPicture(double worldLength, Rect worldBounds, double scaleX, double scaleY, double width, double height)
+        {
+            double acrossX = (width / Math.Max(0.0001, worldBounds.Width)) * Math.Abs(scaleX);
+            double acrossY = (height / Math.Max(0.0001, worldBounds.Height)) * Math.Abs(scaleY);
+
+            return worldLength * ((acrossX + acrossY) / 2.0);
         }
 
         // ###########################################################################################
@@ -390,6 +456,159 @@ namespace Handlers.Geometry
 
             return marks;
         }
+
+        // ###########################################################################################
+        // KiCad ALIGNED AGAIN ON THE PICTURE `plan` IS OF, the alignment it had `before` (owner request,
+        // 2026-11-01: "if I then again do the Align KiCad then it seems it will not readjust the components,
+        // which I think it should"): every mark lying exactly where its footprint put it under `before`
+        // goes where it puts it now - one now off the picture goes - and any component that had no place
+        // on the picture then gets one. A mark anywhere else was moved or drawn by hand, and stays.
+        // `changed`: how many marks moved, went or came - 0, and the same board, for none. A picture with
+        // no mark of KiCad's is left as it is: its marks are all by hand.
+        // ###########################################################################################
+        public static BoardData Realigned(BoardData board, KiCadMarkPlan plan, KiCadCalibrationValues before, out int changed)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+            ArgumentNullException.ThrowIfNull(plan);
+
+            changed = 0;
+
+            if (plan.Pcb is null)
+            {
+                return board;
+            }
+
+            Dictionary<string, ComponentHighlightEntry> was = KiCadFootprintMarks.ByLabel(
+                KiCadFootprintMarks.For(board, plan.Picture, plan.Pcb, plan.Bottom, before, plan.Width, plan.Height, skipMarked: false));
+            Dictionary<string, ComponentHighlightEntry> now = KiCadFootprintMarks.ByLabel(
+                KiCadFootprintMarks.For(board, plan.Picture, plan.Pcb, plan.Bottom, plan.Calibration, plan.Width, plan.Height, skipMarked: false));
+
+            var highlights = new List<ComponentHighlightEntry>(board.ComponentHighlights.Count);
+            bool anyKiCads = false;
+
+            foreach (ComponentHighlightEntry row in board.ComponentHighlights)
+            {
+                string label = row.BoardLabel?.Trim() ?? string.Empty;
+
+                if (!string.Equals(row.SchematicName?.Trim(), plan.Picture, StringComparison.OrdinalIgnoreCase) ||
+                    !was.TryGetValue(label, out ComponentHighlightEntry? drawn) ||
+                    !KiCadFootprintMarks.SameRectangle(row, drawn))
+                {
+                    highlights.Add(row);
+                    continue;
+                }
+
+                anyKiCads = true;
+
+                if (!now.TryGetValue(label, out ComponentHighlightEntry? place))
+                {
+                    changed++;
+                    continue;
+                }
+
+                if (!KiCadFootprintMarks.SameRectangle(row, place))
+                {
+                    changed++;
+                }
+
+                highlights.Add(row.WithRectangleOf(place));
+            }
+
+            if (!anyKiCads)
+            {
+                return board;
+            }
+
+            BoardData moved = board.WithComponentHighlights(highlights);
+
+            // Only a footprint NEWLY on the picture (code review, 2026-11-01): one that lay on it all along
+            // with no mark had that mark deleted on purpose, and aligning again must not bring it back.
+            List<ComponentHighlightEntry> added = plan.Marks(moved).Where(mark => !was.ContainsKey(mark.BoardLabel)).ToList();
+
+            changed += added.Count;
+
+            return changed == 0 ? board : KiCadFootprintMarks.WithMarks(moved, added);
+        }
+
+        // ###########################################################################################
+        // Where each side of the board's footprints lie, by the view's name - `For`'s rule: a reference's
+        // first footprint, seen from that side. No entry for a schematic sheet.
+        // ###########################################################################################
+        public static Dictionary<string, KiCadViewFootprints> ViewFootprints(KiCadProjectRoot? root)
+        {
+            var views = new Dictionary<string, KiCadViewFootprints>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (KiCadProjectView view in root?.Project.Views ?? [])
+            {
+                string name = view.DisplayName?.Trim() ?? string.Empty;
+                KiCadViewSide side = BoardKiCadFacts.SideOf(view);
+
+                if (name.Length == 0 || side == KiCadViewSide.Sheet || view.SourceIndex < 0 || view.SourceIndex >= root!.Pcb.Count)
+                {
+                    continue;
+                }
+
+                KiCadPcb pcb = root.Pcb[view.SourceIndex];
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var byLabel = new Dictionary<string, Rect>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (KiCadPcbFootprint footprint in pcb.Footprints)
+                {
+                    string label = footprint.Reference?.Trim() ?? string.Empty;
+
+                    if (label.Length > 0 && seen.Add(label) &&
+                        KiCadFootprintMarks.IsOnSide(footprint, side == KiCadViewSide.Bottom ? "B.Cu" : "F.Cu") &&
+                        KiCadFootprintMarks.FootprintWorldRect(footprint) is { } worldRect)
+                    {
+                        byLabel[label] = worldRect;
+                    }
+                }
+
+                views[name] = new KiCadViewFootprints(KiCadFootprintMarks.PcbWorldBounds(pcb), byLabel);
+            }
+
+            return views;
+        }
+
+        // ###########################################################################################
+        // How many of the labels in `marks` have a mark exactly where KiCad draws it on this picture.
+        // ###########################################################################################
+        public static int CountAutomatic(
+            IReadOnlyDictionary<string, List<Rect>> marks,
+            KiCadViewFootprints footprints,
+            KiCadCalibrationValues alignment,
+            int pixelWidth,
+            int pixelHeight)
+        {
+            ArgumentNullException.ThrowIfNull(marks);
+            ArgumentNullException.ThrowIfNull(footprints);
+
+            return marks.Count(mark =>
+                footprints.ByLabel.TryGetValue(mark.Key?.Trim() ?? string.Empty, out Rect worldRect) &&
+                KiCadFootprintMarks.OnPicture(worldRect, footprints.WorldBounds, alignment, pixelWidth, pixelHeight) is { } place &&
+                mark.Value.Any(rect =>
+                    Math.Round(rect.X) == place.X && Math.Round(rect.Y) == place.Y &&
+                    Math.Round(rect.Width) == place.Width && Math.Round(rect.Height) == place.Height));
+        }
+
+        private static Dictionary<string, ComponentHighlightEntry> ByLabel(IEnumerable<ComponentHighlightEntry> marks)
+        {
+            var byLabel = new Dictionary<string, ComponentHighlightEntry>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (ComponentHighlightEntry mark in marks)
+            {
+                byLabel.TryAdd(mark.BoardLabel, mark);
+            }
+
+            return byLabel;
+        }
+
+        // Whether two marks are the same rectangle - by value, so "12" and "12.0" are.
+        private static bool SameRectangle(ComponentHighlightEntry first, ComponentHighlightEntry second) =>
+            RectGeometry.TryParseDouble(first.X, out double x) && RectGeometry.TryParseDouble(second.X, out double otherX) && x == otherX &&
+            RectGeometry.TryParseDouble(first.Y, out double y) && RectGeometry.TryParseDouble(second.Y, out double otherY) && y == otherY &&
+            RectGeometry.TryParseDouble(first.Width, out double width) && RectGeometry.TryParseDouble(second.Width, out double otherWidth) && width == otherWidth &&
+            RectGeometry.TryParseDouble(first.Height, out double height) && RectGeometry.TryParseDouble(second.Height, out double otherHeight) && height == otherHeight;
 
         // `board` with `marks` added - after the last mark of their picture, else at the end. The same
         // board when there are none.

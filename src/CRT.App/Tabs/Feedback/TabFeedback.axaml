@@ -61,7 +61,7 @@
 			<CheckBox x:Name="AttachConfigsCheckBox" Content="Attach configuration and traces data files" FontSize="12" />
 
 			<TextBlock Text="More attachments:" FontWeight="Bold" FontSize="12" Margin="0,8,0,0" />
-			<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+			<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,4">
 				<Button x:Name="AttachFilesButton" Content="Attach file(s)" Click="OnAttachFilesClick" />
 				<Button x:Name="AttachFolderButton" Content="Attach folder" Click="OnAttachFolderClick" />
 				<Button Classes="Danger" x:Name="ClearAttachmentsButton" Content="Clear attachments" Click="OnClearAttachmentsClick" IsEnabled="False" />

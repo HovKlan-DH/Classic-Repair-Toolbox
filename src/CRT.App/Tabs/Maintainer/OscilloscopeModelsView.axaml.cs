@@ -10,6 +10,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Handlers.DataHandling;
 using Handlers.MaintainerHandling;
+using Handlers.Theming;
 
 namespace CRT
 {
@@ -169,7 +170,7 @@ namespace CRT
             body.Children.Add(OscilloscopeModelsView.ValuesGrid(entry));
 
             var publish = new Button { Content = "Publish", Classes = { "Accept" } };
-            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 6, 0, 0) };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = ButtonRow.Gap, Margin = new Thickness(0, 6, 0, 0) };
 
             publish.Click += async (_, _) =>
                 await HandlerGuard.RunAsync(() => this.DecideAsync(entry.Id, reason: null), message => this.ShowMessage(message, isError: true));

@@ -134,6 +134,7 @@ namespace CRT.Server.Tests
 
             manifest.Rows.Components.Add(new ComponentEntry
             {
+                Category = "IC",
                 BoardLabel = "U8",
                 FriendlyName = "PLA",
                 TechnicalNameOrValue = "906114-01",
@@ -513,6 +514,7 @@ namespace CRT.Server.Tests
             // The fixture's U8 (Manifest), with another part number.
             changed.Rows.Components[0] = new ComponentEntry
             {
+                Category = "IC",
                 BoardLabel = "U8",
                 FriendlyName = "PLA",
                 TechnicalNameOrValue = "906114-01",
@@ -970,7 +972,7 @@ namespace CRT.Server.Tests
             DataTreeBuilder.Board(
                 this.thisDataTree,
                 ApprovePublishFlowTests.BoardId,
-                new BoardData { RevisionDate = "2026-August-21", Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU" }] },
+                new BoardData { RevisionDate = "2026-August-21", Components = [new ComponentEntry { Category = "IC", BoardLabel = "U1", FriendlyName = "CPU" }] },
                 []);
 
             string boardFile = DataTreeBuilder.Full(this.thisDataTree, DataTreeBuilder.BoardFile);
@@ -1081,6 +1083,7 @@ namespace CRT.Server.Tests
             second.Rows.RevisionDate = "2026-October-01";
             second.Rows.Components.Add(new ComponentEntry
             {
+                Category = "IC",
                 BoardLabel = "U9", FriendlyName = "VIC", TechnicalNameOrValue = "6569"
             });
 

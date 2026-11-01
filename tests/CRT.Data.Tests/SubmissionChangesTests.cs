@@ -141,6 +141,32 @@ public sealed class SubmissionChangesTests
         Assert.True(SubmissionChangeFacts.HasChanges(none with { Files = SubmissionChangeFacts.Files(["a.png"], null, null) }));
     }
 
+    // ###########################################################################################
+    // The lists a publish put in another order are kept with its facts (2026-10-30 - order is a
+    // change), so the History view says it - and they are something to say on their own. A record
+    // from before then reads back with none.
+    // ###########################################################################################
+    [Fact]
+    public void The_lists_put_in_another_order_are_kept_and_survive_json()
+    {
+        BoardData before = SubmissionChangesTests.Board(Component("U7"), Component("U8"));
+        BoardData after = SubmissionChangesTests.Board(Component("U8"), Component("U7"));
+
+        SubmissionChanges changes = SubmissionChangeFacts.Build(ReviewSummary.Compare(before, after));
+
+        Assert.Empty(changes.Sections);
+        Assert.Equal([BoardWorkbookSchema.SheetComponents], changes.Reordered);
+        Assert.True(SubmissionChangeFacts.HasChanges(changes));
+
+        SubmissionChanges back = System.Text.Json.JsonSerializer.Deserialize<SubmissionChanges>(System.Text.Json.JsonSerializer.Serialize(changes))!;
+        Assert.Equal([BoardWorkbookSchema.SheetComponents], back.Reordered);
+
+        SubmissionChanges older = System.Text.Json.JsonSerializer.Deserialize<SubmissionChanges>(
+            "{\"IsNewBoard\":false,\"Sections\":[],\"Files\":{\"AddedCount\":0,\"ReplacedCount\":0,\"RemovedCount\":0,\"Added\":[],\"Replaced\":[],\"Removed\":[]}}")!;
+        Assert.Null(older.Reordered);
+        Assert.False(SubmissionChangeFacts.HasChanges(older));
+    }
+
     // The server stores it as JSON and reads it back for every board screen - the round trip keeps it.
     [Fact]
     public void The_facts_survive_a_round_trip_through_json()

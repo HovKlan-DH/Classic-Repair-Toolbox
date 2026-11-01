@@ -84,6 +84,25 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // A new board's name changed on the Contribute tab (TabDrafts.BoardName.cs; 2026-11-01), its
+        // draft moved already: what this machine keeps under the old name carried over - its settings,
+        // traces, worklogs and devices (BoardKeyMove) - and the board shown under the new one, by the
+        // same steps a board just created takes. Notes alone come the same way, the board read again.
+        // ###########################################################################################
+        internal void AfterBoardRenamed(HardwareBoardEntry entry, NewBoardRegistration renamed)
+        {
+            BoardKeyMove.Run(
+                CatalogueVisibility.BuildKey(entry.HardwareName, entry.BoardName),
+                CatalogueVisibility.BuildKey(renamed.HardwareName, renamed.BoardName));
+
+            DataManager.RefreshDraftOnlyBoards();
+
+            this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
+            this.ApplyContributeTabState();
+            this.SelectBoard(renamed.HardwareName, renamed.BoardName);
+        }
+
+        // ###########################################################################################
         // Moves to the Contribute tab. The twin of SwitchToSchematicsTab, and null-guarded for the
         // same reason: it is callable from another tab, so it cannot assume the tab control is up.
         // ###########################################################################################

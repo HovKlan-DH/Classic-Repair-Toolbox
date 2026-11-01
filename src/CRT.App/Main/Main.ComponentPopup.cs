@@ -68,12 +68,7 @@ namespace CRT
             if (this._suppressRegionToggle)
                 return;
 
-            this._localRegion = "PAL";
-            UserSettings.Region = "PAL";
-
-            this.UpdateRegionButtonsState();
-            this.RefreshImages();
-            this.TabSchematicsControl.UpdateOverlayLabels();
+            this.PickRegion(BoardRegions.Pal);
         }
 
         // ###########################################################################################
@@ -84,25 +79,34 @@ namespace CRT
             if (this._suppressRegionToggle)
                 return;
 
-            this._localRegion = "NTSC";
-            UserSettings.Region = "NTSC";
+            this.PickRegion(BoardRegions.Ntsc);
+        }
+
+        // ###########################################################################################
+        // The region CRT shows - from the buttons under the component list, and from the same switch on
+        // top of a component's pages on the Contribute tab (2026-11-01) - each follows the other.
+        // ###########################################################################################
+        internal void PickRegion(string region)
+        {
+            this._localRegion = region;
+            UserSettings.Region = region;
 
             this.UpdateRegionButtonsState();
             this.RefreshImages();
             this.TabSchematicsControl.UpdateOverlayLabels();
+            this.TabDrafts.UseRegion(region);
         }
 
         // ###########################################################################################
         // Updates the region toggle and button states to match the current local region.
-        // Hides the entire region toggle area when the current board has no explicit PAL/NTSC components.
+        // Hides the entire region toggle area when the current board has no regions (BoardRegions).
         // ###########################################################################################
         private void UpdateRegionButtonsState()
         {
             this._suppressRegionToggle = true;
             bool isNtsc = string.Equals(this._localRegion, "NTSC", StringComparison.OrdinalIgnoreCase);
-            bool hasExplicitRegionComponents = ComponentListBuilder.HasExplicitRegionComponents(this._currentBoardData);
 
-            this.RegionButtonsGrid.IsVisible = hasExplicitRegionComponents;
+            this.RegionButtonsGrid.IsVisible = BoardRegions.Has(this._currentBoardData);
 
             this.NtscRegionButton.Classes.Set("active", isNtsc);
             this.PalRegionButton.Classes.Set("active", !isNtsc);
@@ -206,7 +210,7 @@ namespace CRT
         private void ShowComponentInfoPopup(BoardData? boardData, string boardLabel, string displayText, string draftBoardFolder, string boardIdentity)
         {
             string componentKey = $"{boardLabel}\u001F{displayText}";
-            bool hasExplicitRegionComponents = ComponentListBuilder.HasExplicitRegionComponents(boardData);
+            bool hasExplicitRegionComponents = BoardRegions.Has(boardData);
             var images = boardData?.ComponentImages ?? new List<ComponentImageEntry>();
             var localFiles = boardData?.ComponentLocalFiles ?? new List<ComponentLocalFileEntry>();
             var links = boardData?.ComponentLinks ?? new List<ComponentLinkEntry>();
@@ -698,11 +702,11 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Returns true when the current board has at least one component explicitly tagged as PAL or NTSC.
+        // Returns true when the current board has regions (BoardRegions).
         // ###########################################################################################
         internal bool CurrentBoardHasExplicitRegionComponents()
         {
-            return ComponentListBuilder.HasExplicitRegionComponents(this._currentBoardData);
+            return BoardRegions.Has(this._currentBoardData);
         }
 
         // ###########################################################################################
@@ -715,6 +719,7 @@ namespace CRT
         internal void ShowComponentOnBoard(string boardLabel, bool readBoardFirst)
         {
             this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyComponent(boardLabel));
+            this.OfferBackToContribute(PictureToolWording.ComponentShown(boardLabel));
             this.SwitchToSchematicsTab();
         }
 
@@ -726,6 +731,7 @@ namespace CRT
         internal void ShowNetOnBoard(string netName, bool readBoardFirst)
         {
             this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyNet(netName));
+            this.OfferBackToContribute(PictureToolWording.NetShown(netName));
             this.SwitchToSchematicsTab();
         }
 

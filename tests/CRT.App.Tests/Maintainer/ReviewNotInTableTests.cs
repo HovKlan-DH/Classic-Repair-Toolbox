@@ -23,6 +23,18 @@ public sealed class ReviewNotInTableTests
 
     private static IReadOnlyList<string> Texts(IReadOnlyList<ReviewNoteLine> lines) => lines.Select(line => line.Text).ToList();
 
+    // No sheet of the table says this (2026-11-01).
+    [Fact]
+    public void A_change_of_the_boards_regions_is_said_as_no_row_of_the_table_shows_it()
+    {
+        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(new ReviewChangeSummaryView(false, [], null, RegionsNow: true), []);
+
+        Assert.Equal(BoardRegions.ChangedLine(true), Assert.Single(lines).Text);
+        Assert.Equal(ReviewNoteKind.Change, lines[0].Kind);
+
+        Assert.Empty(ReviewNotInTable.Lines(new ReviewChangeSummaryView(false, []), []));
+    }
+
     // Every sheet the table shows is left out - it is already in front of the maintainer, coloured.
     [Fact]
     public void Changes_to_the_tables_own_sheets_are_not_repeated()
@@ -220,6 +232,23 @@ public sealed class ReviewNotInTableTests
         Assert.All(
             ReviewNotInTable.Lines(published, []).Concat(ReviewNotInTable.Lines(newBoard, [])),
             line => Assert.DoesNotContain("not in the table", line.Text, StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ###########################################################################################
+    // *** A LIST IN ANOTHER ORDER IS SAID ABOVE THE TABLE (owner decision, 2026-10-30: order is a
+    // change). *** The table colours no row that only moved, so a submission whose work is the order
+    // of its files read as nothing at all - a line per list says it.
+    // ###########################################################################################
+    [Fact]
+    public void A_list_in_another_order_gets_a_line_the_table_cannot_show()
+    {
+        var changes = new ReviewChangeSummaryView(false, [], [BoardWorkbookSchema.SheetBoardLocalFiles, BoardWorkbookSchema.SheetKiCadImportantSignals]);
+
+        Assert.True(changes.HasChanges);
+        Assert.Equal(
+            ["Order of the files changed", "Order of the important KiCad signals changed"],
+            ReviewNotInTable.Lines(changes, []).Select(line => line.Text));
+        Assert.All(ReviewNotInTable.Lines(changes, []), line => Assert.Equal(ReviewNoteKind.Change, line.Kind));
     }
 
     // A new board with no highlights or calibration points has nothing to say about them.

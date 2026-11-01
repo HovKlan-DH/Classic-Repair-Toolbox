@@ -90,6 +90,7 @@ namespace Handlers.DataHandling
                 KiCadImportantSignals = current.KiCadImportantSignals,
                 ComponentPins = current.ComponentPins,
                 ComponentReplacements = current.ComponentReplacements,
+                Regions = current.Regions,
             };
         }
 

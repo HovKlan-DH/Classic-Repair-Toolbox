@@ -215,6 +215,7 @@ namespace Handlers.DataHandling
                 // Not this window's (CRT 4.0's own sheets) - carried as they are.
                 ComponentPins = current.ComponentPins,
                 ComponentReplacements = current.ComponentReplacements,
+                Regions = current.Regions,
             };
         }
 
@@ -289,6 +290,8 @@ namespace Handlers.DataHandling
 
                 ComponentReplacements = ComponentBoardWriter.WithoutComponent(
                     current.ComponentReplacements, label, existing => existing.BoardLabel),
+
+                Regions = current.Regions,
 
                 BoardLocalFiles = current.BoardLocalFiles,
                 BoardLinks = current.BoardLinks,

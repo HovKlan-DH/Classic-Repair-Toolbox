@@ -73,7 +73,7 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(row);
 
-            if (kinds == BoardTableRowKinds.None || row.State is BoardTableRowState.Blank or BoardTableRowState.Incomplete)
+            if (kinds == BoardTableRowKinds.None || row.State is BoardTableRowState.Blank)
                 return true;
 
             return (BoardTableRowFilter.KindsOf(row) & kinds) != BoardTableRowKinds.None;

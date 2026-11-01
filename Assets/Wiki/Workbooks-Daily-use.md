@@ -93,7 +93,7 @@ So Cancel only takes back changes to the title, description, **Show marked area 
 
 ## Markers on the board
 
-With **Show worklogs** ticked, each worklog is drawn on its schematic as a dashed rectangle in its category colour, with a `#N` marker. The thumbnails show the `#N` markers too.
+With **Show worklogs** ticked, each worklog is drawn on its schematic as a dashed rectangle in its category color, with a `#N` marker. The thumbnails show the `#N` markers too.
 
 Click a marker on the schematic to open that worklog.
 

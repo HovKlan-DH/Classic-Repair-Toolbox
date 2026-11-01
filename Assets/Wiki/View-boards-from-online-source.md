@@ -5,7 +5,7 @@ See every board exactly as everybody else sees it, without your own local change
 ---
 
 When you change a board in CRT - on the "Contribute" tab (a component, a picture, the table view),
-with **Mark components** or **Align KiCad** on a picture, or with **Edit this component** from a
+with **Mark components manually** or **Align KiCad data** on a picture, or with **Edit this component** from a
 right-click - the change goes into your own local **draft** of that board. A draft saves itself;
 there is no Save button. CRT shows the board WITH your changes from then on, which is usually what
 you want: you see your own work as you build it.

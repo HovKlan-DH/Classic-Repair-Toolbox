@@ -7,8 +7,8 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // Removing one imported KiCad file from a draft's "KiCad data" folder (owner request,
-    // 2026-09-24) - the per-file "Remove" in BoardFilesWindow, the KiCad twin of removing a
-    // schematic image.
+    // 2026-09-24) - the per-file "Remove" in KiCadDataPanel, the KiCad twin of removing a
+    // schematic image - and the lines that window says about its files and net names.
     //
     // *** UNLIKE A SCHEMATIC, THE FILE ITSELF IS DELETED. *** Removing a schematic drops its
     // workbook ROW and keeps the image bytes, because the row is what the board reads. A KiCad file
@@ -70,6 +70,22 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // The line above the KiCad data window's file list - how many files the draft imported itself,
+        // or, with none, whether the board has KiCad data already (owner report, 2026-10-29: "No KiCad
+        // data imported yet" on a board that HAS KiCad data - the published files are no import of the
+        // draft's, so the list is empty, but the board is not without them).
+        // ###########################################################################################
+        public static string StateLine(int draftFiles, int publishedFiles) =>
+            draftFiles switch
+            {
+                0 when publishedFiles == 1 => "The board has KiCad data already - 1 published KiCad file. Import a KiCad folder only to bring in a newer version of the project.",
+                0 when publishedFiles > 1 => $"The board has KiCad data already - {publishedFiles} published KiCad files. Import a KiCad folder only to bring in a newer version of the project.",
+                0 => "No KiCad data imported yet.",
+                1 => "1 KiCad file imported:",
+                _ => $"{draftFiles} KiCad files imported:",
+            };
+
+        // ###########################################################################################
         // What the KiCad data window's report was checked against, when it is more than the draft's
         // own files (code review, 2026-10-10). The report reads every KiCad file the Schematics tab
         // draws the board's traces from - the published board's too (KiCadRawFileScanner.ScanBoard)
@@ -81,7 +97,22 @@ namespace Handlers.DataHandling
                 ? string.Empty
                 : draftFiles == 0
                     ? "Checked against the board's published KiCad data - your draft has none of its own yet."
-                    : "Checked against the board's published KiCad data together with your draft's, as the Schematics tab draws them.";
+                    : "Checked against the board's published KiCad data together with your draft's, as the \"Schematics\" tab draws them.";
+
+        // ###########################################################################################
+        // What the green badges of the window's net names are (owner request, 2026-10-29: "rename this
+        // text to 'The 45 component in green are already used by an "Important signal"'") - NET NAMES,
+        // not components: each badge is a KiCad net, so the sentence says so. Nothing with none in
+        // green; a space in front, as it follows the intro. Moved here from the window (code review,
+        // 2026-10-30) with the window's other lines.
+        // ###########################################################################################
+        public static string UsedNetNamesSentence(int usedCount) =>
+            usedCount switch
+            {
+                <= 0 => string.Empty,
+                1 => " The 1 net in green is already used by an important KiCad signal.",
+                _ => $" The {usedCount.ToString(System.Globalization.CultureInfo.InvariantCulture)} nets in green are already used by an important KiCad signal.",
+            };
 
         // ###########################################################################################
         // What the KiCad data window says after Remove. A file the published board has goes back to

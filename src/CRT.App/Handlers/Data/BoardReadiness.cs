@@ -5,63 +5,30 @@ using System.Linq;
 
 namespace Handlers.DataHandling
 {
-    // The steps of getting a new board ready, in the plan's order.
-    internal enum ReadinessStepKind
-    {
-        Name,
-        Pictures,
-        KiCad,
-        Match,
-        Align,
-        Components,
-        Mark,
-        Signals,
-        Submit,
-    }
-
-    internal enum ReadinessState
-    {
-        // Nothing more to do here.
-        Done,
-
-        // The first step with something to do - where to go on.
-        Next,
-
-        // Something to do, after the next step.
-        Later,
-
-        // Worth doing, never needed - the KiCad project.
-        Optional,
-
-        // Cannot be done without a step that was left out - matching and aligning without KiCad data.
-        Skipped,
-    }
-
-    // One row of the checklist: its number, what it is, how far along, and what is left - for the
-    // components, how many the KiCad data has that the board does not (its button adds them), and for
-    // matching, the pictures and views that seem to go together (slice 3d - offered under the step).
-    internal sealed record ReadinessStep(
-        ReadinessStepKind Kind,
-        int Number,
-        ReadinessState State,
-        string Title,
-        string Detail,
-        int FromKiCad = 0,
-        IReadOnlyList<SchematicCadNameSuggestion>? Matches = null);
+    // What is left to do on a board once its KiCad data is in, as the KiCad import's summary says it
+    // (KiCadImportSummary.LeftToDo). NotOnBoard: the components the KiCad data has that the board lacks -
+    // the summary's button adds them.
+    internal sealed record KiCadWorkLeft(bool Match, bool Align, bool Components, int NotOnBoard, bool Mark, bool Signals);
 
     // ###########################################################################################
     // What the board's KiCad data says: the labels of its components - the very ones "Add N from
     // KiCad" adds (KiCadComponentTable: its first PCB file's footprints, no placeholder, logo or
-    // mounting hole) - its view names, which of them are a side of the board, and every view as
-    // matching a picture sees it (ToMatch - its side, and its PCB file's name). Not Read: the KiCad
-    // files could not be read - no data, never data with nothing in it (code review, 2026-10-26).
+    // mounting hole) - its view names, and every view as matching a picture sees it (ToMatch - its
+    // side, and its PCB file's name). Not Read: the KiCad files could not be read - no data, never data
+    // with nothing in it (code review, 2026-10-26).
+    //
+    // For "Board status" (2026-11-01): how many components have a footprint to mark them from (Markable -
+    // none without a PCB file), the parts only the schematic has (OnlyInSchematic - marked by hand), and
+    // the board's nets (Nets).
     // ###########################################################################################
     internal sealed record BoardKiCadFacts(
         IReadOnlyList<string> References,
         IReadOnlyList<string> Views,
         bool Read = true,
-        IReadOnlyList<string>? BoardViews = null,
-        IReadOnlyList<KiCadViewToMatch>? ToMatch = null)
+        IReadOnlyList<KiCadViewToMatch>? ToMatch = null,
+        int Markable = 0,
+        IReadOnlyList<string>? OnlyInSchematic = null,
+        KiCadNetChoices? Nets = null)
     {
         public static BoardKiCadFacts Of(KiCadProjectRoot? root)
         {
@@ -78,203 +45,122 @@ namespace Handlers.DataHandling
                 .Where(view => view.Name.Length > 0)
                 .ToList();
 
+            List<string> references = KiCadComponentTable.Of(root).Select(component => component.Label).ToList();
+
             return new BoardKiCadFacts(
-                KiCadComponentTable.Of(root).Select(component => component.Label).ToList(),
+                references,
                 views.Select(view => view.Name).ToList(),
-                BoardViews: views.Where(view => view.Side != KiCadViewSide.Sheet).Select(view => view.Name).ToList(),
-                ToMatch: views);
+                ToMatch: views,
+                Markable: root.Pcb.Count > 0 ? references.Count : 0,
+                OnlyInSchematic: KiCadComponentTable.OnlyInSchematic(root),
+                Nets: KiCadNetNames.Choices(root.Pcb.SelectMany(pcb => pcb.Nets.List).Select(net => (net.Name, net.NormalizedName, net.IsNoNet))));
         }
 
-        private static KiCadViewSide SideOf(KiCadProjectView view) =>
+        // Which side of the board a view shows - or a schematic sheet.
+        internal static KiCadViewSide SideOf(KiCadProjectView view) =>
             string.Equals(view.Type, "pcb_top", StringComparison.OrdinalIgnoreCase) ? KiCadViewSide.Top
             : string.Equals(view.Type, "pcb_bottom", StringComparison.OrdinalIgnoreCase) ? KiCadViewSide.Bottom
             : KiCadViewSide.Sheet;
-    }
 
-    // What an existing board still lacks - components by their labels, in the board's order.
-    internal sealed record BoardMissing(
-        IReadOnlyList<string> WithoutDescription,
-        IReadOnlyList<string> Unmarked,
-        IReadOnlyList<string> PinsWithoutBaseline)
-    {
-        public bool IsEmpty => this.WithoutDescription.Count == 0 && this.Unmarked.Count == 0 && this.PinsWithoutBaseline.Count == 0;
+        // The views of `root` that are a side of the board, by their names - for the Pictures part's
+        // cards (2026-11-01), without the component table Of builds.
+        public static List<string> BoardViewsOf(KiCadProjectRoot root) =>
+            root.Project.Views
+                .Where(view => BoardKiCadFacts.SideOf(view) != KiCadViewSide.Sheet)
+                .Select(view => view.DisplayName?.Trim() ?? string.Empty)
+                .Where(name => name.Length > 0)
+                .ToList();
     }
 
     // ###########################################################################################
-    // GETTING A BOARD READY (CRT 4.0 step 3, slice 3a - the plan: "Getting this board ready:
-    // 1 Name the board, 2 Board pictures, 3 KiCad project (optional), 4 Match pictures to KiCad views,
-    // 5 Align KiCad on each picture, 6 Components - 214 found in KiCad [Add], 7 Mark components on the
-    // pictures, 8 Important signals, 9 Check and submit ... On an existing board, the same panel shows
-    // What's missing: components with no description, unmarked components, pins with no baseline").
+    // What an existing board still lacks - components by their labels, in the board's order - the rows
+    // of its own lists with a field they need left empty (BoardGap), and the components its KiCad data
+    // does not have, whose traces cannot light up.
+    // ###########################################################################################
+    internal sealed record BoardMissing(
+        IReadOnlyList<string> WithoutDescription,
+        IReadOnlyList<string> Unmarked,
+        IReadOnlyList<string> PinsWithoutBaseline,
+        IReadOnlyList<BoardGap>? Gaps = null,
+        IReadOnlyList<string>? NotInKiCad = null)
+    {
+        public IReadOnlyList<BoardGap> BoardGaps => this.Gaps ?? [];
+
+        public IReadOnlyList<string> NotInKiCadLabels => this.NotInKiCad ?? [];
+    }
+
+    // Which of the board's own lists has rows with a field they need left empty.
+    internal enum BoardGapKind
+    {
+        IncompleteFiles,
+        IncompleteLinks,
+        IncompleteCredits,
+        IncompleteSignals,
+    }
+
+    // One such list, said.
+    internal sealed record BoardGap(BoardGapKind Kind, string Text);
+
+    // ###########################################################################################
+    // WHAT A BOARD STILL LACKS ("Board status" says it, BoardStatusPage), AND WHAT IS LEFT TO DO ONCE ITS
+    // KiCad DATA IS IN (the KiCad import's summary says it, KiCadImportSummary.LeftToDo). Worked out from
+    // the board as its draft has it - its rows, its KiCad alignments - and what its KiCad data says.
     //
-    // Worked out from the board as its draft has it - its rows, its KiCad alignments - whether it has
-    // KiCad files, and what its KiCad data says (null while that is still being read):
-    //
-    //   - A STEP IS DONE by what the board holds, never by a box ticked: pictures listed, a picture
-    //     given a KiCad view, the components KiCad has on the board, every component marked.
-    //   - THE KICAD PROJECT IS OPTIONAL; without it, matching and aligning are skipped and the
-    //     components are counted on their own.
-    //   - THE FIRST STEP WITH SOMETHING TO DO IS "NEXT"; "Check and submit" is next once nothing else
-    //     is, and is never done - submitting is.
-    //
-    // PURE: the board in, the rows out.
+    // PURE: the board in, the answer out.
     // ###########################################################################################
     internal static class BoardReadiness
     {
         // How many labels a "What's missing" list names before "and N more".
         internal const int ListedAtMost = 8;
 
-        public static List<ReadinessStep> Steps(string boardName, BoardContent content, bool hasKiCadFiles, BoardKiCadFacts? kiCad)
+        // ###########################################################################################
+        // What is left to do once the KiCad data is in, by what the board holds - never a box ticked:
+        //
+        //   - A PICTURE SHOWS A VIEW once its CAD name is one of the views, and is aligned once it has a
+        //     calibration.
+        //   - ANY PICTURE MATCHED ENDS MATCHING (code review, 2026-10-26): CRT cannot know whether a
+        //     picture shows a view - a photo of the ports shows none - and one such photo left it to do
+        //     for ever.
+        //   - KiCad FILES THAT COULD NOT BE READ ARE NO KiCad DATA AT ALL (code review, 2026-10-26: they
+        //     read as data with nothing in it - "All 0 are on the board", ticked): nothing to match,
+        //     align or pick signals from, and no component is missing from the board for them.
+        // ###########################################################################################
+        public static KiCadWorkLeft WorkLeftAfterKiCad(BoardContent content, BoardKiCadFacts kiCad)
         {
             ArgumentNullException.ThrowIfNull(content);
+            ArgumentNullException.ThrowIfNull(kiCad);
 
             BoardData board = content.Board;
 
-            // KiCad files that could not be read are no KiCad data at all (code review, 2026-10-26: they
-            // read as data with nothing in it - "All 0 are on the board", ticked).
-            bool unreadable = hasKiCadFiles && kiCad is { Read: false };
-            bool usable = hasKiCadFiles && !unreadable;
-            BoardKiCadFacts? facts = usable ? kiCad : null;
+            var views = new HashSet<string>(kiCad.Views.Select(view => view.Trim()), StringComparer.OrdinalIgnoreCase);
+            var calibrated = new HashSet<string>(content.Calibrations.Select(row => row.SchematicName.Trim()), StringComparer.OrdinalIgnoreCase);
 
-            List<BoardSchematicEntry> pictures = board.Schematics.Where(row => !string.IsNullOrWhiteSpace(row.SchematicImageFile)).ToList();
-            var views = new HashSet<string>(facts?.Views.Select(view => view.Trim()) ?? [], StringComparer.OrdinalIgnoreCase);
-
-            List<BoardSchematicEntry> matched = pictures
-                .Where(row => (row.CadName?.Trim() ?? string.Empty).Length > 0 && (facts is null || views.Contains(row.CadName!.Trim())))
+            List<BoardSchematicEntry> matched = board.Schematics
+                .Where(row => !string.IsNullOrWhiteSpace(row.SchematicImageFile) && row.CadName?.Trim() is { Length: > 0 } view && views.Contains(view))
                 .ToList();
 
-            var calibrated = new HashSet<string>(content.Calibrations.Select(row => row.SchematicName.Trim()), StringComparer.OrdinalIgnoreCase);
             int aligned = matched.Count(row => calibrated.Contains(row.SchematicName?.Trim() ?? string.Empty));
 
             List<string> labels = BoardReadiness.Labels(board);
-            var onBoard = new HashSet<string>(labels, StringComparer.OrdinalIgnoreCase);
-            List<string> fromKiCad = facts is null ? [] : BoardReadiness.Distinct(facts.References);
-            int notOnBoard = fromKiCad.Count(reference => !onBoard.Contains(reference));
-            int unmarked = BoardReadiness.UnmarkedOf(board, labels).Count;
-            int signals = board.KiCadImportantSignals.Count;
-            string needsKiCad = unreadable ? "Needs KiCad data CRT can read." : "Needs the KiCad project.";
+            int notOnBoard = BoardReadiness.NotOnBoard(board, kiCad.References);
 
-            var steps = new List<(ReadinessStepKind Kind, Status Status, string Title, string Detail)>
-            {
-                (ReadinessStepKind.Name, Status.Done, "Name the board", boardName.Trim()),
-
-                (ReadinessStepKind.Pictures, pictures.Count > 0 ? Status.Done : Status.ToDo,
-                    pictures.Count == 0 ? "Board pictures" : $"Board pictures ({BoardReadiness.Count(pictures.Count)})",
-                    pictures.Count == 0
-                        ? "Photos of both sides, and the schematic sheets - the board everything else is marked on."
-                        : "Add more, name them, or put them in order."),
-
-                (ReadinessStepKind.KiCad, unreadable ? Status.ToDo : hasKiCadFiles ? Status.Done : Status.Optional, "KiCad project (optional)",
-                    unreadable
-                        ? BoardReadiness.KiCadUnreadable
-                        : hasKiCadFiles
-                            ? "The board's KiCad data is in your draft."
-                            : "With the board's KiCad project, its traces light up and its components can be added in one go."),
-            };
-
-            // The pictures and views that seem to go together (slice 3d) - once the views are known.
-            List<SchematicCadNameSuggestion> suggested = facts is null ? [] : SchematicCadNameSuggestions.For(board.Schematics, facts.ToMatch ?? []);
-
-            if (!usable)
-            {
-                steps.Add((ReadinessStepKind.Match, Status.Skipped, "Match pictures to KiCad views", needsKiCad));
-                steps.Add((ReadinessStepKind.Align, Status.Skipped, "Align KiCad on each picture", needsKiCad));
-            }
-            else
-            {
-                Status match = BoardReadiness.MatchStatus(pictures.Count, matched.Count, views.Count, read: facts is not null);
-                string shown = $"{BoardReadiness.Count(matched.Count)} of {BoardReadiness.Count(pictures.Count)} pictures show a KiCad view";
-
-                steps.Add((ReadinessStepKind.Match, match, "Match pictures to KiCad views",
-                    facts is null
-                        ? "Reading the KiCad data..."
-                        : match switch
-                        {
-                            Status.Done => $"{shown}.",
-                            _ when suggested.Count > 0 => $"{shown} - check the matches suggested below.",
-                            Status.Optional => $"{shown} - name the view of any other picture that shows one.",
-                            _ => $"{shown} - name the view each one shows.",
-                        }));
-
-                steps.Add((ReadinessStepKind.Align, matched.Count > 0 && aligned == matched.Count ? Status.Done : Status.ToDo, "Align KiCad on each picture",
-                    matched.Count == 0
-                        ? "Once a picture shows a KiCad view, line the traces up on it."
-                        : $"{BoardReadiness.Count(aligned)} of {BoardReadiness.Count(matched.Count)} pictures aligned."));
-            }
-
-            steps.Add(facts is not null
-                ? (ReadinessStepKind.Components, labels.Count > 0 && notOnBoard == 0 ? Status.Done : Status.ToDo,
-                    $"Components - {BoardReadiness.Count(fromKiCad.Count)} found in KiCad",
-                    notOnBoard == 0
-                        ? $"All {BoardReadiness.Count(fromKiCad.Count)} are on the board."
-                        : $"{BoardReadiness.Count(notOnBoard)} of them are not on the board yet.")
-                : (ReadinessStepKind.Components, labels.Count > 0 ? Status.Done : Status.ToDo,
-                    labels.Count == 0 ? "Components" : $"Components ({BoardReadiness.Count(labels.Count)})",
-                    labels.Count == 0 ? "The chips and parts, each by the label printed on the board." : "Add any the board still lacks."));
-
-            // A picture aligned with a SIDE OF THE BOARD can have them all drawn at once (step 3, slice 3c)
-            // - said where there is one, once the KiCad data says which views those are (code review,
-            // 2026-10-26: one aligned with a schematic sheet was counted, and the button refused).
-            var boardViews = new HashSet<string>(facts?.BoardViews ?? [], StringComparer.OrdinalIgnoreCase);
-            bool markable = matched.Any(row => boardViews.Contains(row.CadName!.Trim()) && calibrated.Contains(row.SchematicName?.Trim() ?? string.Empty));
-            string automatically = markable ? " A picture aligned with KiCad draws them all with Mark all automatically." : string.Empty;
-
-            steps.Add((ReadinessStepKind.Mark, labels.Count > 0 && unmarked == 0 ? Status.Done : Status.ToDo, "Mark components on the pictures",
-                labels.Count == 0
-                    ? "Once there are components, draw where each one is on the pictures."
-                    : unmarked == 0
-                        ? "Every component is marked."
-                        : $"{BoardReadiness.Count(unmarked)} of {BoardReadiness.Count(labels.Count)} components are not marked on any picture yet.{automatically}"));
-
-            steps.Add(usable
-                ? (ReadinessStepKind.Signals, signals > 0 ? Status.Done : Status.ToDo, "Important signals",
-                    signals > 0
-                        ? $"{BoardReadiness.Count(signals)} - add any other worth checking first."
-                        : "The signals worth checking first, each lighting up its KiCad net.")
-                : (ReadinessStepKind.Signals, Status.Skipped, "Important signals", needsKiCad));
-
-            List<ReadinessStep> result = BoardReadiness.WithStates(steps);
-
-            return facts is not null
-                ? result
-                    .Select(step => step.Kind switch
-                    {
-                        ReadinessStepKind.Components => step with { FromKiCad = notOnBoard },
-                        ReadinessStepKind.Match when suggested.Count > 0 => step with { Matches = suggested },
-                        _ => step,
-                    })
-                    .ToList()
-                : result;
-        }
-
-        // ###########################################################################################
-        // Whether matching is done. Nothing matched is to do. While the KiCad data is read, every
-        // picture matched is done. Once it is read: every picture matched, or every view, is done -
-        // and anything between is worth finishing, never needed (code review, 2026-10-26): CRT cannot
-        // know whether a picture shows a view - a photo of the ports shows none - so a board with such
-        // a picture and a view no picture shows left matching "next" for ever.
-        // ###########################################################################################
-        private static Status MatchStatus(int pictures, int matched, int views, bool read)
-        {
-            if (matched == 0)
-            {
-                return Status.ToDo;
-            }
-
-            if (!read)
-            {
-                return matched >= pictures ? Status.Done : Status.ToDo;
-            }
-
-            return matched >= pictures || matched >= views ? Status.Done : Status.Optional;
+            return new KiCadWorkLeft(
+                Match: kiCad.Read && matched.Count == 0,
+                Align: kiCad.Read && (matched.Count == 0 || aligned < matched.Count),
+                Components: labels.Count == 0 || notOnBoard > 0,
+                NotOnBoard: notOnBoard,
+                Mark: labels.Count == 0 || BoardReadiness.UnmarkedOf(board, labels).Count > 0,
+                Signals: kiCad.Read && board.KiCadImportantSignals.Count == 0);
         }
 
         // ###########################################################################################
         // What an existing board still lacks: components with no short description, components marked
         // on no picture, and components whose pins are listed but which have no scope baseline - each
-        // by its label, once, in the board's order.
+        // by its label, once, in the board's order. Which of the board's own lists have rows with a
+        // field they need left empty. With KiCad data read, the board's components it does not have -
+        // their traces cannot light up.
         // ###########################################################################################
-        public static BoardMissing Missing(BoardData board)
+        public static BoardMissing Missing(BoardData board, bool hasKiCadFiles = false, BoardKiCadFacts? kiCad = null)
         {
             ArgumentNullException.ThrowIfNull(board);
 
@@ -295,45 +181,46 @@ namespace Handlers.DataHandling
 
             List<string> pinsWithoutBaseline = labels.Where(label => withPins.Contains(label) && !withBaselines.Contains(label)).ToList();
 
-            return new BoardMissing(withoutDescription, BoardReadiness.UnmarkedOf(board, labels), pinsWithoutBaseline);
+            BoardKiCadFacts? facts = hasKiCadFiles && kiCad is { Read: true } ? kiCad : null;
+
+            // ###########################################################################################
+            // *** A ROW OF THE BOARD'S OWN LISTS WITH A FIELD IT NEEDS EMPTY IS SAID BY ITS LIST (owner
+            // request, 2026-11-01: "These errors must be flagged in 'Board status'"). *** Each is an error
+            // of the draft's (BoardRowRequired), its list's panel opening it where the empty boxes are marked.
+            // ###########################################################################################
+            BoardRowsIncomplete incomplete = BoardRowRequired.Of(board);
+
+            var gaps = new List<BoardGap>();
+
+            BoardReadiness.AddIncomplete(gaps, BoardGapKind.IncompleteFiles, incomplete.Files, "file", "files");
+            BoardReadiness.AddIncomplete(gaps, BoardGapKind.IncompleteLinks, incomplete.Links, "link", "links");
+            BoardReadiness.AddIncomplete(gaps, BoardGapKind.IncompleteCredits, incomplete.Credits, "credit", "credits");
+            BoardReadiness.AddIncomplete(gaps, BoardGapKind.IncompleteSignals, incomplete.Signals, "important KiCad signal", "important KiCad signals");
+
+            List<string> notInKiCad = [];
+            List<string> fromKiCad = facts is null ? [] : BoardReadiness.Distinct(facts.References);
+
+            // Only once the KiCad data names components at all - an empty PCB says nothing of them.
+            if (fromKiCad.Count > 0)
+            {
+                var inKiCad = new HashSet<string>(fromKiCad, StringComparer.OrdinalIgnoreCase);
+                notInKiCad = labels.Where(label => !inKiCad.Contains(label)).ToList();
+            }
+
+            return new BoardMissing(withoutDescription, BoardReadiness.UnmarkedOf(board, labels), pinsWithoutBaseline, gaps, notInKiCad);
         }
 
-        // ###########################################################################################
-        // The button beside a step - what it opens - or "" for none: naming is done, and a step that
-        // needs the KiCad project has nothing to open without it.
-        // ###########################################################################################
-        public static string ActionOf(ReadinessStep step)
+        private static void AddIncomplete(List<BoardGap> gaps, BoardGapKind kind, int rows, string what, string whats)
         {
-            ArgumentNullException.ThrowIfNull(step);
-
-            if (step.State == ReadinessState.Skipped)
+            if (rows > 0)
             {
-                return string.Empty;
+                gaps.Add(new BoardGap(kind, BoardReadiness.IncompleteGap(rows, what, whats)));
             }
-
-            // The plan's "Components - 214 found in KiCad [Add]": every one the board lacks, in one go.
-            if (step.Kind == ReadinessStepKind.Components && step.FromKiCad > 0)
-            {
-                return $"Add {BoardReadiness.Count(step.FromKiCad)} from KiCad";
-            }
-
-            return step.Kind switch
-            {
-                ReadinessStepKind.Pictures => "Pictures",
-                ReadinessStepKind.KiCad => "KiCad data",
-                ReadinessStepKind.Match => "Match pictures",
-                ReadinessStepKind.Align => "Align KiCad",
-                ReadinessStepKind.Components => "Add component",
-                ReadinessStepKind.Mark => "Mark components",
-                ReadinessStepKind.Signals => "Important signals",
-                ReadinessStepKind.Submit => "Submit",
-                _ => string.Empty,
-            };
         }
 
         // ###########################################################################################
-        // What "Add N from KiCad" did, said under the checklist: how many came, and how many of them
-        // with their pins and a datasheet link.
+        // What adding the KiCad components did, said in "KiCad data" and over Board status's panels: how
+        // many came, and how many of them with their pins and a datasheet link.
         // ###########################################################################################
         public static string AddedFromKiCad(KiCadComponentsAdded added)
         {
@@ -363,7 +250,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The matches suggested under "Match pictures to KiCad views" (slice 3d): each pair, its "Use",
+        // The matches suggested under Board status's Schematic images (slice 3d): each pair, its "Use",
         // the button for all of them, and what taking them did.
         // ###########################################################################################
         public const string MatchesHeading = "Suggested from the names of the pictures and their files:";
@@ -387,17 +274,41 @@ namespace Handlers.DataHandling
         public const string KiCadNotRead = "The board's KiCad data could not be read, so nothing was added.";
 
         public const string KiCadUnreadable =
-            "The KiCad files in your draft could not be read - open KiCad data to see which are there, and import the project again.";
+            "The KiCad files in your draft could not be read - open \"KiCad: Files\" to see which are there, and import the project again.";
+
+        // ---- "Board status" -------------------------------------------------------------------------
+
+        // The panels' buttons - each opens where the part is seen to; a plain button (CLAUDE.md, button
+        // colors), so none says "Add" but the one that adds.
+        public const string TableAction = "Show in the table";
+        public const string PicturesAction = "Open schematic images";
+        public const string KiCadAction = "Open KiCad files";
+        public const string SignalsAction = "Open important signals";
+        public const string CreditsAction = "Open credits";
+        public const string FilesAction = "Open files";
+        public const string LinksAction = "Open links";
+
+        // A list with rows missing a field they need (BoardRowRequired) - errors, so said as such.
+        public static string IncompleteGap(int rows, string what, string whats) => rows == 1
+            ? $"1 {what} has a field it needs left empty - fill it in, or the draft cannot be submitted."
+            : $"{BoardReadiness.Count(rows)} {whats} have fields they need left empty - fill them in, or the draft cannot be submitted.";
+
+        public const string NoPicturesGap = "No schematic images yet - photos of both sides and the schematic sheets, which everything else is marked on.";
+
+        public const string NoSignalsGap = "No important KiCad signals yet - the signals worth checking first, each lighting up its KiCad net.";
+
+        public const string NoCreditsGap = "Nobody is credited for the board's data yet.";
 
         // The headings of "What's missing", counted.
+        public static string NotInKiCadHeading(int count) => $"Not in the KiCad data - their traces cannot light up ({BoardReadiness.Count(count)})";
+
         public static string WithoutDescriptionHeading(int count) => $"No short description ({BoardReadiness.Count(count)})";
 
-        public static string UnmarkedHeading(int count) => $"Not marked on any picture ({BoardReadiness.Count(count)})";
+        // The warning "component.no_highlight" is, said once for them all: each component is a button.
+        public static string UnmarkedHeading(int count) =>
+            $"Warning - not marked on any schematic image, so CRT cannot point them out on the board ({BoardReadiness.Count(count)})";
 
         public static string PinsWithoutBaselineHeading(int count) => $"Pins listed, but no scope baseline ({BoardReadiness.Count(count)})";
-
-        public const string NothingMissing =
-            "Nothing - every component has a short description and is marked on a picture, and every one with its pins listed has a scope baseline.";
 
         // ###########################################################################################
         // Under a "What's missing" group naming its first ListedAtMost: how many more there are - ""
@@ -409,53 +320,17 @@ namespace Handlers.DataHandling
 
         // ---- the rules ----------------------------------------------------------------------------
 
-        // How far along a step is, before which step is next is known.
-        private enum Status
-        {
-            Done,
-            ToDo,
-            Optional,
-            Skipped,
-        }
-
-        // Next is the first step with something to do; "Check and submit" is next once nothing is.
-        private static List<ReadinessStep> WithStates(List<(ReadinessStepKind Kind, Status Status, string Title, string Detail)> steps)
-        {
-            var result = new List<ReadinessStep>();
-            bool nextGiven = false;
-
-            for (int index = 0; index < steps.Count; index++)
-            {
-                (ReadinessStepKind kind, Status status, string title, string detail) = steps[index];
-
-                ReadinessState state = status switch
-                {
-                    Status.Done => ReadinessState.Done,
-                    Status.Optional => ReadinessState.Optional,
-                    Status.Skipped => ReadinessState.Skipped,
-                    _ when !nextGiven => ReadinessState.Next,
-                    _ => ReadinessState.Later,
-                };
-
-                nextGiven |= state == ReadinessState.Next;
-                result.Add(new ReadinessStep(kind, index + 1, state, title, detail));
-            }
-
-            result.Add(new ReadinessStep(
-                ReadinessStepKind.Submit,
-                steps.Count + 1,
-                nextGiven ? ReadinessState.Later : ReadinessState.Next,
-                "Check and submit",
-                nextGiven
-                    ? "Send it whenever you like - what is left can come in a later submission."
-                    : "Everything is in place - send the board for review."));
-
-            return result;
-        }
-
         // The board's component labels, trimmed, once each, in its order.
-        private static List<string> Labels(BoardData board) =>
+        internal static List<string> Labels(BoardData board) =>
             BoardReadiness.Distinct(board.Components.Select(row => row.BoardLabel));
+
+        // How many of the KiCad data's components the board has none of - capitals ignored.
+        internal static int NotOnBoard(BoardData board, IEnumerable<string> references)
+        {
+            var onBoard = new HashSet<string>(BoardReadiness.Labels(board), StringComparer.OrdinalIgnoreCase);
+
+            return BoardReadiness.Distinct(references).Count(reference => !onBoard.Contains(reference));
+        }
 
         private static List<string> Distinct(IEnumerable<string?> names) =>
             names

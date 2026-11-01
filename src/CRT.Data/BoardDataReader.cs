@@ -224,6 +224,9 @@ namespace Handlers.DataHandling
                     // test writes reads back whole, and never logged as missing.
                     ComponentPins = BoardWorkbookSchema.MapComponentPins(ReadSheetRows(package, logKey, BoardWorkbookSchema.SheetComponentPins, ComponentPinsHeaders)),
                     ComponentReplacements = BoardWorkbookSchema.MapComponentReplacements(ReadSheetRows(package, logKey, BoardWorkbookSchema.SheetComponentReplacements, ComponentReplacementsHeaders)),
+
+                    // A workbook has no such field - its rows decide (BoardRegions).
+                    Regions = [],
                 };
             }
             catch (Exception ex)

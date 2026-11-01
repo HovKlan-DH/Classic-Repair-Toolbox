@@ -136,6 +136,21 @@ namespace Handlers.DataHandling
             BoardDataDiffer.Compare(published, draft).Count;
 
         // ###########################################################################################
+        // Whether ONE section of a draft differs from the published board's ROWS, by this report's
+        // rule - a renamed row is one change, rows only in another ORDER are none here. Order is a
+        // change too (owner decision, 2026-10-30), counted beside this report by BoardRowOrder: a
+        // surface marking one section "Changed" (the component pane's board parts) asks both, as
+        // Submit counts both. Null on either side is no rows.
+        // ###########################################################################################
+        public static bool SectionDiffers<T>(IReadOnlyList<T>? published, IReadOnlyList<T>? draft)
+            where T : class
+        {
+            var changes = new List<BoardRowChange>();
+            BoardDataDiffer.CompareSection(changes, string.Empty, published, draft);
+            return changes.Count > 0;
+        }
+
+        // ###########################################################################################
         // One section, in three passes: rows only in the draft, rows in both, rows only published.
         //
         // *** DUPLICATE KEYS KEEP THE FIRST ROW AND IGNORE THE REST, ON BOTH SIDES. *** A board

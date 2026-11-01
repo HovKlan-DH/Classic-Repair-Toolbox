@@ -40,13 +40,13 @@ namespace Handlers.MaintainerHandling
 
         // Under the Feedback tab's address while it is the account's.
         public const string FeedbackNote =
-            "Your maintainer account's address, as you are signed in on the Maintainer tab. Sign out there to use another one.";
+            "Your maintainer account's address, as you are signed in on the \"Maintainer\" tab. Sign out there to use another one.";
 
         // Under the Submit dialog's address while it is the account's - in place of the line saying
         // there is no account to create, which would then be untrue.
         public const string SubmitNote =
-            "Sent with your maintainer account, as you are signed in on the Maintainer tab, so the maintainer reviewing it " +
-            "sees a verified address. The outcome is shown in \"My submissions\" on the Contribute tab. Sign out on the Maintainer " +
-            "tab to send with another address.";
+            "Sent with your maintainer account, as you are signed in on the \"Maintainer\" tab, so the maintainer reviewing it " +
+            "sees a verified address. The outcome is shown in \"My submissions\" on the \"Contribute\" tab. Sign out on the " +
+            "\"Maintainer\" tab to send with another address.";
     }
 }

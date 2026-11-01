@@ -302,14 +302,20 @@ public sealed class DraftSessionTests : IDisposable
     public async Task SaveAsync_saves_off_the_calling_thread_and_never_throws()
     {
         DraftSession session = this.OpenWith(DraftSessionTests.Component("U1", "CPU"));
-        int callingThread = Environment.CurrentManagedThreadId;
-        int? savingThread = null;
+
+        // Off the calling thread: the caller has the task back with the write still to come. Never told
+        // by comparing thread ids - the caller's pool thread, free again at its await, may run the save.
+        using var handedBack = new ManualResetEventSlim();
+        bool handedBackFirst = false;
 
         session.Apply("one", DraftSessionTests.Name("U1", "one"));
-        session.WhileWritingForTests = () => savingThread = Environment.CurrentManagedThreadId;
+        session.WhileWritingForTests = () => handedBackFirst = handedBack.Wait(TimeSpan.FromSeconds(30));
 
-        Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
-        Assert.NotEqual(callingThread, savingThread);
+        Task<DraftWorkbookEditOutcome> saving = session.SaveAsync();
+        handedBack.Set();
+
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, await saving);
+        Assert.True(handedBackFirst);
         Assert.Equal("one", this.NameOnDisk("U1"));
 
         session.Apply("two", DraftSessionTests.Name("U1", "two"));

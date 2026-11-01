@@ -264,7 +264,7 @@ namespace CRT.Server.Tests
             BoardWorkbookWriter.Write(path, new BoardData
             {
                 RevisionDate = revision,
-                Components = [new ComponentEntry { BoardLabel = "U8" }],
+                Components = [new ComponentEntry { Category = "IC", BoardLabel = "U8" }],
             });
         }
 

@@ -174,7 +174,36 @@ public sealed class BoardHistoryDisplayTests
         Assert.Equal(["2"], lines[1].Runs.Where(run => run.IsCount).Select(run => run.Text));
     }
 
+    // ###########################################################################################
+    // The lists a submission put in another order (2026-10-30 - order is a change): a heading "Order"
+    // and a line per list, after the sheets and before the files. A submission that only moved rows
+    // says that and nothing else.
+    // ###########################################################################################
+    [Fact]
+    public void The_lists_put_in_another_order_read_under_their_own_heading()
+    {
+        var changes = new SubmissionChanges(
+            false,
+            [],
+            FileChanges.None,
+            [BoardWorkbookSchema.SheetBoardLocalFiles, BoardWorkbookSchema.SheetCredits]);
+
+        IReadOnlyList<HistoryChangeLine> lines = BoardHistoryDisplay.ChangeLines(changes);
+
+        Assert.Equal(["Order", "Order of the files changed", "Order of the credits changed"], lines.Select(line => line.Text));
+        Assert.Equal([true, false, false], lines.Select(line => line.IsHeading));
+    }
+
     // A new board is counted, not named - its first submission adds every row it has.
+    [Fact]
+    public void A_change_of_the_boards_regions_reads_under_its_own_heading()
+    {
+        var changes = new SubmissionChanges(false, [], FileChanges.None, null, RegionsNow: false);
+
+        Assert.True(SubmissionChangeFacts.HasChanges(changes));
+        Assert.Equal(["Regions", BoardRegions.ChangedLine(false)], BoardHistoryDisplay.ChangeLines(changes).Select(line => line.Text));
+    }
+
     [Fact]
     public void A_new_board_is_counted_not_named()
     {

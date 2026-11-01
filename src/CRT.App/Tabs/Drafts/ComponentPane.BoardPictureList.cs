@@ -4,6 +4,7 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -43,6 +44,19 @@ namespace CRT
         // The board's KiCad view names - null until the host has read them for the part (UseKiCadViews).
         private IReadOnlyList<string>? thisCadViewNames;
 
+        // Which of them are a side of the board - null while not known. A card says what to do next on
+        // such a picture not aligned yet, and offers no "Mark all automatically" on a schematic sheet
+        // (2026-11-01).
+        private IReadOnlyCollection<string>? thisCadBoardSides;
+
+        // How many components each view shows - null while not known. Said under a card's thumbnail
+        // (2026-11-01).
+        private IReadOnlyDictionary<string, int>? thisCadViewComponents;
+
+        // Where each side of the board's footprints lie - null while not known. A card tells the marks
+        // KiCad drew from those drawn by hand with it (2026-11-01).
+        private IReadOnlyDictionary<string, KiCadViewFootprints>? thisCadViewFootprints;
+
         // ###########################################################################################
         // The host reads the board's KiCad views for the Pictures part - asked when the part opens and
         // again whenever the draft's KiCad files change while it is open (FollowKiCadFiles; code
@@ -71,9 +85,15 @@ namespace CRT
         // ###########################################################################################
         // The board's KiCad view names, once the host has read them - every card's drop-down follows.
         // `ask`: the KiCadViewsAsk the read was started for - an older one is never taken; null takes
-        // them whatever was asked. Only while the Pictures part is shown.
+        // them whatever was asked. `boardSides`: those of them that are a side of the board (pcb_top,
+        // pcb_bottom) - null when not known. Only while the Pictures part is shown.
         // ###########################################################################################
-        internal void UseKiCadViews(IReadOnlyList<string> views, int? ask = null)
+        internal void UseKiCadViews(
+            IReadOnlyList<string> views,
+            int? ask = null,
+            IReadOnlyCollection<string>? boardSides = null,
+            IReadOnlyDictionary<string, int>? viewComponents = null,
+            IReadOnlyDictionary<string, KiCadViewFootprints>? viewFootprints = null)
         {
             if (this.thisBoardPart != PaneBoardPart.Pictures || (ask is int asked && asked != this.thisKiCadViewsAsk))
             {
@@ -81,10 +101,14 @@ namespace CRT
             }
 
             this.thisCadViewNames = views ?? [];
+            this.thisCadBoardSides = boardSides;
+            this.thisCadViewComponents = viewComponents;
+            this.thisCadViewFootprints = viewFootprints;
             this.ShowCadNameChoices();
         }
 
-        // Each card's views, judged against every other card's - one picture's view is no other's choice.
+        // Each card's views, judged against every other card's - one picture's view is no other's choice
+        // - and which of them are a side of the board.
         private void ShowCadNameChoices()
         {
             List<(string SchematicName, string CadName)> pictures = this.thisBoardPictures
@@ -94,6 +118,9 @@ namespace CRT
             for (int index = 0; index < this.thisBoardPictures.Count; index++)
             {
                 this.thisBoardPictures[index].ApplyCadNameChoices(SchematicCadNameChoices.For(pictures, index, this.thisCadViewNames ?? []));
+                this.thisBoardPictures[index].BoardSides = this.thisCadBoardSides;
+                this.thisBoardPictures[index].ViewComponents = this.thisCadViewComponents;
+                this.thisBoardPictures[index].ViewFootprints = this.thisCadViewFootprints;
             }
         }
 
@@ -158,7 +185,7 @@ namespace CRT
 
             IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                Title = "Pick pictures of the board",
+                Title = "Pick schematic images of the board",
                 AllowMultiple = true,
                 FileTypeFilter = [ComponentPane.PictureFileType],
             });
@@ -276,8 +303,8 @@ namespace CRT
         // *** A NAME REFUSED STAYS IN ITS BOX, with the reason (code review, 2026-10-28). *** A blank
         // name or one another picture has: the typed name was put back to the old one, and closing the
         // pane threw it away with the reason no one saw. Now it waits there to be fixed - Escape puts
-        // the old name back - and the pane's Close stays open on it (OnCloseClick), as the
-        // "Schematic images" window did. A card the draft no longer has is shown again as the draft is.
+        // the old name back - and the pane stays open on it when "Board status" or anything else is
+        // asked for (KeepsRefusedPictureName), as the "Schematic images" window did. A card the draft no longer has is shown again as the draft is.
         // ###########################################################################################
         internal bool CommitPictureName(ComponentPaneBoardPictureRow row)
         {
@@ -338,6 +365,19 @@ namespace CRT
 
             row.ForgetNameEdit();
             row.Name = wanted;
+
+            // Its traces stay ticked under the new name - and are read again under it: a read under the
+            // old name finds no picture (code review, 2026-10-30: it ended on "Reading..." for good).
+            if (this.thisTracesTicked.Remove(ComponentPane.TicksKey(oldName, row.File), out (bool ThisSide, bool OtherSide) ticked))
+            {
+                this.thisTracesTicked[ComponentPane.TicksKey(wanted, row.File)] = ticked;
+            }
+
+            if (row.ShowsAnyTraces && row.CanShowTraces)
+            {
+                this.LoadTraces(row);
+            }
+
             this.ShowCadNameChoices();
             this.ShowBoardPartChanged();
             this.ContentChanged?.Invoke(this, EventArgs.Empty);
@@ -387,6 +427,23 @@ namespace CRT
 
             row.CadName = wanted;
             this.ShowCadNameChoices();
+
+            // The traces read were of the old view - let go of, ticked or not (code review, 2026-10-30:
+            // unticked, they stayed, and ticking again drew the old view's copper or said its problem).
+            row.ForgetTraces();
+
+            // The traces shown are of the view picked - read again, or both unticked when none can be.
+            if (row.ShowsAnyTraces)
+            {
+                if (row.CanShowTraces)
+                {
+                    this.LoadTraces(row);
+                }
+                else
+                {
+                    row.SetTicks(false, false, tell: true);
+                }
+            }
         }
 
         // ---- order ------------------------------------------------------------------------------

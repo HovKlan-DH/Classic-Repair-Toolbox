@@ -50,6 +50,144 @@ public sealed class KiCadFootprintMarksTests
         ],
     };
 
+    private static KiCadMarkPlan PlanOfTop(KiCadCalibrationValues alignment) => new("Top", Pcb(), false, alignment, 420, 220, null);
+
+    // What KiCad draws for the board's components on "Top" under `alignment`, by label.
+    private static Dictionary<string, ComponentHighlightEntry> Drawn(BoardData board, KiCadCalibrationValues alignment) =>
+        KiCadFootprintMarks.For(board, "Top", Pcb(), false, alignment, 420, 220, skipMarked: false).ToDictionary(mark => mark.BoardLabel);
+
+    private static BoardData WithHighlights(params ComponentHighlightEntry[] marks) => new()
+    {
+        Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }, new ComponentEntry { BoardLabel = "U2", Category = "IC" }],
+        ComponentHighlights = [.. marks],
+    };
+
+    private static readonly KiCadCalibrationValues Shifted = new(1, 1, 30, 10, false, false);
+
+    // ###########################################################################################
+    // *** ALIGNED AGAIN, THE MARKS KiCad DREW FOLLOW (owner request, 2026-11-01). *** A mark exactly where
+    // its footprint lay under the alignment before goes where it lies now; a mark anywhere else was moved
+    // or drawn by hand, and stays. Another picture's marks are not touched.
+    // ###########################################################################################
+    [Fact]
+    public void Aligned_again_a_mark_KiCad_drew_moves_and_one_by_hand_stays()
+    {
+        Dictionary<string, ComponentHighlightEntry> before = Drawn(WithHighlights(), Unmoved);
+        var byHand = new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U2", X = "1", Y = "2", Width = "3", Height = "4" };
+        var elsewhere = new ComponentHighlightEntry { SchematicName = "Bottom", BoardLabel = "U1", X = before["U1"].X, Y = before["U1"].Y, Width = before["U1"].Width, Height = before["U1"].Height };
+        BoardData board = WithHighlights(before["U1"], byHand, elsewhere);
+
+        BoardData result = KiCadFootprintMarks.Realigned(board, PlanOfTop(Shifted), Unmoved, out int changed);
+
+        ComponentHighlightEntry there = Drawn(board, Shifted)["U1"];
+        ComponentHighlightEntry moved = result.ComponentHighlights.Single(row => row.SchematicName == "Top" && row.BoardLabel == "U1");
+
+        Assert.Equal((there.X, there.Y, there.Width, there.Height), (moved.X, moved.Y, moved.Width, moved.Height));
+        Assert.Same(byHand, result.ComponentHighlights.Single(row => row.BoardLabel == "U2"));
+        Assert.Same(elsewhere, result.ComponentHighlights.Single(row => row.SchematicName == "Bottom"));
+        Assert.Equal(1, changed);
+    }
+
+    // Done pressed without moving anything, and a picture with no mark of KiCad's: nothing happens - the
+    // same board, so no step of the draft's history.
+    [Fact]
+    public void Aligned_again_with_nothing_to_follow_is_the_same_board()
+    {
+        BoardData drawn = WithHighlights(Drawn(WithHighlights(), Unmoved)["U1"], Drawn(WithHighlights(), Unmoved)["U2"]);
+        Assert.Same(drawn, KiCadFootprintMarks.Realigned(drawn, PlanOfTop(Unmoved), Unmoved, out int unchanged));
+        Assert.Equal(0, unchanged);
+
+        BoardData allByHand = WithHighlights(new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" });
+        Assert.Same(allByHand, KiCadFootprintMarks.Realigned(allByHand, PlanOfTop(Shifted), Unmoved, out int none));
+        Assert.Equal(0, none);
+    }
+
+    // ###########################################################################################
+    // A footprint the bad alignment left off the picture gets its mark now, and one the new alignment puts
+    // off it loses its own - each counted as a change. The first alignment here is 1000 pixels off, so
+    // only a mark for U1, drawn when it still landed, is KiCad's.
+    // ###########################################################################################
+    [Fact]
+    public void Aligned_again_a_footprint_comes_onto_or_goes_off_the_picture()
+    {
+        var uOffPicture = new KiCadCalibrationValues(1, 1, -180, 0, false, false);
+        Dictionary<string, ComponentHighlightEntry> first = Drawn(WithHighlights(), uOffPicture);
+
+        Assert.True(first.ContainsKey("U2"));
+        Assert.False(first.ContainsKey("U1"));
+
+        BoardData result = KiCadFootprintMarks.Realigned(WithHighlights(first["U2"]), PlanOfTop(Unmoved), uOffPicture, out int changed);
+
+        Assert.Equal(["U1", "U2"], result.ComponentHighlights.Select(row => row.BoardLabel).Order());
+        Assert.Equal(2, changed);
+
+        Dictionary<string, ComponentHighlightEntry> drawn = Drawn(WithHighlights(), Unmoved);
+        BoardData goes = KiCadFootprintMarks.Realigned(WithHighlights(drawn["U1"], drawn["U2"]), PlanOfTop(uOffPicture), Unmoved, out int went);
+
+        Assert.DoesNotContain(goes.ComponentHighlights, row => row.BoardLabel == "U1");
+        Assert.Contains(goes.ComponentHighlights, row => row.BoardLabel == "U2");
+        Assert.Equal(2, went);
+    }
+
+    // ###########################################################################################
+    // *** ONLY A FOOTPRINT NEWLY ON THE PICTURE GETS A MARK (code review, 2026-11-01). *** One that lay on
+    // it all along with no mark had its mark deleted on purpose - a part the contributor does not want
+    // shown - and aligning again must not bring it back.
+    // ###########################################################################################
+    [Fact]
+    public void Aligned_again_a_mark_deleted_on_purpose_stays_deleted()
+    {
+        BoardData board = WithHighlights(Drawn(WithHighlights(), Unmoved)["U1"]);
+
+        BoardData result = KiCadFootprintMarks.Realigned(board, PlanOfTop(Shifted), Unmoved, out int changed);
+
+        Assert.Equal("U1", Assert.Single(result.ComponentHighlights).BoardLabel);
+        Assert.Equal(1, changed);
+    }
+
+    // ###########################################################################################
+    // Where each side's footprints lie (a sheet has no entry), and how many labels have a mark exactly
+    // where KiCad draws it - what a card's thumbnail tells automatic marks from those by hand with.
+    // ###########################################################################################
+    [Fact]
+    public void A_mark_where_its_footprint_lies_counts_as_automatic()
+    {
+        var root = new KiCadProjectRoot
+        {
+            Project = new KiCadProjectInfo
+            {
+                Views =
+                [
+                    new KiCadProjectView { DisplayName = "PCB top", Type = "pcb_top", SourceIndex = 0 },
+                    new KiCadProjectView { DisplayName = "PCB bottom", Type = "pcb_bottom", SourceIndex = 0 },
+                    new KiCadProjectView { DisplayName = "Sheet 1", Type = "schematic", SourceIndex = 0 },
+                ],
+            },
+            Pcb = [Pcb()],
+        };
+
+        Dictionary<string, KiCadViewFootprints> views = KiCadFootprintMarks.ViewFootprints(root);
+
+        Assert.Equal(["PCB bottom", "PCB top"], views.Keys.Order());
+        Assert.Equal(["U1", "U2"], views["PCB top"].ByLabel.Keys.Order());
+        Assert.Equal(["Q1", "U1", "U2"], views["pcb BOTTOM"].ByLabel.Keys.Order());
+        Assert.Empty(KiCadFootprintMarks.ViewFootprints(null));
+
+        ComponentHighlightEntry u1 = Drawn(WithHighlights(), Unmoved)["U1"];
+        Rect Rectangle(ComponentHighlightEntry mark) => new(double.Parse(mark.X), double.Parse(mark.Y), double.Parse(mark.Width), double.Parse(mark.Height));
+
+        var marks = new Dictionary<string, List<Rect>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["u1"] = [new Rect(1, 1, 1, 1), Rectangle(u1)],
+            ["U2"] = [new Rect(1, 1, 1, 1)],
+            ["C9"] = [new Rect(1, 1, 1, 1)],
+        };
+
+        Assert.Equal(1, KiCadFootprintMarks.CountAutomatic(marks, views["PCB top"], Unmoved, 420, 220));
+        Assert.Equal(0, KiCadFootprintMarks.CountAutomatic(marks, views["PCB top"], Shifted, 420, 220));
+        Assert.Equal(0, KiCadFootprintMarks.CountAutomatic(marks, views["PCB top"], Unmoved, 0, 0));
+    }
+
     // The Schematics tab's own mapping: across the world bounds 0..1, mirrored, scaled, then moved.
     [Fact]
     public void A_world_point_maps_onto_the_picture_as_the_copper_is_drawn()
@@ -59,6 +197,53 @@ public sealed class KiCadFootprintMarksTests
         Assert.Equal(new Point(100, 50), KiCadFootprintMarks.WorldToImagePixel(10, 5, bounds, Unmoved, 1000, 500));
         Assert.Equal(new Point(900, 50), KiCadFootprintMarks.WorldToImagePixel(10, 5, bounds, new KiCadCalibrationValues(1, 1, 0, 0, true, false), 1000, 500));
         Assert.Equal(new Point(70, 50), KiCadFootprintMarks.WorldToImagePixel(10, 5, bounds, new KiCadCalibrationValues(0.5, 0.5, 20, 25, false, false), 1000, 500));
+    }
+
+    // ###########################################################################################
+    // A world LENGTH - a trace's width - on the picture: the mean of the two axes' scales, a mirror
+    // (a negative scale) making no difference. The Schematics tab and a card's preview both draw a
+    // trace this wide (code review, 2026-10-30: the preview had a copy of the tab's formula).
+    // ###########################################################################################
+    [Fact]
+    public void A_world_length_is_the_mean_of_the_two_scales_on_the_picture()
+    {
+        var bounds = new Rect(0, 0, 100, 50);
+
+        // 10 pixels per world unit across, 10 down: a 0.25 wide trace is 2.5 pixels.
+        Assert.Equal(2.5, KiCadFootprintMarks.WorldLengthOnPicture(0.25, bounds, 1, 1, 1000, 500), 9);
+
+        // 5 across (half the scale), 20 down (twice the height): the mean, 12.5 per unit.
+        Assert.Equal(12.5, KiCadFootprintMarks.WorldLengthOnPicture(1, bounds, 0.5, 1, 1000, 1000), 9);
+        Assert.Equal(12.5, KiCadFootprintMarks.WorldLengthOnPicture(1, bounds, -0.5, -1, 1000, 1000), 9);
+    }
+
+    // ###########################################################################################
+    // A picture is found by name, capitals ignored - and of two sharing the name, by its image file
+    // (code review, 2026-10-30: a card's traces were read for the first picture of its name). With no
+    // file, or one neither has, the first of the name.
+    // ###########################################################################################
+    [Fact]
+    public void A_picture_is_found_by_name_and_of_two_of_a_name_by_its_file()
+    {
+        var board = new BoardData
+        {
+            Schematics =
+            [
+                new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png", CadName = "PCB top" },
+                new BoardSchematicEntry { SchematicName = " top ", SchematicImageFile = "Images/top-2.png" },
+            ],
+        };
+
+        Assert.Equal("Images/top.png", KiCadFootprintMarks.PictureRow(board, "TOP")?.SchematicImageFile);
+        Assert.Equal("Images/top-2.png", KiCadFootprintMarks.PictureRow(board, "Top", " images/TOP-2.png ")?.SchematicImageFile);
+        Assert.Equal("Images/top.png", KiCadFootprintMarks.PictureRow(board, "Top", "Images/gone.png")?.SchematicImageFile);
+        Assert.Null(KiCadFootprintMarks.PictureRow(board, "Bottom", "Images/top.png"));
+
+        // The plan is of the picture the file names: the second, with no KiCad view, says so; the
+        // first, with one, goes on to ask for its alignment.
+        var content = new BoardContent(board, [], []);
+        Assert.Equal(PictureToolWording.NoKiCadView("Top"), KiCadFootprintMarks.Plan(content, "Top", null, (420, 220), "Images/top-2.png").Problem);
+        Assert.Equal(PictureToolWording.NotAligned("Top"), KiCadFootprintMarks.Plan(content, "Top", null, (420, 220), "Images/top.png").Problem);
     }
 
     [Fact]
@@ -194,12 +379,55 @@ public sealed class KiCadFootprintMarksTests
         Assert.Equal(PictureToolWording.NoKiCadView("Photo"), KiCadFootprintMarks.Plan(content, "Photo", root, (420, 220)).Problem);
         Assert.Equal(PictureToolWording.NotABoardView("Sheet"), KiCadFootprintMarks.Plan(content, "Sheet", root, (420, 220)).Problem);
         Assert.Equal(PictureToolWording.NoKiCadView("Other"), KiCadFootprintMarks.Plan(content, "Other", root, (420, 220)).Problem);
+
+        // A schematic sheet is told apart from every other reason - the marking that follows an
+        // alignment says nothing of it (2026-11-01).
+        Assert.True(KiCadFootprintMarks.Plan(content, "Sheet", root, (420, 220)).NotABoardSide);
+        Assert.False(KiCadFootprintMarks.Plan(content, "Other", root, (420, 220)).NotABoardSide);
+        Assert.False(KiCadFootprintMarks.Plan(new BoardContent(board, [], []), "Top", root, (420, 220)).NotABoardSide);
+        Assert.False(top.NotABoardSide);
         Assert.Equal(PictureToolWording.KiCadNotRead, KiCadFootprintMarks.Plan(content, "Top", null, (420, 220)).Problem);
         Assert.Equal(PictureToolWording.ImageMissing("Top"), KiCadFootprintMarks.Plan(content, "Top", root, null).Problem);
         Assert.Equal(
             PictureToolWording.NotAligned("Top"),
             KiCadFootprintMarks.Plan(new BoardContent(board, [], []), "Top", root, (420, 220)).Problem);
         Assert.Empty(KiCadFootprintMarks.Plan(content, "Photo", root, (420, 220)).Marks(board));
+    }
+
+    // Whether a picture has any mark - capitals ignored, as highlights are filed: the marking that
+    // follows an alignment leaves such a picture alone (2026-11-01).
+    [Fact]
+    public void A_picture_has_marks_when_any_component_is_marked_on_it()
+    {
+        var board = new BoardData
+        {
+            ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Top ", BoardLabel = "U1", X = "1", Y = "1", Width = "5", Height = "5" }],
+        };
+
+        Assert.True(KiCadFootprintMarks.HasMarks(board, "top"));
+        Assert.False(KiCadFootprintMarks.HasMarks(board, "Bottom"));
+        Assert.False(KiCadFootprintMarks.HasMarks(new BoardData(), "Top"));
+    }
+
+    // The KiCad views that are a side of the board, by name - the Pictures part's cards' (2026-11-01).
+    [Fact]
+    public void The_board_views_are_the_sides_of_the_board_only()
+    {
+        var root = new KiCadProjectRoot
+        {
+            Project = new KiCadProjectInfo
+            {
+                Views =
+                [
+                    new KiCadProjectView { DisplayName = " PCB top ", Type = "pcb_top" },
+                    new KiCadProjectView { DisplayName = "PCB bottom", Type = "PCB_BOTTOM" },
+                    new KiCadProjectView { DisplayName = "Main sheet", Type = "schematic" },
+                    new KiCadProjectView { DisplayName = " ", Type = "pcb_top" },
+                ],
+            },
+        };
+
+        Assert.Equal(["PCB top", "PCB bottom"], BoardKiCadFacts.BoardViewsOf(root));
     }
 
     // The marks go after the picture's own, so a picture's rows stay together.

@@ -21,9 +21,9 @@ namespace Handlers.MaintainerHandling
         public const string Heading = "Oscilloscope models";
 
         public const string Explanation =
-            "Models people made on CRT's Oscilloscope tab and sent in. Publish puts a model into the BETA and the stable " +
+            "Models people made on CRT's \"Oscilloscope\" tab and sent in. \"Publish\" puts a model into the BETA and the stable " +
             "data at once - in place of the published model of its name - and everybody gets it with CRT's next data check. " +
-            "Reject needs a reason, which the contributor is mailed.";
+            "\"Reject\" needs a reason, which the contributor is mailed.";
 
         public const string Empty = "No oscilloscope model is waiting.";
 

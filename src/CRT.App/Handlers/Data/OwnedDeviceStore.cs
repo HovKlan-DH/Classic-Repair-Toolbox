@@ -249,6 +249,22 @@ namespace Handlers.DataHandling
             });
         }
 
+        // ###########################################################################################
+        // Every device on the board `from` on the board `to` (its name changed, not the board in the
+        // device - BoardKeyMove, 2026-11-01): no change made to the device is recorded.
+        // ###########################################################################################
+        public static bool MoveBoard(string from, string to)
+        {
+            bool allMoved = true;
+
+            foreach (OwnedDeviceRecord device in GetAll().Where(device => string.Equals(device.BoardKey, from, StringComparison.OrdinalIgnoreCase)))
+            {
+                allMoved &= Change(device.Id, found => found.BoardKey = to) is not null;
+            }
+
+            return allMoved;
+        }
+
         public static OwnedDeviceRecord? SetNotes(int deviceId, string? notes) =>
             Change(deviceId, device => device.Notes = notes?.Trim() ?? string.Empty);
 

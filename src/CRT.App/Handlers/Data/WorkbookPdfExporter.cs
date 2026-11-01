@@ -1410,23 +1410,11 @@ namespace Handlers.DataHandling
             });
         }
 
-        // An absolute http/https target for a stored link URL, or null when there is nothing usable.
+        // An absolute http/https (or mailto) target for a stored link URL, or null when there is nothing usable.
         // A stored value with no scheme gets https, matching what TextLinkFinder does for a "www."
-        // run it finds in prose - a PDF hyperlink with no scheme is simply ignored by readers.
-        private static string? BuildLinkTarget(string url)
-        {
-            string trimmed = (url ?? string.Empty).Trim();
-
-            if (trimmed.Length == 0)
-                return null;
-
-            if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                return trimmed;
-
-            // Anything else that could not be a host is not worth linking.
-            return trimmed.Contains(' ') ? null : $"https://{trimmed}";
-        }
+        // run it finds in prose - a PDF hyperlink with no scheme is simply ignored by readers. The
+        // rule is LinkTarget's, shared with the Contribute tab's "Open" on a link.
+        private static string? BuildLinkTarget(string url) => LinkTarget.For(url);
 
         // ###########################################################################################
         // Free text with any web links in it drawn as REAL, VISIBLE hyperlinks - blue, underlined,

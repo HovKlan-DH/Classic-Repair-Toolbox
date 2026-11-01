@@ -54,6 +54,9 @@ public class FontAwesomeAssetTests
 
         // The administrator's padlock on the Maintainer tab's Account screen (2026-10-04)
         new object[] { SolidPath, 0xF023, "lock (administrator only)" },
+
+        // The drag handle of the Contribute tab's files, links, credits and important signals (2026-10-30)
+        new object[] { SolidPath, 0xF338, "up-down (drag a row)" },
     };
 
     // A codepoint that is absent from the face renders as a blank box, silently. The Free Regular
@@ -225,6 +228,7 @@ public class FontAwesomeAssetTests
             [0xF5D0] = 448, // spray-can-sparkles
             [0xF160] = 416, // sort-down
             [0xF161] = 416, // sort-up
+            [0xF338] = 448, // up-down             (arrows-up-down, U+F07D, reaches 480 - not used)
 
             // Regular
             [0xF15C] = 448, // file-lines

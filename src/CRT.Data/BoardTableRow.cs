@@ -59,10 +59,6 @@ namespace Handlers.DataHandling
         // key, so this one is not a counted change - but it is still saved, so it is warned about
         // (BoardDataChecks, "row.duplicate").
         Duplicate,
-
-        // A row the schema's own mapper drops on save (an important signal missing one of its two
-        // halves). Warned about rather than silently lost (BoardTableDocument, "row.incomplete").
-        Incomplete
     }
 
     // ###########################################################################################
@@ -343,12 +339,11 @@ namespace Handlers.DataHandling
         // reliably do that, and a deleted row must never be mistaken for an added one.
         // ###########################################################################################
         //
-        // A duplicate row has no sign, and a row the save leaves out has a new row's (2026-10-03):
-        // neither is a change, and the warning on its cell says what is wrong. Both were "!" until
-        // then.
+        // A duplicate row has no sign (2026-10-03): it is no change, and the warning on its cell says
+        // what is wrong. It was "!" until then.
         public string Marker => this.thisState switch
         {
-            BoardTableRowState.Added or BoardTableRowState.Blank or BoardTableRowState.Incomplete => "+",
+            BoardTableRowState.Added or BoardTableRowState.Blank => "+",
             BoardTableRowState.Modified => "~",
             BoardTableRowState.Deleted => "-",
             _ => string.Empty,
@@ -360,7 +355,6 @@ namespace Handlers.DataHandling
             BoardTableRowState.Modified => "Changed - hover an orange cell to see its published value",
             BoardTableRowState.Deleted => "Deleted - this row is in the published data but not in your draft. Ctrl+Z brings it back if you deleted it since your last save.",
             BoardTableRowState.Blank => "New, empty row - it is not saved until something is typed in it",
-            BoardTableRowState.Incomplete => "New row - it is not saved until the values it needs are filled in",
             _ => null,
         };
 

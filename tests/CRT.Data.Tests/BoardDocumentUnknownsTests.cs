@@ -29,6 +29,9 @@ public sealed class BoardDocumentUnknownsTests
         var previous = new BoardDocument { Unknown = Later("top") };
         List<PropertyInfo> lists = typeof(BoardDocument).GetProperties()
             .Where(property => property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(List<>))
+
+            // The rows - "regions" is a list of words, with no fields to keep.
+            .Where(property => typeof(IKeepsUnknownFields).IsAssignableFrom(property.PropertyType.GetGenericArguments()[0]))
             .ToList();
 
         foreach (PropertyInfo list in lists)

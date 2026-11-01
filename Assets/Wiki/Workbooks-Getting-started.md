@@ -10,7 +10,7 @@ From nothing to a recorded repair.
 
 It is on by default: you have a "Workbooks" tab, and a bar above the tabs.
 
-If you do not see them: "Configuration" tab -> tick **Enable Workbooks tab**.
+If you do not see them: "Configuration" tab -> tick **Enable "Workbooks" tab**.
 
 Under the checkbox, "Scope in Workbooks tab:" chooses whether the Workbooks tab lists **Show all workbooks** or **Show only workbooks for selected board**. Start with the default (selected board only).
 

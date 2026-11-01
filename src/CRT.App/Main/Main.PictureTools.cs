@@ -1,6 +1,8 @@
 using Avalonia.Threading;
 using Handlers.DataHandling;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace CRT
@@ -17,11 +19,74 @@ namespace CRT
     //
     // "Edit this component" on the menu a right-click on a component opens - for everyone - opens it
     // in the Contribute tab's pane.
+    //
+    // *** EVERY PICTURE ALIGNED WITH DONE IS MARKED ONCE THE TOOL HANDS BACK (owner request,
+    // 2026-11-01: "it is not clear that I must first do the Align KiCad, before I can do the Mark all
+    // automatically from KiCad" - Done marks without asking, Undo takes it back). *** Each alignment
+    // saved with Done or "Done - next picture" is remembered with its board (AlignedFromWorkspace); when
+    // the tool ends and the Contribute tab is back, each of them with no mark on it yet gets every
+    // component's rectangle from KiCad (TabDrafts.MarkAfterAligningAsync) - never while a tool is on,
+    // whose Done writes its picture's rectangles as it holds them. Aligned AGAIN, the marks KiCad drew
+    // move with it (owner request, 2026-11-01), so each is remembered with the alignment it had.
+    //
+    // "BACK TO CONTRIBUTE" (owner request, 2026-10-29): after the Contribute tab's "Show on board" - a
+    // component, or a net lit up - the Schematics tab's bar says what was shown and goes back to the
+    // Contribute tab, which still has the pane open where it was. The bar goes once the Contribute tab
+    // is shown again, however, once another board is shown, and when a picture tool starts (its own
+    // end goes back).
     // ###########################################################################################
     public partial class Main
     {
         // The tool on the Schematics tab was started from the Contribute tab: its end goes back there.
         private bool thisPictureToolFromContribute;
+
+        // The pictures aligned with Done since the tool started, with the board each is of - marked once
+        // the tool hands back (MarkPicturesAligned).
+        private readonly List<(string BoardKey, string Picture, string ImageFile, KiCadCalibrationEntry? AlignedFrom)> thisAlignedToMark = new();
+
+        // The marking that followed the last tool's end - for a test to wait for.
+        internal Task PicturesAlignedMarkedForTests { get; private set; } = Task.CompletedTask;
+
+        // Stands in for the Contribute tab's marking of one picture (its name and image file) - a test's
+        // Main has no draft to mark.
+        internal Func<string, string, Task>? MarkAfterAligningOverrideForTests { get; set; }
+
+        // The board "Show on board" showed something of while "Back to Contribute" is offered - null
+        // while it is not.
+        private string? thisBackToContributeBoard;
+
+        internal bool IsBackToContributeOfferedForTests => this.thisBackToContributeBoard is not null;
+
+        // ###########################################################################################
+        // `what` ("[U8]", "the net [PHI2]") is being shown on the Schematics tab for the Contribute tab
+        // - the way back offered, for the board shown now.
+        // ###########################################################################################
+        private void OfferBackToContribute(string what)
+        {
+            this.thisBackToContributeBoard = this.GetCurrentBoardKey();
+            this.TabSchematicsControl.ShowBackToContribute(what);
+        }
+
+        private void TakeBackToContributeAway()
+        {
+            if (this.thisBackToContributeBoard is null)
+            {
+                return;
+            }
+
+            this.thisBackToContributeBoard = null;
+            this.TabSchematicsControl.ShowBackToContribute(null);
+        }
+
+        // A board shown: the bar was about the one before - unless that board was only read again.
+        private void FollowBackToContributeAfterLoad()
+        {
+            if (this.thisBackToContributeBoard is { } offered &&
+                !string.Equals(offered, this.GetCurrentBoardKey(), StringComparison.OrdinalIgnoreCase))
+            {
+                this.TakeBackToContributeAway();
+            }
+        }
 
         // The board read again was asked for while a tool was on: the schematic to restore, done
         // when the tool ends.
@@ -33,7 +98,9 @@ namespace CRT
         {
             this.TabSchematicsControl.PictureToolEnded += (_, _) => this.OnPictureToolEnded();
             this.TabSchematicsControl.AlignNextRequested += (_, picture) => this.AlignNext(picture);
+            this.TabSchematicsControl.AlignedFromWorkspace += (_, aligned) => this.RememberAligned(aligned.Picture, aligned.ImageFile, aligned.AlignedFrom);
             this.TabSchematicsControl.EditComponentRequested += (sender, label) => _ = this.EditComponentAsync(label);
+            this.TabSchematicsControl.BackToContributeRequested += (_, _) => this.SwitchToContributeTab();
 
             // After the tool's own end has run: the label editor's Done reads the board again itself,
             // which serves a reload that waited (ReloadCurrentBoardFromDisk), so nothing is read twice.
@@ -83,6 +150,13 @@ namespace CRT
                 return;
             }
 
+            // The tool goes back by itself once it ends.
+            this.TakeBackToContributeAway();
+
+            // Pictures aligned under an earlier tool that never handed back (another board shown
+            // meanwhile) are that tool's - not marked by this one's end.
+            this.thisAlignedToMark.Clear();
+
             this.thisPictureToolFromContribute = true;
             this.OnBoardShownUpToDate(readBoardFirst, picture, () => this.TabSchematicsControl.StartPictureTool(tool, picture));
             this.SwitchToSchematicsTab();
@@ -111,6 +185,39 @@ namespace CRT
 
             this.thisPictureToolFromContribute = false;
             this.SwitchToContributeTab();
+
+            // After the tool has fully let go (its end is told from inside its own save).
+            Dispatcher.UIThread.Post(() => this.PicturesAlignedMarkedForTests = this.MarkPicturesAlignedAsync(), DispatcherPriority.Background);
+        }
+
+        // ###########################################################################################
+        // Every picture aligned with Done since the tool started, marked from KiCad - of the board shown
+        // only (one another board's load took the tool from is not), one after another. The board is
+        // asked before EACH one, since each is marked on whatever board is shown then (code review,
+        // 2026-11-01: another board picked as the overlay let go between two marks).
+        // ###########################################################################################
+        internal void RememberAligned(string picture, string imageFile, KiCadCalibrationEntry? alignedFrom = null) =>
+            this.thisAlignedToMark.Add((this.GetCurrentBoardKey(), picture, imageFile, alignedFrom));
+
+        internal async Task MarkPicturesAlignedAsync()
+        {
+            var aligned = this.thisAlignedToMark.ToList();
+            this.thisAlignedToMark.Clear();
+
+            try
+            {
+                foreach ((string board, string picture, string imageFile, KiCadCalibrationEntry? alignedFrom) in aligned)
+                {
+                    if (string.Equals(board, this.GetCurrentBoardKey(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        await (this.MarkAfterAligningOverrideForTests?.Invoke(picture, imageFile) ?? this.TabDrafts.MarkAfterAligningAsync(picture, imageFile, alignedFrom));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Marking the pictures just aligned with KiCad failed - [{ex}]");
+            }
         }
 
         // ###########################################################################################

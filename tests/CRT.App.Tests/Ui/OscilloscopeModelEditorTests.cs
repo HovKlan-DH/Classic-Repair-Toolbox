@@ -164,11 +164,21 @@ public sealed class OscilloscopeModelEditorTests : IDisposable
 
             Assert.Equal(":STOP", stop.Text);
             stop.Text = ":STOP:NOW";
+
+            // "Saved" stands there from making the model - taken away, what comes is this save's.
+            tab.ModelEditorSaveStateText.Text = string.Empty;
             Leave(stop);
             await tab.LastModelSaveForTests;
 
             Assert.Equal(":STOP:NOW", Assert.Single(this.ModelsInTheFile()).Stop);
             Assert.Equal(":STOP:NOW", DataManager.Oscilloscopes.Single(scope => scope.IsOwn).Stop);
+
+            // Said after the very save awaited here, queued on this thread.
+            for (int attempt = 0; attempt < 3000 && tab.ModelEditorSaveStateText.Text != "Saved"; attempt++)
+            {
+                await Task.Delay(2);
+            }
+
             Assert.Equal("Saved", tab.ModelEditorSaveStateText.Text);
 
             stop.Text = "typed by mistake";
@@ -248,6 +258,14 @@ public sealed class OscilloscopeModelEditorTests : IDisposable
             await tab.LastModelSaveForTests;
 
             Assert.Empty(this.ModelsInTheFile());
+
+            // The delete goes on after the very save awaited here, queued on this thread - and an await
+            // that finds the save already done comes back before it has run.
+            for (int attempt = 0; attempt < 500 && tab.IsModelEditorOpen; attempt++)
+            {
+                await Task.Delay(2);
+            }
+
             Assert.False(tab.IsModelEditorOpen);
             Assert.DoesNotContain("DS1054Z", (IEnumerable<string>)tab.SeriesOrModelComboBox.ItemsSource!);
             Assert.False(tab.EditMyModelButton.IsVisible);

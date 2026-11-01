@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // KiCadImportedFiles - removing one imported KiCad file from a draft's "KiCad data" folder, the
-// per-file "Remove" in BoardFilesWindow (owner request, 2026-09-24).
+// per-file "Remove" in KiCadDataPanel (owner request, 2026-09-24), and the lines that panel says.
 //
 // This DELETES FILES, so half of these are about what it must refuse: anything not strictly inside
 // the KiCad folder - the draft's own workbook beside it, a sibling folder whose name merely starts
@@ -192,6 +192,30 @@ public sealed class KiCadImportedFilesTests : IDisposable
         Assert.Equal(1, copied);
         Assert.False(complete);
         Assert.True(File.Exists(Path.Combine(this.KiCadFolder, "a.kicad_pcb")));
+    }
+
+    // A board with published KiCad data and no import of the draft's own HAS KiCad data - "No KiCad
+    // data imported yet" said otherwise (owner report, 2026-10-29). The draft's own imports are counted
+    // as before.
+    [Fact]
+    public void The_file_list_line_says_the_board_has_KiCad_data_when_only_the_published_files_are_there()
+    {
+        Assert.Equal("No KiCad data imported yet.", KiCadImportedFiles.StateLine(draftFiles: 0, publishedFiles: 0));
+        Assert.StartsWith("The board has KiCad data already - 1 published KiCad file.", KiCadImportedFiles.StateLine(draftFiles: 0, publishedFiles: 1), StringComparison.Ordinal);
+        Assert.StartsWith("The board has KiCad data already - 25 published KiCad files.", KiCadImportedFiles.StateLine(draftFiles: 0, publishedFiles: 25), StringComparison.Ordinal);
+        Assert.Equal("1 KiCad file imported:", KiCadImportedFiles.StateLine(draftFiles: 1, publishedFiles: 25));
+        Assert.Equal("3 KiCad files imported:", KiCadImportedFiles.StateLine(draftFiles: 3, publishedFiles: 0));
+    }
+
+    // The green badges are NET NAMES, counted as such (owner request, 2026-10-29) - and nothing said
+    // while none is in green. Here since 2026-10-30 (code review: pure wording belongs in Handlers/).
+    [Fact]
+    public void The_sentence_under_the_net_names_counts_the_ones_in_green_as_net_names()
+    {
+        Assert.Equal(string.Empty, KiCadImportedFiles.UsedNetNamesSentence(0));
+        Assert.Equal(string.Empty, KiCadImportedFiles.UsedNetNamesSentence(-1));
+        Assert.Equal(" The 1 net in green is already used by an important KiCad signal.", KiCadImportedFiles.UsedNetNamesSentence(1));
+        Assert.Equal(" The 45 nets in green are already used by an important KiCad signal.", KiCadImportedFiles.UsedNetNamesSentence(45));
     }
 
     // The report reads the published KiCad data too, and says so - only then.

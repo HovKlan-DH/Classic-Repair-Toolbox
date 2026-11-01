@@ -582,6 +582,13 @@ public sealed class TabMaintainerQueueTests
             Assert.Equal(boardNotice.CornerRadius, queueNotice.CornerRadius);
             Assert.Equal(Colour(boardLine.Foreground), Colour(queueLine.Foreground));
             Assert.Equal(boardLine.FontWeight, queueLine.FontWeight);
+
+            // Not bold, the icon in the middle of the words (owner request, 2026-10-30, of the Contribute
+            // tab's local-draft notice - every notice panel shares the look).
+            Assert.Equal(Avalonia.Media.FontWeight.Normal, boardLine.FontWeight);
+            Assert.All(
+                new[] { queueNotice, boardNotice }.SelectMany(notice => notice.GetVisualDescendants().OfType<TextBlock>()).Where(block => block.Classes.Contains("NoticeIcon")),
+                icon => Assert.Equal(Avalonia.Layout.VerticalAlignment.Center, icon.VerticalAlignment));
             Assert.Single(queueNotice.GetVisualDescendants().OfType<TextBlock>(), block => block.Classes.Contains("NoticeIcon"));
             Assert.Single(boardNotice.GetVisualDescendants().OfType<TextBlock>(), block => block.Classes.Contains("NoticeIcon"));
 

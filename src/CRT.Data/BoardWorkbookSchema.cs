@@ -67,6 +67,12 @@ namespace Handlers.DataHandling
         public const string ColThumbnailHighlightColor = "Thumbnail highlight color";
         public const string ColThumbnailHighlightOpacity = "Thumbnail highlight opacity";
 
+        // How the KiCad traces are drawn on the picture (owner request, 2026-10-30) - after the five
+        // highlight columns, so they keep their places, and banded with them.
+        public const string ColTraceHighlightColor = "Trace highlight color";
+        public const string ColTraceHighlightOpacity = "Trace highlight opacity";
+        public const string ColOppositeTraceHighlightOpacity = "Opposite trace highlight opacity";
+
         // ---- Shared columns ----------------------------------------------------------------
         //
         public const string ColBoardLabel = "Board label";
@@ -167,6 +173,9 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColOppositeTraceHighlightColor,
                 BoardWorkbookSchema.ColThumbnailHighlightColor,
                 BoardWorkbookSchema.ColThumbnailHighlightOpacity,
+                BoardWorkbookSchema.ColTraceHighlightColor,
+                BoardWorkbookSchema.ColTraceHighlightOpacity,
+                BoardWorkbookSchema.ColOppositeTraceHighlightOpacity,
                 BoardWorkbookSchema.ColCadName
             ],
             [BoardWorkbookSchema.ColSchematicName, BoardWorkbookSchema.ColSchematicImageFile]);
@@ -338,7 +347,10 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColSchematicHighlightOpacity, entry.SchematicHighlightOpacity),
                     (BoardWorkbookSchema.ColOppositeTraceHighlightColor, entry.OppositeTraceHighlightColor),
                     (BoardWorkbookSchema.ColThumbnailHighlightColor, entry.ThumbnailHighlightColor),
-                    (BoardWorkbookSchema.ColThumbnailHighlightOpacity, entry.ThumbnailHighlightOpacity)))];
+                    (BoardWorkbookSchema.ColThumbnailHighlightOpacity, entry.ThumbnailHighlightOpacity),
+                    (BoardWorkbookSchema.ColTraceHighlightColor, entry.TraceHighlightColor),
+                    (BoardWorkbookSchema.ColTraceHighlightOpacity, entry.TraceHighlightOpacity),
+                    (BoardWorkbookSchema.ColOppositeTraceHighlightOpacity, entry.OppositeTraceHighlightOpacity)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponents)
@@ -482,8 +494,8 @@ namespace Handlers.DataHandling
             => row.TryGetValue(key, out var value) ? value ?? string.Empty : string.Empty;
 
         // KiCad calibration is not read here: it lives in the board's JSON sidecar, not the
-        // workbook. Opposite trace highlight OPACITY is not a column either - the renderer follows
-        // the main schematic highlight opacity for it.
+        // workbook. The traces' colour and both sides' opacities are columns since 2026-10-30; blank,
+        // the renderer follows the main schematic highlight for them (TraceColours.Resolve).
         public static List<BoardSchematicEntry> MapSchematics(IEnumerable<IReadOnlyDictionary<string, string>> rows)
             => rows.Select(r => new BoardSchematicEntry
             {
@@ -494,7 +506,10 @@ namespace Handlers.DataHandling
                 SchematicHighlightOpacity = Val(r, BoardWorkbookSchema.ColSchematicHighlightOpacity),
                 OppositeTraceHighlightColor = Val(r, BoardWorkbookSchema.ColOppositeTraceHighlightColor),
                 ThumbnailHighlightColor = Val(r, BoardWorkbookSchema.ColThumbnailHighlightColor),
-                ThumbnailHighlightOpacity = Val(r, BoardWorkbookSchema.ColThumbnailHighlightOpacity)
+                ThumbnailHighlightOpacity = Val(r, BoardWorkbookSchema.ColThumbnailHighlightOpacity),
+                TraceHighlightColor = Val(r, BoardWorkbookSchema.ColTraceHighlightColor),
+                TraceHighlightOpacity = Val(r, BoardWorkbookSchema.ColTraceHighlightOpacity),
+                OppositeTraceHighlightOpacity = Val(r, BoardWorkbookSchema.ColOppositeTraceHighlightOpacity)
             }).ToList();
 
         public static List<ComponentEntry> MapComponents(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -591,33 +606,20 @@ namespace Handlers.DataHandling
             }).ToList();
 
         // ###########################################################################################
-        // The one mapper that DROPS rows: an important signal needs both halves to mean anything,
-        // so a row missing either is skipped rather than loaded half-empty. The table editor relies
-        // on this being the only such rule - it marks a row this would drop as "incomplete" by
-        // asking MapRows whether the row survives, rather than restating the condition.
+        // *** AN IMPORTANT SIGNAL MISSING A HALF IS KEPT (2026-11-01). *** It was the one mapper that
+        // dropped rows - skipped rather than loaded half-empty, which the table said as a warning,
+        // "This row is left out when saving". Since the owner's request of 2026-11-01 ("These errors
+        // must be flagged in 'Board status' and then it should not be possible to submit the draft
+        // board") a field a row needs is BoardRowRequired's, an ERROR on its cell (BoardDataChecks)
+        // everywhere alike - so the row stays, said, until it is filled in or removed. No mapper
+        // drops a row (BoardWorkbookSchemaTests).
         // ###########################################################################################
-        //
-        // RequiredColumns below names the same two columns, for the table's warning on a row this
-        // would drop ("This row is left out when saving, because KiCad net name is empty",
-        // 2026-10-03) - BoardWorkbookSchemaTests holds the two to each other.
         public static List<KiCadImportantSignalEntry> MapKiCadImportantSignals(IEnumerable<IReadOnlyDictionary<string, string>> rows)
-            => rows
-                .Select(r => new KiCadImportantSignalEntry
-                {
-                    DisplayName = Val(r, BoardWorkbookSchema.ColDisplayName),
-                    KiCadNetName = Val(r, BoardWorkbookSchema.ColKiCadNetName)
-                })
-                .Where(entry =>
-                    !string.IsNullOrWhiteSpace(entry.DisplayName) &&
-                    !string.IsNullOrWhiteSpace(entry.KiCadNetName))
-                .ToList();
-
-        // The columns a row of this sheet cannot be saved without - empty for every sheet but the
-        // one above, whose mapper drops a row missing either.
-        public static IReadOnlyList<string> RequiredColumns(string sheetName) =>
-            sheetName == BoardWorkbookSchema.SheetKiCadImportantSignals
-                ? [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName]
-                : [];
+            => rows.Select(r => new KiCadImportantSignalEntry
+            {
+                DisplayName = Val(r, BoardWorkbookSchema.ColDisplayName),
+                KiCadNetName = Val(r, BoardWorkbookSchema.ColKiCadNetName)
+            }).ToList();
 
         // ###########################################################################################
         // One sheet's rows mapped to its entry type, dispatched on the sheet - for a caller that
@@ -752,6 +754,7 @@ namespace Handlers.DataHandling
                 ComponentReplacements = name == BoardWorkbookSchema.SheetComponentReplacements
                     ? BoardWorkbookSchema.MapComponentReplacements(materialised)
                     : data.ComponentReplacements,
+                Regions = data.Regions,
             };
         }
     }

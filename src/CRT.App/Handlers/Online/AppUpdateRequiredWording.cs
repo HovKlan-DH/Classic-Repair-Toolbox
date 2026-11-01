@@ -29,7 +29,7 @@ namespace Handlers.Online
         // which is what keeps "nothing is lost" true.
         public static string WhatItStops(AppUpdateArea area) => area == AppUpdateArea.Drafts
             ? "Until it is, drafts cannot be submitted and the server cannot be asked how your submissions are getting on. Your drafts stay on this computer, untouched - nothing is lost."
-            : "Until it is, the Maintainer tab cannot be used - the server turns this version of CRT away.";
+            : "Until it is, the \"Maintainer\" tab cannot be used - the server turns this version of CRT away.";
 
         // ###########################################################################################
         // When a board's first draft or "Add a new board" is started while the Contribute tab is
@@ -37,7 +37,7 @@ namespace Handlers.Online
         // draft opened under the cover was a dead end.
         // ###########################################################################################
         public const string NoDraftWhileDraftsTabCovered =
-            "Nothing was made: CRT has to be updated before drafts can be worked on - the Contribute tab says why.";
+            "Nothing was made: CRT has to be updated before drafts can be worked on - the \"Contribute\" tab says why.";
 
         // ###########################################################################################
         // The whole overlay for one tab. `pendingVersion` is the update CRT's own check found

@@ -621,4 +621,29 @@ public sealed class BoardDataDifferTests
         BoardRowRename pair = Assert.Single(BoardDataDiffer.PairRenamedRows(removed, added));
         Assert.Equal(0, pair.Removed);
     }
+
+    // ###########################################################################################
+    // ONE SECTION BY THE REPORT'S OWN RULE (code review, 2026-10-30): the component pane marks a board
+    // part "Changed" by it, so the mark agrees with the count Submit goes by - rows only MOVED are no
+    // change, a row edited or renamed is, and null is no rows.
+    // ###########################################################################################
+    [Fact]
+    public void One_section_differs_by_the_reports_rule_and_rows_only_moved_do_not()
+    {
+        CreditEntry Credit(string name) => new() { Category = "Schematic image", NameOrHandle = name, Contact = "RHD" };
+
+        List<CreditEntry> published = [Credit("Anna"), Credit("Bo")];
+
+        Assert.False(BoardDataDiffer.SectionDiffers(published, [Credit("Bo"), Credit("Anna")]));
+        Assert.False(BoardDataDiffer.SectionDiffers(published, [Credit(" Anna "), Credit("Bo")]));
+        Assert.True(BoardDataDiffer.SectionDiffers(published, [Credit("Anna"), Credit("Bo 2")]));
+        Assert.True(BoardDataDiffer.SectionDiffers(published, [Credit("Anna")]));
+        Assert.True(BoardDataDiffer.SectionDiffers(null, published));
+        Assert.False(BoardDataDiffer.SectionDiffers<CreditEntry>(null, []));
+
+        // The same answer the whole report gives for that section.
+        BoardData before = new() { Credits = published };
+        BoardData moved = new() { Credits = [Credit("Bo"), Credit("Anna")] };
+        Assert.Equal(0, BoardDataDiffer.CountChanges(before, moved));
+    }
 }

@@ -215,6 +215,121 @@ public sealed class MainPictureToolsTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** EVERY PICTURE ALIGNED WITH DONE IS MARKED ONCE THE TOOL HANDS BACK (owner request,
+    // 2026-11-01: "it is not clear that I must first do the Align KiCad, before I can do the Mark all
+    // automatically from KiCad" - Done marks without asking). *** Done on the top: back on the
+    // Contribute tab, it is marked - with its image file, never while the tool is on. A cancelled
+    // alignment is not. (That "Done - next picture" tells each picture it saves is
+    // TabSchematicsPictureToolsTests'; a test's Main cannot read the next picture's image.)
+    // ###########################################################################################
+    // ###########################################################################################
+    // *** ANOTHER BOARD SHOWN BETWEEN TWO MARKS STOPS THEM (code review, 2026-11-01). *** Each picture
+    // is marked on whatever board is shown THEN (TabDrafts.OnCurrentDraftAsync), so the board is asked
+    // before each one - asked once before the first, a press on the board's drop-down in the moment the
+    // overlay let go between two marks had the next picture looked for on the other board's draft.
+    // ###########################################################################################
+    [Fact]
+    public async Task Another_board_shown_between_two_marks_stops_the_rest()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = "Commodore|C64|250407" };
+
+            window.RememberAligned("Top", "top.png");
+            window.RememberAligned("Bottom", "bottom.png");
+
+            var marked = new List<string>();
+            window.MarkAfterAligningOverrideForTests = (picture, _) =>
+            {
+                marked.Add(picture);
+                window.BoardKeyOverrideForTests = "Commodore|C64|250425";
+                return Task.CompletedTask;
+            };
+
+            await window.MarkPicturesAlignedAsync();
+
+            Assert.Equal(["Top"], marked);
+        });
+    }
+
+    [Fact]
+    public async Task The_pictures_aligned_with_Done_are_marked_once_the_tool_hands_back()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainPictureToolsTests.BoardKey };
+            TabSchematics tab = window.TabSchematicsControl;
+
+            foreach ((string name, string cadName) in new[] { ("Top", "Board - PCB Top"), ("Bottom", "Board - PCB Bottom") })
+            {
+                tab.schematicByName[name] = new BoardSchematicEntry { SchematicName = name, SchematicImageFile = $"{name.ToLowerInvariant()}.png", CadName = cadName };
+                tab.currentThumbnails.Add(new Tabs.TabSchematics.SchematicThumbnail { Name = name });
+            }
+
+            tab.SelectedThumbnail = tab.currentThumbnails[0];
+            tab.ImageSettledForTests("Top");
+            tab.currentFullResBitmap = new Avalonia.Media.Imaging.WriteableBitmap(
+                new Avalonia.PixelSize(200, 100), new Avalonia.Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            tab.UseKiCadProjectForTests(new KiCadProjectBundle
+            {
+                Root = new KiCadProjectRoot
+                {
+                    Project = new KiCadProjectInfo
+                    {
+                        Views =
+                        [
+                            new KiCadProjectView { DisplayName = "Board - PCB Top", Type = "pcb_top", SourceKind = "pcb", SourceIndex = 0 },
+                            new KiCadProjectView { DisplayName = "Board - PCB Bottom", Type = "pcb_bottom", SourceKind = "pcb", SourceIndex = 0 },
+                        ],
+                    },
+                    Pcb = [new KiCadPcb()],
+                },
+            });
+
+            var saved = new List<string>();
+            tab.KiCadCalibrationSaveOverrideForTests = row =>
+            {
+                saved.Add(row.SchematicName);
+                return Task.FromResult<string?>(null);
+            };
+            tab.AlignedPicturesOverrideForTests = () => saved;
+
+            var marked = new List<string>();
+            window.MarkAfterAligningOverrideForTests = (picture, imageFile) =>
+            {
+                Assert.False(tab.IsCalibrationModeForTests);
+                Assert.Same(window.ContributeTabItem, window.MainTabControl.SelectedItem);
+                marked.Add($"{picture} {imageFile}");
+                return Task.CompletedTask;
+            };
+
+            window.StartPictureTool(PictureTool.AlignKiCad, "Top", readBoardFirst: false);
+            tab.KiCadSettled(hasProject: true);
+            Assert.True(tab.IsCalibrationModeForTests);
+
+            Click(tab, "PictureToolDoneButton");
+            Dispatcher.UIThread.RunJobs();
+            await window.PicturesAlignedMarkedForTests;
+
+            Assert.Equal(["Top"], saved);
+            Assert.Equal(["Top top.png"], marked);
+
+            // Aligned again and cancelled: nothing marked.
+            marked.Clear();
+            window.StartPictureTool(PictureTool.AlignKiCad, "Top", readBoardFirst: false);
+            tab.currentFullResBitmap = new Avalonia.Media.Imaging.WriteableBitmap(
+                new Avalonia.PixelSize(200, 100), new Avalonia.Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Premul);
+            tab.ImageSettledForTests("Top");
+            Assert.True(tab.IsCalibrationModeForTests);
+            Click(tab, "PictureToolCancelButton");
+            Dispatcher.UIThread.RunJobs();
+            await window.PicturesAlignedMarkedForTests;
+
+            Assert.Empty(marked);
+        });
+    }
+
+    // ###########################################################################################
     // The menu's first item: the component's highlight on, then off - what a right-click on a
     // component did by itself before the menu.
     // ###########################################################################################

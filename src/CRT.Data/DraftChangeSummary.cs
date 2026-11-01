@@ -260,7 +260,8 @@ namespace Handlers.DataHandling
             nameof(BoardSchematicEntry.SchematicImageFile) => "image",
             nameof(BoardSchematicEntry.SchematicHighlightColor) or nameof(BoardSchematicEntry.SchematicHighlightOpacity) or
                 nameof(BoardSchematicEntry.OppositeTraceHighlightColor) or nameof(BoardSchematicEntry.ThumbnailHighlightColor) or
-                nameof(BoardSchematicEntry.ThumbnailHighlightOpacity) => "highlight colours",
+                nameof(BoardSchematicEntry.ThumbnailHighlightOpacity) or nameof(BoardSchematicEntry.TraceHighlightColor) or
+                nameof(BoardSchematicEntry.TraceHighlightOpacity) or nameof(BoardSchematicEntry.OppositeTraceHighlightOpacity) => "highlight colors",
             "File" => "file",
             "Url" => "address",
             "Name" => "name",
@@ -323,7 +324,7 @@ namespace Handlers.DataHandling
             {
                 if (to is { Length: > 0 } && !string.Equals(from, to, StringComparison.Ordinal))
                 {
-                    lines.Add($"Picture [{from}] renamed [{to}]");
+                    lines.Add($"Schematic image [{from}] renamed [{to}]");
                     renamedTo.Add(to);
                 }
             }
@@ -337,18 +338,27 @@ namespace Handlers.DataHandling
 
                 lines.Add(row.Kind switch
                 {
-                    BoardRowChangeKind.Added => $"Picture [{row.DisplayLabel}] added",
-                    BoardRowChangeKind.Deleted => $"Picture [{row.DisplayLabel}] removed",
-                    _ => $"Picture [{row.DisplayLabel}]: {DraftChangeSummary.ChangedList(otherFields.Count > 0 ? otherFields : row.ChangedFields)}",
+                    BoardRowChangeKind.Added => $"Schematic image [{row.DisplayLabel}] added",
+                    BoardRowChangeKind.Deleted => $"Schematic image [{row.DisplayLabel}] deleted",
+                    _ => $"Schematic image [{row.DisplayLabel}]: {DraftChangeSummary.ChangedList(otherFields.Count > 0 ? otherFields : row.ChangedFields)}",
                 });
             }
 
             lines.AddRange(DraftChangeSummary.Named(BoardDataDiffer.Compare(Section(before, boardFiles: true), Section(after, boardFiles: true)), "Board file"));
             lines.AddRange(DraftChangeSummary.Named(BoardDataDiffer.Compare(Section(before, boardLinks: true), Section(after, boardLinks: true)), "Board link"));
             lines.AddRange(DraftChangeSummary.Named(BoardDataDiffer.Compare(Section(before, credits: true), Section(after, credits: true)), "Credit"));
-            lines.AddRange(DraftChangeSummary.Named(BoardDataDiffer.Compare(Section(before, signals: true), Section(after, signals: true)), "Important signal"));
+            lines.AddRange(DraftChangeSummary.Named(BoardDataDiffer.Compare(Section(before, signals: true), Section(after, signals: true)), "Important KiCad signal"));
 
             lines.AddRange(DraftChangeSummary.CalibrationLines(beforeCalibrations, afterCalibrations, follow));
+
+            // A list put in another order (owner decision, 2026-10-30: order is a change) - one line
+            // per list, "Order of the files changed".
+            lines.AddRange(BoardRowOrder.ReorderedSheets(before, after).Select(BoardRowOrder.OrderChangedLine));
+
+            if (BoardRegions.Differ(before, after))
+            {
+                lines.Add(BoardRegions.ChangedLine(BoardRegions.Has(after)));
+            }
 
             return lines;
         }
@@ -495,6 +505,7 @@ namespace Handlers.DataHandling
             KiCadImportantSignals = signals ? board.KiCadImportantSignals : [],
             ComponentPins = pins ? board.ComponentPins : [],
             ComponentReplacements = replacements ? board.ComponentReplacements : [],
+            Regions = [],
         };
 
         private static BoardData PicturesOf(BoardData board) => new()

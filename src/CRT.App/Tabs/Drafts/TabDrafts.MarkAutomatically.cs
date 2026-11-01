@@ -20,6 +20,9 @@ namespace CRT
     // on the draft as the change finds it, saved at once - all under the BusyOverlay. What came of it
     // is said in the part; the board on screen follows as it does the pane's saves.
     //
+    // The same plan places both sides' traces on a card's preview (PreviewTracesAsync,
+    // 2026-10-29) - its "Traces on the preview".
+    //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
     public partial class TabDrafts
@@ -30,88 +33,203 @@ namespace CRT
         // Stands in for whether a picture tool is on on the Schematics tab - a test has no Main.
         internal Func<bool>? PictureToolOnOverrideForTests { get; set; }
 
-        internal Task MarkAutomaticallyAsync(string picture) =>
-            this.OnCurrentDraftAsync(async entry =>
+        // `imageFile` tells the card's own picture from another of the same name (code review,
+        // 2026-10-30: the first of the name was planned from - its view and its size).
+        internal Task MarkAutomaticallyAsync(string picture, string imageFile = "") =>
+            this.OnCurrentDraftAsync(entry => this.MarkFromKiCadAsync(entry, picture, imageFile, afterAligning: false));
+
+        // ###########################################################################################
+        // *** AFTER "ALIGN KiCad"'s DONE, THE PICTURE IS MARKED BY ITSELF (owner request, 2026-11-01: "it
+        // is not clear that I must first do the Align KiCad, before I can do the Mark all automatically
+        // from KiCad" - Done marks without asking, Undo takes it back). *** Main asks once the tool has
+        // handed back to this tab, for every picture aligned with Done on the way (Main.PictureTools.cs).
+        // As "Mark all automatically", with three differences: a picture with ANY mark on it is left
+        // alone - its marks were drawn, by hand or from KiCad, and another round is the contributor's to
+        // ask for; a schematic sheet is passed over without a word (nothing to mark from KiCad there);
+        // and what came of it says the alignment is in too.
+        //
+        // *** ALIGNED AGAIN, THE MARKS KiCad DREW FOLLOW (owner request, 2026-11-01: "if I then again do the
+        // Align KiCad then it seems it will not readjust the components, which I think it should"). ***
+        // `alignedFrom` is the alignment the picture had - null for its first. KiCadFootprintMarks.Realigned
+        // tells the marks KiCad drew from those moved or drawn by hand, which stay.
+        // ###########################################################################################
+        internal Task MarkAfterAligningAsync(string picture, string imageFile = "", KiCadCalibrationEntry? alignedFrom = null) =>
+            this.OnCurrentDraftAsync(entry => this.MarkFromKiCadAsync(entry, picture, imageFile, afterAligning: true, alignedFrom));
+
+        private async Task MarkFromKiCadAsync(HardwareBoardEntry entry, string picture, string imageFile, bool afterAligning, KiCadCalibrationEntry? alignedFrom = null)
+        {
+            // A picture tool's Done writes its picture's rectangles as it holds them - marks put in
+            // meanwhile would go without a word (code review, 2026-10-26). As starting a tool shows the
+            // one that is on, this waits for it.
+            if (this.PictureToolOnOverrideForTests?.Invoke() ?? this.thisMainWindow?.IsPictureToolOn == true)
             {
-                // A picture tool's Done writes its picture's rectangles as it holds them - marks put in
-                // meanwhile would go without a word (code review, 2026-10-26). As starting a tool shows
-                // the one that is on, this waits for it.
-                if (this.PictureToolOnOverrideForTests?.Invoke() ?? this.thisMainWindow?.IsPictureToolOn == true)
+                this.ComponentPane.ShowPicturesNote(PictureToolWording.PictureToolOn);
+                return;
+            }
+
+            string identity = entry.ExcelDataFile;
+            bool changed = false;
+
+            string? note = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.MarkingFromKiCad, async () =>
+            {
+                if (await DraftEdits.OpenForChangeAsync(identity) is not DraftSession session)
                 {
-                    this.ComponentPane.ShowPicturesNote(PictureToolWording.PictureToolOn);
-                    return;
+                    return DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.NoDraft);
                 }
 
-                string identity = entry.ExcelDataFile;
-                bool changed = false;
+                bool hasMarks = afterAligning && KiCadFootprintMarks.HasMarks(session.Content.Board, picture);
 
-                string note = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.MarkingFromKiCad, async () =>
+                if (hasMarks && alignedFrom is null)
                 {
-                    if (await DraftEdits.OpenForChangeAsync(identity) is not DraftSession session)
+                    return null;
+                }
+
+                KiCadProjectRoot? root = await this.ReadKiCadForReadinessAsync(identity, "marking its components");
+                (int Width, int Height)? size = await this.PictureSizeAsync(session, picture, imageFile);
+                BoardContent content = session.Content;
+                KiCadMarkPlan plan = await Task.Run(() => KiCadFootprintMarks.Plan(content, picture, root, size, imageFile));
+
+                if (plan.Problem is { } problem)
+                {
+                    return afterAligning && plan.NotABoardSide ? null : problem;
+                }
+
+                if (hasMarks)
+                {
+                    KiCadCalibrationValues alignedBefore = KiCadFootprintMarks.ValuesOf(alignedFrom!);
+                    KiCadFootprintMarks.Realigned(session.Content.Board, plan, alignedBefore, out int toFollow);
+
+                    if (toFollow == 0)
                     {
-                        return DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.NoDraft);
+                        return null;
                     }
 
-                    KiCadProjectRoot? root = await this.ReadKiCadForReadinessAsync(identity, "marking its components");
-                    (int Width, int Height)? size = await this.PictureSizeAsync(session, picture);
-                    BoardContent content = session.Content;
-                    KiCadMarkPlan plan = await Task.Run(() => KiCadFootprintMarks.Plan(content, picture, root, size));
+                    BoardContent was = session.Content;
+                    int followed = 0;
 
-                    if (plan.Problem is { } problem)
-                    {
-                        return problem;
-                    }
-
-                    int count = plan.Marks(session.Content.Board).Count;
-
-                    if (count == 0)
-                    {
-                        return plan.WhyNothing(session.Content.Board);
-                    }
-
-                    BoardContent before = session.Content;
-                    int marked = 0;
-
-                    DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                    DraftWorkbookEditOutcome moved = await DraftEdits.ApplyAndSaveAsync(
                         identity,
-                        DraftStepWording.ComponentsMarkedFromKiCad(plan.Picture, count),
+                        DraftStepWording.ComponentsFollowedAlignment(plan.Picture, toFollow),
                         board =>
                         {
-                            List<ComponentHighlightEntry> marks = plan.Marks(board);
-                            marked = marks.Count;
-                            return KiCadFootprintMarks.WithMarks(board, marks);
+                            BoardData result = KiCadFootprintMarks.Realigned(board, plan, alignedBefore, out int counted);
+                            followed = counted;
+                            return result;
                         });
 
-                    if (outcome != DraftWorkbookEditOutcome.Saved)
+                    if (moved != DraftWorkbookEditOutcome.Saved)
                     {
-                        return DraftSaveWording.EditNotSaved(outcome);
+                        return DraftSaveWording.EditNotSaved(moved);
                     }
 
-                    changed = !ReferenceEquals(session.Content, before);
+                    changed = !ReferenceEquals(session.Content, was);
 
-                    return changed
-                        ? PictureToolWording.MarkedAutomatically(marked, plan.Picture)
-                        : plan.WhyNothing(session.Content.Board);
-                });
-
-                this.ComponentPane.ShowPicturesNote(note);
-
-                if (changed)
-                {
-                    // The draft's row and the board on screen follow, as they do the pane's own saves.
-                    this.OnComponentPaneSaved(identity);
+                    return changed ? PictureToolWording.MarksFollowedAlignment(followed, plan.Picture) : null;
                 }
+
+                int count = plan.Marks(session.Content.Board).Count;
+
+                if (count == 0)
+                {
+                    return plan.WhyNothing(session.Content.Board);
+                }
+
+                BoardContent before = session.Content;
+                int marked = 0;
+
+                DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                    identity,
+                    DraftStepWording.ComponentsMarkedFromKiCad(plan.Picture, count),
+                    board =>
+                    {
+                        List<ComponentHighlightEntry> marks = plan.Marks(board);
+                        marked = marks.Count;
+                        return KiCadFootprintMarks.WithMarks(board, marks);
+                    });
+
+                if (outcome != DraftWorkbookEditOutcome.Saved)
+                {
+                    return DraftSaveWording.EditNotSaved(outcome);
+                }
+
+                changed = !ReferenceEquals(session.Content, before);
+
+                return !changed ? plan.WhyNothing(session.Content.Board)
+                    : afterAligning ? PictureToolWording.MarkedAfterAligning(marked, plan.Picture)
+                    : PictureToolWording.MarkedAutomatically(marked, plan.Picture);
             });
+
+            if (note is not null)
+            {
+                this.ComponentPane.ShowPicturesNote(note);
+            }
+
+            if (changed)
+            {
+                // The draft's row and the board on screen follow, as they do the pane's own saves.
+                this.OnComponentPaneSaved(identity);
+            }
+        }
+
+        // ###########################################################################################
+        // The traces of `picture`'s two sides, for its card's "Traces on the preview" (owner requests,
+        // 2026-10-29): what "Mark all automatically" works with - the board's KiCad data as the
+        // Schematics tab draws it, the image's size from its header, its alignment in the draft
+        // (KiCadFootprintMarks.Plan) - and each side's copper placed on the image (KiCadPreviewTraces).
+        // Or why there are none, in the contributor's words. `imageFile` tells the card's own picture
+        // from another of the same name (code review, 2026-10-30).
+        // ###########################################################################################
+        internal async Task<(PreviewTraces Traces, string? Problem)> PreviewTracesAsync(string picture, string imageFile = "")
+        {
+            if (this.thisComponentEntry is not { } entry || this.ComponentPane.Session is not { } session)
+            {
+                return (PreviewTraces.None, PictureToolWording.KiCadNotRead);
+            }
+
+            KiCadProjectRoot? root = await this.ReadKiCadForPreviewsAsync(entry.ExcelDataFile);
+            (int Width, int Height)? size = await this.PictureSizeAsync(session, picture, imageFile);
+            BoardContent content = session.Content;
+
+            return await Task.Run(() =>
+            {
+                KiCadMarkPlan plan = KiCadFootprintMarks.Plan(content, picture, root, size, imageFile);
+
+                return plan.Problem is { } problem
+                    ? (PreviewTraces.None, (string?)problem)
+                    : (KiCadPreviewTraces.For(plan), null);
+            });
+        }
+
+        // ###########################################################################################
+        // The board's KiCad project for the cards' traces - ONE read shared by every card asking while
+        // it runs (code review, 2026-10-30: the cards are made again at every undo, and four cards
+        // ticked read the project four times at once). A read done is not kept: the next ask reads
+        // again, the draft's KiCad files may have changed (KiCadProjectLoader keeps the parse).
+        // ###########################################################################################
+        private (string Identity, Task<KiCadProjectRoot?> Read)? thisPreviewKiCadRead;
+
+        private Task<KiCadProjectRoot?> ReadKiCadForPreviewsAsync(string identity)
+        {
+            if (this.thisPreviewKiCadRead is { } running && !running.Read.IsCompleted &&
+                string.Equals(running.Identity, identity, StringComparison.OrdinalIgnoreCase))
+            {
+                return running.Read;
+            }
+
+            Task<KiCadProjectRoot?> read = this.ReadKiCadForReadinessAsync(identity, "its schematic images' traces");
+            this.thisPreviewKiCadRead = (identity, read);
+            return read;
+        }
 
         // ###########################################################################################
         // The size of `picture`'s image in pixels, from its header (ImagePixelSize) - found as the
         // pane's previews find it (DraftFileResolver), off the UI thread. Null when it cannot be read.
+        // The picture's row is KiCadFootprintMarks.PictureRow's - the one with `imageFile` among two
+        // of a name.
         // ###########################################################################################
-        private Task<(int Width, int Height)?> PictureSizeAsync(DraftSession session, string picture)
+        private Task<(int Width, int Height)?> PictureSizeAsync(DraftSession session, string picture, string imageFile = "")
         {
-            string file = session.Content.Board.Schematics
-                .FirstOrDefault(row => string.Equals(row.SchematicName?.Trim(), picture?.Trim(), StringComparison.OrdinalIgnoreCase))
-                ?.SchematicImageFile?.Trim() ?? string.Empty;
+            string file = KiCadFootprintMarks.PictureRow(session.Content.Board, picture, imageFile)?.SchematicImageFile?.Trim() ?? string.Empty;
 
             if (this.PictureSizeOverrideForTests is { } read)
             {

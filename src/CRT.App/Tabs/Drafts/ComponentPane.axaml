@@ -31,6 +31,11 @@
 			<Setter Property="TextWrapping" Value="Wrap" />
 		</Style>
 
+		<!-- A schematic image card's KiCad option name, faded with its controls while they are off. -->
+		<Style Selector="TextBlock.KiCadOption.off">
+			<Setter Property="Opacity" Value="0.45" />
+		</Style>
+
 		<!-- The counter under the short description - the warning colour once it is over the limit. -->
 		<Style Selector="TextBlock.Counter">
 			<Setter Property="FontSize" Value="11" />
@@ -60,12 +65,84 @@
 		<Style Selector="Button.PaneLink:pointerover /template/ ContentPresenter">
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
+
+		<!-- A row's drag handle (files, links, credits, important signals - owner request, 2026-10-30: "a
+		     North/South icon and then drag the whole line up/down"): Font Awesome's up-down,
+		     U+F338 (yMax 448, inside the declared ascent - no room reserved), under the HAND cursor (owner
+		     request, 2026-11-01: the north/south one did not say it can be grabbed); the row moves by
+		     ListRowDrag. -->
+		<Style Selector="Border.RowDragHandle">
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Width" Value="28" />
+			<Setter Property="VerticalAlignment" Value="Stretch" />
+		</Style>
+		<Style Selector="Border.RowDragHandle > TextBlock">
+			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+			<Setter Property="FontSize" Value="14" />
+			<Setter Property="Opacity" Value="0.6" />
+			<Setter Property="HorizontalAlignment" Value="Center" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+		<Style Selector="Border.RowDragHandle:pointerover > TextBlock">
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+
+		<!-- The region shown, on top of a component's pages (owner decision, 2026-11-01) - the buttons under
+		     the component list and on the popup, in their colors. -->
+		<Style Selector="Button.PaneRegion.active">
+			<Setter Property="BorderThickness" Value="2" />
+		</Style>
+		<Style Selector="Button.PaneRegion.pal.active">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+		</Style>
+		<Style Selector="Button.PaneRegion.pal.active /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+		</Style>
+		<Style Selector="Button.PaneRegion.ntsc.active">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+		</Style>
+		<Style Selector="Button.PaneRegion.ntsc.active /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+		</Style>
+
+		<!-- A tab whose page holds something that stops the draft being submitted. -->
+		<Style Selector="TextBlock.ScreenTabLabel.error">
+			<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+
+		<!-- A field a row of the board's lists needs, left empty (BoardRowRequired - owner request,
+		     2026-11-01: "highlight the problematic cell with a helper what is missing"): a red frame on
+		     its box - at rest, under the pointer and with the keyboard in it - and the helper under it.
+		     It was a line under the whole row until then, which was easily missed. -->
+		<Style Selector="TextBox.Missing, AutoCompleteBox.Missing">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
+		<Style Selector="TextBox.Missing /template/ Border#PART_BorderElement">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
+		<Style Selector="AutoCompleteBox.Missing /template/ TextBox#PART_TextBox">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
+		<Style Selector="TextBlock.Required">
+			<Setter Property="Text" Value="Required before submitting" />
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+			<Setter Property="Margin" Value="2,2,0,0" />
+		</Style>
 	</UserControl.Styles>
 
-	<Grid RowDefinitions="Auto,*">
+	<Grid RowDefinitions="Auto,Auto,*">
 
 		<!-- What is open, whether the draft changed it, and the ways out. -->
 		<Border Grid.Row="0"
+				x:Name="PaneHeader"
 				BorderBrush="{DynamicResource Table_BorderRowLine}"
 				BorderThickness="0,0,0,1"
 				Padding="4,0,0,8">
@@ -96,6 +173,28 @@
 							   Opacity="0.75"
 							   TextWrapping="Wrap" />
 
+					<!-- Which region the pages show, on a board that has regions (owner decision, 2026-11-01: "the
+					     same switch as under the component list" - it IS that switch: picking here picks there). -->
+					<StackPanel x:Name="RegionSwitchPanel" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0" IsVisible="False">
+						<TextBlock Text="Showing" VerticalAlignment="Center" FontSize="12" />
+						<Button x:Name="PaneRegionPalButton"
+								Classes="PaneRegion pal"
+								Content="PAL"
+								MinWidth="60"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnPaneRegionClick" />
+						<Button x:Name="PaneRegionNtscButton"
+								Classes="PaneRegion ntsc"
+								Content="NTSC"
+								MinWidth="60"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Click="OnPaneRegionClick" />
+					</StackPanel>
+
 					<!-- What an action could not do - a picked file CRT cannot show, a capture that brought nothing. -->
 					<TextBlock x:Name="PaneMessageText"
 							   IsVisible="False"
@@ -108,54 +207,65 @@
 					<WrapPanel x:Name="ActionsPanel" Orientation="Horizontal" Margin="0,6,0,0">
 						<Button x:Name="ShowOnBoardButton"
 								Content="Show on board"
-								Margin="0,0,8,4"
+								Margin="0,0,6,4"
 								ToolTip.ShowOnDisabled="True"
 								Click="OnShowOnBoardClick" />
 						<!-- The same part's data from another board on this machine (slice 5). -->
 						<Button x:Name="CopyFromOtherBoardButton"
 								Content="Copy from another board"
-								Margin="0,0,8,4"
+								Margin="0,0,6,4"
 								ToolTip.Tip="Take the package, pins, replacement parts, notes or links from the same part - the same part number - on another board"
 								Click="OnCopyFromOtherBoardClick" />
 						<!-- What this draft changed of the part, on the same part of the other boards (slice 5). -->
 						<Button x:Name="AlsoOnOtherBoardsButton"
 								Content="Also on other boards"
-								Margin="0,0,8,4"
+								Margin="0,0,6,4"
 								IsVisible="False"
 								ToolTip.Tip="Make the same change on the other boards, each in its own draft - to the same part (the same part number), and to the files you replaced where another board has the same file"
 								Click="OnAlsoOnOtherBoardsClick" />
 						<!-- The popup as it will look once the draft is published - from the draft, now. -->
 						<Button x:Name="PreviewPopupButton"
 								Content="Preview popup"
-								Margin="0,0,8,4"
+								Margin="0,0,6,4"
 								ToolTip.Tip="Open the popup this component gets when it is pointed at on the board - as your draft has it now, which is what will be published"
 								Click="OnPreviewPopupClick" />
 						<!-- One component back as published - one step, so Undo brings the changes back. -->
 						<Button x:Name="UndoChangesButton"
 								Classes="Danger"
 								IsVisible="False"
-								Margin="0,0,8,4"
-								ToolTip.Tip="Put this component back as it is published - every change your draft makes to it. Undo brings them back."
+								Margin="0,0,6,4"
+								ToolTip.Tip="Put this component back as it is published - every change your draft makes to it. &quot;Undo&quot; brings them back."
 								Click="OnUndoChangesClick" />
 						<!-- The component taken off the board - one step, so Undo brings it back. -->
 						<Button x:Name="DeleteComponentButton"
 								Classes="Danger"
-								Margin="0,0,8,4"
+								Margin="0,0,6,4"
 								Click="OnDeleteComponentClick" />
 					</WrapPanel>
 				</StackPanel>
 
-				<StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
-					<Button x:Name="CloseButton"
-							Content="Close"
-							ToolTip.Tip="Close the component - every change is in your draft already"
-							Click="OnCloseClick" />
-				</StackPanel>
+				<!-- No Close (owner request, 2026-10-30: "remove those Close buttons on all those pages, as
+				     they are not needed anymore") - the left column's "Board status" goes back. -->
 			</Grid>
 		</Border>
 
+		<!-- A COMPONENT'S PAGES, AS TABS (owner decision, 2026-11-01: "too massive, if all data is filled") -
+		     App.axaml's tab strip, so they read as the Maintainer tab's screens do. One page shows at a time,
+		     and stays as another component is picked: walking a board's chips keeps to one page. -->
+		<Border Grid.Row="1" x:Name="PageTabs" Classes="ScreenTabStrip" Margin="4,0,0,0" IsVisible="False">
+			<WrapPanel Orientation="Horizontal">
+				<Button x:Name="BasicsPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="BasicsPageLabel" Classes="ScreenTabLabel" /></Button>
+				<Button x:Name="ReplacementsPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="ReplacementsPageLabel" Classes="ScreenTabLabel" /></Button>
+				<Button x:Name="PinoutPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="PinoutPageLabel" Classes="ScreenTabLabel" /></Button>
+				<Button x:Name="PicturesPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="PicturesPageLabel" Classes="ScreenTabLabel" /></Button>
+				<Button x:Name="BaselinesPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="BaselinesPageLabel" Classes="ScreenTabLabel" /></Button>
+				<Button x:Name="FilesPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="FilesPageLabel" Classes="ScreenTabLabel" /></Button>
+				<Button x:Name="LinksPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="LinksPageLabel" Classes="ScreenTabLabel" /></Button>
+			</WrapPanel>
+		</Border>
+
 		<!-- The component is gone from the draft - deleted, or an undo took away the change that added it. -->
-		<StackPanel Grid.Row="1" x:Name="GonePanel" IsVisible="False" Margin="4,12,0,0" Spacing="6">
+		<StackPanel Grid.Row="2" x:Name="GonePanel" IsVisible="False" Margin="4,12,0,0" Spacing="6">
 			<TextBlock x:Name="GoneText" TextWrapping="Wrap" />
 			<!-- Offered while the step that deleted it is the latest one - Undo of that step. -->
 			<Button x:Name="BringBackButton"
@@ -167,10 +277,10 @@
 
 		<!-- A NEW COMPONENT (slice 3c): named first - its label is what every other row of it is filed
 		     under - and added to the draft as one step; then the pane shows it like any other. -->
-		<ScrollViewer Grid.Row="1" x:Name="NewComponentPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer Grid.Row="2" x:Name="NewComponentPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
 			<StackPanel Margin="4,12,12,12" MaxWidth="560" HorizontalAlignment="Left">
 				<TextBlock Classes="PaneIntro"
-						   Text="Name the component as it is printed on the board - its label. Everything else is filled in once it is added, and Undo takes it away again." />
+						   Text="Name the component as it is printed on the board - its label. Everything else is filled in once it is added, and &quot;Undo&quot; takes it away again." />
 
 				<TextBlock Classes="FieldLabel" Text="Board label" />
 				<TextBox x:Name="NewLabelBox" Watermark="U8, C12, R3" />
@@ -198,7 +308,16 @@
 						   Margin="0,4,0,0"
 						   IsVisible="False" />
 
-				<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+				<!-- Owner request, 2026-11-01: "highlight that an added component must be manually marked in at
+				     least one of the schematic images, as it otherwise will be flagged as an orphan component". -->
+				<Border Classes="Notice" Margin="0,12,0,0">
+					<Grid ColumnDefinitions="Auto,*">
+						<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+						<TextBlock Grid.Column="1" Classes="NoticeText" x:Name="NewComponentMarkNoteText" />
+					</Grid>
+				</Border>
+
+				<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,12,0,0">
 					<Button x:Name="AddNewComponentButton"
 							Classes="Accept"
 							Content="Add component"
@@ -207,14 +326,14 @@
 					<Button x:Name="CancelNewComponentButton"
 							Content="Cancel"
 							ToolTip.Tip="Add nothing and close"
-							Click="OnCloseClick" />
+							Click="OnCancelNewComponentClick" />
 				</StackPanel>
 			</StackPanel>
 		</ScrollViewer>
 
 		<!-- The sections take the room there is, up to a readable width, from the left: a star column
 		     with a MaxWidth (a left-aligned panel would shrink to its widest content). -->
-		<ScrollViewer Grid.Row="1" x:Name="SectionsScrollViewer" HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer Grid.Row="2" x:Name="SectionsScrollViewer" HorizontalScrollBarVisibility="Disabled">
 			<Grid>
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="*" MaxWidth="980" />
@@ -240,11 +359,11 @@
 								   Classes="EmptyLine"
 								   IsVisible="False"
 								   Text="That component has nothing to copy - no package, notes, pins, replacement parts or links." />
-						<StackPanel Orientation="Horizontal" Spacing="8">
+						<StackPanel Orientation="Horizontal" Spacing="6">
 							<Button x:Name="CopyButton"
 									Classes="Accept"
 									Content="Copy"
-									ToolTip.Tip="Put what is ticked into this component - one step, so Undo takes it back"
+									ToolTip.Tip="Put what is ticked into this component - one step, so &quot;Undo&quot; takes it back"
 									Click="OnCopyClick" />
 							<Button x:Name="CancelCopyButton"
 									Content="Cancel"
@@ -276,7 +395,7 @@
 							<TextBlock x:Name="AlsoFilesIntroText" Classes="PaneIntro" />
 							<StackPanel x:Name="AlsoFilesPanel" Spacing="2" />
 						</StackPanel>
-						<StackPanel Orientation="Horizontal" Spacing="8">
+						<StackPanel Orientation="Horizontal" Spacing="6">
 							<Button x:Name="AlsoChangeButton"
 									Classes="Accept"
 									Content="Change them too"
@@ -290,25 +409,34 @@
 				</Border>
 
 				<!-- ==== Basics ==== -->
-				<StackPanel>
-					<TextBlock Classes="PaneHeading" Text="Basics" />
+				<StackPanel x:Name="BasicsSection">
 					<TextBlock Classes="PaneIntro"
 							   Text="What the component is. The popup on the board shows these when the component is pointed at." />
 
-					<Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto,Auto">
+					<!-- A row of its own per region - the VIC-II is a 6569 in one and a 6567 in the other. -->
+					<CheckBox x:Name="BasicsRegionalCheck"
+							  Content="Different per region"
+							  IsVisible="False"
+							  Margin="0,0,0,4"
+							  ToolTip.Tip="The component is another part in each region, so each has these fields of its own. Off, one set of fields is for every region."
+							  Click="OnBasicsRegionalClick" />
+
+					<Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+						<!-- Its label renames it on Enter or when left, never on a pause in typing: every row
+						     of the component moves with it (owner report, 2026-11-01: "unable to rename"). -->
 						<StackPanel Grid.Row="0" Grid.Column="0">
-							<TextBlock Classes="FieldLabel" Text="Friendly name" />
-							<TextBox x:Name="FriendlyNameBox" Watermark="VIC-II, SID, Kernal ROM" />
+							<TextBlock Classes="FieldLabel" Text="Board label" />
+							<TextBox x:Name="BoardLabelBox"
+									 Watermark="U8, C12, R3"
+									 ToolTip.Tip="The label printed on the board. Enter or leaving the box renames the component, with everything filed under it."
+									 KeyDown="OnBoardLabelKeyDown" />
+							<TextBlock x:Name="BoardLabelProblemText"
+									   IsVisible="False"
+									   Margin="0,4,0,0"
+									   Foreground="{DynamicResource Text_Warning_Fg}"
+									   TextWrapping="Wrap" />
 						</StackPanel>
 						<StackPanel Grid.Row="0" Grid.Column="2">
-							<TextBlock Classes="FieldLabel" Text="Technical name or value" />
-							<TextBox x:Name="TechnicalNameBox" Watermark="6569, 74LS08, 10uF" />
-						</StackPanel>
-						<StackPanel Grid.Row="1" Grid.Column="0">
-							<TextBlock Classes="FieldLabel" Text="Part number" />
-							<TextBox x:Name="PartNumberBox" Watermark="The number printed on it" />
-						</StackPanel>
-						<StackPanel Grid.Row="1" Grid.Column="2">
 							<TextBlock Classes="FieldLabel" Text="Category" />
 							<!-- The board's own categories as you type - the component list groups by the exact
 							     word, so "Capacitors" beside "Capacitor" would split one group in two. -->
@@ -318,14 +446,27 @@
 											 IsTextCompletionEnabled="False"
 											 PlaceholderText="Capacitor, IC, Resistor"
 											 HorizontalAlignment="Stretch" />
+							<TextBlock x:Name="CategoryRequiredText" Classes="Required" IsVisible="False" />
 						</StackPanel>
-						<StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
-							<TextBlock Classes="FieldLabel" Text="Short description" />
-							<TextBox x:Name="DescriptionBox"
-									 Watermark="One line - what the popup shows first" />
-							<TextBlock x:Name="DescriptionCounter" Classes="Counter" />
+						<StackPanel Grid.Row="1" Grid.Column="0">
+							<TextBlock Classes="FieldLabel" Text="Friendly name" />
+							<TextBox x:Name="FriendlyNameBox" Watermark="What will people also know this as" />
+						</StackPanel>
+						<StackPanel Grid.Row="1" Grid.Column="2">
+							<TextBlock Classes="FieldLabel" Text="Technical name or value" />
+							<TextBox x:Name="TechnicalNameBox" Watermark="Details printed on the component or its value" />
+						</StackPanel>
+						<StackPanel Grid.Row="2" Grid.Column="0">
+							<TextBlock Classes="FieldLabel" Text="Part number" />
+							<TextBox x:Name="PartNumberBox" Watermark="Orderable part number from the manufacturer" />
 						</StackPanel>
 						<StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3">
+							<TextBlock Classes="FieldLabel" Text="Short description" />
+							<TextBox x:Name="DescriptionBox"
+									 Watermark="Other relevant details" />
+							<TextBlock x:Name="DescriptionCounter" Classes="Counter" />
+						</StackPanel>
+						<StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3">
 							<TextBlock Classes="FieldLabel" Text="Repair notes" />
 							<TextBox x:Name="RepairNotesBox"
 									 AcceptsReturn="True"
@@ -337,10 +478,37 @@
 				</StackPanel>
 
 				<!-- ==== Pinout ==== -->
-				<StackPanel>
-					<TextBlock Classes="PaneHeading" Text="Pinout" />
+				<StackPanel x:Name="PinoutSection">
 					<TextBlock Classes="PaneIntro"
 							   Text="The case and what each pin is for. Pick the case, and CRT draws it from above, notch at the top." />
+
+					<!-- *** TEMPORARY - REMOVED BEFORE CRT 4.0 GOES LIVE (BaselinePinMigration). *** -->
+					<Border x:Name="MigrationPanel" Classes="Notice" IsVisible="False" Margin="0,0,0,8">
+						<Grid ColumnDefinitions="Auto,*">
+							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+							<StackPanel Grid.Column="1" Spacing="6">
+								<TextBlock x:Name="MigrationNoteText" Classes="NoticeText" />
+								<WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+									<Button x:Name="MigrateComponentButton"
+											Classes="Accept"
+											Content="Create pinout from scope baselines"
+											Click="OnMigrateComponentClick" />
+									<Button x:Name="MigrateBoardButton"
+											Classes="Accept"
+											Content="Create pinouts for the whole board"
+											Click="OnMigrateBoardClick" />
+								</WrapPanel>
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- One set of pins for every region, or a set of each's own (2026-11-01). -->
+					<CheckBox x:Name="PinsRegionalCheck"
+							  Content="Different per region"
+							  IsVisible="False"
+							  Margin="0,0,0,4"
+							  ToolTip.Tip="The pins are not the same in each region, so each has a set of its own. Off, one set of pins is for every region."
+							  Click="OnPinsRegionalClick" />
 
 					<StackPanel Orientation="Horizontal" Spacing="8">
 						<StackPanel Width="200">
@@ -385,7 +553,7 @@
 
 							<Grid x:Name="PinsHeading">
 								<Grid.ColumnDefinitions>
-									<ColumnDefinition Width="60" />
+									<ColumnDefinition Width="70" />
 									<ColumnDefinition Width="8" />
 									<ColumnDefinition Width="*" />
 									<ColumnDefinition Width="8" />
@@ -409,9 +577,11 @@
 							<ItemsControl x:Name="PinsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ComponentPanePinRow">
-										<Grid Margin="0,0,0,4">
+										<Grid Margin="0,0,0,4" RowDefinitions="Auto,Auto">
+											<!-- 70, not under the 64 a text box takes at least - the box hung over both edges
+											     of a narrower column, its left border clipped (owner report, 2026-11-01). -->
 											<Grid.ColumnDefinitions>
-												<ColumnDefinition Width="60" />
+												<ColumnDefinition Width="70" />
 												<ColumnDefinition Width="8" />
 												<ColumnDefinition Width="*" />
 												<ColumnDefinition Width="8" />
@@ -420,8 +590,9 @@
 												<ColumnDefinition Width="Auto" SharedSizeGroup="PinNets" />
 												<ColumnDefinition Width="Auto" SharedSizeGroup="PinButtons" />
 											</Grid.ColumnDefinitions>
-											<TextBox Grid.Column="0" Text="{Binding Pin, Mode=TwoWay}" />
+											<TextBox Grid.Column="0" Text="{Binding Pin, Mode=TwoWay}" Classes.Missing="{Binding PinOutside}" />
 											<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="VCC, A0, ~RESET" />
+											<TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="8" Classes="Required" Text="{Binding PinProblem}" IsVisible="{Binding PinOutside}" />
 											<ComboBox Grid.Column="4"
 													  HorizontalAlignment="Stretch"
 													  ItemsSource="{Binding DirectionChoices}"
@@ -458,8 +629,7 @@
 				</StackPanel>
 
 				<!-- ==== Scope baselines (slice 3b) ==== -->
-				<StackPanel Spacing="4">
-					<TextBlock x:Name="BaselinesHeading" Classes="PaneHeading" Text="Scope baselines" />
+				<StackPanel x:Name="BaselinesSection" Spacing="4">
 					<TextBlock Classes="PaneIntro"
 							   Text="What a working board shows on the scope at each pin - the screenshot and how the scope was set, so the next person can compare theirs." />
 
@@ -509,10 +679,17 @@
 										</Border>
 
 										<StackPanel Grid.Column="2">
+											<!-- What it applies to, on a board with regions (owner decision, 2026-11-01). -->
+											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsAppliesTo}">
+												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+												<ComboBox MinWidth="130"
+														  ItemsSource="{Binding AppliesToChoices}"
+														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+											</StackPanel>
 											<Grid ColumnDefinitions="70,8,*,8,*">
 												<StackPanel Grid.Column="0">
 													<TextBlock Classes="FieldLabel" Text="Pin" />
-													<TextBox Text="{Binding Pin, Mode=TwoWay}" />
+													<TextBox Text="{Binding Pin, Mode=TwoWay}" Classes.Missing="{Binding PinOutside}" />
 												</StackPanel>
 												<StackPanel Grid.Column="2">
 													<TextBlock Classes="FieldLabel" Text="Signal name" />
@@ -523,6 +700,7 @@
 													<TextBox Text="{Binding ExpectedReading, Mode=TwoWay}" Watermark="Pulsing, high, 1 MHz clock" />
 												</StackPanel>
 											</Grid>
+											<TextBlock Classes="Required" Text="{Binding PinProblem}" IsVisible="{Binding PinOutside}" />
 											<Grid ColumnDefinitions="*,8,*,8,*">
 												<StackPanel Grid.Column="0">
 													<TextBlock Classes="FieldLabel" Text="T/DIV" />
@@ -563,7 +741,8 @@
 												</StackPanel>
 											</Grid>
 											<TextBlock Classes="FieldLabel" Text="Note" />
-											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" />
+											<!-- Several lines, always open as such (owner request, 2026-11-01). -->
+											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
 
 											<TextBlock Text="{Binding Problem}"
 													   IsVisible="{Binding HasProblem}"
@@ -571,7 +750,7 @@
 													   Foreground="{DynamicResource Text_Warning_Fg}"
 													   TextWrapping="Wrap" />
 
-											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+											<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
 												<Button Content="Change screenshot"
 														Tag="{Binding}"
 														ToolTip.Tip="Pick another screenshot for this baseline"
@@ -608,6 +787,11 @@
 									<Image x:Name="NewBaselineThumbnail" Stretch="Uniform" />
 								</Border>
 								<StackPanel Grid.Column="2">
+									<!-- What it applies to, on a board with regions: the region shown, to start with. -->
+									<StackPanel x:Name="NewBaselineRegionPanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
+										<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+										<ComboBox x:Name="NewBaselineRegionBox" MinWidth="130" />
+									</StackPanel>
 									<Grid ColumnDefinitions="70,8,*">
 										<StackPanel Grid.Column="0">
 											<TextBlock Classes="FieldLabel" Text="Pin" />
@@ -646,7 +830,7 @@
 											   Margin="0,4,0,0"
 											   Foreground="{DynamicResource Text_Warning_Fg}"
 											   TextWrapping="Wrap" />
-									<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+									<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
 										<Button x:Name="NewBaselineChooseButton"
 												Content="Choose screenshot"
 												ToolTip.Tip="Pick the screenshot from a file"
@@ -654,7 +838,7 @@
 										<Button x:Name="NewBaselineCaptureButton"
 												Content="Capture from my oscilloscope"
 												IsVisible="False"
-												ToolTip.Tip="Take the screenshot from the oscilloscope connected on the Oscilloscope tab"
+												ToolTip.Tip="Take the screenshot from the oscilloscope connected on the &quot;Oscilloscope&quot; tab"
 												Click="OnCaptureNewBaselineClick" />
 										<Button x:Name="AddNewBaselineButton"
 												Classes="Accept"
@@ -670,7 +854,7 @@
 						</StackPanel>
 					</Border>
 
-					<StackPanel x:Name="AddBaselineButtons" Orientation="Horizontal" Spacing="8">
+					<StackPanel x:Name="AddBaselineButtons" Orientation="Horizontal" Spacing="6">
 						<Button x:Name="AddBaselineButton"
 								Classes="Accept"
 								Content="Add baseline"
@@ -678,14 +862,13 @@
 						<Button x:Name="CaptureBaselineButton"
 								Content="Capture from my oscilloscope"
 								IsVisible="False"
-								ToolTip.Tip="Start a new baseline with the screen of the oscilloscope connected on the Oscilloscope tab"
+								ToolTip.Tip="Start a new baseline with the screen of the oscilloscope connected on the &quot;Oscilloscope&quot; tab"
 								Click="OnCaptureBaselineClick" />
 					</StackPanel>
 				</StackPanel>
 
 				<!-- ==== Pictures (slice 3b) ==== -->
-				<StackPanel Spacing="4">
-					<TextBlock x:Name="PicturesHeading" Classes="PaneHeading" Text="Pictures" />
+				<StackPanel x:Name="PicturesSection" Spacing="4">
 					<TextBlock Classes="PaneIntro"
 							   Text="Photos and drawings of the component - its markings, its pinout, where it sits on the board." />
 
@@ -707,11 +890,18 @@
 											<Image Source="{Binding Thumbnail}" Stretch="Uniform" />
 										</Border>
 										<StackPanel Grid.Column="2">
+											<!-- What it applies to, on a board with regions (owner decision, 2026-11-01). -->
+											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsAppliesTo}">
+												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+												<ComboBox MinWidth="130"
+														  ItemsSource="{Binding AppliesToChoices}"
+														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+											</StackPanel>
 											<TextBlock Classes="FieldLabel" Text="Name" />
 											<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="Top, Pinout, Markings" />
 											<TextBlock Classes="FieldLabel" Text="Note" />
 											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" />
-											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+											<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
 												<Button Content="Change picture"
 														Tag="{Binding}"
 														ToolTip.Tip="Pick another file for this picture"
@@ -737,8 +927,7 @@
 				</StackPanel>
 
 				<!-- ==== Replacement parts ==== -->
-				<StackPanel Spacing="4">
-					<TextBlock Classes="PaneHeading" Text="Replacement parts" />
+				<StackPanel x:Name="ReplacementsSection" Spacing="4">
 					<TextBlock Classes="PaneIntro"
 							   Text="Parts that can stand in for this one - and what has to change for one that does not simply drop in." />
 
@@ -751,7 +940,7 @@
 										BorderThickness="0,0,0,1"
 										Padding="0,0,0,8"
 										Margin="0,0,0,8">
-									<Grid ColumnDefinitions="*,8,160,8,Auto" RowDefinitions="Auto,Auto,Auto,Auto">
+									<Grid ColumnDefinitions="*,8,160,8,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
 										<TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Part number" />
 										<TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PartNumber, Mode=TwoWay}" />
 										<TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Kind" />
@@ -774,6 +963,13 @@
 											<TextBox Grid.Column="0" Text="{Binding Changes, Mode=TwoWay}" Watermark="Nothing, for a drop-in" />
 											<TextBox Grid.Column="2" Text="{Binding Source, Mode=TwoWay}" Watermark="A forum thread, a magazine, tried on my own board" />
 										</Grid>
+										<!-- What it applies to, on a board with regions (owner decision, 2026-11-01). -->
+										<StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="5" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
+											<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+											<ComboBox MinWidth="130"
+													  ItemsSource="{Binding AppliesToChoices}"
+													  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+										</StackPanel>
 									</Grid>
 								</Border>
 							</DataTemplate>
@@ -788,8 +984,7 @@
 				</StackPanel>
 
 				<!-- ==== Files (slice 3b) ==== -->
-				<StackPanel Spacing="4">
-					<TextBlock x:Name="FilesHeading" Classes="PaneHeading" Text="Files" />
+				<StackPanel x:Name="FilesSection" Spacing="4">
 					<TextBlock Classes="PaneIntro"
 							   Text="Documents kept with the board about this component - a datasheet, a service note, a ROM dump." />
 
@@ -830,8 +1025,7 @@
 				</StackPanel>
 
 				<!-- ==== Links ==== -->
-				<StackPanel Spacing="4" Grid.IsSharedSizeScope="True">
-					<TextBlock Classes="PaneHeading" Text="Links" />
+				<StackPanel x:Name="LinksSection" Spacing="4" Grid.IsSharedSizeScope="True">
 					<TextBlock Classes="PaneIntro"
 							   Text="Pages about this component - a datasheet online, a forum thread, a video." />
 
@@ -852,7 +1046,7 @@
 					<ItemsControl x:Name="LinksItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneLinkRow">
-								<Grid Margin="0,0,0,4">
+								<Grid Margin="0,0,0,4" RowDefinitions="Auto,Auto">
 									<Grid.ColumnDefinitions>
 										<ColumnDefinition Width="*" />
 										<ColumnDefinition Width="8" />
@@ -861,7 +1055,8 @@
 										<ColumnDefinition Width="Auto" SharedSizeGroup="LinkButtons" />
 									</Grid.ColumnDefinitions>
 									<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
-									<TextBox Grid.Column="2" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" />
+									<TextBox Grid.Column="2" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" Classes.Missing="{Binding UrlNotWeb}" />
+									<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" Text="{Binding NotWebText}" IsVisible="{Binding UrlNotWeb}" />
 									<Button Grid.Column="4"
 											Classes="Danger"
 											Content="Remove"
@@ -887,7 +1082,7 @@
 		<!-- THE BOARD'S OWN LISTS (slice 4a - the plan: "Board > Files and links, grouped by category ...
 		     Board > Credits ... Board > Important signals"): one at a time, in place of a component
 		     (ComponentPane.Board.cs). Every change goes into the draft as the component's do. -->
-		<ScrollViewer Grid.Row="1" x:Name="BoardPartPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer Grid.Row="2" x:Name="BoardPartPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
 			<Grid>
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="*" MaxWidth="980" />
@@ -895,16 +1090,91 @@
 				</Grid.ColumnDefinitions>
 			<StackPanel Grid.Column="0" Spacing="18" Margin="4,12,12,12">
 
-				<!-- ==== Pictures (slice 4b; step 3 moved "Schematic images" here) - every picture of the
-				     board: added, named, matched to its KiCad view, ordered, removed, and how a marked
-				     component is drawn on it (ComponentPane.BoardPictures.cs, .BoardPictureList.cs) ==== -->
-				<StackPanel x:Name="PicturesPart" Spacing="4">
-					<TextBlock x:Name="BoardPicturesHeading" Classes="PaneHeading" Text="Pictures" />
+				<!-- ==== Board: Regions (owner decisions, 2026-11-01: "PAL and NTSC, or none", stored and
+				     published; ComponentPane.RegionsAndCategories.cs) ==== -->
+				<StackPanel x:Name="RegionsPart" Spacing="6">
 					<TextBlock Classes="PaneIntro"
-							   Text="Photos of the board's sides and its schematic sheets - everything else is marked on them. Name each one, say which KiCad view it shows, put them in order, and choose how a marked component is drawn on it." />
+							   Text="Whether this board came in a PAL and an NTSC version. Ticked, the PAL and NTSC buttons show under the component list and on a component's popup, and what a component has can apply to one region or to all of them." />
+					<CheckBox x:Name="RegionsCheckBox" Click="OnRegionsCheckClick" />
+					<TextBlock x:Name="RegionsInUseText" Classes="EmptyLine" IsVisible="False" />
+				</StackPanel>
+
+				<!-- ==== Board: Categories (owner request, 2026-11-01; ComponentPane.RegionsAndCategories.cs) ==== -->
+				<StackPanel x:Name="CategoriesPart" Spacing="4">
+					<TextBlock Classes="PaneIntro"
+							   Text="What the board's components are sorted under - in the list beside the &quot;Schematics&quot; tab and on the &quot;Overview&quot; tab. Rename one and every component in it follows; name it as another and the two become one. A category nothing uses yet is kept until CRT closes." />
+
+					<ItemsControl x:Name="CategoriesItemsControl">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:ComponentPaneCategoryRow">
+								<StackPanel Margin="0,0,0,6" Spacing="4">
+									<Grid ColumnDefinitions="*,12,140,12,70">
+										<TextBox Grid.Column="0"
+												 Text="{Binding NameDraft, Mode=TwoWay}"
+												 Classes.Missing="{Binding NeedsOne}"
+												 Watermark="A category for these components"
+												 KeyDown="OnCategoryNameKeyDown"
+												 LostFocus="OnCategoryNameLostFocus" />
+										<TextBlock Grid.Column="2" Text="{Binding CountText}" VerticalAlignment="Center" Opacity="0.75" />
+										<Button Grid.Column="4"
+												Classes="Danger"
+												Content="Delete"
+												Tag="{Binding}"
+												IsVisible="{Binding CanDelete}"
+												ToolTip.Tip="Delete this category - its components move to another, one step, so &quot;Undo&quot; brings it back"
+												Click="OnDeleteCategoryClick" />
+									</Grid>
+									<TextBlock Classes="Required" Text="{Binding Problem}" IsVisible="{Binding HasProblem}" />
+
+									<!-- Where its components go: none may be left without a category. -->
+									<Border IsVisible="{Binding IsDeleting}"
+											BorderBrush="{DynamicResource Form_Border}"
+											BorderThickness="1"
+											CornerRadius="3"
+											Padding="10,8">
+										<StackPanel Spacing="6">
+											<TextBlock Text="{Binding DeleteQuestion}" TextWrapping="Wrap" />
+											<StackPanel Orientation="Horizontal" Spacing="6">
+												<ComboBox MinWidth="180"
+														  IsVisible="{Binding HasMoveChoices}"
+														  ItemsSource="{Binding MoveChoices}"
+														  SelectedItem="{Binding MoveTo, Mode=TwoWay}" />
+												<Button Classes="Danger"
+														Content="Delete category"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanDeleteNow}"
+														Click="OnConfirmDeleteCategoryClick" />
+												<Button Content="Cancel"
+														Tag="{Binding}"
+														Click="OnCancelDeleteCategoryClick" />
+											</StackPanel>
+										</StackPanel>
+									</Border>
+								</StackPanel>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+
+					<Grid ColumnDefinitions="*,6,Auto" Margin="0,6,0,0">
+						<TextBox x:Name="NewCategoryNameBox" Grid.Column="0" Watermark="Name of a new category" KeyDown="OnNewCategoryKeyDown" />
+						<Button x:Name="AddCategoryButton" Grid.Column="2" Classes="Accept" Content="Add category" Click="OnAddCategoryClick" />
+					</Grid>
+					<TextBlock x:Name="NewCategoryProblemText"
+							   IsVisible="False"
+							   Foreground="{DynamicResource Text_Warning_Fg}"
+							   TextWrapping="Wrap" />
+				</StackPanel>
+
+				<!-- ==== Schematic images (slice 4b; step 3 moved the "Schematic images" window here; "Pictures"
+				     on screen until 2026-10-29) - every image of the board: added, named, matched to its KiCad
+				     view, ordered, deleted, and how a selected component is drawn on it
+				     (ComponentPane.BoardPictures.cs, .BoardPictureList.cs, .PicturePreviews.cs) ==== -->
+				<StackPanel x:Name="PicturesPart" Spacing="4">
+					<TextBlock Classes="PaneIntro"
+							   Text="Photos of the board's sides and its schematic sheets - everything else is marked on them. Name each one, say which KiCad view it shows, put them in order, and choose how a selected component is drawn on it." />
 					<Button x:Name="AddPicturesButton"
 							Classes="Accept"
-							Content="Add pictures"
+							Content="Add schematic image(s)"
 							HorizontalAlignment="Left"
 							Margin="0,0,0,8"
 							ToolTip.Tip="Pick photos of the board's sides, or its schematic sheets - each is copied into your draft, your own file left where it is. They can be dragged onto the tab too."
@@ -913,116 +1183,249 @@
 					<!-- What "Mark all automatically" did, or why it could not (step 3, slice 3c). -->
 					<TextBlock x:Name="BoardPicturesNoteText" TextWrapping="Wrap" Margin="0,0,0,8" IsVisible="False" />
 
-					<TextBlock x:Name="NoBoardPicturesText" Classes="EmptyLine" Text="No pictures yet." />
+					<TextBlock x:Name="NoBoardPicturesText" Classes="EmptyLine" Text="No schematic images yet." />
 
 					<ItemsControl x:Name="BoardPicturesItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneBoardPictureRow">
-								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
-										BorderThickness="0,0,0,1"
-										Padding="0,0,0,10"
-										Margin="0,0,0,10">
-									<Grid ColumnDefinitions="320,16,*">
-										<Border Grid.Column="0"
-												Width="320"
-												Height="200"
-												VerticalAlignment="Top"
-												Background="{DynamicResource Card_Bg}">
-											<local:PicturePreview Source="{Binding Thumbnail}"
-																  ImageSize="{Binding ImageSize}"
-																  Highlights="{Binding Highlights}"
-																  HighlightColor="{Binding HighlightColor}"
-																  HighlightOpacity="{Binding HighlightFraction}" />
+								<!-- Each image in a panel of its own (owner request, 2026-10-29: "bordered with a
+								     1px DarkGrey border to clearly see boundaries"). -->
+								<Border BorderBrush="DarkGray"
+										BorderThickness="1"
+										CornerRadius="4"
+										Padding="12"
+										Margin="0,0,0,12">
+									<Grid ColumnDefinitions="Auto,14,*">
+										<!-- THE PREVIEWS (2026-10-29): the image with its selected components and,
+										     ticked, the other side's traces - it zooms - and under it the image as
+										     its thumbnail draws it. As wide as last dragged at the handle beside
+										     them, the same on every card (ComponentPane.PicturePreviews.cs). -->
+										<StackPanel Grid.Column="0" Width="{Binding PreviewWidth}" Spacing="4" VerticalAlignment="Top">
+											<Border Height="{Binding PreviewHeight}" Background="{DynamicResource Card_Bg}">
+												<local:PicturePreview Source="{Binding ShownThumbnail}"
+																	  ImageSize="{Binding ImageSize}"
+																	  Highlights="{Binding Highlights}"
+																	  HighlightColor="{Binding HighlightColor}"
+																	  HighlightOpacity="{Binding HighlightFraction}"
+																	  ThisSideTraces="{Binding ShownThisSideTraces}"
+																	  ThisSideTraceColor="{Binding ThisSideTraceColor}"
+																	  OtherSideTraces="{Binding ShownOtherSideTraces}"
+																	  OtherSideTraceColor="{Binding OppositeTraceColor}"
+																	  ThisSideTraceOpacity="{Binding ThisSideTraceFraction}"
+																	  OtherSideTraceOpacity="{Binding OppositeTraceFraction}"
+																	  IsZoomable="True"
+																	  SharperWanted="{Binding WantSharper}" />
+											</Border>
+											<TextBlock Classes="EmptyLine" Text="Ctrl+scroll to zoom, drag to move, double-click to see it whole." />
+
+											<TextBlock Classes="FieldLabel" Text="As its thumbnail" />
+											<Border Width="160"
+													Height="100"
+													HorizontalAlignment="Left"
+													Background="{DynamicResource Card_Bg}"
+													ToolTip.Tip="The image as its thumbnail beside the &quot;Schematics&quot; tab's picture shows it, with a component selected">
+												<local:PicturePreview Source="{Binding Thumbnail}"
+																	  ImageSize="{Binding ImageSize}"
+																	  Highlights="{Binding Highlights}"
+																	  HighlightColor="{Binding ThumbnailColor}"
+																	  HighlightOpacity="{Binding ThumbnailFraction}" />
+											</Border>
+
+											<!-- How far the picture is: the components its KiCad view shows and how many are marked
+											     on it (owner requests, 2026-11-01: "must be more visible ... with black text - not
+											     darkgrey") - told apart by how they were marked once any was marked by hand. -->
+											<StackPanel Spacing="1" Margin="0,4,0,0" IsVisible="{Binding ShowsKiCadCounts}">
+												<TextBlock Text="Components:" FontWeight="SemiBold" />
+												<TextBlock Text="{Binding ComponentsAvailableText}" TextWrapping="Wrap" />
+												<TextBlock Text="{Binding ComponentsAutomaticallyMarkedText}" TextWrapping="Wrap" IsVisible="{Binding ShowsAutomaticallyMarked}" />
+												<TextBlock Text="{Binding ComponentsManuallyMarkedText}" TextWrapping="Wrap" IsVisible="{Binding ShowsManuallyMarked}" />
+												<TextBlock TextWrapping="Wrap"><Run Text="- " /><Run Text="{Binding MarkedComponentsNumber}" FontWeight="Bold" /><Run Text="{Binding MarkedComponentsWords}" /></TextBlock>
+											</StackPanel>
+										</StackPanel>
+
+										<!-- The previews' width, dragged here - every card's follows. Drawn as every splitter
+										     of CRT is: a 4px bar in the GridSplitter colour (owner request, 2026-10-30:
+										     "identical to any other splitter ... bulky and visible"). -->
+										<Border Grid.Column="1"
+												Classes="PreviewHandle"
+												Background="Transparent"
+												Cursor="SizeWestEast"
+												ToolTip.Tip="Drag to make the previews wider or narrower"
+												PointerPressed="OnPreviewHandlePressed"
+												PointerMoved="OnPreviewHandleMoved"
+												PointerReleased="OnPreviewHandleReleased"
+												PointerCaptureLost="OnPreviewHandleCaptureLost">
+											<Border Width="4"
+													HorizontalAlignment="Center"
+													Background="{DynamicResource Splitter}" />
 										</Border>
 
 										<StackPanel Grid.Column="2" Spacing="6">
-											<!-- The name, saved on Enter or leaving the box (Escape puts it back). -->
-											<TextBox Text="{Binding NameDraft, Mode=TwoWay}"
-													 FontWeight="Bold"
-													 ToolTip.Tip="The picture's name - its thumbnail on the Schematics tab says it. Enter or leaving the box saves it."
-													 KeyDown="OnPictureNameKeyDown"
-													 LostFocus="OnPictureNameLostFocus" />
+											<!-- The name, saved on Enter or leaving the box (Escape puts it back) - said
+											     above it what it is (owner request, 2026-10-29). -->
+											<StackPanel Spacing="0">
+												<TextBlock Classes="FieldLabel" Text="Schematic name" Margin="0,0,0,2" Opacity="0.75" />
+												<TextBox Text="{Binding NameDraft, Mode=TwoWay}"
+														 FontWeight="Bold"
+														 ToolTip.Tip="The image's name - its thumbnail on the &quot;Schematics&quot; tab says it. Enter or leaving the box saves it."
+														 KeyDown="OnPictureNameKeyDown"
+														 LostFocus="OnPictureNameLostFocus" />
+											</StackPanel>
 											<TextBlock Text="{Binding File}" FontSize="11" Opacity="0.75" TextTrimming="CharacterEllipsis" />
 
-											<!-- The KiCad view the picture shows - once the board's views are read. -->
+											<!-- The KiCad view the image shows - once the board's views are read. -->
 											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsCadNames}">
 												<TextBlock Text="Shows KiCad view" VerticalAlignment="Center" />
 												<ComboBox ItemsSource="{Binding CadNameChoices}"
 														  SelectedItem="{Binding SelectedCadNameChoice, Mode=TwoWay}"
 														  MinWidth="220"
-														  ToolTip.Tip="Which view of the board's KiCad data this picture shows - its traces are drawn on it from that view, and Align KiCad lines them up" />
+														  ToolTip.Tip="Which view of the board's KiCad data this image shows - its traces are drawn on it from that view, and &quot;Align KiCad data&quot; lines them up" />
 											</StackPanel>
 
-											<Grid ColumnDefinitions="Auto,8,Auto,12,*,8,40" RowDefinitions="Auto,6,Auto,6,Auto">
-												<TextBlock Grid.Row="0" Grid.Column="0" Text="Marked components" VerticalAlignment="Center" />
+											<!-- What comes next on a side of the board not aligned yet (owner request, 2026-11-01: "it is
+											     not clear that I must first do the Align KiCad, before I can do the Mark all automatically") -
+											     App.axaml's notice panel; the alignment's Done then marks every component. -->
+											<Border Classes="Notice" IsVisible="{Binding AlignsFirst}">
+												<Grid ColumnDefinitions="Auto,*">
+													<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+													<TextBlock Grid.Column="1" Classes="NoticeText" Text="{Binding AlignFirstText}" />
+												</Grid>
+											</Border>
+
+											<!-- "Schematic image" was "Selected components", "Traces on the other side" "Trace on the other side"
+											     and "Traces preview" "Traces on the preview" (owner request, 2026-10-30), when this side's traces
+											     got a color and both sides an opacity of their own (TraceColours). THE KiCad ROWS ARE HIDDEN, not
+											     greyed out, for an image with no KiCad data (owner request, 2026-10-30: "less disabled elements to
+											     relate to") - so each row's space is its elements' top margin, not a spacer row a hidden row
+											     would leave behind. -->
+											<Grid ColumnDefinitions="Auto,8,Auto,12,*,8,40" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+												<TextBlock Grid.Row="0" Grid.Column="0" Text="Schematic image" VerticalAlignment="Center"
+														   ToolTip.Tip="How a selected component is drawn on the image" />
 												<ColorPicker Grid.Row="0" Grid.Column="2" Color="{Binding HighlightColor, Mode=TwoWay}" />
 												<Slider Grid.Row="0" Grid.Column="4" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
 														Value="{Binding HighlightOpacity, Mode=TwoWay}"
-														ToolTip.Tip="How strongly a marked component shows on the picture" />
+														ToolTip.Tip="How strongly a selected component shows on the image" />
 												<TextBlock Grid.Row="0" Grid.Column="6" Text="{Binding HighlightOpacityText}" VerticalAlignment="Center" />
 
-												<TextBlock Grid.Row="2" Grid.Column="0" Text="On the thumbnail" VerticalAlignment="Center" />
-												<ColorPicker Grid.Row="2" Grid.Column="2" Color="{Binding ThumbnailColor, Mode=TwoWay}" />
-												<Slider Grid.Row="2" Grid.Column="4" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+												<TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" Text="Thumbnail" VerticalAlignment="Center" />
+												<ColorPicker Grid.Row="1" Grid.Column="2" Margin="0,6,0,0" Color="{Binding ThumbnailColor, Mode=TwoWay}" />
+												<Slider Grid.Row="1" Grid.Column="4" Margin="0,6,0,0" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
 														Value="{Binding ThumbnailOpacity, Mode=TwoWay}"
-														ToolTip.Tip="How strongly a marked component shows on the picture's thumbnail" />
-												<TextBlock Grid.Row="2" Grid.Column="6" Text="{Binding ThumbnailOpacityText}" VerticalAlignment="Center" />
+														ToolTip.Tip="How strongly a selected component shows on the image's thumbnail" />
+												<TextBlock Grid.Row="1" Grid.Column="6" Margin="0,6,0,0" Text="{Binding ThumbnailOpacityText}" VerticalAlignment="Center" />
 
-												<TextBlock Grid.Row="4" Grid.Column="0" Text="Trace on the other side" VerticalAlignment="Center"
-														   ToolTip.Tip="With KiCad data: the colour of a trace on the board's other side" />
-												<ColorPicker Grid.Row="4" Grid.Column="2" Color="{Binding OppositeTraceColor, Mode=TwoWay}" />
+												<!-- Each side's traces: their color and opacity - this side's follow the Schematic image row while
+												     they are not picked. -->
+												<TextBlock Grid.Row="2" Grid.Column="0" Margin="0,6,0,0" Text="Traces on this side" VerticalAlignment="Center"
+														   IsVisible="{Binding HasKiCadData}"
+														   ToolTip.Tip="{Binding ThisSideTraceColourTip}" />
+												<ColorPicker Grid.Row="2" Grid.Column="2" Margin="0,6,0,0"
+															 Color="{Binding ThisSideTraceColor, Mode=TwoWay}"
+															 IsVisible="{Binding HasKiCadData}"
+															 ToolTip.Tip="{Binding ThisSideTraceColourTip}" />
+												<Slider Grid.Row="2" Grid.Column="4" Margin="0,6,0,0" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+														Value="{Binding ThisSideTraceOpacity, Mode=TwoWay}"
+														IsVisible="{Binding HasKiCadData}"
+														ToolTip.Tip="{Binding ThisSideTraceOpacityTip}" />
+												<TextBlock Grid.Row="2" Grid.Column="6" Margin="0,6,0,0" Text="{Binding ThisSideTraceOpacityText}" VerticalAlignment="Center"
+														   IsVisible="{Binding HasKiCadData}" />
+
+												<TextBlock Grid.Row="3" Grid.Column="0" Margin="0,6,0,0" Text="Traces on the other side" VerticalAlignment="Center"
+														   IsVisible="{Binding HasKiCadData}"
+														   ToolTip.Tip="{Binding TraceColourTip}" />
+												<ColorPicker Grid.Row="3" Grid.Column="2" Margin="0,6,0,0"
+															 Color="{Binding OppositeTraceColor, Mode=TwoWay}"
+															 IsVisible="{Binding HasKiCadData}"
+															 ToolTip.Tip="{Binding TraceColourTip}" />
+												<Slider Grid.Row="3" Grid.Column="4" Margin="0,6,0,0" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+														Value="{Binding OppositeTraceOpacity, Mode=TwoWay}"
+														IsVisible="{Binding HasKiCadData}"
+														ToolTip.Tip="{Binding OppositeTraceOpacityTip}" />
+												<TextBlock Grid.Row="3" Grid.Column="6" Margin="0,6,0,0" Text="{Binding OppositeTraceOpacityText}" VerticalAlignment="Center"
+														   IsVisible="{Binding HasKiCadData}" />
+
+												<!-- Each side's traces drawn on the preview (2026-10-29): each in its own color and opacity above -
+												     both when both are ticked. Shown with KiCad data; ticked only once KiCad is aligned on the image. -->
+												<TextBlock Grid.Row="4" Grid.Column="0" Margin="0,6,0,0" Text="Traces preview" VerticalAlignment="Center"
+														   IsVisible="{Binding HasKiCadData}"
+														   Classes="KiCadOption"
+														   Classes.off="{Binding !CanShowTraces}" />
+												<StackPanel Grid.Row="4" Grid.Column="2" Grid.ColumnSpan="5" Margin="0,6,0,0" Orientation="Horizontal" Spacing="16"
+															IsVisible="{Binding HasKiCadData}">
+													<CheckBox Content="This side"
+															  IsChecked="{Binding ShowThisSideTraces, Mode=TwoWay}"
+															  IsEnabled="{Binding CanShowTraces}"
+															  ToolTip.Tip="{Binding ThisSideTracesTip}"
+															  ToolTip.ShowOnDisabled="True" />
+													<CheckBox Content="Other side"
+															  IsChecked="{Binding ShowOtherSideTraces, Mode=TwoWay}"
+															  IsEnabled="{Binding CanShowTraces}"
+															  ToolTip.Tip="{Binding OtherSideTracesTip}"
+															  ToolTip.ShowOnDisabled="True" />
+												</StackPanel>
+												<TextBlock Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="7"
+														   Classes="EmptyLine"
+														   Margin="0,4,0,0"
+														   Text="{Binding TracesNote}"
+														   IsVisible="{Binding HasTracesNote}" />
 											</Grid>
 
 											<Button Classes="Accept"
-													Content="Use for all pictures"
+													Content="Use colors for all schematic images"
 													Tag="{Binding}"
 													HorizontalAlignment="Left"
-													ToolTip.Tip="Give every picture of the board these colours"
+													ToolTip.Tip="Give every schematic image of the board these colors"
 													Click="OnUseColoursForAllClick" />
 
-											<!-- The picture's tools on the Schematics tab, with a bar and Done (slice 6 -
-											     contributor mode went): its components' rectangles, and the KiCad copper
-											     lined up with it - the latter for a board with KiCad data and a picture with
-											     a CAD name (PictureToolWording). -->
-											<WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6" Margin="0,4,0,0">
-												<Button Content="Mark components"
+											<!-- The picture's tools on the Schematics tab, with a bar and Done (slice 6 - contributor
+											     mode went). ALIGNING COMES FIRST, MARKING BY HAND ON A ROW OF ITS OWN (owner request,
+											     2026-11-01: "the user most likely will NOT manually mark components when KiCad data is
+											     available"). The KiCad tools only for an image with KiCad data (owner request, 2026-10-30) -
+											     hidden, not greyed out. -->
+											<WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6" Margin="0,4,0,0" IsVisible="{Binding HasKiCadData}">
+												<Button Content="Align KiCad data"
 														Tag="{Binding}"
-														ToolTip.Tip="Opens the Schematics tab on this picture, to draw a rectangle around each component"
-														Click="OnMarkComponentsClick" />
-												<Button Content="Align KiCad"
-														Tag="{Binding}"
-														IsEnabled="{Binding CanAlignKiCad}"
 														ToolTip.Tip="{Binding AlignTip}"
-														ToolTip.ShowOnDisabled="True"
 														Click="OnAlignKiCadClick" />
-												<!-- Every component's rectangle from its footprint, on a picture aligned with
-												     KiCad (step 3, slice 3c) - it adds marks, so green. -->
-												<Button Content="Mark all automatically"
+												<!-- Every component's rectangle from its footprint, on a picture aligned with KiCad (step
+												     3, slice 3c) - it adds marks, so green. Not on a schematic sheet, where it marks
+												     nothing (2026-11-01); an alignment's Done marks a picture with no marks by itself, so
+												     this is for marking again later. -->
+												<Button Content="Mark all components automatically from KiCad"
 														Classes="Accept"
 														Tag="{Binding}"
+														IsVisible="{Binding ShowsMarkAutomatically}"
 														IsEnabled="{Binding CanMarkAutomatically}"
 														ToolTip.Tip="{Binding MarkAutomaticallyTip}"
 														ToolTip.ShowOnDisabled="True"
 														Click="OnMarkAutomaticallyClick" />
 											</WrapPanel>
+											<WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+												<Button Content="Mark components manually"
+														Tag="{Binding}"
+														ToolTip.Tip="Opens the &quot;Schematics&quot; tab on this image, to draw a rectangle around each component"
+														Click="OnMarkComponentsClick" />
+											</WrapPanel>
 
-											<!-- The picture's place among the board's pictures, and taking it away (step 3 -
-											     the "Schematic images" window's, moved here). -->
-											<WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="6">
+											<!-- The image's place among the board's images, and deleting it (step 3 - the
+											     "Schematic images" window's, moved here). Deleting since 2026-10-29: the image
+											     leaves the board and its file the draft - the contributor's own copy, where it
+											     was picked from, stays. -->
+											<WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
 												<Button Content="Move up"
 														Tag="{Binding}"
 														IsEnabled="{Binding CanMoveUp}"
-														ToolTip.Tip="Move this picture up - the order every user of the board sees the pictures in"
+														ToolTip.Tip="Move this image up - the order every user of the board sees the schematic images in"
 														Click="OnMovePictureUpClick" />
 												<Button Content="Move down"
 														Tag="{Binding}"
 														IsEnabled="{Binding CanMoveDown}"
-														ToolTip.Tip="Move this picture down - the order every user of the board sees the pictures in"
+														ToolTip.Tip="Move this image down - the order every user of the board sees the schematic images in"
 														Click="OnMovePictureDownClick" />
-												<Button Content="Remove"
+												<Button Content="Delete schematic image"
 														Classes="Danger"
 														Tag="{Binding}"
-														ToolTip.Tip="Take this picture off the board - it asks first when components are marked on it"
+														ToolTip.Tip="Delete this image from the board in your draft - it asks first when components are marked on it. Your own copy of the file is not touched, and &quot;Undo&quot; brings it back."
 														Click="OnRemoveBoardPictureClick" />
 											</WrapPanel>
 										</StackPanel>
@@ -1033,12 +1436,14 @@
 					</ItemsControl>
 				</StackPanel>
 
-				<!-- ==== Files and links ==== -->
-				<StackPanel x:Name="FilesAndLinksPart" Spacing="18" Grid.IsSharedSizeScope="True">
+				<!-- ==== Files, and Links below - a part each since 2026-10-29 (owner request: an entry each
+				     in the Contribute tab's left column) ==== -->
+				<!-- The part's name and count are the pane's title above (owner request, 2026-10-29: two
+				     headlines for the same thing) - so no heading of its own here, nor on the parts below. -->
+				<StackPanel x:Name="BoardFilesPart" Spacing="18" Grid.IsSharedSizeScope="True">
 					<StackPanel Spacing="4">
-						<TextBlock x:Name="BoardFilesHeading" Classes="PaneHeading" Text="Files" />
 						<TextBlock Classes="PaneIntro"
-								   Text="Documents kept with the board - a service manual, a troubleshooting guide, measurements. The Resources tab lists them by category." />
+								   Text="Documents kept with the board - a service manual, a troubleshooting guide, measurements. The &quot;Resources&quot; tab lists them in this order - drag a file by its handle to move it up or down." />
 
 						<TextBlock x:Name="NoBoardFilesText" Classes="EmptyLine" Text="No files yet." />
 
@@ -1050,9 +1455,7 @@
 								<ColumnDefinition Width="8" />
 								<ColumnDefinition Width="*" />
 								<ColumnDefinition Width="8" />
-								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileChange" />
-								<ColumnDefinition Width="8" />
-								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileRemove" />
+								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileButtons" />
 							</Grid.ColumnDefinitions>
 							<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Category" />
 							<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Name" />
@@ -1062,49 +1465,84 @@
 						<ItemsControl x:Name="BoardFilesItemsControl">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="local:ComponentPaneBoardFileRow">
-									<Grid Margin="0,0,0,4">
-										<Grid.ColumnDefinitions>
-											<ColumnDefinition Width="160" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="*" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="*" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileChange" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileRemove" />
-										</Grid.ColumnDefinitions>
-										<AutoCompleteBox Grid.Column="0"
-														 Text="{Binding Category, Mode=TwoWay}"
-														 ItemsSource="{Binding CategoryChoices}"
-														 FilterMode="Contains"
-														 MinimumPrefixLength="0"
-														 IsTextCompletionEnabled="False"
-														 PlaceholderText="Resources" />
-										<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="Service manual" />
-										<TextBlock Grid.Column="4"
-												   Text="{Binding File}"
-												   VerticalAlignment="Center"
-												   FontSize="11"
-												   Opacity="0.75"
-												   TextTrimming="CharacterEllipsis" />
-										<Button Grid.Column="6"
-												Content="Change file"
-												Tag="{Binding}"
-												ToolTip.Tip="Pick another file for this entry"
-												Click="OnChangeBoardFileClick" />
-										<Button Grid.Column="8"
-												Classes="Danger"
-												Content="Remove"
-												Tag="{Binding}"
-												ToolTip.Tip="Remove this file"
-												Click="OnRemoveBoardFileClick" />
+									<Grid>
+										<!-- While the row is dragged: a dashed slot its height, where a drop will land - the
+										     worklog's photos' placeholder (ListRowDrag). -->
+										<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+											<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+													StrokeThickness="2"
+													StrokeDashArray="4,3"
+													RadiusX="3"
+													RadiusY="3"
+													Margin="0,0,0,4"
+													Fill="{DynamicResource Bg}" />
+											<TextBlock Text="Move the file up/down and release mouse button for new location"
+													FontSize="11"
+													Opacity="0.7"
+													TextAlignment="Center"
+													HorizontalAlignment="Center"
+													VerticalAlignment="Center"
+													Margin="0,0,0,4" />
+										</Panel>
+										<StackPanel Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
+											<Grid RowDefinitions="Auto,Auto">
+												<Grid.ColumnDefinitions>
+													<ColumnDefinition Width="160" />
+													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="*" />
+													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="*" />
+													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileButtons" />
+												</Grid.ColumnDefinitions>
+												<AutoCompleteBox Grid.Column="0" Classes.Missing="{Binding CategoryMissing}"
+																 Text="{Binding Category, Mode=TwoWay}"
+																 ItemsSource="{Binding CategoryChoices}"
+																 FilterMode="Contains"
+																 MinimumPrefixLength="0"
+																 IsTextCompletionEnabled="False"
+																 PlaceholderText="Resources" />
+												<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="Service manual" Classes.Missing="{Binding NameMissing}" />
+												<TextBlock Grid.Row="1" Grid.Column="0" Classes="Required" IsVisible="{Binding CategoryMissing}" />
+												<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" IsVisible="{Binding NameMissing}" />
+												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" IsVisible="{Binding FileMissing}" />
+												<TextBlock Grid.Column="4"
+														   Text="{Binding File}"
+														   VerticalAlignment="Center"
+														   FontSize="11"
+														   Opacity="0.75"
+														   TextTrimming="CharacterEllipsis" />
+												<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+													<!-- The file opened with the program the system has for it (owner request,
+													     2026-10-29: "a possibility to open the file so I can view it"). -->
+													<Button Content="Open file"
+															Tag="{Binding}"
+															IsEnabled="{Binding HasFile}"
+															ToolTip.Tip="Open this file to look at it"
+															Click="OnOpenBoardFileClick" />
+													<Button Content="Change file"
+															Tag="{Binding}"
+															ToolTip.Tip="Pick another file for this entry"
+															Click="OnChangeBoardFileClick" />
+													<Button Classes="Danger"
+															Content="Remove"
+															Tag="{Binding}"
+															ToolTip.Tip="Remove this file"
+															Click="OnRemoveBoardFileClick" />
+													<Border Classes="RowDragHandle"
+															PointerPressed="OnBoardFileHandlePressed"
+															ToolTip.Tip="Drag to move this file up or down - or Alt+Up and Alt+Down in its boxes">
+														<TextBlock Text="&#xf338;" />
+													</Border>
+												</StackPanel>
+											</Grid>
+										</StackPanel>
 									</Grid>
 								</DataTemplate>
 							</ItemsControl.ItemTemplate>
 						</ItemsControl>
 
-						<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+						<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
 							<Button x:Name="AddBoardFileButton"
 									Classes="Accept"
 									Content="Add file"
@@ -1128,7 +1566,7 @@
 								<TextBlock Classes="PaneHeading" Text="Also on other boards" />
 								<TextBlock x:Name="BoardAlsoIntroText" Classes="PaneIntro" />
 								<StackPanel x:Name="BoardAlsoFilesPanel" Spacing="2" />
-								<StackPanel Orientation="Horizontal" Spacing="8">
+								<StackPanel Orientation="Horizontal" Spacing="6">
 									<Button x:Name="BoardAlsoChangeButton"
 											Classes="Accept"
 											Content="Change them too"
@@ -1141,11 +1579,13 @@
 							</StackPanel>
 						</Border>
 					</StackPanel>
+				</StackPanel>
 
+				<!-- ==== Links ==== -->
+				<StackPanel x:Name="BoardLinksPart" Spacing="18" Grid.IsSharedSizeScope="True">
 					<StackPanel Spacing="4">
-						<TextBlock x:Name="BoardLinksHeading" Classes="PaneHeading" Text="Links" />
 						<TextBlock Classes="PaneIntro"
-								   Text="Pages about the board - a forum, a wiki, a repair guide, a video." />
+								   Text="Pages about the board - a forum, a wiki, a repair guide, a video. Drag a link by its handle to move it up or down - the &quot;Resources&quot; tab lists them in this order." />
 
 						<TextBlock x:Name="NoBoardLinksText" Classes="EmptyLine" Text="No links yet." />
 
@@ -1167,31 +1607,69 @@
 						<ItemsControl x:Name="BoardLinksItemsControl">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="local:ComponentPaneBoardLinkRow">
-									<Grid Margin="0,0,0,4">
-										<Grid.ColumnDefinitions>
-											<ColumnDefinition Width="160" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="*" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="2*" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="Auto" SharedSizeGroup="BoardLinkButtons" />
-										</Grid.ColumnDefinitions>
-										<AutoCompleteBox Grid.Column="0"
-														 Text="{Binding Category, Mode=TwoWay}"
-														 ItemsSource="{Binding CategoryChoices}"
-														 FilterMode="Contains"
-														 MinimumPrefixLength="0"
-														 IsTextCompletionEnabled="False"
-														 PlaceholderText="Forums" />
-										<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="Lemon64" />
-										<TextBox Grid.Column="4" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" />
-										<Button Grid.Column="6"
-												Classes="Danger"
-												Content="Remove"
-												Tag="{Binding}"
-												ToolTip.Tip="Remove this link"
-												Click="OnRemoveBoardLinkClick" />
+									<Grid>
+										<!-- While the row is dragged: a dashed slot its height, where a drop will land - the
+										     worklog's photos' placeholder (ListRowDrag). -->
+										<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+											<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+													StrokeThickness="2"
+													StrokeDashArray="4,3"
+													RadiusX="3"
+													RadiusY="3"
+													Margin="0,0,0,4"
+													Fill="{DynamicResource Bg}" />
+											<TextBlock Text="Move the link up/down and release mouse button for new location"
+													FontSize="11"
+													Opacity="0.7"
+													TextAlignment="Center"
+													HorizontalAlignment="Center"
+													VerticalAlignment="Center"
+													Margin="0,0,0,4" />
+										</Panel>
+										<StackPanel Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
+											<Grid RowDefinitions="Auto,Auto">
+												<Grid.ColumnDefinitions>
+													<ColumnDefinition Width="160" />
+													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="*" />
+													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="2*" />
+													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="Auto" SharedSizeGroup="BoardLinkButtons" />
+												</Grid.ColumnDefinitions>
+												<AutoCompleteBox Grid.Column="0" Classes.Missing="{Binding CategoryMissing}"
+																 Text="{Binding Category, Mode=TwoWay}"
+																 ItemsSource="{Binding CategoryChoices}"
+																 FilterMode="Contains"
+																 MinimumPrefixLength="0"
+																 IsTextCompletionEnabled="False"
+																 PlaceholderText="Forums" />
+												<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="Lemon64" Classes.Missing="{Binding NameMissing}" />
+												<TextBox Grid.Column="4" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" Classes.Missing="{Binding UrlMarked}" />
+												<TextBlock Grid.Row="1" Grid.Column="0" Classes="Required" IsVisible="{Binding CategoryMissing}" />
+												<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" IsVisible="{Binding NameMissing}" />
+												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" IsVisible="{Binding UrlMissing}" />
+												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" Text="{Binding NotWebText}" IsVisible="{Binding UrlNotWeb}" />
+												<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+													<!-- The page opened in the browser (owner request, 2026-10-29). -->
+													<Button Content="Open link"
+															Tag="{Binding}"
+															IsEnabled="{Binding CanOpen}"
+															ToolTip.Tip="Open this page in your web browser"
+															Click="OnOpenBoardLinkClick" />
+													<Button Classes="Danger"
+															Content="Remove"
+															Tag="{Binding}"
+															ToolTip.Tip="Remove this link"
+															Click="OnRemoveBoardLinkClick" />
+													<Border Classes="RowDragHandle"
+															PointerPressed="OnBoardLinkHandlePressed"
+															ToolTip.Tip="Drag to move this link up or down - or Alt+Up and Alt+Down in its boxes">
+														<TextBlock Text="&#xf338;" />
+													</Border>
+												</StackPanel>
+											</Grid>
+										</StackPanel>
 									</Grid>
 								</DataTemplate>
 							</ItemsControl.ItemTemplate>
@@ -1207,9 +1685,8 @@
 
 				<!-- ==== Credits ==== -->
 				<StackPanel x:Name="CreditsPart" Spacing="4" Grid.IsSharedSizeScope="True">
-					<TextBlock x:Name="CreditsHeading" Classes="PaneHeading" Text="Credits" />
 					<TextBlock Classes="PaneIntro"
-							   Text="Who made the board's data - the pictures, the labelling, the measurements. The About tab shows them; a name or a handle is fine, and the contact is shown to everybody." />
+							   Text="Who made the board's data - the pictures, the labelling, the measurements. The &quot;About&quot; tab shows them; a name or a handle is fine, and the contact is shown to everybody. Drag a credit by its handle to move it up or down - the &quot;About&quot; tab lists them in this order." />
 
 					<TextBlock x:Name="NoCreditsText" Classes="EmptyLine" Text="No credits yet." />
 
@@ -1234,66 +1711,89 @@
 					<ItemsControl x:Name="CreditsItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneCreditRow">
-								<Grid Margin="0,0,0,4">
-									<Grid.ColumnDefinitions>
-										<ColumnDefinition Width="*" />
-										<ColumnDefinition Width="8" />
-										<ColumnDefinition Width="*" />
-										<ColumnDefinition Width="8" />
-										<ColumnDefinition Width="*" />
-										<ColumnDefinition Width="8" />
-										<ColumnDefinition Width="*" />
-										<ColumnDefinition Width="8" />
-										<ColumnDefinition Width="Auto" SharedSizeGroup="CreditButtons" />
-									</Grid.ColumnDefinitions>
-									<AutoCompleteBox Grid.Column="0"
-													 Text="{Binding Category, Mode=TwoWay}"
-													 ItemsSource="{Binding CategoryChoices}"
-													 FilterMode="Contains"
-													 MinimumPrefixLength="0"
-													 IsTextCompletionEnabled="False"
-													 PlaceholderText="Schematic image" />
-									<TextBox Grid.Column="2" Text="{Binding SubCategory, Mode=TwoWay}" Watermark="PAL, Top, CPU" />
-									<TextBox Grid.Column="4" Text="{Binding NameOrHandle, Mode=TwoWay}" />
-									<TextBox Grid.Column="6" Text="{Binding Contact, Mode=TwoWay}" Watermark="A forum, a Discord, a web page" />
-									<Button Grid.Column="8"
-											Classes="Danger"
-											Content="Remove"
-											Tag="{Binding}"
-											ToolTip.Tip="Remove this credit"
-											Click="OnRemoveCreditClick" />
+								<Grid>
+									<!-- While the row is dragged: a dashed slot its height, where a drop will land - the
+									     worklog's photos' placeholder (ListRowDrag). -->
+									<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+										<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+												StrokeThickness="2"
+												StrokeDashArray="4,3"
+												RadiusX="3"
+												RadiusY="3"
+												Margin="0,0,0,4"
+												Fill="{DynamicResource Bg}" />
+										<TextBlock Text="Move the credit up/down and release mouse button for new location"
+												FontSize="11"
+												Opacity="0.7"
+												TextAlignment="Center"
+												HorizontalAlignment="Center"
+												VerticalAlignment="Center"
+												Margin="0,0,0,4" />
+									</Panel>
+									<StackPanel Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
+										<Grid RowDefinitions="Auto,Auto">
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="CreditButtons" />
+											</Grid.ColumnDefinitions>
+											<AutoCompleteBox Grid.Column="0" Classes.Missing="{Binding CategoryMissing}"
+															 Text="{Binding Category, Mode=TwoWay}"
+															 ItemsSource="{Binding CategoryChoices}"
+															 FilterMode="Contains"
+															 MinimumPrefixLength="0"
+															 IsTextCompletionEnabled="False"
+															 PlaceholderText="Schematic image" />
+											<TextBox Grid.Column="2" Text="{Binding SubCategory, Mode=TwoWay}" Watermark="PAL, Top, CPU" />
+											<TextBox Grid.Column="4" Text="{Binding NameOrHandle, Mode=TwoWay}" Classes.Missing="{Binding NameOrHandleMissing}" />
+											<TextBlock Grid.Row="1" Grid.Column="0" Classes="Required" IsVisible="{Binding CategoryMissing}" />
+											<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" IsVisible="{Binding NameOrHandleMissing}" />
+											<TextBox Grid.Column="6" Text="{Binding Contact, Mode=TwoWay}" Watermark="A forum, a Discord, a web page" />
+											<StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="6">
+												<Button Classes="Danger"
+														Content="Remove"
+														Tag="{Binding}"
+														ToolTip.Tip="Remove this credit"
+														Click="OnRemoveCreditClick" />
+												<Border Classes="RowDragHandle"
+														PointerPressed="OnCreditHandlePressed"
+														ToolTip.Tip="Drag to move this credit up or down - or Alt+Up and Alt+Down in its boxes">
+													<TextBlock Text="&#xf338;" />
+												</Border>
+											</StackPanel>
+										</Grid>
+									</StackPanel>
 								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
 
-					<StackPanel Orientation="Horizontal" Spacing="8">
-						<Button x:Name="AddCreditButton"
-								Classes="Accept"
-								Content="Add credit"
-								Click="OnAddCreditClick" />
-						<!-- A credit for yourself, by the name and contact CRT remembers (2026-10-26). -->
-						<Button x:Name="AddMeButton"
-								Classes="Accept"
-								Content="Add me"
-								ToolTip.Tip="Add a credit for yourself - by the name and contact you were credited by last time. Pick what it is for."
-								Click="OnAddMeClick" />
-					</StackPanel>
-					<TextBlock x:Name="CreditMeHintText"
-							   Classes="EmptyLine"
-							   IsVisible="False"
-							   Text="Type the name or handle you want in credits - CRT remembers it, with the contact, for the next time." />
+					<!-- "Add me" went on 2026-10-29 (owner decision: "Remove the button entirely - there is
+					     already the 'Add credit' button, which can be used"). -->
+					<Button x:Name="AddCreditButton"
+							Classes="Accept"
+							Content="Add credit"
+							HorizontalAlignment="Left"
+							Click="OnAddCreditClick" />
 				</StackPanel>
 
 				<!-- ==== Important signals ==== -->
 				<StackPanel x:Name="ImportantSignalsPart" Spacing="4" Grid.IsSharedSizeScope="True">
-					<TextBlock x:Name="SignalsHeading" Classes="PaneHeading" Text="Important signals" />
 					<TextBlock Classes="PaneIntro"
-							   Text="The signals worth checking first on this board. Each lights up its KiCad net on the Schematics tab - pick the net from the board's KiCad data." />
+							   Text="The signals worth checking first on this board. Each lights up its KiCad net on the &quot;Schematics&quot; tab - pick the net from the board's KiCad data, then give it the name people know it by. Drag one by its handle to set the order the &quot;Schematics&quot; tab lists them in." />
 
 					<TextBlock x:Name="KiCadNetsLineText" Classes="EmptyLine" IsVisible="False" />
-					<TextBlock x:Name="NoSignalsText" Classes="EmptyLine" Text="No important signals yet." />
+					<TextBlock x:Name="NoSignalsText" Classes="EmptyLine" Text="No important KiCad signals yet." />
 
+					<!-- The KiCad net FIRST and as text (owner request, 2026-10-29: "Isn't those names what is
+					     present in KiCad data, so they should not be editable ... switch the columns"): the net
+					     is the KiCad data's, picked below; the name shown is the contributor's own. -->
 					<Grid x:Name="SignalsHeadings">
 						<Grid.ColumnDefinitions>
 							<ColumnDefinition Width="*" />
@@ -1302,61 +1802,100 @@
 							<ColumnDefinition Width="8" />
 							<ColumnDefinition Width="Auto" SharedSizeGroup="SignalButtons" />
 						</Grid.ColumnDefinitions>
-						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name shown" />
-						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="KiCad net" />
+						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="KiCad net" />
+						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Important signal name" />
 					</Grid>
 
 					<ItemsControl x:Name="SignalsItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneSignalRow">
-								<StackPanel Margin="0,0,0,4">
-									<Grid>
-										<Grid.ColumnDefinitions>
-											<ColumnDefinition Width="*" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="*" />
-											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="Auto" SharedSizeGroup="SignalButtons" />
-										</Grid.ColumnDefinitions>
-										<TextBox Grid.Column="0" Text="{Binding DisplayName, Mode=TwoWay}" Watermark="Clock, Reset, Video" />
-										<AutoCompleteBox Grid.Column="2"
-														 Text="{Binding KiCadNetName, Mode=TwoWay}"
-														 ItemsSource="{Binding NetChoices}"
-														 FilterMode="Contains"
-														 MinimumPrefixLength="0"
-														 IsTextCompletionEnabled="False"
-														 PlaceholderText="PHI2, /RESET" />
-										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
-											<!-- Click-to-light-up: the net lit on the Schematics tab. -->
-											<Button Content="Show on board"
-													Tag="{Binding}"
-													IsEnabled="{Binding CanShowOnBoard}"
-													ToolTip.Tip="Light this net up on the Schematics tab"
-													ToolTip.ShowOnDisabled="True"
-													Click="OnShowSignalOnBoardClick" />
-											<Button Classes="Danger"
-													Content="Remove"
-													Tag="{Binding}"
-													ToolTip.Tip="Remove this signal"
-													Click="OnRemoveSignalClick" />
-										</StackPanel>
-									</Grid>
-									<TextBlock Text="{Binding Problem}"
-											   IsVisible="{Binding HasProblem}"
-											   Margin="0,2,0,0"
-											   FontSize="11"
-											   Foreground="{DynamicResource Text_Warning_Fg}"
-											   TextWrapping="Wrap" />
-								</StackPanel>
+								<Grid>
+									<!-- While the row is dragged: a dashed slot its height, where a drop will land - the
+									     worklog's photos' placeholder (ListRowDrag). -->
+									<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+										<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+												StrokeThickness="2"
+												StrokeDashArray="4,3"
+												RadiusX="3"
+												RadiusY="3"
+												Margin="0,0,0,4"
+												Fill="{DynamicResource Bg}" />
+										<TextBlock Text="Move the important signal up/down and release mouse button for new location"
+												FontSize="11"
+												Opacity="0.7"
+												TextAlignment="Center"
+												HorizontalAlignment="Center"
+												VerticalAlignment="Center"
+												Margin="0,0,0,4" />
+									</Panel>
+									<StackPanel Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
+										<Grid RowDefinitions="Auto,Auto">
+											<Grid.ColumnDefinitions>
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="*" />
+												<ColumnDefinition Width="8" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="SignalButtons" />
+											</Grid.ColumnDefinitions>
+											<TextBlock Grid.Column="0"
+													   Text="{Binding KiCadNetName}"
+													   VerticalAlignment="Center"
+													   TextTrimming="CharacterEllipsis"
+													   ToolTip.Tip="{Binding KiCadNetName}" />
+											<TextBox Grid.Column="2" Text="{Binding DisplayName, Mode=TwoWay}" Watermark="Clock, Reset, Video" Classes.Missing="{Binding DisplayNameMissing}" />
+											<TextBlock Grid.Row="1" Grid.Column="0" Classes="Required" IsVisible="{Binding NetMissing}" />
+											<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" IsVisible="{Binding DisplayNameMissing}" />
+											<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+												<!-- Click-to-light-up: the net lit on the Schematics tab. -->
+												<Button Content="Show on board"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanShowOnBoard}"
+														ToolTip.Tip="Light this net up on the &quot;Schematics&quot; tab"
+														ToolTip.ShowOnDisabled="True"
+														Click="OnShowSignalOnBoardClick" />
+												<Button Classes="Danger"
+														Content="Remove"
+														Tag="{Binding}"
+														ToolTip.Tip="Remove this signal"
+														Click="OnRemoveSignalClick" />
+												<Border Classes="RowDragHandle"
+														PointerPressed="OnSignalHandlePressed"
+														ToolTip.Tip="Drag to move this important signal up or down - or Alt+Up and Alt+Down in its boxes">
+													<TextBlock Text="&#xf338;" />
+												</Border>
+											</StackPanel>
+										</Grid>
+										<TextBlock Text="{Binding Problem}"
+												   IsVisible="{Binding HasProblem}"
+												   Margin="0,2,0,0"
+												   FontSize="11"
+												   Foreground="{DynamicResource Text_Warning_Fg}"
+												   TextWrapping="Wrap" />
+									</StackPanel>
+								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
 
-					<Button x:Name="AddSignalButton"
-							Classes="Accept"
-							Content="Add signal"
-							HorizontalAlignment="Left"
-							Click="OnAddSignalClick" />
+					<!-- A new signal: its net picked from the board's nets no row has (ImportantSignalSuggestions
+					     .NetsToAdd), named as it would be suggested - the name changed in its row. -->
+					<Grid x:Name="NewSignalPanel" ColumnDefinitions="*,8,Auto" HorizontalAlignment="Left" MinWidth="360" Margin="0,4,0,0">
+						<AutoCompleteBox x:Name="NewSignalNetBox"
+										 Grid.Column="0"
+										 FilterMode="Contains"
+										 MinimumPrefixLength="0"
+										 IsTextCompletionEnabled="False"
+										 PlaceholderText="Pick a KiCad net"
+										 TextChanged="OnNewSignalNetChanged"
+										 KeyDown="OnNewSignalNetKeyDown" />
+						<Button x:Name="AddSignalButton"
+								Grid.Column="2"
+								Classes="Accept"
+								Content="Add signal"
+								IsEnabled="False"
+								ToolTip.ShowOnDisabled="True"
+								Click="OnAddSignalClick" />
+					</Grid>
 
 					<!-- Signals suggested from the board's KiCad net names (ComponentPane.SignalSuggestions.cs). -->
 					<StackPanel x:Name="SignalSuggestionsPanel" Spacing="4" Margin="0,14,0,0" IsVisible="False">
@@ -1374,12 +1913,14 @@
 											<ColumnDefinition Width="8" />
 											<ColumnDefinition Width="Auto" SharedSizeGroup="SignalButtons" />
 										</Grid.ColumnDefinitions>
-										<TextBlock Grid.Column="0" Text="{Binding DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-										<TextBlock Grid.Column="2" Text="{Binding KiCadNetName}" VerticalAlignment="Center" FontSize="11" Opacity="0.75" TextTrimming="CharacterEllipsis" />
-										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8">
+										<!-- The net first, as the signals above list it. -->
+										<TextBlock Grid.Column="0" Text="{Binding KiCadNetName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+										<!-- The name it is added under - the suggested one, changed here first if wanted (owner request, 2026-10-30). -->
+										<TextBox Grid.Column="2" Text="{Binding DisplayName, Mode=TwoWay}" Watermark="{Binding SuggestedName}" ToolTip.Tip="The name it is added under - change it first if you want another" />
+										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
 											<Button Content="Show on board"
 													Tag="{Binding}"
-													ToolTip.Tip="Light this net up on the Schematics tab"
+													ToolTip.Tip="Light this net up on the &quot;Schematics&quot; tab"
 													Click="OnShowSuggestionOnBoardClick" />
 											<Button Classes="Accept"
 													Content="Add"
@@ -1396,8 +1937,51 @@
 								Classes="Accept"
 								Content="Add all suggestions"
 								HorizontalAlignment="Left"
-								ToolTip.Tip="Add every suggested signal - one step, so Undo takes them all back"
+								ToolTip.Tip="Add every suggested signal - one step, so &quot;Undo&quot; takes them all back"
 								Click="OnAddAllSuggestionsClick" />
+					</StackPanel>
+
+					<!-- Every other net of the board, last (owner requests, 2026-11-01: "so all nets will be visible
+					     in here", and "a proposed net name in an input field"). Hundreds on a real board, so
+					     virtualized. -->
+					<StackPanel x:Name="OtherNetsPanel" Spacing="4" Margin="0,14,0,0" IsVisible="False">
+						<TextBlock x:Name="OtherNetsHeading" Classes="PaneHeading" />
+						<TextBlock x:Name="OtherNetsIntroText" Classes="PaneIntro" />
+
+						<ItemsControl x:Name="OtherNetsItemsControl">
+							<ItemsControl.ItemsPanel>
+								<ItemsPanelTemplate>
+									<VirtualizingStackPanel />
+								</ItemsPanelTemplate>
+							</ItemsControl.ItemsPanel>
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="local:ComponentPaneOtherNet">
+									<Grid Margin="0,0,0,4">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="Auto" SharedSizeGroup="SignalButtons" />
+										</Grid.ColumnDefinitions>
+										<TextBlock Grid.Column="0" Text="{Binding KiCadNetName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+										<!-- The name it is added under - the one proposed, changed here first if wanted. -->
+										<TextBox Grid.Column="2" Text="{Binding DisplayName, Mode=TwoWay}" Watermark="{Binding SuggestedName}" ToolTip.Tip="The name it is added under - change it first if you want another" />
+										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+											<Button Content="Show on board"
+													Tag="{Binding}"
+													ToolTip.Tip="Light this net up on the &quot;Schematics&quot; tab"
+													Click="OnShowOtherNetOnBoardClick" />
+											<Button Classes="Accept"
+													Content="Add"
+													Tag="{Binding}"
+													ToolTip.Tip="Add this net as an important KiCad signal"
+													Click="OnAddOtherNetClick" />
+										</StackPanel>
+									</Grid>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
 					</StackPanel>
 				</StackPanel>
 

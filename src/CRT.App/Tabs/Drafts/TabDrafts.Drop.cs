@@ -14,15 +14,15 @@ namespace CRT
     // Pictures of the board, or its KiCad project folder, dragged onto the tab anywhere are added to
     // the board shown: what was dropped decides which (BoardDrop). Pictures go into the Pictures part,
     // opened for them, as its "Add pictures" adds them (ComponentPane.AddPicturesAsync); a KiCad
-    // project opens "KiCad data" with it being imported, as that window's own drop target imports it
-    // (BoardFilesWindow.ImportOnceOpen) - its summary and all. The board's draft is made as for every
+    // project opens "KiCad data" with it being imported, as that panel's own drop target imports it
+    // (KiCadDataPanel.ImportOnceOpen) - its summary and all. The board's draft is made as for every
     // other way in (OnCurrentDraftAsync). Nothing usable dropped is said on the tab's problem line.
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
     public partial class TabDrafts
     {
-        // Stands in for adding what was dropped - the pictures, or the KiCad project's window.
+        // Stands in for adding what was dropped - the pictures, or the KiCad project's panel.
         internal Func<HardwareBoardEntry, BoardDropKind, IReadOnlyList<string>, Task>? ManageDroppedFilesOverrideForTests { get; set; }
 
         // Stands in for reading what was dropped - a test holds it to change the board meanwhile.

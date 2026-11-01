@@ -75,6 +75,17 @@ namespace CRT
             return true;
         }
 
+        // Pictures no longer wanted let go of - a narrower read of a picture once a wider one is kept
+        // (code review, 2026-10-30: every width the previews were read at stayed held). Never disposed:
+        // one may still be drawn.
+        public void Forget(IEnumerable<string> keys)
+        {
+            foreach (string key in keys)
+            {
+                this.thisImages.Remove(key);
+            }
+        }
+
         public void Clear()
         {
             this.thisImages.Clear();

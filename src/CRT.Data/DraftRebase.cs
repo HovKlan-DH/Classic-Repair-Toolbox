@@ -62,8 +62,11 @@ namespace Handlers.DataHandling
     // one added.
     //
     // ORDER follows the published board, with the contributor's added rows placed after the row
-    // they followed in the draft. Order is not a change BoardDataDiffer counts (CLAUDE.md), so this
-    // only has to be sensible, not exact.
+    // they followed in the draft - UNLESS THE CONTRIBUTOR PUT THE SECTION'S ROWS IN ANOTHER ORDER
+    // than the base: order is a change (owner decision, 2026-10-30 - BoardRowOrder), so theirs wins
+    // as their values do, a row only the update brought staying after the row it followed (code
+    // review, 2026-10-30: "Bring my draft up to date" threw a contributor's reorder away). The
+    // highlights and calibrations follow the update's order - an order nobody sees.
     //
     // Pure: nothing here reads or writes a file (DraftRebaser does).
     // ###########################################################################################
@@ -123,7 +126,7 @@ namespace Handlers.DataHandling
                 Schematics = DraftRebase.MergeSection("Board schematics", based.Schematics, draft.Schematics, published.Schematics, NaturalKey, state),
                 Components = DraftRebase.MergeSection("Components", based.Components, draft.Components, published.Components, NaturalKey, state),
                 ComponentImages = DraftRebase.MergeSection("Component images", based.ComponentImages, draft.ComponentImages, published.ComponentImages, NaturalKey, state),
-                ComponentHighlights = DraftRebase.MergeSection("Component highlights", based.ComponentHighlights, draft.ComponentHighlights, published.ComponentHighlights, AllValues, state, pairRenames: false),
+                ComponentHighlights = DraftRebase.MergeSection("Component highlights", based.ComponentHighlights, draft.ComponentHighlights, published.ComponentHighlights, AllValues, state, pairRenames: false, keepDraftOrder: false),
                 ComponentLocalFiles = DraftRebase.MergeSection("Component local files", based.ComponentLocalFiles, draft.ComponentLocalFiles, published.ComponentLocalFiles, NaturalKey, state),
                 ComponentLinks = DraftRebase.MergeSection("Component links", based.ComponentLinks, draft.ComponentLinks, published.ComponentLinks, NaturalKey, state),
                 ComponentPins = DraftRebase.MergeSection(BoardWorkbookSchema.SheetComponentPins, based.ComponentPins, draft.ComponentPins, published.ComponentPins, NaturalKey, state),
@@ -132,6 +135,9 @@ namespace Handlers.DataHandling
                 BoardLinks = DraftRebase.MergeSection("Board links", based.BoardLinks, draft.BoardLinks, published.BoardLinks, NaturalKey, state),
                 Credits = DraftRebase.MergeSection("Credits", based.Credits, draft.Credits, published.Credits, NaturalKey, state),
                 KiCadImportantSignals = DraftRebase.MergeSection("Important signals", based.KiCadImportantSignals, draft.KiCadImportantSignals, published.KiCadImportantSignals, NaturalKey, state),
+
+                // Theirs when the contributor changed what the board says, else the update's.
+                Regions = BoardRegions.Differ(based, draft) ? draft.Regions : published.Regions,
             };
 
             List<KiCadCalibrationEntry> calibrations = DraftRebase.MergeSection(
@@ -141,7 +147,8 @@ namespace Handlers.DataHandling
                 publishedCalibrations ?? [],
                 CalibrationKey,
                 state,
-                pairRenames: false);
+                pairRenames: false,
+                keepDraftOrder: false);
 
             // ###########################################################################################
             // *** WHAT HANGS ON A SCHEMATIC'S NAME FOLLOWS THE MERGED SCHEMATICS. *** A schematic the
@@ -227,7 +234,8 @@ namespace Handlers.DataHandling
             IReadOnlyList<T>? publishedRows,
             Func<T, string> identity,
             MergeState state,
-            bool pairRenames = true)
+            bool pairRenames = true,
+            bool keepDraftOrder = true)
             where T : class
         {
             List<(string Key, T Row)> based = DraftRebase.Keyed(basedRows, identity);
@@ -368,7 +376,60 @@ namespace Handlers.DataHandling
                 }
             }
 
+            // 5. The contributor's ORDER (owner decision, 2026-10-30: order is a change) - see the
+            //    class header.
+            if (keepDraftOrder && DraftRebase.ReorderedFromBase(based, draft))
+            {
+                state.ChangesKept++;
+                result = DraftRebase.InDraftOrder(result, draft);
+            }
+
             return result.Select(slot => slot.Row).ToList();
+        }
+
+        // Whether the rows the base and the draft both hold stand in another order in the draft.
+        private static bool ReorderedFromBase<T>(List<(string Key, T Row)> based, List<(string Key, T Row)> draft)
+        {
+            var inBase = new HashSet<string>(based.Select(entry => entry.Key), StringComparer.OrdinalIgnoreCase);
+            var inDraft = new HashSet<string>(draft.Select(entry => entry.Key), StringComparer.OrdinalIgnoreCase);
+
+            return !based.Select(entry => entry.Key).Where(inDraft.Contains)
+                .SequenceEqual(draft.Select(entry => entry.Key).Where(inBase.Contains), StringComparer.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // `result` with the rows the draft holds in the draft's order, and each row only the update
+        // brought after the row it followed in `result` (or first, when it followed none).
+        // ###########################################################################################
+        private static List<Slot<T>> InDraftOrder<T>(List<Slot<T>> result, List<(string Key, T Row)> draft)
+        {
+            var position = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            for (int index = 0; index < draft.Count; index++)
+                position.TryAdd(draft[index].Key, index);
+
+            var leading = new List<Slot<T>>();
+            var drafted = new List<(Slot<T> Slot, List<Slot<T>> Following)>();
+
+            foreach (Slot<T> slot in result)
+            {
+                if (position.ContainsKey(slot.Key))
+                    drafted.Add((slot, []));
+                else if (drafted.Count == 0)
+                    leading.Add(slot);
+                else
+                    drafted[^1].Following.Add(slot);
+            }
+
+            var ordered = new List<Slot<T>>(leading);
+
+            foreach ((Slot<T> slot, List<Slot<T>> following) in drafted.OrderBy(entry => position[entry.Slot.Key]))
+            {
+                ordered.Add(slot);
+                ordered.AddRange(following);
+            }
+
+            return ordered;
         }
 
         // ###########################################################################################

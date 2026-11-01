@@ -27,11 +27,11 @@ public class WikiHelpPageNamesTests
     // nobody has verified exists.
     public static IEnumerable<object[]> InAppHelpPages() => new List<object[]>
     {
-        new object[] { AppConfig.WikiPageWorkbooks, "Configuration tab, \"?\" beside \"Enable Workbooks tab\"" },
+        new object[] { AppConfig.WikiPageWorkbooks, "Configuration tab, \"?\" beside \"Enable \"Workbooks\" tab\"" },
         new object[] { AppConfig.WikiPageMiniPro, "Configuration tab \"?\", and the component popup" },
         new object[] { AppConfig.WikiPageScopeKeyboard, "Component popup, numpad oscilloscope controls" },
         new object[] { AppConfig.WikiPageScopeSync, "Component popup, oscilloscope synchronization" },
-        new object[] { AppConfig.WikiPageMaintainer, "Configuration tab, \"?\" beside \"Enable Maintainer tab\"" },
+        new object[] { AppConfig.WikiPageMaintainer, "Configuration tab, \"?\" beside \"Enable \"Maintainer\" tab\"" },
         new object[] { AppConfig.WikiPageViewOnlineSource, "Configuration tab, \"?\" beside \"View boards as published online\"" },
     };
 

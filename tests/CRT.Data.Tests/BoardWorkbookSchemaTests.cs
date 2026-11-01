@@ -126,10 +126,11 @@ public sealed class BoardWorkbookSchemaTests
     [InlineData("CLK", "")]
     [InlineData("", "Net-(U1-Pad3)")]
     [InlineData("  ", "Net-(U1-Pad3)")]
-    public void An_important_signal_missing_either_half_is_dropped(string displayName, string netName)
+    public void An_important_signal_missing_either_half_is_kept(string displayName, string netName)
     {
-        // The one mapper that drops rows. The table editor marks such a row "incomplete" by asking
-        // this mapper, so the condition must live here and only here.
+        // It was the one mapper that dropped rows - left out on save, said as a warning. Since
+        // 2026-11-01 it is kept, and the empty half is an error on its cell (BoardRowRequired), so
+        // the row is said until it is filled in or removed.
         List<KiCadImportantSignalEntry> mapped = BoardWorkbookSchema.MapKiCadImportantSignals(
         [
             BoardWorkbookSchemaTests.Cells(
@@ -137,7 +138,8 @@ public sealed class BoardWorkbookSchemaTests
                 (BoardWorkbookSchema.ColKiCadNetName, netName))
         ]);
 
-        Assert.Empty(mapped);
+        KiCadImportantSignalEntry kept = Assert.Single(mapped);
+        Assert.Equal(netName.Trim(), kept.KiCadNetName);
     }
 
     [Fact]
@@ -232,26 +234,30 @@ public sealed class BoardWorkbookSchemaTests
     }
 
     // ###########################################################################################
-    // RequiredColumns names the columns a row cannot be saved without - for the table's warning on
-    // a row the save leaves out (2026-10-03). It must agree with what MapRows really DROPS: on every
-    // sheet, a full row survives, and it stops surviving exactly when one named column is emptied.
+    // *** NO MAPPER DROPS A ROW (2026-11-01). *** The table said a row the save left out as a warning
+    // (2026-10-03) - an important signal missing a half, the one such row. A field a row needs is an
+    // error on its cell now (BoardRowRequired), so every row is kept: on every sheet, a full row
+    // survives with any one column emptied.
     // ###########################################################################################
     [Fact]
-    public void RequiredColumns_are_exactly_the_columns_whose_emptiness_makes_the_save_drop_a_row()
+    public void No_mapper_drops_a_row_with_a_column_emptied()
     {
         foreach (BoardWorkbookSchema.SheetDefinition sheet in BoardWorkbookSchema.AllSheets)
         {
             Dictionary<string, string> full = sheet.ColumnOrder.ToDictionary(column => column, column => $"value of {column}", StringComparer.OrdinalIgnoreCase);
             Assert.Single(BoardWorkbookSchema.MapRows(sheet, [full]));
 
-            IReadOnlyList<string> required = BoardWorkbookSchema.RequiredColumns(sheet.SheetName);
-
             foreach (string column in sheet.ColumnOrder)
             {
                 var emptied = new Dictionary<string, string>(full, StringComparer.OrdinalIgnoreCase) { [column] = string.Empty };
-                bool dropped = BoardWorkbookSchema.MapRows(sheet, [emptied]).Count == 0;
 
-                Assert.True(dropped == required.Contains(column), $"[{sheet.SheetName}] / [{column}]: {(dropped ? "drops the row but is not named" : "is named but does not drop the row")}");
+                Assert.True(BoardWorkbookSchema.MapRows(sheet, [emptied]).Count == 1, $"[{sheet.SheetName}] / [{column}] emptied drops the row");
+
+                // Nor with only that one filled in: the table's rows rest on this (a row with any text
+                // maps to one entry - BoardTableSheet, whose "Incomplete" state went with it, 2026-11-01).
+                var onlyThis = sheet.ColumnOrder.ToDictionary(other => other, other => other == column ? "value" : string.Empty, StringComparer.OrdinalIgnoreCase);
+
+                Assert.True(BoardWorkbookSchema.MapRows(sheet, [onlyThis]).Count == 1, $"[{sheet.SheetName}] with only [{column}] filled in drops the row");
             }
         }
     }

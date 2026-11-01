@@ -26,7 +26,7 @@
 
 			<TextBlock TextWrapping="Wrap"
 					   Margin="0,4,0,0"
-					   Text="What your draft changes, compared with the published data. &quot;Undo changes to&quot; puts one component back as it is published - and Undo in the draft's header on the Contribute tab takes that back too, while CRT is running." />
+					   Text="What your draft changes, compared with the published data. &quot;Undo changes to&quot; puts one component back as it is published - and &quot;Undo&quot; in the draft's header on the &quot;Contribute&quot; tab takes that back too, while CRT is running." />
 
 			<!-- Why an undo could not be made - set from code. -->
 			<TextBlock x:Name="StatusText"

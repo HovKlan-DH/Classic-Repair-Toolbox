@@ -24,21 +24,29 @@ namespace CRT
     // Everything is copied, never moved (the same import-by-copy rule every other attachment path
     // follows), into the board's own draft folder.
     //
-    // *** THE WINDOW'S OTHER HALF, "SCHEMATIC IMAGES", IS GONE (CRT 4.0 step 3 - the plan: "Pictures:
-    // today's Schematic images content, moved inline"). *** Pictures are added, named, matched to
-    // their KiCad view, ordered and removed on their cards in the Contribute tab's Pictures part
+    // *** ITS OTHER HALF, "SCHEMATIC IMAGES", IS GONE (CRT 4.0 step 3 - the plan: "Pictures: today's
+    // Schematic images content, moved inline"). *** Pictures are added, named, matched to their KiCad
+    // view, ordered and removed on their cards in the Contribute tab's Pictures part
     // (ComponentPane.BoardPictureList.cs), its rules - SchematicRename, SchematicCadNameChoices,
     // SchematicRemoval - unchanged.
     //
+    // *** A PANEL ON THE RIGHT OF THE CONTRIBUTE TAB, NOT A WINDOW (owner request, 2026-10-30: "I do
+    // not understand why the 'KiCad data' opens in a new window? ... it should just show up in the
+    // 'normal' content area"). *** It was the BoardFilesWindow, a dialog. The tab makes one for each
+    // opening (TabDrafts.KiCad.cs) and shows it where a component or a board part shows; its waits run
+    // under CRT's own "please wait" (BusyOverlay.For finds Main's). Each change it makes is caught up
+    // with as it ends (DraftChanged) - the board on screen, the draft's row, the left column's count -
+    // not once it closes, since it can stay open while the contributor looks elsewhere.
+    //
     // FILE MAP:
-    //   BoardFilesWindow.axaml.cs          - opening, files dropped on the Contribute tab, closing
-    //   BoardFilesWindow.KiCad.cs          - the KiCad files, their import and removal, the report and
+    //   KiCadDataPanel.axaml.cs          - opening, files dropped on the Contribute tab, closing
+    //   KiCadDataPanel.KiCad.cs          - the KiCad files, their import and removal, the report and
     //                                        the import's summary
-    //   BoardFilesWindow.DraftChanges.cs   - every change to the draft: queued, off the UI thread,
-    //                                        under the "please wait"; and closing after them
-    //   BoardFilesWindow.NetNames.cs       - the report's KiCad net names and Important signals
+    //   KiCadDataPanel.DraftChanges.cs   - every change to the draft: queued, off the UI thread,
+    //                                        under the "please wait"; told as each ends; closing after them
+    //   KiCadDataPanel.NetNames.cs       - the report's KiCad net names and Important signals
     // ###########################################################################################
-    public partial class BoardFilesWindow : Window
+    public partial class KiCadDataPanel : UserControl
     {
         private string thisExcelDataFile = string.Empty;
         private string thisDraftFolder = string.Empty;
@@ -56,7 +64,7 @@ namespace CRT
         // this board rather than only how many files it has.
         public ObservableCollection<BoardKiCadFileRow> KiCadFiles { get; } = new();
 
-        public BoardFilesWindow()
+        public KiCadDataPanel()
         {
             this.InitializeComponent();
 
@@ -68,23 +76,21 @@ namespace CRT
 
             this.KiCadDropTarget.AddHandler(DragDrop.DragOverEvent, OnDragOver);
             this.KiCadDropTarget.AddHandler(DragDrop.DropEvent, this.OnKiCadDropped);
-
-            this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
         }
 
         // ###########################################################################################
-        // Points the window at one board. boardLabels comes from the merged BoardData the caller
+        // Points the panel at one board. boardLabels comes from the merged BoardData the caller
         // already has, rather than being re-derived here - the caller is the one place that knows
         // whether it is looking at a drafted-only board or an official one with an overlay.
         //
         // *** THE REPORT IS BUILT FOR DATA THAT IS ALREADY THERE (owner report, 2026-09-24). *** It used
-        // to be built only at the end of an import, so reopening the window on a board that already had
+        // to be built only at the end of an import, so opening it again on a board that already had
         // KiCad data showed an empty panel. Parsing a 45 MB .kicad_pcb takes a moment, so it is read
         // under the "please wait" (owner request, 2026-10-10) - and so is the list of files, which the
-        // same read brings (ReadKiCadAsync). Opening completes when all of it is in.
+        // same read brings (ReadKiCadAsync). Opening completes when all of it is in. The board is
+        // named by the draft's header above the panel, not again here.
         // ###########################################################################################
         public void Initialize(
-            string displayName,
             string excelDataFile,
             IReadOnlyList<string> boardLabels,
             IReadOnlyList<KiCadImportantSignalEntry>? importantSignals = null)
@@ -94,18 +100,19 @@ namespace CRT
             this.thisBoardLabels = boardLabels;
             this.thisImportantSignals = importantSignals ?? Array.Empty<KiCadImportantSignalEntry>();
 
-            this.HeaderText.Text = displayName;
-
             this.Opening = BusyOverlay.HoldAsync(this, CrtWaitWording.CheckingKiCadMatches, this.RefreshReportAsync);
         }
 
-        // Completes when everything the window reads on opening is in - for tests, which wait for it
+        // The board the panel is open on - its board file's identity.
+        internal string ExcelDataFile => this.thisExcelDataFile;
+
+        // Completes when everything the panel reads on opening is in - for tests, which wait for it
         // as the user does.
         internal Task Opening { get; private set; } = Task.CompletedTask;
 
         // ###########################################################################################
         // A KiCad project folder dropped on the Contribute tab (CRT 4.0 step 3, slice 3e -
-        // TabDrafts.Drop.cs): imported once the window has read what it opens on, exactly as its own
+        // TabDrafts.Drop.cs): imported once the panel has read what it opens on, exactly as its own
         // drop target imports it - its summary and all. DroppedImport completes when done.
         // ###########################################################################################
         internal void ImportOnceOpen(IReadOnlyList<string> paths) => this.DroppedImport = this.ImportOnceOpenAsync(paths);
@@ -131,20 +138,41 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Whether anything in this window changed the draft - KiCad files imported or removed. The
-        // Contribute tab reads the board on screen again after the window closes ONLY then (owner
-        // report, 2026-10-10: it was read again every time, changed or not). Set once the change is in.
+        // Whether anything in this panel changed the draft - KiCad files imported or removed. The
+        // Contribute tab reads the board on screen again ONLY then (owner report, 2026-10-10: it was
+        // read again every time, changed or not) - as each such change ends (DraftChanged). Set once
+        // the change is in.
         // ###########################################################################################
-        internal bool ChangedTheDraft { get; private set; }
+        internal bool ChangedTheDraft
+        {
+            get => this.thisChangesMade > 0;
+            private set
+            {
+                if (value)
+                {
+                    this.thisChangesMade++;
+                }
+            }
+        }
 
-        // Set by OnClosed: a read still in flight then has nowhere to show what it read.
+        // How many changes this panel made to the draft - a queued change that moved it tells
+        // DraftChanged as it ends (KiCadDataPanel.DraftChanges.cs).
+        private int thisChangesMade;
+
+        // Told on the UI thread when a change to the draft has ended - the tab catches up with it.
+        internal event EventHandler? DraftChanged;
+
+        // Set by Close: a read still in flight then has nowhere to show what it read.
         private bool thisClosed;
 
-        protected override void OnClosed(EventArgs e)
-        {
-            this.thisClosed = true;
-            base.OnClosed(e);
-        }
+        internal bool IsClosed => this.thisClosed;
+
+        // ###########################################################################################
+        // The panel closed - what it reads from now on is shown nowhere. Its queued changes go on to
+        // the end (DraftChanging), each still told as it ends; the tab waits for them before taking the
+        // panel away when the contributor closed it, so their "please wait" is seen.
+        // ###########################################################################################
+        internal void Close() => this.thisClosed = true;
 
         private string DraftBoardFile =>
             string.IsNullOrWhiteSpace(this.thisDraftFolder)
@@ -183,22 +211,10 @@ namespace CRT
         }
 
         internal string StatusTextForTests => this.StatusText.Text ?? string.Empty;
-
-        // Escape closes the window.
-        private void OnWindowKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Escape)
-            {
-                this.Close();
-                e.Handled = true;
-            }
-        }
-
-        private void OnCloseClick(object? sender, RoutedEventArgs e) => this.Close();
     }
 
     // ###########################################################################################
-    // One imported KiCad file, as the window lists it: where it sits inside the "KiCad data" folder
+    // One imported KiCad file, as the panel lists it: where it sits inside the "KiCad data" folder
     // and how big it is.
     // ###########################################################################################
     public sealed class BoardKiCadFileRow
@@ -213,8 +229,8 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // One KiCad net name in the report: copied by a click (BoardFilesWindow.NetNames.cs), and
-    // marked when an "Important signals" row already uses it.
+    // One KiCad net in the report (KiCadDataPanel.NetNames.cs), marked when an important KiCad signal
+    // already uses it.
     // ###########################################################################################
     public sealed class KiCadNetNameBadge
     {
@@ -222,8 +238,6 @@ namespace CRT
 
         public bool IsUsed { get; init; }
 
-        public string ToolTipText => this.IsUsed
-            ? "Click to copy - already used in Important signals"
-            : "Click to copy";
+        public string? ToolTipText => this.IsUsed ? "Already used in \"KiCad: Important signals\"" : null;
     }
 }

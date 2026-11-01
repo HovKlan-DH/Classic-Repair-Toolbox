@@ -368,7 +368,7 @@ namespace CRT
         private void ShowBoardFilesAlsoOffer()
         {
             this.BoardFilesAlsoButton.IsVisible =
-                this.thisBoardPart == PaneBoardPart.FilesAndLinks && this.ChangedBoardFilesHere().Count > 0;
+                this.thisBoardPart == PaneBoardPart.Files && this.ChangedBoardFilesHere().Count > 0;
         }
 
         private async void OnBoardFilesAlsoClick(object? sender, RoutedEventArgs e)

@@ -89,22 +89,15 @@ public partial class TabSchematics
 
     // ###########################################################################################
     // Converts one KiCad world-space length into the current local overlay coordinate space using
-    // the active box-based calibration model.
+    // the active box-based calibration model. The rule is KiCadFootprintMarks' - a card's preview on
+    // the Contribute tab draws its traces as wide by the same one.
     // ###########################################################################################
     private static double MapKiCadWorldLengthToLocal(
         double worldLength,
         Rect worldBounds,
         Rect contentRect,
-        KiCadViewCalibration calibration)
-    {
-        double thisScaleX = contentRect.Width / Math.Max(0.0001, worldBounds.Width);
-        double thisScaleY = contentRect.Height / Math.Max(0.0001, worldBounds.Height);
-
-        thisScaleX *= Math.Abs(calibration.ScaleX);
-        thisScaleY *= Math.Abs(calibration.ScaleY);
-
-        return worldLength * ((thisScaleX + thisScaleY) / 2.0);
-    }
+        KiCadViewCalibration calibration) =>
+        KiCadFootprintMarks.WorldLengthOnPicture(worldLength, worldBounds, calibration.ScaleX, calibration.ScaleY, contentRect.Width, contentRect.Height);
 
     // ###########################################################################################
     // Computes a world bounding box for all PCB geometry used by the MVP overlay.

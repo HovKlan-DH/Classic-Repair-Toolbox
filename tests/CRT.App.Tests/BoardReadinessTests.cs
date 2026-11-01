@@ -3,40 +3,30 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// BoardReadiness - getting a new board ready (CRT 4.0 step 3: "Getting this board ready ... On an
-// existing board, the same panel shows What's missing"): each step done by what the board holds,
-// the KiCad project optional - matching and aligning skipped without it - the first step with
-// something to do next, and "Check and submit" next once nothing else is.
+// BoardReadiness - what a board still lacks ("Board status", BoardStatusPage) and what is left to do
+// once its KiCad data is in (the KiCad import's summary), each by what the board holds.
 // ###########################################################################################
 public sealed class BoardReadinessTests
 {
+    private static readonly KiCadWorkLeft NothingLeft = new(Match: false, Align: false, Components: false, NotOnBoard: 0, Mark: false, Signals: false);
+
     private static BoardContent Content(BoardData board, params KiCadCalibrationEntry[] calibrations) => new(board, calibrations, []);
 
-    private static Dictionary<ReadinessStepKind, ReadinessStep> ByKind(IEnumerable<ReadinessStep> steps) => steps.ToDictionary(step => step.Kind);
-
     [Fact]
-    public void A_board_just_made_has_its_name_and_its_pictures_next()
+    public void A_board_just_made_has_everything_left_to_do()
     {
-        List<ReadinessStep> steps = BoardReadiness.Steps(" Commodore 64 - 250407 ", Content(new BoardData()), hasKiCadFiles: false, kiCad: null);
+        KiCadWorkLeft left = BoardReadiness.WorkLeftAfterKiCad(Content(new BoardData()), new BoardKiCadFacts([], ["PCB top"]));
 
-        Assert.Equal(Enumerable.Range(1, 9), steps.Select(step => step.Number));
-        Assert.Equal(
-            [
-                ReadinessState.Done, ReadinessState.Next, ReadinessState.Optional, ReadinessState.Skipped, ReadinessState.Skipped,
-                ReadinessState.Later, ReadinessState.Later, ReadinessState.Skipped, ReadinessState.Later,
-            ],
-            steps.Select(step => step.State));
-        Assert.Equal("Commodore 64 - 250407", steps[0].Detail);
-        Assert.Equal("Needs the KiCad project.", steps[3].Detail);
+        Assert.Equal(new KiCadWorkLeft(Match: true, Align: true, Components: true, NotOnBoard: 0, Mark: true, Signals: true), left);
     }
 
     // ###########################################################################################
-    // With KiCad data: a picture shows a view once its CAD name is one of the views; it is aligned
-    // once it has a calibration; the components KiCad has but the board lacks are counted; a component
-    // marked on no picture is counted too.
+    // A picture shows a view once its CAD name is one of the views; it is aligned once it has a
+    // calibration; the components KiCad has but the board lacks are counted; a component marked on no
+    // picture leaves marking to do.
     // ###########################################################################################
     [Fact]
-    public void With_KiCad_data_each_step_counts_what_is_left()
+    public void With_KiCad_data_what_is_left_is_judged_by_what_the_board_holds()
     {
         var board = new BoardData
         {
@@ -55,49 +45,22 @@ public sealed class BoardReadinessTests
             ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "0", Y = "0", Width = "1", Height = "1" }],
         };
 
-        // Every view has its picture - the photo shows none, and that is no step left. Both views are
-        // sides of the board.
-        var kiCad = new BoardKiCadFacts(["U1", "U2", "U3", "C1"], ["PCB top", "PCB bottom"], BoardViews: ["PCB top", "PCB bottom"]);
+        var kiCad = new BoardKiCadFacts(["U1", "U2", "U3", "C1"], ["PCB top", "PCB bottom"]);
 
-        Dictionary<ReadinessStepKind, ReadinessStep> steps = ByKind(BoardReadiness.Steps(
-            "C64",
-            Content(board, new KiCadCalibrationEntry { SchematicName = "top", CadName = "PCB top" }),
-            hasKiCadFiles: true,
-            kiCad));
-
-        Assert.Equal(ReadinessState.Done, steps[ReadinessStepKind.KiCad].State);
-        Assert.Equal(ReadinessState.Done, steps[ReadinessStepKind.Match].State);
-        Assert.Equal("2 of 3 pictures show a KiCad view.", steps[ReadinessStepKind.Match].Detail);
-
-        // A view no picture shows yet, beside a picture showing none: worth finishing, never needed -
-        // CRT cannot know whether that picture shows the view (code review, 2026-10-26).
-        ReadinessStep partly = ByKind(BoardReadiness.Steps("C64", Content(board), hasKiCadFiles: true, kiCad with { Views = ["PCB top", "PCB bottom", "Main sheet"] }))[ReadinessStepKind.Match];
-        Assert.Equal(ReadinessState.Optional, partly.State);
-        Assert.Equal("2 of 3 pictures show a KiCad view - name the view of any other picture that shows one.", partly.Detail);
+        // Matched - the photo shows no view, and that is nothing left - and one of the two aligned, the
+        // calibration found whatever its capitals. U3 and C1 are not on the board, U2 is marked nowhere.
+        Assert.Equal(
+            new KiCadWorkLeft(Match: false, Align: true, Components: true, NotOnBoard: 2, Mark: true, Signals: true),
+            BoardReadiness.WorkLeftAfterKiCad(Content(board, new KiCadCalibrationEntry { SchematicName = "top", CadName = "PCB top" }), kiCad));
 
         // None matched yet: to do.
-        Assert.Equal(
-            "0 of 1 pictures show a KiCad view - name the view each one shows.",
-            ByKind(BoardReadiness.Steps("C64", Content(new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }] }), hasKiCadFiles: true, kiCad))[ReadinessStepKind.Match].Detail);
+        var unmatched = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }] };
 
-        Assert.Equal(ReadinessState.Next, steps[ReadinessStepKind.Align].State);
-        Assert.Equal("1 of 2 pictures aligned.", steps[ReadinessStepKind.Align].Detail);
-
-        Assert.Equal("Components - 4 found in KiCad", steps[ReadinessStepKind.Components].Title);
-        Assert.Equal("2 of them are not on the board yet.", steps[ReadinessStepKind.Components].Detail);
-        Assert.Equal(ReadinessState.Later, steps[ReadinessStepKind.Components].State);
-
-        // A picture is aligned - "Mark all automatically" is offered for the rest (slice 3c).
-        Assert.Equal(
-            "1 of 2 components are not marked on any picture yet. A picture aligned with KiCad draws them all with Mark all automatically.",
-            steps[ReadinessStepKind.Mark].Detail);
-        Assert.Equal(ReadinessState.Later, steps[ReadinessStepKind.Signals].State);
-        Assert.Equal(ReadinessState.Later, steps[ReadinessStepKind.Submit].State);
+        Assert.True(BoardReadiness.WorkLeftAfterKiCad(Content(unmatched), kiCad).Match);
     }
 
-    // Everything in place: nothing left but to send it - "Check and submit" is next, never done.
     [Fact]
-    public void A_board_with_everything_has_submitting_next()
+    public void A_board_with_everything_has_nothing_left_to_do()
     {
         var board = new BoardData
         {
@@ -107,25 +70,21 @@ public sealed class BoardReadinessTests
             KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "Clock", KiCadNetName = "PHI2" }],
         };
 
-        List<ReadinessStep> steps = BoardReadiness.Steps(
-            "C64",
-            Content(board, new KiCadCalibrationEntry { SchematicName = "Top", CadName = "PCB top" }),
-            hasKiCadFiles: true,
-            new BoardKiCadFacts(["U1"], ["PCB top", "PCB bottom"]));
-
-        Assert.All(steps.Take(8), step => Assert.Equal(ReadinessState.Done, step.State));
-        Assert.Equal(ReadinessState.Next, steps[8].State);
-        Assert.Equal("Everything is in place - send the board for review.", steps[8].Detail);
+        Assert.Equal(
+            NothingLeft,
+            BoardReadiness.WorkLeftAfterKiCad(
+                Content(board, new KiCadCalibrationEntry { SchematicName = "Top", CadName = "PCB top" }),
+                new BoardKiCadFacts(["U1"], ["PCB top", "PCB bottom"])));
     }
 
     // ###########################################################################################
     // KiCad files that could not be read are not KiCad data with nothing in it (code review,
     // 2026-10-26: "0 found in KiCad - All 0 are on the board" was ticked done, and matching asked for
-    // views there were none of): the KiCad step says so and waits, matching, aligning and the signals
-    // need data CRT can read, and the components are counted on their own.
+    // views there were none of): matching, aligning and the signals need data CRT can read, and the
+    // components are judged on their own.
     // ###########################################################################################
     [Fact]
-    public void KiCad_data_that_could_not_be_read_is_said_and_counts_no_components()
+    public void KiCad_data_that_could_not_be_read_leaves_nothing_to_match_and_counts_no_components()
     {
         var board = new BoardData
         {
@@ -133,22 +92,14 @@ public sealed class BoardReadinessTests
             Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
         };
 
-        Dictionary<ReadinessStepKind, ReadinessStep> steps = ByKind(BoardReadiness.Steps("C64", Content(board), hasKiCadFiles: true, BoardKiCadFacts.Of(null)));
-
-        Assert.Equal(ReadinessState.Next, steps[ReadinessStepKind.KiCad].State);
-        Assert.Equal(BoardReadiness.KiCadUnreadable, steps[ReadinessStepKind.KiCad].Detail);
-        Assert.Equal(ReadinessState.Skipped, steps[ReadinessStepKind.Match].State);
-        Assert.Equal(ReadinessState.Skipped, steps[ReadinessStepKind.Align].State);
-        Assert.Equal(ReadinessState.Skipped, steps[ReadinessStepKind.Signals].State);
-        Assert.Equal("Components (1)", steps[ReadinessStepKind.Components].Title);
-        Assert.Equal(0, steps[ReadinessStepKind.Components].FromKiCad);
+        Assert.Equal(NothingLeft with { Mark = true }, BoardReadiness.WorkLeftAfterKiCad(Content(board), BoardKiCadFacts.Of(null)));
+        Assert.True(BoardReadiness.WorkLeftAfterKiCad(Content(new BoardData()), BoardKiCadFacts.Of(null)).Components);
     }
 
     // ###########################################################################################
     // A picture that shows no KiCad view never holds matching up (code review, 2026-10-26: one photo
-    // of the ports beside six views - a PCB's two sides and four sheets - left matching "next" for
-    // ever, and "Check and submit" never came). Some matched but not all is worth finishing, never
-    // needed.
+    // of the ports beside six views - a PCB's two sides and four sheets - left matching to do for
+    // ever), nor do the views no picture shows yet.
     // ###########################################################################################
     [Fact]
     public void A_picture_showing_no_view_never_holds_matching_up()
@@ -170,55 +121,11 @@ public sealed class BoardReadinessTests
 
         KiCadCalibrationEntry[] calibrations = [.. board.Schematics.Take(4).Select(row => new KiCadCalibrationEntry { SchematicName = row.SchematicName, CadName = row.CadName })];
 
-        Dictionary<ReadinessStepKind, ReadinessStep> steps = ByKind(BoardReadiness.Steps(
-            "C128",
-            Content(board, calibrations),
-            hasKiCadFiles: true,
-            new BoardKiCadFacts(["U1"], ["PCB top", "PCB bottom", "Sheet 1", "Sheet 2", "Sheet 3", "Sheet 4"])));
-
-        Assert.Equal(ReadinessState.Optional, steps[ReadinessStepKind.Match].State);
-        Assert.Equal("Match pictures", BoardReadiness.ActionOf(steps[ReadinessStepKind.Match]));
-        Assert.Equal(ReadinessState.Done, steps[ReadinessStepKind.Align].State);
-        Assert.Equal(ReadinessState.Next, steps[ReadinessStepKind.Submit].State);
-    }
-
-    // ###########################################################################################
-    // "Mark all automatically" is offered only for a picture aligned with a SIDE OF THE BOARD (code
-    // review, 2026-10-26): one aligned with a schematic sheet answered "shows a schematic sheet" -
-    // and nothing is offered while the KiCad data is being read.
-    // ###########################################################################################
-    [Fact]
-    public void Marking_automatically_is_offered_only_for_a_picture_aligned_with_the_board()
-    {
-        var board = new BoardData
-        {
-            Schematics = [new BoardSchematicEntry { SchematicName = "Sheet", SchematicImageFile = "Images/sheet.png", CadName = "Main sheet" }],
-            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
-        };
-
-        BoardContent content = Content(board, new KiCadCalibrationEntry { SchematicName = "Sheet", CadName = "Main sheet" });
-        var facts = new BoardKiCadFacts(["U1"], ["PCB top", "Main sheet"], BoardViews: ["PCB top"]);
-
         Assert.Equal(
-            "1 of 1 components are not marked on any picture yet.",
-            ByKind(BoardReadiness.Steps("C64", content, hasKiCadFiles: true, facts))[ReadinessStepKind.Mark].Detail);
-
-        Assert.Equal(
-            "1 of 1 components are not marked on any picture yet.",
-            ByKind(BoardReadiness.Steps("C64", content, hasKiCadFiles: true, kiCad: null))[ReadinessStepKind.Mark].Detail);
-    }
-
-    // While the KiCad data is still being read, matching says so and the components are counted alone.
-    [Fact]
-    public void While_the_KiCad_data_is_read_matching_says_so()
-    {
-        var board = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }] };
-
-        Dictionary<ReadinessStepKind, ReadinessStep> steps = ByKind(BoardReadiness.Steps("C64", Content(board), hasKiCadFiles: true, kiCad: null));
-
-        Assert.Equal("Reading the KiCad data...", steps[ReadinessStepKind.Match].Detail);
-        Assert.Equal(ReadinessState.Next, steps[ReadinessStepKind.Match].State);
-        Assert.Equal("Components", steps[ReadinessStepKind.Components].Title);
+            NothingLeft,
+            BoardReadiness.WorkLeftAfterKiCad(
+                Content(board, calibrations),
+                new BoardKiCadFacts(["U1"], ["PCB top", "PCB bottom", "Sheet 1", "Sheet 2", "Sheet 3", "Sheet 4"])));
     }
 
     // ###########################################################################################
@@ -255,8 +162,47 @@ public sealed class BoardReadinessTests
         Assert.Equal(["U3"], missing.WithoutDescription);
         Assert.Equal(["U1", "U2"], missing.Unmarked);
         Assert.Equal(["U3"], missing.PinsWithoutBaseline);
-        Assert.False(missing.IsEmpty);
-        Assert.True(BoardReadiness.Missing(new BoardData()).IsEmpty);
+
+        // A board with nothing missing - its pictures and its credits there too (2026-10-30: the board's
+        // own gaps count).
+        var whole = new BoardData
+        {
+            Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }],
+            Credits = [new CreditEntry { Category = "Schematic image", NameOrHandle = "Anna" }],
+        };
+
+        BoardMissing none = BoardReadiness.Missing(whole);
+
+        Assert.Empty(none.BoardGaps);
+        Assert.Empty(none.WithoutDescription);
+        Assert.Empty(none.Unmarked);
+        Assert.Empty(none.PinsWithoutBaseline);
+    }
+
+    // ###########################################################################################
+    // What a board lacks besides its components' own gaps: the lists with a row missing a field it needs
+    // (BoardRowRequired, said by their panels), and with KiCad data read, the components it does not
+    // have - their traces cannot light up. KiCad files CRT cannot read, or none, say nothing of that.
+    // ###########################################################################################
+    [Fact]
+    public void Lists_with_rows_missing_a_field_and_components_KiCad_lacks_are_said()
+    {
+        var board = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U1" }, new ComponentEntry { BoardLabel = "PLA/U17" }],
+            Credits = [new CreditEntry { Category = "Schematic image" }],
+            BoardLinks = [new BoardLinkEntry { Category = "Forums" }, new BoardLinkEntry { Category = "Forums" }],
+        };
+
+        var facts = new BoardKiCadFacts(["U1", "U17", "C5"], ["PCB top", "PCB bottom"]);
+        BoardMissing missing = BoardReadiness.Missing(board, true, facts);
+
+        Assert.Equal([BoardGapKind.IncompleteLinks, BoardGapKind.IncompleteCredits], missing.BoardGaps.Select(gap => gap.Kind));
+        Assert.Equal(BoardReadiness.IncompleteGap(2, "link", "links"), missing.BoardGaps[0].Text);
+        Assert.Equal(["PLA/U17"], missing.NotInKiCadLabels);
+
+        Assert.Empty(BoardReadiness.Missing(board, true, new BoardKiCadFacts([], [], Read: false)).NotInKiCadLabels);
+        Assert.Empty(BoardReadiness.Missing(board).NotInKiCadLabels);
     }
 
     // A group naming its first eight says how many more there are - nothing for eight or fewer.
@@ -294,32 +240,21 @@ public sealed class BoardReadinessTests
         Assert.Empty(BoardKiCadFacts.Of(null).References);
     }
 
-    // ###########################################################################################
-    // The components step offers to add, in one go, every component KiCad has that the board lacks
-    // ("Components - 214 found in KiCad [Add]"); with all on the board, or no KiCad data read yet, its
-    // button adds one by hand.
-    // ###########################################################################################
+    // What KiCad has that the board lacks is counted, capitals aside - the summary's button adds them.
     [Fact]
-    public void The_components_step_offers_what_KiCad_has_that_the_board_lacks()
+    public void What_KiCad_has_that_the_board_lacks_is_counted()
     {
         var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "u1", Category = "IC" }] };
 
-        ReadinessStep withKiCad = BoardReadiness.Steps("C64", Content(board), hasKiCadFiles: true, new BoardKiCadFacts(["U1", "U2", "C1"], []))
-            .Single(step => step.Kind == ReadinessStepKind.Components);
+        KiCadWorkLeft withKiCad = BoardReadiness.WorkLeftAfterKiCad(Content(board), new BoardKiCadFacts(["U1", "U2", "C1"], []));
 
-        Assert.Equal(2, withKiCad.FromKiCad);
-        Assert.Equal("Add 2 from KiCad", BoardReadiness.ActionOf(withKiCad));
+        Assert.Equal(2, withKiCad.NotOnBoard);
+        Assert.True(withKiCad.Components);
 
-        ReadinessStep allThere = BoardReadiness.Steps("C64", Content(board), hasKiCadFiles: true, new BoardKiCadFacts(["U1"], []))
-            .Single(step => step.Kind == ReadinessStepKind.Components);
+        KiCadWorkLeft allThere = BoardReadiness.WorkLeftAfterKiCad(Content(board), new BoardKiCadFacts(["U1"], []));
 
-        Assert.Equal(0, allThere.FromKiCad);
-        Assert.Equal("Add component", BoardReadiness.ActionOf(allThere));
-
-        ReadinessStep whileReading = BoardReadiness.Steps("C64", Content(board), hasKiCadFiles: true, kiCad: null)
-            .Single(step => step.Kind == ReadinessStepKind.Components);
-
-        Assert.Equal("Add component", BoardReadiness.ActionOf(whileReading));
+        Assert.Equal(0, allThere.NotOnBoard);
+        Assert.False(allThere.Components);
     }
 
     [Fact]
@@ -365,45 +300,8 @@ public sealed class BoardReadinessTests
                 new KiCadViewToMatch("Sheet 1", KiCadViewSide.Sheet),
             ],
             facts.ToMatch);
-        Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"], facts.BoardViews);
+        Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"], BoardKiCadFacts.BoardViewsOf(root));
         Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom", "Sheet 1"], facts.Views);
-    }
-
-    // ###########################################################################################
-    // The plan's "Match: suggested pairs ("...Top.png" with "PCB Top") to confirm": the Match step
-    // carries the pairs once the KiCad data is read, and says to check them - never while it is read,
-    // and never without KiCad data.
-    // ###########################################################################################
-    [Fact]
-    public void The_match_step_offers_the_pictures_and_views_that_seem_to_go_together()
-    {
-        var board = new BoardData
-        {
-            Schematics =
-            [
-                new BoardSchematicEntry { SchematicName = "Top (replica)", SchematicImageFile = "Issue 4.F.png" },
-                new BoardSchematicEntry { SchematicName = "Bottom (replica)", SchematicImageFile = "Issue 4.B.png" },
-                new BoardSchematicEntry { SchematicName = "Photo", SchematicImageFile = "IMG_2001.jpg" },
-            ],
-        };
-
-        var facts = new BoardKiCadFacts(
-            [],
-            ["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"],
-            BoardViews: ["Issue 4 - PCB Top", "Issue 4 - PCB Bottom"],
-            ToMatch: [new KiCadViewToMatch("Issue 4 - PCB Top", KiCadViewSide.Top, "Issue 4"), new KiCadViewToMatch("Issue 4 - PCB Bottom", KiCadViewSide.Bottom, "Issue 4")]);
-
-        ReadinessStep match = BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: true, facts).Single(step => step.Kind == ReadinessStepKind.Match);
-
-        Assert.Equal(
-            [new SchematicCadNameSuggestion("Top (replica)", "Issue 4.F.png", "Issue 4 - PCB Top"), new SchematicCadNameSuggestion("Bottom (replica)", "Issue 4.B.png", "Issue 4 - PCB Bottom")],
-            match.Matches);
-        Assert.Equal("0 of 3 pictures show a KiCad view - check the matches suggested below.", match.Detail);
-        Assert.Equal("Match pictures", BoardReadiness.ActionOf(match));
-
-        Assert.Null(BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: true, kiCad: null).Single(step => step.Kind == ReadinessStepKind.Match).Matches);
-        Assert.Null(BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: false, facts).Single(step => step.Kind == ReadinessStepKind.Match).Matches);
-        Assert.Null(BoardReadiness.Steps("Spectrum", Content(board), hasKiCadFiles: true, BoardKiCadFacts.Of(null)).Single(step => step.Kind == ReadinessStepKind.Match).Matches);
     }
 
     [Fact]

@@ -128,6 +128,10 @@
 					<SolidColorBrush x:Key="Schematics_ComponentHover_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Panels_Bg">#F2F2F2</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Panels_Fg">Black</SolidColorBrush>
+					<!-- The bar that is there only for the moment - "Back to Contribute" (owner request, 2026-10-30) -->
+					<SolidColorBrush x:Key="Schematics_TemporaryBar_Bg">Khaki</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_TemporaryBar_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Schematics_TemporaryBar_Border">#8C7E2E</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Panels_Border">Gray</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_ComponentLabel_Bg">#222113</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_ComponentLabel_Fg">#ECEEEF</SolidColorBrush>
@@ -166,6 +170,12 @@
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#B85C5C</SolidColorBrush>
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Fg">White</SolidColorBrush>
+					<!-- A KiCad net name an important signal already uses - FILLED green with white text, as
+					     the to-do badges are filled red (owner report, 2026-10-29: green text on the grey
+					     badge was "almost impossible to see"). -->
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Bg">#3F7A4B</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Border">#356A40</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Fg">White</SolidColorBrush>
 
 					<!-- Light, the table editor's colours (BoardTable_*) now live in
 					     Controls/BoardTable/BoardTableColors.axaml, merged above, so the Maintainer tab's
@@ -346,6 +356,9 @@
 				<SolidColorBrush x:Key="Schematics_ComponentHover_Border">Black</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Panels_Bg">#46403E</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Panels_Fg">#E8E0DA</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_TemporaryBar_Bg">Khaki</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_TemporaryBar_Fg">Black</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_TemporaryBar_Border">#8C7E2E</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Panels_Border">#524842</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_ComponentLabel_Bg">#222113</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_ComponentLabel_Fg">#ECEEEF</SolidColorBrush>
@@ -377,6 +390,9 @@
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">IndianRed</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#B85C5C</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Fg">White</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Bg">#3F7A4B</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Border">#4F8A5B</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Fg">White</SolidColorBrush>
 
 				<!-- Dark, the table editor: see Controls/BoardTable/BoardTableColors.axaml. -->
 
@@ -524,6 +540,9 @@
 		a Grid of a TextBlock.NoticeIcon (Font Awesome's "circle-info", U+F05A - not the padlock, which
 		marks what only the administrator can use) and the words in TextBlock.NoticeText. Used by the
 		Boards screen's ReadOnlyNotice and the queue's BeforeApprovingNotice.
+		The words are not bold and the icon stands in the middle of them (owner request, 2026-10-30, of
+		the Contribute tab's local-draft notice: "please do not bold the text and vertically middle-align
+		the info-icon").
 		-->
 		<Style Selector="Border.Notice">
 			<Setter Property="Background" Value="{DynamicResource Notice_Bg}" />
@@ -537,13 +556,12 @@
 			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
 			<Setter Property="FontSize" Value="16" />
 			<Setter Property="Foreground" Value="{DynamicResource Notice_Fg}" />
-			<Setter Property="VerticalAlignment" Value="Top" />
-			<Setter Property="Margin" Value="0,1,10,0" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="Margin" Value="0,0,10,0" />
 		</Style>
 
 		<Style Selector="TextBlock.NoticeText">
 			<Setter Property="Foreground" Value="{DynamicResource Notice_Fg}" />
-			<Setter Property="FontWeight" Value="SemiBold" />
 			<Setter Property="TextWrapping" Value="Wrap" />
 		</Style>
 
@@ -711,6 +729,54 @@
 		     this", not as an action on the setting. Its pages are AppConfig's WikiPage* names, which
 		     WikiHelpPageNamesTests holds to real pages. The "?" icon stays only where it shows a
 		     tooltip and opens nothing. -->
+		<!--
+		A TAB STRIP (owner request, 2026-10-01): the Maintainer tab's four screens, and a component's pages
+		on the Contribute tab. Drawn as tabs under CRT's own: plain text on the strip's line, the chosen one
+		with CRT's red underline (Main_TabUnderline_Selected) and the others greyed, a faint underline under
+		the pointer (Main_TabUnderline_Hover) - the main tabs' own colours, so the rows read as one family.
+		The label is not made bold when chosen: a bolder label is wider, and every tab after it would move.
+		Every look under the pointer is set here, in the TAB's styles, so the theme's button hover (a grey
+		fill) never shows.
+		-->
+		<Style Selector="Border.ScreenTabStrip">
+			<Setter Property="BorderBrush" Value="{DynamicResource Queue_Divider}" />
+			<Setter Property="BorderThickness" Value="0,0,0,1" />
+		</Style>
+
+		<!-- The underline sits ON the strip's line: 1px down, over it. -->
+		<Style Selector="Button.ScreenTab">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderBrush" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0,0,0,3" />
+			<Setter Property="CornerRadius" Value="0" />
+			<Setter Property="Padding" Value="10,6,10,6" />
+			<Setter Property="Margin" Value="0,0,0,-1" />
+		</Style>
+
+		<Style Selector="Button.ScreenTab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Main_TabUnderline_Hover}" />
+			<Setter Property="Foreground" Value="{DynamicResource Fg}" />
+		</Style>
+
+		<Style Selector="Button.ScreenTab:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Foreground" Value="{DynamicResource Fg}" />
+		</Style>
+
+		<Style Selector="Button.ScreenTab.Selected /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="BorderBrush" Value="{DynamicResource Main_TabUnderline_Selected}" />
+		</Style>
+
+		<!-- A tab not chosen is greyed - its LABEL only, so a red badge on it keeps its colour. -->
+		<Style Selector="Button.ScreenTab:not(.Selected) TextBlock.ScreenTabLabel">
+			<Setter Property="Opacity" Value="0.65" />
+		</Style>
+
+		<Style Selector="Button.ScreenTab:not(.Selected):pointerover TextBlock.ScreenTabLabel">
+			<Setter Property="Opacity" Value="1" />
+		</Style>
+
 		<Style Selector="Button.LearnMore">
 			<Setter Property="Background" Value="Transparent" />
 			<Setter Property="BorderThickness" Value="0" />

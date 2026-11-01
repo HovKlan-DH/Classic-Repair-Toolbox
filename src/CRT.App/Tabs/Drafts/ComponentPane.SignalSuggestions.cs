@@ -15,11 +15,19 @@ namespace CRT
     //
     //   - SUGGESTIONS: once the board's KiCad nets are read (UseNetChoices), every net whose name says
     //     what it is - a supply, ground, a clock, reset, a bus line - is offered as a row, named as the
-    //     live boards name theirs (ImportantSignalSuggestions); a net a row has is never offered. "Add"
-    //     takes one, "Add all suggestions" every one - ONE step either way.
+    //     live boards name theirs (ImportantSignalSuggestions); a net a row has is never offered. The
+    //     name is a box, changed before it is added (owner request, 2026-10-30: "show the suggested
+    //     names in an input text field"). "Add" takes one, "Add all suggestions" every one - ONE step
+    //     either way, each under the name its box holds.
     //   - CLICK-TO-LIGHT-UP: "Show on board" on a signal or a suggestion asks the host to show the
     //     Schematics tab with only that net lit (ShowNetRequested -> Main.ShowNetOnBoard), so a net can
     //     be seen before it is added.
+    //   - EVERY OTHER NET, LAST (owner requests, 2026-11-01: "all other nets not already used ... below
+    //     the Suggested ones, so all nets will be visible in here", and "a proposed net name in an input
+    //     field"): the nets neither a row nor a suggestion has (ImportantSignalSuggestions.OtherNets), each
+    //     with the name it would be added under (StartingNameOf) in a box, "Show on board" and "Add".
+    //     Changed in place for the same reason as the suggestions - a name typed stays - and realised
+    //     only as it is scrolled to.
     //
     // Part of the ComponentPane partial class - see ComponentPane.axaml.cs for the file map.
     // ###########################################################################################
@@ -32,10 +40,16 @@ namespace CRT
 
         internal IReadOnlyList<ComponentPaneSignalSuggestion> SignalSuggestionsForTests => this.thisSignalSuggestions;
 
+        private readonly ObservableCollection<ComponentPaneOtherNet> thisOtherNets = new();
+
+        internal IReadOnlyList<ComponentPaneOtherNet> OtherNetsForTests => this.thisOtherNets;
+
         private void InitializeSignalSuggestions()
         {
             this.SignalSuggestionsItemsControl.ItemsSource = this.thisSignalSuggestions;
             this.SignalSuggestionsIntroText.Text = ComponentPaneWording.SignalSuggestionsIntro;
+            this.OtherNetsItemsControl.ItemsSource = this.thisOtherNets;
+            this.OtherNetsIntroText.Text = ComponentPaneWording.OtherNetsIntro;
         }
 
         // ###########################################################################################
@@ -55,10 +69,41 @@ namespace CRT
                 .Select(row => new ComponentPaneSignalSuggestion(row.DisplayName, row.KiCadNetName))
                 .ToList();
 
-            InPlaceList.Sync(this.thisSignalSuggestions, suggested, (shown, wanted) => shown == wanted, wanted => wanted);
+            // A suggestion still suggested keeps its row - and the name typed into its box.
+            InPlaceList.Sync(this.thisSignalSuggestions, suggested, (shown, wanted) => shown.IsTheSameSuggestion(wanted), wanted => wanted);
 
             this.SignalSuggestionsPanel.IsVisible = suggested.Count > 0;
             this.SignalSuggestionsHeading.Text = ComponentPaneWording.SignalSuggestionsHeading(suggested.Count);
+
+            // Every net left - last, so all the board's nets are to be seen here (2026-11-01).
+            List<string> others = this.thisBoardPart == PaneBoardPart.ImportantSignals && this.thisNetChoices is { } nets
+                ? ImportantSignalSuggestions.OtherNets(nets, this.thisSignals.Select(row => row.ToEntry()))
+                : [];
+
+            InPlaceList.Sync(
+                this.thisOtherNets,
+                others,
+                (shown, net) => string.Equals(shown.KiCadNetName, net, StringComparison.Ordinal),
+                net => new ComponentPaneOtherNet(net));
+
+            this.OtherNetsPanel.IsVisible = others.Count > 0;
+            this.OtherNetsHeading.Text = ComponentPaneWording.OtherNetsHeading(others.Count);
+        }
+
+        private void OnAddOtherNetClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneOtherNet net })
+            {
+                this.AddSignalForNet(net.KiCadNetName, net.NameToAdd);
+            }
+        }
+
+        private void OnShowOtherNetOnBoardClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneOtherNet net })
+            {
+                this.ShowNetOnBoard(net.KiCadNetName);
+            }
         }
 
         private void OnAddSuggestionClick(object? sender, RoutedEventArgs e)
@@ -96,7 +141,7 @@ namespace CRT
 
             foreach (ComponentPaneSignalSuggestion suggestion in adding)
             {
-                var row = new ComponentPaneSignalRow { DisplayName = suggestion.DisplayName, KiCadNetName = suggestion.KiCadNetName };
+                var row = new ComponentPaneSignalRow { DisplayName = suggestion.NameToAdd, KiCadNetName = suggestion.KiCadNetName };
                 row.UseChoices(this.thisNetChoices);
                 this.thisSignals.Add(row);
             }
@@ -137,6 +182,45 @@ namespace CRT
         }
     }
 
-    // One signal suggested from the board's KiCad nets - its name, and the net as the picker spells it.
-    public sealed record ComponentPaneSignalSuggestion(string DisplayName, string KiCadNetName);
+    // ###########################################################################################
+    // A KiCad net offered to be added as a signal - the net as the picker spells it, and the name it
+    // would be added under: the suggested one, until another is typed into its box (owner request,
+    // 2026-10-30). A box emptied adds it under the suggested name - a signal with no name lights up
+    // nothing a person can pick out on the Schematics tab's panel.
+    // ###########################################################################################
+    public abstract class ComponentPaneNetToAdd : ComponentPaneRowBase
+    {
+        private string thisDisplayName;
+
+        protected ComponentPaneNetToAdd(string? suggestedName, string? kiCadNetName)
+        {
+            this.SuggestedName = suggestedName ?? string.Empty;
+            this.KiCadNetName = kiCadNetName ?? string.Empty;
+            this.thisDisplayName = this.SuggestedName;
+        }
+
+        public string SuggestedName { get; }
+
+        public string KiCadNetName { get; }
+
+        // The name box.
+        public string DisplayName { get => this.thisDisplayName; set => this.Set(ref this.thisDisplayName, value); }
+
+        // What "Add" adds it under - the box's name, or the suggested one for an empty box.
+        internal string NameToAdd => this.thisDisplayName.Trim().Length > 0 ? this.thisDisplayName.Trim() : this.SuggestedName;
+    }
+
+    // One of the board's other KiCad nets, listed under the suggestions, with the name proposed for it.
+    public sealed class ComponentPaneOtherNet(string kiCadNetName)
+        : ComponentPaneNetToAdd(ImportantSignalSuggestions.StartingNameOf(kiCadNetName ?? string.Empty), kiCadNetName);
+
+    // One signal suggested from the board's KiCad nets, its name saying what the net is.
+    public sealed class ComponentPaneSignalSuggestion(string suggestedName, string kiCadNetName)
+        : ComponentPaneNetToAdd(suggestedName, kiCadNetName)
+    {
+        // The same suggestion as `other` - its net and the name suggested; never what was typed.
+        internal bool IsTheSameSuggestion(ComponentPaneSignalSuggestion other) =>
+            string.Equals(this.KiCadNetName, other.KiCadNetName, StringComparison.Ordinal) &&
+            string.Equals(this.SuggestedName, other.SuggestedName, StringComparison.Ordinal);
+    }
 }

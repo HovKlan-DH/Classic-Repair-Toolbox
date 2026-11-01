@@ -813,25 +813,19 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
+                // The entry the schema builds from these cells is what is saved, and what the key is
+                // built from - one for every row with text in it, since no mapper drops a row
+                // (2026-11-01; BoardWorkbookSchemaTests). Remembered by the row until one of its cells
+                // changes (BoardTableRow.MappedForChecks).
+                IReadOnlyList<object> mapped = row.MappedForChecks();
+                string key = BoardDraftNaturalKeys.ForRow(mapped[0]);
+
                 // ###########################################################################################
-                // *** NEITHER OF THE NEXT TWO IS COLOURED ANY MORE (owner request, 2026-10-03: "Should
-                // flagged now be treated as warnings?"; cases agreed with the project owner). *** They
-                // were violet ("Flagged"). Each is a WARNING now - the cell's corner mark, placed by
+                // *** A DUPLICATE IS NOT COLOURED ANY MORE (owner request, 2026-10-03: "Should flagged now
+                // be treated as warnings?"; cases agreed with the project owner). *** It was violet
+                // ("Flagged"). It is a WARNING now - the cell's corner mark, placed by
                 // BoardTableDocument.RefreshProblems - and the colours mean only what changed.
                 // ###########################################################################################
-
-                // The entry the schema builds from these cells is what is saved, and what the key
-                // is built from. None at all means the mapper drops the row on save: shown like a
-                // new row still being filled in, since that is what it nearly always is. Remembered
-                // by the row until one of its cells changes (BoardTableRow.MappedForChecks).
-                IReadOnlyList<object> mapped = row.MappedForChecks();
-                if (mapped.Count == 0)
-                {
-                    BoardTableSheet.Colour(row, BoardTableRowState.Incomplete, hasBaseline ? BoardTableCellState.Added : BoardTableCellState.Unchanged);
-                    continue;
-                }
-
-                string key = BoardDraftNaturalKeys.ForRow(mapped[0]);
 
                 // A later row with the key of one above: saved, but never paired or counted - so
                 // uncoloured, as it is no change BoardDataDiffer would show.

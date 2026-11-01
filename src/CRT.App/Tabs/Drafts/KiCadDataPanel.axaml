@@ -1,19 +1,12 @@
-<Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:CRT"
-        x:Class="CRT.BoardFilesWindow"
-        Title="KiCad data"
-        Width="760"
-        Height="640"
-        MinWidth="620"
-        MinHeight="480"
-        CanMinimize="False"
-        ShowInTaskbar="False"
-        WindowStartupLocation="CenterOwner"
-        Background="{DynamicResource Bg}"
-        Foreground="{DynamicResource Fg}">
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.KiCadDataPanel">
 
-	<Window.Styles>
+	<!-- "KiCad DATA" ON THE RIGHT OF THE CONTRIBUTE TAB - a window until 2026-10-30 (owner request: "it
+	     should just show up in the 'normal' content area, and not in a new window"). Laid out as the
+	     component pane is: a title with Close, then what the part holds. -->
+	<UserControl.Styles>
 		<Style Selector="Border.DropTarget">
 			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
 			<Setter Property="BorderThickness" Value="1" />
@@ -43,17 +36,20 @@
 			<Setter Property="Foreground" Value="{DynamicResource Draft_ReferenceBadge_Todo_Fg}" />
 		</Style>
 
-		<!-- A KiCad net name an "Important signals" row already uses. -->
+		<!-- A KiCad net name an "Important signals" row already uses: filled green, white text - the
+		     to-do badges' look in green (owner report, 2026-10-29: green text on the grey badge was
+		     "almost impossible to see"). -->
 		<Style Selector="Border.ReferenceBadge.Used">
-			<Setter Property="BorderBrush" Value="{DynamicResource Text_Success_Fg}" />
+			<Setter Property="Background" Value="{DynamicResource Draft_ReferenceBadge_Used_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Draft_ReferenceBadge_Used_Border}" />
 		</Style>
 		<Style Selector="Border.ReferenceBadge.Used > TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource Text_Success_Fg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Draft_ReferenceBadge_Used_Fg}" />
 			<Setter Property="FontWeight" Value="SemiBold" />
 		</Style>
-	</Window.Styles>
+	</UserControl.Styles>
 
-	<Window.Resources>
+	<UserControl.Resources>
 		<!-- Shared by the component lists (not labelled / will not light up / match), so they cannot
 		     drift into looking different. -->
 		<DataTemplate x:Key="ReferenceBadgeTemplate">
@@ -68,17 +64,12 @@
 			</Border>
 		</DataTemplate>
 
-		<!-- One KiCad net name: a click copies it (owner request, 2026-10-10), for pasting into the
-		     "Important signals" sheet. -->
+		<!-- One KiCad net - nothing to click since 2026-11-01 (owner request): every net has its "Add" in
+		     the Important KiCad signals part. -->
 		<DataTemplate x:Key="NetNameBadgeTemplate" DataType="local:KiCadNetNameBadge">
-			<!-- Focusable, and Enter or Space copies it too (code review, 2026-10-13). -->
 			<Border Classes="ReferenceBadge NetName"
 					Classes.Used="{Binding IsUsed}"
-					Cursor="Hand"
-					Focusable="True"
-					ToolTip.Tip="{Binding ToolTipText}"
-					Tapped="OnNetNameTapped"
-					KeyDown="OnNetNameKeyDown">
+					ToolTip.Tip="{Binding ToolTipText}">
 				<TextBlock Text="{Binding Name}" FontSize="12" />
 			</Border>
 		</DataTemplate>
@@ -86,26 +77,37 @@
 		<ItemsPanelTemplate x:Key="ReferenceBadgePanel">
 			<WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4" />
 		</ItemsPanelTemplate>
-	</Window.Resources>
+	</UserControl.Resources>
 
-	<Grid RowDefinitions="Auto,*,Auto" Margin="18">
+	<Grid RowDefinitions="Auto,*,Auto">
 
-		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
-			<TextBlock x:Name="HeaderText"
-					   FontSize="16"
-					   FontWeight="Bold" />
-			<TextBlock x:Name="IntroText"
-					   TextWrapping="Wrap"
-					   Text="Add the KiCad project that backs this board's pictures. The files are copied into your own local draft - your original project is left where it is." />
-		</StackPanel>
+		<!-- The part's headline, as the component pane's. -->
+		<Border Grid.Row="0"
+				BorderBrush="{DynamicResource Table_BorderRowLine}"
+				BorderThickness="0,0,0,1"
+				Padding="4,0,0,8">
+			<Grid ColumnDefinitions="*,Auto">
+				<StackPanel Grid.Column="0" Spacing="2">
+					<TextBlock x:Name="HeaderText"
+							   Text="KiCad: Files"
+							   FontSize="16"
+							   FontWeight="Bold" />
+					<TextBlock x:Name="IntroText"
+							   TextWrapping="Wrap"
+							   FontSize="11"
+							   Opacity="0.75"
+							   Text="Add the KiCad project that backs this board's pictures. The files are copied into your own local draft - your original project is left where it is." />
+				</StackPanel>
+				<!-- No Close (2026-10-30) - the left column's "Board status" goes back. -->
+			</Grid>
+		</Border>
 
-		<ScrollViewer x:Name="ContentScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto">
-			<StackPanel Spacing="18">
+		<ScrollViewer x:Name="ContentScrollViewer" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+			<StackPanel Spacing="18" Margin="4,12,12,12" MaxWidth="980" HorizontalAlignment="Left">
 
-				<!-- KiCad data, with the summary and the match report below it - the window's only part
-				     since the "Schematic images" half moved to the Contribute tab's Pictures (step 3). -->
+				<!-- KiCad data, with the summary and the match report below it - the panel's only part
+				     since the "Schematic images" half moved to the Contribute tab's Schematic images part (step 3). -->
 				<StackPanel x:Name="KiCadSection" Spacing="6">
-					<TextBlock Text="KiCad data" FontWeight="Bold" FontSize="14" />
 					<TextBlock TextWrapping="Wrap"
 							   FontSize="12"
 							   Opacity="0.8"
@@ -121,6 +123,17 @@
 									Content="Choose KiCad folder"
 									HorizontalAlignment="Center"
 									Click="OnImportKiCadClick" />
+
+							<!-- An import adds the KiCad board's components too (owner request, 2026-11-01: "it
+							     should add all components when importing the KiCad data ... Have checkbox if it
+							     should add all data automatically also?") - ticked until unticked, remembered. -->
+							<CheckBox x:Name="AddComponentsCheckBox"
+									  IsChecked="True"
+									  HorizontalAlignment="Center"
+									  ToolTip.Tip="Every component of the KiCad board that this board does not have yet is added - with its package and pins where the footprint says them. One step, so &quot;Undo&quot; takes them all back."
+									  IsCheckedChanged="OnAddComponentsCheckedChanged">
+								<TextBlock Text="Add the KiCad components to the board" />
+							</CheckBox>
 						</StackPanel>
 					</Border>
 
@@ -193,7 +206,12 @@
 						IsVisible="False">
 					<StackPanel Spacing="6">
 						<TextBlock Text="Summary" FontWeight="Bold" />
+						<!-- The board's KiCad files by kind - where the count beside "KiCad data" comes from
+						     (owner request, 2026-10-30). -->
+						<TextBlock x:Name="KiCadFilesText" TextWrapping="Wrap" IsVisible="False" />
 						<TextBlock x:Name="KiCadFoundText" TextWrapping="Wrap" />
+						<!-- What the import's "Add the KiCad components" did (2026-11-01). -->
+						<TextBlock x:Name="KiCadComponentsAddedText" TextWrapping="Wrap" FontWeight="SemiBold" IsVisible="False" />
 						<TextBlock x:Name="KiCadLeftOutText"
 								   TextWrapping="Wrap"
 								   FontSize="12"
@@ -207,6 +225,17 @@
 						<StackPanel x:Name="KiCadLeftToDoPanel" Spacing="2" IsVisible="False">
 							<TextBlock Text="Left to do" FontWeight="SemiBold" Margin="0,4,0,0" />
 							<TextBlock x:Name="KiCadLeftToDoText" TextWrapping="Wrap" />
+
+							<!-- The KiCad components the board still lacks - imported with the check box
+							     unticked, or deleted since - added in one go (Board status's "Add N from KiCad"
+							     until 2026-11-01). -->
+							<Button x:Name="AddKiCadComponentsButton"
+									Classes="Accept"
+									HorizontalAlignment="Left"
+									Margin="0,6,0,0"
+									IsVisible="False"
+									ToolTip.Tip="Add every component of the KiCad board that this board does not have yet - one step, so &quot;Undo&quot; takes them all back"
+									Click="OnAddKiCadComponentsClick" />
 						</StackPanel>
 					</StackPanel>
 				</Border>
@@ -267,10 +296,12 @@
 
 						<StackPanel x:Name="ViewNamesPanel" Spacing="3" IsVisible="False">
 							<TextBlock Text="KiCad views a picture can show" FontWeight="SemiBold" />
-							<TextBlock TextWrapping="Wrap"
+							<!-- Its text is ComponentPaneWording.KiCadViewsHint, set with the report - it names the
+							     part as the Contribute tab's left column does. -->
+							<TextBlock x:Name="ViewNamesHintText"
+									   TextWrapping="Wrap"
 									   FontSize="11"
-									   Opacity="0.8"
-									   Text="Each of these can be matched to one picture of the board. Pick it under &quot;Shows KiCad view&quot; on the picture's card - &quot;Pictures&quot; on the left of the Contribute tab." />
+									   Opacity="0.8" />
 							<TextBlock x:Name="ViewNamesListText" TextWrapping="Wrap" FontSize="12" />
 						</StackPanel>
 
@@ -282,15 +313,14 @@
 							<TextBlock TextWrapping="Wrap"
 									   FontSize="11"
 									   Opacity="0.8"
-									   Text="These rows of the board's &quot;Important signals&quot; sheet (display name: KiCad net name) name a net the KiCad data does not have, so the Schematics tab leaves them out. Use one of the net names below." />
+									   Text="These rows of the board's &quot;Important signals&quot; sheet (display name: KiCad net name) name a net the KiCad data does not have, so the &quot;Schematics&quot; tab leaves them out. Use one of the nets below." />
 							<ItemsControl x:Name="UnresolvedSignalsList"
 										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
 										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
 						</StackPanel>
 
-						<!-- Every net name of the KiCad data (owner request, 2026-10-10) - what the
-						     logfile listed as "normalized KiCad net name [...]", each one copied by a
-						     click for the "Important signals" sheet. -->
+						<!-- Every net of the KiCad data (owner request, 2026-10-10) - what the logfile
+						     listed as "normalized KiCad net name [...]". -->
 						<StackPanel x:Name="NetNamesPanel" Spacing="3" IsVisible="False">
 							<TextBlock x:Name="NetNamesHeaderText" FontWeight="SemiBold" />
 							<TextBlock x:Name="NetNamesIntroText"
@@ -307,19 +337,12 @@
 			</StackPanel>
 		</ScrollViewer>
 
-		<Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,14,0,0">
-			<TextBlock x:Name="StatusText"
-					   Grid.Column="0"
-					   VerticalAlignment="Center"
-					   TextWrapping="Wrap"
-					   FontSize="12" />
-			<Button Grid.Column="1"
-					Content="Close"
-					Click="OnCloseClick" />
-		</Grid>
-
-		<!-- "Please wait" over this window while images or KiCad files are copied and checked
-		     (2026-09-28) - see BusyOverlay. The -18 margin covers the grid's own margin. -->
-		<local:BusyOverlay Grid.RowSpan="3" Margin="-18" />
+		<!-- What the last import or removal did. Its "please wait" is CRT's own (BusyOverlay.For finds
+		     Main's) since the panel left its window. -->
+		<TextBlock x:Name="StatusText"
+				   Grid.Row="2"
+				   Margin="4,8,0,0"
+				   TextWrapping="Wrap"
+				   FontSize="12" />
 	</Grid>
-</Window>
+</UserControl>

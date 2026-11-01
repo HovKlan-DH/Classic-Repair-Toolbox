@@ -39,8 +39,11 @@ namespace Handlers.DataHandling
     //   - THE CATEGORY is the one the live boards use for that reference prefix (measured on the
     //     converted stable tree, 2026-10-26: every C is a Capacitor, every R and RP a Resistor, U and
     //     IC an IC, CR, D and DP a Diode, CN and P a Connector, Q and TR a Transistor) - KiCad's own
-    //     convention where the boards have none (J a connector, JP a jumper). The rest is Misc, as
-    //     ferrite beads, filters, coils, crystals and switches are there.
+    //     convention where the boards have none. The rest is Misc, as ferrite beads, filters, coils,
+    //     crystals, switches and jumpers are there. J IS A JUMPER, Misc (owner decision, 2026-10-31:
+    //     "the 'J' component should be a 'Misc' category, as it is a jumper") - on the live boards 30
+    //     of 32 J parts are jumpers filed as Misc, and every J of the shipped KiCad projects is one;
+    //     KiCad's own libraries call a connector J, which a contributor then changes by hand.
     //   - THE PACKAGE is ComponentVocabulary's word when the footprint's name says it AND its pads
     //     agree: a name STARTING "DIP-14_W7.62mm", "DIP16" or "PDIP-40" with that many pads
     //     ("Oscillator_DIP-14" is a can, "SOIC-DIP-8" surface-mounted), a 24- or 28-pin DIP "wide" when
@@ -113,6 +116,28 @@ namespace Handlers.DataHandling
             return found.Values
                 .OrderBy(component => Array.IndexOf(KiCadBoardComponents.CategoryOrder, component.Category))
                 .ThenBy(component => component.Label, NaturalLabelComparer.Instance)
+                .ToList();
+        }
+
+        // ###########################################################################################
+        // WHAT KICAD KNOWS BUT CANNOT PLACE (owner request, 2026-11-01: "components known by KiCad but
+        // needs manual marking"): the references of the schematic's symbols no footprint of the PCB
+        // file has - there is no footprint to draw a rectangle from. In natural order. With no PCB file
+        // at all, every symbol.
+        // ###########################################################################################
+        public static List<string> OnlyInSchematic(IReadOnlyList<KiCadFootprintInfo> footprints, IReadOnlyList<KiCadSymbolInfo> symbols)
+        {
+            ArgumentNullException.ThrowIfNull(footprints);
+            ArgumentNullException.ThrowIfNull(symbols);
+
+            var placed = new HashSet<string>(footprints.Select(footprint => footprint.Reference?.Trim() ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+
+            return symbols
+                .Where(symbol => KiCadBoardComponents.IsComponentReference(symbol.Reference))
+                .Select(symbol => symbol.Reference.Trim())
+                .Where(reference => !placed.Contains(reference))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(reference => reference, NaturalLabelComparer.Instance)
                 .ToList();
         }
 
@@ -220,7 +245,7 @@ namespace Handlers.DataHandling
                 "IC" => "IC",
                 _ when prefix.StartsWith('U') => "IC",
                 "CR" or "D" or "DA" or "DP" or "LED" or "ZD" => "Diode",
-                "P" or "J" or "KB" or "CON" or "EAR" or "MIC" => "Connector",
+                "P" or "KB" or "CON" or "EAR" or "MIC" => "Connector",
                 _ when prefix.StartsWith("CN", StringComparison.Ordinal) => "Connector",
                 "Q" or "TR" => "Transistor",
                 _ => "Misc",
@@ -292,7 +317,7 @@ namespace Handlers.DataHandling
 
         // ---- the rules ----------------------------------------------------------------------------
 
-        private static bool IsComponent(KiCadFootprintInfo footprint)
+        public static bool IsComponent(KiCadFootprintInfo footprint)
         {
             if (!KiCadBoardComponents.IsComponentReference(footprint.Reference))
                 return false;
@@ -302,14 +327,20 @@ namespace Handlers.DataHandling
 
             string name = footprint.Footprint ?? string.Empty;
 
-            return !name.Contains("MountingHole", StringComparison.OrdinalIgnoreCase) &&
+            // A mounting hole is what the footprint IS, by its library or its own name - never a name
+            // that only mentions one (owner report, 2026-11-01: the Open128's four D-sub connectors,
+            // "Connector_Dsub:DSUB-9_..._MountingHolesOffset8.20mm", were left off the board).
+            string ownName = name[(name.LastIndexOf(':') + 1)..];
+
+            return !name.StartsWith("MountingHole", StringComparison.OrdinalIgnoreCase) &&
+                   !ownName.StartsWith("MountingHole", StringComparison.OrdinalIgnoreCase) &&
                    !name.Contains("Fiducial", StringComparison.OrdinalIgnoreCase) &&
                    !name.Contains("NetTie", StringComparison.OrdinalIgnoreCase);
         }
 
         // A reference a part has - not KiCad's placeholders: "REF**", a power symbol's "#PWR01", an
         // unannotated "U?".
-        private static bool IsComponentReference(string? reference)
+        public static bool IsComponentReference(string? reference)
         {
             string text = reference?.Trim() ?? string.Empty;
 

@@ -235,13 +235,20 @@ namespace Handlers.MaintainerHandling
         int Entries,
         string Message);
 
+    // ReorderedSections: the sheets whose rows the submission put in another order (2026-10-30 -
+    // order is a change); empty from a server that does not say. RegionsNow: what the board says about
+    // its regions after a submission that changes it (2026-11-01); null when it does not.
     public sealed record ReviewChangeSummaryView(
         bool IsNewBoard,
-        IReadOnlyList<ReviewSectionView> Sections)
+        IReadOnlyList<ReviewSectionView> Sections,
+        IReadOnlyList<string>? ReorderedSections = null,
+        bool? RegionsNow = null)
     {
+        public IReadOnlyList<string> ReorderedSections { get; init; } = ReorderedSections ?? [];
+
         public int TotalChanges => this.Sections.Sum(section => section.TotalChanges);
 
-        public bool HasChanges => this.TotalChanges > 0;
+        public bool HasChanges => this.TotalChanges > 0 || this.ReorderedSections.Count > 0 || this.RegionsNow is not null;
     }
 
     public sealed record ReviewSectionView(

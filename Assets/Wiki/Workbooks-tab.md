@@ -35,7 +35,7 @@ Every worklog has a category and a state:
 | Cosmetic | Condition, not function |
 | Issue | An actual fault |
 
-State is **Open** or **Closed**. The category decides the colour the worklog is drawn in on the board.
+State is **Open** or **Closed**. The category decides the color the worklog is drawn in on the board.
 
 ## Open or Closed workbooks
 

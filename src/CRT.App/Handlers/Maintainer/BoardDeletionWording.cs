@@ -41,7 +41,7 @@ namespace Handlers.MaintainerHandling
         public const string CannotBeUndone = "This cannot be undone.";
 
         public const string SharedFilesKept =
-            "Shared files the board uses are kept. Any that nothing else uses are then listed under Unused files.";
+            "Shared files the board uses are kept. Any that nothing else uses are then listed under \"Unused files\".";
 
         public const string ReasonPrompt = "Why? Each contributor above is told this, and nothing else.";
 

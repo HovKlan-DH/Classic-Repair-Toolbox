@@ -8,13 +8,13 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// THE START PANEL'S LISTS (TabDrafts.Readiness.cs - CRT 4.0 step 3, slice 3a: "Getting this board
-// ready ... On an existing board, the same panel shows What's missing").
+// "BOARD STATUS" (TabDrafts.Readiness.cs; owner request, 2026-11-01: "each point in its own panel with a
+// headline, then an explanation what this is about, a button for it and lastly also a status").
 //
-// A new board - one only a draft has - shows its checklist, each step done by what the draft held in
-// memory says, with a button to the tool that does it; the KiCad data's facts arrive a moment later
-// into the SAME rows. An existing board shows what it lacks, each component a click away, worked out
-// again when the start panel comes back.
+// A panel per part of the board, new or published, each from what the draft held in memory says, with
+// a button to the part; the KiCad data's facts arrive a moment later into the SAME panels. Under
+// Components what each lacks, a click away. Worked out again when the page comes back. What a panel
+// says is BoardStatusPage's (BoardStatusPageTests) - these cover how the tab shows it.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class TabDraftsReadinessTests : IDisposable
@@ -85,30 +85,39 @@ public sealed class TabDraftsReadinessTests : IDisposable
         Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC", FriendlyName = "CPU" }],
     };
 
-    // The step buttons, by the step they do.
-    private static Dictionary<ReadinessStepKind, Button> StepButtons(TabDrafts tab) =>
-        tab.GetControl<StackPanel>("ReadinessStepsPanel")
+    // A panel's lines, as it says them.
+    private static List<string> LinesOf(TabDrafts tab, BoardStatusPart part) =>
+        tab.StatusPanelForTests(part).Lines.Select(line => line.Text).ToList();
+
+    // The buttons of the components listed under the Components panel.
+    private static List<Button> ComponentButtons(TabDrafts tab) =>
+        tab.GetControl<StackPanel>("StatusPanelsHost")
             .GetLogicalDescendants()
             .OfType<Button>()
-            .Where(button => button.Tag is ReadinessStepKind)
-            .ToDictionary(button => (ReadinessStepKind)button.Tag!);
+            .Where(button => button.Tag is string)
+            .ToList();
 
+    // Long enough for a busy machine, and failing HERE when it never comes - half a second, given up
+    // silently, failed later as something else (2026-11-01).
     private static async Task Until(Func<bool> condition)
     {
-        for (int attempt = 0; attempt < 50 && !condition(); attempt++)
+        for (int attempt = 0; attempt < 3000 && !condition(); attempt++)
         {
             Dispatcher.UIThread.RunJobs();
             await Task.Delay(10);
         }
+
+        Assert.True(condition(), "What this test waits for never came.");
     }
 
     // ###########################################################################################
-    // A new board without KiCad data: the checklist from its draft, the KiCad steps skipped with no
-    // button, the next step's button there - and the two buttons that go ahead and make something
-    // green (CLAUDE.md, button colours). Nothing of "What's missing".
+    // A new board without KiCad data: its panels from its draft, in the page's order, each with its
+    // button - plain, every one of them opens its part (CLAUDE.md, button colors), none with "...". The
+    // KiCad project is optional, so its panel is neither done nor missing, and neither is Important
+    // KiCad signals, which need it.
     // ###########################################################################################
     [Fact]
-    public async Task A_new_board_shows_its_checklist_from_its_draft()
+    public async Task A_new_board_shows_its_panels_from_its_draft()
     {
         WriteDraft(NewBoard, Started());
 
@@ -119,39 +128,52 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.ShowBoard(entry, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
 
-            Assert.True(tab.GetControl<StackPanel>("ReadinessPanel").IsVisible);
-            Assert.False(tab.GetControl<StackPanel>("MissingPanel").IsVisible);
+            Assert.True(tab.GetControl<StackPanel>("StatusPanelsHost").IsVisible);
 
-            Dictionary<ReadinessStepKind, ReadinessStep> steps = tab.ReadinessForTests.ToDictionary(step => step.Kind);
-            Assert.Equal(9, steps.Count);
-            Assert.Equal(ReadinessState.Done, steps[ReadinessStepKind.Pictures].State);
-            Assert.Equal(ReadinessState.Skipped, steps[ReadinessStepKind.Match].State);
-            Assert.Equal(ReadinessState.Next, steps[ReadinessStepKind.Mark].State);
+            // Its picture's file is not there: said on the images' panel, and no panel of problems.
+            Assert.Equal(
+                [
+                    BoardStatusPart.Name, BoardStatusPart.Regions, BoardStatusPart.KiCad, BoardStatusPart.Signals, BoardStatusPart.Pictures,
+                    BoardStatusPart.Categories, BoardStatusPart.Components, BoardStatusPart.Files, BoardStatusPart.Links, BoardStatusPart.Credits,
+                ],
+                tab.StatusPanelsForTests.Select(panel => panel.Part));
 
-            Dictionary<ReadinessStepKind, Button> buttons = StepButtons(tab);
-            Assert.False(buttons[ReadinessStepKind.Name].IsVisible);
-            Assert.False(buttons[ReadinessStepKind.Match].IsVisible);
-            Assert.False(buttons[ReadinessStepKind.Signals].IsVisible);
-            Assert.True(buttons[ReadinessStepKind.Mark].IsVisible);
-            Assert.Equal("Mark components", buttons[ReadinessStepKind.Mark].Content);
-            Assert.Equal("KiCad data", buttons[ReadinessStepKind.KiCad].Content);
+            Assert.Contains(LinesOf(tab, BoardStatusPart.Pictures), line => line.StartsWith("Error - ", StringComparison.Ordinal));
+            Assert.True(tab.StatusTableButtonForTests(BoardStatusPart.Pictures).IsVisible);
+            Assert.False(tab.StatusTableButtonForTests(BoardStatusPart.Files).IsVisible);
 
-            Assert.Contains("Accept", buttons[ReadinessStepKind.Components].Classes);
-            Assert.Contains("Accept", buttons[ReadinessStepKind.Submit].Classes);
-            Assert.DoesNotContain("Accept", buttons[ReadinessStepKind.Mark].Classes);
-            Assert.DoesNotContain("Accept", buttons[ReadinessStepKind.KiCad].Classes);
+            Assert.Equal(BoardStatusState.Done, tab.StatusPanelForTests(BoardStatusPart.Name).State);
+            Assert.Equal(BoardStatusState.Optional, tab.StatusPanelForTests(BoardStatusPart.KiCad).State);
+            Assert.Equal(BoardStatusState.Error, tab.StatusPanelForTests(BoardStatusPart.Pictures).State);
+            Assert.Equal(BoardStatusState.Optional, tab.StatusPanelForTests(BoardStatusPart.Signals).State);
 
-            // No button label ends in "..." (CLAUDE.md).
-            Assert.All(buttons.Values, button => Assert.DoesNotContain("...", button.Content as string ?? string.Empty, StringComparison.Ordinal));
+            // U1 is marked on no image: a warning, said by the group of buttons.
+            Assert.Equal(BoardStatusState.ToDo, tab.StatusPanelForTests(BoardStatusPart.Components).State);
+            Assert.Equal(BoardStatusState.ToDo, tab.StatusPanelForTests(BoardStatusPart.Credits).State);
+
+            foreach (BoardStatusPanel panel in tab.StatusPanelsForTests)
+            {
+                Button button = tab.StatusButtonForTests(panel.Part);
+
+                Assert.True(tab.StatusBorderForTests(panel.Part).IsVisible);
+                Assert.Equal(panel.Action, button.Content);
+                Assert.DoesNotContain("Accept", button.Classes);
+                Assert.DoesNotContain("...", panel.Action, StringComparison.Ordinal);
+            }
+
+            // Its frame and its icon say how far it is - classes, so the theme's colors apply.
+            Assert.Contains("done", tab.StatusBorderForTests(BoardStatusPart.Name).Classes);
+            Assert.Contains("todo", tab.StatusBorderForTests(BoardStatusPart.Credits).Classes);
+            Assert.Contains("optional", tab.StatusBorderForTests(BoardStatusPart.KiCad).Classes);
         });
     }
 
     // ###########################################################################################
-    // With KiCad files in the draft the steps are shown at once, then again once the KiCad data is
-    // read - into the SAME rows, so a button pressed while it arrives is not thrown away.
+    // With KiCad files in the draft the panels are shown at once, then again once the KiCad data is
+    // read - into the SAME panels, so a button pressed while it arrives is not thrown away.
     // ###########################################################################################
     [Fact]
-    public async Task The_KiCad_facts_arrive_into_the_same_rows()
+    public async Task The_KiCad_facts_arrive_into_the_same_panels()
     {
         WriteDraft(NewBoard, Started(), "KiCad data/board.kicad_pcb");
 
@@ -188,29 +210,32 @@ public sealed class TabDraftsReadinessTests : IDisposable
             await Until(() => asked.Count == 1);
 
             // Shown from the draft while the KiCad data is read.
-            Assert.Equal("Reading the KiCad data...", tab.ReadinessForTests.Single(step => step.Kind == ReadinessStepKind.Match).Detail);
-            Assert.Equal("Components (1)", tab.ReadinessForTests.Single(step => step.Kind == ReadinessStepKind.Components).Title);
-            Button before = StepButtons(tab)[ReadinessStepKind.Components];
+            Assert.Contains(BoardStatusPage.ReadingKiCad, LinesOf(tab, BoardStatusPart.KiCad));
+            Assert.Contains("1 KiCad file imported", LinesOf(tab, BoardStatusPart.KiCad));
+            Assert.DoesNotContain(LinesOf(tab, BoardStatusPart.Components), line => line.Contains("not on the board yet", StringComparison.Ordinal));
+            Button before = tab.StatusButtonForTests(BoardStatusPart.Components);
+            int panels = tab.GetControl<StackPanel>("StatusPanelsHost").Children.Count;
 
             read.SetResult(root);
             await tab.ReadinessShownForTests;
 
             Assert.Equal([NewBoard], asked);
-            Dictionary<ReadinessStepKind, ReadinessStep> steps = tab.ReadinessForTests.ToDictionary(step => step.Kind);
-            Assert.Equal("Components - 2 found in KiCad", steps[ReadinessStepKind.Components].Title);
-            Assert.Equal(ReadinessState.Done, steps[ReadinessStepKind.Match].State);
-            Assert.Equal(ReadinessState.Next, steps[ReadinessStepKind.Align].State);
+            Assert.DoesNotContain(BoardStatusPage.ReadingKiCad, LinesOf(tab, BoardStatusPart.KiCad));
+            Assert.Contains("2 components can be marked automatically", LinesOf(tab, BoardStatusPart.KiCad));
+            Assert.Contains("1 image known by KiCad data", LinesOf(tab, BoardStatusPart.Pictures));
+            Assert.Contains("1 KiCad file not aligned yet", LinesOf(tab, BoardStatusPart.Pictures));
+            Assert.Contains(LinesOf(tab, BoardStatusPart.Components), line => line.Contains("not on the board yet", StringComparison.Ordinal));
+            Assert.Contains("1 component is not on the board yet", LinesOf(tab, BoardStatusPart.KiCad));
 
-            Assert.Same(before, StepButtons(tab)[ReadinessStepKind.Components]);
-            Assert.Equal(9, tab.GetControl<StackPanel>("ReadinessStepsPanel").Children.Count);
-            Assert.True(StepButtons(tab)[ReadinessStepKind.Match].IsVisible);
+            Assert.Same(before, tab.StatusButtonForTests(BoardStatusPart.Components));
+            Assert.Equal(panels, tab.GetControl<StackPanel>("StatusPanelsHost").Children.Count);
         });
     }
 
-    // A step's button opens its tool: "Important signals" the board's list in the pane, "Add
-    // component" the pane's form for a new one.
+    // A panel's button opens its part: "Important KiCad signals" the board's list in the pane,
+    // "Components" the list in the left column.
     [Fact]
-    public async Task A_steps_button_opens_the_tool_that_does_it()
+    public async Task A_panels_button_opens_its_part()
     {
         WriteDraft(NewBoard, Started(), "KiCad data/board.kicad_pcb");
 
@@ -223,7 +248,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.ShowBoard(entry, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
 
-            StepButtons(tab)[ReadinessStepKind.Signals].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            tab.StatusButtonForTests(BoardStatusPart.Signals).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => tab.IsComponentOpen);
 
             Assert.Equal(PaneBoardPart.ImportantSignals, tab.ComponentPaneForTests.BoardPart);
@@ -232,17 +257,19 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.CloseComponent();
             Assert.True(tab.GetControl<StackPanel>("StartPanel").IsVisible);
 
-            StepButtons(tab)[ReadinessStepKind.Components].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            tab.StatusButtonForTests(BoardStatusPart.Components).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => tab.IsComponentOpen);
 
-            Assert.True(tab.ComponentPaneForTests.IsNewComponentForm);
+            Assert.Null(tab.ComponentPaneForTests.BoardPart);
+            Assert.Null(tab.SelectedNavEntryForTests);
         });
     }
 
     // ###########################################################################################
-    // "Add N from KiCad" (the plan: "one press adds every KiCad component that isn't on the board
-    // yet"): into the draft held in memory as ONE step - saved, and one Undo away - with what came of
-    // it said under the checklist, and the step done once all are there.
+    // Adding the KiCad components (the plan: "one press adds every KiCad component that isn't on the
+    // board yet" - the KiCad import's since 2026-11-01, owner request: "Then you can delete this option
+    // from 'Board status'"): into the draft held in memory as ONE step - saved, and one Undo away - with
+    // what came of it said over the panels, and Components done once all are there.
     // ###########################################################################################
     [Fact]
     public async Task Add_from_KiCad_puts_every_missing_component_into_the_draft_as_one_step()
@@ -285,12 +312,12 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.ShowBoard(entry, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
 
-            Button add = StepButtons(tab)[ReadinessStepKind.Components];
-            Assert.Equal("Add 2 from KiCad", add.Content);
-            Assert.Contains("Accept", add.Classes);
+            Assert.Equal(BoardStatusState.ToDo, tab.StatusPanelForTests(BoardStatusPart.Components).State);
+            Assert.Contains(
+                "2 components in the KiCad data are not on the board yet - \"KiCad: Files\" adds them",
+                LinesOf(tab, BoardStatusPart.Components));
 
-            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await Until(() => tab.ReadinessNoteForTests is not null);
+            await AddFromKiCad(tab);
             await tab.ReadinessShownForTests;
 
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, NewBoard)!;
@@ -300,9 +327,10 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Equal([NewBoard], reloaded);
 
             Assert.Equal("Added 2 components from KiCad - 1 with its pins.", tab.ReadinessNoteForTests);
-            ReadinessStep components = tab.ReadinessForTests.Single(step => step.Kind == ReadinessStepKind.Components);
-            Assert.Equal(ReadinessState.Done, components.State);
-            Assert.Equal("Add component", StepButtons(tab)[ReadinessStepKind.Components].Content);
+
+            // Nothing of the KiCad data is left to add - marked on no image yet, they are still to do.
+            Assert.DoesNotContain(LinesOf(tab, BoardStatusPart.Components), line => line.Contains("not on the board yet", StringComparison.Ordinal));
+            Assert.Equal(BoardStatusState.ToDo, tab.StatusPanelForTests(BoardStatusPart.Components).State);
 
             // One step: one Undo takes all of them back.
             Assert.Equal(DraftStepWording.ComponentsFromKiCad(2), session.UndoDescription);
@@ -311,23 +339,193 @@ public sealed class TabDraftsReadinessTests : IDisposable
         });
     }
 
+    // A KiCad board of three DIP-16 chips, U1 to U3, as a .kicad_pcb file.
+    private const string ThreeChipPcb = """
+    (kicad_pcb (version 20221018) (generator pcbnew)
+      (net 0 "")
+      (net 1 "GND")
+      (footprint "Package_DIP:DIP-16_W7.62mm" (layer "F.Cu") (at 100 50) (property "Reference" "U1")
+        (pad "1" thru_hole rect (at 0 0) (size 1.6 1.6) (layers "*.Cu") (net 1 "GND")))
+      (footprint "Package_DIP:DIP-16_W7.62mm" (layer "F.Cu") (at 120 50) (property "Reference" "U2")
+        (pad "1" thru_hole rect (at 0 0) (size 1.6 1.6) (layers "*.Cu") (net 1 "GND")))
+      (footprint "Package_DIP:DIP-16_W7.62mm" (layer "F.Cu") (at 140 50) (property "Reference" "U3")
+        (pad "1" thru_hole rect (at 0 0) (size 1.6 1.6) (layers "*.Cu") (net 1 "GND")))
+    )
+    """;
+
+    // ###########################################################################################
+    // *** THE KiCad IMPORT ADDS THE KiCad BOARD'S COMPONENTS (owner request, 2026-11-01: "it should add
+    // all components when importing the KiCad data. Then you can delete this option from 'Board status'
+    // ... Have checkbox if it should add all data automatically also?"). *** Unticked - as remembered -
+    // an import adds none, and "KiCad data"'s summary offers them, one press adding them as one step;
+    // ticked - the choice remembered - an import adds them itself and says so.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_KiCad_import_adds_the_KiCad_components_while_its_box_is_ticked()
+    {
+        WriteDraft(NewBoard, Started());
+
+        string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "board.kicad_pcb"), ThreeChipPcb);
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("999001", NewBoard, draftOnly: true);
+            TabDrafts tab = Tab(entry);
+            tab.BoardKiCadOverrideForTests = _ => Task.FromResult<KiCadProjectRoot?>(KiCadWith("U1", "U2", "U3"));
+            tab.ReloadBoardOverrideForTests = _ => { };
+
+            bool adds = false;
+            var remembered = new List<bool>();
+            tab.KiCadImportAddsComponents = () => adds;
+            tab.RememberKiCadImportAddsComponents = value =>
+            {
+                remembered.Add(value);
+                adds = value;
+            };
+
+            tab.ShowBoard(entry, Started(), "PAL", null);
+            await tab.OpenKiCadAsync();
+
+            KiCadDataPanel panel = Assert.IsType<KiCadDataPanel>(tab.KiCadPanelForTests);
+            await panel.Opening;
+
+            CheckBox box = panel.GetControl<CheckBox>("AddComponentsCheckBox");
+            Button addButton = panel.GetControl<Button>("AddKiCadComponentsButton");
+            Assert.False(box.IsChecked);
+            Assert.Empty(remembered);
+
+            // Unticked: the import adds none, and the summary offers them.
+            await panel.ImportKiCadFolderAsync(source);
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, NewBoard)!;
+            Assert.Equal(["U1"], session.Content.Board.Components.Select(row => row.BoardLabel));
+            Assert.Null(panel.ComponentsAddedNoteForTests);
+            Assert.True(addButton.IsVisible);
+            Assert.Equal("Add 2 components from KiCad", addButton.Content);
+            Assert.Contains("Accept", addButton.Classes);
+
+            // One press adds them, as one step.
+            addButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => session.Content.Board.Components.Count == 3);
+            await panel.DraftChanging;
+
+            Assert.Equal(["U1", "U2", "U3"], session.Content.Board.Components.Select(row => row.BoardLabel));
+            Assert.Equal(DraftStepWording.ComponentsFromKiCad(2), session.UndoDescription);
+            Assert.False(session.HasUnsavedChanges);
+            Assert.StartsWith("Added 2 components from KiCad", panel.ComponentsAddedNoteForTests);
+            Assert.False(addButton.IsVisible);
+
+            // Ticked - and remembered - the next import adds them itself.
+            session.Undo();
+            box.IsChecked = true;
+            Assert.Equal([true], remembered);
+
+            await panel.ImportKiCadFolderAsync(source);
+
+            Assert.Equal(["U1", "U2", "U3"], session.Content.Board.Components.Select(row => row.BoardLabel));
+            Assert.Equal(DraftStepWording.ComponentsFromKiCad(2), session.UndoDescription);
+            Assert.StartsWith("Added 2 components from KiCad", panel.ComponentsAddedNoteForTests);
+            Assert.False(addButton.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** "KiCad DATA" FOLLOWS THE HEADER'S UNDO AND REDO (code review, 2026-11-01). *** It was a modal
+    // window until 2026-10-30; a panel stays on screen beside them, and went on saying the components
+    // were added, with its "Add N components from KiCad" hidden and its report judging the KiCad data
+    // against the labels from before - until something else was opened and it was opened again.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_KiCad_panel_follows_the_headers_undo_and_redo()
+    {
+        WriteDraft(NewBoard, Started());
+
+        string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "board.kicad_pcb"), ThreeChipPcb);
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("999001", NewBoard, draftOnly: true);
+            TabDrafts tab = Tab(entry);
+            tab.BoardKiCadOverrideForTests = _ => Task.FromResult<KiCadProjectRoot?>(KiCadWith("U1", "U2", "U3"));
+
+            var reloaded = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloaded.Add;
+            tab.KiCadImportAddsComponents = () => true;
+
+            tab.ShowBoard(entry, Started(), "PAL", null);
+            await tab.OpenKiCadAsync();
+
+            KiCadDataPanel panel = Assert.IsType<KiCadDataPanel>(tab.KiCadPanelForTests);
+            await panel.Opening;
+            await panel.ImportKiCadFolderAsync(source);
+
+            Button addButton = panel.GetControl<Button>("AddKiCadComponentsButton");
+            Assert.StartsWith("Added 2 components from KiCad", panel.ComponentsAddedNoteForTests);
+            Assert.False(addButton.IsVisible);
+            Assert.DoesNotContain("U2", KiCadUnlabelled(panel));
+
+            // The header's Undo: they are gone, and the panel says so.
+            reloaded.Clear();
+            await tab.UndoAsync(entry);
+            await panel.DraftChanging;
+
+            Assert.Null(panel.ComponentsAddedNoteForTests);
+            Assert.True(addButton.IsVisible);
+            Assert.Equal("Add 2 components from KiCad", addButton.Content);
+            Assert.Contains("U2", KiCadUnlabelled(panel));
+
+            // Followed once, and no change of its own: the board on screen read again once.
+            Assert.Equal([NewBoard], reloaded);
+
+            // The header's Redo: they are back.
+            await tab.RedoAsync(entry);
+            await panel.DraftChanging;
+
+            Assert.False(addButton.IsVisible);
+            Assert.DoesNotContain("U2", KiCadUnlabelled(panel));
+        });
+    }
+
+    // The references the panel's report lists as not labelled on the board yet.
+    private static List<string> KiCadUnlabelled(KiCadDataPanel panel) =>
+        (panel.GetControl<ItemsControl>("UnusedList").ItemsSource ?? Array.Empty<string>()).Cast<string>().ToList();
+
+    // ###########################################################################################
+    // "Add N components from KiCad" - the way a contributor adds them since 2026-11-01: on the KiCad
+    // data panel's summary, which catches up with the change as it ends, and back to Board status.
+    // ###########################################################################################
+    private static async Task AddFromKiCad(TabDrafts tab)
+    {
+        await tab.OpenKiCadAsync();
+
+        KiCadDataPanel panel = Assert.IsType<KiCadDataPanel>(tab.KiCadPanelForTests);
+        await panel.Opening;
+        await panel.AddKiCadComponentsNowAsync();
+
+        await tab.CloseKiCadAsync();
+    }
+
     // The suggested matches' "Use" buttons, in the order shown, and "Use all".
     private static List<Button> UseButtons(TabDrafts tab) =>
-        tab.GetControl<StackPanel>("ReadinessStepsPanel")
+        tab.GetControl<StackPanel>("StatusPanelsHost")
             .GetLogicalDescendants()
             .OfType<Button>()
             .Where(button => button.Tag is SchematicCadNameSuggestion)
             .ToList();
 
     private static Button UseAllButton(TabDrafts tab) =>
-        tab.GetControl<StackPanel>("ReadinessStepsPanel")
+        tab.GetControl<StackPanel>("StatusPanelsHost")
             .GetLogicalDescendants()
             .OfType<Button>()
             .Single(button => button.Content is string label && label.StartsWith("Use all", StringComparison.Ordinal));
 
     // ###########################################################################################
-    // The plan's "Match: suggested pairs ("...Top.png" with "PCB Top") to confirm": listed under the
-    // Match step once the KiCad data is read, each with a green "Use" - one taken is ONE step, its
+    // The plan's "Match: suggested pairs ("...Top.png" with "PCB Top") to confirm": listed under
+    // Schematic images once the KiCad data is read, each with a green "Use" - one taken is ONE step, its
     // CAD name in the draft held in memory and saved, the rest left standing in their same rows; "Use
     // all" takes the rest as one step.
     // ###########################################################################################
@@ -404,7 +602,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Equal(DraftStepWording.PicturesMatched(["Bottom (replica)", "Main sheet"]), session.UndoDescription);
             Assert.Empty(UseButtons(tab));
             Assert.False(UseAllButton(tab).IsVisible);
-            Assert.Equal(ReadinessState.Done, tab.ReadinessForTests.Single(step => step.Kind == ReadinessStepKind.Match).State);
+            Assert.Contains("3 KiCad files mapped", LinesOf(tab, BoardStatusPart.Pictures));
         });
     }
 
@@ -469,12 +667,12 @@ public sealed class TabDraftsReadinessTests : IDisposable
     };
 
     // ###########################################################################################
-    // Another new board shown: the checklist that was on screen goes at once, never left standing
-    // under the next board's header (code review, 2026-10-26) - and for good when that board's draft
-    // cannot be opened, its buttons acting on the board shown.
+    // Another new board shown: the page that was on screen goes at once, never left standing under the
+    // next board's header (code review, 2026-10-26) - and for good when that board's draft cannot be
+    // opened, its buttons acting on the board shown.
     // ###########################################################################################
     [Fact]
-    public async Task Another_boards_checklist_never_stands_under_this_board()
+    public async Task Another_boards_page_never_stands_under_this_board()
     {
         const string Broken = "Commodore/C64/999002/board.json";
 
@@ -493,21 +691,24 @@ public sealed class TabDraftsReadinessTests : IDisposable
 
             tab.ShowBoard(first, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
-            Assert.True(tab.GetControl<StackPanel>("ReadinessPanel").IsVisible);
+            Assert.True(tab.GetControl<StackPanel>("StatusPanelsHost").IsVisible);
 
             tab.ShowBoard(second, new BoardData(), "PAL", null);
-            Assert.False(tab.GetControl<StackPanel>("ReadinessPanel").IsVisible);
-            Assert.Empty(tab.ReadinessForTests);
 
+            // Nothing of the first board stands: what shows is this board's, as far as known.
+            Assert.DoesNotContain("1 component", LinesOf(tab, BoardStatusPart.Components));
+
+            // Its draft cannot be opened: nothing shows at all.
             await tab.ReadinessShownForTests;
-            Assert.False(tab.GetControl<StackPanel>("ReadinessPanel").IsVisible);
+            Assert.False(tab.GetControl<StackPanel>("StatusPanelsHost").IsVisible);
+            Assert.Empty(tab.StatusPanelsForTests);
         });
     }
 
     // ###########################################################################################
     // The start panel back - the pane closed - shows the board's KiCad facts as they were while they
-    // are read again (code review, 2026-10-26: each came back as if unknown, "Add N from KiCad" turned
-    // into "Add component" for a moment, and a click then opened the wrong thing).
+    // are read again (code review, 2026-10-26: each came back as if unknown - the KiCad components the
+    // board lacks forgotten for a moment, and a click then opened the wrong thing).
     // ###########################################################################################
     [Fact]
     public async Task The_start_panel_back_keeps_the_KiCad_facts_while_they_are_read_again()
@@ -521,16 +722,20 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.BoardKiCadOverrideForTests = _ => Task.FromResult<KiCadProjectRoot?>(KiCadWith("U1", "U2"));
             tab.ShowBoard(entry, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
-            Assert.Equal("Add 1 from KiCad", StepButtons(tab)[ReadinessStepKind.Components].Content);
+            Assert.Contains(
+                "1 component in the KiCad data is not on the board yet - \"KiCad: Files\" adds it",
+                LinesOf(tab, BoardStatusPart.Components));
 
             var read = new TaskCompletionSource<KiCadProjectRoot?>();
             tab.BoardKiCadOverrideForTests = _ => read.Task;
 
             await tab.OpenComponentAsync("U1");
             tab.CloseComponent();
-            await Until(() => tab.ReadinessForTests.Count > 0);
+            await Until(() => tab.StatusPanelsForTests.Count > 0);
 
-            Assert.Equal("Add 1 from KiCad", StepButtons(tab)[ReadinessStepKind.Components].Content);
+            Assert.Contains(
+                "1 component in the KiCad data is not on the board yet - \"KiCad: Files\" adds it",
+                LinesOf(tab, BoardStatusPart.Components));
 
             read.SetResult(KiCadWith("U1", "U2"));
             await tab.ReadinessShownForTests;
@@ -561,7 +766,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             written.Components.Add(new ComponentEntry { BoardLabel = "U2", Category = "IC" });
             WriteDraft(NewBoard, written, "KiCad data/board.kicad_pcb");
 
-            await tab.AddFromKiCadAsync();
+            await AddFromKiCad(tab);
 
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, NewBoard)!;
             Assert.Equal(["U1", "U2", "U3"], session.Content.Board.Components.Select(row => row.BoardLabel));
@@ -586,7 +791,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.ShowBoard(entry, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
 
-            await tab.AddFromKiCadAsync();
+            await AddFromKiCad(tab);
             await tab.ReadinessShownForTests;
             Assert.NotNull(tab.ReadinessNoteForTests);
 
@@ -595,7 +800,9 @@ public sealed class TabDraftsReadinessTests : IDisposable
             await tab.ReadinessShownForTests;
 
             Assert.Null(tab.ReadinessNoteForTests);
-            Assert.Equal("Add 1 from KiCad", StepButtons(tab)[ReadinessStepKind.Components].Content);
+            Assert.Contains(
+                "1 component in the KiCad data is not on the board yet - \"KiCad: Files\" adds it",
+                LinesOf(tab, BoardStatusPart.Components));
         });
     }
 
@@ -619,7 +826,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.ReloadBoardOverrideForTests = reloaded.Add;
             tab.ShowBoard(entry, new BoardData(), "PAL", null);
 
-            await tab.AddFromKiCadAsync();
+            await AddFromKiCad(tab);
 
             Assert.Equal(DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.NoDraft), tab.DraftProblemForTests);
             Assert.Empty(reloaded);
@@ -642,7 +849,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.ShowBoard(entry, Started(), "PAL", null);
             await tab.ReadinessShownForTests;
 
-            await tab.AddFromKiCadAsync();
+            await AddFromKiCad(tab);
 
             Assert.Equal(BoardReadiness.KiCadNotRead, tab.ReadinessNoteForTests);
             Assert.Empty(reloaded);
@@ -666,11 +873,11 @@ public sealed class TabDraftsReadinessTests : IDisposable
             TabDrafts tab = Tab(entry);
             tab.ShowBoard(entry, board, "PAL", null);
 
-            Button before = tab.GetControl<StackPanel>("MissingGroupsPanel").GetLogicalDescendants().OfType<Button>().First();
+            Button before = ComponentButtons(tab)[0];
 
             tab.ShowBoard(entry, board, "PAL", null);
 
-            Assert.Same(before, tab.GetControl<StackPanel>("MissingGroupsPanel").GetLogicalDescendants().OfType<Button>().First());
+            Assert.Same(before, ComponentButtons(tab)[0]);
         });
     }
 
@@ -741,12 +948,11 @@ public sealed class TabDraftsReadinessTests : IDisposable
             tab.PublishedBoardOverrideForTests = _ => board;
             tab.ShowBoard(entry, board, "PAL", null);
 
-            Assert.False(tab.GetControl<StackPanel>("ReadinessPanel").IsVisible);
-            Assert.True(tab.GetControl<StackPanel>("MissingPanel").IsVisible);
+            Assert.True(tab.GetControl<StackPanel>("StatusPanelsHost").IsVisible);
             Assert.Equal(["U8"], tab.MissingForTests!.WithoutDescription);
             Assert.Equal(["U8", "U9"], tab.MissingForTests.Unmarked);
 
-            List<Button> labels = tab.GetControl<StackPanel>("MissingGroupsPanel").GetLogicalDescendants().OfType<Button>().ToList();
+            List<Button> labels = ComponentButtons(tab);
             Assert.Equal(["U8", "U8", "U9"], labels.Select(button => button.Content as string));
 
             labels[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -775,26 +981,114 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Empty(tab.MissingForTests!.WithoutDescription);
             Assert.Equal(
                 [BoardReadiness.UnmarkedHeading(2)],
-                tab.GetControl<StackPanel>("MissingGroupsPanel").GetLogicalDescendants().OfType<TextBlock>()
-                    .Select(text => text.Text).Where(text => text?.StartsWith("Not marked", StringComparison.Ordinal) == true));
+                tab.GetControl<StackPanel>("StatusPanelsHost").GetLogicalDescendants().OfType<TextBlock>()
+                    .Select(text => text.Text).Where(text => text?.StartsWith("Warning - not marked", StringComparison.Ordinal) == true));
         });
     }
 
-    // Nothing lacking: one line saying so, no groups.
+    // ###########################################################################################
+    // Nothing lacking - a picture and a credit there, no component to mark: its panels done, no Errors
+    // and warnings panel. The groups under Components are kept, hidden, for the next board (made once -
+    // code review, 2026-10-26).
+    // ###########################################################################################
     [Fact]
-    public void A_board_lacking_nothing_says_so()
+    public void A_board_lacking_nothing_shows_its_panels_done()
     {
-        WriteDraft(OldBoard, new BoardData());
+        WriteDraft(OldBoard, Whole(), "Images/top.png");
 
         UiTest.Run(() =>
         {
             HardwareBoardEntry entry = Entry("250407", OldBoard, draftOnly: false);
             TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, Whole(), "PAL", null);
+
+            Assert.Equal([], tab.MissingForTests!.BoardGaps.Select(gap => gap.Text));
+
+            Assert.DoesNotContain(tab.StatusPanelsForTests, panel => panel.Part == BoardStatusPart.Problems);
+            Assert.False(tab.StatusBorderForTests(BoardStatusPart.Problems).IsVisible);
+
+            Assert.Equal(BoardStatusState.Done, tab.StatusPanelForTests(BoardStatusPart.Pictures).State);
+            Assert.Equal(BoardStatusState.Done, tab.StatusPanelForTests(BoardStatusPart.Credits).State);
+            Assert.Empty(ComponentButtons(tab));
+        });
+
+        static BoardData Whole() => new()
+        {
+            Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }],
+            Credits = [new CreditEntry { Category = "Schematic image", NameOrHandle = "Anna" }],
+        };
+    }
+
+    // ###########################################################################################
+    // BOARD STATUS FLAGS WHAT THE BOARD LACKS (owner request, 2026-10-30), on the panel of the part that
+    // lacks it - here no schematic image and no credit, the Credits panel's button opening that part in
+    // the pane.
+    // ###########################################################################################
+    [Fact]
+    public async Task Board_status_flags_what_the_board_lacks_on_its_panels()
+    {
+        WriteDraft(OldBoard, new BoardData());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", OldBoard, draftOnly: false);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => new BoardData();
             tab.ShowBoard(entry, new BoardData(), "PAL", null);
 
-            // The groups are kept, hidden, for the next board (made once - code review, 2026-10-26).
-            StackPanel groups = tab.GetControl<StackPanel>("MissingGroupsPanel");
-            Assert.Equal(BoardReadiness.NothingMissing, Assert.IsType<TextBlock>(Assert.Single(groups.Children, child => child.IsVisible)).Text);
+            Assert.Contains(BoardReadiness.NoPicturesGap, LinesOf(tab, BoardStatusPart.Pictures));
+            Assert.Equal(BoardStatusState.ToDo, tab.StatusPanelForTests(BoardStatusPart.Pictures).State);
+            Assert.Contains(BoardReadiness.NoCreditsGap, LinesOf(tab, BoardStatusPart.Credits));
+            Assert.Equal(BoardReadiness.CreditsAction, tab.StatusButtonForTests(BoardStatusPart.Credits).Content);
+
+            tab.StatusButtonForTests(BoardStatusPart.Credits).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => tab.IsComponentOpen);
+
+            Assert.Equal(PaneBoardPart.Credits, tab.ComponentPaneForTests.BoardPart);
+            Assert.Equal("CreditsNavButton", tab.SelectedNavEntryForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A ROW WITH A FIELD IT NEEDS EMPTY IS FLAGGED IN BOARD STATUS, BY ITS LIST, AND STOPS SUBMIT
+    // (owner request, 2026-11-01: "These errors must be flagged in 'Board status' and then it should
+    // not be possible to submit the draft board"). *** A credit with no name or handle is an error of
+    // the draft's row - Submit says it sends nothing - and Board status says it on the Credits panel,
+    // an error there, never also in Errors and warnings: its button opens the credits, where the box is
+    // marked.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_credit_missing_its_name_is_flagged_in_Board_status_and_stops_Submit()
+    {
+        var board = new BoardData
+        {
+            Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }],
+            Credits = [new CreditEntry { Category = "Schematic image" }],
+        };
+
+        WriteDraft(OldBoard, board, "Images/top.png");
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", OldBoard, draftOnly: false);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => new BoardData();
+            tab.ShowBoard(entry, board, "PAL", null);
+
+            DraftListItem row = Assert.Single(tab.Drafts);
+            Assert.True(row.HasErrors);
+            Assert.Equal("1 error", row.ErrorsText);
+            Assert.Contains("to fix first", row.SubmitTooltip, StringComparison.Ordinal);
+
+            Assert.DoesNotContain(tab.StatusPanelsForTests, panel => panel.Part == BoardStatusPart.Problems);
+            Assert.Equal(BoardStatusState.Error, tab.StatusPanelForTests(BoardStatusPart.Credits).State);
+            Assert.Contains(BoardReadiness.IncompleteGap(1, "credit", "credits"), LinesOf(tab, BoardStatusPart.Credits));
+
+            tab.StatusButtonForTests(BoardStatusPart.Credits).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => tab.IsComponentOpen);
+
+            Assert.Equal(PaneBoardPart.Credits, tab.ComponentPaneForTests.BoardPart);
+            Assert.True(tab.ComponentPaneForTests.CreditsForTests[0].NameOrHandleMissing);
         });
     }
 
@@ -815,10 +1109,9 @@ public sealed class TabDraftsReadinessTests : IDisposable
             TabDrafts tab = Tab(entry);
             tab.ShowBoard(entry, board, "PAL", null);
 
-            StackPanel groups = tab.GetControl<StackPanel>("MissingGroupsPanel");
-            Assert.Equal(BoardReadiness.ListedAtMost, groups.GetLogicalDescendants().OfType<Button>().Count());
+            Assert.Equal(BoardReadiness.ListedAtMost, ComponentButtons(tab).Count);
             Assert.Contains(
-                groups.GetLogicalDescendants().OfType<TextBlock>(),
+                tab.GetControl<StackPanel>("StatusPanelsHost").GetLogicalDescendants().OfType<TextBlock>(),
                 text => text.Text == "and 3 more");
         });
     }

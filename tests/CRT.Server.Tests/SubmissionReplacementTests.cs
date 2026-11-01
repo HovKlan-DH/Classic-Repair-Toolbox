@@ -74,7 +74,7 @@ namespace CRT.Server.Tests
                 Rows = new SubmissionRows
                 {
                     Schematics = { new BoardSchematicEntry { SchematicName = "Main", SchematicImageFile = ImagePath } },
-                    Components = { new ComponentEntry { BoardLabel = "D1" } }
+                    Components = { new ComponentEntry { Category = "IC", BoardLabel = "D1" } }
                 }
             };
 

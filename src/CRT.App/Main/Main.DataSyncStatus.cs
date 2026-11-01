@@ -7,6 +7,7 @@ using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.Theming;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -33,6 +34,41 @@ namespace CRT
         // was closed while it did.
         private bool thisIsDataCheckOnCard;
         private bool thisDataCheckClosedWhileRunning;
+
+        // ###########################################################################################
+        // *** THE CARD KEEPS ITS WIDEST WHILE FILES COME IN (owner report, 2026-11-01: "the panel ...
+        // can flicker quite heavily, if the file names makes the panel shrink and enlarge
+        // constantly"). *** The card is as wide as its words, and every file downloaded put a path of
+        // another length on it. While a check runs, the widest the card has grown to is its MinWidth,
+        // let go of DataCheckWidthHeldFor after it last grew - so it changes size every few seconds at
+        // most, never with each file. Never wider than the stack may be (NoticeStackGeometry).
+        // ###########################################################################################
+        internal static readonly TimeSpan DataCheckWidthHeldFor = TimeSpan.FromSeconds(3);
+
+        private readonly Dictionary<Control, (object Token, IDisposable Timer)> thisNoticeWidthHolds = new();
+
+        private void WireDataCheckWidthHold()
+        {
+            this.DataCheckBanner.SizeChanged += (_, e) =>
+            {
+                if (this.thisIsDataCheckOnCard && e.NewSize.Width > this.DataCheckBanner.MinWidth)
+                {
+                    this.DataCheckBanner.MinWidth = Math.Min(e.NewSize.Width, this.NoticeStack.MaxWidth);
+                    this.StartNoticeTimer(this.thisNoticeWidthHolds, this.DataCheckBanner, Main.DataCheckWidthHeldFor, this.LetGoOfDataCheckWidth);
+                }
+            };
+        }
+
+        // The card back to the width of its words.
+        private void LetGoOfDataCheckWidth()
+        {
+            if (this.thisNoticeWidthHolds.Remove(this.DataCheckBanner, out var pending))
+            {
+                pending.Timer.Dispose();
+            }
+
+            this.DataCheckBanner.MinWidth = 0;
+        }
 
         // ###########################################################################################
         // Reacts to "Check for new or updated data at application launch" changes.
@@ -284,6 +320,7 @@ namespace CRT
             this._currentSyncFileRelativePath = string.Empty;
             this.thisIsDataCheckOnCard = true;
             this.thisDataCheckClosedWhileRunning = false;
+            this.LetGoOfDataCheckWidth();
 
             this.CancelNoticeHide(this.DataCheckBanner);
             this.DataCheckBannerRefreshButton.IsVisible = false;
@@ -322,6 +359,8 @@ namespace CRT
             this.thisLastDataSyncCheck = DataSyncStatusTip.LastCheck(changedCount, DateTime.Now);
             this._currentSyncFileRelativePath = string.Empty;
             this.thisIsDataCheckOnCard = false;
+            this.LetGoOfDataCheckWidth();
+            this.DataCheckBannerFileText.IsVisible = false;
             this.RefreshDataSyncStatusTip();
 
             var notice = DataCheckNotice.After(changedCount, atLaunch, AppConfig.GetOnlineSourceLabel());
@@ -342,7 +381,12 @@ namespace CRT
             }
         }
 
-        // The tooltip, and the card while it shows a running check.
+        // ###########################################################################################
+        // The tooltip, and the card while it shows a running check: its heading and status, and the
+        // file on a line of its own that is never wrapped (owner report, 2026-11-01) - a path too long
+        // for the card loses its middle folders, never its file name. The file is shown as it is,
+        // past NoticeEmphasis: nothing in a file's name is a count or a source to put in bold.
+        // ###########################################################################################
         private void RefreshDataSyncProgress()
         {
             this.RefreshDataSyncStatusTip();
@@ -352,7 +396,11 @@ namespace CRT
                 NoticeEmphasis.Show(this.DataCheckBannerText, DataSyncStatusTip.Checking(
                     AppConfig.GetOnlineSourceLabel(),
                     this.thisDataSyncProgress,
-                    this._currentSyncFileRelativePath));
+                    file: string.Empty));
+
+                string file = DataSyncStatusTip.OneLine(this._currentSyncFileRelativePath);
+                this.DataCheckBannerFileText.Text = file;
+                this.DataCheckBannerFileText.IsVisible = file.Length > 0;
             }
         }
 

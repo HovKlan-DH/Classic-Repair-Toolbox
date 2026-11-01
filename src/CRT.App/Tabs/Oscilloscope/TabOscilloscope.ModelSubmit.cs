@@ -34,10 +34,10 @@ namespace CRT
             "a mail when it is published, or why not. Your model stays here either way.";
 
         internal const string SuitePassedLine =
-            "Run full test suite went through on this model as it is now - the administrator sees that.";
+            "\"Run full test suite\" went through on this model as it is now - the administrator sees that.";
 
         internal const string SuiteNotRunLine =
-            "Run full test suite has not gone through on this model as it is now. Run it first if you can - the administrator " +
+            "\"Run full test suite\" has not gone through on this model as it is now. Run it first if you can - the administrator " +
             "sees whether it did.";
 
         internal const string NoAddress = "Type the email address you want to be told at.";
@@ -145,7 +145,7 @@ namespace CRT
             this.SubmitModelEmailTextBox.Text = address.Email;
             this.SubmitModelEmailTextBox.IsReadOnly = address.IsFromAccount;
             this.SubmitModelEmailNoteText.Text = address.IsFromAccount
-                ? "Your maintainer account's address, as you are signed in on the Maintainer tab."
+                ? "Your maintainer account's address, as you are signed in on the \"Maintainer\" tab."
                 : "Used only to tell you whether your model was published.";
         }
 

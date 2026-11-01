@@ -261,6 +261,9 @@ namespace CRT
             if (ReferenceEquals(this.MainTabControl?.SelectedItem, this.ContributeTabItem))
             {
                 this.TabDrafts.FocusTableIfOpen();
+
+                // Back where "Show on board" was asked for - the way back is no longer offered.
+                this.TakeBackToContributeAway();
             }
         }
 

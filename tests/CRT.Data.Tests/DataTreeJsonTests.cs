@@ -146,6 +146,34 @@ public sealed class DataTreeJsonTests
         Assert.Equal("Known-good board", read.ScopeBaselines[0].Source);
     }
 
+    // ###########################################################################################
+    // A picture's traces' colour and both sides' opacities (2026-10-30) are written only when filled
+    // too: every board published before then keeps its picture rows line for line.
+    // ###########################################################################################
+    [Fact]
+    public void A_picture_writes_its_trace_colour_and_opacities_only_when_it_has_them()
+    {
+        string plain = DataTreeJson.Write(Board());
+
+        foreach (string field in new[] { "traceHighlightColor", "traceHighlightOpacity", "oppositeTraceHighlightOpacity" })
+            Assert.DoesNotContain($"\"{field}\":", plain, StringComparison.Ordinal);
+
+        BoardDocument board = Board();
+        board.Schematics[0].TraceHighlightColor = "Lime";
+        board.Schematics[0].TraceHighlightOpacity = "60%";
+        board.Schematics[0].OppositeTraceHighlightOpacity = "25%";
+
+        BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
+
+        Assert.Equal("Lime", read.Schematics[0].TraceHighlightColor);
+        Assert.Equal("60%", read.Schematics[0].TraceHighlightOpacity);
+        Assert.Equal("25%", read.Schematics[0].OppositeTraceHighlightOpacity);
+
+        // Through the mapping too: blank in BoardData is no field, a value is the field.
+        BoardData mapped = BoardDocumentMapping.ToContent(read).Board;
+        Assert.Equal("Lime", mapped.Schematics[0].TraceHighlightColor);
+    }
+
     // The two new lists are written and read like every other; a file written before them reads
     // them as empty.
     [Fact]

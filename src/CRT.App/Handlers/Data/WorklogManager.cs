@@ -1107,6 +1107,30 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Every workbook of the board `from` on the board `to` (its name changed - BoardKeyMove,
+        // 2026-11-01), each saved by itself. False when one could not be: that one stays where it was,
+        // the rest are moved - it is found again under its old name's board key.
+        // ###########################################################################################
+        public static bool MoveBoard(string from, string to)
+        {
+            bool allMoved = true;
+
+            foreach (WorkbookRecord record in ReadAllWorkbooks().Where(workbook => string.Equals(workbook.BoardKey, from, StringComparison.Ordinal)))
+            {
+                string? folder = GetWorkbookFolder(record.Id);
+                record.BoardKey = to;
+
+                if (folder is null || !SaveWorkbook(folder, record))
+                {
+                    Logger.Warning($"Workbook [#{record.Id}] could not follow its board from [{from}] to [{to}]");
+                    allMoved = false;
+                }
+            }
+
+            return allMoved;
+        }
+
+        // ###########################################################################################
         // Puts a workbook on one of the user's devices, or takes it off (null) - leaving every other
         // field alone, re-read first as UpdateWorkbook does. Returns the saved record, or null when
         // the workbook cannot be found or the write failed.

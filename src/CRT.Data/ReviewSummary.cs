@@ -76,10 +76,14 @@ namespace Handlers.DataHandling
 
             bool isNewBoard = published == null;
 
+            // The lists put in another order (owner decision, 2026-10-30: order is a change) - a
+            // maintainer is told, as the table colours no moved row.
             return new ReviewChangeSummary(
                 isNewBoard,
                 ReviewSummary.RevisionDateChange(before, submitted),
-                sections);
+                sections,
+                published is null ? [] : BoardRowOrder.ReorderedSheets(published, submitted),
+                published is not null && BoardRegions.Differ(published, submitted) ? BoardRegions.Has(submitted) : null);
         }
 
         // ###########################################################################################
@@ -340,7 +344,10 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColSchematicHighlightOpacity, entry.SchematicHighlightOpacity),
                 new(BoardWorkbookSchema.ColOppositeTraceHighlightColor, entry.OppositeTraceHighlightColor),
                 new(BoardWorkbookSchema.ColThumbnailHighlightColor, entry.ThumbnailHighlightColor),
-                new(BoardWorkbookSchema.ColThumbnailHighlightOpacity, entry.ThumbnailHighlightOpacity)
+                new(BoardWorkbookSchema.ColThumbnailHighlightOpacity, entry.ThumbnailHighlightOpacity),
+                new(BoardWorkbookSchema.ColTraceHighlightColor, entry.TraceHighlightColor),
+                new(BoardWorkbookSchema.ColTraceHighlightOpacity, entry.TraceHighlightOpacity),
+                new(BoardWorkbookSchema.ColOppositeTraceHighlightOpacity, entry.OppositeTraceHighlightOpacity)
             ],
             ComponentEntry entry =>
             [
@@ -611,18 +618,29 @@ namespace Handlers.DataHandling
     // The whole summary. Sections with no changes are KEPT rather than filtered out, so a caller
     // can show "no changes" for a section if it wants to - but Describe() omits them, because the
     // opening line must be the changes and nothing else.
+    //
+    // ReorderedSections (2026-10-30): the sheets whose rows a submission put in another order - by
+    // their sheet names (BoardRowOrder.ReorderedSheets). Order is a change (owner decision), counted
+    // apart from the rows: a moved row is none added, changed or removed. Empty for a new board.
+    //
+    // RegionsNow (2026-11-01): what the board says about its regions after a submission that changes
+    // it - BoardRegions.Has - and null when it does not, or for a new board.
     // ###########################################################################################
     public sealed record ReviewChangeSummary(
         bool IsNewBoard,
         ReviewFieldChange? RevisionDate,
-        IReadOnlyList<ReviewSectionChange> Sections)
+        IReadOnlyList<ReviewSectionChange> Sections,
+        IReadOnlyList<string>? ReorderedSections = null,
+        bool? RegionsNow = null)
     {
+        public IReadOnlyList<string> ReorderedSections { get; init; } = ReorderedSections ?? [];
+
         public IReadOnlyList<ReviewSectionChange> ChangedSections =>
             [.. this.Sections.Where(section => section.HasChanges)];
 
         public int TotalChanges => this.Sections.Sum(section => section.TotalChanges);
 
-        public bool HasChanges => this.TotalChanges > 0 || this.RevisionDate != null;
+        public bool HasChanges => this.TotalChanges > 0 || this.RevisionDate != null || this.ReorderedSections.Count > 0 || this.RegionsNow is not null;
 
         // ###########################################################################################
         // The one-line summary task 3 asks for: "3 components changed, 1 added, 2 images added".
@@ -660,6 +678,12 @@ namespace Handlers.DataHandling
                 if (section.Renamed.Count > 0)
                     parts.Add($"{section.Renamed.Count} {name} renamed");
             }
+
+            foreach (string sheet in this.ReorderedSections)
+                parts.Add($"order of {BoardRowOrder.ListName(sheet)} changed");
+
+            if (this.RegionsNow is not null)
+                parts.Add("regions changed");
 
             if (this.RevisionDate != null)
                 parts.Add("revision date changed");

@@ -1091,7 +1091,8 @@ namespace CRT
         // request, 2026-10-09: "this should look the same as the previous highlighted panel ... The
         // UI should have a uniform and consistent look") - App.axaml's Border.Notice, the Boards
         // screen's ReadOnlyNotice's look: one NoticeText line per reason, the panel gone with none.
-        // SemiBold is set on the block too, so a line built of runs keeps it (ShowRuns copies it).
+        // Not bold since 2026-10-30 (owner request, of the Contribute tab's notice: "please do not bold
+        // the text") - the style's weight; a person named in a line keeps the bold of its own run.
         // ###########################################################################################
         private void ShowBeforeApproving(IReadOnlyList<ReviewNoteLine> lines)
         {
@@ -1102,7 +1103,7 @@ namespace CRT
 
             foreach (ReviewNoteLine line in lines)
             {
-                var block = new TextBlock { FontWeight = FontWeight.SemiBold };
+                var block = new TextBlock();
                 block.Classes.Add("NoticeText");
 
                 TabMaintainer.ShowLine(block, line);

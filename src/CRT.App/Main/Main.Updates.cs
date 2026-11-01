@@ -397,8 +397,28 @@ namespace CRT
         private async void OnInstallUpdateClick(object? sender, RoutedEventArgs e) =>
             await this.InstallPendingUpdateAsync();
 
-        // Downloads and installs without GitHub or a restart - for tests: true as if installed.
-        internal Func<Task<bool>>? DownloadAndInstallOverrideForTests { get; set; }
+        // Downloads and installs without GitHub or a restart - for tests: true as if installed. It is handed
+        // what the real install runs once the download is in, right before the restart.
+        internal Func<Func<Task>, Task<bool>>? DownloadAndInstallOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // Once the download is in, right before the restart: what quitting lets go of on its way out (code
+        // review, 2026-11-01). The restart exits without a Closing event, so a draft only looked at came
+        // back after the update as a draft of the contributor's. Not earlier: a download that fails leaves
+        // CRT running on that draft. Nothing here may stop the update, so a failure is only logged.
+        // ###########################################################################################
+        private Task BeforeUpdateRestartAsync() =>
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                try
+                {
+                    this.TabDrafts.LetGoOfUntouchedDraftBeforeRestart();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"A draft only looked at could not be let go of before the restart - [{ex.Message}]");
+                }
+            }).GetTask();
 
         internal async Task InstallPendingUpdateAsync()
         {
@@ -421,13 +441,14 @@ namespace CRT
                 // application later under somebody who has carried on working.
                 // ###########################################################################################
                 WaitResult<bool> waited = await BusyOverlay.RunAsync(this, CrtWaitWording.DownloadingUpdate, context =>
-                    this.DownloadAndInstallOverrideForTests?.Invoke() ?? UpdateService.DownloadAndInstallAsync(
+                    this.DownloadAndInstallOverrideForTests?.Invoke(this.BeforeUpdateRestartAsync) ?? UpdateService.DownloadAndInstallAsync(
                         progress =>
                         {
                             context.Report(CrtWaitWording.DownloadingUpdateAt(progress), progress / 100.0);
                             Dispatcher.UIThread.Post(() => NoticeEmphasis.Show(this.UpdateBannerText, $"Downloading update: {progress}%"));
                         },
-                        context.Token));
+                        context.Token,
+                        this.BeforeUpdateRestartAsync));
 
                 if (waited.IsTimedOut)
                 {

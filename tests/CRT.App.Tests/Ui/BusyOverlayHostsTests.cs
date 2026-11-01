@@ -53,7 +53,9 @@ public sealed class BusyOverlayHostsTests : IDisposable
         UiTest.Run(() =>
         {
             Assert.NotNull(BusyOverlay.For(new MySubmissionsWindow()));
-            Assert.NotNull(BusyOverlay.For(new BoardFilesWindow()));
+
+            // ("KiCad data" was a window with an overlay of its own until 2026-10-30. It is a panel of
+            // the Contribute tab now, whose waits run under Main's - KiCadDataPanelTests' host.)
 
             // (The component editor's window was here until 2026-10-26: CRT 4.0's component pane,
             // on the Contribute tab, waits under Main's overlay - TabDrafts' BusyOverlay.RunLocalAsync.)

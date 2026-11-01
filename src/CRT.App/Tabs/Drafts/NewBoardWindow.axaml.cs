@@ -19,9 +19,8 @@ namespace CRT
     // the create path stay one sequence in one place rather than being split across a dialog and
     // its caller.
     //
-    // The three names are folder segments as well as display names, so every validation rule here
-    // exists to stop a board being created that looks fine and is then broken in a way the user
-    // cannot diagnose - see NewBoardIdentity.IsValidPathSegment for what each rule prevents.
+    // The fields and every rule about them are BoardNameFields' - the Contribute tab's "Board name"
+    // shows the same (2026-11-01).
     //
     // Enter confirms and Escape cancels, the ordinary modal treatment. Deliberately NOT the
     // Tunnel-both-cancel handling DiscardDraftWindow and DeleteWorkbookWindow use: that exists
@@ -33,25 +32,9 @@ namespace CRT
     // field still filled in - so a mis-click costs one more click, not the typing. The gate lives
     // here rather than in Main so that no caller can obtain a registration without it: this
     // window is the one way a new board's identity comes into being.
-    //
-    // *** "DID YOU MEAN COMMODORE?" (CRT 4.0 step 3, slice 3e). *** A manufacturer or machine written
-    // another way than CRT has it becomes a second one beside it in the drop-down lists, so a name
-    // close to one CRT has is offered under its box - a machine by its name or its folder, "C64"
-    // offering "Commodore 64" (SimilarNames). Never in the way: the name typed may be a new one.
     // ###########################################################################################
     public partial class NewBoardWindow : Window
     {
-        // Every "{HardwareName}|{BoardName}" already taken, so a new board cannot collide with one.
-        // Seeded by Initialize from DataManager.HardwareBoards, which by then already includes the
-        // main workbook's boards, any _UserContribution ones AND other drafts' registrations - so
-        // this single check covers all three sources.
-        private readonly HashSet<string> thisTakenIdentities = new(StringComparer.OrdinalIgnoreCase);
-
-        // The manufacturers and machines CRT has, for "Did you mean" (CRT 4.0 step 3, slice 3e): a
-        // machine by its name and by its folder ("C64" is "Commodore 64").
-        private List<KnownName> thisKnownManufacturers = [];
-        private List<KnownName> thisKnownHardware = [];
-
         // Replaces the maintainer agreement with a canned answer. Null in the app, which shows
         // NewBoardMaintainerWindow; set by headless tests that want to drive the create path
         // without answering a real dialog. The same override-else-real shape as TabWorkbooks'
@@ -62,165 +45,26 @@ namespace CRT
         {
             this.InitializeComponent();
 
-            this.ManufacturerBox.TextChanged += this.OnAnyFieldChanged;
-            this.HardwareBox.TextChanged += this.OnAnyFieldChanged;
-            this.BoardBox.TextChanged += this.OnAnyFieldChanged;
-
-            // "Use Commodore": the name offered goes into its box.
-            this.ManufacturerDidYouMeanButton.Click += (_, _) => this.UseOffered(this.ManufacturerDidYouMeanButton, text => this.ManufacturerBox.Text = text);
-            this.HardwareDidYouMeanButton.Click += (_, _) => this.UseOffered(this.HardwareDidYouMeanButton, text => this.HardwareBox.Text = text);
+            this.Fields.FieldsChanged += (_, _) => this.UpdateValidation();
 
             this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
 
             this.UpdateValidation();
         }
 
-        // ###########################################################################################
-        // Seeds the manufacturer suggestions and the set of names already in use. Takes the entry
-        // list rather than reading DataManager.HardwareBoards itself, the same seam every other
-        // testable surface in this codebase uses (TabWorkbooks.CurrentBoardDataOverrideForTests,
-        // TabDrafts.HardwareBoardsOverrideForTests) - a headless test cannot populate that static
-        // without loading a real main workbook.
-        // ###########################################################################################
+        // Seeds the fields' suggestions and the set of names already in use (BoardNameFields).
         public void Initialize(IReadOnlyList<HardwareBoardEntry> existingBoards)
         {
-            this.thisTakenIdentities.Clear();
-
-            foreach (var entry in existingBoards)
-            {
-                this.thisTakenIdentities.Add($"{entry.HardwareName}|{entry.BoardName}");
-            }
-
-            // Offering the manufacturers already in use is what stops a typo ("Comodore") quietly
-            // creating a second top-level folder beside the real one - the names are free text, so
-            // nothing else would catch it.
-            List<string> manufacturers = existingBoards
-                .Select(entry => NewBoardIdentity.ExtractManufacturer(entry.ExcelDataFile))
-                .Where(manufacturer => !string.IsNullOrWhiteSpace(manufacturer))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(manufacturer => manufacturer, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            this.ManufacturerBox.ItemsSource = manufacturers;
-
-            this.thisKnownManufacturers = manufacturers.Select(manufacturer => new KnownName(manufacturer, manufacturer)).ToList();
-            this.thisKnownHardware = existingBoards
-                .Where(entry => !string.IsNullOrWhiteSpace(entry.HardwareName))
-                .SelectMany(entry => new[]
-                {
-                    new KnownName(entry.HardwareName, entry.HardwareName),
-                    new KnownName(NewBoardIdentity.ExtractHardware(entry.ExcelDataFile), entry.HardwareName),
-                })
-                .Distinct()
-                .ToList();
-
+            this.Fields.Initialize(existingBoards);
             this.UpdateValidation();
         }
 
-        // ###########################################################################################
-        // "Did you mean" under a box: shown while what it holds is close to a name CRT has
-        // (SimilarNames), its button putting that name in.
-        // ###########################################################################################
-        private void ShowDidYouMean(StackPanel panel, TextBlock question, Button use, string? typed, IReadOnlyList<KnownName> known)
-        {
-            string? offered = SimilarNames.DidYouMean(typed, known);
+        internal string? ManufacturerOfferedForTests => this.Fields.ManufacturerOfferedForTests;
 
-            panel.IsVisible = offered is not null;
-            question.Text = offered is null ? string.Empty : SimilarNames.Question(offered);
-            use.Content = offered is null ? string.Empty : SimilarNames.UseButton(offered);
-            use.Tag = offered;
-        }
+        internal string? HardwareOfferedForTests => this.Fields.HardwareOfferedForTests;
 
-        private void UseOffered(Button use, Action<string> put)
-        {
-            if (use.Tag is string offered)
-            {
-                put(offered);
-                this.UpdateValidation();
-            }
-        }
-
-        internal string? ManufacturerOfferedForTests => this.ManufacturerDidYouMeanPanel.IsVisible ? this.ManufacturerDidYouMeanButton.Tag as string : null;
-
-        internal string? HardwareOfferedForTests => this.HardwareDidYouMeanPanel.IsVisible ? this.HardwareDidYouMeanButton.Tag as string : null;
-
-        // ###########################################################################################
-        // The registration the current field values describe, or null when they are not valid. One
-        // method for both the live validation and the create click, so the button can never be
-        // enabled for input the create path would then reject.
-        // ###########################################################################################
-        internal NewBoardRegistration? BuildRegistrationOrNull(out string validationMessage)
-        {
-            string manufacturer = NewBoardIdentity.SanitizePathSegment(this.ManufacturerBox.Text);
-            string hardware = NewBoardIdentity.SanitizePathSegment(this.HardwareBox.Text);
-            string board = NewBoardIdentity.SanitizePathSegment(this.BoardBox.Text);
-
-            // Blank fields are the starting state, not a mistake worth shouting about - the button
-            // is simply disabled until all three are filled in.
-            if (manufacturer.Length == 0 || hardware.Length == 0 || board.Length == 0)
-            {
-                validationMessage = string.Empty;
-                return null;
-            }
-
-            if (!NewBoardIdentity.IsValidPathSegment(manufacturer, out string manufacturerReason))
-            {
-                validationMessage = $"Manufacturer {manufacturerReason}.";
-                return null;
-            }
-
-            if (!NewBoardIdentity.IsValidPathSegment(hardware, out string hardwareReason))
-            {
-                validationMessage = $"Hardware {hardwareReason}.";
-                return null;
-            }
-
-            if (!NewBoardIdentity.IsValidPathSegment(board, out string boardReason))
-            {
-                validationMessage = $"Board {boardReason}.";
-                return null;
-            }
-
-            if (this.thisTakenIdentities.Contains($"{hardware}|{board}"))
-            {
-                validationMessage = $"[{hardware}] / [{board}] already exists. Pick a different hardware or board name.";
-                return null;
-            }
-
-            string excelDataFile = NewBoardIdentity.BuildExcelDataFile(manufacturer, hardware, board);
-            if (string.IsNullOrWhiteSpace(excelDataFile))
-            {
-                validationMessage = "Could not build a folder path from those names.";
-                return null;
-            }
-
-            // A folder already holding a draft means a board was created here before and is still
-            // live - creating over it would overwrite that contributor's own work. This can happen
-            // when the hardware/board names differ from a previous board's only by the display
-            // name, so the identity check above passes while the FOLDER still collides.
-            //
-            // Asked of the MARKER since Phase 6, which is what makes a folder a draft. A board
-            // folder copied in by hand gets one when the board list loads (DraftFolderImport), so
-            // one that was there at startup is refused here too.
-            if (DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile))
-            {
-                validationMessage = "A draft already exists in that folder. Pick a different name.";
-                return null;
-            }
-
-            validationMessage = string.Empty;
-
-            return new NewBoardRegistration
-            {
-                HardwareName = hardware,
-                BoardName = board,
-                HardwareNotes = this.NotesBox.Text?.Trim() ?? string.Empty,
-                ExcelDataFile = excelDataFile,
-                CreatedUtc = DateTime.UtcNow.ToString("o"),
-            };
-        }
-
-        private void OnAnyFieldChanged(object? sender, EventArgs e) => this.UpdateValidation();
+        internal NewBoardRegistration? BuildRegistrationOrNull(out string validationMessage) =>
+            this.Fields.BuildRegistrationOrNull(out validationMessage);
 
         // ###########################################################################################
         // Re-runs validation against whatever the boxes currently hold. Exposed to the headless
@@ -239,8 +83,7 @@ namespace CRT
         // ###########################################################################################
         private void UpdateValidation()
         {
-            this.ShowDidYouMean(this.ManufacturerDidYouMeanPanel, this.ManufacturerDidYouMeanText, this.ManufacturerDidYouMeanButton, this.ManufacturerBox.Text, this.thisKnownManufacturers);
-            this.ShowDidYouMean(this.HardwareDidYouMeanPanel, this.HardwareDidYouMeanText, this.HardwareDidYouMeanButton, this.HardwareBox.Text, this.thisKnownHardware);
+            this.Fields.ShowOffers();
 
             var registration = this.BuildRegistrationOrNull(out string validationMessage);
 

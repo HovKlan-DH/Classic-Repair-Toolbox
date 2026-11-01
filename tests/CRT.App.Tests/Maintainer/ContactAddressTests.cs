@@ -54,6 +54,14 @@ public sealed class ContactAddressTests
         Assert.False(address.IsFromAccount);
     }
 
+    // A tab a note names is in quotes (owner request, 2026-11-01), wherever the literal happens to break.
+    [Fact]
+    public void The_notes_name_the_tab_in_quotes()
+    {
+        Assert.DoesNotContain("the Maintainer tab", ContactAddress.SubmitNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("the Maintainer tab", ContactAddress.FeedbackNote, StringComparison.Ordinal);
+    }
+
     // A session without a usable address offers nothing to show - the typed one stays.
     [Fact]
     public void A_session_with_no_plausible_address_is_not_used()

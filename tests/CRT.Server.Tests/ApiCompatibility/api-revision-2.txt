@@ -163,6 +163,8 @@ answer BoardDetailAnswer | .submissions[].changes.files.removedCount number
 answer BoardDetailAnswer | .submissions[].changes.files.replaced array of string
 answer BoardDetailAnswer | .submissions[].changes.files.replacedCount number
 answer BoardDetailAnswer | .submissions[].changes.isNewBoard boolean
+answer BoardDetailAnswer | .submissions[].changes.regionsNow boolean
+answer BoardDetailAnswer | .submissions[].changes.reordered array of string
 answer BoardDetailAnswer | .submissions[].changes.sections array of object
 answer BoardDetailAnswer | .submissions[].changes.sections[].added array of string
 answer BoardDetailAnswer | .submissions[].changes.sections[].addedCount number
@@ -361,16 +363,20 @@ answer BoardTableAnswer | .rows.kiCadCalibrations[].schematicName string
 answer BoardTableAnswer | .rows.kiCadImportantSignals array of object
 answer BoardTableAnswer | .rows.kiCadImportantSignals[].displayName string
 answer BoardTableAnswer | .rows.kiCadImportantSignals[].kiCadNetName string
+answer BoardTableAnswer | .rows.regions array of string
 answer BoardTableAnswer | .rows.revisionDate string
 answer BoardTableAnswer | .rows.schematics array of object
 answer BoardTableAnswer | .rows.schematics[].cadName string
 answer BoardTableAnswer | .rows.schematics[].oppositeTraceHighlightColor string
+answer BoardTableAnswer | .rows.schematics[].oppositeTraceHighlightOpacity string
 answer BoardTableAnswer | .rows.schematics[].schematicHighlightColor string
 answer BoardTableAnswer | .rows.schematics[].schematicHighlightOpacity string
 answer BoardTableAnswer | .rows.schematics[].schematicImageFile string
 answer BoardTableAnswer | .rows.schematics[].schematicName string
 answer BoardTableAnswer | .rows.schematics[].thumbnailHighlightColor string
 answer BoardTableAnswer | .rows.schematics[].thumbnailHighlightOpacity string
+answer BoardTableAnswer | .rows.schematics[].traceHighlightColor string
+answer BoardTableAnswer | .rows.schematics[].traceHighlightOpacity string
 answer ClientOutdatedAnswer | (root) object
 answer ClientOutdatedAnswer | .code string
 answer ClientOutdatedAnswer | .message string
@@ -647,16 +653,20 @@ answer ReviewTableData | .published.kiCadCalibrations[].schematicName string
 answer ReviewTableData | .published.kiCadImportantSignals array of object
 answer ReviewTableData | .published.kiCadImportantSignals[].displayName string
 answer ReviewTableData | .published.kiCadImportantSignals[].kiCadNetName string
+answer ReviewTableData | .published.regions array of string
 answer ReviewTableData | .published.revisionDate string
 answer ReviewTableData | .published.schematics array of object
 answer ReviewTableData | .published.schematics[].cadName string
 answer ReviewTableData | .published.schematics[].oppositeTraceHighlightColor string
+answer ReviewTableData | .published.schematics[].oppositeTraceHighlightOpacity string
 answer ReviewTableData | .published.schematics[].schematicHighlightColor string
 answer ReviewTableData | .published.schematics[].schematicHighlightOpacity string
 answer ReviewTableData | .published.schematics[].schematicImageFile string
 answer ReviewTableData | .published.schematics[].schematicName string
 answer ReviewTableData | .published.schematics[].thumbnailHighlightColor string
 answer ReviewTableData | .published.schematics[].thumbnailHighlightOpacity string
+answer ReviewTableData | .published.schematics[].traceHighlightColor string
+answer ReviewTableData | .published.schematics[].traceHighlightOpacity string
 answer ReviewTableData | .submitted object
 answer ReviewTableData | .submitted.boardLinks array of object
 answer ReviewTableData | .submitted.boardLinks[].category string
@@ -734,16 +744,20 @@ answer ReviewTableData | .submitted.kiCadCalibrations[].schematicName string
 answer ReviewTableData | .submitted.kiCadImportantSignals array of object
 answer ReviewTableData | .submitted.kiCadImportantSignals[].displayName string
 answer ReviewTableData | .submitted.kiCadImportantSignals[].kiCadNetName string
+answer ReviewTableData | .submitted.regions array of string
 answer ReviewTableData | .submitted.revisionDate string
 answer ReviewTableData | .submitted.schematics array of object
 answer ReviewTableData | .submitted.schematics[].cadName string
 answer ReviewTableData | .submitted.schematics[].oppositeTraceHighlightColor string
+answer ReviewTableData | .submitted.schematics[].oppositeTraceHighlightOpacity string
 answer ReviewTableData | .submitted.schematics[].schematicHighlightColor string
 answer ReviewTableData | .submitted.schematics[].schematicHighlightOpacity string
 answer ReviewTableData | .submitted.schematics[].schematicImageFile string
 answer ReviewTableData | .submitted.schematics[].schematicName string
 answer ReviewTableData | .submitted.schematics[].thumbnailHighlightColor string
 answer ReviewTableData | .submitted.schematics[].thumbnailHighlightOpacity string
+answer ReviewTableData | .submitted.schematics[].traceHighlightColor string
+answer ReviewTableData | .submitted.schematics[].traceHighlightOpacity string
 answer ReviewTableData | .version number
 answer ServerStatusAnswer | (root) object
 answer ServerStatusAnswer | .unsentMails number
@@ -804,6 +818,8 @@ answer SubmissionDetailAnswer | .changes.changedSections[].section string
 answer SubmissionDetailAnswer | .changes.changedSections[].totalChanges number
 answer SubmissionDetailAnswer | .changes.hasChanges boolean
 answer SubmissionDetailAnswer | .changes.isNewBoard boolean
+answer SubmissionDetailAnswer | .changes.regionsNow boolean
+answer SubmissionDetailAnswer | .changes.reorderedSections array of string
 answer SubmissionDetailAnswer | .changes.revisionDate object
 answer SubmissionDetailAnswer | .changes.revisionDate.after string
 answer SubmissionDetailAnswer | .changes.revisionDate.before string
@@ -943,16 +959,20 @@ answer SubmissionDetailAnswer | .manifest.rows.kiCadCalibrations[].schematicName
 answer SubmissionDetailAnswer | .manifest.rows.kiCadImportantSignals array of object
 answer SubmissionDetailAnswer | .manifest.rows.kiCadImportantSignals[].displayName string
 answer SubmissionDetailAnswer | .manifest.rows.kiCadImportantSignals[].kiCadNetName string
+answer SubmissionDetailAnswer | .manifest.rows.regions array of string
 answer SubmissionDetailAnswer | .manifest.rows.revisionDate string
 answer SubmissionDetailAnswer | .manifest.rows.schematics array of object
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].cadName string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].oppositeTraceHighlightColor string
+answer SubmissionDetailAnswer | .manifest.rows.schematics[].oppositeTraceHighlightOpacity string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].schematicHighlightColor string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].schematicHighlightOpacity string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].schematicImageFile string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].schematicName string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].thumbnailHighlightColor string
 answer SubmissionDetailAnswer | .manifest.rows.schematics[].thumbnailHighlightOpacity string
+answer SubmissionDetailAnswer | .manifest.rows.schematics[].traceHighlightColor string
+answer SubmissionDetailAnswer | .manifest.rows.schematics[].traceHighlightOpacity string
 answer SubmissionDetailAnswer | .manifest.summary string
 answer SubmissionDetailAnswer | .publishedFiles array of string
 answer SubmissionDetailAnswer | .publishedHashes map of string
@@ -1177,16 +1197,20 @@ body POST /api/review/boards/edit | .rows.kiCadCalibrations[].schematicName stri
 body POST /api/review/boards/edit | .rows.kiCadImportantSignals array of object
 body POST /api/review/boards/edit | .rows.kiCadImportantSignals[].displayName string
 body POST /api/review/boards/edit | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/boards/edit | .rows.regions array of string
 body POST /api/review/boards/edit | .rows.revisionDate string
 body POST /api/review/boards/edit | .rows.schematics array of object
 body POST /api/review/boards/edit | .rows.schematics[].cadName string
 body POST /api/review/boards/edit | .rows.schematics[].oppositeTraceHighlightColor string
+body POST /api/review/boards/edit | .rows.schematics[].oppositeTraceHighlightOpacity string
 body POST /api/review/boards/edit | .rows.schematics[].schematicHighlightColor string
 body POST /api/review/boards/edit | .rows.schematics[].schematicHighlightOpacity string
 body POST /api/review/boards/edit | .rows.schematics[].schematicImageFile string
 body POST /api/review/boards/edit | .rows.schematics[].schematicName string
 body POST /api/review/boards/edit | .rows.schematics[].thumbnailHighlightColor string
 body POST /api/review/boards/edit | .rows.schematics[].thumbnailHighlightOpacity string
+body POST /api/review/boards/edit | .rows.schematics[].traceHighlightColor string
+body POST /api/review/boards/edit | .rows.schematics[].traceHighlightOpacity string
 body POST /api/review/boards/edit | .summary string
 body POST /api/review/boards/edit/check | (root) object
 body POST /api/review/boards/edit/check | .boardId string
@@ -1269,16 +1293,20 @@ body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].schematicNam
 body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals array of object
 body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals[].displayName string
 body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/boards/edit/check | .rows.regions array of string
 body POST /api/review/boards/edit/check | .rows.revisionDate string
 body POST /api/review/boards/edit/check | .rows.schematics array of object
 body POST /api/review/boards/edit/check | .rows.schematics[].cadName string
 body POST /api/review/boards/edit/check | .rows.schematics[].oppositeTraceHighlightColor string
+body POST /api/review/boards/edit/check | .rows.schematics[].oppositeTraceHighlightOpacity string
 body POST /api/review/boards/edit/check | .rows.schematics[].schematicHighlightColor string
 body POST /api/review/boards/edit/check | .rows.schematics[].schematicHighlightOpacity string
 body POST /api/review/boards/edit/check | .rows.schematics[].schematicImageFile string
 body POST /api/review/boards/edit/check | .rows.schematics[].schematicName string
 body POST /api/review/boards/edit/check | .rows.schematics[].thumbnailHighlightColor string
 body POST /api/review/boards/edit/check | .rows.schematics[].thumbnailHighlightOpacity string
+body POST /api/review/boards/edit/check | .rows.schematics[].traceHighlightColor string
+body POST /api/review/boards/edit/check | .rows.schematics[].traceHighlightOpacity string
 body POST /api/review/boards/edit/check | .summary string
 body POST /api/review/boards/files | (root) object
 body POST /api/review/boards/files | .boardId string
@@ -1383,16 +1411,20 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadCalibra
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadImportantSignals array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadImportantSignals[].displayName string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.regions array of string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.revisionDate string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].cadName string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].oppositeTraceHighlightColor string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].oppositeTraceHighlightOpacity string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].schematicHighlightColor string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].schematicHighlightOpacity string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].schematicImageFile string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].schematicName string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].thumbnailHighlightColor string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].thumbnailHighlightOpacity string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].traceHighlightColor string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics[].traceHighlightOpacity string
 body POST /api/review/submissions/{submissionId:long}/approve | (root) object
 body POST /api/review/submissions/{submissionId:long}/approve | .comment string
 body POST /api/review/submissions/{submissionId:long}/approve | .expectedRemovals array of string
@@ -1501,16 +1533,20 @@ body POST /api/submissions | .rows.kiCadCalibrations[].schematicName string
 body POST /api/submissions | .rows.kiCadImportantSignals array of object
 body POST /api/submissions | .rows.kiCadImportantSignals[].displayName string
 body POST /api/submissions | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/submissions | .rows.regions array of string
 body POST /api/submissions | .rows.revisionDate string
 body POST /api/submissions | .rows.schematics array of object
 body POST /api/submissions | .rows.schematics[].cadName string
 body POST /api/submissions | .rows.schematics[].oppositeTraceHighlightColor string
+body POST /api/submissions | .rows.schematics[].oppositeTraceHighlightOpacity string
 body POST /api/submissions | .rows.schematics[].schematicHighlightColor string
 body POST /api/submissions | .rows.schematics[].schematicHighlightOpacity string
 body POST /api/submissions | .rows.schematics[].schematicImageFile string
 body POST /api/submissions | .rows.schematics[].schematicName string
 body POST /api/submissions | .rows.schematics[].thumbnailHighlightColor string
 body POST /api/submissions | .rows.schematics[].thumbnailHighlightOpacity string
+body POST /api/submissions | .rows.schematics[].traceHighlightColor string
+body POST /api/submissions | .rows.schematics[].traceHighlightOpacity string
 body POST /api/submissions | .summary string
 body POST /api/submissions/oscilloscope-models | (root) object
 body POST /api/submissions/oscilloscope-models | .contactEmail string

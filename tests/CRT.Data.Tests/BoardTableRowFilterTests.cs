@@ -10,7 +10,7 @@ namespace ClassicRepairToolbox.Tests;
 public sealed class BoardTableRowFilterTests
 {
     private static ComponentEntry Component(string label, string friendlyName = "") =>
-        new() { BoardLabel = label, FriendlyName = friendlyName };
+        new() { BoardLabel = label, FriendlyName = friendlyName, Category = "IC", TechnicalNameOrValue = $"part {label}" };
 
     private static BoardData Board(params ComponentEntry[] components) => new() { Components = [.. components] };
 

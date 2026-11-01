@@ -514,4 +514,160 @@ public sealed class ComponentPaneEditsTests
         Assert.Equal("2026-October-4", after.RevisionDate);
         Assert.Same(before.Credits, after.Credits);
     }
+
+    // ---- its label (owner report, 2026-11-01: "unable to rename the component label") -----------
+
+    // Everything filed under the label moves with it - rectangles too, of a component with twin rows,
+    // which the draft's own rule (a row whose key alone changed) would have left behind.
+    [Fact]
+    public void A_rename_takes_every_row_of_the_component_along()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U1", Region = "PAL", Category = "IC", Package = "DIP-40", RepairNotes = "Notes" },
+                new ComponentEntry { BoardLabel = "U1", Region = "NTSC", Category = "IC" },
+                new ComponentEntry { BoardLabel = "U2", Category = "IC" },
+            ],
+            ComponentImages = [new ComponentImageEntry { BoardLabel = "u1", Name = "Top", File = "a.png", Note = "N" }],
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Datasheet", File = "a.pdf" }],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U1", Name = "Link", Url = "https://example.org" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "1", Name = "VSS", Direction = "Ground" }, new ComponentPinEntry { BoardLabel = "U2", Pin = "1" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U1", PartNumber = "6567", Kind = "Drop-in" }],
+            ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" }],
+        };
+
+        BoardData renamed = ComponentPaneEdits.WithLabel(board, "U1", " U19 ");
+
+        Assert.Equal(["U19", "U19", "U2"], renamed.Components.Select(row => row.BoardLabel));
+        Assert.Equal("DIP-40", renamed.Components[0].Package);
+        Assert.Equal("Notes", renamed.Components[0].RepairNotes);
+        Assert.Equal("PAL", renamed.Components[0].Region);
+        Assert.Equal("U19", renamed.ComponentImages[0].BoardLabel);
+        Assert.Equal("N", renamed.ComponentImages[0].Note);
+        Assert.Equal("U19", renamed.ComponentLocalFiles[0].BoardLabel);
+        Assert.Equal("U19", renamed.ComponentLinks[0].BoardLabel);
+        Assert.Equal(["U19", "U2"], renamed.ComponentPins.Select(row => row.BoardLabel));
+        Assert.Equal("Ground", renamed.ComponentPins[0].Direction);
+        Assert.Equal("U19", renamed.ComponentReplacements[0].BoardLabel);
+        Assert.Equal("U19", renamed.ComponentHighlights[0].BoardLabel);
+        Assert.Equal("3", renamed.ComponentHighlights[0].Width);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("U1")]
+    [InlineData("U8")]
+    [InlineData("u8")]
+    public void A_rename_to_nothing_itself_or_another_component_is_no_change(string to)
+    {
+        BoardData board = Board();
+
+        Assert.Same(board, ComponentPaneEdits.WithLabel(board, "U1", to));
+    }
+
+    // Capitals are what the board calls it, and no other component's.
+    [Fact]
+    public void A_rename_of_its_capitals_alone_is_a_change()
+    {
+        BoardData renamed = ComponentPaneEdits.WithLabel(Board(), "U8", "u8");
+
+        Assert.Contains(renamed.Components, row => row.BoardLabel == "u8");
+    }
+
+    [Fact]
+    public void A_rename_of_a_label_the_board_does_not_have_is_no_change()
+    {
+        BoardData board = Board();
+
+        Assert.Same(board, ComponentPaneEdits.WithLabel(board, "U99", "U100"));
+    }
+
+    // ---- told apart per region (owner decision, 2026-11-01) ---------------------------------------
+
+    [Fact]
+    public void Told_apart_a_component_gets_a_row_per_region_each_starting_as_its_one_row()
+    {
+        BoardData regional = ComponentPaneEdits.WithRegionalRows(Board(), "U8", "PAL", regional: true);
+
+        List<ComponentEntry> rows = regional.Components.Where(row => row.BoardLabel == "U8").ToList();
+
+        Assert.Equal(["PAL", "NTSC"], rows.Select(row => row.Region));
+        Assert.All(rows, row => Assert.Equal("CPU", row.FriendlyName));
+        Assert.All(rows, row => Assert.Equal("DIP-40", row.Package));
+        Assert.True(ComponentPaneEdits.IsRegional(regional, "U8"));
+    }
+
+    [Fact]
+    public void No_longer_told_apart_the_row_shown_is_the_one_row()
+    {
+        BoardData same = ComponentPaneEdits.WithRegionalRows(Board(), "U1", "NTSC", regional: false);
+
+        ComponentEntry row = Assert.Single(same.Components, row => row.BoardLabel == "U1");
+
+        Assert.Equal(string.Empty, row.Region);
+        Assert.Equal("6567", row.TechnicalNameOrValue);
+    }
+
+    [Fact]
+    public void Told_apart_as_it_already_is_is_no_change()
+    {
+        BoardData board = Board();
+
+        Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U1", "PAL", regional: true));
+        Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U8", "PAL", regional: false));
+        Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U99", "PAL", regional: true));
+    }
+
+    [Fact]
+    public void Pins_told_apart_start_as_a_copy_for_each_region()
+    {
+        BoardData regional = ComponentPaneEdits.WithRegionalPins(Board(), "U8", "PAL", regional: true);
+
+        List<ComponentPinEntry> pins = regional.ComponentPins.Where(row => row.BoardLabel == "U8").ToList();
+
+        Assert.Equal(["PAL", "PAL", "NTSC", "NTSC"], pins.Select(row => row.Region));
+        Assert.Equal(["VSS", "RES", "VSS", "RES"], pins.Select(row => row.Name));
+        Assert.Equal("Ground", pins[2].Direction);
+        Assert.True(ComponentPaneEdits.PinsAreRegional(regional, "U8"));
+    }
+
+    // Nothing to tell apart yet: the same board, so no step of the draft's history.
+    [Fact]
+    public void A_component_with_no_pins_has_nothing_to_tell_apart()
+    {
+        BoardData board = new()
+        {
+            Components = [new ComponentEntry { BoardLabel = "U2", Category = "IC" }, new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" }],
+        };
+
+        Assert.Same(board, ComponentPaneEdits.WithRegionalPins(board, "U2", "PAL", regional: true));
+    }
+
+    // Nothing to make the same: the region shown has none, and every pin of the component would go.
+    [Fact]
+    public void Pins_are_not_made_the_same_from_a_region_that_has_none()
+    {
+        BoardData board = new()
+        {
+            Components = [new ComponentEntry { BoardLabel = "U2", Category = "IC" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U2", Region = "PAL", Pin = "1", Name = "VSS" }],
+        };
+
+        Assert.Same(board, ComponentPaneEdits.WithRegionalPins(board, "U2", "NTSC", regional: false));
+    }
+
+    [Fact]
+    public void Pins_no_longer_told_apart_are_the_ones_the_region_shown_has()
+    {
+        BoardData same = ComponentPaneEdits.WithRegionalPins(Board(), "U1", "NTSC", regional: false);
+
+        ComponentPinEntry pin = Assert.Single(same.ComponentPins, row => row.BoardLabel == "U1");
+
+        Assert.Equal(string.Empty, pin.Region);
+        Assert.Equal("D6 (NTSC)", pin.Name);
+    }
 }

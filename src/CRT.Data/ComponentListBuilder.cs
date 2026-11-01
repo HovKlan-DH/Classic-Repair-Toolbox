@@ -80,10 +80,6 @@ namespace Handlers.DataHandling
         {
             var items = new List<ComponentListItem>();
 
-            var searchTerms = string.IsNullOrWhiteSpace(searchTerm)
-                ? Array.Empty<string>()
-                : searchTerm.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
             foreach (var component in boardData.Components)
             {
                 var componentRegion = component.Region?.Trim() ?? string.Empty;
@@ -108,21 +104,8 @@ namespace Handlers.DataHandling
 
                 string displayString = string.Join(" | ", parts);
 
-                if (searchTerms.Length > 0)
-                {
-                    bool matches = true;
-                    foreach (var term in searchTerms)
-                    {
-                        if (displayString.IndexOf(term, StringComparison.OrdinalIgnoreCase) < 0)
-                        {
-                            matches = false;
-                            break;
-                        }
-                    }
-
-                    if (!matches)
-                        continue;
-                }
+                if (!ComponentListBuilder.MatchesSearch(displayString, searchTerm))
+                    continue;
 
                 string boardLabel = component.BoardLabel?.Trim() ?? string.Empty;
 
@@ -140,6 +123,26 @@ namespace Handlers.DataHandling
             }
 
             return items;
+        }
+
+        // ###########################################################################################
+        // The search's one rule: every space-separated term of `searchTerm` in an item's display text,
+        // capitals ignored - a blank search matches everything. BuildComponentItems filters by it, and
+        // a list already built is narrowed by it the same way (code review, 2026-10-30: the Contribute
+        // tab built its list twice per refresh, once only to count).
+        // ###########################################################################################
+        public static bool MatchesSearch(string displayText, string? searchTerm)
+        {
+            if (string.IsNullOrWhiteSpace(searchTerm))
+                return true;
+
+            foreach (var term in searchTerm.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (displayText.IndexOf(term, StringComparison.OrdinalIgnoreCase) < 0)
+                    return false;
+            }
+
+            return true;
         }
 
         // ###########################################################################################
@@ -275,20 +278,6 @@ namespace Handlers.DataHandling
             }
 
             return kept;
-        }
-
-        // ###########################################################################################
-        // Returns true when the provided board has at least one component explicitly tagged as PAL or NTSC.
-        // This is what decides whether the region switch is offered at all for a board.
-        // ###########################################################################################
-        public static bool HasExplicitRegionComponents(BoardData? boardData)
-        {
-            if (boardData == null)
-                return false;
-
-            return boardData.Components.Any(component =>
-                string.Equals(component.Region?.Trim(), "PAL", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(component.Region?.Trim(), "NTSC", StringComparison.OrdinalIgnoreCase));
         }
 
         // ###########################################################################################

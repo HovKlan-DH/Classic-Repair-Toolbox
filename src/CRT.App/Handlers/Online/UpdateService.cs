@@ -85,7 +85,10 @@ namespace Handlers.OnlineHandling
         // `cancellationToken` stops the DOWNLOAD (2026-09-28: the "please wait" overlay gives up
         // after two minutes with no progress) - so a stalled download that recovered later can never
         // restart the application under somebody who has carried on working.
-        public static async Task<bool> DownloadAndInstallAsync(Action<int>? onProgress = null, CancellationToken cancellationToken = default)
+        //
+        // `beforeRestart` runs once the download is in, right before the restart - never for a download
+        // that failed, after which CRT carries on running.
+        public static async Task<bool> DownloadAndInstallAsync(Action<int>? onProgress = null, CancellationToken cancellationToken = default, Func<Task>? beforeRestart = null)
         {
             if (SimulationOptions.Current.SimulateUpdate)
             {
@@ -108,6 +111,12 @@ namespace Handlers.OnlineHandling
             try
             {
                 await _manager.DownloadUpdatesAsync(_pendingUpdate, onProgress, cancellationToken);
+
+                if (beforeRestart is not null)
+                {
+                    await beforeRestart();
+                }
+
                 Logger.Info("Update downloaded - restarting into new version");
 
                 // The restart ends this process without the usual way out - the log's last lines first.

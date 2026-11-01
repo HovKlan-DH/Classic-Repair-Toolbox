@@ -34,8 +34,13 @@ namespace CRT
     //
     // FILE MAP:
     //   TabDrafts.axaml.cs  - the drafts' rows and their actions (discard, files, drift, submit), the badge
-    //   TabDrafts.Workspace.cs - the board the tab is about: its header, the left column (its parts,
-    //                         its components, "Add component", "Table view") and "My drafts"
+    //   TabDrafts.Workspace.cs - the board the tab is about: its header with "Table view", the left
+    //                         column (its parts, the components' panel below them with "Add
+    //                         component", the entry open shown selected) and "My drafts"
+    //   TabDrafts.Splitters.cs - the widths dragged on the tab - the left column, and the previews on
+    //                         the schematic images' cards - kept per board; the left column gone
+    //                         while the table is open
+    //   TabDrafts.BoardName.cs - "Board name": the page, and a new board's name changed
     //   TabDrafts.Table.cs  - table mode: opening/closing the table on its draft's session, saving
     //                         it (and the component pane) before the draft's file is acted on, and the
     //                         question when that fails
@@ -51,12 +56,15 @@ namespace CRT
     //                         turns this version of CRT away from submissions
     //   TabDrafts.SubmitOthers.cs - the other drafts the Submit dialog offers to send with one, and
     //                         making each ready once Submit is pressed
-    //   TabDrafts.Readiness.cs - the start panel's "Getting this board ready" checklist of a new
-    //                         board, and "What's missing" on an existing one
+    //   TabDrafts.Readiness.cs - "Board status", the start panel: a panel per part of the board, its
+    //                         rules and words BoardStatusPage's
     //   TabDrafts.MarkAutomatically.cs - a picture's "Mark all automatically": every component's
-    //                         rectangle from its KiCad footprint, on a picture aligned with KiCad
+    //                         rectangle from its KiCad footprint, on a picture aligned with KiCad - and
+    //                         the other side's traces for its card's preview
     //   TabDrafts.Drop.cs   - pictures or the KiCad project folder dropped on the tab, added to the
-    //                         board shown through the window that manages them
+    //                         board shown through the part or the panel that manages them
+    //   TabDrafts.KiCad.cs  - "KiCad data" on the right of the tab (KiCadDataPanel - a window until
+    //                         2026-10-30): opening it, closing it, and catching up with each change
     // ###########################################################################################
     public partial class TabDrafts : UserControl
     {
@@ -105,6 +113,13 @@ namespace CRT
             this.InitializeComponent();
 
             this.MyDraftsComboBox.ItemsSource = this.Drafts;
+            this.ComponentsListBox.ItemsSource = this.thisComponentItems;
+
+            // A key moving the list's selection opens the component once the keys pause (TabDrafts.Workspace.cs).
+            this.WireComponentsList();
+
+            // The left column's width, dragged and kept per board (TabDrafts.Splitters.cs).
+            this.WireSplitters();
 
             this.TableEditor.Saved += this.OnTableSaved;
 
@@ -134,9 +149,17 @@ namespace CRT
                 mainWindow.TabOscilloscopeControl.CaptureOscilloscopePngAsync,
                 mainWindow.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState());
 
-            // The Credits part's "Add me" - by the name and contact the settings remember (2026-10-26).
-            this.ComponentPane.CreditIdentity = () => (UserSettings.CreditName, UserSettings.CreditContact);
-            this.ComponentPane.RememberCreditIdentity = UserSettings.RememberCreditIdentity;
+            // The widths dragged on the tab, kept per board (TabDrafts.Splitters.cs, 2026-10-29).
+            this.NavWidthFor = UserSettings.ContributeNavWidthFor;
+            this.RememberNavWidth = UserSettings.RememberContributeNavWidth;
+            this.FollowCategoryMove = UserSettings.FollowCategoryMove;
+            this.PreviewWidthFor = UserSettings.ContributeImagePreviewWidthFor;
+            this.RememberPreviewWidth = UserSettings.RememberContributeImagePreviewWidth;
+            this.ShowWidths();
+
+            // Whether a KiCad import adds the KiCad board's components too (TabDrafts.KiCad.cs, 2026-11-01).
+            this.KiCadImportAddsComponents = () => UserSettings.KiCadImportAddsComponents;
+            this.RememberKiCadImportAddsComponents = value => UserSettings.KiCadImportAddsComponents = value;
         }
 
         // ###########################################################################################
@@ -176,6 +199,12 @@ namespace CRT
                     // Vanished between EnumerateDraftedBoards' own read and this one (discarded
                     // from another surface, or the folder was deleted by hand) - skip rather than
                     // show a row with nothing behind it.
+                    continue;
+                }
+
+                // Made only to open something, and not changed yet: no draft to speak of (2026-11-01).
+                if (!this.ShowsAsDraft(entry, status))
+                {
                     continue;
                 }
 
@@ -306,6 +335,13 @@ namespace CRT
         // maintainers, who are told the draft was discarded - see DraftDiscardReporter.
         internal void DiscardConfirmed(HardwareBoardEntry entry, IReadOnlyList<SubmissionReceipt>? unfinished = null)
         {
+            // The draft goes here, so nothing closed on the way lets it go first as one made only to
+            // look (code review, 2026-10-30: closing "KiCad data" did - a discard inside the discard).
+            if (string.Equals(this.thisDraftMadeToLook, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase))
+            {
+                this.ForgetDraftMadeToLook();
+            }
+
             // The whole draft is going, so the table's unsaved edits go with it - the discard
             // confirmation above already said everything local is lost. Closed first so the table
             // is not left pointing at a folder that no longer exists.
@@ -317,6 +353,12 @@ namespace CRT
             if (this.IsComponentOpenFor(entry))
             {
                 this.ForgetComponent();
+            }
+
+            // "KiCad data" too - nothing may be shown of a draft that goes.
+            if (this.IsKiCadOpenFor(entry))
+            {
+                this.CloseKiCadNow();
             }
 
             this.ShowDiscardFailure(null);
@@ -371,7 +413,7 @@ namespace CRT
             this.DiscardFailedText.Text = boardDisplayName is null
                 ? string.Empty
                 : $"Part of the draft for {boardDisplayName} could not be deleted. This usually means one of its " +
-                  "files is open in another program. Close it there and press Discard draft again.";
+                  "files is open in another program. Close it there and press \"Discard draft\" again.";
         }
 
         // Lets a headless test read the line without reaching into the named control.
@@ -469,91 +511,6 @@ namespace CRT
             // Dismissing the warning or bringing the draft up to date both change the row.
             this.RefreshDrafts();
         }
-
-        // ###########################################################################################
-        // Opens the "KiCad data" window for one drafted board (session 2c, task 9) - its pictures are
-        // the Pictures part's since step 3, the window's "Schematic images" half gone.
-        //
-        // The board labels and the "Important signals" rows handed over - what the KiCad report
-        // judges the KiCad data against - are the DRAFT's, read from its workbook on disk
-        // (BoardForFilesWindowAsync).
-        //
-        // `toImport`: a KiCad project folder dropped on the tab (TabDrafts.Drop.cs) - imported as the
-        // window opens, as its own drop target imports it.
-        // ###########################################################################################
-        private async Task ManageFilesAsync(HardwareBoardEntry entry, IReadOnlyList<string>? toImport = null)
-        {
-            if (TopLevel.GetTopLevel(this) is not Window ownerWindow)
-            {
-                return;
-            }
-
-            // The table's changes are saved first: every change the window makes is saved with what
-            // the draft holds, so one the table could not save would refuse each of them too - asked
-            // about here, once, rather than behind every click in the window.
-            if (!await this.SettleTableEditsAsync(entry))
-            {
-                return;
-            }
-
-            // Under CRT's "please wait" (owner request, 2026-10-10): reading the board took a few
-            // seconds with nothing on screen, and then the window opened. The window says what it
-            // reads itself, under its own (BoardFilesWindow.Opening).
-            BoardData? boardData = await BusyOverlay.RunLocalAsync(
-                this,
-                CrtWaitWording.OpeningBoardFiles,
-                () => TabDrafts.BoardForFilesWindowAsync(entry));
-
-            var boardLabels = boardData?.Components
-                .Select(component => component.BoardLabel)
-                .Where(label => !string.IsNullOrWhiteSpace(label))
-                .ToList() ?? new List<string>();
-
-            var window = new BoardFilesWindow();
-            // The "Important signals" rows from the same draft, for the KiCad report's net names
-            // (2026-10-10).
-            window.Initialize(entry.ToString(), entry.ExcelDataFile, boardLabels, boardData?.KiCadImportantSignals);
-
-            if (toImport is { Count: > 0 })
-            {
-                window.ImportOnceOpen(toImport);
-            }
-
-            await window.ShowDialog(ownerWindow);
-
-            this.CatchUpAfterBoardFiles(entry, window.ChangedTheDraft);
-        }
-
-        // ###########################################################################################
-        // After "KiCad data" closes - and ONLY when it changed the draft (owner report, 2026-10-10:
-        // closing the window it was then refreshed the detached schematic thumbnails although nothing
-        // had changed; the board on screen was reloaded every time). Then the row's count follows,
-        // and the board on screen is read again if it is this one - new KiCad files are new traces
-        // (the pictures' own changes are the Pictures part's, saved as it makes them). An open table needs
-        // nothing: it showed each change as the window made it (the draft held in memory, CRT 4.0
-        // step 1).
-        // ###########################################################################################
-        internal void CatchUpAfterBoardFiles(HardwareBoardEntry entry, bool changedTheDraft)
-        {
-            if (!changedTheDraft)
-            {
-                return;
-            }
-
-            this.RefreshDrafts();
-
-            if (this.ReloadBoardOverrideForTests is { } reload)
-            {
-                reload(entry.ExcelDataFile);
-            }
-            else
-            {
-                this.thisMainWindow?.ReloadCurrentBoardAfterDraftFileImport(entry.ExcelDataFile);
-            }
-        }
-
-        // Stands in for Main's reload of the board on screen in a test, which has no Main.
-        internal Action<string>? ReloadBoardOverrideForTests { get; set; }
 
         // ###########################################################################################
         // Sends one drafted board for review (Phase 4) - the point of the whole Contribute tab.
@@ -1045,6 +1002,10 @@ namespace CRT
         // ###########################################################################################
         public bool HasErrors { get; }
         public string ErrorsText { get; } = string.Empty;
+
+        // The counts themselves - "Board status" says them (TabDrafts.Readiness.cs). Not public: the row
+        // shows them through HasErrors and the texts (ShownValues compares what is public).
+        internal BoardProblemCounts Problems { get; }
         public bool HasWarnings { get; }
         public string WarningsText { get; } = string.Empty;
 
@@ -1078,6 +1039,10 @@ namespace CRT
         public ICommand RedoCommand { get; }
         public ICommand TryAgainCommand { get; }
         public ICommand ReviewChangesCommand { get; }
+
+        // Whether "Review changes" has anything to show, and its tooltip - why not, when it has not.
+        public bool CanReviewChanges { get; }
+        public string ReviewChangesTooltip { get; } = string.Empty;
 
         // Whether this draft can be sent at all, and why not when it cannot. Disabled rather than
         // hidden - see the markup's own comment.
@@ -1155,6 +1120,7 @@ namespace CRT
                     SubmissionReceiptPresenter.ClassifyReceipt(lastSubmission));
             }
 
+            this.Problems = problems;
             this.HasErrors = problems.Errors > 0;
             this.ErrorsText = problems.Errors == 1 ? "1 error" : $"{problems.Errors} errors";
             this.HasWarnings = problems.Warnings > 0;
@@ -1214,6 +1180,13 @@ namespace CRT
             // submission sent, Submit is greyed out and says so - SubmissionReceiptPresenter.IsAlreadySent.
             bool hasSomething = rowCount > 0 || otherChanges.Any;
 
+            // Nothing to review in a draft holding no change (owner request, 2026-10-30) - greyed out,
+            // its tooltip saying why, as Submit's does.
+            this.CanReviewChanges = hasSomething;
+            this.ReviewChangesTooltip = hasSomething
+                ? "See what your draft changes, component by component - and put a component back as it is published"
+                : "There is nothing to review yet - this draft holds no change from the published data.";
+
             this.CanSubmit = hasSomething && !alreadySent;
             this.NotOfferedWithOthers = SubmitDraftsWording.NotOffered(hasSomething, alreadySent, problems.Errors);
 
@@ -1224,7 +1197,7 @@ namespace CRT
                 : alreadySent && lastSubmission is not null
                     ? SubmissionReceiptPresenter.DescribeAlreadySent(lastSubmission)
                 : this.HasErrors
-                    ? $"This draft has {this.ErrorsText} to fix first - Submit opens its table on them instead of sending."
+                    ? $"This draft has {this.ErrorsText} to fix first - \"Submit\" opens its table on them instead of sending."
                     : "Send this board for review. You do not need an account - only an email address, " +
                       "so you can be told whether it was accepted.";
 

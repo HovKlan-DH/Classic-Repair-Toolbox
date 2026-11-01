@@ -17,11 +17,11 @@ public sealed class DraftStepWordingTests
         Assert.Equal("[U8] back to its published values", DraftStepWording.ComponentReverted("U8"));
         Assert.Equal("Components marked on [Top]", DraftStepWording.ComponentsMarked("Top"));
         Assert.Equal("KiCad calibration of [Top]", DraftStepWording.Calibration("Top"));
-        Assert.Equal("Picture [Top] removed", DraftStepWording.SchematicRemoved("Top"));
-        Assert.Equal("Picture [Top] renamed [Front]", DraftStepWording.SchematicRenamed("Top", "Front"));
+        Assert.Equal("Schematic image [Top] deleted", DraftStepWording.SchematicRemoved("Top"));
+        Assert.Equal("Schematic image [Top] renamed [Front]", DraftStepWording.SchematicRenamed("Top", "Front"));
         Assert.Equal("KiCad view of [Top]", DraftStepWording.CadName("Top"));
         Assert.Equal("KiCad view of [Top]", DraftStepWording.PicturesMatched(["Top"]));
-        Assert.Equal("3 pictures matched to KiCad views", DraftStepWording.PicturesMatched(["Top", "Bottom", "Clock"]));
+        Assert.Equal("3 schematic images matched to KiCad views", DraftStepWording.PicturesMatched(["Top", "Bottom", "Clock"]));
 
         // The component pane's own sections (CRT 4.0 step 2).
         Assert.Equal("Pictures of [U8]", DraftStepWording.ComponentPictures("U8"));
@@ -41,15 +41,15 @@ public sealed class DraftStepWordingTests
         Assert.Equal("The board's files", DraftStepWording.BoardFiles);
         Assert.Equal("The board's links", DraftStepWording.BoardLinks);
         Assert.Equal("Credits", DraftStepWording.Credits);
-        Assert.Equal("Important signals", DraftStepWording.ImportantSignals);
-        Assert.Equal("Colours of the pictures", DraftStepWording.PictureColours);
+        Assert.Equal("Important KiCad signals", DraftStepWording.ImportantSignals);
+        Assert.Equal("Colors of the schematic images", DraftStepWording.PictureColours);
     }
 
     [Fact]
     public void Images_added_are_counted_and_read_in_the_singular_for_one()
     {
-        Assert.Equal("Picture added", DraftStepWording.SchematicsAdded(1));
-        Assert.Equal("3 pictures added", DraftStepWording.SchematicsAdded(3));
+        Assert.Equal("Schematic image added", DraftStepWording.SchematicsAdded(1));
+        Assert.Equal("3 schematic images added", DraftStepWording.SchematicsAdded(3));
     }
 
     // A step's name is read by a hobbyist on the status line: plain ASCII, no program named.

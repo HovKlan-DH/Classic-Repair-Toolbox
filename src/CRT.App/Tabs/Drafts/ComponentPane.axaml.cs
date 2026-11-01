@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
@@ -44,24 +45,30 @@ namespace CRT
     //     draft under a name of the board's own and is saved at once (ComponentPane.Files.cs).
     //   - AND THE COMPONENT AS A WHOLE (slice 3c, 2026-10-26): a new one added, one deleted, "Show on
     //     board" and "Preview popup" (ComponentPane.Whole.cs) - the component editor's window is gone.
-    //   - AND, IN PLACE OF A COMPONENT, ONE OF THE BOARD'S OWN LISTS (slice 4a, 2026-10-26): its files
-    //     and links, its credits or its important signals (ComponentPane.Board.cs) - and its pictures,
-    //     added, named, matched to a KiCad view, ordered and removed on their cards since step 3
+    //   - AND, IN PLACE OF A COMPONENT, ONE OF THE BOARD'S OWN LISTS (slice 4a, 2026-10-26): its files,
+    //     its links, its credits or its important signals (ComponentPane.Board.cs) - and its schematic
+    //     images, added, named, matched to a KiCad view, ordered and deleted on their cards since step 3
     //     (ComponentPane.BoardPictureList.cs - the "Schematic images" window went).
     //
     // The file map:
     //   ComponentPane.axaml.cs  - showing a component, the fields, pins, replacement parts and links,
     //                             committing and saving, Undo changes
+    //   ComponentPane.Pages.cs  - a component's pages as tabs, the region shown and "Applies to", its
+    //                             label, what Submit would refuse marked where it is, and the temporary
+    //                             tool making pinouts of scope baselines
+    //   ComponentPane.RegionsAndCategories.cs - "Board: Regions" and "Board: Categories"
     //   ComponentPane.Files.cs  - scope baselines (with the new-baseline panel and the capture),
     //                             pictures and files: adding, changing, thumbnails
     //   ComponentPane.Whole.cs  - the new-component form, Delete component and "Bring back", the
     //                             buttons that ask the host to show the component on the board or
     //                             preview its popup
-    //   ComponentPane.Board.cs  - the board's files and links, credits and important signals
-    //   ComponentPane.BoardPictures.cs - the board's pictures and the colours a marked component is
-    //                             drawn in on each, with their previews
-    //   ComponentPane.BoardPictureList.cs - the pictures themselves: Add pictures, each one's name,
-    //                             its KiCad view, Move up/down and Remove
+    //   ComponentPane.Board.cs  - the board's files, links, credits and important signals
+    //   ComponentPane.BoardPictures.cs - the board's schematic images and the colours a selected
+    //                             component is drawn in on each, with their previews
+    //   ComponentPane.BoardPictureList.cs - the images themselves: Add schematic image(s), each one's
+    //                             name, its KiCad view, Move up/down and Delete
+    //   ComponentPane.PicturePreviews.cs - the cards' previews: their width dragged, the image decoded
+    //                             sharper while zoomed, and the other side's traces drawn on them
     //   ComponentPane.SignalSuggestions.cs - important signals suggested from the KiCad net names, and
     //                             "Show on board" lighting a net up on the Schematics tab
     //   ComponentPane.KiCadPins.cs - the component's pins from the board's KiCad data: "Fill from
@@ -75,6 +82,9 @@ namespace CRT
         // How long typing may pause before what was typed goes into the draft.
         internal static readonly TimeSpan TypingPause = TimeSpan.FromSeconds(1);
 
+        // The widest the sections and the board's lists are laid out (the markup's MaxWidth="980").
+        internal const double ReadableWidth = 980;
+
         // The mark the pane's own changes carry in the draft's history - its own are never read back.
         private readonly object thisOrigin = new DraftEditOrigin("Component pane");
 
@@ -87,6 +97,9 @@ namespace CRT
 
         private readonly DispatcherTimer thisSaveTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
         private readonly DispatcherTimer thisTypingTimer = new() { Interval = ComponentPane.TypingPause };
+
+        // Whether a typing pause is counting - what it commits waits for it. For a test.
+        internal bool IsTypingPauseRunningForTests => this.thisTypingTimer.IsEnabled;
 
         private DraftSession? thisSession;
         private string thisLabel = string.Empty;
@@ -139,7 +152,7 @@ namespace CRT
 
         // ---- what the host sees -----------------------------------------------------------------
 
-        // Asked to close (its Close button).
+        // Asked to close - the new component's form's Cancel.
         public event EventHandler? CloseRequested;
 
         // One of the pane's own changes went into the draft - the host's list follows.
@@ -249,12 +262,16 @@ namespace CRT
             this.thisReplacements.Clear();
             this.thisLinks.Clear();
             this.ForgetImagesAndFiles();
+            this.ResetRowDrags();
+            this.thisCategories.Clear();
+            this.thisRelabels.Clear();
             this.thisBoardFiles.Clear();
             this.thisBoardLinks.Clear();
             this.thisCredits.Clear();
             this.thisSignals.Clear();
             this.thisSignalSuggestions.Clear();
             this.thisBoardPictures.Clear();
+            this.ForgetPreviews();
             this.CloseCopyPanel();
             this.ForgetKiCadPins();
         }
@@ -344,6 +361,10 @@ namespace CRT
             }
 
             BoardData board = session.Content.Board;
+
+            // An undo or a redo of a rename left the component under another label.
+            this.FollowRelabelInDraft(board);
+
             ComponentEntry? row = ComponentPaneEdits.RowShown(board, this.thisLabel, this.thisRegion);
 
             this.NewComponentPanel.IsVisible = false;
@@ -356,9 +377,11 @@ namespace CRT
                 this.TitleText.Text = this.thisLabel;
                 this.RegionText.Text = string.Empty;
                 this.RegionText.IsVisible = false;
+                this.RegionSwitchPanel.IsVisible = false;
                 this.GoneText.Text = ComponentPaneWording.NotOnBoard(this.thisLabel);
                 this.ShowChangedState();
                 this.ShowGoneActions();
+                this.ShowPageTabs();
                 return;
             }
 
@@ -389,9 +412,11 @@ namespace CRT
                     this.SetBoxText(field, value);
                 }
 
-                this.CategoryBox.ItemsSource = ComponentListBuilder.BuildDistinctCategories(board)
-                    .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                this.thisLabelShown = row.BoardLabel?.Trim() ?? string.Empty;
+                this.BoardLabelBox.Text = this.thisLabelShown;
+                this.ShowLabelProblem(null);
+
+                this.CategoryBox.ItemsSource = this.CategoryChoices(board);
 
                 ComponentPane.Fill(this.thisPins, ComponentPaneEdits.PinsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPanePinRow.From));
                 ComponentPane.Fill(this.thisReplacements, ComponentPaneEdits.ReplacementsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneReplacementRow.From));
@@ -401,6 +426,8 @@ namespace CRT
                 this.TitleText.Text = ComponentPaneWording.Title(row);
                 this.RegionText.Text = ComponentPaneWording.RegionLine(this.thisRowRegion);
                 this.RegionText.IsVisible = this.RegionText.Text.Length > 0;
+                this.ShowRegionChoices(board);
+                this.ShowMigrationOffer(board);
             }
             finally
             {
@@ -408,8 +435,10 @@ namespace CRT
             }
 
             this.ShowCounter();
+            this.ShowCategoryProblem();
             this.ShowPinout();
             this.ShowEmptyLines();
+            this.ShowCurrentPage();
             this.ShowChangedState();
         }
 
@@ -482,6 +511,8 @@ namespace CRT
             this.AddCasePinsButton.IsVisible = missing > 0;
             this.AddCasePinsButton.Content = ComponentPaneWording.AddCasePins(package, missing, pins.Count == 0);
             this.ShowKiCadPins();
+            this.ShowPinProblems();
+            this.ShowPageTabs();
         }
 
         private void ShowEmptyLines()
@@ -492,6 +523,8 @@ namespace CRT
             this.NoLinksText.IsVisible = this.thisLinks.Count == 0;
             this.LinksHeading.IsVisible = this.thisLinks.Count > 0;
             this.ShowImageAndFileHeadings();
+            this.FollowRegionChoices(this.RegionSwitchPanel.IsVisible);
+            this.ShowPageTabs();
         }
 
         // "Changed", and "Undo changes to <label>", while the draft changes the component.
@@ -535,10 +568,19 @@ namespace CRT
                 return;
             }
 
+            // Its label first: what follows is filed under it. Never on a typing pause (the method's
+            // own note: a pause mid-word would rename the component to half a label).
+            if (!fromTyping)
+            {
+                this.CommitLabel();
+            }
+
             foreach (ComponentField field in Enum.GetValues<ComponentField>())
             {
                 this.CommitField(field);
             }
+
+            this.ShowCategoryProblem();
 
             this.CommitPins();
             this.CommitBaselines();
@@ -546,6 +588,7 @@ namespace CRT
             this.CommitReplacements();
             this.CommitFiles();
             this.CommitLinks();
+            this.LetGoOfRowsOfOtherRegions();
 
             // The case drawn as the package now reads.
             this.ShowPinout();
@@ -676,8 +719,14 @@ namespace CRT
                 this.ShowCounter();
             }
 
-            // A picture's name waits for Enter or its box being left - typing it starts no pause.
-            if (e.Source is TextBox { DataContext: ComponentPaneBoardPictureRow })
+            // A picture's name waits for Enter or its box being left - typing it starts no pause. So do
+            // a component's label and a category's name (2026-11-01). Nor does a net typed into the new
+            // signal's picker: it is no part of the draft until "Add signal", and the commit a pause
+            // made swapped the picker's list under it (code review, 2026-10-30).
+            if (e.Source is TextBox { DataContext: ComponentPaneBoardPictureRow or ComponentPaneCategoryRow } ||
+                ReferenceEquals(e.Source, this.BoardLabelBox) ||
+                ReferenceEquals(e.Source, this.NewCategoryNameBox) ||
+                (e.Source is Visual typedIn && ReferenceEquals(typedIn.FindAncestorOfType<AutoCompleteBox>(), this.NewSignalNetBox)))
             {
                 return;
             }
@@ -723,20 +772,11 @@ namespace CRT
 
         // ---- buttons ----------------------------------------------------------------------------
 
-        // ###########################################################################################
-        // Close - except over a picture's name that cannot be taken: the pane stays open with the reason
-        // under the part's heading and the name in its box (code review, 2026-10-28 - the
-        // "Schematic images" window's rule); Escape in the box puts the old name back.
-        // ###########################################################################################
-        private void OnCloseClick(object? sender, RoutedEventArgs e)
-        {
-            if (this.KeepsRefusedPictureName())
-            {
-                return;
-            }
+        // (Its Close button went on 2026-10-30 - the left column's "Board status" closes the pane, and
+        // stays put over a picture's name that cannot be taken, as Close did: TabDrafts.ShowBoardStatus.)
 
-            this.CloseRequested?.Invoke(this, EventArgs.Empty);
-        }
+        // The new component's form: Cancel adds nothing and closes the pane - "Board status" shows.
+        private void OnCancelNewComponentClick(object? sender, RoutedEventArgs e) => this.CloseRequested?.Invoke(this, EventArgs.Empty);
 
         // ###########################################################################################
         // "Undo changes to <label>": the component back as published - every row of it, every region
@@ -804,7 +844,7 @@ namespace CRT
 
         private void OnAddPinClick(object? sender, RoutedEventArgs e)
         {
-            this.thisPins.Add(new ComponentPanePinRow { Region = this.thisRowRegion });
+            this.thisPins.Add(new ComponentPanePinRow { Region = this.RegionForNewPin() });
             this.ShowEmptyLines();
         }
 
@@ -834,7 +874,7 @@ namespace CRT
             List<ComponentPinEntry> pins = ComponentPaneEdits.WithEveryPinOf(
                 this.thisPins.Select(row => row.ToEntry()).ToList(),
                 count,
-                this.thisRowRegion);
+                this.RegionForNewPin());
 
             ComponentPane.Fill(this.thisPins, pins.Select(ComponentPanePinRow.From));
 
@@ -990,6 +1030,24 @@ namespace CRT
             this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.HasNet)));
         }
 
+        // A pin the component's case does not have - an error, marked on its box (ShowPinProblems).
+        public bool PinOutside => this.PinProblem.Length > 0;
+
+        public string PinProblem { get; private set; } = string.Empty;
+
+        // The case that has no such pin - null when it can be on it.
+        public void UseCaseThatRefuses(string? package)
+        {
+            string wanted = package is null ? string.Empty : BoardDataChecks.PinNotOnPackage(this.thisPin, package);
+
+            if (!string.Equals(this.PinProblem, wanted, StringComparison.Ordinal))
+            {
+                this.PinProblem = wanted;
+                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.PinProblem)));
+                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.PinOutside)));
+            }
+        }
+
         public static ComponentPanePinRow From(ComponentPinEntry pin) => new()
         {
             Region = pin.Region ?? string.Empty,
@@ -1019,16 +1077,12 @@ namespace CRT
     }
 
     // One replacement part as the pane holds it - the kind picked as a pin's direction is.
-    public sealed class ComponentPaneReplacementRow : INotifyPropertyChanged
+    public sealed class ComponentPaneReplacementRow : ComponentPaneRegionalRow
     {
         private string thisPartNumber = string.Empty;
         private string thisKind = string.Empty;
         private string thisChanges = string.Empty;
         private string thisSource = string.Empty;
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        public string Region { get; init; } = string.Empty;
 
         public string PartNumber { get => this.thisPartNumber; set => this.Set(ref this.thisPartNumber, value ?? string.Empty); }
 
@@ -1070,17 +1124,6 @@ namespace CRT
             Changes = this.thisChanges,
             Source = this.thisSource,
         };
-
-        private void Set(ref string field, string value, [CallerMemberName] string? name = null)
-        {
-            if (string.Equals(field, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            field = value;
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
     }
 
     // One link as the pane holds it.
@@ -1093,7 +1136,20 @@ namespace CRT
 
         public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
 
-        public string Url { get => this.thisUrl; set => this.Set(ref this.thisUrl, value ?? string.Empty); }
+        public string Url
+        {
+            get => this.thisUrl;
+            set
+            {
+                this.Set(ref this.thisUrl, value ?? string.Empty);
+                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.UrlNotWeb)));
+            }
+        }
+
+        // An address the checks refuse, marked on its box (ComponentPaneBoardLinkRow says why).
+        public bool UrlNotWeb => BoardDataChecks.IsRefusedLink(this.thisUrl);
+
+        public string NotWebText => ComponentPaneWording.LinkNotWeb;
 
         public static ComponentPaneLinkRow From(ComponentLinkEntry row) => new()
         {

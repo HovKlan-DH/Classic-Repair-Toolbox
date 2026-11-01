@@ -174,7 +174,7 @@ namespace CRT
             List<ComponentPinEntry> pins = KiCadComponentPins.Fill(
                 this.thisPins.Select(row => row.ToEntry()).ToList(),
                 this.thisKiCadPins,
-                this.thisRowRegion,
+                this.RegionForNewPin(),
                 out int added,
                 out int filled);
 

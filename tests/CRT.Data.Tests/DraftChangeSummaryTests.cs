@@ -142,8 +142,8 @@ public sealed class DraftChangeSummaryTests
         Assert.Equal(DraftChangeSummary.BoardTitle, board.Title);
         Assert.Equal(
             [
-                "Picture [Top] renamed [Front]",
-                "Picture [Bottom]: CAD name changed",
+                "Schematic image [Top] renamed [Front]",
+                "Schematic image [Bottom]: CAD name changed",
                 "Credit [Data / Anna] added",
                 "KiCad calibration of [Bottom] changed",
             ],
@@ -227,5 +227,29 @@ public sealed class DraftChangeSummaryTests
         Assert.Equal(
             ["Package and repair notes changed", "1 pin added", "1 pin changed", "1 replacement part added"],
             group.Lines);
+    }
+
+    // ###########################################################################################
+    // A list put in another order is said under the board (owner decision, 2026-10-30: order is a
+    // change) - "Review changes" and the Submit dialog show it, so an order-only draft does not read
+    // as empty.
+    // ###########################################################################################
+    [Fact]
+    public void A_list_in_another_order_is_said_under_the_board()
+    {
+        BoardData published = Board(Component("U8", "CPU"));
+        published.BoardLocalFiles.AddRange(
+        [
+            new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = "Board local files/manual.pdf" },
+            new BoardLocalFileEntry { Category = "Troubleshooting", Name = "Dead test", File = "Board local files/dead.pdf" },
+        ]);
+
+        BoardData draft = Board(Component("U8", "CPU"));
+        draft.BoardLocalFiles.AddRange([published.BoardLocalFiles[1], published.BoardLocalFiles[0]]);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(published), Content(draft));
+
+        Assert.Equal(["Order of the files changed"], Single(summary, string.Empty).Lines);
+        Assert.Equal(["The board: Order of the files changed"], summary.AsLines());
     }
 }

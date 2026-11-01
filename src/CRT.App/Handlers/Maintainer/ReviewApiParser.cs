@@ -631,7 +631,9 @@ namespace Handlers.MaintainerHandling
 
             return new ReviewChangeSummaryView(
                 ReviewApiParser.Bool(element, "isNewBoard") ?? false,
-                sections);
+                sections,
+                ReviewApiParser.Strings(element, "reorderedSections"),
+                ReviewApiParser.Bool(element, "regionsNow"));
         }
 
         private static ReviewSectionView? ParseSection(JsonElement element)

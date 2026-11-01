@@ -6,7 +6,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
 // StorageItemPaths - the local paths of dropped or pasted items, the one copy the Feedback tab and
-// BoardFilesWindow share (code review, 2026-10-16). Real storage items come from the headless
+// KiCadDataPanel share (code review, 2026-10-16). Real storage items come from the headless
 // window's storage provider.
 // ###########################################################################################
 [Collection("HeadlessUi")]

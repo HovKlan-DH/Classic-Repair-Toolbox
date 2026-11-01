@@ -55,11 +55,11 @@ namespace CRT
 
         internal const string EditModelIntro =
             "Your own model. Each change is saved as you leave its box, into a file of your own the data check never " +
-            "puts back. Connect to your scope, then press Try it beside a command to see its answer; Run full test " +
-            "suite tries them all in turn and changes the scope's settings while it runs.";
+            "puts back. Connect to your scope, then press \"Try it\" beside a command to see its answer; \"Run full test " +
+            "suite\" tries them all in turn and changes the scope's settings while it runs.";
 
         internal const string CommandsIntro =
-            "Try it sends the command as you typed it and shows the scope's answer under it - and every command sent " +
+            "\"Try it\" sends the command as you typed it and shows the scope's answer under it - and every command sent " +
             "in the output below.";
 
         // While the editor's own refresh of the drop-downs runs: a selection change then is the model

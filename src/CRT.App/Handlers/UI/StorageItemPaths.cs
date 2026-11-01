@@ -8,7 +8,7 @@ namespace CRT
     // The local paths of dropped or pasted storage items - the files CRT can read from this
     // computer. An item with no local file (a virtual item from an archive or a remote location)
     // is left out, as is nothing at all. One copy for every drop target that takes them all (code
-    // review, 2026-10-16: the Feedback tab and BoardFilesWindow each had their own).
+    // review, 2026-10-16: the Feedback tab and the KiCad data window - KiCadDataPanel - each had their own).
     // ###########################################################################################
     internal static class StorageItemPaths
     {

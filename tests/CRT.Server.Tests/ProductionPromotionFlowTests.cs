@@ -152,7 +152,7 @@ namespace CRT.Server.Tests
 
             manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = image });
             manifest.Rows.RevisionDate = "2026-September-25";
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA" });
 
             long id = await store.CreateAsync(
                 new NewSubmission(

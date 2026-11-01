@@ -163,8 +163,8 @@ namespace CRT
         // NoticeText line per such contribution, the panel gone with none, or with no plan.
         //
         // Each line says which contribution, and names its contributor in bold (code review,
-        // 2026-10-11; DraftDiscardWording.BetaWarningRuns) - SemiBold on the block as the queue's
-        // panel has it, so the runs keep it.
+        // 2026-10-11; DraftDiscardWording.BetaWarningRuns) - the rest of the line in the notice's own
+        // weight, not bold since 2026-10-30, as the queue's panel.
         // ###########################################################################################
         private void ShowBeforePublishing(ProductionPlanView? plan)
         {
@@ -175,7 +175,7 @@ namespace CRT
 
             foreach (CarriedSubmission submission in (plan?.Carrying ?? []).Where(submission => submission.DraftDiscardedUtc is not null))
             {
-                var line = new TextBlock { FontWeight = FontWeight.SemiBold };
+                var line = new TextBlock();
                 line.Classes.Add("NoticeText");
 
                 TabMaintainer.ShowCounts(line, DraftDiscardWording.BetaWarningRuns(submission));

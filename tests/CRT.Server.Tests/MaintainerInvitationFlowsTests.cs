@@ -89,7 +89,7 @@ namespace CRT.Server.Tests
             // CRT itself, and how to show its Maintainer tab (2026-09-29) - the separate CRT
             // Maintainer application and its release repository are gone.
             Assert.Contains("HovKlan-DH/Classic-Repair-Toolbox/releases", mail.Body, StringComparison.Ordinal);
-            Assert.Contains("\"Enable Maintainer tab\"", mail.Body, StringComparison.Ordinal);
+            Assert.Contains("turns on the \"Maintainer\" tab", mail.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("Classic-Repair-Toolbox-Maintainer", mail.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", mail.Body, StringComparison.Ordinal);
 

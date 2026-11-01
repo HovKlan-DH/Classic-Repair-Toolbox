@@ -105,7 +105,7 @@ public class TabConstructionTests
     public void The_board_files_window_can_be_constructed()
     {
         // The schematic and KiCad import window (session 2c, task 9).
-        UiTest.Run(() => Assert.NotNull(new BoardFilesWindow()));
+        UiTest.Run(() => Assert.NotNull(new KiCadDataPanel()));
     }
 
     [Fact]

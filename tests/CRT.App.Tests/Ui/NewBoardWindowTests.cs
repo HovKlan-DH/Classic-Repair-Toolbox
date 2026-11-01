@@ -57,6 +57,9 @@ public sealed class NewBoardWindowTests : IDisposable
         ExcelDataFile = excelDataFile,
     };
 
+    // The boxes are the shared BoardNameFields' (2026-11-01).
+    private static BoardNameFields FieldsOf(NewBoardWindow window) => window.GetControl<BoardNameFields>("Fields");
+
     private static NewBoardWindow WindowWith(params HardwareBoardEntry[] existing)
     {
         var window = new NewBoardWindow();
@@ -70,9 +73,9 @@ public sealed class NewBoardWindowTests : IDisposable
     // shipped validation path rather than a parallel copy of it.
     private static void Fill(NewBoardWindow window, string manufacturer, string hardware, string board)
     {
-        window.GetControl<AutoCompleteBox>("ManufacturerBox").Text = manufacturer;
-        window.GetControl<TextBox>("HardwareBox").Text = hardware;
-        window.GetControl<TextBox>("BoardBox").Text = board;
+        FieldsOf(window).GetControl<AutoCompleteBox>("ManufacturerBox").Text = manufacturer;
+        FieldsOf(window).GetControl<TextBox>("HardwareBox").Text = hardware;
+        FieldsOf(window).GetControl<TextBox>("BoardBox").Text = board;
         window.RefreshValidationForTests();
     }
 
@@ -156,7 +159,7 @@ public sealed class NewBoardWindowTests : IDisposable
         UiTest.Run(() =>
         {
             var window = WindowWith();
-            window.GetControl<TextBox>("NotesBox").Text = "My own notes";
+            FieldsOf(window).GetControl<TextBox>("NotesBox").Text = "My own notes";
             Fill(window, "Commodore", "C64", "250407");
 
             var registration = window.BuildRegistrationOrNull(out string message);
@@ -178,7 +181,7 @@ public sealed class NewBoardWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            Assert.Equal(MasterListing.MaximumNotesLength, WindowWith().GetControl<TextBox>("NotesBox").MaxLength);
+            Assert.Equal(MasterListing.MaximumNotesLength, FieldsOf(WindowWith()).GetControl<TextBox>("NotesBox").MaxLength);
         });
     }
 
@@ -354,7 +357,7 @@ public sealed class NewBoardWindowTests : IDisposable
                 Entry("C64", "250425", "Commodore/C64/250425/Data.xlsx"),
                 Entry("CPC464", "MC0001A", "Amstrad/CPC464/MC0001A/Data.xlsx"));
 
-            var suggestions = window.GetControl<AutoCompleteBox>("ManufacturerBox")
+            var suggestions = FieldsOf(window).GetControl<AutoCompleteBox>("ManufacturerBox")
                 .ItemsSource!
                 .Cast<string>()
                 .ToList();
@@ -391,7 +394,7 @@ public sealed class NewBoardWindowTests : IDisposable
             // Back on the form, with everything still typed in - declining is not a reason to
             // make the contributor start over.
             Assert.True(window.IsVisible, "Declining must leave the form open.");
-            Assert.Equal("C64", window.GetControl<TextBox>("HardwareBox").Text);
+            Assert.Equal("C64", FieldsOf(window).GetControl<TextBox>("HardwareBox").Text);
             Assert.True(CreateEnabled(window));
 
             window.Close();
@@ -536,15 +539,15 @@ public sealed class NewBoardWindowTests : IDisposable
 
             Assert.Equal("Commodore", window.ManufacturerOfferedForTests);
             Assert.Equal("Commodore 64", window.HardwareOfferedForTests);
-            Assert.Equal("Did you mean Commodore 64?", window.GetControl<TextBlock>("HardwareDidYouMeanText").Text);
-            Assert.Equal("Use Commodore 64", window.GetControl<Button>("HardwareDidYouMeanButton").Content);
+            Assert.Equal("Did you mean Commodore 64?", FieldsOf(window).GetControl<TextBlock>("HardwareDidYouMeanText").Text);
+            Assert.Equal("Use Commodore 64", FieldsOf(window).GetControl<Button>("HardwareDidYouMeanButton").Content);
             Assert.True(CreateEnabled(window));
 
-            window.GetControl<Button>("ManufacturerDidYouMeanButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
-            window.GetControl<Button>("HardwareDidYouMeanButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            FieldsOf(window).GetControl<Button>("ManufacturerDidYouMeanButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            FieldsOf(window).GetControl<Button>("HardwareDidYouMeanButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
 
-            Assert.Equal("Commodore", window.GetControl<AutoCompleteBox>("ManufacturerBox").Text);
-            Assert.Equal("Commodore 64", window.GetControl<TextBox>("HardwareBox").Text);
+            Assert.Equal("Commodore", FieldsOf(window).GetControl<AutoCompleteBox>("ManufacturerBox").Text);
+            Assert.Equal("Commodore 64", FieldsOf(window).GetControl<TextBox>("HardwareBox").Text);
             Assert.Null(window.ManufacturerOfferedForTests);
             Assert.Null(window.HardwareOfferedForTests);
             Assert.StartsWith("Commodore 64 - 999001", window.PreviewTextForTests, StringComparison.Ordinal);
@@ -566,7 +569,7 @@ public sealed class NewBoardWindowTests : IDisposable
             Fill(window, "Atari", "Atari 800XL", "CA061086");
             Assert.Null(window.ManufacturerOfferedForTests);
             Assert.Null(window.HardwareOfferedForTests);
-            Assert.False(window.GetControl<StackPanel>("HardwareDidYouMeanPanel").IsVisible);
+            Assert.False(FieldsOf(window).GetControl<StackPanel>("HardwareDidYouMeanPanel").IsVisible);
         });
     }
 }

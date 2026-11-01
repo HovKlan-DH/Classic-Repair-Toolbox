@@ -11,44 +11,49 @@ using System.Threading.Tasks;
 namespace CRT
 {
     // ###########################################################################################
-    // GETTING A BOARD READY, AND WHAT A BOARD STILL LACKS (CRT 4.0 step 3, slice 3a - the plan: "Getting
-    // this board ready ... On an existing board, the same panel shows What's missing: components with no
-    // description, unmarked components, pins with no baseline").
+    // "BOARD STATUS" - A PANEL PER PART OF THE BOARD (owner request, 2026-11-01: "each point in its own
+    // panel with a headline, then an explanation what this is about, a button for it and lastly also a
+    // status where it will count the data for it, if any. Maybe some coloring and the checkmark icon or
+    // a 'missing to do' icon"). It replaced the new board's checklist and the published board's "What's
+    // missing"; what a panel says is BoardStatusPage's.
     //
-    // On the right of the Contribute tab while nothing is open there (the start panel):
+    // On the right of the Contribute tab while nothing else is open there (the start panel):
     //
-    //   - A NEW BOARD (one only a draft has) shows its checklist (BoardReadiness): each step done by what
-    //     its draft holds, the first with something to do next, each with a button to the tool that
-    //     does it - the Pictures part (adding pictures, their KiCad views, Mark components and Align
-    //     KiCad on each), the "KiCad data" window, Add component, Important signals, Submit.
-    //   - AN EXISTING BOARD shows what it lacks, each component a click away (BoardReadiness.Missing).
-    //   - "ADD N FROM KICAD" (slice 3b) puts every component of the board's KiCad data the draft lacks
-    //     into it in one step - with their values, categories, packages, pins and datasheet links.
+    //   - THE PANELS follow the left column's entries, each with the button to its part.
     //   - SUGGESTED MATCHES (slice 3d - the plan: "Match: suggested pairs ("...Top.png" with "PCB Top")
-    //     to confirm") are listed under the Match step, each picture with the KiCad view its name and
-    //     its file's name say it shows (SchematicCadNameSuggestions); "Use" takes one, "Use all N"
-    //     every one - one step either way.
+    //     to confirm") are under Schematic images, each picture with the KiCad view its name and its
+    //     file's name say it shows (SchematicCadNameSuggestions); "Use" takes one, "Use all N" every
+    //     one - one step either way.
+    //   - WHAT EACH COMPONENT LACKS is under Components, a button per component that opens it
+    //     (BoardReadiness.Missing).
+    //   - "ADD N FROM KICAD" (slice 3b) puts every component of the board's KiCad data the draft lacks
+    //     into it in one step - with their values, categories, packages, pins and datasheet links. It
+    //     is the KiCad import's since 2026-11-01 (KiCadDataPanel).
     //
     // Worked out ONCE for each board shown and each time the right side goes back to the start panel -
     // never after every refresh of the drafts list, which runs whenever CRT comes to the front, and not
     // at all while the tab is off screen: then when it is shown (code review, 2026-10-26 - twice per
-    // board load, in any tab). EVERY ROW AND BUTTON IS MADE ONCE AND CHANGED IN PLACE - the checklist's
-    // and "What's missing"'s alike: the KiCad data arrives a moment after the rest, Main reads the board
-    // again after a change, and a control made again under a press threw that click away (the trap the
-    // drafts list met, 2026-10-10). A board's KiCad facts are kept for it, so the start panel coming
-    // back shows them while they are read again rather than flicking to "not known yet".
+    // board load, in any tab). EVERY PANEL AND BUTTON IS MADE ONCE AND CHANGED IN PLACE: the KiCad data
+    // arrives a moment after the rest, Main reads the board again after a change, and a control made
+    // again under a press threw that click away (the trap the drafts list met, 2026-10-10). A board's
+    // KiCad facts are kept for it, so the page coming back shows them while they are read again rather
+    // than flicking to "not known yet".
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
     public partial class TabDrafts
     {
-        // Which time the lists were asked for - a read answers only the latest ask.
+        // Which time the page was asked for - a read answers only the latest ask.
         private int thisReadinessAsk;
 
         // Asked for while the tab was off screen - worked out when it is shown.
         private bool thisReadinessStale;
 
-        private readonly Dictionary<ReadinessStepKind, (TextBlock Icon, TextBlock Title, TextBlock Detail, Button Action, StackPanel Text)> thisReadinessRows = new();
+        // One panel's controls, made once: its icon, words and button - and Extra, under its lines, for
+        // what only that part has (the suggested matches, what each component lacks).
+        private sealed record StatusRow(Border Panel, TextBlock Icon, TextBlock Title, TextBlock Explanation, StackPanel Lines, Button Action, Button Table, StackPanel Extra);
+
+        private readonly Dictionary<BoardStatusPart, StatusRow> thisStatusRows = new();
 
         // ###########################################################################################
         // The matches suggested under "Match pictures to KiCad views" (slice 3d), made once in its
@@ -60,15 +65,19 @@ namespace CRT
         private MatchControls? thisMatchControls;
         private IReadOnlyList<SchematicCadNameSuggestion> thisShownMatches = [];
 
-        // The steps shown - what a step's button acts on - and the board they are of.
-        private IReadOnlyList<ReadinessStep> thisReadinessSteps = [];
-        private string? thisReadinessStepsBoard;
+        // The panels shown, and the KiCad files last counted for a board.
+        private IReadOnlyList<BoardStatusPanel> thisStatusPanels = [];
+
+        private (string Board, IReadOnlyList<string> Files)? thisStatusFiles;
 
         // The last KiCad facts read, and the board they are of.
         private (string Board, BoardKiCadFacts Facts)? thisReadinessFacts;
 
+        // The draft's errors and warnings as last checked, and the board they are of.
+        private (string Board, IReadOnlyList<BoardDataProblem> Problems)? thisStatusProblems;
+
         // ###########################################################################################
-        // What a step's button did - said only while the draft is as it left it (code review,
+        // What a button did - said only while the draft is as it left it (code review,
         // 2026-10-26: after an Undo it still said the components were added): its board, the draft's
         // content it was said of, and - for a save that failed while something else waited to be
         // saved - whether it goes once the draft is saved.
@@ -77,19 +86,28 @@ namespace CRT
 
         private ReadinessNote? thisReadinessNote;
 
-        // "What's missing"'s groups, made once: a heading, the first labels as buttons, "and N more".
+        // What the components lack, under the Components panel, made once: a heading, the first labels as
+        // buttons, "and N more".
         private sealed record MissingGroup(StackPanel Panel, TextBlock Heading, WrapPanel Buttons, TextBlock More);
 
         private MissingGroup[]? thisMissingGroups;
-        private TextBlock? thisNothingMissingText;
 
-        // The checklist's last work - for a test to wait for.
+        // The page's last work - for a test to wait for.
         private Task thisReadinessShown = Task.CompletedTask;
 
         // Stands in for reading a board's KiCad data - a test has no KiCad files.
         internal Func<string, Task<KiCadProjectRoot?>>? BoardKiCadOverrideForTests { get; set; }
 
-        internal IReadOnlyList<ReadinessStep> ReadinessForTests => this.thisReadinessSteps;
+        internal IReadOnlyList<BoardStatusPanel> StatusPanelsForTests => this.thisStatusPanels;
+
+        internal BoardStatusPanel StatusPanelForTests(BoardStatusPart part) => this.thisStatusPanels.Single(panel => panel.Part == part);
+
+        // A panel's controls, and its button - for a test to press.
+        internal Border StatusBorderForTests(BoardStatusPart part) => this.thisStatusRows[part].Panel;
+
+        internal Button StatusButtonForTests(BoardStatusPart part) => this.thisStatusRows[part].Action;
+
+        internal Button StatusTableButtonForTests(BoardStatusPart part) => this.thisStatusRows[part].Table;
 
         internal string? ReadinessNoteForTests => this.ReadinessNoteText.IsVisible ? this.ReadinessNoteText.Text : null;
 
@@ -104,7 +122,7 @@ namespace CRT
         internal Func<bool>? IsOnScreenOverrideForTests { get; set; }
 
         // ###########################################################################################
-        // The start panel shown or hidden - and its lists worked out again each time it comes back
+        // The start panel shown or hidden - and its panels worked out again each time it comes back
         // (the component pane or the table closed).
         // ###########################################################################################
         private void ShowStartPanel(bool visible)
@@ -135,7 +153,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The checklist of a new board, or what an existing board lacks - for the board shown.
+        // The panels, for the board shown: at once from what is known - the draft held in memory, the
+        // KiCad facts last read for the board - then again once all of it is read (ShowStatusOfAsync).
         // ###########################################################################################
         private void ShowReadiness()
         {
@@ -155,89 +174,84 @@ namespace CRT
 
             if (!this.StartPanel.IsVisible || this.thisCurrentEntry is not { } entry || this.thisCurrentBoard is not { } board)
             {
-                this.HideSteps();
-                this.MissingPanel.IsVisible = false;
+                this.HideStatus();
                 return;
             }
 
-            if (!entry.IsDraftOnly)
-            {
-                // The draft held in memory when there is one - the pane's saves can leave the board
-                // shown behind until Main reads it again.
-                BoardData current = DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile)?.Content.Board ?? board;
+            string identity = entry.ExcelDataFile;
+            DraftSession? held = DraftManager.Sessions.Find(DraftManager.DraftsRoot, identity);
 
-                this.HideSteps();
-                this.ShowMissing(BoardReadiness.Missing(current));
-                return;
-            }
+            this.ShowStatus(entry, held, held?.Content.Board ?? board, held?.Content.Calibrations, this.KnownKiCadFiles(identity), this.KnownKiCadFacts(identity), this.KnownProblems(identity));
 
-            this.MissingPanel.IsVisible = false;
-
-            // Another board's checklist goes at once - never left standing under this board's header,
-            // its buttons acting on this board (code review, 2026-10-26).
-            if (!string.Equals(this.thisReadinessStepsBoard, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase))
-            {
-                this.HideSteps();
-            }
-
-            this.thisReadinessShown = this.ShowStepsOfAsync(entry, ask);
+            this.thisReadinessShown = this.ShowStatusOfAsync(entry, board, ask);
         }
 
-        private void HideSteps()
+        private void HideStatus()
         {
-            this.ReadinessPanel.IsVisible = false;
-            this.thisReadinessSteps = [];
-            this.thisReadinessStepsBoard = null;
+            this.StatusPanelsHost.IsVisible = false;
+            this.thisStatusPanels = [];
         }
 
         // ###########################################################################################
-        // The new board's steps: first from its draft and the KiCad facts last read for it, then again
-        // once its KiCad data is read (the views and the components it has - KiCadProjectLoader keeps
-        // the parse, so the board on screen has usually read it already). A newer ask wins; a draft
-        // that cannot be opened shows no checklist.
+        // THE PANELS, ONCE ALL OF IT IS READ: the board as its draft has it - or, with no draft, as its
+        // published board file has it (its calibrations are there) - its KiCad files, and what its KiCad
+        // data says, read off the UI thread (KiCadProjectLoader keeps the parse, so the board on screen
+        // has usually read it already). A newer ask wins; a new board whose draft cannot be opened
+        // shows nothing.
         // ###########################################################################################
-        private async Task ShowStepsOfAsync(HardwareBoardEntry entry, int ask)
+        private async Task ShowStatusOfAsync(HardwareBoardEntry entry, BoardData shown, int ask)
         {
             try
             {
                 string draftsRoot = DraftManager.DraftsRoot;
                 string identity = entry.ExcelDataFile;
-                string folder = DraftFolderLayout.GetBoardFolder(draftsRoot, identity);
+                string published = entry.IsDraftOnly ? string.Empty : this.PublishedBoardFileOf(entry);
 
                 DraftSession? session = DraftManager.Sessions.Find(draftsRoot, identity)
-                                        ?? await Task.Run(() => DraftManager.Sessions.Get(draftsRoot, identity));
+                                        ?? await Task.Run(() => entry.IsDraftOnly || DraftBoardSource.HasDraft(draftsRoot, identity)
+                                            ? DraftManager.Sessions.Get(draftsRoot, identity)
+                                            : null);
 
                 if (ask != this.thisReadinessAsk)
                 {
                     return;
                 }
 
-                if (session is null)
+                if (session is null && entry.IsDraftOnly)
                 {
-                    this.HideSteps();
+                    this.HideStatus();
                     return;
                 }
 
-                bool hasKiCad = session.ListedFiles.Keys.Any(SubmissionKiCadFiles.IsInKiCadFolder) ||
-                                await Task.Run(() => DraftFiles.ArrivedKiCadNames(folder).Count > 0);
+                IReadOnlyList<string>? listed = session?.ListedFiles.Keys.ToList();
+
+                string dataRoot = DataManager.DataRoot;
+                string draftFolder = DraftFolderLayout.GetBoardFolder(draftsRoot, identity);
+
+                // The draft's errors and warnings, as the table's checks find them on what it holds now -
+                // a board with no draft has none to say.
+                (BoardContent? content, List<string> files, IReadOnlyList<BoardDataProblem> problems) = await Task.Run(() =>
+                    (session?.Content ?? TabDrafts.PublishedContentOf(published),
+                     TabDrafts.KiCadFileNamesOf(draftsRoot, identity, listed, published),
+                     session is null ? [] : DraftStatusReader.ProblemsOf(session.Content.Board, dataRoot, draftFolder)));
 
                 if (ask != this.thisReadinessAsk)
                 {
                     return;
                 }
 
-                BoardKiCadFacts? known = hasKiCad && this.thisReadinessFacts is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase)
-                    ? last.Facts
-                    : null;
+                this.thisStatusFiles = (identity, files);
+                this.thisStatusProblems = (identity, problems);
 
-                this.ShowSteps(identity, session, BoardReadiness.Steps(entry.ToString(), session.Content, hasKiCad, known));
+                BoardKiCadFacts? known = files.Count > 0 ? this.KnownKiCadFacts(identity) : null;
+                this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, known, problems);
 
-                if (!hasKiCad)
+                if (files.Count == 0)
                 {
                     return;
                 }
 
-                KiCadProjectRoot? root = await this.ReadKiCadForReadinessAsync(identity, "getting the board ready");
+                KiCadProjectRoot? root = await this.ReadKiCadForReadinessAsync(identity, "its board status");
 
                 if (ask != this.thisReadinessAsk)
                 {
@@ -249,18 +263,57 @@ namespace CRT
                 if (ask == this.thisReadinessAsk)
                 {
                     this.thisReadinessFacts = (identity, facts);
-                    this.ShowSteps(identity, session, BoardReadiness.Steps(entry.ToString(), session.Content, hasKiCad, facts));
+                    this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, facts, problems);
                 }
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Could not work out how ready [{entry.ExcelDataFile}] is - [{ex.Message}]");
-
-                if (ask == this.thisReadinessAsk)
-                {
-                    this.HideSteps();
-                }
+                Logger.Warning($"Could not work out the board status of [{entry.ExcelDataFile}] - [{ex.Message}]");
             }
+        }
+
+        // A published board file's content - null when it cannot be read.
+        private static BoardContent? PublishedContentOf(string boardFile)
+        {
+            if (!System.IO.File.Exists(boardFile) || !DataTreeLayout.IsBoardFile(boardFile))
+            {
+                return null;
+            }
+
+            try
+            {
+                return BoardFiles.ReadDocument(boardFile) is { } document ? BoardDocumentMapping.ToContent(document) : null;
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+            {
+                Logger.Warning($"Could not read the published board file [{boardFile}] for its board status - [{ex.Message}]");
+                return null;
+            }
+        }
+
+        // The KiCad facts last read for a board - null when none were.
+        private BoardKiCadFacts? KnownKiCadFacts(string identity) =>
+            this.thisReadinessFacts is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Facts : null;
+
+        // The KiCad files last counted for a board - null while they are not known.
+        private IReadOnlyList<string>? KnownKiCadFiles(string identity) =>
+            this.thisStatusFiles is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Files : null;
+
+        // The draft's errors and warnings as last checked - none known yet is none said.
+        private IReadOnlyList<BoardDataProblem> KnownProblems(string identity) =>
+            this.thisStatusProblems is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Problems : [];
+
+        // What the last button here did - said while the draft is the content it was said of.
+        private void ShowReadinessNote(string board, DraftSession? session)
+        {
+            bool noteShown = session is not null &&
+                             this.thisReadinessNote is { } note &&
+                             string.Equals(note.Board, board, StringComparison.OrdinalIgnoreCase) &&
+                             ReferenceEquals(note.Content, session.Content) &&
+                             !(note.GoesWhenSaved && session.SaveState == DraftSaveState.Saved);
+
+            this.ReadinessNoteText.Text = noteShown ? this.thisReadinessNote!.Text : null;
+            this.ReadinessNoteText.IsVisible = noteShown;
         }
 
         // The board's KiCad project, as the Schematics tab draws it (ReadBoardKiCadAsync) - null without.
@@ -269,89 +322,211 @@ namespace CRT
                 ? read(identity)
                 : TabDrafts.ReadBoardKiCadAsync(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, identity), identity, what);
 
-        // The steps shown - each row made once, its words and state changed in place.
-        private void ShowSteps(string board, DraftSession session, IReadOnlyList<ReadinessStep> steps)
+        // ###########################################################################################
+        // The panels shown - each made once, its words and state changed in place; one with nothing to
+        // say hidden.
+        // ###########################################################################################
+        private void ShowStatus(
+            HardwareBoardEntry entry,
+            DraftSession? session,
+            BoardData board,
+            IReadOnlyList<KiCadCalibrationEntry>? calibrations,
+            IReadOnlyList<string>? files,
+            BoardKiCadFacts? kiCad,
+            IReadOnlyList<BoardDataProblem> problems)
         {
-            this.thisReadinessSteps = steps;
-            this.thisReadinessStepsBoard = board;
+            this.CreateStatusRows();
 
-            foreach (ReadinessStep step in steps)
+            BoardMissing missing = BoardReadiness.Missing(board, hasKiCadFiles: files is { Count: > 0 }, kiCad);
+            List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, missing, calibrations, files, kiCad, problems);
+
+            this.MissingForTests = missing;
+            this.thisStatusPanels = panels;
+
+            foreach ((BoardStatusPart part, StatusRow row) in this.thisStatusRows)
             {
-                (TextBlock icon, TextBlock title, TextBlock detail, Button action, StackPanel text) = this.ReadinessRowFor(step.Kind);
-
-                icon.Text = step.State switch
+                if (panels.FirstOrDefault(panel => panel.Part == part) is { } panel)
                 {
-                    ReadinessState.Done => "",
-                    ReadinessState.Next => "",
-                    ReadinessState.Later => "",
-                    _ => "",
-                };
-
-                icon.Classes.Set("done", step.State == ReadinessState.Done);
-                icon.Classes.Set("next", step.State == ReadinessState.Next);
-                title.Classes.Set("next", step.State == ReadinessState.Next);
-
-                title.Text = string.Create(CultureInfo.InvariantCulture, $"{step.Number}  {step.Title}");
-                detail.Text = step.Detail;
-
-                string label = BoardReadiness.ActionOf(step);
-                action.Content = label;
-                action.IsVisible = label.Length > 0;
-
-                if (step.Kind == ReadinessStepKind.Match)
+                    TabDrafts.ShowStatusRow(row, panel);
+                }
+                else
                 {
-                    this.ShowMatches(text, step.Matches ?? []);
+                    row.Panel.IsVisible = false;
                 }
             }
 
-            bool noteShown = this.thisReadinessNote is { } note &&
-                             string.Equals(note.Board, board, StringComparison.OrdinalIgnoreCase) &&
-                             ReferenceEquals(note.Content, session.Content) &&
-                             !(note.GoesWhenSaved && session.SaveState == DraftSaveState.Saved);
+            this.ShowMissingComponents(missing);
+            this.ShowMatches(
+                this.thisStatusRows[BoardStatusPart.Pictures].Extra,
+                kiCad is { Read: true } facts && files is { Count: > 0 }
+                    ? SchematicCadNameSuggestions.For(board.Schematics, facts.ToMatch ?? [])
+                    : []);
 
-            this.ReadinessNoteText.Text = noteShown ? this.thisReadinessNote!.Text : null;
-            this.ReadinessNoteText.IsVisible = noteShown;
-            this.ReadinessPanel.IsVisible = true;
+            this.ShowReadinessNote(entry.ExcelDataFile, session);
+            this.StatusPanelsHost.IsVisible = true;
         }
 
-        // A step's row - made the first time it is shown.
-        private (TextBlock Icon, TextBlock Title, TextBlock Detail, Button Action, StackPanel Text) ReadinessRowFor(ReadinessStepKind kind)
+        private static void ShowStatusRow(StatusRow row, BoardStatusPanel panel)
         {
-            if (this.thisReadinessRows.TryGetValue(kind, out var row))
+            row.Panel.IsVisible = true;
+            row.Title.Text = panel.Title;
+            row.Explanation.Text = panel.Explanation;
+            row.Action.Content = panel.Action;
+
+            row.Icon.Text = panel.State switch
             {
-                return row;
+                BoardStatusState.Done => "\uf058",
+                BoardStatusState.ToDo => "\uf06a",
+                BoardStatusState.Error => "\uf057",
+                _ => "\uf056",
+            };
+
+            TabDrafts.UseStateClasses(row.Panel, panel.State);
+            TabDrafts.UseStateClasses(row.Icon, panel.State);
+
+            Avalonia.Controls.Controls lines = row.Lines.Children;
+
+            for (int index = 0; index < panel.Lines.Count; index++)
+            {
+                if (index == lines.Count)
+                {
+                    lines.Add(new TextBlock { Classes = { "StatusLine" } });
+                }
+
+                BoardStatusLine line = panel.Lines[index];
+                var block = (TextBlock)lines[index];
+
+                block.Text = line.Depth > 0 ? $"- {line.Text}" : line.Text;
+                block.Margin = new Avalonia.Thickness(line.Depth * 16, 0, 0, 0);
+                block.Classes.Set("todo", line.Tone == BoardStatusState.ToDo);
+                block.Classes.Set("error", line.Tone == BoardStatusState.Error);
             }
 
-            var icon = new TextBlock { Classes = { "ReadinessIcon" } };
-            var title = new TextBlock { Classes = { "ReadinessTitle" }, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-            var detail = new TextBlock { Classes = { "ReadinessDetail" } };
+            while (lines.Count > panel.Lines.Count)
+            {
+                lines.RemoveAt(lines.Count - 1);
+            }
 
-            // A button that goes ahead and makes something is green (CLAUDE.md, button colours).
-            var action = new Button { Tag = kind, VerticalAlignment = VerticalAlignment.Top, Margin = new Avalonia.Thickness(8, 0, 0, 0) };
-            action.Classes.Set("Accept", kind is ReadinessStepKind.Components or ReadinessStepKind.Submit);
-            action.Click += this.OnReadinessActionClick;
+            row.Lines.IsVisible = panel.Lines.Count > 0;
 
-            var text = new StackPanel { Spacing = 1 };
-            text.Children.Add(title);
-            text.Children.Add(detail);
+            // The table a button away from what its checks found - the panel of its own's own button is it.
+            row.Table.IsVisible = panel.TableSheet is not null && panel.Part != BoardStatusPart.Problems;
+        }
 
-            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("26,*,Auto") };
-            Grid.SetColumn(icon, 0);
-            Grid.SetColumn(text, 1);
-            Grid.SetColumn(action, 2);
-            grid.Children.Add(icon);
-            grid.Children.Add(text);
-            grid.Children.Add(action);
+        private static void UseStateClasses(Control control, BoardStatusState state)
+        {
+            control.Classes.Set("done", state == BoardStatusState.Done);
+            control.Classes.Set("todo", state == BoardStatusState.ToDo);
+            control.Classes.Set("error", state == BoardStatusState.Error);
+            control.Classes.Set("optional", state == BoardStatusState.Optional);
+        }
 
-            this.ReadinessStepsPanel.Children.Add(grid);
+        // Every panel, once, in the page's order.
+        private void CreateStatusRows()
+        {
+            if (this.thisStatusRows.Count > 0)
+            {
+                return;
+            }
 
-            row = (icon, title, detail, action, text);
-            this.thisReadinessRows[kind] = row;
-            return row;
+            foreach (BoardStatusPart part in Enum.GetValues<BoardStatusPart>())
+            {
+                var icon = new TextBlock { Classes = { "StatusIcon" } };
+                var title = new TextBlock { Classes = { "StatusTitle" }, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+                var explanation = new TextBlock { Classes = { "StatusExplanation" } };
+                var lines = new StackPanel { Spacing = 2, Margin = new Avalonia.Thickness(0, 6, 0, 0) };
+                var extra = new StackPanel { Spacing = 8 };
+
+                // Opens where the part is seen to - plain (CLAUDE.md, button colors).
+                var action = new Button { Tag = part, VerticalAlignment = VerticalAlignment.Top, Margin = new Avalonia.Thickness(8, 0, 0, 0) };
+                action.Click += this.OnStatusActionClick;
+
+                var table = new Button { Content = BoardReadiness.TableAction, Tag = part, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Avalonia.Thickness(0, 6, 0, 0), IsVisible = false };
+                table.Click += this.OnStatusTableClick;
+
+                var text = new StackPanel { Spacing = 1 };
+                text.Children.Add(title);
+                text.Children.Add(explanation);
+                text.Children.Add(lines);
+                text.Children.Add(table);
+                text.Children.Add(extra);
+
+                var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("28,*,Auto") };
+                Grid.SetColumn(icon, 0);
+                Grid.SetColumn(text, 1);
+                Grid.SetColumn(action, 2);
+                grid.Children.Add(icon);
+                grid.Children.Add(text);
+                grid.Children.Add(action);
+
+                var panel = new Border { Classes = { "StatusPanel" }, Child = grid, Tag = part };
+                this.StatusPanelsHost.Children.Add(panel);
+
+                this.thisStatusRows[part] = new StatusRow(panel, icon, title, explanation, lines, action, table, extra);
+            }
+        }
+
+        private void OnStatusActionClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Button { Tag: BoardStatusPart part })
+            {
+                this.DoStatusPart(part);
+            }
+        }
+
+        // "Show in the table" under a panel's errors and warnings: the sheet they are on, marked there.
+        private void OnStatusTableClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Button { Tag: BoardStatusPart part } &&
+                this.thisStatusPanels.FirstOrDefault(panel => panel.Part == part)?.TableSheet is { } sheet)
+            {
+                this.RunGuarded(() => this.ShowTableOnSheetAsync(sheet), "Table view");
+            }
+        }
+
+        // A panel's button: the part it is about, as the left column opens it.
+        internal void DoStatusPart(BoardStatusPart part)
+        {
+            switch (part)
+            {
+                case BoardStatusPart.Problems:
+                    this.RunGuarded(() => this.OnCurrentDraftAsync(this.ShowTableAsync), "Table view");
+                    break;
+                case BoardStatusPart.Name:
+                    this.RunGuarded(this.OpenBoardNameAsync, "Board name");
+                    break;
+                case BoardStatusPart.Regions:
+                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Regions), "Regions");
+                    break;
+                case BoardStatusPart.Categories:
+                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Categories), "Categories");
+                    break;
+                case BoardStatusPart.KiCad:
+                    this.RunGuarded(this.OpenKiCadAsync, "KiCad data");
+                    break;
+                case BoardStatusPart.Pictures:
+                    this.ManagePictures();
+                    break;
+                case BoardStatusPart.Signals:
+                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.ImportantSignals), "Important signals");
+                    break;
+                case BoardStatusPart.Components:
+                    this.PickComponents();
+                    break;
+                case BoardStatusPart.Files:
+                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Files), "Files");
+                    break;
+                case BoardStatusPart.Links:
+                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Links), "Links");
+                    break;
+                case BoardStatusPart.Credits:
+                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Credits), "Credits");
+                    break;
+            }
         }
 
         // ###########################################################################################
-        // The suggested matches under the Match step - a row per pair, changed in place (a row made
+        // The suggested matches under Schematic images - a row per pair, changed in place (a row made
         // again under a press threw that click away), "Use all N" for more than one.
         // ###########################################################################################
         private void ShowMatches(StackPanel text, IReadOnlyList<SchematicCadNameSuggestion> matches)
@@ -367,7 +542,7 @@ namespace CRT
                 var panel = new StackPanel { Spacing = 4, Margin = new Avalonia.Thickness(0, 6, 0, 0) };
                 var rows = new StackPanel { Spacing = 4 };
                 var useAll = new Button { HorizontalAlignment = HorizontalAlignment.Left, Classes = { "Accept" } };
-                ToolTip.SetTip(useAll, "Give every picture listed its suggested KiCad view - one step, so Undo takes them all back");
+                ToolTip.SetTip(useAll, "Give every picture listed its suggested KiCad view - one step, so \"Undo\" takes them all back");
                 useAll.Click += (_, _) => this.RunGuarded(() => this.UseSuggestedMatchesAsync(this.thisShownMatches), "Use all suggestions");
 
                 panel.Children.Add(new TextBlock { Text = BoardReadiness.MatchesHeading, Classes = { "ReadinessDetail" } });
@@ -415,7 +590,7 @@ namespace CRT
         // A suggested match used - one, or every one shown: the draft opened as every change opens it,
         // and only the pairs it can still take (no CAD name on the picture, no picture with the view -
         // the draft can have moved) taken as ONE step named for them, saved at once under the
-        // BusyOverlay. What came of it is said under the checklist; a change reads the board on screen
+        // BusyOverlay. What came of it is said over the panels; a change reads the board on screen
         // again, so the Schematics tab draws the views.
         // ###########################################################################################
         internal Task UseSuggestedMatchesAsync(IReadOnlyList<SchematicCadNameSuggestion> wanted) =>
@@ -478,46 +653,6 @@ namespace CRT
                 this.ShowReadiness();
             });
 
-        private void OnReadinessActionClick(object? sender, RoutedEventArgs e)
-        {
-            if (sender is Button { Tag: ReadinessStepKind kind })
-            {
-                this.DoReadinessStep(kind);
-            }
-        }
-
-        // ###########################################################################################
-        // A step's button: the tool that does the step. Adding pictures, matching each to its KiCad view
-        // ("Shows KiCad view"), aligning and marking are all on the picture cards of the Pictures part.
-        // ###########################################################################################
-        internal void DoReadinessStep(ReadinessStepKind kind)
-        {
-            switch (kind)
-            {
-                case ReadinessStepKind.Pictures:
-                case ReadinessStepKind.Match:
-                case ReadinessStepKind.Align:
-                case ReadinessStepKind.Mark:
-                    this.ManagePictures();
-                    break;
-                case ReadinessStepKind.KiCad:
-                    this.RunGuarded(() => this.OnCurrentDraftAsync(entry => this.ManageFilesAsync(entry)), "KiCad data");
-                    break;
-                case ReadinessStepKind.Components when this.thisReadinessSteps.Any(step => step.Kind == ReadinessStepKind.Components && step.FromKiCad > 0):
-                    this.RunGuarded(this.AddFromKiCadAsync, "Add from KiCad");
-                    break;
-                case ReadinessStepKind.Components:
-                    this.RunGuarded(this.AddComponentAsync, "Add component");
-                    break;
-                case ReadinessStepKind.Signals:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.ImportantSignals), "Important signals");
-                    break;
-                case ReadinessStepKind.Submit:
-                    this.RunGuarded(() => this.OnCurrentDraftAsync(this.SubmitAsync), "Submit");
-                    break;
-            }
-        }
-
         // ###########################################################################################
         // "ADD N FROM KICAD" (the plan's step 6: "one press adds every KiCad component that isn't on the
         // board yet"): the draft opened as every change opens it (DraftEdits.OpenForChangeAsync - what
@@ -525,98 +660,98 @@ namespace CRT
         // (KiCadProjectLoader keeps the parse), and every component the draft lacks AS IT IS THEN added
         // as ONE step named for that many (code review, 2026-10-26: counted on the draft before it was
         // read again, the step named more than it added) - with pins and datasheet links, saved at once,
-        // all under the BusyOverlay. What came of it is said under the checklist; a draft that cannot
-        // be opened, on the tab's problem line. Only a change reads the board on screen again.
+        // all under the BusyOverlay. What came of it is said over the panels; a draft that cannot
+        // be opened, on the tab's problem line.
+        //
+        // *** SINCE 2026-11-01 IT IS THE KiCad IMPORT'S, NOT THE CHECKLIST'S (owner request: "it should
+        // add all components when importing the KiCad data. Then you can delete this option from 'Board
+        // status'"). *** "KiCad data" runs it after an import while "Add the KiCad components to the
+        // board" is ticked, and from its summary's button (KiCadDataPanel.AddKiCadComponents) - its own
+        // change, so the panel catches up with a change as it ends, the board on screen read again only
+        // then; what came of it is said there, and over the panels when Board status comes back.
+        //
+        // What came of it - null when no draft could be opened - and whether the draft changed.
         // ###########################################################################################
-        internal Task AddFromKiCadAsync() =>
-            this.OnCurrentDraftAsync(async entry =>
+        private async Task<(string? Note, bool Changed)> AddFromKiCadToAsync(HardwareBoardEntry entry)
+        {
+            string identity = entry.ExcelDataFile;
+            bool changed = false;
+
+            ReadinessNote? note = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingKiCadComponents, async () =>
             {
-                string identity = entry.ExcelDataFile;
-                bool changed = false;
-
-                ReadinessNote? note = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingKiCadComponents, async () =>
+                if (await DraftEdits.OpenForChangeAsync(identity) is not DraftSession session)
                 {
-                    if (await DraftEdits.OpenForChangeAsync(identity) is not DraftSession session)
-                    {
-                        return null;
-                    }
-
-                    if (await this.ReadKiCadForReadinessAsync(identity, "adding its components") is not { } root)
-                    {
-                        return new ReadinessNote(identity, BoardReadiness.KiCadNotRead, session.Content, GoesWhenSaved: false);
-                    }
-
-                    List<KiCadBoardComponent> components = await Task.Run(() => KiCadComponentTable.Of(root));
-                    int missing = KiCadBoardComponents.NotOn(session.Content.Board, components).Count;
-
-                    if (missing == 0)
-                    {
-                        return new ReadinessNote(identity, BoardReadiness.AddedFromKiCad(new KiCadComponentsAdded(0, 0, 0)), session.Content, GoesWhenSaved: false);
-                    }
-
-                    BoardContent before = session.Content;
-                    KiCadComponentsAdded added = new(0, 0, 0);
-
-                    DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
-                        identity,
-                        DraftStepWording.ComponentsFromKiCad(missing),
-                        board =>
-                        {
-                            BoardData result = KiCadBoardComponents.WithComponents(board, components, label => KiCadPinTable.PinsOf(root, label), out KiCadComponentsAdded counts);
-                            added = counts;
-                            return result;
-                        });
-
-                    if (outcome != DraftWorkbookEditOutcome.Saved)
-                    {
-                        // Taken back out; with something else still waiting to be saved, the words go
-                        // once it is.
-                        return new ReadinessNote(identity, DraftSaveWording.EditNotSaved(outcome), session.Content, GoesWhenSaved: session.SaveState != DraftSaveState.Saved);
-                    }
-
-                    // Saved - and changed, unless the change came to nothing as it was applied.
-                    changed = !ReferenceEquals(session.Content, before);
-
-                    return new ReadinessNote(
-                        identity,
-                        BoardReadiness.AddedFromKiCad(changed ? added : new KiCadComponentsAdded(0, 0, 0)),
-                        session.Content,
-                        GoesWhenSaved: false);
-                });
-
-                if (note is null)
-                {
-                    this.ShowDraftProblem(DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.NoDraft));
-                    return;
+                    return null;
                 }
 
-                this.thisReadinessNote = note;
-
-                if (changed)
+                if (await this.ReadKiCadForReadinessAsync(identity, "adding its components") is not { } root)
                 {
-                    this.AfterDraftChanged(entry);
+                    return new ReadinessNote(identity, BoardReadiness.KiCadNotRead, session.Content, GoesWhenSaved: false);
                 }
 
-                this.ShowReadiness();
+                List<KiCadBoardComponent> components = await Task.Run(() => KiCadComponentTable.Of(root));
+                int missing = KiCadBoardComponents.NotOn(session.Content.Board, components).Count;
+
+                if (missing == 0)
+                {
+                    return new ReadinessNote(identity, BoardReadiness.AddedFromKiCad(new KiCadComponentsAdded(0, 0, 0)), session.Content, GoesWhenSaved: false);
+                }
+
+                BoardContent before = session.Content;
+                KiCadComponentsAdded added = new(0, 0, 0);
+
+                DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
+                    identity,
+                    DraftStepWording.ComponentsFromKiCad(missing),
+                    board =>
+                    {
+                        BoardData result = KiCadBoardComponents.WithComponents(board, components, label => KiCadPinTable.PinsOf(root, label), out KiCadComponentsAdded counts);
+                        added = counts;
+                        return result;
+                    });
+
+                if (outcome != DraftWorkbookEditOutcome.Saved)
+                {
+                    // Taken back out; with something else still waiting to be saved, the words go
+                    // once it is.
+                    return new ReadinessNote(identity, DraftSaveWording.EditNotSaved(outcome), session.Content, GoesWhenSaved: session.SaveState != DraftSaveState.Saved);
+                }
+
+                // Saved - and changed, unless the change came to nothing as it was applied.
+                changed = !ReferenceEquals(session.Content, before);
+
+                return new ReadinessNote(
+                    identity,
+                    BoardReadiness.AddedFromKiCad(changed ? added : new KiCadComponentsAdded(0, 0, 0)),
+                    session.Content,
+                    GoesWhenSaved: false);
             });
 
+            if (note is null)
+            {
+                this.ShowDraftProblem(DraftSaveWording.EditNotSaved(DraftWorkbookEditOutcome.NoDraft));
+                return (null, false);
+            }
+
+            this.thisReadinessNote = note;
+
+            this.ShowReadiness();
+            return (note.Text, changed);
+        }
+
         // ###########################################################################################
-        // What an existing board lacks: a group for each kind with any, each component a button that
-        // opens it - the first ones named, the rest counted. Every group and button made once, kept
-        // while it shows the same (InPlaceList.Sync).
+        // What each component lacks, under the Components panel: a group for each kind with any, each
+        // component a button that opens it - the first ones named, the rest counted. Every group and
+        // button made once, kept while it shows the same (InPlaceList.Sync).
         // ###########################################################################################
-        private void ShowMissing(BoardMissing missing)
+        private void ShowMissingComponents(BoardMissing missing)
         {
-            this.MissingForTests = missing;
+            MissingGroup[] groups = this.MissingControls();
 
-            (MissingGroup[] groups, TextBlock nothing) = this.MissingControls();
-
-            nothing.IsVisible = missing.IsEmpty;
-            this.ShowMissingGroup(groups[0], BoardReadiness.WithoutDescriptionHeading(missing.WithoutDescription.Count), missing.WithoutDescription);
-            this.ShowMissingGroup(groups[1], BoardReadiness.UnmarkedHeading(missing.Unmarked.Count), missing.Unmarked);
-            this.ShowMissingGroup(groups[2], BoardReadiness.PinsWithoutBaselineHeading(missing.PinsWithoutBaseline.Count), missing.PinsWithoutBaseline);
-
-            this.MissingPanel.IsVisible = true;
+            this.ShowMissingGroup(groups[0], BoardReadiness.NotInKiCadHeading(missing.NotInKiCadLabels.Count), missing.NotInKiCadLabels);
+            this.ShowMissingGroup(groups[1], BoardReadiness.WithoutDescriptionHeading(missing.WithoutDescription.Count), missing.WithoutDescription);
+            this.ShowMissingGroup(groups[2], BoardReadiness.UnmarkedHeading(missing.Unmarked.Count), missing.Unmarked);
+            this.ShowMissingGroup(groups[3], BoardReadiness.PinsWithoutBaselineHeading(missing.PinsWithoutBaseline.Count), missing.PinsWithoutBaseline);
         }
 
         private void ShowMissingGroup(MissingGroup group, string heading, IReadOnlyList<string> labels)
@@ -635,47 +770,46 @@ namespace CRT
             group.More.IsVisible = more.Length > 0;
         }
 
-        // A component's button in "What's missing" - it opens the component in the pane.
+        // A component's button under the Components panel - it opens the component in the pane.
         private Control MissingComponentButton(string label)
         {
-            var button = new Button { Content = label, Tag = label, Margin = new Avalonia.Thickness(0, 0, 6, 4) };
+            var button = new Button { Content = label, Tag = label, Margin = new Avalonia.Thickness(0, 0, Handlers.Theming.ButtonRow.Gap, 4) };
             ToolTip.SetTip(button, $"Open {label}");
             button.Click += (_, _) => this.RunGuarded(() => this.OpenComponentAsync(label), "Open component");
             return button;
         }
 
-        // "What's missing"'s groups and its "nothing missing" line - made the first time they are shown.
-        private (MissingGroup[] Groups, TextBlock Nothing) MissingControls()
+        // The groups under the Components panel - made the first time they are shown.
+        private MissingGroup[] MissingControls()
         {
-            if (this.thisMissingGroups is { } made && this.thisNothingMissingText is { } nothing)
+            if (this.thisMissingGroups is { } made)
             {
-                return (made, nothing);
+                return made;
             }
 
-            nothing = new TextBlock { Text = BoardReadiness.NothingMissing, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-            this.MissingGroupsPanel.Children.Add(nothing);
+            StackPanel host = this.thisStatusRows[BoardStatusPart.Components].Extra;
+            host.Margin = new Avalonia.Thickness(0, 8, 0, 0);
 
-            made = new MissingGroup[3];
+            made = new MissingGroup[4];
 
             for (int index = 0; index < made.Length; index++)
             {
                 var panel = new StackPanel { Spacing = 4 };
-                var heading = new TextBlock { FontWeight = Avalonia.Media.FontWeight.SemiBold };
+                var heading = new TextBlock { FontWeight = Avalonia.Media.FontWeight.SemiBold, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
                 var buttons = new WrapPanel();
                 var more = new TextBlock { FontSize = 11, Opacity = 0.75 };
 
                 panel.Children.Add(heading);
                 panel.Children.Add(buttons);
                 panel.Children.Add(more);
-                this.MissingGroupsPanel.Children.Add(panel);
+                host.Children.Add(panel);
 
                 made[index] = new MissingGroup(panel, heading, buttons, more);
             }
 
             this.thisMissingGroups = made;
-            this.thisNothingMissingText = nothing;
 
-            return (made, nothing);
+            return made;
         }
     }
 }

@@ -57,7 +57,7 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up
 | **Feedback** | Send an issue or a question to the developer |
 | **About** | Versions, links, and who contributed this board's data |
 
-**Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when "Enable Maintainer tab" is ticked there - it needs a maintainer account.
+**Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
 
 Each tab says what it is for as you use it. Where a setting has more to it, **Learn more** beside it opens the page about it here.
 
@@ -80,4 +80,4 @@ The **Contribute** tab is always there. Change anything on the board you are loo
 | A component does not highlight | It is not marked on that picture yet, or the **Region** filter is excluding it |
 | Clicking a trace does nothing | That board has no [KiCad data](KiCad-folder) - not every board does - or **Traces visible** is off |
 | No **Workbooks** or **Oscilloscope** tab | Both can be switched off in "Configuration" - check they are still ticked |
-| No **Maintainer** tab | It shows only with "Enable Maintainer tab" ticked in "Configuration" |
+| No **Maintainer** tab | It shows only with `Enable "Maintainer" tab` ticked in "Configuration" |

@@ -52,6 +52,39 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // THE NETS A NEW SIGNAL MAY PICK (owner request, 2026-10-29: a row's KiCad net is the KiCad
+        // data's, shown as text and never typed - so a new signal picks its net from a list): every net
+        // of the board, in the picker's order, but the ones a row has already, by the panel's own rule.
+        // ###########################################################################################
+        public static List<string> NetsToAdd(KiCadNetChoices choices, IEnumerable<KiCadImportantSignalEntry> existing)
+        {
+            ArgumentNullException.ThrowIfNull(choices);
+            ArgumentNullException.ThrowIfNull(existing);
+
+            var used = new HashSet<string>(
+                existing.Select(row => choices.NormalizedOf(row.KiCadNetName)).OfType<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            return choices.Names.Where(net => !used.Contains(net)).ToList();
+        }
+
+        // ###########################################################################################
+        // THE NETS LISTED UNDER THE SUGGESTED ONES (owner request, 2026-11-01: "as the last data in here I
+        // would like to see all other nets not already used ... so all nets will be visible in here"):
+        // the nets a new signal may pick that no suggestion offers, in the picker's order. Together with
+        // the rows and the suggestions, that is every net of the board.
+        // ###########################################################################################
+        public static List<string> OtherNets(KiCadNetChoices choices, IEnumerable<KiCadImportantSignalEntry> existing) =>
+            ImportantSignalSuggestions.NetsToAdd(choices, existing)
+                .Where(net => ImportantSignalSuggestions.NameOf(net) is null)
+                .ToList();
+
+        // The name a net picked for a new signal starts with - the name it would be suggested under,
+        // else the net as CRT spells it; the contributor changes it in the row.
+        public static string StartingNameOf(string? net) =>
+            ImportantSignalSuggestions.NameOf(net)?.DisplayName ?? KiCadNetNames.Readable(net);
+
+        // ###########################################################################################
         // The name a net is suggested under, with its place in the catalogue - null for a net whose
         // name says nothing CRT knows.
         // ###########################################################################################

@@ -138,7 +138,8 @@ public sealed class BoardDocumentMappingTests
     {
         var known = new Dictionary<Type, int>
         {
-            [typeof(BoardSchematicEntry)] = 8,
+            // 11 since 2026-10-30: this side's trace colour and both sides' trace opacities.
+            [typeof(BoardSchematicEntry)] = 11,
             [typeof(ComponentEntry)] = 9,
             [typeof(ComponentImageEntry)] = 12,
             [typeof(ComponentPinEntry)] = 5,
@@ -151,7 +152,8 @@ public sealed class BoardDocumentMappingTests
             [typeof(CreditEntry)] = 4,
             [typeof(KiCadImportantSignalEntry)] = 2,
             [typeof(KiCadCalibrationEntry)] = 8,
-            [typeof(BoardData)] = 15,
+            // 16 since 2026-11-01: the regions it says it comes in (BoardRegions).
+            [typeof(BoardData)] = 16,
         };
 
         foreach ((Type type, int count) in known)

@@ -494,6 +494,18 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // Whether this submission was turned down, given up or replaced by a newer one: nothing of it goes
+        // on. NOT the same as not being IsStillOpen - accepted and published are final too, and they went
+        // on (code review, 2026-11-01: a new board's name was free again once it had reached the data).
+        // ###########################################################################################
+        public static bool IsDecidedAgainst(string? state) =>
+            state?.Trim().ToLowerInvariant() is "rejected" or "abandoned" or "withdrawn";
+
+        // Whether this submission's work is in the stable data for good.
+        public static bool IsInPublishedData(string? state) =>
+            state?.Trim().ToLowerInvariant() is "accepted" or "published";
+
+        // ###########################################################################################
         // How long after its decision a "merged" (in BETA) submission is asked about at EVERY
         // launch.
         //
@@ -654,7 +666,7 @@ namespace Handlers.DataHandling
             (string named, string verb) = SubmissionReceiptPresenter.NameBoards(receipts);
 
             return $"{named} {verb} now published to the stable source. You are downloading data from the BETA source - " +
-                   "you can switch back to the stable source on the Configuration tab.";
+                   "you can switch back to the stable source on the \"Configuration\" tab.";
         }
 
         // ###########################################################################################
@@ -693,14 +705,14 @@ namespace Handlers.DataHandling
                 ? $"tick \"{ConfigurationWording.BetaSourceCheckBox}\""
                 : $"tick \"{ConfigurationWording.CheckDataOnLaunchCheckBox}\" and then \"{ConfigurationWording.BetaSourceCheckBox}\"";
 
-            return $"{named} {verb} now in the BETA source. To try it before everyone else, {tick} on the Configuration tab.";
+            return $"{named} {verb} now in the BETA source. To try it before everyone else, {tick} on the \"Configuration\" tab.";
         }
 
         // ###########################################################################################
         // The line under a submission in "My submissions" while it is in the BETA source (2026-10-03)
         // - there after the notice is closed, gone once the state moves on. Empty otherwise.
         // ###########################################################################################
-        public const string BetaTryLine = "To try it before everyone else, download data from the BETA source - see the Configuration tab.";
+        public const string BetaTryLine = "To try it before everyone else, download data from the BETA source - see the \"Configuration\" tab.";
 
         public static string DescribeBetaTry(string? state) =>
             string.Equals(state?.Trim(), "merged", StringComparison.OrdinalIgnoreCase)

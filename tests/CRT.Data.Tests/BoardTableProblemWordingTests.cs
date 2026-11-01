@@ -30,7 +30,7 @@ public sealed class BoardTableProblemWordingTests
 
         string[] lines = text.Split(Environment.NewLine);
 
-        Assert.Contains("label editor", lines[0], StringComparison.Ordinal);
+        Assert.Contains("\"Mark components manually\"", lines[0], StringComparison.Ordinal);
         Assert.Equal(["Error: e1", "Error: e2", "Warning: w1"], lines[1..4]);
         Assert.Equal("... and 2 more.", lines[4]);
     }

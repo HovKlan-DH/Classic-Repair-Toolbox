@@ -275,7 +275,7 @@
 				  ColumnSpacing="4"
 				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableWorklogCheckBox"
-						  Content="Enable Workbooks tab"
+						  Content="Enable &quot;Workbooks&quot; tab"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableWorklogHelpButton"
 						Grid.Column="1"
@@ -289,7 +289,7 @@
 				</Button>
 			</Grid>
 
-			<TextBlock Text="Scope in Workbooks tab:"
+			<TextBlock Text="Scope in &quot;Workbooks&quot; tab:"
                        Margin="0,8,0,0" />
 
 			<!-- Not indented (owner request, 2026-10-02): the radio buttons line up with the label
@@ -351,7 +351,7 @@
 				  ColumnSpacing="4"
 				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableMaintainerTabCheckBox"
-						  Content="Enable Maintainer tab"
+						  Content="Enable &quot;Maintainer&quot; tab"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableMaintainerTabHelpButton"
 						Grid.Column="1"
@@ -371,10 +371,10 @@
 			     that explains them both below. The rule, including why a tab being looked at is
 			     never taken away mid-review, is MaintainerModes.TabIsShown. -->
 			<CheckBox x:Name="ShowMaintainerTabOnlyWhenWorkWaitingCheckBox"
-					  Content="Hide the Maintainer tab while no work is waiting for me"
+					  Content="Hide the &quot;Maintainer&quot; tab while no work is waiting for me"
 					  ToolTip.Tip="The tab appears only while its badge shows a number - a submission to review, or a board waiting to go from BETA to stable. A tab you are already on stays until you leave it" />
 
-			<TextBlock Text="The Maintainer tab requires a maintainer account, given by the administrator through an invitation."
+			<TextBlock Text="The &quot;Maintainer&quot; tab requires a maintainer account, given by the administrator through an invitation."
                        TextWrapping="Wrap"
                        Opacity="0.7"
                        Margin="0,2,0,0" />
@@ -421,7 +421,7 @@
                     HorizontalAlignment="Left"
                     Width="260"
                     HorizontalContentAlignment="Center"
-                    ToolTip.Tip="Your oscilloscope captures - the folder chosen in the Oscilloscope tab, or Oscilloscope images beside the data folder until one is chosen"
+                    ToolTip.Tip="Your oscilloscope captures - the folder chosen in the &quot;Oscilloscope&quot; tab, or Oscilloscope images beside the data folder until one is chosen"
                     Click="OnOpenOscilloscopeImagesFolderClick" />
 
 			<Button x:Name="OpenLogsFolderButton"

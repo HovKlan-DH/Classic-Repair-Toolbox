@@ -59,7 +59,7 @@
 
         <StackPanel Orientation="Horizontal"
                     HorizontalAlignment="Right"
-                    Spacing="8">
+                    Spacing="6">
 
             <Button x:Name="CancelButton"
                     Content="Cancel"

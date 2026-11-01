@@ -122,8 +122,13 @@ public sealed class ReviewSummaryTests
         Assert.Empty(components.Removed);
     }
 
+    // ###########################################################################################
+    // Reordering rows changes no ROW - every section stays empty - but it IS a change since the owner's
+    // decision of 2026-10-30 ("a change of (any) order should also be submitted as a change"): the
+    // summary names the sheet and has changes. Until then this said "reports nothing".
+    // ###########################################################################################
     [Fact]
-    public void Reordering_rows_alone_reports_nothing()
+    public void Reordering_rows_alone_changes_no_row_but_is_a_change()
     {
         BoardData published = ReviewSummaryTests.Board(
             ReviewSummaryTests.Component("U8"),
@@ -133,7 +138,11 @@ public sealed class ReviewSummaryTests
             ReviewSummaryTests.Component("U9"),
             ReviewSummaryTests.Component("U8"));
 
-        Assert.False(ReviewSummary.Compare(published, submitted).HasChanges);
+        ReviewChangeSummary summary = ReviewSummary.Compare(published, submitted);
+
+        Assert.Equal(0, summary.TotalChanges);
+        Assert.Equal([BoardWorkbookSchema.SheetComponents], summary.ReorderedSections);
+        Assert.True(summary.HasChanges);
     }
 
     [Fact]
@@ -480,5 +489,36 @@ public sealed class ReviewSummaryTests
     public void A_null_submitted_board_is_refused()
     {
         Assert.Throws<ArgumentNullException>(() => ReviewSummary.Compare(new BoardData(), null!));
+    }
+
+    // ###########################################################################################
+    // *** A SUBMISSION THAT ONLY MOVED ROWS HAS CHANGES (owner decision, 2026-10-30: "a change of
+    // (any) order should also be submitted as a change"). *** Its rows are all as published, so no
+    // section counts one - the summary names the lists in another order instead, says so in its one
+    // line, and a maintainer is shown them (ReviewNotInTable). A new board has nothing to reorder.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_that_only_moved_rows_names_the_lists_and_has_changes()
+    {
+        var published = new BoardData
+        {
+            Credits =
+            [
+                new CreditEntry { Category = "Schematic image", NameOrHandle = "Anna" },
+                new CreditEntry { Category = "Board labelling", NameOrHandle = "Bo" },
+            ],
+        };
+
+        var submitted = new BoardData { Credits = [published.Credits[1], published.Credits[0]] };
+
+        ReviewChangeSummary summary = ReviewSummary.Compare(published, submitted);
+
+        Assert.Equal(0, summary.TotalChanges);
+        Assert.Equal([BoardWorkbookSchema.SheetCredits], summary.ReorderedSections);
+        Assert.True(summary.HasChanges);
+        Assert.Equal("order of credits changed", summary.Describe());
+
+        Assert.Empty(ReviewSummary.Compare(published: null, submitted).ReorderedSections);
+        Assert.Empty(ReviewSummary.Compare(published, published).ReorderedSections);
     }
 }

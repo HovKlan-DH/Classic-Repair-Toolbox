@@ -17,8 +17,9 @@ namespace CRT
     //     on a board with regional components, the category. "Add component" there puts it into the
     //     draft as ONE step (ComponentPaneEdits.WithNewComponent, placed in its category) and the pane
     //     shows it like any other. A label the board has in any region is refused with the reason: a
-    //     label names one component (ContributionPackaging.ValidateNewComponent). No category is fine -
-    //     unfinished work is - and said under the box.
+    //     label names one component (ContributionPackaging.ValidateNewComponent). So is no category
+    //     since 2026-11-01 (owner decision: "No components must have an empty category"), said under its
+    //     box - the checks refuse one, and the form is where it is known.
     //   - DELETE: the component off the board in the draft - every row of it, every region
     //     (ComponentBoardWriter.ApplyComponentDelete, as the editor window did) - as ONE step. The pane
     //     then says it is gone and offers "Bring [U8] back" while that step is the latest.
@@ -83,11 +84,9 @@ namespace CRT
 
                 this.NewLabelBox.Text = string.Empty;
                 this.NewCategoryBox.Text = string.Empty;
-                this.NewCategoryBox.ItemsSource = ComponentListBuilder.BuildDistinctCategories(board)
-                    .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                this.NewCategoryBox.ItemsSource = this.CategoryChoices(board);
                 this.NewRegionBox.SelectedIndex = 0;
-                this.NewRegionPanel.IsVisible = ComponentListBuilder.HasExplicitRegionComponents(board);
+                this.NewRegionPanel.IsVisible = BoardRegions.Has(board);
             }
             finally
             {
@@ -103,6 +102,7 @@ namespace CRT
         {
             this.TitleText.Text = ComponentPaneWording.NewComponentTitle;
             this.RegionText.IsVisible = false;
+            this.RegionSwitchPanel.IsVisible = false;
             this.ChangedMark.IsVisible = false;
             this.ActionsPanel.IsVisible = false;
             this.GonePanel.IsVisible = false;
@@ -110,6 +110,7 @@ namespace CRT
             this.BoardPartPanel.IsVisible = false;
             this.NewComponentPanel.IsVisible = true;
 
+            this.ShowPageTabs();
             this.ShowNewComponentState();
         }
 
@@ -121,7 +122,7 @@ namespace CRT
                     session.Content.Board.Components.Select(row => row.BoardLabel))
                 : ContributionPackaging.NewComponentProblem.BoardLabelMissing;
 
-        // A label taken says so; no category is said and still added; no label yet says nothing.
+        // A label taken says so; no category is said and adds nothing; no label yet says nothing.
         private void ShowNewComponentState()
         {
             ContributionPackaging.NewComponentProblem problem = this.NewComponentProblem();
@@ -135,7 +136,7 @@ namespace CRT
         }
 
         private static bool CanAdd(ContributionPackaging.NewComponentProblem problem) =>
-            problem is ContributionPackaging.NewComponentProblem.None or ContributionPackaging.NewComponentProblem.CategoryMissing;
+            problem is ContributionPackaging.NewComponentProblem.None;
 
         // The form's boxes typed in - judged again (the generic handler leaves them to this).
         private void OnNewComponentTextChanged()

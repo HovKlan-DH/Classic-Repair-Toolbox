@@ -11,10 +11,10 @@ public sealed class PictureToolWordingTests
     [Fact]
     public void The_bar_names_the_tool_and_its_picture()
     {
-        Assert.Equal("Mark components on [Top]", PictureToolWording.Title(PictureTool.MarkComponents, " Top "));
-        Assert.Equal("Align KiCad on [Top]", PictureToolWording.Title(PictureTool.AlignKiCad, "Top"));
+        Assert.Equal("Mark components manually on [Top]", PictureToolWording.Title(PictureTool.MarkComponents, " Top "));
+        Assert.Equal("Align KiCad data on [Top]", PictureToolWording.Title(PictureTool.AlignKiCad, "Top"));
         Assert.Equal("Opening [Top]...", PictureToolWording.Opening("Top"));
-        Assert.Equal("KiCad cannot be aligned on [Top]", PictureToolWording.CannotStart(PictureTool.AlignKiCad, "Top"));
+        Assert.Equal("KiCad data cannot be aligned on [Top]", PictureToolWording.CannotStart(PictureTool.AlignKiCad, "Top"));
     }
 
     // Each tool's help says how it is used, and that Done saves into the draft.
@@ -25,7 +25,7 @@ public sealed class PictureToolWordingTests
         Assert.Contains("Ctrl+Z undoes", PictureToolWording.Help(PictureTool.MarkComponents), StringComparison.Ordinal);
         Assert.Contains("Esc cancels", PictureToolWording.Help(PictureTool.AlignKiCad), StringComparison.Ordinal);
         Assert.All([PictureTool.MarkComponents, PictureTool.AlignKiCad], tool =>
-            Assert.Contains("Done saves it", PictureToolWording.Help(tool), StringComparison.Ordinal));
+            Assert.Contains("\"Done\" saves it", PictureToolWording.Help(tool), StringComparison.Ordinal));
     }
 
     [Fact]

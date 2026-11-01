@@ -864,6 +864,43 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Null(UserSettings.GetSelectedCategories("Plus4/310163"));
     }
 
+    // What the board had when its filter was chosen is kept with it, per board; a filter saved before
+    // this was kept has none.
+    [Fact]
+    public void The_categories_seen_when_a_filter_was_chosen_round_trip_per_board()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.SetSelectedCategories("C64/250407", new List<string> { "IC" }, ["IC", "Capacitor"]);
+        UserSettings.SetSelectedCategories("Plus4/310163", new List<string> { "IC" });
+        UserSettings.LoadFrom(path);
+
+        Assert.Equal(new[] { "IC", "Capacitor" }, UserSettings.GetSeenCategories("C64/250407"));
+        Assert.Null(UserSettings.GetSeenCategories("Plus4/310163"));
+    }
+
+    // ###########################################################################################
+    // "Board: Categories" moved a category's components under another (code review, 2026-11-01): shown
+    // before, they stay shown. The old name stays in the list too, so an Undo finds it ticked; a category
+    // the filter hid stays hidden, and one it does not know has nothing to follow.
+    // ###########################################################################################
+    [Fact]
+    public void A_category_moved_keeps_its_components_shown()
+    {
+        this.LoadSettings("{}");
+
+        UserSettings.SetSelectedCategories("C64/250407", new List<string> { "IC" }, ["IC", "Capacitor", "Resistor"]);
+
+        UserSettings.FollowCategoryMove("C64/250407", "IC", "capacitor");
+        Assert.Equal(new[] { "IC", "capacitor" }, UserSettings.GetSelectedCategories("C64/250407"));
+
+        UserSettings.FollowCategoryMove("C64/250407", "Resistor", "Chip");
+        Assert.Equal(new[] { "IC", "capacitor" }, UserSettings.GetSelectedCategories("C64/250407"));
+
+        UserSettings.FollowCategoryMove("Plus4/310163", "IC", "Chip");
+        Assert.Null(UserSettings.GetSelectedCategories("Plus4/310163"));
+    }
+
     // An unlisted catalogue key defaults to checked (visible) - see CatalogueVisibility - so
     // newly synced hardware/boards/schematics show up with no migration.
     [Fact]
@@ -1684,5 +1721,49 @@ public sealed class UserSettingsTests : IDisposable
         UserSettings.LoadFrom(path);
         Assert.Equal(("Anna", "RHD"), (UserSettings.CreditName, UserSettings.CreditContact));
         Assert.Equal("me@example.org", UserSettings.ContactEmail);
+    }
+
+    // ###########################################################################################
+    // The Contribute tab's dragged widths (owner request, 2026-10-29) - per board, a board never
+    // dragged on taking the width dragged last, and both kept in the file across a restart.
+    // ###########################################################################################
+    [Fact]
+    public void The_contribute_tabs_widths_are_kept_per_board_and_survive_a_restart()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Equal(ContributeWidths.DefaultNavWidth, UserSettings.ContributeNavWidthFor("Commodore 64|250407"));
+        Assert.Equal(ContributeWidths.DefaultPreviewWidth, UserSettings.ContributeImagePreviewWidthFor("Commodore 64|250407"));
+
+        UserSettings.RememberContributeNavWidth("Commodore 64|250407", 330);
+        UserSettings.RememberContributeImagePreviewWidth("Commodore 64|250407", 480);
+        UserSettings.RememberContributeNavWidth("Commodore 128|310378", 290);
+
+        UserSettings.LoadFrom(path);
+
+        Assert.Equal(330, UserSettings.ContributeNavWidthFor("Commodore 64|250407"));
+        Assert.Equal(290, UserSettings.ContributeNavWidthFor("Commodore 128|310378"));
+        Assert.Equal(290, UserSettings.ContributeNavWidthFor("Commodore VIC-20|250403"));
+        Assert.Equal(480, UserSettings.ContributeImagePreviewWidthFor("Commodore VIC-20|250403"));
+        Assert.Equal(330, ReadJson(path)["contributeNavWidthByBoard"]!["Commodore 64|250407"]!.GetValue<double>());
+    }
+
+    // ###########################################################################################
+    // A settings file whose per-board widths are null - written by hand, or damaged - reads as none
+    // (code review, 2026-10-30): the Contribute tab asked for a width from every board shown and threw.
+    // ###########################################################################################
+    [Fact]
+    public void A_settings_file_with_no_per_board_widths_reads_as_none()
+    {
+        this.LoadSettings("""{ "contributeNavWidth": 300, "contributeNavWidthByBoard": null, "contributeImagePreviewWidthByBoard": null }""");
+
+        Assert.Equal(300, UserSettings.ContributeNavWidthFor("Commodore 64|250407"));
+        Assert.Equal(ContributeWidths.DefaultPreviewWidth, UserSettings.ContributeImagePreviewWidthFor("Commodore 64|250407"));
+
+        UserSettings.RememberContributeNavWidth("Commodore 64|250407", 330);
+        UserSettings.RememberContributeImagePreviewWidth("Commodore 64|250407", 480);
+
+        Assert.Equal(330, UserSettings.ContributeNavWidthFor("Commodore 64|250407"));
+        Assert.Equal(480, UserSettings.ContributeImagePreviewWidthFor("Commodore 64|250407"));
     }
 }

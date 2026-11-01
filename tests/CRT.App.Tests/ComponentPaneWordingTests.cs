@@ -112,7 +112,7 @@ public sealed class ComponentPaneWordingTests
         Assert.StartsWith("Show [U8] on the schematics", ComponentPaneWording.ShowOnBoardTip("U8", marked: true), StringComparison.Ordinal);
         Assert.Equal("[U8] is not marked on any picture yet, so there is nothing to show", ComponentPaneWording.ShowOnBoardTip("U8", marked: false));
         Assert.Contains("every region", ComponentPaneWording.DeleteTip("U8"), StringComparison.Ordinal);
-        Assert.Contains("Undo brings it back", ComponentPaneWording.DeleteTip("U8"), StringComparison.Ordinal);
+        Assert.Contains("\"Undo\" brings it back", ComponentPaneWording.DeleteTip("U8"), StringComparison.Ordinal);
         Assert.Equal("Bring [U8] back", ComponentPaneWording.BringBack("U8"));
     }
 
@@ -121,12 +121,22 @@ public sealed class ComponentPaneWordingTests
     [Fact]
     public void A_board_part_is_named_and_a_net_not_found_says_it_will_not_light_up()
     {
-        Assert.Equal("Files and links", ComponentPaneWording.Title(PaneBoardPart.FilesAndLinks));
-        Assert.Equal("Credits", ComponentPaneWording.Title(PaneBoardPart.Credits));
-        Assert.Equal("Important signals", ComponentPaneWording.Title(PaneBoardPart.ImportantSignals));
+        // Files and links apart, the pictures named schematic images (owner request, 2026-10-29), and each
+        // headline naming its group of the left column's tree (owner request, 2026-11-01).
+        Assert.Equal("Board: Files", ComponentPaneWording.Title(PaneBoardPart.Files));
+        Assert.Equal("Board: Links", ComponentPaneWording.Title(PaneBoardPart.Links));
+        Assert.Equal("Board: Schematic images", ComponentPaneWording.Title(PaneBoardPart.Pictures));
+        Assert.Equal("Board: Credits", ComponentPaneWording.Title(PaneBoardPart.Credits));
+        Assert.Equal("Board: Regions", ComponentPaneWording.Title(PaneBoardPart.Regions));
+        Assert.Equal("Board: Categories", ComponentPaneWording.Title(PaneBoardPart.Categories));
+        Assert.Equal("KiCad: Important signals", ComponentPaneWording.Title(PaneBoardPart.ImportantSignals));
         Assert.Equal(
-            "[NRESET] is no net in the board's KiCad data - the Schematics tab will not light this signal up.",
+            "[NRESET] is no net in the board's KiCad data - the \"Schematics\" tab will not light this signal up.",
             ComponentPaneWording.NetNotFound(" NRESET "));
+
+        // The part's one headline, with its count (owner request, 2026-10-29).
+        Assert.Equal("Board: Files (6)", ComponentPaneWording.PartTitle(PaneBoardPart.Files, 6));
+        Assert.Equal("Board: Schematic images (0)", ComponentPaneWording.PartTitle(PaneBoardPart.Pictures, 0));
     }
 
     // What "Also on other boards" did: the boards changed, then each that was not, with why.
@@ -189,11 +199,41 @@ public sealed class ComponentPaneWordingTests
     [Fact]
     public void Pictures_added_and_removed_are_said_in_plain_words()
     {
-        Assert.Equal("Added 1 picture.", ComponentPaneWording.PicturesAdded(1));
-        Assert.Equal("Added 3 pictures.", ComponentPaneWording.PicturesAdded(3));
-        Assert.StartsWith("Added 2 pictures. 1 could not be copied - ", ComponentPaneWording.PicturesAdded(2, notCopied: 1), StringComparison.Ordinal);
-        Assert.StartsWith("Added 0 pictures. 2 could not be copied - they", ComponentPaneWording.PicturesAdded(0, notCopied: 2), StringComparison.Ordinal);
-        Assert.StartsWith("Removed [Top]. ", ComponentPaneWording.PictureRemoved(" Top "), StringComparison.Ordinal);
+        Assert.Equal("Added 1 schematic image.", ComponentPaneWording.PicturesAdded(1));
+        Assert.Equal("Added 3 schematic images.", ComponentPaneWording.PicturesAdded(3));
+        Assert.StartsWith("Added 2 schematic images. 1 could not be copied - ", ComponentPaneWording.PicturesAdded(2, notCopied: 1), StringComparison.Ordinal);
+        Assert.StartsWith("Added 0 schematic images. 2 could not be copied - they", ComponentPaneWording.PicturesAdded(0, notCopied: 2), StringComparison.Ordinal);
+        Assert.StartsWith("Deleted [Top] from the board. ", ComponentPaneWording.PictureRemoved(" Top "), StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // A SENTENCE SENDING THE CONTRIBUTOR TO THE BOARD'S PICTURES NAMES THE PART AS THE LEFT COLUMN DOES
+    // (code review, 2026-10-30): the part became "Schematic images" on 2026-10-29, and the refusal of
+    // Align KiCad and the "KiCad data" window's note still sent people to "Pictures", which the column
+    // no longer has.
+    // ###########################################################################################
+    [Fact]
+    public void Every_sentence_sending_the_contributor_to_the_pictures_names_the_part_as_the_column_does()
+    {
+        Assert.Equal("Board: Schematic images", ComponentPaneWording.Title(PaneBoardPart.Pictures));
+
+        foreach (string sentence in new[] { PictureToolWording.NoKiCadView("Top"), ComponentPaneWording.KiCadViewsHint })
+        {
+            Assert.Contains(ComponentPaneWording.SchematicImages, sentence, StringComparison.Ordinal);
+            Assert.DoesNotContain("Pictures", sentence, StringComparison.Ordinal);
+        }
+    }
+
+    // Under the traces' ticks (2026-10-29): a side ticked with no copper says so; a side not ticked,
+    // or one with copper, says nothing.
+    [Fact]
+    public void A_side_ticked_with_no_traces_says_so()
+    {
+        Assert.Equal(string.Empty, ComponentPaneWording.TracesNote(thisSide: true, 12, otherSide: true, 8));
+        Assert.Equal(string.Empty, ComponentPaneWording.TracesNote(thisSide: false, 0, otherSide: true, 8));
+        Assert.Equal("The board's KiCad data has no trace on this side of the image.", ComponentPaneWording.TracesNote(true, 0, true, 8));
+        Assert.Equal("The board's KiCad data has no trace on the other side of this image.", ComponentPaneWording.TracesNote(false, 0, true, 0));
+        Assert.Equal("The board's KiCad data has no trace on either side of this image.", ComponentPaneWording.TracesNote(true, 0, true, 0));
     }
 
     [Fact]
@@ -205,6 +245,11 @@ public sealed class ComponentPaneWordingTests
             ComponentPaneWording.NoCategoryYet,
             ComponentPaneWording.NoKiCadNets,
             ComponentPaneWording.ReadingKiCadNets,
+            ComponentPaneWording.AddSignalTip,
+            ComponentPaneWording.PickANetTip,
+            ComponentPaneWording.AddSignalNeedsKiCadTip,
+            ComponentPaneWording.FileNotOpened("Manual"),
+            ComponentPaneWording.LinkNotOpened("Lemon64"),
             ComponentPaneWording.ComponentChangedTip,
             ComponentPaneWording.BoardPartChangedTip,
             ComponentPaneWording.DeleteTip("U8"),
@@ -229,6 +274,7 @@ public sealed class ComponentPaneWordingTests
             ComponentPaneWording.PicturesAdded(1, notCopied: 3),
             ComponentPaneWording.NoPicturesToAdd,
             ComponentPaneWording.PictureRemoved("Top"),
+            ComponentPaneWording.KiCadViewsHint,
         ];
 
         Assert.All(sentences, sentence =>

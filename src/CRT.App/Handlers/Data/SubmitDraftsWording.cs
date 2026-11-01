@@ -29,7 +29,7 @@ namespace Handlers.DataHandling
         public const string NothingToSend = "nothing to send yet";
         public const string AlreadySent = "already sent as it is";
         public const string DraftGone = "its draft is no longer there";
-        public const string NotSaved = "its draft could not be saved - its header on the Contribute tab says why";
+        public const string NotSaved = "its draft could not be saved - its header on the \"Contribute\" tab says why";
         public const string NotRead = "its draft could not be read";
         public const string CreditNotAdded = "its credit could not be put into its draft";
         public const string NoConnection = "it could not reach the server - check your internet connection and try again";

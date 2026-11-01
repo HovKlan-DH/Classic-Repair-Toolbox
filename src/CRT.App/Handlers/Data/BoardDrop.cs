@@ -38,8 +38,10 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     internal sealed record BoardDrop(BoardDropKind Kind, IReadOnlyList<string> Paths, string Problem = "", string Note = "")
     {
+        // Named as the start panel's hint names them - "schematic images" (code review, 2026-10-30: the
+        // part was renamed on 2026-10-29, and these still said "pictures").
         public const string NothingUsable =
-            "Drop pictures of the board (PNG, JPG, GIF, BMP or WEBP files) or its KiCad project folder to add them.";
+            "Drop schematic images of the board (PNG, JPG, GIF, BMP or WEBP files) or its KiCad project folder to add them.";
 
         public const string KiCadFileNotFolder =
             "Drop the folder that holds the KiCad project, not one of its files - CRT takes the project's files from it, its sub-folders included.";
@@ -47,14 +49,14 @@ namespace Handlers.DataHandling
         // Said beside a KiCad project dropped with other things - one project at a time, pictures apart.
         public static string LeftBesideKiCad(int others) =>
             others == 1
-                ? "The KiCad project was taken - the other item dropped with it was left. Drop pictures on their own to add them."
-                : $"The KiCad project was taken - the other {others.ToString(System.Globalization.CultureInfo.InvariantCulture)} items dropped with it were left. Drop pictures on their own to add them.";
+                ? "The KiCad project was taken - the other item dropped with it was left. Drop schematic images on their own to add them."
+                : $"The KiCad project was taken - the other {others.ToString(System.Globalization.CultureInfo.InvariantCulture)} items dropped with it were left. Drop schematic images on their own to add them.";
 
         // Said beside pictures taken: the items dropped that held none.
         public static string LeftWithoutPictures(int count) =>
             count == 1
-                ? "1 item dropped holds no picture CRT can show and was left out."
-                : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} items dropped hold no picture CRT can show and were left out.";
+                ? "1 item dropped holds no image CRT can show and was left out."
+                : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} items dropped hold no image CRT can show and were left out.";
 
         public static BoardDrop Of(
             IReadOnlyList<string> dropped,
@@ -141,7 +143,7 @@ namespace Handlers.DataHandling
 
                     return why.Count > 0
                         ? "No KiCad files CRT can read in that folder. " + string.Join(" ", why)
-                        : "That folder holds neither KiCad files nor pictures CRT can show. " + BoardDrop.NothingUsable;
+                        : "That folder holds neither KiCad files nor images CRT can show. " + BoardDrop.NothingUsable;
                 });
         }
     }

@@ -11,7 +11,7 @@ using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
-// BoardFilesWindow - importing board images and KiCad data into a drafted board, and the report
+// KiCadDataPanel - importing board images and KiCad data into a drafted board, and the report
 // saying what the KiCad data actually lines up with (NewContributeStrategy.md Phase 2, session 2c,
 // task 9).
 //
@@ -23,11 +23,11 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // real filesystem side effects and platform dialogs out of scope, and the copy destination itself
 // is already covered by DraftFileResolverTests.
 [Collection("HeadlessUi")]
-public sealed class BoardFilesWindowTests : IDisposable
+public sealed class KiCadDataPanelTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
 
-    public BoardFilesWindowTests()
+    public KiCadDataPanelTests()
     {
         DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
     }
@@ -46,22 +46,47 @@ public sealed class BoardFilesWindowTests : IDisposable
         string[]? views = null) =>
         new(matched, unmatched, unused, pcbFileCount, views ?? Array.Empty<string>());
 
-    private static string TextOf(BoardFilesWindow window, string name) =>
-        window.GetControl<TextBlock>(name).Text ?? string.Empty;
+    private static string TextOf(KiCadDataPanel panel, string name) =>
+        panel.GetControl<TextBlock>(name).Text ?? string.Empty;
 
-    private static bool VisibleOf(BoardFilesWindow window, string name) =>
-        window.GetControl<StackPanel>(name).IsVisible;
+    private static bool VisibleOf(KiCadDataPanel panel, string name) =>
+        panel.GetControl<StackPanel>(name).IsVisible;
 
     // The references one of the report's badge lists is showing.
-    private static List<string> ItemsOf(BoardFilesWindow window, string name) =>
-        (window.GetControl<ItemsControl>(name).ItemsSource ?? Array.Empty<string>())
+    private static List<string> ItemsOf(KiCadDataPanel panel, string name) =>
+        (panel.GetControl<ItemsControl>(name).ItemsSource ?? Array.Empty<string>())
             .Cast<string>()
             .ToList();
 
-    [Fact]
-    public void The_window_constructs_without_throwing()
+    // ###########################################################################################
+    // The panel as the Contribute tab shows it (a window until 2026-10-30): inside CRT's window,
+    // whose BusyOverlay its waits run under (BusyOverlay.For). Not shown until a test shows it.
+    // ###########################################################################################
+    private static KiCadDataPanel Hosted(KiCadDataPanel panel)
     {
-        UiTest.Run(() => Assert.NotNull(new BoardFilesWindow()));
+        var root = new Grid();
+        root.Children.Add(panel);
+        root.Children.Add(new BusyOverlay());
+        _ = new Window { Content = root, Width = 900, Height = 700 };
+
+        return panel;
+    }
+
+    private static Window HostOf(KiCadDataPanel panel) => Assert.IsType<Window>(Assert.IsAssignableFrom<Control>(panel.Parent).Parent);
+
+    private static void Show(KiCadDataPanel panel) => KiCadDataPanelTests.HostOf(panel).Show();
+
+    // Closed as the tab closes it, and its window with it.
+    private static void Close(KiCadDataPanel panel)
+    {
+        panel.Close();
+        KiCadDataPanelTests.HostOf(panel).Close();
+    }
+
+    [Fact]
+    public void The_panel_constructs_without_throwing()
+    {
+        UiTest.Run(() => Assert.NotNull(new KiCadDataPanel()));
     }
 
     [Fact]
@@ -69,9 +94,9 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            Assert.False(window.GetControl<Border>("ReportPanel").IsVisible);
+            Assert.False(panel.GetControl<Border>("ReportPanel").IsVisible);
         });
     }
 
@@ -82,16 +107,16 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8" },
                 unmatched: new[] { "PLA/U17", "C15" },
                 unused: Array.Empty<string>()));
 
-            Assert.True(VisibleOf(window, "UnmatchedPanel"));
-            Assert.Equal("2 components will NOT light up", TextOf(window, "UnmatchedHeaderText"));
-            Assert.Equal(new[] { "PLA/U17", "C15" }, ItemsOf(window, "UnmatchedList"));
+            Assert.True(VisibleOf(panel, "UnmatchedPanel"));
+            Assert.Equal("2 components will NOT light up", TextOf(panel, "UnmatchedHeaderText"));
+            Assert.Equal(new[] { "PLA/U17", "C15" }, ItemsOf(panel, "UnmatchedList"));
         });
     }
 
@@ -102,15 +127,15 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8", "C15" },
                 unmatched: Array.Empty<string>(),
                 unused: Array.Empty<string>()));
 
-            Assert.False(VisibleOf(window, "UnmatchedPanel"));
-            Assert.True(VisibleOf(window, "MatchedPanel"));
+            Assert.False(VisibleOf(panel, "UnmatchedPanel"));
+            Assert.True(VisibleOf(panel, "MatchedPanel"));
         });
     }
 
@@ -119,14 +144,14 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8" },
                 unmatched: Array.Empty<string>(),
                 unused: Array.Empty<string>()));
 
-            Assert.Equal("1 component matches", TextOf(window, "MatchedHeaderText"));
+            Assert.Equal("1 component matches", TextOf(panel, "MatchedHeaderText"));
         });
     }
 
@@ -137,15 +162,15 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: Array.Empty<string>(),
                 unmatched: Array.Empty<string>(),
                 unused: new[] { "U8", "C15" }));
 
-            Assert.True(VisibleOf(window, "UnusedPanel"));
-            Assert.Equal("2 components are not labelled yet", TextOf(window, "UnusedHeaderText"));
+            Assert.True(VisibleOf(panel, "UnusedPanel"));
+            Assert.Equal("2 components are not on the board yet", TextOf(panel, "UnusedHeaderText"));
         });
     }
 
@@ -161,15 +186,15 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
             string[] unused = Enumerable.Range(1, 365).Select(i => $"C{i}").ToArray();
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: Array.Empty<string>(),
                 unmatched: Array.Empty<string>(),
                 unused: unused));
 
-            Assert.Equal(unused, ItemsOf(window, "UnusedList"));
+            Assert.Equal(unused, ItemsOf(panel, "UnusedList"));
         });
     }
 
@@ -185,20 +210,20 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8", "U9" },
                 unmatched: new[] { "PLA/U17" },
                 unused: Enumerable.Range(1, 60).Select(i => $"C{i}").ToArray()));
 
-            window.Show();
+            KiCadDataPanelTests.Show(panel);
 
             try
             {
                 foreach ((string list, int expected) in new[] { ("MatchedList", 2), ("UnmatchedList", 1), ("UnusedList", 60) })
                 {
-                    List<string> badgeTexts = window.GetControl<ItemsControl>(list)
+                    List<string> badgeTexts = panel.GetControl<ItemsControl>(list)
                         .GetVisualDescendants()
                         .OfType<Border>()
                         .Where(border => border.Classes.Contains("ReferenceBadge"))
@@ -206,12 +231,12 @@ public sealed class BoardFilesWindowTests : IDisposable
                         .ToList();
 
                     Assert.Equal(expected, badgeTexts.Count);
-                    Assert.Equal(ItemsOf(window, list), badgeTexts);
+                    Assert.Equal(ItemsOf(panel, list), badgeTexts);
                 }
             }
             finally
             {
-                window.Close();
+                KiCadDataPanelTests.Close(panel);
             }
         });
     }
@@ -223,17 +248,17 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8" },
                 unmatched: Array.Empty<string>(),
                 unused: Array.Empty<string>(),
                 views: new[] { "250407_ - PCB Top", "250407_ - PCB Bottom" }));
 
-            Assert.True(VisibleOf(window, "ViewNamesPanel"));
-            Assert.Contains("250407_ - PCB Top", TextOf(window, "ViewNamesListText"));
-            Assert.Contains("250407_ - PCB Bottom", TextOf(window, "ViewNamesListText"));
+            Assert.True(VisibleOf(panel, "ViewNamesPanel"));
+            Assert.Contains("250407_ - PCB Top", TextOf(panel, "ViewNamesListText"));
+            Assert.Contains("250407_ - PCB Bottom", TextOf(panel, "ViewNamesListText"));
         });
     }
 
@@ -242,14 +267,14 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8" },
                 unmatched: Array.Empty<string>(),
                 unused: Array.Empty<string>()));
 
-            Assert.False(VisibleOf(window, "ViewNamesPanel"));
+            Assert.False(VisibleOf(panel, "ViewNamesPanel"));
         });
     }
 
@@ -258,16 +283,16 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
             var report = Report(
                 matched: new[] { "U8" },
                 unmatched: new[] { "PLA/U17" },
                 unused: Array.Empty<string>());
 
-            window.ShowReport(report);
+            panel.ShowReport(report);
 
-            Assert.Equal(report.Summary, TextOf(window, "ReportSummaryText"));
-            Assert.True(window.GetControl<Border>("ReportPanel").IsVisible);
+            Assert.Equal(report.Summary, TextOf(panel, "ReportSummaryText"));
+            Assert.True(panel.GetControl<Border>("ReportPanel").IsVisible);
         });
     }
 
@@ -293,7 +318,7 @@ public sealed class BoardFilesWindowTests : IDisposable
 
     // Creates a real drafted board holding one schematic row, and optionally the image file that
     // row names. Goes through DraftSeeder and DraftWorkbookStore rather than hand-writing files, so
-    // the window reads exactly the shape the application really produces.
+    // the panel reads exactly the shape the application really produces.
     private void SeedBoardWithSchematic(string imageFileName, bool writeTheImageFile)
     {
         DraftSeeder.CreateNewBoard(
@@ -302,12 +327,12 @@ public sealed class BoardFilesWindowTests : IDisposable
             {
                 HardwareName = "C64",
                 BoardName = "250407",
-                ExcelDataFile = BoardFilesWindowTests.BoardKey,
+                ExcelDataFile = KiCadDataPanelTests.BoardKey,
             });
 
         DraftWorkbookStore.Edit(
             DraftManager.DraftsRoot,
-            BoardFilesWindowTests.BoardKey,
+            KiCadDataPanelTests.BoardKey,
             board =>
             {
                 // ###########################################################################
@@ -320,7 +345,7 @@ public sealed class BoardFilesWindowTests : IDisposable
                 board.Schematics.Add(new BoardSchematicEntry
                 {
                     SchematicName = "Top side",
-                    SchematicImageFile = BoardFilesWindowTests.StoredImagePath(imageFileName),
+                    SchematicImageFile = KiCadDataPanelTests.StoredImagePath(imageFileName),
                 });
 
                 return board;
@@ -331,34 +356,34 @@ public sealed class BoardFilesWindowTests : IDisposable
             // The bytes live directly in the draft's board folder, under the bare name.
             File.WriteAllBytes(
                 Path.Combine(
-                    DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey),
+                    DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey),
                     imageFileName),
-                BoardFilesWindowTests.OnePixelPng);
+                KiCadDataPanelTests.OnePixelPng);
         }
     }
 
     // The value a 4.0 board file really holds: the board's own name for the file.
     private static string StoredImagePath(string fileName) => fileName;
 
-    // The window on the seeded board, its opening read.
-    private BoardFilesWindow OpenOnSeededBoard()
+    // The panel on the seeded board, its opening read.
+    private KiCadDataPanel OpenOnSeededBoard()
     {
-        var window = new BoardFilesWindow();
+        var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-        window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>());
-        BoardFilesWindowTests.WaitForOpening(window);
+        panel.Initialize(KiCadDataPanelTests.BoardKey, Array.Empty<string>());
+        KiCadDataPanelTests.WaitForOpening(panel);
 
-        return window;
+        return panel;
     }
 
     // ###########################################################################################
-    // The window reads the draft, the previews and the KiCad data OFF the UI thread, under its
+    // The panel reads the draft, the previews and the KiCad data OFF the UI thread, under its
     // "please wait" (owner request, 2026-10-10), so a test lets that finish - as the user waits for
     // it. The reads run on the pool; what they hand back runs here, through RunJobs.
     // ###########################################################################################
-    private static void WaitForOpening(BoardFilesWindow window)
+    private static void WaitForOpening(KiCadDataPanel panel)
     {
-        for (int i = 0; i < 1000 && !window.Opening.IsCompleted; i++)
+        for (int i = 0; i < 1000 && !panel.Opening.IsCompleted; i++)
         {
             Dispatcher.UIThread.RunJobs();
             Thread.Sleep(5);
@@ -366,20 +391,20 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(window.Opening.IsCompleted, "The window should have finished reading what it shows.");
+        Assert.True(panel.Opening.IsCompleted, "The panel should have finished reading what it shows.");
     }
 
     // ###########################################################################################
-    // Every change the window makes to the draft is written OFF the UI thread, under its "please
-    // wait", one at a time (code review, 2026-10-10 - BoardFilesWindow.DraftChanges.cs). A test lets
+    // Every change the panel makes to the draft is written OFF the UI thread, under its "please
+    // wait", one at a time (code review, 2026-10-10 - KiCadDataPanel.DraftChanges.cs). A test lets
     // the queue empty, as the user waits for the overlay. Jobs first: a CAD name pick is queued by
     // a posted job.
     // ###########################################################################################
-    private static void WaitForChanges(BoardFilesWindow window)
+    private static void WaitForChanges(KiCadDataPanel panel)
     {
         Dispatcher.UIThread.RunJobs();
 
-        for (int i = 0; i < 1000 && !window.DraftChanging.IsCompleted; i++)
+        for (int i = 0; i < 1000 && !panel.DraftChanging.IsCompleted; i++)
         {
             Thread.Sleep(5);
             Dispatcher.UIThread.RunJobs();
@@ -387,31 +412,32 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         Dispatcher.UIThread.RunJobs();
 
-        Assert.True(window.DraftChanging.IsCompleted, "The window should have finished writing the draft.");
+        Assert.True(panel.DraftChanging.IsCompleted, "The panel should have finished writing the draft.");
     }
 
-    // The window is "KiCad data" - its "Schematic images" half moved to the Contribute tab's
+    // The panel is "KiCad data" - its "Schematic images" half moved to the Contribute tab's
     // Pictures part (CRT 4.0 step 3) - and opens on the board's KiCad files.
     [Fact]
-    public void The_window_is_KiCad_data_and_opens_on_the_boards_KiCad_files()
+    public void The_panel_is_KiCad_data_and_opens_on_the_boards_KiCad_files()
     {
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
         this.WriteKiCadFiles("Open128.kicad_pcb");
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            Assert.Equal("KiCad data", window.Title);
-            Assert.True(window.GetControl<StackPanel>("KiCadSection").IsVisible);
-            Assert.Single(window.KiCadFiles);
+            Assert.Equal("KiCad: Files", TextOf(panel, "HeaderText"));
+            Assert.True(panel.GetControl<StackPanel>("KiCadSection").IsVisible);
+            Assert.Single(panel.KiCadFiles);
         });
     }
 
     // ###########################################################################################
-    // *** OPENING IS UNDER THE WINDOW'S "PLEASE WAIT" (owner request, 2026-10-10: "it can take a
-    // few secs to display, so please do show that new standard wait method"). *** From the first
-    // moment - before anything is read - until all of it is in, and then it lets go.
+    // *** OPENING IS UNDER CRT'S "PLEASE WAIT" (owner request, 2026-10-10: "it can take a few secs
+    // to display, so please do show that new standard wait method"). *** From the first moment -
+    // before anything is read - until all of it is in, and then it lets go. Since the panel left its
+    // window (2026-10-30), the overlay is the one of the window it is shown in - Main's.
     // ###########################################################################################
     [Fact]
     public void Opening_reads_under_the_windows_please_wait_and_lets_go_when_done()
@@ -421,21 +447,21 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>());
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, Array.Empty<string>());
 
-            BusyOverlay overlay = BusyOverlay.For(window)!;
+            BusyOverlay overlay = BusyOverlay.For(panel)!;
             Assert.True(overlay.IsBusy);
             Assert.Equal(CrtWaitWording.CheckingKiCadMatches, overlay.Message);
 
-            BoardFilesWindowTests.WaitForOpening(window);
+            KiCadDataPanelTests.WaitForOpening(panel);
 
             Assert.False(overlay.IsBusy);
         });
     }
 
     // ###########################################################################################
-    // *** OPENING AND CLOSING CHANGES NOTHING (owner report, 2026-10-10: closing the window
+    // *** OPENING AND CLOSING CHANGES NOTHING (owner report, 2026-10-10: closing the panel
     // refreshed the detached schematic thumbnails although nothing had changed). *** The Drafts tab
     // reloads the board on screen only when ChangedTheDraft says so - and looking is no change,
     // however the KiCad report was read.
@@ -448,12 +474,12 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
-            window.Show();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
+            KiCadDataPanelTests.Show(panel);
             Dispatcher.UIThread.RunJobs();
-            window.Close();
+            KiCadDataPanelTests.Close(panel);
 
-            Assert.False(window.ChangedTheDraft);
+            Assert.False(panel.ChangedTheDraft);
         });
     }
 
@@ -463,7 +489,7 @@ public sealed class BoardFilesWindowTests : IDisposable
     private void WriteKiCadFiles(params string[] relativePaths)
     {
         string root = Path.Combine(
-            DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey),
+            DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey),
             "KiCad data");
 
         foreach (string relativePath in relativePaths)
@@ -491,11 +517,11 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
             Assert.Equal(
                 new[] { "Open128.kicad_pcb", "Pages/vic.kicad_sch" },
-                window.KiCadFiles.Select(row => row.RelativePath).OrderBy(p => p, StringComparer.Ordinal));
+                panel.KiCadFiles.Select(row => row.RelativePath).OrderBy(p => p, StringComparer.Ordinal));
         });
     }
 
@@ -512,9 +538,9 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            BoardKiCadFileRow row = Assert.Single(window.KiCadFiles);
+            BoardKiCadFileRow row = Assert.Single(panel.KiCadFiles);
 
             Assert.Equal("Pages/cpu-8500.kicad_sch", row.RelativePath);
 
@@ -527,7 +553,7 @@ public sealed class BoardFilesWindowTests : IDisposable
     // ###########################################################################################
     // *** THE LISTING HAS NO SCROLLER OF ITS OWN (owner report, 2026-09-24). ***
     //
-    // It used to sit in its own ScrollViewer capped at 150px, inside the window's ScrollViewer - a
+    // It used to sit in its own ScrollViewer capped at 150px, inside the panel's ScrollViewer - a
     // scroll inside a scroll, where the wheel moved whichever one the pointer was over. Every file
     // is now shown at full height and the WINDOW's scroller is the only one. Asserted on the
     // logical tree: exactly one ScrollViewer above the list, and no height cap on its panel.
@@ -540,17 +566,17 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            Assert.Equal(25, window.KiCadFiles.Count);
+            Assert.Equal(25, panel.KiCadFiles.Count);
 
-            var list = window.GetControl<ItemsControl>("KiCadFilesItemsControl");
+            var list = panel.GetControl<ItemsControl>("KiCadFilesItemsControl");
 
             Assert.Single(list.GetLogicalAncestors().OfType<ScrollViewer>());
 
             Assert.Equal(
                 double.PositiveInfinity,
-                window.GetControl<Border>("KiCadFilesPanel").MaxHeight);
+                panel.GetControl<Border>("KiCadFilesPanel").MaxHeight);
         });
     }
 
@@ -564,9 +590,9 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            Assert.NotEmpty(Assert.Single(window.KiCadFiles).SizeText);
+            Assert.NotEmpty(Assert.Single(panel.KiCadFiles).SizeText);
         });
     }
 
@@ -577,13 +603,13 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            Assert.Empty(window.KiCadFiles);
+            Assert.Empty(panel.KiCadFiles);
 
             Assert.Equal(
                 "No KiCad data imported yet.",
-                window.GetControl<TextBlock>("KiCadStateText").Text);
+                panel.GetControl<TextBlock>("KiCadStateText").Text);
         });
     }
 
@@ -599,13 +625,13 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            Assert.Single(window.KiCadFiles);
+            Assert.Single(panel.KiCadFiles);
 
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, Array.Empty<string>());
 
-            Assert.Single(window.KiCadFiles);
+            Assert.Single(panel.KiCadFiles);
         });
     }
 
@@ -613,7 +639,7 @@ public sealed class BoardFilesWindowTests : IDisposable
     //
     // *** EACH IMPORTED KiCad FILE CAN BE REMOVED ON ITS OWN (owner request, 2026-09-24), the
     // way a schematic image can. *** The delete itself - and what it refuses - is covered by
-    // KiCadImportedFilesTests; these cover the window offering it and describing what is left.
+    // KiCadImportedFilesTests; these cover the panel offering it and describing what is left.
 
     [Fact]
     public void Every_listed_KiCad_file_has_its_own_Remove_button()
@@ -623,12 +649,12 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         UiTest.Run(() =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
-            window.Show();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
+            KiCadDataPanelTests.Show(panel);
 
             try
             {
-                List<Button> removeButtons = window.GetControl<ItemsControl>("KiCadFilesItemsControl")
+                List<Button> removeButtons = panel.GetControl<ItemsControl>("KiCadFilesItemsControl")
                     .GetVisualDescendants()
                     .OfType<Button>()
                     .Where(button => (button.Content as string) == "Remove")
@@ -638,12 +664,12 @@ public sealed class BoardFilesWindowTests : IDisposable
 
                 // Each button carries ITS OWN row, so a click removes the file on that line.
                 Assert.Equal(
-                    window.KiCadFiles.Select(row => row.RelativePath),
+                    panel.KiCadFiles.Select(row => row.RelativePath),
                     removeButtons.Select(button => Assert.IsType<BoardKiCadFileRow>(button.Tag).RelativePath));
             }
             finally
             {
-                window.Close();
+                KiCadDataPanelTests.Close(panel);
             }
         });
     }
@@ -658,31 +684,31 @@ public sealed class BoardFilesWindowTests : IDisposable
         // unreadable leftover would (correctly) replace the "Removed" message with a read error.
         File.WriteAllText(
             Path.Combine(
-                DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey),
+                DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey),
                 "KiCad data",
                 "Open128.kicad_pcb"),
-            BoardFilesWindowTests.MinimalPcb);
+            KiCadDataPanelTests.MinimalPcb);
 
         await UiTest.RunAsync(async () =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            BoardKiCadFileRow page = window.KiCadFiles.Single(row => row.RelativePath == "Pages/vic.kicad_sch");
+            BoardKiCadFileRow page = panel.KiCadFiles.Single(row => row.RelativePath == "Pages/vic.kicad_sch");
 
-            await window.RemoveKiCadFileAsync(page);
+            await panel.RemoveKiCadFileAsync(page);
 
             Assert.False(File.Exists(page.FullPath));
-            Assert.Equal(new[] { "Open128.kicad_pcb" }, window.KiCadFiles.Select(row => row.RelativePath));
-            Assert.Equal("1 KiCad file imported:", window.GetControl<TextBlock>("KiCadStateText").Text);
-            Assert.Contains("Removed [Pages/vic.kicad_sch]", window.StatusTextForTests, StringComparison.Ordinal);
-            Assert.True(window.ChangedTheDraft);
+            Assert.Equal(new[] { "Open128.kicad_pcb" }, panel.KiCadFiles.Select(row => row.RelativePath));
+            Assert.Equal("1 KiCad file imported:", panel.GetControl<TextBlock>("KiCadStateText").Text);
+            Assert.Contains("Removed [Pages/vic.kicad_sch]", panel.StatusTextForTests, StringComparison.Ordinal);
+            Assert.True(panel.ChangedTheDraft);
         });
     }
 
     // ###########################################################################################
     // *** THE KiCad COPY IS NEVER MADE ON THE UI THREAD (code review, 2026-10-25). *** The KiCad data
     // window made the board's KiCad copy - tens of megabytes on a large board - on the UI thread,
-    // twice per refresh, so the window froze with its "please wait" unable to paint. Opening, an
+    // twice per refresh, so the panel froze with its "please wait" unable to paint. Opening, an
     // import and a removal now each read it once, on the pool.
     // ###########################################################################################
     [Fact]
@@ -695,16 +721,16 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow { ReadingKiCadForTests = () => readOnUiThread.Add(Dispatcher.UIThread.CheckAccess()) };
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel { ReadingKiCadForTests = () => readOnUiThread.Add(Dispatcher.UIThread.CheckAccess()) });
 
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, Array.Empty<string>());
-            BoardFilesWindowTests.WaitForOpening(window);
+            panel.Initialize(KiCadDataPanelTests.BoardKey, Array.Empty<string>());
+            KiCadDataPanelTests.WaitForOpening(panel);
 
-            Assert.Equal(2, window.KiCadFiles.Count);
+            Assert.Equal(2, panel.KiCadFiles.Count);
 
-            await window.RemoveKiCadFileAsync(window.KiCadFiles.Single(row => row.RelativePath == "Pages/vic.kicad_sch"));
+            await panel.RemoveKiCadFileAsync(panel.KiCadFiles.Single(row => row.RelativePath == "Pages/vic.kicad_sch"));
 
-            Assert.Single(window.KiCadFiles);
+            Assert.Single(panel.KiCadFiles);
         });
 
         Assert.Equal([false, false], readOnUiThread);
@@ -720,34 +746,61 @@ public sealed class BoardFilesWindowTests : IDisposable
     public async Task Removing_a_published_KiCad_file_imported_again_brings_the_published_one_back()
     {
         string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
-        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", BoardFilesWindowTests.MinimalPcb);
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", KiCadDataPanelTests.MinimalPcb);
         StoredFiles.WriteBoard(
-            DraftBoardSource.PublishedPathOf(dataRoot, BoardFilesWindowTests.BoardKey),
+            DraftBoardSource.PublishedPathOf(dataRoot, KiCadDataPanelTests.BoardKey),
             new BoardData { Components = [new ComponentEntry { BoardLabel = "U1" }] },
             pcb);
-        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, BoardFilesWindowTests.BoardKey).Created);
+        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, KiCadDataPanelTests.BoardKey).Created);
 
         // The contributor's own copy of the same file, with other bytes, lying in the draft folder.
         this.WriteKiCadFiles("board.kicad_pcb");
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow { DataRootOverrideForTests = dataRoot };
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"]);
-            BoardFilesWindowTests.WaitForOpening(window);
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel { DataRootOverrideForTests = dataRoot });
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            KiCadDataPanelTests.WaitForOpening(panel);
 
-            await window.RemoveKiCadFileAsync(Assert.Single(window.KiCadFiles));
+            await panel.RemoveKiCadFileAsync(Assert.Single(panel.KiCadFiles));
 
-            Assert.Empty(window.KiCadFiles);
-            Assert.Contains("the published file is used again", window.StatusTextForTests, StringComparison.Ordinal);
+            Assert.Empty(panel.KiCadFiles);
+            Assert.Contains("the published file is used again", panel.StatusTextForTests, StringComparison.Ordinal);
         });
 
-        string draftBoardFile = Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), DataTreeLayout.BoardFileName);
+        string draftBoardFile = Path.Combine(DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey), DataTreeLayout.BoardFileName);
         BoardDocument.StoredFileRow listed = Assert.Single(BoardFiles.ReadDocument(draftBoardFile)!.Files, file => file.Name == "KiCad data/board.kicad_pcb");
         Assert.Equal(pcb.Sha256, listed.Sha256);
     }
 
-    // Removing the last file puts the window back where it was before any import.
+    // A board whose published data HAS KiCad files, with no import of the draft's own: the panel says
+    // the board has KiCad data, never "No KiCad data imported yet" (owner report, 2026-10-29).
+    [Fact]
+    public void A_board_with_published_KiCad_data_and_no_import_says_it_has_KiCad_data()
+    {
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", KiCadDataPanelTests.MinimalPcb);
+        StoredFiles.WriteBoard(
+            DraftBoardSource.PublishedPathOf(dataRoot, KiCadDataPanelTests.BoardKey),
+            new BoardData { Components = [new ComponentEntry { BoardLabel = "U1" }] },
+            pcb);
+        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, KiCadDataPanelTests.BoardKey).Created);
+
+        UiTest.Run(() =>
+        {
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel { DataRootOverrideForTests = dataRoot });
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            KiCadDataPanelTests.WaitForOpening(panel);
+
+            Assert.Empty(panel.KiCadFiles);
+            Assert.StartsWith(
+                "The board has KiCad data already - 1 published KiCad file.",
+                panel.GetControl<TextBlock>("KiCadStateText").Text,
+                StringComparison.Ordinal);
+        });
+    }
+
+    // Removing the last file puts the panel back where it was before any import.
     [Fact]
     public async Task Removing_the_LAST_KiCad_file_says_there_is_none_and_hides_the_list()
     {
@@ -756,14 +809,14 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         await UiTest.RunAsync(async () =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            await window.RemoveKiCadFileAsync(Assert.Single(window.KiCadFiles));
+            await panel.RemoveKiCadFileAsync(Assert.Single(panel.KiCadFiles));
 
-            Assert.Empty(window.KiCadFiles);
-            Assert.Equal("No KiCad data imported yet.", window.GetControl<TextBlock>("KiCadStateText").Text);
-            Assert.False(window.GetControl<Border>("KiCadFilesPanel").IsVisible);
-            Assert.False(window.GetControl<Border>("ReportPanel").IsVisible);
+            Assert.Empty(panel.KiCadFiles);
+            Assert.Equal("No KiCad data imported yet.", panel.GetControl<TextBlock>("KiCadStateText").Text);
+            Assert.False(panel.GetControl<Border>("KiCadFilesPanel").IsVisible);
+            Assert.False(panel.GetControl<Border>("ReportPanel").IsVisible);
         });
     }
 
@@ -802,47 +855,46 @@ public sealed class BoardFilesWindowTests : IDisposable
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
 
         string root = Path.Combine(
-            DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey),
+            DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey),
             "KiCad data");
 
         Directory.CreateDirectory(root);
-        File.WriteAllText(Path.Combine(root, "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(root, "board.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
             // A board label that DOES match the footprint above, so the report has something to say.
-            window.Initialize(
-                "C64 - 250407",
-                BoardFilesWindowTests.BoardKey,
+            panel.Initialize(
+                KiCadDataPanelTests.BoardKey,
                 new[] { "U1" });
 
             // Let the fire-and-forget parse complete.
-            for (int i = 0; i < 100 && !window.GetControl<Border>("ReportPanel").IsVisible; i++)
+            for (int i = 0; i < 100 && !panel.GetControl<Border>("ReportPanel").IsVisible; i++)
             {
                 await Task.Delay(20);
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             }
 
             Assert.True(
-                window.GetControl<Border>("ReportPanel").IsVisible,
-                "The match report should be rebuilt when the window opens on existing KiCad data.");
+                panel.GetControl<Border>("ReportPanel").IsVisible,
+                "The match report should be rebuilt when the panel opens on existing KiCad data.");
         });
     }
 
     // ---- dropped on the Contribute tab, and the KiCad summary (step 3, slice 3e) ----------------------
 
-    private static async Task UntilImported(BoardFilesWindow window)
+    private static async Task UntilImported(KiCadDataPanel panel)
     {
-        for (int i = 0; i < 500 && !(window.DroppedImport.IsCompleted && window.DraftChanging.IsCompleted); i++)
+        for (int i = 0; i < 500 && !(panel.DroppedImport.IsCompleted && panel.DraftChanging.IsCompleted); i++)
         {
             await Task.Delay(10);
             Dispatcher.UIThread.RunJobs();
         }
 
         Dispatcher.UIThread.RunJobs();
-        Assert.True(window.DroppedImport.IsCompleted, "The files dropped should have been imported.");
+        Assert.True(panel.DroppedImport.IsCompleted, "The files dropped should have been imported.");
     }
 
     // ###########################################################################################
@@ -857,46 +909,52 @@ public sealed class BoardFilesWindowTests : IDisposable
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
 
         string source = this.thisWorkspace.Path_("Project");
-        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
         File.WriteAllText(this.thisWorkspace.Path_("Project", "board.sch"), "EESchema Schematic File Version 4");
         File.WriteAllText(this.thisWorkspace.Path_("Project", "lib.pretty", "DIP-40.kicad_mod"), "(footprint)");
         File.WriteAllText(this.thisWorkspace.Path_("Project", "3d", "socket.step"), "ISO-10303-21;");
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow();
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"]);
-            window.ImportOnceOpen([source]);
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            panel.ImportOnceOpen([source]);
 
-            await UntilImported(window);
-            for (int i = 0; i < 200 && !window.GetControl<Border>("KiCadSummaryPanel").IsVisible; i++)
+            await UntilImported(panel);
+            for (int i = 0; i < 200 && !panel.GetControl<Border>("KiCadSummaryPanel").IsVisible; i++)
             {
                 await Task.Delay(10);
                 Dispatcher.UIThread.RunJobs();
             }
 
-            Assert.Equal(["board.kicad_pcb"], window.KiCadFiles.Select(row => row.RelativePath));
-            Assert.True(window.GetControl<Border>("KiCadSummaryPanel").IsVisible);
-            Assert.Equal("Found 1 PCB with 1 component and 1 net, and no schematic sheet.", TextOf(window, "KiCadFoundText"));
+            Assert.Equal(["board.kicad_pcb"], panel.KiCadFiles.Select(row => row.RelativePath));
+            Assert.True(panel.GetControl<Border>("KiCadSummaryPanel").IsVisible);
+            Assert.Equal("Found 1 PCB with 1 component and 1 net, and no schematic sheet.", TextOf(panel, "KiCadFoundText"));
+
+            // Where the count beside "KiCad data" comes from (owner request, 2026-10-30).
+            Assert.Equal(KiCadImportSummary.Files(["KiCad data/board.kicad_pcb"]), TextOf(panel, "KiCadFilesText"));
+            Assert.StartsWith("The board has 1 KiCad file - ", TextOf(panel, "KiCadFilesText"), StringComparison.Ordinal);
+            Assert.True(panel.GetControl<TextBlock>("KiCadFilesText").IsVisible);
+
             Assert.Equal(
                 "Left out, as CRT does not read them: 1 footprint, 1 3D model and 1 file from an older KiCad.",
-                TextOf(window, "KiCadLeftOutText"));
-            Assert.Equal(string.Join(" ", KiCadImportSummary.CannotRead(["board.sch"], ["board.sch"], ["board.kicad_pcb"])), TextOf(window, "KiCadOlderText"));
-            Assert.True(window.GetControl<TextBlock>("KiCadOlderText").IsVisible);
+                TextOf(panel, "KiCadLeftOutText"));
+            Assert.Equal(string.Join(" ", KiCadImportSummary.CannotRead(["board.sch"], ["board.sch"], ["board.kicad_pcb"])), TextOf(panel, "KiCadOlderText"));
+            Assert.True(panel.GetControl<TextBlock>("KiCadOlderText").IsVisible);
 
-            // What is left to do, by the checklist's rules on the draft as it now is.
-            Assert.True(VisibleOf(window, "KiCadLeftToDoPanel"));
-            Assert.Contains("- Match each picture to the KiCad view it shows.", TextOf(window, "KiCadLeftToDoText"), StringComparison.Ordinal);
+            // What is left to do, by BoardReadiness' rules on the draft as it now is.
+            Assert.True(VisibleOf(panel, "KiCadLeftToDoPanel"));
+            Assert.Contains("- Match each picture to the KiCad view it shows.", TextOf(panel, "KiCadLeftToDoText"), StringComparison.Ordinal);
 
             // The check done, the status line no longer says it is checking (render, 2026-10-28: it
             // read "Checking what it lines up with..." under the finished summary).
-            Assert.Equal("Imported 1 KiCad file - the summary above says what it holds.", window.StatusTextForTests);
+            Assert.Equal("Imported 1 KiCad file - the summary above says what it holds.", panel.StatusTextForTests);
         });
     }
 
     // ###########################################################################################
-    // The folder's walk is ONE OF THE WINDOW'S CHANGES (code review, 2026-10-28): moved off the UI
-    // thread but outside the queue, the window could be closed while it ran - closing waits only for
+    // The folder's walk is ONE OF THE PANEL'S CHANGES (code review, 2026-10-28): moved off the UI
+    // thread but outside the queue, the panel could be closed while it ran - closing waits only for
     // what is queued - and the import went into the draft after, the board on screen never read again.
     // ###########################################################################################
     [Fact]
@@ -905,17 +963,17 @@ public sealed class BoardFilesWindowTests : IDisposable
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
 
         string source = this.thisWorkspace.Path_("Project");
-        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
 
         using var release = new ManualResetEventSlim(false);
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow { ScanningKiCadForTests = () => release.Wait(TimeSpan.FromSeconds(10)) };
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"]);
-            BoardFilesWindowTests.WaitForOpening(window);
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel { ScanningKiCadForTests = () => release.Wait(TimeSpan.FromSeconds(10)) });
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            KiCadDataPanelTests.WaitForOpening(panel);
 
-            Task importing = window.ImportKiCadFolderAsync(source);
+            Task importing = panel.ImportKiCadFolderAsync(source);
 
             for (int i = 0; i < 10; i++)
             {
@@ -923,18 +981,18 @@ public sealed class BoardFilesWindowTests : IDisposable
                 Dispatcher.UIThread.RunJobs();
             }
 
-            Assert.False(window.DraftChanging.IsCompleted, "The folder being read is a change closing has to wait for.");
+            Assert.False(panel.DraftChanging.IsCompleted, "The folder being read is a change closing has to wait for.");
 
             release.Set();
 
-            for (int i = 0; i < 500 && !(importing.IsCompleted && window.DraftChanging.IsCompleted); i++)
+            for (int i = 0; i < 500 && !(importing.IsCompleted && panel.DraftChanging.IsCompleted); i++)
             {
                 await Task.Delay(10);
                 Dispatcher.UIThread.RunJobs();
             }
 
-            Assert.True(window.ChangedTheDraft);
-            Assert.Equal(["board.kicad_pcb"], window.KiCadFiles.Select(row => row.RelativePath));
+            Assert.True(panel.ChangedTheDraft);
+            Assert.Equal(["board.kicad_pcb"], panel.KiCadFiles.Select(row => row.RelativePath));
         });
     }
 
@@ -954,15 +1012,15 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow();
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"]);
-            BoardFilesWindowTests.WaitForOpening(window);
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            KiCadDataPanelTests.WaitForOpening(panel);
 
-            await window.ImportKiCadFolderAsync(source);
+            await panel.ImportKiCadFolderAsync(source);
 
-            Assert.Empty(window.KiCadFiles);
-            Assert.DoesNotContain("older KiCad", window.StatusTextForTests, StringComparison.Ordinal);
-            Assert.Contains("EAGLE", window.StatusTextForTests, StringComparison.Ordinal);
+            Assert.Empty(panel.KiCadFiles);
+            Assert.DoesNotContain("older KiCad", panel.StatusTextForTests, StringComparison.Ordinal);
+            Assert.Contains("EAGLE", panel.StatusTextForTests, StringComparison.Ordinal);
         });
     }
 
@@ -976,22 +1034,22 @@ public sealed class BoardFilesWindowTests : IDisposable
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
 
         // A FILE where the draft's "KiCad data" folder goes: nothing can be copied there.
-        File.WriteAllText(Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data"), "in the way");
+        File.WriteAllText(Path.Combine(DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey), "KiCad data"), "in the way");
 
         string source = this.thisWorkspace.Path_("Project");
-        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
         File.WriteAllText(this.thisWorkspace.Path_("Project", "lib.pretty", "DIP-40.kicad_mod"), "(footprint)");
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow();
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"]);
-            BoardFilesWindowTests.WaitForOpening(window);
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            KiCadDataPanelTests.WaitForOpening(panel);
 
-            await window.ImportKiCadFolderAsync(source);
+            await panel.ImportKiCadFolderAsync(source);
 
-            Assert.Equal("Could not copy those KiCad files - see the log for details.", window.StatusTextForTests);
-            Assert.False(window.HasLastImportForTests);
+            Assert.Equal("Could not copy those KiCad files - see the log for details.", panel.StatusTextForTests);
+            Assert.False(panel.HasLastImportForTests);
         });
     }
 
@@ -1008,15 +1066,15 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow();
-            window.Initialize("C64 - 250407", BoardFilesWindowTests.BoardKey, ["U1"]);
-            window.ImportOnceOpen([source]);
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            panel.ImportOnceOpen([source]);
 
-            await UntilImported(window);
+            await UntilImported(panel);
 
-            Assert.Empty(window.KiCadFiles);
-            Assert.Equal(KiCadImportSummary.NothingToImport(["c64.pro", "c64.sch"], ["c64.sch"]), window.StatusTextForTests);
-            Assert.StartsWith("No KiCad files CRT can read in that folder. Its schematic files (.sch)", window.StatusTextForTests, StringComparison.Ordinal);
+            Assert.Empty(panel.KiCadFiles);
+            Assert.Equal(KiCadImportSummary.NothingToImport(["c64.pro", "c64.sch"], ["c64.sch"]), panel.StatusTextForTests);
+            Assert.StartsWith("No KiCad files CRT can read in that folder. Its schematic files (.sch)", panel.StatusTextForTests, StringComparison.Ordinal);
         });
     }
 
@@ -1031,18 +1089,18 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8" },
                 unmatched: new[] { "PLA/U17" },
                 unused: new[] { "LOGO3", "N1", "NT1" }));
 
-            window.Show();
+            KiCadDataPanelTests.Show(panel);
 
             try
             {
-                List<Border> BadgesOf(string list) => window.GetControl<ItemsControl>(list)
+                List<Border> BadgesOf(string list) => panel.GetControl<ItemsControl>(list)
                     .GetVisualDescendants().OfType<Border>()
                     .Where(border => border.Classes.Contains("ReferenceBadge"))
                     .ToList();
@@ -1059,45 +1117,46 @@ public sealed class BoardFilesWindowTests : IDisposable
             }
             finally
             {
-                window.Close();
+                KiCadDataPanelTests.Close(panel);
             }
         });
     }
 
-    // The views are picked on the picture cards of the Contribute tab's Pictures part since step 3 -
-    // the list says where, in the words the card uses.
+    // The views are picked on the picture cards of the Contribute tab's Schematic images part since
+    // step 3 - the list says where, in the words the card uses, and names the part as the left column
+    // does (code review, 2026-10-30: it still said "Pictures" after the part was renamed on 2026-10-29).
     [Fact]
     public void The_view_names_list_says_they_are_picked_on_the_picture_cards()
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowReport(Report(
+            panel.ShowReport(Report(
                 matched: new[] { "U8" },
                 unmatched: Array.Empty<string>(),
                 unused: Array.Empty<string>(),
                 views: new[] { "Open128 - PCB Top" }));
 
-            string explanation = window.GetControl<StackPanel>("ViewNamesPanel").Children.OfType<TextBlock>().ElementAt(1).Text!;
+            string explanation = panel.GetControl<TextBlock>("ViewNamesHintText").Text!;
 
             Assert.Contains("\"Shows KiCad view\"", explanation);
-            Assert.Contains("\"Pictures\"", explanation);
-            Assert.DoesNotContain("Schematic images", explanation);
+            Assert.Contains($"\"{ComponentPaneWording.SchematicImages}\"", explanation);
+            Assert.DoesNotContain("Pictures", explanation);
         });
     }
 
     // ------------------------------------------------------------------ the KiCad NET NAMES
     //
-    // Owner request, 2026-10-10: show in the window what the logfile listed as "normalized KiCad
+    // Owner request, 2026-10-10: show in the panel what the logfile listed as "normalized KiCad
     // net name [...]", each one copyable for the "Important signals" sheet. Which row finds which
-    // net is KiCadNetNames' (CRT.Data.Tests); these cover how the window shows it.
+    // net is KiCadNetNames' (CRT.Data.Tests); these cover how the panel shows it.
 
     private static KiCadImportantSignalEntry Signal(string displayName, string netName) =>
         new() { DisplayName = displayName, KiCadNetName = netName };
 
-    private static List<KiCadNetNameBadge> NetBadgesOf(BoardFilesWindow window) =>
-        (window.GetControl<ItemsControl>("NetNamesList").ItemsSource ?? Array.Empty<KiCadNetNameBadge>())
+    private static List<KiCadNetNameBadge> NetBadgesOf(KiCadDataPanel panel) =>
+        (panel.GetControl<ItemsControl>("NetNamesList").ItemsSource ?? Array.Empty<KiCadNetNameBadge>())
             .Cast<KiCadNetNameBadge>()
             .ToList();
 
@@ -1106,21 +1165,24 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowNetNameReport(KiCadNetNames.Build(
+            panel.ShowNetNameReport(KiCadNetNames.Build(
                 [("/A10", "A10", false), ("/A1", "A1", false), ("+5V", "+5V", false)],
                 [Signal("Address 1", "/A1")]));
 
-            Assert.True(VisibleOf(window, "NetNamesPanel"));
-            Assert.Equal("3 KiCad net names you can use", TextOf(window, "NetNamesHeaderText"));
-            Assert.Equal(["+5V", "A1", "A10"], NetBadgesOf(window).Select(badge => badge.Name));
-            Assert.Equal(["A1"], NetBadgesOf(window).Where(badge => badge.IsUsed).Select(badge => badge.Name));
-            Assert.Contains("Click a name to copy it", TextOf(window, "NetNamesIntroText"));
-            Assert.Contains("\"Important signals\"", TextOf(window, "NetNamesIntroText"));
-            Assert.Contains("The one in green is already used", TextOf(window, "NetNamesIntroText"));
+            Assert.True(VisibleOf(panel, "NetNamesPanel"));
+            Assert.Equal("3 KiCad nets", TextOf(panel, "NetNamesHeaderText"));
+            Assert.Equal(["+5V", "A1", "A10"], NetBadgesOf(panel).Select(badge => badge.Name));
+            Assert.Equal(["A1"], NetBadgesOf(panel).Where(badge => badge.IsUsed).Select(badge => badge.Name));
+            Assert.Contains("KiCad: Important signals", TextOf(panel, "NetNamesIntroText"));
+            Assert.Contains("The 1 net in green is already used by an important KiCad signal.", TextOf(panel, "NetNamesIntroText"));
 
-            Assert.False(VisibleOf(window, "UnresolvedSignalsPanel"));
+            // Nothing is copied from here any more (owner request, 2026-11-01).
+            Assert.DoesNotContain("copy", TextOf(panel, "NetNamesIntroText"), StringComparison.OrdinalIgnoreCase);
+            Assert.Null(NetBadgesOf(panel).Single(badge => badge.Name == "+5V").ToolTipText);
+
+            Assert.False(VisibleOf(panel, "UnresolvedSignalsPanel"));
         });
     }
 
@@ -1130,15 +1192,15 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowNetNameReport(KiCadNetNames.Build(
+            panel.ShowNetNameReport(KiCadNetNames.Build(
                 [("PHI2", "PHI2", false)],
                 [Signal("PHI2", "PH12"), Signal("Reset", "RES")]));
 
-            Assert.True(VisibleOf(window, "UnresolvedSignalsPanel"));
-            Assert.Equal("2 important signals will NOT light up", TextOf(window, "UnresolvedSignalsHeaderText"));
-            Assert.Equal(["PHI2: PH12", "Reset: RES"], ItemsOf(window, "UnresolvedSignalsList"));
+            Assert.True(VisibleOf(panel, "UnresolvedSignalsPanel"));
+            Assert.Equal("2 important KiCad signals will NOT light up", TextOf(panel, "UnresolvedSignalsHeaderText"));
+            Assert.Equal(["PHI2: PH12", "Reset: RES"], ItemsOf(panel, "UnresolvedSignalsList"));
         });
     }
 
@@ -1147,34 +1209,11 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.ShowNetNameReport(KiCadNetNames.Build([], [Signal("Clock", "CLK")]));
+            panel.ShowNetNameReport(KiCadNetNames.Build([], [Signal("Clock", "CLK")]));
 
-            Assert.False(VisibleOf(window, "NetNamesPanel"));
-        });
-    }
-
-    [Fact]
-    public async Task Clicking_a_net_name_copies_it_to_the_clipboard_and_says_so()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            var window = new BoardFilesWindow();
-            window.Show();
-
-            try
-            {
-                await window.CopyNetNameAsync("128_64");
-
-                Avalonia.Input.Platform.IClipboard clipboard = TopLevel.GetTopLevel(window)!.Clipboard!;
-                Assert.Equal("128_64", await clipboard.TryGetTextAsync());
-                Assert.Contains("Copied [128_64]", window.StatusTextForTests);
-            }
-            finally
-            {
-                window.Close();
-            }
+            Assert.False(VisibleOf(panel, "NetNamesPanel"));
         });
     }
 
@@ -1185,36 +1224,35 @@ public sealed class BoardFilesWindowTests : IDisposable
     {
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
 
-        string root = Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data");
+        string root = Path.Combine(DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey), "KiCad data");
         Directory.CreateDirectory(root);
-        File.WriteAllText(Path.Combine(root, "board.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(root, "board.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
 
         await UiTest.RunAsync(async () =>
         {
-            var window = new BoardFilesWindow();
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
 
-            window.Initialize(
-                "C64 - 250407",
-                BoardFilesWindowTests.BoardKey,
+            panel.Initialize(
+                KiCadDataPanelTests.BoardKey,
                 new[] { "U1" },
                 [Signal("Ground", "GND"), Signal("Clock", "CLK")]);
 
-            for (int i = 0; i < 100 && !VisibleOf(window, "NetNamesPanel"); i++)
+            for (int i = 0; i < 100 && !VisibleOf(panel, "NetNamesPanel"); i++)
             {
                 await Task.Delay(20);
                 Dispatcher.UIThread.RunJobs();
             }
 
             // The fixture's (net 0 "") - KiCad's "no net" - is not listed (owner decision, 2026-10-10).
-            Assert.Equal(["GND"], NetBadgesOf(window).Select(badge => badge.Name));
-            Assert.True(Assert.Single(NetBadgesOf(window)).IsUsed);
-            Assert.Equal(["Clock: CLK"], ItemsOf(window, "UnresolvedSignalsList"));
+            Assert.Equal(["GND"], NetBadgesOf(panel).Select(badge => badge.Name));
+            Assert.True(Assert.Single(NetBadgesOf(panel)).IsUsed);
+            Assert.Equal(["Clock: CLK"], ItemsOf(panel, "UnresolvedSignalsList"));
         });
     }
 
     // ###########################################################################################
     // *** A KiCad IMPORT THAT STOPS PART-WAY STILL CHANGED THE DRAFT. *** The files before the one
-    // that failed are overwritten, so the board on screen has to be read again when the window
+    // that failed are overwritten, so the board on screen has to be read again when the panel
     // closes - it went on drawing the old project. A folder where the second file goes makes that
     // copy fail on every system.
     // ###########################################################################################
@@ -1225,20 +1263,20 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
         Directory.CreateDirectory(source);
-        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
         File.WriteAllText(Path.Combine(source, "b.kicad_sch"), "(kicad_sch (version 20230121))");
 
-        Directory.CreateDirectory(Path.Combine(DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey), "KiCad data", "b.kicad_sch"));
+        Directory.CreateDirectory(Path.Combine(DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey), "KiCad data", "b.kicad_sch"));
 
         await UiTest.RunAsync(async () =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            await window.ImportKiCadFolderAsync(source);
+            await panel.ImportKiCadFolderAsync(source);
 
-            Assert.True(window.ChangedTheDraft);
-            Assert.Contains("Only 1 of the 2 KiCad files could be copied", window.StatusTextForTests);
-            Assert.Equal(["a.kicad_pcb"], window.KiCadFiles.Select(row => row.RelativePath));
+            Assert.True(panel.ChangedTheDraft);
+            Assert.Contains("Only 1 of the 2 KiCad files could be copied", panel.StatusTextForTests);
+            Assert.Equal(["a.kicad_pcb"], panel.KiCadFiles.Select(row => row.RelativePath));
         });
     }
 
@@ -1254,17 +1292,17 @@ public sealed class BoardFilesWindowTests : IDisposable
 
         string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
         Directory.CreateDirectory(Path.Combine(source, "Pages"));
-        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), BoardFilesWindowTests.MinimalPcb);
+        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
         File.WriteAllText(Path.Combine(source, "Pages", "b.kicad_sch"), "(kicad_sch (version 20230121))");
 
         await UiTest.RunAsync(async () =>
         {
-            BoardFilesWindow window = this.OpenOnSeededBoard();
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
 
-            await window.ImportKiCadFolderAsync(source);
+            await panel.ImportKiCadFolderAsync(source);
         });
 
-        string draftFolder = DraftManager.GetBoardFolder(BoardFilesWindowTests.BoardKey);
+        string draftFolder = DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey);
         BoardDocument? draft = BoardFiles.ReadDocument(Path.Combine(draftFolder, DataTreeLayout.BoardFileName));
 
         Assert.NotNull(draft);
@@ -1286,35 +1324,34 @@ public sealed class BoardFilesWindowTests : IDisposable
     public void The_KiCad_report_reads_the_published_KiCad_data_too()
     {
         string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
-        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", BoardFilesWindowTests.MinimalPcb);
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(dataRoot, "KiCad data/board.kicad_pcb", KiCadDataPanelTests.MinimalPcb);
         StoredFiles.WriteBoard(
-            DraftBoardSource.PublishedPathOf(dataRoot, BoardFilesWindowTests.BoardKey),
+            DraftBoardSource.PublishedPathOf(dataRoot, KiCadDataPanelTests.BoardKey),
             new BoardData { Components = [new ComponentEntry { BoardLabel = "U1" }] },
             pcb);
-        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, BoardFilesWindowTests.BoardKey).Created);
+        Assert.True(DraftSeeder.SeedFromPublishedFile(DraftManager.DraftsRoot, dataRoot, KiCadDataPanelTests.BoardKey).Created);
 
         UiTest.Run(() =>
         {
-            var window = new BoardFilesWindow { DataRootOverrideForTests = dataRoot };
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel { DataRootOverrideForTests = dataRoot });
 
-            window.Initialize(
-                "C64 - 250407",
-                BoardFilesWindowTests.BoardKey,
+            panel.Initialize(
+                KiCadDataPanelTests.BoardKey,
                 new[] { "U1" },
                 [Signal("Ground", "GND")]);
 
-            BoardFilesWindowTests.WaitForOpening(window);
+            KiCadDataPanelTests.WaitForOpening(panel);
 
-            Assert.True(window.GetControl<Border>("ReportPanel").IsVisible);
-            Assert.Equal(["U1"], ItemsOf(window, "MatchedList"));
-            Assert.Equal(["GND"], NetBadgesOf(window).Select(badge => badge.Name));
-            Assert.False(VisibleOf(window, "UnresolvedSignalsPanel"));
+            Assert.True(panel.GetControl<Border>("ReportPanel").IsVisible);
+            Assert.Equal(["U1"], ItemsOf(panel, "MatchedList"));
+            Assert.Equal(["GND"], NetBadgesOf(panel).Select(badge => badge.Name));
+            Assert.False(VisibleOf(panel, "UnresolvedSignalsPanel"));
 
-            TextBlock source = window.GetControl<TextBlock>("ReportSourceText");
+            TextBlock source = panel.GetControl<TextBlock>("ReportSourceText");
             Assert.True(source.IsVisible);
             Assert.Contains("published KiCad data", source.Text);
 
-            Assert.Empty(window.KiCadFiles);
+            Assert.Empty(panel.KiCadFiles);
         });
     }
 }

@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
+        xmlns:local="clr-namespace:CRT"
         x:Class="CRT.NewBoardWindow"
         Title="Add a new board"
         Width="560"
@@ -26,61 +26,9 @@
 				   Margin="0,8,0,12"
 				   Text="Nothing is shared with anyone until you submit it. A board you never submit stays yours and keeps working locally." />
 
-		<TextBlock Text="Manufacturer" FontWeight="SemiBold" />
-		<TextBlock Text="The company that made it, for example Commodore. This becomes the top folder your board is stored in."
-				   TextWrapping="Wrap"
-				   FontSize="11"
-				   Opacity="0.75"
-				   Margin="0,0,0,2" />
-		<AutoCompleteBox x:Name="ManufacturerBox"
-						 FilterMode="ContainsOrdinal"
-						 MinimumPrefixLength="0"
-						 PlaceholderText="Commodore" />
-
-		<!-- "Did you mean Commodore?" (CRT 4.0 step 3, slice 3e - the plan: "Did you mean Commodore?
-		     when a typed name is close to an existing one"): offered under the box, never in the way -
-		     the name typed may be a new one. SimilarNames decides. -->
-		<StackPanel x:Name="ManufacturerDidYouMeanPanel" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="False">
-			<TextBlock x:Name="ManufacturerDidYouMeanText" VerticalAlignment="Center" FontWeight="SemiBold" />
-			<Button x:Name="ManufacturerDidYouMeanButton" />
-		</StackPanel>
-
-		<TextBlock Text="Hardware" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<TextBlock Text="The machine itself, as CRT's hardware list names it - for example Commodore 64 or Amiga 500."
-				   TextWrapping="Wrap"
-				   FontSize="11"
-				   Opacity="0.75"
-				   Margin="0,0,0,2" />
-		<TextBox x:Name="HardwareBox" PlaceholderText="Commodore 64" />
-
-		<StackPanel x:Name="HardwareDidYouMeanPanel" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" IsVisible="False">
-			<TextBlock x:Name="HardwareDidYouMeanText" VerticalAlignment="Center" FontWeight="SemiBold" />
-			<Button x:Name="HardwareDidYouMeanButton" />
-		</StackPanel>
-
-		<TextBlock Text="Board" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<TextBlock Text="The board revision, for example 250407. If you do not know it, use something that identifies the board to you."
-				   TextWrapping="Wrap"
-				   FontSize="11"
-				   Opacity="0.75"
-				   Margin="0,0,0,2" />
-		<TextBox x:Name="BoardBox" PlaceholderText="250407" />
-
-		<TextBlock Text="Notes (optional)" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<!-- Sent with the submission (owner request, 2026-10-05): the maintainer's placement of the
-		     board starts with it, and the placement saved is what goes into the main Excel data
-		     file's notes column - so the maintainer may still change it. At most that column's
-		     length (MaxLength below; the server refuses more). -->
-		<TextBlock Text="Anything worth knowing about this hardware. Sent with the submission - the maintainer checks it when adding the board to CRT's list of hardware and boards, and it is then shown on the Overview tab."
-				   TextWrapping="Wrap"
-				   FontSize="11"
-				   Opacity="0.75"
-				   Margin="0,0,0,2" />
-		<TextBox x:Name="NotesBox"
-				 MaxLength="{x:Static data:MasterListing.MaximumNotesLength}"
-				 AcceptsReturn="True"
-				 TextWrapping="Wrap"
-				 Height="60" />
+		<!-- Manufacturer, hardware, board and notes, with every rule about them - the Contribute tab's
+		     "Board name" shows the same (2026-11-01). -->
+		<local:BoardNameFields x:Name="Fields" />
 
 		<!-- A live preview of what is about to be created, so the folder layout is never a surprise
 		     and a typo in a name is visible before it becomes a folder on disk. -->
@@ -109,7 +57,7 @@
 				   FontWeight="Bold"
 				   Foreground="{DynamicResource Text_Fail_Fg}" />
 
-		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button Content="Cancel" Click="OnCancelClick" />
 			<Button x:Name="CreateButton"
 					Classes="Accept"

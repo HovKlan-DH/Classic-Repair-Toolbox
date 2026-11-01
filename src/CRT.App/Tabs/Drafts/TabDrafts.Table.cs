@@ -173,6 +173,15 @@ namespace CRT
         // ###########################################################################################
         internal async Task OpenTableAsync(HardwareBoardEntry entry)
         {
+            // What closes on the way hands the draft over - never lets it go (OpeningOn).
+            using (this.OpeningOn(entry))
+            {
+                await this.OpenTableOnDraftAsync(entry);
+            }
+        }
+
+        private async Task OpenTableOnDraftAsync(HardwareBoardEntry entry)
+        {
             if (this.IsTableOpen && !await this.CloseTableAsync())
             {
                 return;
@@ -183,6 +192,9 @@ namespace CRT
             {
                 return;
             }
+
+            // "KiCad data" makes way, once what it writes has ended (TabDrafts.KiCad.cs).
+            await this.CloseKiCadAsync();
 
             // The right side shows one thing: the component pane goes, what it holds handed to the
             // draft the table is about to show - and saved before the table reads the draft's file,
@@ -354,6 +366,13 @@ namespace CRT
             bool tableSaved = await this.SaveTableNowAsync();
             bool paneSaved = await this.SaveComponentNowAsync();
 
+            // What "KiCad data" is still writing ends first (TabDrafts.KiCad.cs) - an import cut off
+            // half-way leaves the draft with part of a project.
+            if (this.thisKiCadPanel is { } kiCad)
+            {
+                await BusyOverlay.RunLocalAsync(this, CrtWaitWording.SavingDraft, kiCad.WaitForChangesAsync);
+            }
+
             // Then any other draft held in memory with changes not saved (OtherUnsavedDrafts).
             bool othersSaved = true;
 
@@ -521,12 +540,12 @@ namespace CRT
         //
         // Runs at the end of every RefreshDrafts. If the open draft is no longer listed (discarded
         // from elsewhere, or published and retired), the table closes: there is nothing left for
-        // it to save into.
+        // it to save into. A draft only looked at so far is not listed, and is there all the same.
         // ###########################################################################################
         private void ApplyTableMode()
         {
-            bool listed = this.thisTableEntry is not null && this.Drafts.Any(item =>
-                string.Equals(item.ExcelDataFile, this.thisTableEntry.ExcelDataFile, StringComparison.OrdinalIgnoreCase));
+            bool listed = this.thisTableEntry is not null && (this.IsUntouchedLook(this.thisTableEntry.ExcelDataFile) || this.Drafts.Any(item =>
+                string.Equals(item.ExcelDataFile, this.thisTableEntry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)));
 
             if (this.thisTableEntry is not null && !listed)
             {
@@ -536,6 +555,7 @@ namespace CRT
 
             // The component pane's draft too - gone, so nothing is written into it.
             if (this.thisComponentEntry is { } paneEntry &&
+                !this.IsUntouchedLook(paneEntry.ExcelDataFile) &&
                 !this.Drafts.Any(item => string.Equals(item.ExcelDataFile, paneEntry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)))
             {
                 this.ForgetComponent();
@@ -543,7 +563,14 @@ namespace CRT
 
             this.TableEditor.IsVisible = this.IsTableOpen;
             this.ComponentPane.IsVisible = !this.IsTableOpen && this.IsComponentOpen;
-            this.ShowStartPanel(!this.IsTableOpen && !this.IsComponentOpen);
+
+            // Asked as ShowWorkspace asks (code review, 2026-11-01): with "KiCad data" or "Board: Name" open,
+            // this brought Board status back for a moment at every RefreshDrafts - its session opened, its
+            // checks run and the KiCad data read, behind the page.
+            this.ShowStartPanel(this.NothingElseOpenOnTheRight);
+
+            // The table takes the whole workspace, the left column with it (TabDrafts.Splitters.cs).
+            this.ShowWorkspaceColumns();
         }
 
         // ###########################################################################################

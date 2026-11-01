@@ -72,6 +72,7 @@ namespace CRT.Server.Tests
                 [
                     new ComponentEntry
                     {
+                        Category = "IC",
                         BoardLabel = "U8",
                         FriendlyName = "PLA",
                         TechnicalNameOrValue = "906114-01",
@@ -144,7 +145,7 @@ namespace CRT.Server.Tests
                 published,
                 new BoardData
                 {
-                    Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "A", TechnicalNameOrValue = "B" }]
+                    Components = [new ComponentEntry { Category = "IC", BoardLabel = "U1", FriendlyName = "A", TechnicalNameOrValue = "B" }]
                 });
 
             Assert.True(summary.IsNewBoard);

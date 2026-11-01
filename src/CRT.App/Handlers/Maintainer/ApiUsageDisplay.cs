@@ -32,9 +32,9 @@ namespace Handlers.MaintainerHandling
 
         public const int DefaultDays = 90;
 
-        public const string SubmissionsHeading = "Submit, on the Contribute tab";
+        public const string SubmissionsHeading = "Submit, on the \"Contribute\" tab";
 
-        public const string MaintainerHeading = "The Maintainer tab";
+        public const string MaintainerHeading = "The \"Maintainer\" tab";
 
         public const string ForeverHeading = "Sent by every CRT ever released - never retired";
 

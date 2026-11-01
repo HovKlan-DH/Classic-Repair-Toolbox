@@ -71,7 +71,8 @@ namespace Handlers.DataHandling
                 hasCalibration);
         }
 
-        public static string Question(string schematicName) => $"Remove [{schematicName}] from your draft?";
+        // "Delete" since 2026-10-29: the image leaves the board in the draft, and its file with it.
+        public static string Question(string schematicName) => $"Delete [{schematicName}] from the board in your draft?";
 
         // What the question says goes with it. Empty for nothing - nothing is asked then.
         public static string WhatGoes(SchematicRemovalLoss loss)
@@ -83,7 +84,7 @@ namespace Handlers.DataHandling
 
             string them = loss.MarkedComponents > 0 ? "them" : "it";
 
-            return $"{SchematicRemoval.GoesWithIt(loss)} Undo at the top of the Contribute tab brings {them} back.";
+            return $"{SchematicRemoval.GoesWithIt(loss)} \"Undo\" at the top of the \"Contribute\" tab brings {them} back.";
         }
 
         // "Its highlights for 3 components and its KiCad calibration go with it." - or the part of

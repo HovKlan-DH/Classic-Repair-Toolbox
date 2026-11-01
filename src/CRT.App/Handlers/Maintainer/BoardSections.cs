@@ -216,7 +216,7 @@ namespace Handlers.MaintainerHandling
         // The BETA check box named as the Configuration tab names it - one constant, the mails' too.
         public static string ReasonExplanation { get; } =
             "Your change goes straight into the BETA data, where you can try it in CRT with \"" +
-            ConfigurationWording.BetaSourceCheckBox + "\" ticked in the Configuration tab. " +
+            ConfigurationWording.BetaSourceCheckBox + "\" ticked in the \"Configuration\" tab. " +
             "It then waits under " + MaintainerScreenWording.BetaQueueQuoted + " until it is published to the stable source - and until then no other " +
             "change can be made to this board.";
 

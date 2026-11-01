@@ -21,6 +21,10 @@ namespace CRT
         // wanted entry keeps its object, a missing one is made (`create`), an unwanted one is
         // removed - never `keep`, the item on screen as selected, while a wanted entry still shows
         // it: a new item is inserted before it rather than it being removed and made again.
+        //
+        // A `keep` NO wanted entry shows any more is no item to keep (code review, 2026-10-30): the
+        // component open renamed in the pane, every item after it was made again around it, and it was
+        // let go of at the end all the same - the list's selection with it.
         // ###########################################################################################
         public static void Sync<TItem, TWanted>(
             IList<TItem> items,
@@ -30,6 +34,11 @@ namespace CRT
             TItem? keep = null)
             where TItem : class
         {
+            if (keep is not null && !InPlaceList.AnyShows(keep, wanted, shows))
+            {
+                keep = null;
+            }
+
             for (int i = 0; i < wanted.Count; i++)
             {
                 int found = -1;
@@ -88,6 +97,19 @@ namespace CRT
             {
                 rows.RemoveAt(rows.Count - 1);
             }
+        }
+
+        private static bool AnyShows<TItem, TWanted>(TItem item, IReadOnlyList<TWanted> wanted, Func<TItem, TWanted, bool> shows)
+        {
+            for (int i = 0; i < wanted.Count; i++)
+            {
+                if (shows(item, wanted[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static int IndexOfObject<TItem>(IList<TItem> items, TItem? item)

@@ -28,11 +28,19 @@ namespace Handlers.DataHandling
     // Rows are named the way the Drafts tab and the review name them (BoardDraftNaturalKeys.Describe,
     // "U8 / PAL"), sections by their sheet names, and fields by the workbook's column headers, so the
     // history, the table and the workbook all speak of the same things in the same words.
+    //
+    // Reordered (2026-10-30): the sheets whose rows it put in another order - order is a change
+    // (owner decision). Null in a record from before then, which said nothing about order.
+    //
+    // RegionsNow (2026-11-01): what the board says about its regions after it, when it changed that
+    // (ReviewChangeSummary.RegionsNow) - null otherwise, and in a record from before then.
     // ###########################################################################################
     public sealed record SubmissionChanges(
         bool IsNewBoard,
         IReadOnlyList<SectionChanges> Sections,
-        FileChanges Files);
+        FileChanges Files,
+        IReadOnlyList<string>? Reordered = null,
+        bool? RegionsNow = null);
 
     // One sheet's changes. The counts are the whole truth; the lists are the first ListedPerKind.
     public sealed record SectionChanges(
@@ -116,7 +124,9 @@ namespace Handlers.DataHandling
             return new SubmissionChanges(
                 rows.IsNewBoard,
                 sections,
-                SubmissionChangeFacts.Files(filesAdded, filesReplaced, filesRemoved));
+                SubmissionChangeFacts.Files(filesAdded, filesReplaced, filesRemoved),
+                rows.ReorderedSections.Count > 0 ? [.. rows.ReorderedSections] : null,
+                rows.RegionsNow);
         }
 
         // The file facts alone - each list sorted and without repeats, then cut to ListedPerKind.
@@ -172,7 +182,9 @@ namespace Handlers.DataHandling
 
             return changes.IsNewBoard ||
                    (changes.Sections ?? []).Count > 0 ||
-                   (changes.Files ?? FileChanges.None).HasChanges;
+                   (changes.Files ?? FileChanges.None).HasChanges ||
+                   (changes.Reordered ?? []).Count > 0 ||
+                   changes.RegionsNow is not null;
         }
 
         // Which of the plan's files are new at their path and which replace what was there - asked

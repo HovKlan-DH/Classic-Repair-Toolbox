@@ -241,6 +241,10 @@ namespace Handlers.DataHandling
                 ["Opposite trace highlight color"] = 10.6,
                 ["Thumbnail highlight color"] = 11.8,
                 ["Thumbnail highlight opacity"] = 11.6,
+                // Not in the reference - the traces' own columns (2026-10-30), as wide as their twins.
+                ["Trace highlight color"] = 10.6,
+                ["Trace highlight opacity"] = 10.9,
+                ["Opposite trace highlight opacity"] = 11.6,
                 ["CAD name"] = 23.3,
 
                 // Components

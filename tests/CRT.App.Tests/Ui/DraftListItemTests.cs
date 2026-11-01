@@ -58,6 +58,47 @@ public sealed class DraftListItemTests
         });
     }
 
+    // ###########################################################################################
+    // *** ORDER IS A CHANGE (owner decision, 2026-10-30). *** A draft whose only work is lists put in
+    // another order can be submitted, and its row says so.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_holding_only_another_order_can_be_submitted_and_says_so()
+    {
+        UiTest.Run(() =>
+        {
+            DraftListItem row = Row(other: new DraftOtherChanges(0, 0, 1));
+
+            Assert.True(row.CanSubmit);
+            Assert.True(row.CanReviewChanges);
+            Assert.Equal("Order of a list changed", row.RowSummary);
+        });
+    }
+
+    // ###########################################################################################
+    // "REVIEW CHANGES" IS GREYED OUT WITH NOTHING TO REVIEW (owner request, 2026-10-30: "If no changes
+    // has been done, then the 'Review changes' button should be disabled") - its tooltip saying why,
+    // as Submit's does - and on as soon as the draft holds anything.
+    // ###########################################################################################
+    [Fact]
+    public void Review_changes_is_off_until_the_draft_holds_a_change()
+    {
+        UiTest.Run(() =>
+        {
+            DraftListItem empty = Row();
+
+            Assert.False(empty.CanReviewChanges);
+            Assert.Contains("nothing to review", empty.ReviewChangesTooltip, StringComparison.Ordinal);
+
+            Assert.True(Row(rows: 1).CanReviewChanges);
+            Assert.True(Row(other: new DraftOtherChanges(1, 0)).CanReviewChanges);
+            Assert.Contains("component by component", Row(rows: 1).ReviewChangesTooltip, StringComparison.Ordinal);
+
+            // Already sent: nothing new to SEND, but the changes are still there to review.
+            Assert.True(Row(rows: 1, alreadySent: true).CanReviewChanges);
+        });
+    }
+
     [Fact]
     public void An_unchanged_draft_cannot_be_sent_and_the_row_says_why()
     {

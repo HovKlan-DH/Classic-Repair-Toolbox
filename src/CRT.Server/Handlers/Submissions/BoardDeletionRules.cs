@@ -112,12 +112,12 @@ namespace CRT.Server.Handlers.Submissions
         public static string ListingNotRemovedMessage(string treeName, string failure, bool somethingChanged) =>
             $"The board's row could not be taken out of the {treeName} data's drop-down lists: {failure.Trim().TrimEnd('.')}. " +
             (somethingChanged
-                ? "The stable data's row is already gone; press Delete again to finish."
+                ? "The stable data's row is already gone; press \"Delete\" again to finish."
                 : "Nothing was changed.");
 
         public static string FilesLeftMessage(int left) =>
             $"{left} file(s) could not be removed - see the server log. The board is out of the drop-down lists and " +
-            "everything else that could go has gone; press Delete again to finish. Its database record and submissions are kept until then.";
+            "everything else that could go has gone; press \"Delete\" again to finish. Its database record and submissions are kept until then.";
 
         public const string NotRecordedMessage =
             "The board's files and drop-down rows ARE gone, but its database record could not be deleted, so its " +

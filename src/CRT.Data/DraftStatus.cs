@@ -322,6 +322,11 @@ namespace Handlers.DataHandling
             return counts;
         }
 
+        // The problems themselves, by the very checks and lookup the row counts them with - what "Board
+        // status" says on each panel (owner request, 2026-11-01). On the draft as held in memory.
+        public static IReadOnlyList<BoardDataProblem> ProblemsOf(BoardData draft, string dataRoot, string draftBoardFolder) =>
+            BoardDataChecks.Check(BoardCheckRows.From(draft), new DiskFileLookup(dataRoot, draftBoardFolder), BoardCheckScope.Everything);
+
         // Whether every path remembered as not found (or found under other capitals) still answers
         // exactly so - the cached count is good only while it does.
         private static bool StillNotFound(

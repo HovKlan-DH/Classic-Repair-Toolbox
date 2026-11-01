@@ -35,6 +35,7 @@ public sealed class BoardDataTests
         KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "9VAC" }],
         ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "1" }],
         ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U1", PartNumber = "6526A" }],
+        Regions = ["PAL", "NTSC"],
     };
 
     [Fact]

@@ -6,8 +6,9 @@ using Handlers.DataHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // Confirmation modal for "Remove" on a picture's card in the Contribute tab's Pictures part (the
-    // "Schematic images" window's until CRT 4.0 step 3, ComponentPane.BoardPictureList.cs) - asked
+    // Confirmation modal for "Delete" ("Remove" until 2026-10-29) on an image's card in the Contribute
+    // tab's Schematic images part (the "Schematic images" window's until CRT 4.0 step 3,
+    // ComponentPane.BoardPictureList.cs) - asked
     // only when the image has highlights drawn on it or a KiCad calibration, which go with it
     // (SchematicRemoval has why; code review, 2026-10-10). An image with nothing on it is removed at
     // once, as it always was. The Drafts tab's table asked it too, before a save that removed such

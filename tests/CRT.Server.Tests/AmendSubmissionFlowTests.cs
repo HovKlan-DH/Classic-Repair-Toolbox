@@ -77,7 +77,7 @@ namespace CRT.Server.Tests
             };
             manifest.Rows.RevisionDate = "2026-September-25";
             manifest.Rows.Schematics.Add(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = AmendSubmissionFlowTests.SheetImage });
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01" });
             manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Service", Name = "Manual", File = AmendSubmissionFlowTests.Manual });
             manifest.Rows.ComponentHighlights.Add(new ComponentHighlightEntry
             {
@@ -102,7 +102,7 @@ namespace CRT.Server.Tests
         {
             SubmissionManifest current = (await store.LoadPayloadAsync(id, CancellationToken.None))!;
             SubmissionRows rows = SubmissionRowsBoard.FromBoard(SubmissionRowsBoard.ToBoard(current.Rows));
-            rows.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" };
+            rows.Components[0] = new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" };
             edit?.Invoke(rows);
             return rows;
         }
@@ -380,7 +380,7 @@ namespace CRT.Server.Tests
 
             // Said to the maintainer about "the Maintainer tab", not the application it replaced.
             ValidationFinding unknown = outcome.Findings.First(finding => finding.Code == "amend.file_unknown");
-            Assert.Contains("the Maintainer tab", unknown.Message, StringComparison.Ordinal);
+            Assert.Contains("the \"Maintainer\" tab", unknown.Message, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", unknown.Message, StringComparison.Ordinal);
             Assert.Empty(store.Amendments);
         }

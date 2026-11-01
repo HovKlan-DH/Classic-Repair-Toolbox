@@ -473,7 +473,7 @@ SELECT id, email, is_verified, is_administrator, is_locked FROM crt_review.accou
 (`email_normalised` is the address in lower case, which is what the service matches on.) Expect one
 row: verified, administrator, not locked. No restart is needed.
 
-**Maintainers are added from CRT**, never in SQL: in CRT, tick **Enable Maintainer tab** in the
+**Maintainers are added from CRT**, never in SQL: in CRT, tick **Enable "Maintainer" tab** in the
 Configuration tab, sign in on the Maintainer tab, and use **Account > Maintainers** - add somebody who
 has an account, or invite somebody new by email. You can add yourself too.
 

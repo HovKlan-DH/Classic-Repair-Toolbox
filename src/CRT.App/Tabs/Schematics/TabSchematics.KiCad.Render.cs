@@ -442,8 +442,8 @@ public partial class TabSchematics
     // Renders PCB copper geometry for a precomputed set of active references and net names.
     // Missing KiCad net caches are built in the background so the UI can render immediately and
     // refresh itself when the heavy continuity graph becomes available.
-    // Opposite-side traces now share the same opacity behavior as the primary side, so only the
-    // opposite-side color remains configurable from board data.
+    // Each side's colour and opacity come from the picture's row since 2026-10-30 (TraceColours);
+    // a row that gives none draws both sides at the highlight opacity, as before.
     // ###########################################################################################
     private void RenderKiCadPcbGeometry(
         KiCadProjectView view,
@@ -477,18 +477,15 @@ public partial class TabSchematics
         // rather than rebuild it. See the drag-reference fields in TabSchematics.KiCad.Calibration.
         this.NoteKiCadOverlayBuiltCalibration(calibration, worldBounds, contentRect);
 
-        Color overlayColor = Colors.DeepSkyBlue;
-        double baseOpacity = 0.20;
-        Color oppositeTraceHighlightColor = Colors.DodgerBlue;
+        // Each side's colour and opacity - the picture's own when its row gives them (2026-10-30), else
+        // as they always were: TraceColours.Resolve, the one rule the Contribute tab's previews share.
+        TraceColours traceColours = TraceColours.Resolve(
+            this.schematicByName.TryGetValue(currentSchematicName, out var schematicEntry) ? schematicEntry : null);
 
-        if (this.schematicByName.TryGetValue(currentSchematicName, out var schematicEntry))
-        {
-            overlayColor = RectGeometry.ParseColorOrDefault(schematicEntry.SchematicHighlightColor, Colors.DeepSkyBlue);
-            baseOpacity = RectGeometry.ParseOpacityOrDefault(schematicEntry.SchematicHighlightOpacity, 0.20);
-            oppositeTraceHighlightColor = RectGeometry.ParseColorOrDefault(schematicEntry.OppositeTraceHighlightColor, Colors.DodgerBlue);
-        }
-
-        double translatedOpacity = Math.Clamp(baseOpacity + 0.25, 0.0, 1.0);
+        Color overlayColor = traceColours.ThisSide;
+        Color oppositeTraceHighlightColor = traceColours.OtherSide;
+        double translatedOpacity = traceColours.ThisSideOpacity;
+        double oppositeTranslatedOpacity = traceColours.OtherSideOpacity;
         string? activeHoveredKiCadNetName = this.GetActiveHoveredKiCadNetName();
 
         var matchingNetIds = pcb.Nets.List
@@ -534,6 +531,7 @@ public partial class TabSchematics
             OverlayColor = overlayColor,
             OppositeTraceColor = oppositeTraceHighlightColor,
             TranslatedOpacity = translatedOpacity,
+            OppositeTranslatedOpacity = oppositeTranslatedOpacity,
             ShowOppositeSideTraces = showOppositeSideTraces,
             ShowZones = showZones,
             IsCalibrationMode = this.thisIsKiCadTraceCalibrationMode,
@@ -748,9 +746,13 @@ public partial class TabSchematics
                 ? new SolidColorBrush(overlayColor, 1.0)
                 : new SolidColorBrush(overlayColor, effectiveOpacity);
 
+            // The other side at its own opacity (2026-10-30) - the same as this side's unless the
+            // picture says otherwise (TraceColours).
+            double oppositeEffectiveOpacity = Math.Clamp(oppositeTranslatedOpacity, 0.0, 1.0);
+
             IBrush oppositeBrush = isHoveredNet && !shouldBlinkThisNet
                 ? new SolidColorBrush(oppositeTraceHighlightColor, 1.0)
-                : new SolidColorBrush(oppositeTraceHighlightColor, effectiveOpacity);
+                : new SolidColorBrush(oppositeTraceHighlightColor, oppositeEffectiveOpacity);
 
             if (showOppositeSideTraces)
             {
@@ -789,8 +791,8 @@ public partial class TabSchematics
                             }
 
                             double oppositeZoneFillOpacity = isHoveredNet && !shouldBlinkThisNet
-                                ? Math.Min(1.0, Math.Clamp(translatedOpacity * 0.65, 0.10, 0.38) + 0.12)
-                                : Math.Clamp(effectiveOpacity * 0.65, 0.10, 0.38);
+                                ? Math.Min(1.0, Math.Clamp(oppositeTranslatedOpacity * 0.65, 0.10, 0.38) + 0.12)
+                                : Math.Clamp(oppositeEffectiveOpacity * 0.65, 0.10, 0.38);
 
                             netPrimitives.Add(new KiCadOverlayPrimitive
                             {

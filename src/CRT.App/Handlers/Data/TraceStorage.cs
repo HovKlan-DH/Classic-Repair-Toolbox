@@ -251,6 +251,41 @@ namespace Handlers.DataHandling
             }
         }
 
+        // A board's traces under another key (its name changed - BoardKeyMove, 2026-11-01). False when the
+        // file could not be written, with nothing changed.
+        internal static bool MoveBoard(string from, string to)
+        {
+            lock (TraceStorage.Sync)
+            {
+                if (string.Equals(from, to, StringComparison.Ordinal) || !TraceStorage.data.TryGetValue(from, out var board))
+                {
+                    return true;
+                }
+
+                TraceStorage.data.TryGetValue(to, out var replaced);
+                TraceStorage.data[to] = board;
+                TraceStorage.data.Remove(from);
+
+                if (TraceStorage.Save())
+                {
+                    return true;
+                }
+
+                TraceStorage.data[from] = board;
+
+                if (replaced is null)
+                {
+                    TraceStorage.data.Remove(to);
+                }
+                else
+                {
+                    TraceStorage.data[to] = replaced;
+                }
+
+                return false;
+            }
+        }
+
         // Puts a board's traces back as RenameSchematics found them.
         internal static void RestoreBoard(string boardKey, Dictionary<string, List<TraceModel>> before)
         {

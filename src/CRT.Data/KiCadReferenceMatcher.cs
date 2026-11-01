@@ -24,8 +24,9 @@ namespace Handlers.DataHandling
         // component that will highlight on the image and light up nothing.
         public IReadOnlyList<string> UnmatchedLabels { get; }
 
-        // Footprints with no board label yet - not an error at all, but the to-do list for a board
-        // being built up, and free from the same comparison.
+        // Components of the KiCad data with no board label yet - not an error at all, but the to-do list
+        // for a board being built up, and free from the same comparison. No logo or net tie among them,
+        // when the caller says which footprints are components: those never become one.
         public IReadOnlyList<string> UnusedReferences { get; }
 
         // How many PCB files the project holds. More than one matters: only the FIRST is ever used
@@ -69,19 +70,18 @@ namespace Handlers.DataHandling
                 if (total == 0)
                 {
                     return this.UnusedReferences.Count == 1
-                        ? "No components are labelled yet. The KiCad data has 1 component to match against."
-                        : $"No components are labelled yet. The KiCad data has {this.UnusedReferences.Count} components to match against.";
+                        ? "No components are on the board yet. The KiCad data has 1 component to match against."
+                        : $"No components are on the board yet. The KiCad data has {this.UnusedReferences.Count} components to match against.";
                 }
 
                 if (this.UnmatchedLabels.Count == 0)
                 {
                     return total == 1
-                        ? "All 1 labelled component matches a component in the KiCad data."
-                        : $"All {total} labelled components match a component in the KiCad data.";
+                        ? "The 1 component on the board matches a component in the KiCad data."
+                        : $"All {total} components on the board match a component in the KiCad data.";
                 }
 
-                string labelWord = this.UnmatchedLabels.Count == 1 ? "component" : "components";
-                return $"{this.UnmatchedLabels.Count} of {total} labelled {labelWord} found no match in the KiCad data - those will not light up any copper.";
+                return $"{this.UnmatchedLabels.Count} of {total} components on the board found no match in the KiCad data - those will not light up any copper.";
             }
         }
 
@@ -114,10 +114,12 @@ namespace Handlers.DataHandling
             IEnumerable<string> boardLabels,
             IEnumerable<string> footprintReferencesOfFirstPcb,
             int pcbFileCount,
-            IEnumerable<string>? viewDisplayNames = null)
+            IEnumerable<string>? viewDisplayNames = null,
+            IEnumerable<string>? componentReferences = null)
         {
             var references = Normalize(footprintReferencesOfFirstPcb);
             var labels = Normalize(boardLabels);
+            HashSet<string>? components = componentReferences is null ? null : new HashSet<string>(Normalize(componentReferences), StringComparer.OrdinalIgnoreCase);
 
             var matched = new List<string>();
             var unmatched = new List<string>();
@@ -138,7 +140,7 @@ namespace Handlers.DataHandling
             }
 
             var unused = references
-                .Where(reference => !labels.Contains(reference))
+                .Where(reference => !labels.Contains(reference) && (components is null || components.Contains(reference)))
                 .OrderBy(reference => reference, NaturalLabelComparer.Instance)
                 .ToList();
 

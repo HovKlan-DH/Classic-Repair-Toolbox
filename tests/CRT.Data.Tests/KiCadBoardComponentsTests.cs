@@ -11,6 +11,26 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class KiCadBoardComponentsTests
 {
+    // What KiCad knows but has no footprint for needs marking by hand (owner request, 2026-11-01) - never
+    // a placeholder, once each, in natural order; with no PCB file at all, every symbol.
+    [Fact]
+    public void The_parts_only_the_schematic_has_are_named()
+    {
+        KiCadFootprintInfo[] footprints = [new("U1", string.Empty, string.Empty, string.Empty, [new KiCadPadPlace("1", 0, 0)])];
+        KiCadSymbolInfo[] symbols =
+        [
+            new("U1", string.Empty, string.Empty),
+            new("Y10", string.Empty, string.Empty),
+            new("Y2", string.Empty, string.Empty),
+            new("Y2", string.Empty, string.Empty),
+            new("#PWR01", string.Empty, string.Empty),
+            new("U?", string.Empty, string.Empty),
+        ];
+
+        Assert.Equal(["Y2", "Y10"], KiCadBoardComponents.OnlyInSchematic(footprints, symbols));
+        Assert.Equal(["U1", "Y2", "Y10"], KiCadBoardComponents.OnlyInSchematic([], symbols));
+    }
+
     // `count` pads in two rows `spacing` mm apart, numbered as a DIP is: down one side, up the other.
     private static List<KiCadPadPlace> DipPads(int count, double spacing)
     {
@@ -29,6 +49,23 @@ public sealed class KiCadBoardComponentsTests
     private static List<KiCadPadPlace> Pads(int count) =>
         [.. Enumerable.Range(1, count).Select(number => new KiCadPadPlace(number.ToString(System.Globalization.CultureInfo.InvariantCulture), number, 0))];
 
+    // ###########################################################################################
+    // A mounting hole is what a footprint IS, never what its name mentions (owner report, 2026-11-01: the
+    // Open128's "6 components are not labelled yet" held four D-sub connectors, whose footprints say where
+    // their own holes are - CN3, CN4, CN5 and CN10 could not be added or marked from KiCad at all).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Connector_Dsub:DSUB-9_Pins_Horizontal_P2.77x2.84mm_EdgePinOffset14.56mm_Housed_MountingHolesOffset8.20mm", true)]
+    [InlineData("Connector_Dsub:DSUB-25_Socket_Horizontal_P2.77x2.84mm_EdgePinOffset7.70mm_Housed_MountingHolesOffset9.12mm", true)]
+    [InlineData("MountingHole:MountingHole_3.2mm_M3", false)]
+    [InlineData("Mounting_Holes:MountingHole_3mm", false)]
+    [InlineData("MountingHole:Hole_3mm_Pad", false)]
+    [InlineData("MountingHole_3mm", false)]
+    public void Only_a_footprint_that_is_a_mounting_hole_is_taken_as_one(string footprint, bool isComponent)
+    {
+        Assert.Equal(isComponent, KiCadBoardComponents.IsComponent(Footprint("CN3", "DB9", footprint, 2)));
+    }
+
     private static KiCadFootprintInfo Footprint(string reference, string value, string footprint, int pads, string datasheet = "") =>
         new(reference, value, footprint, datasheet, Pads(pads));
 
@@ -45,7 +82,10 @@ public sealed class KiCadBoardComponentsTests
     [InlineData("CN3", "Connector")]
     [InlineData("CNKYB1", "Connector")]
     [InlineData("P2", "Connector")]
-    [InlineData("J1", "Connector")]
+    // A J is a jumper on the live boards and in every shipped KiCad project (owner decision,
+    // 2026-10-31) - not KiCad's connector.
+    [InlineData("J1", "Misc")]
+    [InlineData("J17", "Misc")]
     [InlineData("Q3", "Transistor")]
     [InlineData("TR5", "Transistor")]
     [InlineData("FB15", "Misc")]

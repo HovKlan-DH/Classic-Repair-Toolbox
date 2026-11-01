@@ -22,16 +22,26 @@ namespace Handlers.DataHandling
         // "about 100 characters"). Longer is a warning, never a refusal (BoardDataChecks).
         public const int ShortDescriptionLimit = 100;
 
+        // ###########################################################################################
         // A pin's job, as a hobbyist reads a pinout - KiCad's dozen electrical types fold into these.
+        //
+        // "Power" is the pin that feeds the chip (VCC, +5V); a pin carrying a VOLTAGE LEVEL as its
+        // signal - a sound chip's audio out, a video chip's luminance - is "Analog input" or "Analog
+        // output" (owner question, 2026-11-01). "Unknown" is last: nobody has looked yet, which "Other"
+        // does not say.
+        // ###########################################################################################
         public static IReadOnlyList<string> PinDirections { get; } =
         [
             "Input",
             "Output",
             "Input/output",
+            "Analog input",
+            "Analog output",
             "Power",
             "Ground",
             "Not connected",
             "Other",
+            "Unknown",
         ];
 
         // Where a scope baseline comes from (the plan: "measured on a known-good board, datasheet,
@@ -134,6 +144,32 @@ namespace Handlers.DataHandling
                 ? count
                 : null;
         }
+
+        // ###########################################################################################
+        // The number on the case a pin's text starts with - "2 [64K]" is pin 2, as four published
+        // baselines write it - or null for one that starts with none ("A1", blank). Digits running straight
+        // on into a letter are a NAME (code review, 2026-11-01): a regulator's "12V" is no pin 12, and Submit
+        // refused it for it; "1A" and "1B" on a 7400 are two pins, and no pin 1.
+        // ###########################################################################################
+        public static int? PinNumberOf(string? pin)
+        {
+            string text = (pin ?? string.Empty).Trim();
+            string digits = new(text.TakeWhile(char.IsAsciiDigit).ToArray());
+
+            return digits.Length is > 0 and < 6 && (digits.Length == text.Length || !char.IsLetterOrDigit(text[digits.Length]))
+                ? int.Parse(digits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture)
+                : null;
+        }
+
+        // ###########################################################################################
+        // Whether a pin can be on the case - false only when both are known and the number is past the
+        // case's last pin (owner request, 2026-11-01: "if I e.g. put pin 48 on a 24 pin package, this is
+        // an error"). A case whose count CRT cannot tell, and a pin named rather than numbered, say nothing.
+        // ###########################################################################################
+        public static bool IsOnPackage(string? package, string? pin) =>
+            ComponentVocabulary.PinCountOf(package) is not int count ||
+            ComponentVocabulary.PinNumberOf(pin) is not int number ||
+            (number >= 1 && number <= count);
 
         // Whether a case is a DIP - two rows of pins, drawn from the top with the notch.
         public static bool IsDualInLine(string? package) =>

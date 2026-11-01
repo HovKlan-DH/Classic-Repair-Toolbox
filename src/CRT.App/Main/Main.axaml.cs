@@ -40,7 +40,7 @@ namespace CRT
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
         //   Main.Notices.cs           - what the notice cards over the tabs' bottom-right corner share
         //   Main.NoticeDemo.cs        - "--demo-notices": every notice played once after launch
-        //   Main.NewBoard.cs         - "Add a new board": the create dialog, draft creation, navigation;
+        //   Main.NewBoard.cs         - "Add a new board": the create dialog, draft creation, navigation, a new board renamed;
         //                               SelectBoard, which "My drafts" uses too
         //   Main.FirstDraft.cs        - a board's first draft, made when the Contribute tab's first change starts
         //   Main.DraftDrift.cs        - the "official data moved under your draft" banner and report
@@ -57,8 +57,9 @@ namespace CRT
         //   Main.SettingsNotice.cs    - "your settings could not be read": started on defaults, and
         //                               where the unreadable file was kept
         //   Main.PictureTools.cs      - "Mark components" and "Align KiCad" from the Contribute tab, on
-        //                               the Schematics tab and back, and "Edit this component" from a
-        //                               right-click on a component
+        //                               the Schematics tab and back, "Back to Contribute" after "Show
+        //                               on board", and "Edit this component" from a right-click on a
+        //                               component
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -321,6 +322,9 @@ namespace CRT
             // The notices: sized to the tabs, and a card that has just appeared lets clicks through
             // for a moment (Main.Notices.cs).
             this.WireNotices();
+
+            // The data-check card keeps its widest while files come in (Main.DataSyncStatus.cs).
+            this.WireDataCheckWidthHold();
 
             // Subscribe to splitter pointer-release to persist positions when a drag ends.
             // handledEventsToo: true is required because GridSplitter marks the event as handled.
@@ -839,12 +843,17 @@ namespace CRT
         // The board shown, handed to the Contribute tab - its draft as it reads now, the region shown,
         // and the components its draft changed (the same mark the component list shows).
         // ###########################################################################################
-        internal void ShowBoardInContributeTab(HardwareBoardEntry? entry) =>
+        internal void ShowBoardInContributeTab(HardwareBoardEntry? entry)
+        {
             this.TabDrafts.ShowBoard(
                 entry,
                 this._currentBoardData,
                 this._localRegion,
                 this._currentBoardDraftSummary.DraftedComponentBoardLabels);
+
+            // "Back to Contribute" was about the board shown before (Main.PictureTools.cs).
+            this.FollowBackToContributeAfterLoad();
+        }
 
         // ###########################################################################################
         // Deletes any local draft whose work is now in the published data (owner request,
@@ -1200,6 +1209,8 @@ namespace CRT
                 return;
 
             this._isApplicationShuttingDown = true;
+
+            this.TabDrafts.LetGoOfUntouchedDraftOnQuit();
 
             if (this._schematicsFullscreenWindow != null)
             {

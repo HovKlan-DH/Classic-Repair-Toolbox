@@ -23,7 +23,7 @@
 		<TextBlock TextWrapping="Wrap"
 				   Text="The worklog has unsaved changes - are you sure you want to discard it?" />
 
-		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,16,0,0">
+		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<!-- "Keep editing" is the safe option and the default for both Enter and Escape - see
 			     the code-behind. Deliberately NOT called "Cancel": this dialog is itself about
 			     cancelling, so a button called Cancel would be genuinely ambiguous about which

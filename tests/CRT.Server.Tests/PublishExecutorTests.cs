@@ -102,6 +102,7 @@ namespace CRT.Server.Tests
             [
                 new ComponentEntry
                 {
+                    Category = "IC",
                     BoardLabel = "U8",
                     FriendlyName = "PLA",
                     TechnicalNameOrValue = "906114-01",
@@ -555,7 +556,7 @@ namespace CRT.Server.Tests
                 .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
 
             BoardData changed = PublishExecutorTests.Board();
-            changed.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-02" };
+            changed.Components[0] = new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-02" };
 
             PublishOutcome second = await this.Executor(store)
                 .ExecuteAsync(plan, changed, [], submissionId: 1, PublishExecutorTests.Now);

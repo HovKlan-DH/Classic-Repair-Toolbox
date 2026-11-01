@@ -25,7 +25,7 @@ public sealed class BoardTableDocumentTests
     // as a component relabelled (BoardDataDiffer.PairRenamedRows, 2026-10-04), not as the deletion
     // and addition those tests set up. A label edited in the table keeps the old value, so it does.
     private static ComponentEntry Component(string label, string friendlyName = "", string description = "") =>
-        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = $"part {label}", Description = description };
+        new() { BoardLabel = label, FriendlyName = friendlyName, TechnicalNameOrValue = $"part {label}", Description = description, Category = "IC" };
 
     private static BoardData Board(params ComponentEntry[] components) => new() { Components = [.. components] };
 
@@ -472,28 +472,27 @@ public sealed class BoardTableDocumentTests
     }
 
     [Fact]
-    public void An_important_signal_missing_half_is_incomplete_and_its_published_row_shows_as_deleted()
+    public void An_important_signal_missing_half_is_kept_with_an_error_on_the_empty_cell()
     {
-        // Saving drops such a row (the schema's own mapper does), so the published signal it came
-        // from really will be gone - and the ghost says exactly that. The row itself looks like a
-        // new row still being filled in, with the warning saying why it is not saved (2026-10-03;
-        // it was violet and "!" until then).
+        // Saving dropped such a row until 2026-11-01 (the schema's own mapper did), and the table
+        // warned it was left out. Now it is kept - a key edit with nothing else changed, so ONE row
+        // modified, no ghost - and the empty cell is an ERROR, as everywhere a field a row needs is
+        // (BoardRowRequired; owner request: "it should not be possible to submit the draft board").
         var published = new BoardData { KiCadImportantSignals = [new() { DisplayName = "CLK", KiCadNetName = "Net-1" }] };
         BoardTableDocument document = BoardTableDocument.Create(published, published);
 
         BoardTableSheet sheet = document.FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!;
-        sheet.Rows.Single().Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)].Text = string.Empty;
+        BoardTableCell net = sheet.Rows.Single().Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)];
+        net.Text = string.Empty;
         sheet.Refresh();
 
-        BoardTableRow incomplete = sheet.Rows.Single(row => !row.IsDeleted);
-        Assert.Equal(BoardTableRowState.Incomplete, incomplete.State);
-        Assert.Equal("+", incomplete.Marker);
-        Assert.All(incomplete.Cells, cell => Assert.Equal(BoardTableCellState.Added, cell.State));
-
-        Assert.Single(sheet.Rows, row => row.IsDeleted);
+        BoardTableRow row = Assert.Single(sheet.Rows);
+        Assert.Equal(BoardTableRowState.Modified, row.State);
+        Assert.Equal(0, sheet.DeletedCount);
         Assert.Equal(1, sheet.ChangeCount);
-        Assert.Equal(1, sheet.WarningRowCount);
-        Assert.Equal(1, sheet.DeletedCount);
+        Assert.Equal(1, sheet.ErrorRowCount);
+        Assert.Equal(0, sheet.WarningRowCount);
+        Assert.Equal("row.required_empty", Assert.Single(net.Problems).Code);
     }
 
     [Fact]
@@ -525,13 +524,14 @@ public sealed class BoardTableDocumentTests
         var raised = new List<string?>();
         cell.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
 
-        // Now missing a half: still warned about, for a different reason, on the empty cell.
+        // Now missing a half: no duplicate any more, and an error on the empty cell instead
+        // (BoardRowRequired, 2026-11-01 - it was a warning that the row is left out when saving).
         net.Text = string.Empty;
         sheet.Refresh();
 
-        Assert.Equal(BoardTableRowState.Incomplete, second.State);
+        Assert.Equal(BoardTableRowState.Added, second.State);
         Assert.Null(cell.ToolTip);
-        Assert.Equal("Warning: This row is left out when saving, because KiCad net name is empty.", net.ToolTip);
+        Assert.Equal("Error: This important signal has no KiCad net name. Fill it in - the board cannot be submitted while it is empty.", net.ToolTip);
         Assert.Contains(nameof(BoardTableCell.ToolTip), raised);
     }
 
@@ -737,9 +737,11 @@ public sealed class BoardTableDocumentTests
         Assert.Equal(2, sheet.WarningRowCount);
     }
 
-    // Case 9: an incomplete row has no identity, so it never pulls another row into a pair.
+    // Case 9: a row missing a field it needs is said on its own - it never pulls another row into a
+    // pair, and the complete row beside it is told nothing. An error since 2026-11-01 (BoardRowRequired)
+    // - a warning that the save leaves it out until then.
     [Fact]
-    public void An_incomplete_row_is_warned_about_on_its_own()
+    public void An_incomplete_row_is_said_on_its_own()
     {
         var board = new BoardData
         {
@@ -755,14 +757,16 @@ public sealed class BoardTableDocumentTests
         sheet.Rows[1].Cells[Column(sheet, BoardWorkbookSchema.ColKiCadNetName)].Text = string.Empty;
         sheet.Refresh();
 
-        BoardTableRow complete = sheet.Rows.First(row => !row.IsDeleted);
-        BoardTableRow incomplete = sheet.Rows.Single(row => row.State == BoardTableRowState.Incomplete);
+        BoardTableRow complete = sheet.Rows[0];
+        BoardTableRow incomplete = sheet.Rows[1];
 
         Assert.Equal(string.Empty, complete.Marker);
         Assert.All(complete.Cells, cell => Assert.Equal(BoardTableCellState.Unchanged, cell.State));
         Assert.False(complete.HasWarnings);
-        Assert.True(incomplete.HasWarnings);
-        Assert.Equal(1, sheet.WarningRowCount);
+        Assert.False(complete.HasErrors);
+        Assert.True(incomplete.HasErrors);
+        Assert.Equal(1, sheet.ErrorRowCount);
+        Assert.Equal(0, sheet.WarningRowCount);
     }
 
     // ------------------------------------------------------------------ Flagged is a warning (2026-10-03)
@@ -800,9 +804,10 @@ public sealed class BoardTableDocumentTests
     }
 
     // Case 14. (Agreed as "a Component images row with no Board label"; such a row is in fact
-    // KEPT by the save - the Important signals sheet is the only one whose save leaves a row out.)
+    // KEPT by the save.) Since 2026-11-01 an important signal missing a half is kept too - it was left
+    // out, said as a warning - and the empty cell is an ERROR (BoardRowRequired), saved and all.
     [Fact]
-    public void An_important_signal_with_no_net_name_is_warned_about_and_left_out_when_saving()
+    public void An_important_signal_with_no_net_name_is_an_error_and_kept_when_saving()
     {
         var published = new BoardData { KiCadImportantSignals = [new() { DisplayName = "CLK", KiCadNetName = "Net-1" }] };
         BoardTableDocument document = BoardTableDocument.Create(published, published);
@@ -813,14 +818,14 @@ public sealed class BoardTableDocumentTests
         sheet.Refresh();
 
         BoardDataProblem problem = Assert.Single(net.Problems);
-        Assert.Equal(BoardProblemLevel.Warning, problem.Level);
-        Assert.Equal("This row is left out when saving, because KiCad net name is empty.", problem.Message);
-        Assert.Equal(1, sheet.WarningRowCount);
+        Assert.Equal(BoardProblemLevel.Error, problem.Level);
+        Assert.Equal("This important signal has no KiCad net name. Fill it in - the board cannot be submitted while it is empty.", problem.Message);
+        Assert.Equal(1, sheet.ErrorRowCount);
 
-        // Saved: the row is gone, and with it the warning.
+        // Saved: the row is still there, and so is its error.
         BoardData saved = document.ApplyTo(published);
-        Assert.Empty(saved.KiCadImportantSignals);
-        Assert.Equal(0, BoardTableDocument.Create(published, saved).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!.WarningRowCount);
+        Assert.Equal("CLK", Assert.Single(saved.KiCadImportantSignals).DisplayName);
+        Assert.Equal(1, BoardTableDocument.Create(published, saved).FindSheet(BoardWorkbookSchema.SheetKiCadImportantSignals)!.ErrorRowCount);
     }
 
     // Case 15, the model's half: five kinds, and neither a duplicate nor a row the save leaves out

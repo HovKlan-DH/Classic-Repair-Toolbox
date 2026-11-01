@@ -33,6 +33,9 @@ namespace CRT
     //
     // Nothing happens until the host sets FileSource - which is how each host (the Contribute tab, the
     // Maintainer tab) supplies the bytes (IBoardTableFileSource).
+    //
+    // A CHANGED COLOR CELL SHOWS ITS TWO COLORS IN THE SAME CARD (BoardTableEditor.ColourChange.cs) - no
+    // bytes needed, so with or without a FileSource.
     // ###########################################################################################
     public partial class BoardTableEditor
     {
@@ -93,8 +96,7 @@ namespace CRT
 
         private void OnFilePreviewPointerMoved(object? sender, PointerEventArgs e)
         {
-            if (this.thisFileSource is null ||
-                this.thisRowDrag is not null ||
+            if (this.thisRowDrag is not null ||
                 e.GetCurrentPoint(this.TableGrid).Properties.IsLeftButtonPressed)
             {
                 this.HideFilePreview();
@@ -102,7 +104,9 @@ namespace CRT
             }
 
             DataGridCell? cell = (e.Source as Visual)?.FindAncestorOfType<DataGridCell>(includeSelf: true);
-            (BoardTableRow Row, int Column)? target = cell is null ? null : BoardTableEditor.FileCellOf(cell);
+            (BoardTableRow Row, int Column)? target = cell is null
+                ? null
+                : (this.thisFileSource is null ? null : BoardTableEditor.FileCellOf(cell)) ?? BoardTableEditor.ColourChangeCellOf(cell);
 
             if (target is null)
             {
@@ -168,8 +172,9 @@ namespace CRT
         internal BoardTableFilePreview? ShowFilePreview(BoardTableRow row, int columnIndex, Control anchor)
         {
             BoardTableFilePreview? preview = this.BuildFilePreview(row, columnIndex);
+            Control? card = preview ?? BoardTableEditor.BuildColourChangeCard(row, columnIndex);
 
-            if (preview is null)
+            if (card is null)
             {
                 this.HideFilePreview();
                 return null;
@@ -179,7 +184,7 @@ namespace CRT
 
             this.thisFilePreview = preview;
             this.thisFilePreviewShownFor = (row, columnIndex, anchor);
-            this.FilePreviewFrame.Child = preview;
+            this.FilePreviewFrame.Child = card;
 
             previous?.ReleaseImages();
 

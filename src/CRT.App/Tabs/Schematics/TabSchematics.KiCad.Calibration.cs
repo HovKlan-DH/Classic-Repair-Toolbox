@@ -405,6 +405,9 @@ public partial class TabSchematics
             MirrorY = mirrorY,
         };
 
+        // The alignment this one replaces, as the change finds it - what the marks KiCad drew are told by.
+        KiCadCalibrationEntry? alignedFrom = null;
+
         string? failure = this.KiCadCalibrationSaveOverrideForTests is { } saveForTests
             ? await saveForTests(calibration)
             : await BusyOverlay.RunLocalAsync<string?>(this, CrtWaitWording.SavingDraft, async () =>
@@ -428,7 +431,11 @@ public partial class TabSchematics
             DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
                 cacheKey,
                 DraftStepWording.Calibration(schematicName),
-                content => content with { Calibrations = KiCadCalibrationList.With(content.Calibrations, calibration) });
+                content =>
+                {
+                    alignedFrom = content.Calibrations.FirstOrDefault(row => string.Equals(row.SchematicName?.Trim(), schematicName?.Trim(), StringComparison.OrdinalIgnoreCase));
+                    return content with { Calibrations = KiCadCalibrationList.With(content.Calibrations, calibration) };
+                });
 
             return outcome == DraftWorkbookEditOutcome.Saved
                 ? null
@@ -477,6 +484,14 @@ public partial class TabSchematics
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.SchematicsContainer.Focus();
+
+        // Aligned with Done on a picture the Contribute tab asked for - told BEFORE the tool's end is,
+        // so Main marks it once the tool hands back (2026-11-01; Main.PictureTools.cs).
+        if (this.thisToolFromWorkspace)
+        {
+            string imageFile = entry?.SchematicImageFile?.Trim() ?? string.Empty;
+            this.AlignedFromWorkspace?.Invoke(this, (schematicName, imageFile, alignedFrom));
+        }
 
         if (thenAlign is null)
         {

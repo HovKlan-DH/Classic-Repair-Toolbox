@@ -59,7 +59,7 @@ namespace CRT.Server.Tests
             foreach (SubmissionFile file in files)
                 manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = file.Path });
 
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", Description = summary });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", Description = summary });
             manifest.Rows.ComponentHighlights.Add(new ComponentHighlightEntry
             {
                 SchematicName = "Sheet 1",

@@ -75,7 +75,7 @@ namespace CRT.Server.Tests
                 RevisionDate = "2026-August-21",
                 Components =
                 [
-                    new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" }
+                    new ComponentEntry { Category = "IC", BoardLabel = "U8", FriendlyName = "PLA", TechnicalNameOrValue = "906114-01", PartNumber = "251715-01" }
                 ]
             };
 

@@ -237,7 +237,7 @@
 					</TextBox>
 
 					<!-- Selection Actions -->
-					<Grid ColumnDefinitions="*,4,*">
+					<Grid ColumnDefinitions="*,6,*">
 						<Button Grid.Column="0"
 								Content="Clear"
 								HorizontalAlignment="Stretch"
@@ -255,7 +255,7 @@
 					</Grid>
 
 					<!-- Video standard -->
-					<Grid x:Name="RegionButtonsGrid" ColumnDefinitions="*,4,*">
+					<Grid x:Name="RegionButtonsGrid" ColumnDefinitions="*,6,*">
 						<Button x:Name="PalRegionButton"
 								Classes="RegionToggle"
 								Grid.Column="0"
@@ -277,7 +277,7 @@
 					</Grid>
 
 					<!-- View options -->
-					<Grid ColumnDefinitions="*,4,*">
+					<Grid ColumnDefinitions="*,6,*">
 						<Button Grid.Column="0"
 								Content="Fullscreen"
 								HorizontalAlignment="Stretch"
@@ -693,7 +693,7 @@
 										Grid.ColumnSpan="2"
 										Orientation="Horizontal"
 										HorizontalAlignment="Right"
-										Spacing="4">
+										Spacing="6">
 								<Button x:Name="UpdateBannerViewNotesButton"
 										Classes="BannerDismissButton"
 										Content="View release notes"
@@ -715,18 +715,28 @@
 
 					<!-- A data check: what it is doing while it runs, then what it found - "all up to
 					     date" goes by itself after a few seconds, "please refresh board" stays
-					     (Main.DataSyncStatus.cs, DataCheckNotice). A click anywhere on it closes it. -->
+					     (Main.DataSyncStatus.cs, DataCheckNotice). A click anywhere on it closes it.
+					     The file being downloaded is a line of its own, NEVER WRAPPED - a long path loses
+					     its middle folders, never its file name - and the card keeps its widest for a
+					     moment, so it does not jump with every file (owner report, 2026-11-01). -->
 					<Border x:Name="DataCheckBanner"
 							Classes="NoticeCard"
 							IsVisible="False"
 							Cursor="Hand"
 							PointerPressed="OnDataCheckBannerPointerPressed">
 						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-							<TextBlock x:Name="DataCheckBannerText"
-									   VerticalAlignment="Center"
-									   Foreground="{DynamicResource Main_Banner_Fg}"
-									   FontSize="12"
-									   TextWrapping="Wrap" />
+							<StackPanel VerticalAlignment="Center">
+								<TextBlock x:Name="DataCheckBannerText"
+										   Foreground="{DynamicResource Main_Banner_Fg}"
+										   FontSize="12"
+										   TextWrapping="Wrap" />
+								<TextBlock x:Name="DataCheckBannerFileText"
+										   Foreground="{DynamicResource Main_Banner_Fg}"
+										   FontSize="12"
+										   TextWrapping="NoWrap"
+										   TextTrimming="{x:Static TextTrimming.PathSegmentEllipsis}"
+										   IsVisible="False" />
+							</StackPanel>
 
 							<Button x:Name="DataCheckBannerDismissButton"
 									Grid.Column="1"

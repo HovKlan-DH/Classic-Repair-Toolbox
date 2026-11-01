@@ -105,7 +105,8 @@ namespace Handlers.DataHandling
             };
         }
 
-        private static string OneLine(string text)
+        // A status or a file's path as one line - the card's file line too (Main.DataSyncStatus.cs).
+        internal static string OneLine(string text)
         {
             return text
                 .Replace("\r", string.Empty, StringComparison.Ordinal)

@@ -211,6 +211,27 @@ public sealed class SubmissionReceiptPresenterTests
             SubmissionReceiptPresenter.ClassifyState("changes_requested"));
     }
 
+    // ------------------------------------------------------------------ IsDecidedAgainst, IsInPublishedData
+
+    // Not the opposite of IsStillOpen: accepted and published are final too, and very much went on. A word
+    // CRT does not know is neither - nothing may be concluded from it.
+    [Theory]
+    [InlineData("rejected", true, false)]
+    [InlineData(" Abandoned ", true, false)]
+    [InlineData("withdrawn", true, false)]
+    [InlineData("accepted", false, true)]
+    [InlineData("published", false, true)]
+    [InlineData("merged", false, false)]
+    [InlineData("pending", false, false)]
+    [InlineData("a-word-from-a-newer-server", false, false)]
+    [InlineData("", false, false)]
+    [InlineData(null, false, false)]
+    public void What_became_of_a_submission_is_told_apart_from_whether_it_is_open(string? state, bool against, bool published)
+    {
+        Assert.Equal(against, SubmissionReceiptPresenter.IsDecidedAgainst(state));
+        Assert.Equal(published, SubmissionReceiptPresenter.IsInPublishedData(state));
+    }
+
     // ------------------------------------------------------------------ IsStillOpen
 
     // What decides whether the server is asked about this row again. A decided submission can
@@ -1109,7 +1130,7 @@ public sealed class SubmissionReceiptPresenterTests
 
         Assert.StartsWith("Your submission for Commodore C128 310378 Open128 is now published to the stable source.", text, StringComparison.Ordinal);
         Assert.Contains("BETA source", text, StringComparison.Ordinal);
-        Assert.Contains("Configuration tab", text, StringComparison.Ordinal);
+        Assert.Contains("\"Configuration\" tab", text, StringComparison.Ordinal);
     }
 
     // Two submissions of one board are one board; two boards are both named.
@@ -1177,7 +1198,7 @@ public sealed class SubmissionReceiptPresenterTests
     {
         Assert.Equal(
             "Your submission for Commodore C128 310378 Open128 is now in the BETA source. To try it before everyone else, " +
-            "tick \"Download data from the BETA source instead of the stable source\" on the Configuration tab.",
+            "tick \"Download data from the BETA source instead of the stable source\" on the \"Configuration\" tab.",
             SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8)], checkDataOnLaunch: true));
 
         Assert.StartsWith(

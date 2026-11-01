@@ -74,6 +74,11 @@ namespace Handlers.DataHandling
             BoardDataChecks.CheckLocalFiles(context);
             BoardDataChecks.CheckLinks(context);
 
+            // Added after the server's own rules (2026-11-01), so theirs keep their order.
+            BoardDataChecks.CheckRequiredFields(context);
+            BoardDataChecks.CheckPinsOnPackage(context);
+            BoardDataChecks.CheckRegions(context);
+
             // The warnings DataValidator used to log on its own.
             if (scope == BoardCheckScope.Everything)
             {
@@ -163,6 +168,10 @@ namespace Handlers.DataHandling
                     context, schematic.SchematicHighlightOpacity, sheet, i, BoardWorkbookSchema.ColSchematicHighlightOpacity);
                 BoardDataChecks.CheckOpacity(
                     context, schematic.ThumbnailHighlightOpacity, sheet, i, BoardWorkbookSchema.ColThumbnailHighlightOpacity);
+                BoardDataChecks.CheckOpacity(
+                    context, schematic.TraceHighlightOpacity, sheet, i, BoardWorkbookSchema.ColTraceHighlightOpacity);
+                BoardDataChecks.CheckOpacity(
+                    context, schematic.OppositeTraceHighlightOpacity, sheet, i, BoardWorkbookSchema.ColOppositeTraceHighlightOpacity);
             }
 
             if (context.Scope != BoardCheckScope.Everything)
@@ -234,15 +243,12 @@ namespace Handlers.DataHandling
                 }
             }
 
-            if (context.Scope != BoardCheckScope.Everything)
-                return;
-
             // ###########################################################################################
-            // *** A COMPONENT WITH NO CATEGORY IS NOT LISTED (CRT 4.0 step 1, 2026-10-25). *** The
-            // component editor refused to save one ("Unfinished work is fine. Only Submit asks for
-            // problems to be fixed" - the plan); it saves it now, and the table says what is left. A
-            // WARNING, as every new rule of the table's is: the server takes such a row, and the table
-            // always could make one.
+            // *** NO COMPONENT HAS AN EMPTY CATEGORY (owner decision, 2026-11-01: "No components must
+            // have an empty category"). *** A warning of the table's alone until then. An error now, on
+            // both sides: it is saved as it stands, marked on its box, and Submit stops on it - every one
+            // of the 2,906 published components has a category. Unfinished work stays allowed; it is the
+            // submission that needs one.
             // ###########################################################################################
             for (int i = 0; i < context.Rows.Components.Count; i++)
             {
@@ -250,13 +256,16 @@ namespace Handlers.DataHandling
 
                 if (!string.IsNullOrWhiteSpace(component.BoardLabel) && string.IsNullOrWhiteSpace(component.Category))
                 {
-                    context.Warning(
+                    context.Error(
                         "component.no_category",
                         component.BoardLabel.Trim(),
-                        $"[{component.BoardLabel.Trim()}] has no category, so it is not in the component list. Give it one.",
+                        $"[{component.BoardLabel.Trim()}] has no category. Give it one - the board's components are sorted by it.",
                         sheet, i, BoardWorkbookSchema.ColCategory);
                 }
             }
+
+            if (context.Scope != BoardCheckScope.Everything)
+                return;
 
             foreach (int first in duplicated)
             {
@@ -471,24 +480,167 @@ namespace Handlers.DataHandling
             }
         }
 
-        // A link must be http or https - see SubmissionValidator: these are opened through
-        // ExternalTargetLauncher, which admits nothing else.
+        // ###########################################################################################
+        // *** A ROW OF THE BOARD'S OWN LISTS WITH A FIELD IT NEEDS EMPTY IS AN ERROR, IN BOTH SCOPES
+        // (owner request, 2026-11-01: "These errors must be flagged in 'Board status' and then it should
+        // not be possible to submit the draft board"). *** BoardRowRequired is the rule: a board file
+        // its category and name (an empty file is "file.unreferenced" already, above), a board link its
+        // category, name and address, a credit its category and name or handle, an important signal its
+        // net and its name - one error on each empty cell, so the table marks the very cell.
+        // ###########################################################################################
+        private static void CheckRequiredFields(Context context)
+        {
+            BoardDataChecks.ErrorOnEmpty(
+                context, context.Rows.BoardLocalFiles, BoardRowRequired.EmptyColumns, "board file", BoardWorkbookSchema.SheetBoardLocalFiles,
+                skip: BoardWorkbookSchema.ColFile);
+            BoardDataChecks.ErrorOnEmpty(context, context.Rows.BoardLinks, BoardRowRequired.EmptyColumns, "board link", BoardWorkbookSchema.SheetBoardLinks);
+            BoardDataChecks.ErrorOnEmpty(context, context.Rows.Credits ?? [], BoardRowRequired.EmptyColumns, "credit", BoardWorkbookSchema.SheetCredits);
+            BoardDataChecks.ErrorOnEmpty(
+                context, context.Rows.ImportantSignals ?? [], BoardRowRequired.EmptyColumns, "important signal", BoardWorkbookSchema.SheetKiCadImportantSignals);
+        }
+
+        // ###########################################################################################
+        // *** A PIN MUST BE ON THE COMPONENT'S CASE (owner request, 2026-11-01: "if I e.g. put pin 48 on a
+        // 24 pin package, this is an error"). *** A scope baseline's pin and a pinout's - each against
+        // the package of the component's row in its region. A case whose count CRT cannot tell, a
+        // component with none picked and a pin named rather than numbered say nothing
+        // (ComponentVocabulary.IsOnPackage): no published board names a package yet, so nothing
+        // published can fall foul of it.
+        // ###########################################################################################
+        private static void CheckPinsOnPackage(Context context)
+        {
+            // Each component's rows found once (code review, 2026-11-01): a board with thousands of pin
+            // rows scanned every component row for each, at every settled edit of the table.
+            ILookup<string, ComponentEntry> byLabel = context.Rows.Components.ToLookup(
+                row => (row.BoardLabel ?? string.Empty).Trim(),
+                StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < context.Rows.ComponentImages.Count; i++)
+            {
+                ComponentImageEntry row = context.Rows.ComponentImages[i];
+
+                if (ComponentImageKinds.IsScopeBaseline(row))
+                {
+                    BoardDataChecks.ErrorOutsidePackage(context, byLabel, row.BoardLabel, row.Region, row.Pin, "scope baseline", BoardWorkbookSchema.SheetComponentImages, i);
+                }
+            }
+
+            IReadOnlyList<ComponentPinEntry> pins = context.Rows.ComponentPins ?? [];
+
+            for (int i = 0; i < pins.Count; i++)
+            {
+                BoardDataChecks.ErrorOutsidePackage(context, byLabel, pins[i].BoardLabel, pins[i].Region, pins[i].Pin, "pin", BoardWorkbookSchema.SheetComponentPins, i);
+            }
+        }
+
+        private static void ErrorOutsidePackage(Context context, ILookup<string, ComponentEntry> byLabel, string? label, string? region, string? pin, string what, string sheet, int index)
+        {
+            if (BoardDataChecks.PackageRefusing(byLabel[(label ?? string.Empty).Trim()], label, region, pin) is { } package)
+            {
+                context.Error(
+                    "pin.outside_package",
+                    (label ?? string.Empty).Trim(),
+                    $"This {what} of [{(label ?? string.Empty).Trim()}] says pin {(pin ?? string.Empty).Trim()}. {BoardDataChecks.PinNotOnPackage(pin, package)}",
+                    sheet, index, BoardWorkbookSchema.ColPin);
+            }
+        }
+
+        // ###########################################################################################
+        // The case that has no such pin - null when it can be on the component. A row with no region is
+        // on every region's case, so every one of them has to refuse it: the same rule the error above
+        // and the mark on the pin's box in the component pane go by.
+        // ###########################################################################################
+        public static string? PackageRefusing(IEnumerable<ComponentEntry> components, string? label, string? region, string? pin)
+        {
+            ArgumentNullException.ThrowIfNull(components);
+
+            // A pin named and not numbered is on any case - nothing to look up.
+            if (ComponentVocabulary.PinNumberOf(pin) is null)
+            {
+                return null;
+            }
+
+            string wanted = (label ?? string.Empty).Trim();
+            string rowRegion = (region ?? string.Empty).Trim();
+
+            List<ComponentEntry> cases = components
+                .Where(row => string.Equals((row.BoardLabel ?? string.Empty).Trim(), wanted, StringComparison.OrdinalIgnoreCase))
+                .Where(row => rowRegion.Length == 0 || ComponentPaneEdits.InRegion(row.Region, rowRegion))
+                .ToList();
+
+            return wanted.Length > 0 && cases.Count > 0 && cases.All(row => !ComponentVocabulary.IsOnPackage(row.Package, pin))
+                ? cases[0].Package?.Trim()
+                : null;
+        }
+
+        // ###########################################################################################
+        // *** Security (code review, 2026-11-01): WHAT A BOARD SAYS ABOUT ITS REGIONS IS PAL AND NTSC, OR
+        // NOTHING. *** A submission's "regions" reaches the publish as sent, and a reviewer reads only whether
+        // the board has any: "x" turned the PAL/NTSC switch on unseen, and a JSON null made every Approve of
+        // it throw once the stored files were written. CRT itself only ever writes BoardRegions.All.
+        // ###########################################################################################
+        private static void CheckRegions(Context context)
+        {
+            foreach (string? region in context.Rows.Regions ?? [])
+            {
+                if (!BoardRegions.IsRegion(region))
+                {
+                    context.Error(
+                        "regions.unknown",
+                        region ?? string.Empty,
+                        $"The board says it comes in [{region}], which is no region. A board comes in PAL and NTSC, or in no regions at all.",
+                        null, -1, null);
+                }
+            }
+        }
+
+        // What is wrong with such a pin, for the box it is marked on too.
+        public static string PinNotOnPackage(string? pin, string? package) =>
+            $"A {(package ?? string.Empty).Trim()} has {ComponentVocabulary.PinCountOf(package)} pins, so there is no pin {(pin ?? string.Empty).Trim()} - correct the pin, or the package under \"Pinout\".";
+
+        private static void ErrorOnEmpty<T>(
+            Context context,
+            IReadOnlyList<T> rows,
+            Func<T, IReadOnlyList<string>> emptyColumns,
+            string what,
+            string sheet,
+            string? skip = null)
+        {
+            for (int i = 0; i < rows.Count; i++)
+            {
+                foreach (string column in emptyColumns(rows[i]).Where(column => column != skip))
+                {
+                    context.Error(
+                        "row.required_empty",
+                        column,
+                        $"This {what} has no {column}. Fill it in - the board cannot be submitted while it is empty.",
+                        sheet, i, column);
+                }
+            }
+        }
+
+        // ###########################################################################################
+        // A link must be a whole http or https address - see SubmissionValidator. The ONE rule: the
+        // error below, and the mark on the address's box in the component pane (code review, 2026-11-01:
+        // "www.lemon64.com" opened from its "Open link", LinkTarget adding the https://, with nothing on
+        // the row - and Submit refused it). An empty link is no refused one: BoardRowRequired says
+        // whether it needs to be there.
+        // ###########################################################################################
+        public static bool IsRefusedLink(string? link) =>
+            !string.IsNullOrWhiteSpace(link) &&
+            !(Uri.TryCreate(link, UriKind.Absolute, out Uri? uri)
+              && (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)));
+
         private static void CheckLink(Context context, string? link, string description, string sheet, int index)
         {
-            if (string.IsNullOrWhiteSpace(link))
-                return;
-
-            bool isWebLink = Uri.TryCreate(link, UriKind.Absolute, out Uri? uri)
-                && (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
-
-            if (!isWebLink)
+            if (BoardDataChecks.IsRefusedLink(link))
             {
                 context.Error(
                     "link.not_web",
-                    link,
+                    link!,
                     $"A {description} is [{link}], which is not an http:// or https:// address. " +
-                    "CRT will not open anything else.",
+                    "Write the whole address, such as https://www.example.com.",
                     sheet, index, BoardWorkbookSchema.ColUrl);
             }
         }
@@ -596,7 +748,7 @@ namespace Handlers.DataHandling
                         "component.no_highlight",
                         label,
                         $"Component [{label}] is not marked on any schematic, so CRT cannot point it out on the board. " +
-                        "Mark it with the label editor on the Schematics tab.",
+                        "Mark it with \"Mark components manually\" under \"Board: Schematic images\" on the \"Contribute\" tab.",
                         BoardWorkbookSchema.SheetComponents, i, BoardWorkbookSchema.ColBoardLabel);
                 }
             }
@@ -954,10 +1106,12 @@ namespace Handlers.DataHandling
     // The sections the checks read - BoardData's, or a submission's (SubmissionRows), which carry
     // the same lists under the same names.
     //
-    // Credits and Important signals are read by one local rule only - duplicate rows (2026-10-03)
-    // - so they are optional, and a submission's rows (which the server checks in Submission,
-    // where that rule does not run) leave them out. So are CRT 4.0's pins and replacement parts
-    // (2026-10-25), which only the local rules read.
+    // Credits and Important signals are optional, as they were read by the local rules only until
+    // 2026-11-01; since then a field they need is the server's rule too (CheckRequiredFields), so a
+    // submission's rows carry them. CRT 4.0's pins and replacement parts (2026-10-25) are optional too,
+    // null in a submission that does not carry them: their rules are local warnings, but for a pin past
+    // its case (CheckPinsOnPackage), which is the server's as well. Regions (2026-11-01) are the regions
+    // the board says it comes in - null, as a submission's rows say it, for "not said".
     // ###########################################################################################
     public sealed record BoardCheckRows(
         IReadOnlyList<BoardSchematicEntry> Schematics,
@@ -971,7 +1125,8 @@ namespace Handlers.DataHandling
         IReadOnlyList<CreditEntry>? Credits = null,
         IReadOnlyList<KiCadImportantSignalEntry>? ImportantSignals = null,
         IReadOnlyList<ComponentPinEntry>? ComponentPins = null,
-        IReadOnlyList<ComponentReplacementEntry>? ComponentReplacements = null)
+        IReadOnlyList<ComponentReplacementEntry>? ComponentReplacements = null,
+        IReadOnlyList<string>? Regions = null)
     {
         public static BoardCheckRows From(BoardData board)
         {
@@ -980,7 +1135,7 @@ namespace Handlers.DataHandling
             return new BoardCheckRows(
                 board.Schematics, board.Components, board.ComponentImages, board.ComponentHighlights,
                 board.ComponentLocalFiles, board.BoardLocalFiles, board.ComponentLinks, board.BoardLinks,
-                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements);
+                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements, board.Regions);
         }
 
         public static BoardCheckRows From(SubmissionRows rows)
@@ -989,7 +1144,8 @@ namespace Handlers.DataHandling
 
             return new BoardCheckRows(
                 rows.Schematics, rows.Components, rows.ComponentImages, rows.ComponentHighlights,
-                rows.ComponentLocalFiles, rows.BoardLocalFiles, rows.ComponentLinks, rows.BoardLinks);
+                rows.ComponentLocalFiles, rows.BoardLocalFiles, rows.ComponentLinks, rows.BoardLinks,
+                rows.Credits, rows.KiCadImportantSignals, rows.ComponentPins, rows.ComponentReplacements, rows.Regions);
         }
     }
 }

@@ -91,7 +91,7 @@ namespace CRT
         // data folder, beside "Data v4" (code review, 2026-10-25): under the temporary folder - the
         // shared /tmp on Linux - another account could make the copy's folder a link, and the copy
         // deletes every file there it does not want.
-        // Used by: Main.KiCadRawPathsFor, BoardFilesWindow
+        // Used by: Main.KiCadRawPathsFor, KiCadDataPanel
         public static string KiCadCacheFolder => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppFolderName,
@@ -122,7 +122,7 @@ namespace CRT
         // A drafted board keeps the same folder name under its own draft Files/ folder, so
         // importing KiCad data and later publishing it need no path rewriting.
         // Used by: DataManager (sync protection, orphan cleanup), Main.KiCadRawPathsFor,
-        // BoardFilesWindow's KiCad import.
+        // KiCadDataPanel's KiCad import.
         public const string KiCadDataFolderName = "KiCad data";
 
         // Name of the JSON file holding one record, used at all three levels of the Workbooks

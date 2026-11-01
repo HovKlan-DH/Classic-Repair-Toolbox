@@ -80,7 +80,7 @@ namespace CRT
             // opens under the cell while the card sits beside it.
             theme.Setters.Add(new Setter(
                 ToolTip.TipProperty,
-                new Binding(this.PreviewsFilesIn(columnIndex)
+                new Binding(this.PreviewsFilesIn(columnIndex) || this.ShowsColourChangesIn(columnIndex)
                     ? $"Cells[{columnIndex}].ProblemToolTip"
                     : $"Cells[{columnIndex}].ToolTip")));
 

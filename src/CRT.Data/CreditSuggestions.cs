@@ -148,7 +148,10 @@ namespace Handlers.DataHandling
                 row.SchematicHighlightOpacity?.Trim(),
                 row.OppositeTraceHighlightColor?.Trim(),
                 row.ThumbnailHighlightColor?.Trim(),
-                row.ThumbnailHighlightOpacity?.Trim());
+                row.ThumbnailHighlightOpacity?.Trim(),
+                row.TraceHighlightColor?.Trim(),
+                row.TraceHighlightOpacity?.Trim(),
+                row.OppositeTraceHighlightOpacity?.Trim());
 
             var had = new Dictionary<string, string>(StringComparer.Ordinal);
 

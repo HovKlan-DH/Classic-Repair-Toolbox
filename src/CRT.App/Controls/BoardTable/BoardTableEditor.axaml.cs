@@ -68,7 +68,8 @@ namespace CRT
     // BoardTableEditor.DraftSession.cs (the Contribute tab's table on the draft held in memory: its
     // changes handed over, saving by itself, undo and redo, the file changed outside it) and
     // BoardTableEditor.FilePreview.cs (the hover card on a file cell - its content is
-    // BoardTableFilePreview, its bytes the host's IBoardTableFileSource).
+    // BoardTableFilePreview, its bytes the host's IBoardTableFileSource),
+    // BoardTableEditor.ColourChange.cs (the same card on a changed color cell).
     // ###########################################################################################
     public partial class BoardTableEditor : UserControl
     {

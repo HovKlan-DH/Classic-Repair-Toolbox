@@ -32,7 +32,7 @@ public sealed class AppUpdateRequiredWordingTests
         Assert.Contains("drafts cannot be submitted", drafts, StringComparison.Ordinal);
         Assert.Contains("Your drafts stay on this computer", drafts, StringComparison.Ordinal);
         Assert.Contains("nothing is lost", drafts, StringComparison.Ordinal);
-        Assert.Contains("Maintainer tab cannot be used", maintainer, StringComparison.Ordinal);
+        Assert.Contains("\"Maintainer\" tab cannot be used", maintainer, StringComparison.Ordinal);
         Assert.NotEqual(drafts, maintainer);
     }
 

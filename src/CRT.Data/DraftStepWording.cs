@@ -18,6 +18,31 @@ namespace Handlers.DataHandling
         // A new component, from the component pane's "Add component" (slice 3c).
         public static string ComponentAdded(string label) => $"[{label}] added";
 
+        // A component's label changed in the component pane (owner report, 2026-11-01: "unable to rename").
+        public static string ComponentRelabelled(string from, string to) => $"[{from}] renamed [{to}]";
+
+        // A component told apart per region, or no longer (2026-11-01).
+        public static string ComponentRegional(string label, bool regional) =>
+            regional ? $"[{label}] told apart per region" : $"[{label}] the same in every region";
+
+        public static string PinsRegional(string label, bool regional) =>
+            regional ? $"Pins of [{label}] told apart per region" : $"Pins of [{label}] the same in every region";
+
+        // What the board says about its regions (2026-11-01).
+        public const string Regions = "The board's regions";
+
+        // The board's categories (2026-11-01).
+        public static string CategoryRenamed(string from, string to) =>
+            from.Length == 0 ? $"Components with no category moved to [{to}]" : $"Category [{from}] renamed [{to}]";
+
+        public static string CategoryDeleted(string name, string movedTo) => $"Category [{name}] deleted, its components moved to [{movedTo}]";
+
+        // The temporary tool that makes pinouts of scope baselines (BaselinePinMigration).
+        public static string PinsFromBaselines(string label) => $"Pins of [{label}] from its scope baselines";
+
+        public static string PinsFromBaselinesOfBoard(int components) =>
+            components == 1 ? "Pins of 1 component from its scope baselines" : $"Pins of {components.ToString(CultureInfo.InvariantCulture)} components from their scope baselines";
+
         // A new board's components from its KiCad data, all in one go (step 3) - how many.
         public static string ComponentsFromKiCad(int count) =>
             count == 1 ? "1 component added from KiCad" : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components added from KiCad";
@@ -27,6 +52,12 @@ namespace Handlers.DataHandling
             count == 1
                 ? $"1 component marked on [{picture}] from KiCad"
                 : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components marked on [{picture}] from KiCad";
+
+        // KiCad aligned again: the marks KiCad drew moved with it (owner request, 2026-11-01).
+        public static string ComponentsFollowedAlignment(string picture, int count) =>
+            count == 1
+                ? $"1 component on [{picture}] moved with its KiCad alignment"
+                : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components on [{picture}] moved with their KiCad alignment";
 
         // "Copy from another board" (slice 5) - what the component took, and from where.
         public static string ComponentCopied(string label, string fromBoard) => $"[{label}] copied from {fromBoard}";
@@ -60,10 +91,14 @@ namespace Handlers.DataHandling
 
         public const string Credits = "Credits";
 
-        public const string ImportantSignals = "Important signals";
+        // "Important KiCad signals" wherever the part is named since 2026-11-01 (owner request) - the
+        // sheet keeps its stored name, "Important signals".
+        public const string ImportantSignals = "Important KiCad signals";
 
-        // The pictures' highlight colours (slice 4b).
-        public const string PictureColours = "Colours of the pictures";
+        // The schematic images' highlight colours (slice 4b). The board's pictures are "schematic
+        // images" wherever CRT names them since 2026-10-29 (owner request) - a COMPONENT's pictures
+        // stay pictures (ComponentPictures).
+        public const string PictureColours = "Colors of the schematic images";
 
         // "Undo changes to IC1" - the component back to its published values (ComponentRevert).
         public static string ComponentReverted(string label) => $"[{label}] back to its published values";
@@ -73,21 +108,21 @@ namespace Handlers.DataHandling
         public static string Calibration(string schematic) => $"KiCad calibration of [{schematic}]";
 
         public static string SchematicsAdded(int count) =>
-            count == 1 ? "Picture added" : $"{count.ToString(CultureInfo.InvariantCulture)} pictures added";
+            count == 1 ? "Schematic image added" : $"{count.ToString(CultureInfo.InvariantCulture)} schematic images added";
 
-        public static string SchematicRemoved(string name) => $"Picture [{name}] removed";
+        public static string SchematicRemoved(string name) => $"Schematic image [{name}] deleted";
 
-        public static string SchematicRenamed(string from, string to) => $"Picture [{from}] renamed [{to}]";
+        public static string SchematicRenamed(string from, string to) => $"Schematic image [{from}] renamed [{to}]";
 
-        public const string SchematicOrder = "Order of the pictures";
+        public const string SchematicOrder = "Order of the schematic images";
 
         public static string CadName(string schematic) => $"KiCad view of [{schematic}]";
 
-        // Suggested matches taken from the new board's checklist (step 3) - the picture, or how many.
+        // Suggested matches taken on Board status (step 3) - the image, or how many.
         public static string PicturesMatched(IReadOnlyList<string> pictures) =>
             pictures.Count == 1
                 ? DraftStepWording.CadName(pictures[0])
-                : $"{pictures.Count.ToString(CultureInfo.InvariantCulture)} pictures matched to KiCad views";
+                : $"{pictures.Count.ToString(CultureInfo.InvariantCulture)} schematic images matched to KiCad views";
 
         // The file read back after a write that was more than the draft's content (DraftSession.WriteFileDirectly).
         public const string KiCadFileRemoved = "KiCad file removed";

@@ -133,6 +133,20 @@ namespace Handlers.DataHandling
         [JsonPropertyName("workbooksEntryListWidth")] public double WorkbooksEntryListWidth { get; set; } = 347.0;
         [JsonPropertyName("configurationCataloguePanelWidth")] public double ConfigurationCataloguePanelWidth { get; set; } = 320.0;
 
+        // The Contribute tab's two dragged widths (owner request, 2026-10-29): its left column, and
+        // the preview on a schematic image's card - per board, and the one dragged last for a board
+        // never dragged on (ContributeWidthFor).
+        [JsonPropertyName("contributeNavWidth")] public double ContributeNavWidth { get; set; } = ContributeWidths.DefaultNavWidth;
+        [JsonPropertyName("contributeNavWidthByBoard")] public Dictionary<string, double> ContributeNavWidthByBoard { get; set; } = new();
+        [JsonPropertyName("contributeImagePreviewWidth")] public double ContributeImagePreviewWidth { get; set; } = ContributeWidths.DefaultPreviewWidth;
+        [JsonPropertyName("contributeImagePreviewWidthByBoard")] public Dictionary<string, double> ContributeImagePreviewWidthByBoard { get; set; } = new();
+
+        // Whether a KiCad import on the Contribute tab adds the KiCad board's components to the board
+        // too (owner request, 2026-11-01: "it should add all components when importing the KiCad data
+        // ... Have checkbox if it should add all data automatically also?") - "KiCad data"'s check box,
+        // ticked until it is unticked.
+        [JsonPropertyName("kiCadImportAddsComponents")] public bool KiCadImportAddsComponents { get; set; } = true;
+
         // Hardware/board/schematic keys the user has UNCHECKED in the Configuration tab's
         // visibility tree - see CatalogueVisibility. Unlisted keys default to checked/visible, so
         // newly synced hardware, boards and schematics show up with no migration needed.
@@ -157,6 +171,7 @@ namespace Handlers.DataHandling
         [JsonPropertyName("workbooksSummaryExpanded")] public bool WorkbooksSummaryExpanded { get; set; }
         [JsonPropertyName("schematicsSplitterRatios")] public Dictionary<string, double> SchematicsSplitterRatios { get; set; } = new();
         [JsonPropertyName("selectedCategoriesByBoard")] public Dictionary<string, List<string>> SelectedCategoriesByBoard { get; set; } = new();
+        [JsonPropertyName("seenCategoriesByBoard")] public Dictionary<string, List<string>> SeenCategoriesByBoard { get; set; } = new();
         [JsonPropertyName("activeWorkbookIdByBoard")] public Dictionary<string, int> ActiveWorkbookIdByBoard { get; set; } = new();
         [JsonPropertyName("lastHardware")] public string LastHardware { get; set; } = string.Empty;
         [JsonPropertyName("lastBoardByHardware")] public Dictionary<string, string> LastBoardByHardware { get; set; } = new();
@@ -1143,6 +1158,17 @@ namespace Handlers.DataHandling
             }
         }
 
+        public static bool KiCadImportAddsComponents
+        {
+            get => _data.KiCadImportAddsComponents;
+            set
+            {
+                _data.KiCadImportAddsComponents = value;
+                Logger.Info($"Setting changed: [KiCadImportAddsComponents] [{value}]");
+                Save();
+            }
+        }
+
         public static double ConfigurationCataloguePanelWidth
         {
             get => _data.ConfigurationCataloguePanelWidth;
@@ -1152,6 +1178,32 @@ namespace Handlers.DataHandling
                 Logger.Info($"Setting changed: [ConfigurationCataloguePanelWidth] [{value:F1}]");
                 Save();
             }
+        }
+
+        // ###########################################################################################
+        // The Contribute tab's dragged widths (owner request, 2026-10-29) - the board's own, else the
+        // one dragged last on any board (ContributeWidths.For). `boardKey` is "<hardware>|<board>".
+        // A list a settings file has as null (written by hand, or damaged) is an empty one, as the
+        // other lists' are (code review, 2026-10-30: ContributeWidths.For threw, from every board shown).
+        // ###########################################################################################
+        public static double ContributeNavWidthFor(string boardKey) =>
+            ContributeWidths.For(_data.ContributeNavWidthByBoard ??= new(), _data.ContributeNavWidth, boardKey, ContributeWidths.NavRange);
+
+        public static void RememberContributeNavWidth(string boardKey, double width)
+        {
+            _data.ContributeNavWidth = ContributeWidths.Remember(_data.ContributeNavWidthByBoard ??= new(), boardKey, width, ContributeWidths.NavRange);
+            Logger.Info($"Setting changed: [ContributeNavWidth] [{boardKey}] [{_data.ContributeNavWidth:F1}]");
+            Save();
+        }
+
+        public static double ContributeImagePreviewWidthFor(string boardKey) =>
+            ContributeWidths.For(_data.ContributeImagePreviewWidthByBoard ??= new(), _data.ContributeImagePreviewWidth, boardKey, ContributeWidths.PreviewRange);
+
+        public static void RememberContributeImagePreviewWidth(string boardKey, double width)
+        {
+            _data.ContributeImagePreviewWidth = ContributeWidths.Remember(_data.ContributeImagePreviewWidthByBoard ??= new(), boardKey, width, ContributeWidths.PreviewRange);
+            Logger.Info($"Setting changed: [ContributeImagePreviewWidth] [{boardKey}] [{_data.ContributeImagePreviewWidth:F1}]");
+            Save();
         }
 
         // ###########################################################################################
@@ -1543,11 +1595,47 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Persists the selected category list for the given board key.
         // ###########################################################################################
-        public static void SetSelectedCategories(string boardKey, List<string> categories)
+        public static void SetSelectedCategories(string boardKey, List<string> categories, IEnumerable<string>? seen = null)
         {
             _data.SelectedCategoriesByBoard[boardKey] = categories;
+
+            if (seen is not null)
+            {
+                _data.SeenCategoriesByBoard[boardKey] = seen.ToList();
+            }
+
             Logger.Info($"Setting changed: [SelectedCategories] [{boardKey}] [{categories.Count} selected]");
             Save();
+        }
+
+        // ###########################################################################################
+        // The categories the board had when its filter was last chosen - null for a filter saved before
+        // this was kept (SavedCategoryFilter).
+        // ###########################################################################################
+        public static List<string>? GetSeenCategories(string boardKey)
+            => _data.SeenCategoriesByBoard.TryGetValue(boardKey, out var categories) ? categories : null;
+
+        public static void SetSeenCategories(string boardKey, IEnumerable<string> categories)
+        {
+            _data.SeenCategoriesByBoard[boardKey] = categories.ToList();
+            Save();
+        }
+
+        // ###########################################################################################
+        // A category's components moved under another on "Board: Categories": shown before, they stay
+        // shown, even under a category the filter had unticked (code review, 2026-11-01). The old name
+        // stays listed, which harms nothing and lets an Undo find it ticked.
+        // ###########################################################################################
+        internal static void FollowCategoryMove(string boardKey, string from, string to)
+        {
+            if (_data.SelectedCategoriesByBoard.TryGetValue(boardKey, out List<string>? selected) &&
+                selected.Contains(from, StringComparer.OrdinalIgnoreCase) &&
+                !selected.Contains(to, StringComparer.OrdinalIgnoreCase))
+            {
+                selected.Add(to);
+                Logger.Info($"Setting changed: [SelectedCategories] [{boardKey}] [{from}] moved to [{to}]");
+                Save();
+            }
         }
 
         // ###########################################################################################
@@ -1907,6 +1995,63 @@ namespace Handlers.DataHandling
 
             AtomicJsonFile.Write(_settingsFilePath, _data, SaveJsonOptions, "settings");
         }
+
+        // ###########################################################################################
+        // WHAT THIS MACHINE REMEMBERS OF A BOARD, UNDER ITS NEW NAME (a new board renamed on the Contribute
+        // tab - BoardKeyMove, 2026-11-01). Every "...ByBoard" setting is keyed by "{hardware}|{board}", found
+        // by that name so a new one cannot be forgotten here (UserSettingsTests), with the splitter
+        // ratios and the catalogue's keys, which are too; and the board last shown on its hardware.
+        // A key already at the new name - a board of that name deleted long ago - gives way.
+        // ###########################################################################################
+        internal static void MoveBoard(string from, string to)
+        {
+            if (string.Equals(from, to, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            foreach (System.Reflection.PropertyInfo property in typeof(UserSettingsData).GetProperties())
+            {
+                if ((property.Name.EndsWith("ByBoard", StringComparison.Ordinal) || property.Name == nameof(UserSettingsData.SchematicsSplitterRatios)) &&
+                    property.GetValue(_data) is System.Collections.IDictionary settings)
+                {
+                    string? found = settings.Keys.Cast<string>().FirstOrDefault(key => string.Equals(key, from, StringComparison.OrdinalIgnoreCase));
+
+                    if (found is not null)
+                    {
+                        object? value = settings[found];
+                        settings.Remove(found);
+                        settings[to] = value;
+                    }
+                }
+            }
+
+            _data.CatalogueUncheckedKeys = UserSettings.WithBoardMoved(_data.CatalogueUncheckedKeys, from, to);
+            _data.CatalogueCollapsedKeys = UserSettings.WithBoardMoved(_data.CatalogueCollapsedKeys, from, to);
+
+            string[] fromParts = from.Split('|');
+            string[] toParts = to.Split('|');
+
+            if (fromParts.Length == 2 && toParts.Length == 2 &&
+                _data.LastBoardByHardware.TryGetValue(fromParts[0], out string? lastBoard) &&
+                string.Equals(lastBoard, fromParts[1], StringComparison.OrdinalIgnoreCase))
+            {
+                _data.LastBoardByHardware.Remove(fromParts[0]);
+                _data.LastBoardByHardware[toParts[0]] = toParts[1];
+            }
+
+            Logger.Info($"Setting changed: [Board key] [{from}] -> [{to}]");
+            Save();
+        }
+
+        // The catalogue's keys with the board's - and each of its schematics' - under its new name.
+        private static HashSet<string> WithBoardMoved(HashSet<string> keys, string from, string to) =>
+            new(
+                keys.Select(key =>
+                    CatalogueVisibility.KeyComparer.Equals(key, from) ? to
+                    : key.StartsWith(from + "|", StringComparison.OrdinalIgnoreCase) ? to + key[from.Length..]
+                    : key),
+                CatalogueVisibility.KeyComparer);
 
         // ###########################################################################################
         // Returns the last selected hardware name, or empty when none has been saved.

@@ -51,7 +51,7 @@
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      MinHeight="52"
-                     PlaceholderText="Shown in CRT's Overview tab - optional" />
+                     PlaceholderText="Shown in CRT's &quot;Overview&quot; tab - optional" />
         </Grid>
 
         <TextBlock x:Name="DragHintText"

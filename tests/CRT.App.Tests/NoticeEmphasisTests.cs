@@ -43,10 +43,10 @@ public sealed class NoticeEmphasisTests
     [Fact]
     public void A_quoted_label_is_left_as_it_reads_on_its_control()
     {
-        string text = $"Commodore / C64 / 250407 is now in the BETA source. To try it before everyone else, tick \"{ConfigurationWording.BetaSourceCheckBox}\" on the Configuration tab.";
+        string text = $"Commodore / C64 / 250407 is now in the BETA source. To try it before everyone else, tick \"{ConfigurationWording.BetaSourceCheckBox}\" on the \"Configuration\" tab.";
 
         Assert.Equal(
-            $"Commodore / C64 / 250407 is now in the *BETA* source. To try it before everyone else, tick \"{ConfigurationWording.BetaSourceCheckBox}\" on the Configuration tab.",
+            $"Commodore / C64 / 250407 is now in the *BETA* source. To try it before everyone else, tick \"{ConfigurationWording.BetaSourceCheckBox}\" on the \"Configuration\" tab.",
             Marked(text));
         Assert.Contains("source", ConfigurationWording.BetaSourceCheckBox, StringComparison.Ordinal);
     }

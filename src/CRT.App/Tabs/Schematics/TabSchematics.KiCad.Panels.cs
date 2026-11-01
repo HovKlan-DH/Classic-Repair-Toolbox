@@ -366,7 +366,7 @@ public partial class TabSchematics
             this.thisKiCadProject?.Root == null)
         {
             this.thisLastKiCadNetConnectionsSignature = string.Empty;
-            this.KiCadNetConnectionsHeaderTextBlock.Text = "Netlist names";
+            this.KiCadNetConnectionsHeaderTextBlock.Text = "KiCad nets";
             this.KiCadNetConnectionsNetNameText.Text = string.Empty;
             this.KiCadNetConnectionsList.ItemsSource = null;
             this.KiCadNetConnectionsPanel.IsVisible = false;
@@ -383,8 +383,8 @@ public partial class TabSchematics
         if (string.Equals(this.thisLastKiCadNetConnectionsSignature, signature, StringComparison.Ordinal))
         {
             this.KiCadNetConnectionsHeaderTextBlock.Text = sortedNetNames.Count > 0
-                ? $"Netlist names ({sortedNetNames.Count})"
-                : "Netlist names";
+                ? $"KiCad nets ({sortedNetNames.Count})"
+                : "KiCad nets";
             this.KiCadNetConnectionsPanel.IsVisible = true;
             this.UpdateKiCadNetConnectionsClearButtonState(true);
             return;
@@ -450,8 +450,8 @@ public partial class TabSchematics
         {
             this.thisLastKiCadNetConnectionsSignature = signature;
             this.KiCadNetConnectionsHeaderTextBlock.Text = sortedNetNames.Count > 0
-                ? $"Netlist names ({sortedNetNames.Count})"
-                : "Netlist names";
+                ? $"KiCad nets ({sortedNetNames.Count})"
+                : "KiCad nets";
             this.KiCadNetConnectionsNetNameText.Text = string.Join(Environment.NewLine, sortedNetNames);
             this.KiCadNetConnectionsList.ItemsSource = null;
             this.KiCadNetConnectionsPanel.IsVisible = false;
@@ -468,8 +468,8 @@ public partial class TabSchematics
 
         this.thisLastKiCadNetConnectionsSignature = signature;
         this.KiCadNetConnectionsHeaderTextBlock.Text = sortedNetNames.Count > 0
-            ? $"Netlist names ({sortedNetNames.Count})"
-            : "Netlist names";
+            ? $"KiCad nets ({sortedNetNames.Count})"
+            : "KiCad nets";
         this.KiCadNetConnectionsNetNameText.Text = string.Join(Environment.NewLine, sortedNetNames);
         this.KiCadNetConnectionsList.ItemsSource = sortedConnections;
         this.KiCadNetConnectionsPanel.IsVisible = true;
@@ -533,7 +533,7 @@ public partial class TabSchematics
         int selectedCount = this.thisSelectedImportantSignalDisplayNames.Count;
 
         this.ImportantSignalsHeaderTextBlock.Text = selectedCount > 0
-            ? $"Important signals ({selectedCount})"
-            : "Important signals";
+            ? $"Important KiCad signals ({selectedCount})"
+            : "Important KiCad signals";
     }
 }

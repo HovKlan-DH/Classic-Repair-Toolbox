@@ -1,4 +1,5 @@
 using Handlers.DataHandling;
+using Handlers.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -47,17 +48,20 @@ namespace CRT
         {
             this.ComponentPane.CloseRequested += (_, _) => this.CloseComponent();
             this.ComponentPane.ContentChanged += (_, _) => this.OnComponentPaneChanged();
+            this.ComponentPane.CategoryMoved += (_, moved) => this.FollowCategoryMove?.Invoke(TabDrafts.BoardKeyOf(this.thisComponentEntry ?? this.thisCurrentEntry), moved.From, moved.To);
             this.ComponentPane.Saved += (_, excelDataFile) => this.OnComponentPaneSaved(excelDataFile);
             this.ComponentPane.ShowOnBoardRequested += (_, label) => this.RunGuarded(() => this.ShowComponentOnBoardAsync(label), "Show on board");
             this.ComponentPane.PreviewRequested += (_, label) => this.PreviewComponent(label);
             this.ComponentPane.PictureToolRequested += (_, asked) => this.RunGuarded(() => this.StartPictureToolAsync(asked.Tool, asked.Picture), "Picture tool");
-            this.ComponentPane.MarkAutomaticallyRequested += (_, picture) => this.RunGuarded(() => this.MarkAutomaticallyAsync(picture), "Mark all automatically");
+            this.ComponentPane.MarkAutomaticallyRequested += (_, asked) => this.RunGuarded(() => this.MarkAutomaticallyAsync(asked.Picture, asked.File), "Mark all automatically");
             this.ComponentPane.FindOnOtherBoards = this.FindOnOtherBoardsAsync;
             this.ComponentPane.FindAlsoTargets = this.FindAlsoTargetsAsync;
             this.ComponentPane.ApplyToOtherBoards = this.ApplyToOtherBoardsAsync;
             this.ComponentPane.ComponentShown += (_, label) => this.RunGuarded(() => this.LoadKiCadPinsAsync(label), "Reading the KiCad pins");
             this.ComponentPane.KiCadViewsWanted += (_, ask) => this.RunGuarded(() => this.LoadKiCadViewsAsync(ask), "Reading the KiCad views");
             this.ComponentPane.ShowNetRequested += (_, net) => this.RunGuarded(() => this.ShowNetOnBoardAsync(net), "Show on board");
+            this.ComponentPane.RegionPicked += (_, region) => this.PickRegion(region);
+            this.ComponentPane.ReadPreviewTraces = this.PreviewTracesAsync;
         }
 
         // For tests, in place of reading a component's pins from its board's KiCad data: the board
@@ -482,6 +486,38 @@ namespace CRT
             return any;
         }
 
+        // For tests, in place of Main: another region picked on top of a component's pages.
+        internal Action<string>? PickRegionOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // The region CRT shows, from the switch under the component list: the component list here and
+        // what is open on the right follow. They read the region when something opened, so until
+        // 2026-11-01 they stayed on the old one - harmless with no switch of their own, and two switches
+        // saying different things with one.
+        // ###########################################################################################
+        internal void UseRegion(string? region)
+        {
+            this.thisCurrentRegion = region ?? string.Empty;
+            this.ComponentPane.UseRegion(this.thisCurrentRegion);
+            this.ShowComponents();
+            this.ShowNavSelection();
+        }
+
+        // The switch on top of a component's pages is the one under the component list: all of CRT shows
+        // the region picked.
+        private void PickRegion(string region)
+        {
+            this.UseRegion(region);
+
+            if (this.PickRegionOverrideForTests is { } pick)
+            {
+                pick(region);
+                return;
+            }
+
+            this.thisMainWindow?.PickRegion(region);
+        }
+
         // For tests, in place of Main: showing a component on the board (whether the board on screen
         // has to be read again first), and opening its popup on the draft's board.
         internal Action<string, bool>? ShowOnBoardOverrideForTests { get; set; }
@@ -541,15 +577,24 @@ namespace CRT
         // For tests, in place of reading a board's KiCad nets.
         internal Func<HardwareBoardEntry, Task<KiCadNetChoices>>? NetChoicesOverrideForTests { get; set; }
 
-        // For tests, in place of reading a board's KiCad view names.
+        // For tests, in place of reading a board's KiCad view names - and which of them are a side of
+        // the board (none given: not known).
         internal Func<HardwareBoardEntry, Task<IReadOnlyList<string>>>? KiCadViewsOverrideForTests { get; set; }
+
+        internal Func<HardwareBoardEntry, IReadOnlyCollection<string>>? KiCadBoardSidesOverrideForTests { get; set; }
+
+        internal Func<HardwareBoardEntry, IReadOnlyDictionary<string, int>>? KiCadViewComponentsOverrideForTests { get; set; }
+
+        internal Func<HardwareBoardEntry, IReadOnlyDictionary<string, KiCadViewFootprints>>? KiCadViewFootprintsOverrideForTests { get; set; }
 
         // ###########################################################################################
         // The board's KiCad view names for the Pictures part's "Shows KiCad view" (step 3 - the
         // "Schematic images" window's, moved inline): the project the Schematics tab draws, read off the
         // UI thread (ReadBoardKiCadAsync - KiCadProjectLoader keeps its parse), handed to the part it
         // was read for - `ask`, the pane's numbered ask, so an older read ending last is not taken.
-        // None for a board without KiCad data.
+        // None for a board without KiCad data. With them, which are a side of the board
+        // (BoardKiCadFacts.BoardViewsOf) - a card says what comes next on such
+        // a picture (2026-11-01).
         // ###########################################################################################
         private async Task LoadKiCadViewsAsync(int ask)
         {
@@ -558,19 +603,38 @@ namespace CRT
                 return;
             }
 
-            IReadOnlyList<string> views = this.KiCadViewsOverrideForTests is { } read
-                ? await read(entry)
-                : await TabDrafts.ReadBoardKiCadAsync(
+            IReadOnlyList<string> views;
+            IReadOnlyCollection<string>? boardSides;
+            IReadOnlyDictionary<string, int>? viewComponents;
+            IReadOnlyDictionary<string, KiCadViewFootprints>? viewFootprints;
+
+            if (this.KiCadViewsOverrideForTests is { } read)
+            {
+                views = await read(entry);
+                boardSides = this.KiCadBoardSidesOverrideForTests?.Invoke(entry);
+                viewComponents = this.KiCadViewComponentsOverrideForTests?.Invoke(entry);
+                viewFootprints = this.KiCadViewFootprintsOverrideForTests?.Invoke(entry);
+            }
+            else
+            {
+                KiCadProjectRoot? root = await TabDrafts.ReadBoardKiCadAsync(
                     DataManager.DataRoot,
                     DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
                     entry.ExcelDataFile,
-                    "its pictures' KiCad views") is { } root
-                    ? root.Project.Views.Select(view => view.DisplayName?.Trim() ?? string.Empty).Where(view => view.Length > 0).ToList()
-                    : [];
+                    "its pictures' KiCad views");
+
+                views = root is null
+                    ? []
+                    : root.Project.Views.Select(view => view.DisplayName?.Trim() ?? string.Empty).Where(view => view.Length > 0).ToList();
+                // Not read: not known - never "no side of the board", which would hide what a card offers.
+                boardSides = root is null ? null : BoardKiCadFacts.BoardViewsOf(root);
+                viewComponents = root is null ? null : await Task.Run(() => KiCadComponentTable.CountsByView(root));
+                viewFootprints = root is null ? null : await Task.Run(() => KiCadFootprintMarks.ViewFootprints(root));
+            }
 
             if (this.thisComponentEntry is { } open && TabDrafts.SameBoard(open, entry))
             {
-                this.ComponentPane.UseKiCadViews(views, ask);
+                this.ComponentPane.UseKiCadViews(views, ask, boardSides, viewComponents, viewFootprints);
             }
         }
 
@@ -607,6 +671,15 @@ namespace CRT
         // ###########################################################################################
         private async Task OpenPaneAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show)
         {
+            // What closes on the way hands the draft over - never lets it go (OpeningOn).
+            using (this.OpeningOn(entry))
+            {
+                await this.OpenPaneOnDraftAsync(entry, show);
+            }
+        }
+
+        private async Task OpenPaneOnDraftAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show)
+        {
             // A picture's name the Pictures part cannot take keeps it open, the reason under its
             // heading - another part or component in its place threw the name away (code review,
             // 2026-10-28). Another board shown still closes it: that cannot be called off.
@@ -619,6 +692,9 @@ namespace CRT
             {
                 return;
             }
+
+            // "KiCad data" makes way too, once what it writes has ended (TabDrafts.KiCad.cs).
+            await this.CloseKiCadAsync();
 
             DraftStatus? status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile, entry.IsPublished);
 
@@ -815,7 +891,9 @@ namespace CRT
             return await BusyOverlay.RunLocalAsync(this, CrtWaitWording.SavingDraft, this.ComponentPane.SaveNowAsync);
         }
 
-        // The pane's change: the left column reads the draft as it is now.
+        // The pane's change: the left column reads the draft as it is now - the component open still
+        // shown selected (code review, 2026-10-30: a name typed made its item again, and the list let go
+        // of its selection until the save a second later).
         private void OnComponentPaneChanged()
         {
             if (this.ComponentPane.Label.Length > 0)
@@ -825,6 +903,7 @@ namespace CRT
 
             this.ShowBoardParts();
             this.ShowComponents();
+            this.ShowNavSelection();
         }
 
         // ###########################################################################################

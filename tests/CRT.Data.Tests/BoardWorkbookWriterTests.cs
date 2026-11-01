@@ -1216,9 +1216,10 @@ public sealed class BoardWorkbookWriterTests : IDisposable
 
         int titleRow = BoardWorkbookStyle.HeaderRow - 1;
 
-        // Five highlight columns, C through G on this sheet's order.
+        // The highlight columns, C through J on this sheet's order: the reference's five, then the
+        // traces' colour and both sides' opacities (2026-10-30), all before the CAD name.
         Assert.Contains(
-            $"C{titleRow}:G{titleRow}",
+            $"C{titleRow}:J{titleRow}",
             sheet.MergedCells.Select(range => range ?? string.Empty));
     }
 

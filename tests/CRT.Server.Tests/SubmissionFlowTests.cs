@@ -124,7 +124,7 @@ namespace CRT.Server.Tests
                 Rows = new SubmissionRows
                 {
                     Schematics = { new BoardSchematicEntry { SchematicName = "Main", SchematicImageFile = SubmissionFlowTests.MainPath } },
-                    Components = { new ComponentEntry { BoardLabel = "R12" } }
+                    Components = { new ComponentEntry { Category = "IC", BoardLabel = "R12" } }
                 }
             };
         }
@@ -593,7 +593,8 @@ namespace CRT.Server.Tests
                 Sha256 = SubmissionFlowTests.HashOf("shared"),
                 SizeBytes = SubmissionFlowTests.Bytes("shared").Length
             });
-            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { File = "Shared files/74LS08.png" });
+            // With the category and name a board file needs since 2026-11-01 (BoardRowRequired).
+            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Resources", Name = "74LS08", File = "Shared files/74LS08.png" });
 
             SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
                 manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
@@ -860,7 +861,7 @@ namespace CRT.Server.Tests
             var store = new FakeSubmissionStore();
 
             SubmissionManifest manifest = SubmissionFlowTests.Manifest();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "R12" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "R12" });
 
             SubmissionCreationOutcome outcome = await SubmissionFlows.CreateAsync(
                 manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),

@@ -72,7 +72,7 @@ public sealed class TabSchematicsPictureToolsTests
 
             Assert.True(tab.IsLabelEditorModeForTests);
             Assert.Equal(Picture, tab.LabelEditorSchematicNameForTests);
-            Assert.Equal("Mark components on [Board top]", Text(tab, "PictureToolTitleText"));
+            Assert.Equal("Mark components manually on [Board top]", Text(tab, "PictureToolTitleText"));
             Assert.Equal(PictureToolWording.Help(PictureTool.MarkComponents), Text(tab, "PictureToolHelpText"));
             Assert.True(tab.GetControl<Button>("PictureToolDoneButton").IsVisible);
             Assert.Empty(ended);
@@ -163,7 +163,7 @@ public sealed class TabSchematicsPictureToolsTests
             tab.KiCadSettled(hasProject: false);
 
             Assert.False(tab.IsCalibrationModeForTests);
-            Assert.Equal("KiCad cannot be aligned on [Board top]", Text(tab, "PictureToolTitleText"));
+            Assert.Equal("KiCad data cannot be aligned on [Board top]", Text(tab, "PictureToolTitleText"));
             Assert.Equal(PictureToolWording.NoKiCadData, Text(tab, "PictureToolHelpText"));
             Assert.Empty(ended);
         });
@@ -311,7 +311,7 @@ public sealed class TabSchematicsPictureToolsTests
             tab.ImageSettledForTests("Bottom");
 
             Assert.True(tab.IsCalibrationModeForTests);
-            Assert.Equal("Align KiCad on [Bottom]", Text(tab, "PictureToolTitleText"));
+            Assert.Equal("Align KiCad data on [Bottom]", Text(tab, "PictureToolTitleText"));
 
             // The top is aligned and the layout has no view: nothing after the bottom.
             Assert.False(next.IsVisible);
@@ -354,7 +354,7 @@ public sealed class TabSchematicsPictureToolsTests
 
     // ###########################################################################################
     // A save that fails leaves calibration on, on THIS picture - nothing the user set up is lost, and
-    // the next picture is not gone on to.
+    // the next picture is not gone on to. Nor is it told as aligned: nothing is marked from it.
     // ###########################################################################################
     [Fact]
     public void A_failed_save_stays_on_this_picture()
@@ -366,15 +366,54 @@ public sealed class TabSchematicsPictureToolsTests
             tab.AlignedPicturesOverrideForTests = () => [];
             var asked = new List<string>();
             tab.AlignNextRequested += (_, picture) => asked.Add(picture);
+            var aligned = new List<string>();
+            tab.AlignedFromWorkspace += (_, picture) => aligned.Add(picture.Picture);
 
             Align(tab, "Top");
             Click(tab, "PictureToolDoneNextButton");
 
             Assert.True(tab.IsCalibrationModeForTests);
             Assert.Equal("Top", tab.GetCurrentSchematicName());
-            Assert.Equal("Align KiCad on [Top]", Text(tab, "PictureToolTitleText"));
+            Assert.Equal("Align KiCad data on [Top]", Text(tab, "PictureToolTitleText"));
             Assert.Empty(asked);
             Assert.Empty(ended);
+            Assert.Empty(aligned);
+        });
+    }
+
+    // ###########################################################################################
+    // *** EVERY PICTURE ALIGNED WITH DONE IS TOLD, BEFORE THE TOOL'S END (owner request, 2026-11-01:
+    // Done marks the components - Main marks each picture told once the tool hands back). *** With
+    // "Done - next picture" and with Done, each with its image file; Cancel tells nothing.
+    // ###########################################################################################
+    [Fact]
+    public void Each_picture_aligned_with_Done_is_told_before_the_tools_end()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, List<string> ended) = CreateAligningTab();
+            var saved = new List<string>();
+            tab.KiCadCalibrationSaveOverrideForTests = row =>
+            {
+                saved.Add(row.SchematicName);
+                return Task.FromResult<string?>(null);
+            };
+            tab.AlignedPicturesOverrideForTests = () => saved;
+            tab.AlignedFromWorkspace += (_, picture) => ended.Add($"aligned {picture.Picture} {picture.ImageFile}");
+
+            Align(tab, "Top");
+            Click(tab, "PictureToolDoneNextButton");
+            tab.ImageSettledForTests("Bottom");
+            Click(tab, "PictureToolDoneButton");
+
+            Assert.Equal(["aligned Top top.png", "aligned Bottom bottom.png", "ended"], ended);
+
+            // Aligned again and cancelled: nothing told but the end.
+            ended.Clear();
+            Align(tab, "Top");
+            Click(tab, "PictureToolCancelButton");
+
+            Assert.Equal(["ended"], ended);
         });
     }
 
@@ -420,6 +459,42 @@ public sealed class TabSchematicsPictureToolsTests
 
             Assert.Equal(["U1"], asked);
             Assert.False(tab.GetControl<Border>("SchematicsMenuBorder").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // "Back to Contribute" (owner request, 2026-10-29): the bar says what was shown from the
+    // Contribute tab and its button asks to go back. A picture tool's bar takes its place - the tool
+    // goes back by itself - and it comes back once the tool's bar goes.
+    // ###########################################################################################
+    [Fact]
+    public void Back_to_Contribute_says_what_was_shown_and_gives_way_to_a_tools_bar()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, _) = CreateTab();
+            int asked = 0;
+            tab.BackToContributeRequested += (_, _) => asked++;
+
+            Assert.False(tab.IsBackToContributeShownForTests);
+
+            tab.ShowBackToContribute(PictureToolWording.ComponentShown(" U1 "));
+            Assert.True(tab.IsBackToContributeShownForTests);
+            Assert.Equal("Showing [U1] from the \"Contribute\" tab", tab.BackToContributeTextForTests);
+            Assert.Equal(PictureToolWording.BackToContribute, tab.GetControl<Button>("BackToContributeButton").Content);
+
+            tab.PressBackToContributeForTests();
+            Assert.Equal(1, asked);
+
+            tab.StartPictureTool(PictureTool.MarkComponents, Picture);
+            Assert.True(BarShown(tab));
+            Assert.False(tab.IsBackToContributeShownForTests);
+
+            Click(tab, "PictureToolCancelButton");
+            Assert.True(tab.IsBackToContributeShownForTests);
+
+            tab.ShowBackToContribute(null);
+            Assert.False(tab.IsBackToContributeShownForTests);
         });
     }
 }

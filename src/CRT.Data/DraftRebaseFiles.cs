@@ -90,6 +90,7 @@ namespace Handlers.DataHandling
                 // Cite no file.
                 ComponentPins = based.ComponentPins,
                 ComponentReplacements = based.ComponentReplacements,
+                Regions = based.Regions,
             };
         }
 

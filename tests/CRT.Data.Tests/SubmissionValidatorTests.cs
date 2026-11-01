@@ -40,8 +40,8 @@ namespace CRT.Data.Tests
                     },
                     Components =
                     {
-                        new ComponentEntry { BoardLabel = "U8" },
-                        new ComponentEntry { BoardLabel = "R12" }
+                        new ComponentEntry { Category = "IC", BoardLabel = "U8" },
+                        new ComponentEntry { Category = "IC", BoardLabel = "R12" }
                     },
                     ComponentHighlights =
                     {
@@ -96,7 +96,7 @@ namespace CRT.Data.Tests
         public void A_single_ERROR_stops_a_submission_being_queued()
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8" });
 
             Assert.False(SubmissionValidator.CanBeQueued(SubmissionValidatorTests.Validate(manifest)));
         }
@@ -106,7 +106,7 @@ namespace CRT.Data.Tests
         {
             // A contributor with 400 components cannot act on "a highlight is invalid".
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8" });
             manifest.Rows.ComponentHighlights.Add(new ComponentHighlightEntry
             {
                 SchematicName = "Nonexistent", BoardLabel = "R12",
@@ -191,6 +191,19 @@ namespace CRT.Data.Tests
                 finding => finding.Code == "file.unreferenced");
         }
 
+        // The server's own way in: a submission naming a region that is none cannot be queued.
+        [Fact]
+        public void A_region_that_is_neither_PAL_nor_NTSC_is_an_error()
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Rows.Regions = ["x"];
+
+            IReadOnlyList<ValidationFinding> findings = SubmissionValidatorTests.Validate(manifest);
+
+            Assert.Contains(findings, finding => finding.Code == "regions.unknown");
+            Assert.False(SubmissionValidator.CanBeQueued(findings));
+        }
+
         // -----------------------------------------------------------------------------------
         // Duplicates.
         // -----------------------------------------------------------------------------------
@@ -201,7 +214,7 @@ namespace CRT.Data.Tests
             // The board label is the component's natural key, so a duplicate makes row pairing
             // ambiguous and the server cannot diff reliably.
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8" });
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -213,7 +226,7 @@ namespace CRT.Data.Tests
         {
             // "U8" and "u8" are the same component to every human who will read this.
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "u8" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "u8" });
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -311,8 +324,8 @@ namespace CRT.Data.Tests
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
 
             manifest.Rows.Components.Clear();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "PAL" });
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "NTSC" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "PAL" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "NTSC" });
 
             Assert.DoesNotContain(
                 SubmissionValidatorTests.Validate(manifest),
@@ -328,8 +341,8 @@ namespace CRT.Data.Tests
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
 
             manifest.Rows.Components.Clear();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "PAL" });
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "PAL" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "PAL" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "PAL" });
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -344,8 +357,8 @@ namespace CRT.Data.Tests
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
 
             manifest.Rows.Components.Clear();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70" });
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "   " });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "   " });
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -360,8 +373,8 @@ namespace CRT.Data.Tests
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
 
             manifest.Rows.Components.Clear();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "PAL" });
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "C70", Region = "pal" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "PAL" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "C70", Region = "pal" });
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -372,7 +385,7 @@ namespace CRT.Data.Tests
         public void A_component_with_no_board_label_is_an_error()
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "   " });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "   " });
 
             Assert.Contains(
                 SubmissionValidatorTests.Validate(manifest),
@@ -586,7 +599,7 @@ namespace CRT.Data.Tests
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
 
             for (int index = 0; index < SubmissionValidator.ImplausibleComponentCount + 1; index++)
-                manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = $"X{index}" });
+                manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = $"X{index}" });
 
             ValidationFinding finding = Assert.Single(
                 SubmissionValidatorTests.Validate(manifest),
@@ -634,7 +647,7 @@ namespace CRT.Data.Tests
             // loop over a potentially large upload.
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
             manifest.Summary = string.Empty;
-            manifest.Rows.Components.Add(new ComponentEntry { BoardLabel = "U8" });
+            manifest.Rows.Components.Add(new ComponentEntry { Category = "IC", BoardLabel = "U8" });
             manifest.Rows.ComponentHighlights.Add(new ComponentHighlightEntry
             {
                 SchematicName = "Ghost", BoardLabel = "R12",
