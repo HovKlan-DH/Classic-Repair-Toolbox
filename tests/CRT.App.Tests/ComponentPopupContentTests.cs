@@ -55,14 +55,14 @@ public sealed class ComponentPopupContentTests
             ComponentPopupContent.PinsOf(pins, "U8", "PAL", nets));
     }
 
-    // "8500 - Drop-in" on the first line, what to change and where it comes from under it.
+    // "8500 - Drop-in" on the first line, its note under it.
     [Fact]
-    public void A_replacement_part_reads_part_number_and_kind_then_changes_and_source()
+    public void A_replacement_part_reads_part_number_and_kind_then_its_note()
     {
         ComponentReplacementEntry[] parts =
         [
-            new() { BoardLabel = "U8", PartNumber = "8500", Kind = "Drop-in", Source = "Service manual" },
-            new() { BoardLabel = "U8", PartNumber = "6502", Kind = "Needs changes", Changes = "Add a 6522 for the port" },
+            new() { BoardLabel = "U8", PartNumber = "8500", Kind = "Drop-in" },
+            new() { BoardLabel = "U8", PartNumber = "6502", Kind = "Needs changes", Note = "Add a 6522 for the port" },
             new() { BoardLabel = "U8", Kind = "Needs changes" },
             new() { BoardLabel = "U8", Region = "NTSC", PartNumber = "NTSC part" },
             new() { BoardLabel = "U8" },
@@ -71,22 +71,83 @@ public sealed class ComponentPopupContentTests
         List<ComponentPopupReplacement> shown = ComponentPopupContent.ReplacementsOf(parts, "U8", "PAL");
 
         Assert.Equal(3, shown.Count);
-        Assert.Equal(new ComponentPopupReplacement("8500 - Drop-in", string.Empty, "Comes from: Service manual"), shown[0]);
-        Assert.True(shown[0].HasSource);
-        Assert.False(shown[0].HasChanges);
+        Assert.Equal(new ComponentPopupReplacement("8500 - Drop-in", string.Empty), shown[0]);
+        Assert.False(shown[0].HasNote);
         Assert.Equal("6502 - Needs changes", shown[1].Title);
-        Assert.Equal("Add a 6522 for the port", shown[1].Changes);
+        Assert.Equal("Add a 6522 for the port", shown[1].Note);
+        Assert.True(shown[1].HasNote);
         Assert.Equal("Needs changes", shown[2].Title);
     }
 
     [Fact]
-    public void A_baselines_conditions_name_its_machine_state_and_where_it_comes_from()
+    public void A_baselines_conditions_name_its_machine_state()
     {
         Assert.Equal(
-            "Machine state: Running BASIC\nComes from: Known-good board",
-            ComponentPopupContent.BaselineConditions(new ComponentImageEntry { MachineState = " Running BASIC ", Source = "Known-good board" }));
-        Assert.Equal("Comes from: Datasheet", ComponentPopupContent.BaselineConditions(new ComponentImageEntry { Source = "Datasheet" }));
+            "Machine state: Running BASIC",
+            ComponentPopupContent.BaselineConditions(new ComponentImageEntry { MachineState = " Running BASIC " }));
         Assert.Null(ComponentPopupContent.BaselineConditions(new ComponentImageEntry { Pin = "1", TimeDiv = "1ms" }));
         Assert.Null(ComponentPopupContent.BaselineConditions(null));
+    }
+
+    // A pin clicked goes to its first image - "2 [64K]" is pin 2, as the checks read it (owner request,
+    // 2026-11-01: "go to that pin and see what images are available for that pin").
+    [Theory]
+    [InlineData("2", 1)]
+    [InlineData(" 2 ", 1)]
+    [InlineData("7", 3)]
+    [InlineData("A1", 4)]
+    [InlineData("a1", 4)]
+    [InlineData("9", -1)]
+    [InlineData("", -1)]
+    [InlineData(null, -1)]
+    public void A_pin_finds_its_first_image(string? pin, int index)
+    {
+        string[] imagePins = ["1", "2 [64K]", "2", "7", "A1", ""];
+
+        Assert.Equal(index, ComponentPopupContent.FirstImageOfPin(imagePins, pin));
+    }
+
+    [Fact]
+    public void A_pin_with_no_image_says_so()
+    {
+        Assert.Equal("No image of pin 9", ComponentPopupContent.NoImageOfPin(" 9 "));
+    }
+
+    // ###########################################################################################
+    // The pin of the image shown says so on its row (owner request, 2026-11-02: "if I am viewing a
+    // specific pin, then do highlight it") - by its number, as "2 [64K]" is pin 2.
+    // ###########################################################################################
+    [Fact]
+    public void The_row_of_the_pin_shown_says_so()
+    {
+        ComponentPinEntry[] pins = [new() { BoardLabel = "U8", Pin = "1", Name = "VCC" }, new() { BoardLabel = "U8", Pin = "2", Name = "CLK" }];
+
+        Assert.Equal([false, true], ComponentPopupContent.PinsOf(pins, "U8", "PAL", viewedPin: "2 [64K]").Select(pin => pin.IsViewed));
+        Assert.Equal([false, false], ComponentPopupContent.PinsOf(pins, "U8", "PAL", viewedPin: null).Select(pin => pin.IsViewed));
+        Assert.Equal([false, false], ComponentPopupContent.PinsOf(pins, "U8", "PAL", viewedPin: "9").Select(pin => pin.IsViewed));
+    }
+
+    // A file or a link of one region shows in that region alone, one for every region in each.
+    [Fact]
+    public void The_files_and_links_are_the_components_in_the_region_shown()
+    {
+        ComponentLocalFileEntry[] files =
+        [
+            new() { BoardLabel = "U8", Name = "All", File = "a.pdf" },
+            new() { BoardLabel = "u8", Name = "PAL", File = "b.pdf", Region = "PAL" },
+            new() { BoardLabel = "U8", Name = "NTSC", File = "c.pdf", Region = "NTSC" },
+            new() { BoardLabel = "U9", Name = "Other", File = "d.pdf" },
+        ];
+
+        ComponentLinkEntry[] links =
+        [
+            new() { BoardLabel = "U8", Name = "All", Url = "https://example.org/a" },
+            new() { BoardLabel = "U8", Name = "NTSC", Url = "https://example.org/b", Region = "NTSC" },
+        ];
+
+        Assert.Equal(["All", "PAL"], ComponentPopupContent.FilesOf(files, "U8", "PAL").Select(row => row.Name));
+        Assert.Equal(["All", "NTSC"], ComponentPopupContent.FilesOf(files, "U8", "NTSC").Select(row => row.Name));
+        Assert.Equal(["All"], ComponentPopupContent.LinksOf(links, "U8", "PAL").Select(row => row.Name));
+        Assert.Equal(["All", "NTSC"], ComponentPopupContent.LinksOf(links, "U8", "NTSC").Select(row => row.Name));
     }
 }

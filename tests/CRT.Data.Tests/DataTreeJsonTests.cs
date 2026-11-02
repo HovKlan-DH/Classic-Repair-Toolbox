@@ -125,25 +125,21 @@ public sealed class DataTreeJsonTests
     // them.
     // ###########################################################################################
     [Fact]
-    public void A_component_or_baseline_writes_a_package_notes_state_or_source_only_when_it_has_one()
+    public void A_component_or_baseline_writes_a_package_or_state_only_when_it_has_one()
     {
         string plain = DataTreeJson.Write(Board());
 
-        foreach (string field in new[] { "package", "repairNotes", "machineState", "source" })
+        foreach (string field in new[] { "package", "machineState" })
             Assert.DoesNotContain($"\"{field}\":", plain, StringComparison.Ordinal);
 
         BoardDocument board = Board();
         board.Components[0].Package = "DIP-40";
-        board.Components[0].RepairNotes = "Socket it.\nSee https://example.org";
         board.ScopeBaselines[0].MachineState = "READY prompt";
-        board.ScopeBaselines[0].Source = "Known-good board";
 
         BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
 
         Assert.Equal("DIP-40", read.Components[0].Package);
-        Assert.Equal("Socket it.\nSee https://example.org", read.Components[0].RepairNotes);
         Assert.Equal("READY prompt", read.ScopeBaselines[0].MachineState);
-        Assert.Equal("Known-good board", read.ScopeBaselines[0].Source);
     }
 
     // ###########################################################################################
@@ -181,7 +177,7 @@ public sealed class DataTreeJsonTests
     {
         BoardDocument board = Board();
         board.ComponentPins.Add(new BoardDocument.ComponentPinRow { BoardLabel = "U1", Pin = "40", Name = "VCC", Direction = "Power" });
-        board.ComponentReplacements.Add(new BoardDocument.ComponentReplacementRow { BoardLabel = "U1", PartNumber = "8500", Kind = "Drop-in", Source = "Datasheet" });
+        board.ComponentReplacements.Add(new BoardDocument.ComponentReplacementRow { BoardLabel = "U1", PartNumber = "8500", Kind = "Drop-in", Note = "Datasheet" });
 
         BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
 
@@ -283,5 +279,23 @@ public sealed class DataTreeJsonTests
 
         Assert.Equal(1, board.RootElement.GetProperty("formatVersion").GetInt32());
         Assert.Equal(JsonValueKind.Array, main.RootElement.GetProperty("oscilloscopes").ValueKind);
+    }
+
+    // ###########################################################################################
+    // A file's and a link's region (owner request, 2026-11-02) is written only when filled: every
+    // board that has none keeps its rows line for line, and an older reader skips the field.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_or_a_link_writes_its_region_only_when_it_has_one()
+    {
+        BoardDocument board = Board();
+        Assert.DoesNotContain("\"region\":\"PAL\"", DataTreeJson.Write(board).Replace(" ", string.Empty), StringComparison.Ordinal);
+
+        board.ComponentFiles[0].Region = "PAL";
+
+        BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
+
+        Assert.Equal("PAL", read.ComponentFiles[0].Region);
+        Assert.Contains("\"region\":\"PAL\"", DataTreeJson.Write(board).Replace(" ", string.Empty), StringComparison.Ordinal);
     }
 }

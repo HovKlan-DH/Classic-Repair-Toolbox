@@ -17,7 +17,8 @@ namespace Handlers.DataHandling
     // the word its components carry, so renaming and deleting are changes of those components' rows,
     // and one nothing uses is the page's to hold (ComponentPane.RegionsAndCategories.cs) until something does.
     // Rows stay where they stand - only the word changes (ComponentPlacement's "an edited one stays
-    // put"), so no order changes with it.
+    // put"), so no order changes with it. The order of the categories IS which is seen first in the rows,
+    // so moving one moves its components' rows (InOrder).
     //
     // PURE: takes a board, returns a board, touches no files. The same board when nothing changes.
     // ###########################################################################################
@@ -96,6 +97,42 @@ namespace Handlers.DataHandling
                 .ToList();
 
             return changed ? board.WithComponentSections(components: components) : board;
+        }
+
+        // ###########################################################################################
+        // The categories in the order `names` gives (owner request, 2026-11-01: "rearrange the category
+        // up/down"): each category's rows standing together, in the order they had among themselves. The
+        // components with no category stay first, as Of lists them, and a category `names` does not say
+        // comes last. The same board when the categories already read in that order - rows of a category
+        // standing apart are moved only by a change of order.
+        // ###########################################################################################
+        public static BoardData InOrder(BoardData board, IReadOnlyList<string> names)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+            ArgumentNullException.ThrowIfNull(names);
+
+            var rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string name in names)
+            {
+                rank.TryAdd(name?.Trim() ?? string.Empty, rank.Count);
+            }
+
+            int RankOf(string? category)
+            {
+                string word = category?.Trim() ?? string.Empty;
+
+                return word.Length == 0 ? -1 : rank.TryGetValue(word, out int at) ? at : int.MaxValue;
+            }
+
+            List<int> before = BoardCategoryEdits.Of(board).Select(row => RankOf(row.Name)).ToList();
+
+            if (before.SequenceEqual(before.OrderBy(at => at)))
+            {
+                return board;
+            }
+
+            return board.WithComponentSections(components: board.Components.OrderBy(row => RankOf(row.Category)).ToList());
         }
 
         // ###########################################################################################

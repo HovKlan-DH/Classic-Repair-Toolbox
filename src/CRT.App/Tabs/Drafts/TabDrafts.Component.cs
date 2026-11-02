@@ -30,7 +30,7 @@ namespace CRT
         private HardwareBoardEntry? thisComponentEntry;
 
         // ###########################################################################################
-        // What the pane changed, per label - "Changed" in the left column follows the pane at once,
+        // What the pane changed, per label - "Draft" in the left column follows the pane at once,
         // while the board on screen (where the marks come from) catches up later. Forgotten whenever
         // Main shows the board again: its marks are then up to date.
         // ###########################################################################################
@@ -357,7 +357,7 @@ namespace CRT
         private static async Task<string?> CopyPartsToAsync(ComponentCopySource target, ComponentCopySource source, IReadOnlyList<ComponentCopyPart> parts, string fromName)
         {
             string label = target.Row.BoardLabel;
-            string region = target.Row.Region ?? string.Empty;
+            string region = target.RowsRegion;
             bool changesSomething = false;
 
             DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
@@ -572,6 +572,12 @@ namespace CRT
                     {
                         this.RunGuarded(() => this.LoadNetChoicesAsync(entry), "Reading the KiCad nets");
                     }
+
+                    // A new board's credits start with their rows - the pane reads them back.
+                    if (part == PaneBoardPart.Credits)
+                    {
+                        this.OfferNewBoardCredits(entry, session);
+                    }
                 }));
 
         // For tests, in place of reading a board's KiCad nets.
@@ -588,7 +594,7 @@ namespace CRT
         internal Func<HardwareBoardEntry, IReadOnlyDictionary<string, KiCadViewFootprints>>? KiCadViewFootprintsOverrideForTests { get; set; }
 
         // ###########################################################################################
-        // The board's KiCad view names for the Pictures part's "Shows KiCad view" (step 3 - the
+        // The board's KiCad view names for the Pictures part's "Associate KiCad file" (step 3 - the
         // "Schematic images" window's, moved inline): the project the Schematics tab draws, read off the
         // UI thread (ReadBoardKiCadAsync - KiCadProjectLoader keeps its parse), handed to the part it
         // was read for - `ask`, the pane's numbered ask, so an older read ending last is not taken.
@@ -929,12 +935,16 @@ namespace CRT
             }
         }
 
+        // ###########################################################################################
         // The board the left column shows: the draft as the pane or the table left it, when one is open
-        // on the board shown - else the board Main showed.
+        // on the board shown - else the board Main showed. A new board IS its draft, so that goes by what
+        // is held in memory whatever is open: its credits' rows offered before Submit, with nothing open,
+        // were not counted until the board was next read (code review, 2026-11-02).
+        // ###########################################################################################
         private BoardData? BoardForList()
         {
             if (this.thisCurrentEntry is { } entry &&
-                (this.IsComponentOpenFor(entry) || this.IsTableOpenFor(entry)) &&
+                (entry.IsDraftOnly || this.IsComponentOpenFor(entry) || this.IsTableOpenFor(entry)) &&
                 DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile) is { } session)
             {
                 return session.Content.Board;

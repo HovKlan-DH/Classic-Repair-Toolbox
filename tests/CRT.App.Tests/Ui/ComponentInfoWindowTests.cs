@@ -1,4 +1,5 @@
 ﻿using Avalonia.Controls;
+using Avalonia.Input;
 using CRT;
 using Handlers.DataHandling;
 
@@ -307,9 +308,9 @@ public class ComponentInfoWindowTests : IDisposable
     // CRT 4.0's new component data (step 2, slice 3c)
     // -----------------------------------------------------------------------------------------
 
-    // The package joins the category line; the repair notes get a section of their own.
+    // The package joins the category line.
     [Fact]
-    public void The_package_joins_the_category_line_and_the_repair_notes_are_shown()
+    public void The_package_joins_the_category_line()
     {
         UiTest.Run(() =>
         {
@@ -317,16 +318,10 @@ public class ComponentInfoWindowTests : IDisposable
 
             SetComponent(window, new[]
             {
-                new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", PartNumber = "906114-01", Package = "DIP-28", RepairNotes = "Runs hot. See https://example.org/pla" },
+                new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", PartNumber = "906114-01", Package = "DIP-28" },
             });
 
             Assert.Equal("IC | 906114-01 | DIP-28", TextOf(window, "InfoCategoryPartNumber"));
-            Assert.True(ControlOf<Control>(window, "RepairNotesSection").IsVisible);
-
-            // Links in them are runs of their own, so the TextBlock's Text is empty (CLAUDE.md).
-            TextBlock notes = ControlOf<TextBlock>(window, "InfoRepairNotes");
-            string shown = string.Concat(notes.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text));
-            Assert.Contains("Runs hot.", shown, StringComparison.Ordinal);
         });
     }
 
@@ -339,7 +334,6 @@ public class ComponentInfoWindowTests : IDisposable
 
             SetComponent(window, new[] { Component() });
 
-            Assert.False(ControlOf<Control>(window, "RepairNotesSection").IsVisible);
             Assert.False(ControlOf<Control>(window, "PinoutSection").IsVisible);
             Assert.False(ControlOf<Control>(window, "ReplacementsSection").IsVisible);
             Assert.False(ControlOf<Control>(window, "BaselineConditionsSection").IsVisible);
@@ -374,8 +368,9 @@ public class ComponentInfoWindowTests : IDisposable
 
             Assert.Equal(["1", "2"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Select(pin => pin.Pin));
 
-            // Without the board's KiCad data there are no nets, and no headings for them.
-            Assert.False(ControlOf<Control>(window, "InfoPinsHeading").IsVisible);
+            // Without the board's KiCad data there are no nets, and no heading for them.
+            Assert.True(ControlOf<Control>(window, "InfoPinsHeading").IsVisible);
+            Assert.False(ControlOf<Control>(window, "InfoPinsNetHeading").IsVisible);
         });
     }
 
@@ -400,7 +395,7 @@ public class ComponentInfoWindowTests : IDisposable
                 ],
                 pinNets: new Dictionary<string, string> { ["1"] = "+5V" });
 
-            Assert.True(ControlOf<Control>(window, "InfoPinsHeading").IsVisible);
+            Assert.True(ControlOf<Control>(window, "InfoPinsNetHeading").IsVisible);
             Assert.Equal(
                 [new ComponentPopupPin("1", "VCC", "Power", "+5V"), new ComponentPopupPin("2", "PHI2", "Input", "")],
                 ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl"));
@@ -448,6 +443,45 @@ public class ComponentInfoWindowTests : IDisposable
             Assert.True(ControlOf<Control>(window, "BaselineConditionsSection").IsVisible);
             Assert.True(ControlOf<Control>(window, "InfoMeasuringNotesLabel").IsVisible);
             Assert.Equal(["Introduction"], ItemsOf<ComponentLocalFileItem>(window, "InfoMeasuringNotesItemsControl").Select(note => note.Name));
+        });
+    }
+
+    // A note of one region is linked only under that region's baselines (code review, 2026-11-02) - the
+    // popup's own PAL/NTSC switch moves it, as it moves the component's files.
+    [Fact]
+    public async Task A_scope_measurement_file_of_the_other_region_is_not_linked()
+    {
+        string root = this.thisWorkspace.Path_("Data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Scope baseline"));
+        File.WriteAllBytes(Path.Combine(root, "Scope baseline", "U8_1.png"), Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="));
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = CreateWindow();
+
+            window.SetComponent(
+                BoardLabel,
+                "U8",
+                [Component()],
+                [new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "1", Name = "PHI2", File = "Scope baseline/U8_1.png", TimeDiv = "1us" }],
+                [],
+                [],
+                "PAL",
+                root,
+                hasExplicitRegionComponents: true,
+                boardFiles:
+                [
+                    new BoardLocalFileEntry { Category = "Scope measurements", Name = "Every region", File = "Scope baseline/every.txt" },
+                    new BoardLocalFileEntry { Category = "Scope measurements", Name = "NTSC's", File = "Scope baseline/ntsc.txt", Region = "NTSC" },
+                ]);
+
+            for (int attempt = 0; attempt < 100 && ItemsOf<ComponentImageItem>(window, "ThumbnailList").Count == 0; attempt++)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(["Every region"], ItemsOf<ComponentLocalFileItem>(window, "InfoMeasuringNotesItemsControl").Select(note => note.Name));
         });
     }
 
@@ -906,6 +940,127 @@ public class ComponentInfoWindowTests : IDisposable
             window.ClearTemporaryCapturedOscilloscopeImageForTests();
 
             Assert.Same(unrelated, window.MainComponentImageSourceForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // A pin clicked goes to its images (owner request, 2026-11-01: "so the user quickly can go to that pin
+    // and see what images are available for that pin") - the first of them selected, the pin flashed over
+    // it; one with none says so and leaves the image shown where it is.
+    // ###########################################################################################
+    [Fact]
+    public void A_pin_goes_to_its_first_image_or_says_it_has_none()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            SetComponent(window, new[] { Component() });
+
+            ListBox thumbnails = ControlOf<ListBox>(window, "ThumbnailList");
+            thumbnails.ItemsSource = new List<ComponentImageItem> { new() { Pin = "1" }, new() { Pin = "7" }, new() { Pin = "7" }, new() { Pin = "9" } };
+
+            window.GoToPin("7");
+
+            Assert.Equal(1, thumbnails.SelectedIndex);
+            Assert.True(ControlOf<Border>(window, "PinFlashBorder").IsVisible);
+            Assert.Equal("7", ControlOf<TextBlock>(window, "PinFlashText").Text);
+
+            window.GoToPin("3");
+
+            Assert.Equal(1, thumbnails.SelectedIndex);
+            Assert.Equal(ComponentPopupContent.NoImageOfPin("3"), ControlOf<TextBlock>(window, "PinFlashText").Text);
+        });
+    }
+
+    // ###########################################################################################
+    // A pin typed goes where the same pin clicked goes (code review, 2026-11-02): "2 [64K]" is pin 2 to
+    // the drawing and the list, and typing 2 flashed "Not found", comparing the text exactly.
+    // ###########################################################################################
+    [Fact]
+    public void A_pin_typed_finds_the_image_a_click_on_that_pin_finds()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            SetComponent(window, new[] { Component() });
+
+            ListBox thumbnails = ControlOf<ListBox>(window, "ThumbnailList");
+            thumbnails.ItemsSource = new List<ComponentImageItem> { new() { Pin = "1" }, new() { Pin = "2 [64K]" }, new() { Pin = "A3" } };
+
+            window.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.D2 });
+
+            Assert.Equal(1, thumbnails.SelectedIndex);
+            Assert.Equal("2", ControlOf<TextBlock>(window, "PinFlashText").Text);
+        });
+    }
+
+    // Beside the drawing while there is room, so both are seen at once; under it when the popup is narrow.
+    [Fact]
+    public void The_pin_list_stands_beside_the_drawing_and_under_it_in_a_narrow_popup()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                pins: [new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" }]);
+
+            Control list = ControlOf<Control>(window, "InfoPinsPanel");
+            Grid grid = ControlOf<Grid>(window, "PinoutGrid");
+
+            grid.RaiseEvent(new SizeChangedEventArgs(Control.SizeChangedEvent, grid, new Avalonia.Size(0, 0), new Avalonia.Size(600, 200)));
+
+            Assert.Equal((1, 0), (Grid.GetColumn(list), Grid.GetRow(list)));
+
+            grid.RaiseEvent(new SizeChangedEventArgs(Control.SizeChangedEvent, grid, new Avalonia.Size(600, 200), new Avalonia.Size(300, 200)));
+
+            Assert.Equal((0, 1), (Grid.GetColumn(list), Grid.GetRow(list)));
+            Assert.Equal(2, Grid.GetColumnSpan(list));
+        });
+    }
+
+    // ###########################################################################################
+    // A file or a link of one region shows in that region only, and follows the popup's own switch
+    // (owner request, 2026-11-02).
+    // ###########################################################################################
+    [Fact]
+    public void The_files_and_links_follow_the_region_buttons()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component() },
+                localFiles: [new ComponentLocalFileEntry { BoardLabel = BoardLabel, Name = "PAL note", File = "a.pdf", Region = "PAL" }],
+                links: [new ComponentLinkEntry { BoardLabel = BoardLabel, Name = "NTSC page", Url = "https://example.org", Region = "NTSC" }],
+                region: "PAL",
+                hasExplicitRegionComponents: true);
+
+            Assert.True(ControlOf<Control>(window, "LocalFilesSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "LinksSection").IsVisible);
+
+            ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.False(ControlOf<Control>(window, "LocalFilesSection").IsVisible);
+            Assert.True(ControlOf<Control>(window, "LinksSection").IsVisible);
+        });
+    }
+
+    // The headings say "Net name", in bold (owner request, 2026-11-02).
+    [Fact]
+    public void The_pin_headings_are_bold_and_the_net_heading_says_net_name()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            TextBlock net = ControlOf<TextBlock>(window, "InfoPinsNetHeading");
+
+            Assert.Equal("Net name", net.Text);
+            Assert.Equal(Avalonia.Media.FontWeight.Bold, net.FontWeight);
         });
     }
 }

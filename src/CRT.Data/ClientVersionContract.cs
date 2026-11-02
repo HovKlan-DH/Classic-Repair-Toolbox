@@ -71,6 +71,12 @@ namespace Handlers.DataHandling
         // A 3.x CRT's paths would be read as names and published as such, so the server tells it to
         // update (ClientVersionPolicy) - the owner's decision for 3.x once 4.0 is out (2026-10-24: no
         // more 3.x updates, and 3.x told to update on Submit and the Maintainer tab). Server 4.0.0.
+        //
+        // STILL 2 AFTER 2026-11-01 (owner decision: "no one (other than me) has ever connected to API version
+        // 2, so keep it on 2 for now"): a replacement part's `changes` and `source` became one `note`, and a
+        // scope baseline's or a component picture's `source` went, and api-revision-2.txt was brought in line
+        // rather than the number raised. Server 8.0.0. The same on 2026-11-02, by the same decision: a
+        // component's `repairNotes` went. Server 9.0.0.
         // ###########################################################################################
         public const int ApiRevision = 2;
 

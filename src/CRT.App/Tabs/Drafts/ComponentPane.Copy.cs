@@ -14,7 +14,7 @@ namespace CRT
     //
     // The same chip on another board of this machine - found by its PART NUMBER (ComponentCopy, the
     // host's FindOnOtherBoards reading the published boards) - lends this component what was worked out
-    // there: its package, short description and repair notes, its pins, replacement parts and links.
+    // there: its package and short description, its pins, replacement parts and links.
     // A panel above the sections picks the board and what to copy (each ticked when it has something);
     // "Copy" puts it into the draft as ONE step, so Undo takes it back. Files and anything the board
     // decides itself (label, category, highlights, scope baselines) are never copied.
@@ -205,7 +205,7 @@ namespace CRT
         private void ShowAlsoOffer()
         {
             this.AlsoOnOtherBoardsButton.IsVisible =
-                !this.thisIsNew && this.thisBoardPart is null && this.IsComponentChanged &&
+                !this.thisIsNew && this.thisBoardPart is null && this.HoldsWorkOfItsOwn &&
                 ((this.thisShownValues.TryGetValue(ComponentField.PartNumber, out string? partNumber) && partNumber.Length > 0) ||
                  this.ChangedFilesHere().Count > 0);
         }
@@ -275,7 +275,7 @@ namespace CRT
 
             if (targets.Count > 0)
             {
-                ComponentCopySource here = new(string.Empty, session.Content.Board, ComponentPaneEdits.RowShown(session.Content.Board, this.thisLabel, this.thisRegion)!);
+                ComponentCopySource here = new(string.Empty, session.Content.Board, ComponentPaneEdits.RowShown(session.Content.Board, this.thisLabel, this.thisRegion)!, RegionShown: this.thisRegion);
 
                 this.AlsoIntroText.Text = ComponentPaneWording.AlsoIntro(partNumber);
 
@@ -347,7 +347,7 @@ namespace CRT
                 return;
             }
 
-            string said = await apply(new ComponentCopySource(string.Empty, session.Content.Board, row), targets, parts, files);
+            string said = await apply(new ComponentCopySource(string.Empty, session.Content.Board, row, RegionShown: this.thisRegion), targets, parts, files);
             this.ShowMessage(said);
         }
 

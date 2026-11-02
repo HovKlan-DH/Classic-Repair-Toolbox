@@ -170,6 +170,9 @@ public sealed class TabDraftsBoardNameTests : IDisposable
 
             await tab.BoardNamePanelForTests.SaveAsync();
 
+            // Refused, the page says why - which is what is wanted when this fails.
+            Assert.True(told.Count == 1, $"The rename was refused: [{tab.BoardNamePanelForTests.GetControl<TextBlock>("ValidationText").Text}]");
+
             (HardwareBoardEntry from, NewBoardRegistration renamed) = Assert.Single(told);
             Assert.Same(entry, from);
             Assert.Equal("Commodore/Commodore 64/999001/board.json", renamed.ExcelDataFile);

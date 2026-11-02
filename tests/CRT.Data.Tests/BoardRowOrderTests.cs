@@ -16,6 +16,85 @@ public sealed class BoardRowOrderTests
         Components = [new ComponentEntry { BoardLabel = "U1" }, new ComponentEntry { BoardLabel = "U2" }],
     };
 
+    // ###########################################################################################
+    // A component's OWN rows in another order are a change of that component (code review, 2026-11-02:
+    // U8's links dragged read as unchanged in the pane). Compared among themselves, so a component only
+    // moved past another is none - and capitals aside, an added or a removed row moves nothing.
+    // ###########################################################################################
+    [Fact]
+    public void The_components_with_their_own_rows_in_another_order_are_named()
+    {
+        ComponentLinkEntry First(string label) => new() { BoardLabel = label, Name = "First", Url = "https://example.org/1" };
+        ComponentLinkEntry Second(string label) => new() { BoardLabel = label, Name = "Second", Url = "https://example.org/2" };
+
+        BoardData published = Board();
+        published.ComponentLinks.AddRange([First("U1"), Second("U1"), First("U2"), Second("U2")]);
+
+        BoardData draft = Board();
+        draft.ComponentLinks.AddRange([First("U2"), Second("U2"), Second("u1 "), First("u1 ")]);
+
+        Assert.Equal(["u1"], BoardRowOrder.ComponentsReordered(published, draft));
+
+        BoardData moved = Board();
+        moved.ComponentLinks.AddRange([First("U2"), Second("U2"), First("U1"), Second("U1")]);
+
+        Assert.Empty(BoardRowOrder.ComponentsReordered(published, moved));
+        Assert.Equal([BoardWorkbookSchema.SheetComponentLinks], BoardRowOrder.ReorderedSheets(published, moved));
+    }
+
+    // One component's answer is the board's answer for it - whichever list moved, in any capitals.
+    [Fact]
+    public void One_component_is_answered_as_the_whole_board_answers_for_it()
+    {
+        static ComponentLinkEntry First(string label) => new() { BoardLabel = label, Name = "One" };
+        static ComponentLinkEntry Second(string label) => new() { BoardLabel = label, Name = "Two" };
+
+        BoardData published = Board();
+        published.ComponentLinks.AddRange([First("U1"), Second("U1"), First("U2"), Second("U2")]);
+
+        BoardData draft = Board();
+        draft.ComponentLinks.AddRange([First("U2"), Second("U2"), Second("u1 "), First("u1 ")]);
+
+        Assert.True(BoardRowOrder.ComponentReordered(published, draft, "U1"));
+        Assert.True(BoardRowOrder.ComponentReordered(published, draft, " u1 "));
+
+        // Only moved past U1, its own rows in their order.
+        Assert.False(BoardRowOrder.ComponentReordered(published, draft, "U2"));
+        Assert.False(BoardRowOrder.ComponentReordered(published, draft, "U9"));
+        Assert.False(BoardRowOrder.ComponentReordered(published, draft, "  "));
+        Assert.False(BoardRowOrder.ComponentReordered(published, draft, null));
+
+        var pins = new BoardData { ComponentPins = [new ComponentPinEntry { BoardLabel = "U3", Pin = "1" }, new ComponentPinEntry { BoardLabel = "U3", Pin = "2" }] };
+        var pinsTurned = new BoardData { ComponentPins = [pins.ComponentPins[1], pins.ComponentPins[0]] };
+
+        Assert.True(BoardRowOrder.ComponentReordered(pins, pinsTurned, "U3"));
+    }
+
+    // Every list a component has - and a baseline among the pictures is still no other order.
+    [Fact]
+    public void Each_of_a_components_lists_counts_for_it()
+    {
+        var published = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U1", Region = "PAL" }, new ComponentEntry { BoardLabel = "U1", Region = "NTSC" }],
+            ComponentImages = [new ComponentImageEntry { BoardLabel = "U2", Name = "Top" }, new ComponentImageEntry { BoardLabel = "U2", Name = "Bottom" }],
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U3", Name = "A" }, new ComponentLocalFileEntry { BoardLabel = "U3", Name = "B" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U4", Pin = "1" }, new ComponentPinEntry { BoardLabel = "U4", Pin = "2" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U5", PartNumber = "A" }, new ComponentReplacementEntry { BoardLabel = "U5", PartNumber = "B" }],
+        };
+
+        var draft = new BoardData
+        {
+            Components = [.. Enumerable.Reverse(published.Components)],
+            ComponentImages = [.. Enumerable.Reverse(published.ComponentImages)],
+            ComponentLocalFiles = [.. Enumerable.Reverse(published.ComponentLocalFiles)],
+            ComponentPins = [.. Enumerable.Reverse(published.ComponentPins)],
+            ComponentReplacements = [.. Enumerable.Reverse(published.ComponentReplacements)],
+        };
+
+        Assert.Equal(["U1", "U2", "U3", "U4", "U5"], BoardRowOrder.ComponentsReordered(published, draft).Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void Pictures_moved_are_another_order()
     {

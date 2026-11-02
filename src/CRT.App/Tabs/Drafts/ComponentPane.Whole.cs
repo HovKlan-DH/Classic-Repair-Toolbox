@@ -102,7 +102,6 @@ namespace CRT
         {
             this.TitleText.Text = ComponentPaneWording.NewComponentTitle;
             this.RegionText.IsVisible = false;
-            this.RegionSwitchPanel.IsVisible = false;
             this.ChangedMark.IsVisible = false;
             this.ActionsPanel.IsVisible = false;
             this.GonePanel.IsVisible = false;

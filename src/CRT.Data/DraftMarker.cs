@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace Handlers.DataHandling
 {
@@ -92,6 +94,13 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public string BaseContentHash { get; init; } = string.Empty;
 
+        // ###########################################################################################
+        // THE CREDITS OFFERED TO A NEW BOARD SO FAR (owner request, 2026-11-02; NewBoardCredits.Offer),
+        // each as NewBoardCredits.KeyOf says it - so one the contributor deleted stays deleted, and this
+        // survives CRT being closed. Nothing a board publishes: the marker never leaves the machine.
+        // ###########################################################################################
+        public IReadOnlyList<string>? CreditsOffered { get; init; }
+
         // True when this draft has no published counterpart at all.
         [JsonIgnore]
         public bool IsNewBoard => this.NewBoard != null;
@@ -159,7 +168,10 @@ namespace Handlers.DataHandling
         // draft look like an ordinary folder, and the contributor's edits would stop being
         // recognised as theirs - the same reasoning AtomicJsonFile applies to the app's own state.
         // ###########################################################################################
-        public static void Save(string markerPath, DraftMarker marker)
+        public static void Save(string markerPath, DraftMarker marker) =>
+            DraftMarkerStore.Save(markerPath, marker, Thread.Sleep);
+
+        internal static void Save(string markerPath, DraftMarker marker, Action<TimeSpan> pause)
         {
             if (string.IsNullOrWhiteSpace(markerPath))
             {
@@ -180,7 +192,9 @@ namespace Handlers.DataHandling
                 temporary,
                 JsonSerializer.Serialize(marker, DraftMarkerStore.WriteOptions));
 
-            File.Move(temporary, markerPath, overwrite: true);
+            // A marker held for a moment is waited for (2026-11-02: a rename of a new board was refused about
+            // once in 64 runs) - a virus scanner opens what was just written or moved.
+            FileReplacer.MoveOver(temporary, markerPath, (from, to) => File.Move(from, to, overwrite: true), pause);
         }
     }
 }

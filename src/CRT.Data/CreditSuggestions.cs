@@ -122,13 +122,13 @@ namespace Handlers.DataHandling
         // replacement parts, the board's own files and links, its important signals and its pictures'
         // colours.
         private static bool BoardDataDiffers(BoardData before, BoardData draft) =>
-            CreditSuggestions.Differ(before.Components, draft.Components, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.FriendlyName?.Trim(), row.TechnicalNameOrValue?.Trim(), row.PartNumber?.Trim(), row.Category?.Trim(), row.Description?.Trim(), row.Package?.Trim(), row.RepairNotes?.Trim())) ||
+            CreditSuggestions.Differ(before.Components, draft.Components, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.FriendlyName?.Trim(), row.TechnicalNameOrValue?.Trim(), row.PartNumber?.Trim(), row.Category?.Trim(), row.Description?.Trim(), row.Package?.Trim())) ||
             CreditSuggestions.Differ(before.ComponentImages.Where(row => !ComponentImageKinds.IsScopeBaseline(row)), draft.ComponentImages.Where(row => !ComponentImageKinds.IsScopeBaseline(row)), CreditSuggestions.ImageKey) ||
-            CreditSuggestions.Differ(before.ComponentLocalFiles, draft.ComponentLocalFiles, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
-            CreditSuggestions.Differ(before.ComponentLinks, draft.ComponentLinks, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Name?.Trim(), row.Url?.Trim())) ||
-            CreditSuggestions.Differ(before.ComponentReplacements, draft.ComponentReplacements, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), row.Changes?.Trim(), row.Source?.Trim())) ||
-            CreditSuggestions.Differ(before.BoardLocalFiles, draft.BoardLocalFiles, row => string.Join('\u001F', row.Category?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
-            CreditSuggestions.Differ(before.BoardLinks, draft.BoardLinks, row => string.Join('\u001F', row.Category?.Trim(), row.Name?.Trim(), row.Url?.Trim())) ||
+            CreditSuggestions.Differ(before.ComponentLocalFiles, draft.ComponentLocalFiles, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
+            CreditSuggestions.Differ(before.ComponentLinks, draft.ComponentLinks, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim())) ||
+            CreditSuggestions.Differ(before.ComponentReplacements, draft.ComponentReplacements, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), row.Note?.Trim())) ||
+            CreditSuggestions.Differ(before.BoardLocalFiles, draft.BoardLocalFiles, row => string.Join('\u001F', row.Category?.Trim(), row.Region?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
+            CreditSuggestions.Differ(before.BoardLinks, draft.BoardLinks, row => string.Join('\u001F', row.Category?.Trim(), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim())) ||
             CreditSuggestions.Differ(before.KiCadImportantSignals, draft.KiCadImportantSignals, row => string.Join('\u001F', row.DisplayName?.Trim(), row.KiCadNetName?.Trim())) ||
             CreditSuggestions.PictureSettingsDiffer(before.Schematics, draft.Schematics);
 
@@ -164,7 +164,7 @@ namespace Handlers.DataHandling
         }
 
         private static string ImageKey(ComponentImageEntry row) =>
-            string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Pin?.Trim(), row.Name?.Trim(), row.ExpectedOscilloscopeReading?.Trim(), CreditSuggestions.Key(row.File), row.Note?.Trim(), row.TimeDiv?.Trim(), row.VoltsDiv?.Trim(), row.TriggerLevelVolts?.Trim(), row.MachineState?.Trim(), row.Source?.Trim());
+            string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Pin?.Trim(), row.Name?.Trim(), row.ExpectedOscilloscopeReading?.Trim(), CreditSuggestions.Key(row.File), row.Note?.Trim(), row.TimeDiv?.Trim(), row.VoltsDiv?.Trim(), row.TriggerLevelVolts?.Trim(), row.MachineState?.Trim());
 
         // A name or label as rows are matched by - capitals are no change.
         private static string Key(string? value) => value?.Trim().ToUpperInvariant() ?? string.Empty;

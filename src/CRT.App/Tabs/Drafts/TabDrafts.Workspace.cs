@@ -20,7 +20,7 @@ namespace CRT
     // Owns: the board the tab is about - the one shown in CRT's drop-down lists (ShowBoard, from
     // Main); its header - the draft's own row, or what the board is while it has no draft - with "Table
     // view" at its end; the left column - the board's parts with their counts (ContributeBoardParts),
-    // and below them its components with a search, the draft's "Changed" mark and "Add component" -
+    // and below them its components with a search, the draft's "Draft" mark and "Add component" -
     // hidden while the table is open; and "My drafts", which shows the board picked, everywhere in CRT.
     //
     // *** A FIRST CHANGE MAKES THE DRAFT. *** Every action on the left works on the board's draft,

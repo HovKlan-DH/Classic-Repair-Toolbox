@@ -5,18 +5,16 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // One pin as the component popup lists it - with its net on this board, from the board's KiCad
-    // data ("" without).
-    public sealed record ComponentPopupPin(string Pin, string Name, string Direction, string Net = "")
+    // data ("" without), and whether the image shown is of it (owner request, 2026-11-02).
+    public sealed record ComponentPopupPin(string Pin, string Name, string Direction, string Net = "", bool IsViewed = false)
     {
         public bool HasNet => this.Net.Length > 0;
     }
 
     // One replacement part as the component popup lists it - its part number and kind on the first line.
-    public sealed record ComponentPopupReplacement(string Title, string Changes, string Source)
+    public sealed record ComponentPopupReplacement(string Title, string Note)
     {
-        public bool HasChanges => this.Changes.Length > 0;
-
-        public bool HasSource => this.Source.Length > 0;
+        public bool HasNote => this.Note.Length > 0;
     }
 
     // ###########################################################################################
@@ -39,13 +37,15 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The component's pins in `region` (a pin with no region is in every one), in number order -
         // each with its net on this board from `nets` (by pin number; the plan: "The popup shows the
-        // signal name and 'net on this board' side by side").
+        // signal name and 'net on this board' side by side"). `viewedPin`: the pin of the image shown -
+        // its row says so (owner request, 2026-11-02).
         // ###########################################################################################
         public static List<ComponentPopupPin> PinsOf(
             IEnumerable<ComponentPinEntry> pins,
             string? label,
             string? region,
-            IReadOnlyDictionary<string, string>? nets = null)
+            IReadOnlyDictionary<string, string>? nets = null,
+            string? viewedPin = null)
         {
             ArgumentNullException.ThrowIfNull(pins);
 
@@ -57,7 +57,12 @@ namespace Handlers.DataHandling
                     string number = pin.Pin?.Trim() ?? string.Empty;
                     string net = nets is not null && nets.TryGetValue(number, out string? found) ? found : string.Empty;
 
-                    return new ComponentPopupPin(number, pin.Name?.Trim() ?? string.Empty, pin.Direction?.Trim() ?? string.Empty, net);
+                    return new ComponentPopupPin(
+                        number,
+                        pin.Name?.Trim() ?? string.Empty,
+                        pin.Direction?.Trim() ?? string.Empty,
+                        net,
+                        ComponentVocabulary.IsSamePin(number, viewedPin));
                 })
                 .ToList();
         }
@@ -72,8 +77,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The component's replacement parts in `region`, as the board lists them: "8500 - Drop-in" (the
-        // part number alone without a kind, the kind alone without a part number), what to change, and
-        // where the advice comes from.
+        // part number alone without a kind, the kind alone without a part number) and its note.
         // ###########################################################################################
         public static List<ComponentPopupReplacement> ReplacementsOf(IEnumerable<ComponentReplacementEntry> replacements, string? label, string? region)
         {
@@ -83,38 +87,60 @@ namespace Handlers.DataHandling
                 .Where(row => ComponentPopupContent.InScope(row.BoardLabel, row.Region, label, region))
                 .Select(row => new ComponentPopupReplacement(
                     string.Join(" - ", new[] { row.PartNumber, row.Kind }.Select(part => part?.Trim() ?? string.Empty).Where(part => part.Length > 0)),
-                    row.Changes?.Trim() ?? string.Empty,
-                    string.IsNullOrWhiteSpace(row.Source) ? string.Empty : $"Comes from: {row.Source.Trim()}"))
-                .Where(row => row.Title.Length > 0 || row.HasChanges || row.HasSource)
+                    row.Note?.Trim() ?? string.Empty))
+                .Where(row => row.Title.Length > 0 || row.HasNote)
                 .ToList();
         }
 
         // ###########################################################################################
-        // What a scope baseline was measured under, for the popup's line under the picture - its
-        // machine state and where it comes from - or null when it says neither (every baseline
-        // converted from the Excel data, and every picture).
+        // What a scope baseline was measured under, for the popup's line under the picture - its machine
+        // state - or null when it does not say (every baseline converted from the Excel data, and every
+        // picture).
         // ###########################################################################################
-        public static string? BaselineConditions(ComponentImageEntry? image)
+        public static string? BaselineConditions(ComponentImageEntry? image) =>
+            string.IsNullOrWhiteSpace(image?.MachineState) ? null : $"Machine state: {image.MachineState.Trim()}";
+
+        // ###########################################################################################
+        // Which of the popup's images goes with pin `pin` (owner request, 2026-11-01: "the pins clickable
+        // ... so the user quickly can go to that pin and see what images are available for that pin"): the
+        // first whose pin is it, "2 [64K]" being pin 2 (ComponentVocabulary.PinNumberOf) - images of a pin
+        // stand together. -1 for none.
+        // ###########################################################################################
+        public static int FirstImageOfPin(IReadOnlyList<string> imagePins, string? pin)
         {
-            if (image is null)
+            ArgumentNullException.ThrowIfNull(imagePins);
+
+            for (int index = 0; index < imagePins.Count; index++)
             {
-                return null;
+                if (ComponentVocabulary.IsSamePin(imagePins[index], pin))
+                {
+                    return index;
+                }
             }
 
-            var parts = new List<string>(2);
-
-            if (!string.IsNullOrWhiteSpace(image.MachineState))
-            {
-                parts.Add($"Machine state: {image.MachineState.Trim()}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(image.Source))
-            {
-                parts.Add($"Comes from: {image.Source.Trim()}");
-            }
-
-            return parts.Count == 0 ? null : string.Join("\n", parts);
+            return -1;
         }
+
+        // ###########################################################################################
+        // The component's files and links in `region` (owner request, 2026-11-02: each can be of one
+        // region): by the same scope as the pins, so the popup and the pane agree.
+        // ###########################################################################################
+        public static List<ComponentLocalFileEntry> FilesOf(IEnumerable<ComponentLocalFileEntry> files, string? label, string? region)
+        {
+            ArgumentNullException.ThrowIfNull(files);
+
+            return files.Where(file => ComponentPopupContent.InScope(file.BoardLabel, file.Region, label, region)).ToList();
+        }
+
+        public static List<ComponentLinkEntry> LinksOf(IEnumerable<ComponentLinkEntry> links, string? label, string? region)
+        {
+            ArgumentNullException.ThrowIfNull(links);
+
+            return links.Where(link => ComponentPopupContent.InScope(link.BoardLabel, link.Region, label, region)).ToList();
+        }
+
+        // Said over the image when a pin clicked has none - "Not found" is what typing a pin says.
+        public static string NoImageOfPin(string? pin) => $"No image of pin {pin?.Trim()}";
 
         // The pane's own rule, so the popup and the pane agree on which rows are the component's
         // (code review, 2026-10-26 - a copy of it was here).

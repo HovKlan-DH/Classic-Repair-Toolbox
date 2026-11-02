@@ -557,7 +557,7 @@ dragged at its splitter and kept PER BOARD** - a board never dragged on takes th
 `Initialize`, so a test's tab never touches the settings).
 **The table and the pane are views of the board SHOWN** - showing another board closes them
 (`CloseTableForAnotherBoard`, `CloseComponent`), and the left column reads the draft as they
-left it (`BoardForList`, the pane's "Changed" marks in `thisChangedHere` until Main shows the board
+left it (`BoardForList`, the pane's "Draft" marks in `thisChangedHere` until Main shows the board
 again). **That close cannot be called off and asks nothing** (code review, 2026-10-26: Cancel left
 the table on the previous board's draft under the new board's header): what the table holds goes
 into its draft and a save starts; one that fails waits in memory for its board or quitting.
@@ -567,10 +567,32 @@ holds** (`SaveDueDraftsNoEditorHoldsAsync` over `DraftSessions.Due`, started by 
 table and the pane save their own, whose Saved events the row and the board on screen follow. Every
 pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
 
+- **"Draft" IS THE ONE WORD FOR "DIFFERS FROM THE PUBLISHED BOARD"** (owner request, 2026-11-02: "Changed" until then in the
+  Contribute tab's list and the pane's header; the component list on the left of CRT always said "Draft"), **and A NEW BOARD HAS
+  NONE OF IT** - nothing is published to differ from: no mark in either list, on the pane's header or a board part, no tint on the
+  Schematics tab (`DataManager`'s summary is Empty with no published board) and no "Undo changes to", in the pane
+  (`ComponentPane.IsComponentChanged`) or "Review changes" (`ReviewChangesAsync`). **"Also on other boards" stays** (code review,
+  2026-11-02; `HoldsWorkOfItsOwn`): all a new board's chip holds is what another board's same chip could take.
+- **A NEW BOARD'S CREDITS START WITH THEIR ROWS** (owner request, 2026-11-02; CRT.Data's `NewBoardCredits`,
+  `TabDrafts.NewBoardCredits.cs`): one per schematic image, "Board data", "Oscilloscope baseline" per region - to be filled in
+  or deleted. Nobody named is an error on purpose (`BoardRowRequired`), so Submit waits. Offered as "Board: Credits" opens, as
+  the table opens and before Submit - only while the board's entry AND the marker say it is new (`entry.IsDraftOnly`:
+  the marker alone still says so once the board is published here), ONE step when anything changes. **Reading "Board status" changes
+  nothing in the draft** (code review, 2026-11-02: an Undo there read the board again, which offered the very step back with the Redo
+  gone, and its marker write ran into "Board: Name" moving the folder): it says how many rows are to come
+  (`NewBoardCredits.RowsToAdd`, `BoardReadiness.CreditsToFillIn`). **The left column goes by what is held in memory on a new board**
+  (`BoardForList`), so it counts them as they come. **Each row ONCE - what was offered
+  is in the draft's marker (`DraftMarker.CreditsOffered`), so a row deleted or undone stays gone**; a row nothing was typed in follows
+  the board (an image renamed or deleted, regions ticked), one with a name stays. **A step that took a row away, undone, puts the
+  marker back** (`CreditsFollowedBoard`; code review, 2026-11-02 - the rows are the step's and what was offered the marker's), so the
+  next offer follows again: the old name's row was left for good and the new name's never added.
+- **Each replacement part, picture and oscilloscope baseline stands in a dark gray frame, "Applies to" its last field** (owner
+  request, 2026-11-01; App's picture cards' look, `Border.PaneEntry`), and a picture's note is a box of several lines while empty too.
 - **A COMPONENT'S PAGES ARE TABS OVER THE PANE** (owner decision, 2026-11-01: "too massive, if all data is filled" - tabs on
   the right, so the left column keeps its room for the list; `ComponentPane.Pages.cs`, App.axaml's
-  `ScreenTab`, moved there from the Maintainer tab): Basics, Replacement parts, Pinout, Pictures, Scope baseline, Files,
-  Links, each saying how many it holds and red while something on it stops Submit. One shows; **every section stays
+  `ScreenTab`, moved there from the Maintainer tab): Basics, Replacement parts, Pinout, Pictures, Oscilloscope baseline, Files,
+  Links, each saying how many it holds and red while something on it stops Submit (no category, a pin past the case, a baseline
+  lacking its signal name or image - said under it as it is shown - and a link's address `IsRefusedLink` refuses). One shows; **every section stays
   filled behind its tab**, so what the pane commits is what it always was (a test reaching a hidden section's row
   CONTROLS calls `ShowPage` first: no container is made in a section not shown). **The page stays as another component
   is picked.** Its **label is a box under Basics** (owner report, 2026-11-01: "unable to rename"; there was none):
@@ -586,19 +608,36 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   without it is worked out from its rows), not removable while a row says a region. It travels as `SubmissionRows.Regions`
   (null keeps what is published, as the pins; anything but PAL or NTSC in it is the error `regions.unknown` on both sides -
   code review, 2026-11-01, Security: it reached the publish as sent, server 7.0.0), counts as a change of the draft (`DraftOtherChanges`, retirement, "made only
-  to look") and is said in "Review changes", the review and the board's history (`RegionsNow`). **On top of a component's
-  pages the switch under the component list again - it IS that switch** (`RegionPicked` -> `Main.PickRegion` ->
-  `TabDrafts.UseRegion`). A page lists what the region shown shows. **Baselines, pictures and replacement parts have
-  "Applies to" per row** (`ComponentPaneRegionalRow`; a row moved out of the region shown is let go of here and said -
-  left, it was filed again at the next commit); **Basics and Pinout a "Different per region" tick**, as those are sets
+  to look") and is said in "Review changes", the review and the board's history (`RegionsNow`). **On every page the switch
+  under the component list again - it IS that switch** (`PaneRegionSwitch`; `RegionPicked` -> `Main.PickRegion` ->
+  `TabDrafts.UseRegion`): **under Basics' and Pinout's tick and only while it is ticked** (owner request, 2026-11-01), **always on
+  the five others** (owner request, 2026-11-02: "The checkbox is not needed"). A page lists what the region shown shows.
+  **Baselines, pictures, replacement parts, files and links have "Applies to" per row** (`ComponentPaneRegionalRow`; a row moved out of the region shown is let go of here and said -
+  left, it was filed again at the next commit; a new part with nothing typed stays until it holds something - `HoldsNothingYet`;
+  **a new part, file or link given another region waits, out of the draft and on the page, until the focus leaves it**
+  (`IsWaitingToBeTyped`; code review, 2026-11-02: the typing pause took it half typed from under the caret, and a Tab to its next box
+  would have too) - a commit nothing can wait out, closing or handing over, takes it as it is;
+  **the box's list stays while it holds the word**: a list replaced in the middle of a pick undoes the pick, so a test of a pick picks IN THE BOX - setting `row.AppliesTo` saw nothing wrong, code review 2026-11-02); **Basics and Pinout a "This data is different per region" tick**, as those are sets
   (`WithRegionalRows`, `WithRegionalPins` - no step, the reason said, for a component with no pins, or one taken off in a region
   with none, which deleted every pin; code review, 2026-11-01). A new baseline starts in the region shown, as 99% are; a new picture in all,
   as 99% are; a new pin with its set - **a component's row per region says nothing of its pins**, the tick does.
+  **A FILE OR A LINK, OF A COMPONENT OR OF THE BOARD, CAN BE OF ONE REGION** (owner request, 2026-11-02: "a new column with the
+  region"; `Region` on the four row types, `region` in the board file written only when filled, the last column of their sheets,
+  part of a row's identity only when filled - `BoardDraftNaturalKeys`). The popup and the Overview list what their region shows,
+  and the "Resources" tab what the region shown shows, following the switch (`Main.ShowResources`), the board's "Scope measurements"
+  notes too (`ScopeMeasurementFiles.Of(board, region)`). "Board: Files" and "Board: Links"
+  list every row whatever region CRT shows - they are the board's whole lists - with "Applies to" as a column while the board has regions.
+  **Any other word in that cell shows the row in neither region: a warning on the cell** (`row.region`, the table only). **A component in
+  every region has rows of one region** - the usual shape - **so its rows are read in the region SHOWN, never its row's blank region**
+  (`ComponentCopySource.RowsRegion`, "Copy from another board" and "Also on other boards"; code review, 2026-11-02).
 - **"BOARD: CATEGORIES"** (owner request, 2026-11-01; `ComponentPane.RegionsAndCategories.cs`, `BoardCategoryEdits`):
   rename, add, delete. **No list is stored** (owner decision: "kept until first used"): a category is the word its
   components carry, so a rename or delete is one step changing those rows - named as another it joins it, under its
   spelling; deleting asks where its components go. One no component uses is held by the pane per board until something
-  does or CRT closes, and offered in the category boxes. Rows stay where they stand, so no order changes. **Component
+  does or CRT closes, and offered in the category boxes. Rows stay where they stand, so no order changes. **THE ORDER IS
+  DRAGGED or Alt+Up/Down** (owner request, 2026-11-01: "alike Files or Links"; `BoardCategoryEdits.InOrder`): the order IS which
+  is seen first in the rows, so it is one step moving those rows, said as the components' order; the components with none and
+  one nothing uses have no handle. **Component
   categories only** - a file's, link's or credit's are their own lists'. **The filter beside the schematics follows**
   (code review, 2026-11-01): a category it has never seen is ticked, however it came - renamed, typed, edited in the table, a
   data update (`SavedCategoryFilter`; what the board had when it was chosen is kept, `SeenCategoriesByBoard`) - and one moved here
@@ -608,15 +647,18 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   `pin.outside_package` (a baseline's or a pinout's pin past its package's count - `BoardDataChecks.PackageRefusing`, whose
   region rule is that a row for every region must be off EVERY region's case; nothing said for a case CRT cannot count, no
   package, or a pin named rather than numbered; "2 [64K]" is pin 2, while digits running straight into a letter are a name -
-  a regulator's "12V", a 7400's "1A" - `ComponentVocabulary.PinNumberOf`).
-- **Directions: "Analog input" and "Analog output" for a pin carrying a voltage level as its signal, "Power" for the supply
-  pin, "Unknown" last** (owner question, 2026-11-01) - `ComponentVocabulary.PinDirections`.
+  a regulator's "12V", a 7400's "1A" - `ComponentVocabulary.PinNumberOf`). **Added 2026-11-02 (server 9.0.0):**
+  `baseline.required_empty` - an oscilloscope baseline with no signal name or no image.
+- **Directions: "Input" or "Output" for a pin carrying a voltage level as its signal too** (owner request, 2026-11-02: "Analog
+  input" and "Analog output" went again after a day; a board holding one keeps it), **"Power" for the supply pin, "Unknown" last**
+  - `ComponentVocabulary.PinDirections`.
 - **A component opens in the COMPONENT PANE** (CRT 4.0 step 2's slice 3a, 2026-10-25;
   `ComponentPane`, `TabDrafts.Component.cs`; the plan: "A component opens in a pane, never in a
   maximized window"): Basics (friendly name, technical name, part number, category, package, the
-  short description with its counter to `ShortDescriptionLimit`, repair notes), Pinout (the pins,
+  short description with its counter to `ShortDescriptionLimit` - repair notes went on 2026-11-02, owner request: "no need for
+  it", everywhere, as no released CRT ever read them), Pinout (the pins,
   "Add the N pins of DIP-40" from `ComponentVocabulary.PinCountOf`, the case drawn from above -
-  `PinoutDrawing` in `Controls/`, the popup draws it too; every position `PinoutGeometry`), scope baselines, pictures, replacement parts,
+  `PinoutDrawing` in `Controls/`, the popup draws it too; every position `PinoutGeometry`), oscilloscope baselines, pictures, replacement parts,
   files and links. **Every change is a
   transform of the draft held in memory** (`ComponentPaneEdits` - the component AS SHOWN, the region
   CRT shows by the component list's rule; the other region's rows and every other component's are
@@ -644,19 +686,24 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   draft is saved, asked about or discarded). **The pane takes the session's `Changed` on the UI thread**
   (`OnSessionChanged` posts itself there, as the table does): a direct write (`WriteFileDirectly` - the
   KiCad data window's Remove) raises it on the pool, and the pane threw.
-  **Scope baselines, pictures and files are the pane's too** (slice 3b, 2026-10-26;
-  `ComponentPane.Files.cs`, the rows `ComponentPaneEdits.BaselinesOf`/`PicturesOf`/`FilesOf` - one
+  **Oscilloscope baselines ("Scope baselines" on screen until 2026-11-02, owner request - the stored names stay: the "Scope
+  baseline/" folder, the board file's `scopeBaselines`, the "Scope measurements" category), pictures and files are the pane's
+  too** (slice 3b, 2026-10-26; `ComponentPane.Files.cs`, the rows `ComponentPaneEdits.BaselinesOf`/`PicturesOf`/`FilesOf` - one
   "Component images" list told apart by `ComponentImageKinds`): **a file added is copied in under a
   name of the board's own and the draft SAVED at once** (`ComponentPaneFileNames` - its kind's usual
   folder, never a name the board has, which it would replace for every row; a baseline named
-  `<label>_<pin>_<signal>` as the published ones), so no undo leaves a file lying uncited. **A baseline
-  is one only with its pin, a scope setting and a screenshot** (`ComponentPaneWording.BaselineProblem`):
-  a new one waits in its panel until it has them, and an edit that would make one a picture is held
-  back - the draft keeps it as it was, the reason under it. T/DIV and V/DIV are `ComponentVocabulary`'s
+  `<label>_<pin>_<signal>` as the published ones), so no undo leaves a file lying uncited. **A row is a
+  baseline by its PIN alone** (`ComponentImageKinds`; owner request, 2026-11-02: "there is no requirement that one of T/DIV or
+  V/DIV or Trigger level must be set" - measured that day, all 33,390 shipped rows with a pin have one too, so no published
+  row changed kind) **and needs its pin, its signal name and an image** (`ComponentPaneWording.BaselineProblem`, and the error
+  `baseline.required_empty` on the table and the server): a new one waits in its panel until it has them, and an edit that would
+  take one away is held back - the draft keeps it as it was, the reason under it. **A new one's signal name comes with its pin**
+  (owner request, 2026-11-02; `KiCadComponentPins.NameOfPin`, the pinout's, else the board's KiCad data's; `FollowNewBaselinePin`
+  never over a name typed). T/DIV and V/DIV are `ComponentVocabulary`'s
   1-2-5 steps spelt as the data spells them ("50us", "1V"). **"Capture from my oscilloscope"** shows
   while the Oscilloscope tab has a session (`TabDrafts.UseScopeCapture`/`ShowScopeConnected`, from
   Main with the popups') and takes `TabOscilloscope.CaptureOscilloscopePngAsync` - no image folder
-  needed; the capture waits for "Add this baseline" in the user's OWN app data folder
+  needed; the capture waits for "Add oscilloscope image" in the user's OWN app data folder
   (`AppConfig.ScopeCaptureWaitFolder` - never the shared temporary one, where another account could
   swap it). Thumbnails decode small on the pool and are never disposed by hand (one still drawn takes the
   render thread down). **How the board's baselines were measured is its board files of the category
@@ -687,10 +734,14 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   starts (whose own end goes back); a tool's bar takes its place while up. **"Preview popup"** opens the popup
   on the draft AS HELD IN MEMORY with the draft's folder whatever "view boards as officially published"
   says (`Main.OpenComponentPreview` -> `ShowComponentInfoPopup`, the popups' one path). **The popup and
-  the Overview show the new data**: the package on the category line, repair notes with clickable links,
-  the pinout (drawn, and every pin with name and direction - of the region shown), replacement parts,
-  a baseline's machine state and source (`ComponentPopupContent`); the Overview has a Package column and
-  its Notes are the repair notes, else the first image's note as before (`OverviewHtmlBuilder.BuildRows`).
+  the Overview show the new data**: the package on the category line,
+  the pinout (drawn, and every pin with name and direction BESIDE it, under it only when the popup is too narrow - of the
+  region shown; owner request, 2026-11-01: **a pin of either lights up under the pointer and a click goes to its first image**,
+  `PinoutDrawing.PinsCanBePicked`, `ComponentInfoWindow.GoToPin`, `ComponentPopupContent.FirstImageOfPin`; a drawing takes the
+  pointer only where it draws, so it fills itself with Transparent; owner request, 2026-11-02: **the pin of the image shown stays
+  lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list), replacement parts,
+  a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
+  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`).
   **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
   `TabDrafts.OpenBoardPartAsync`): the left column's "Files", "Links", "Credits" and "Important
   signals" show one of them in place of a component (`PaneBoardPart`) - Schematic images too since
@@ -706,8 +757,8 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   2026-10-30: "instead of having the up/down arrows, then please have a 'North/South' icon and then drag
   the whole line up/down, just alike in the workbook for photos. It should show a placeholder when
   dragging"; `ListRowDrag`, the Maintainer tab's own; the Schematic images' cards keep Move up/Move down
-  - "those panels are much larger"), or **Alt+Up / Alt+Down in its boxes** (`OnBoardPartKeyDown`, the
-  focus kept in the same box; `BoardPartEdits.CanMove`/`Moved`, `ComponentPane.MoveRow`). A drop or a
+  - "those panels are much larger"), or **Alt+Up / Alt+Down in its boxes** (`OnRowKeyDown`, the
+  focus kept in the same box - never on a drop-down list, where those keys open it; `BoardPartEdits.CanMove`/`Moved`, `ComponentPane.MoveRow`). A drop or a
   move is the list's ONE step; the rows are replaced only after `ResetRowDrags`. **A FIELD A ROW NEEDS
   IS AN ERROR, MARKED ON ITS BOX** (owner requests, 2026-10-30: "'What' and 'Name or handle' must be set
   ... In 'Links' then all 3 fields must be filled ... Same for 'Files' ... the 'Important signal name'
@@ -732,7 +783,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   `LinkTarget` adds the scheme, and nothing on the row said Submit would not take it.
   **ORDER IS A CHANGE** (owner decision,
   2026-10-30: "a change of (any) order should also be submitted as a change" - `BoardRowOrder`, below):
-  **a board part's "Changed" mark is the differ's answer for that section OR its order**
+  **a board part's "Draft" mark is the differ's answer for that section OR its order**
   (`ComponentPane.ListDiffers`). **"Open file" on a file and "Open link" on a link** (owner requests,
   2026-10-29, and 2026-10-30 for the labels - "Open" until then): a file found as every file of the draft is (`ComponentPane.OpenFileOfBoard` - the "Scope
   measurements" notes' path too), a link by `LinkTarget`'s rule (the PDF export's - a scheme added when
@@ -863,8 +914,10 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   **"Copy from another board"** (slice 5, 2026-10-26; `ComponentPane.Copy.cs`, `ComponentCopy`): the
   same part - the same PART NUMBER, trimmed, capitals ignored - on the OTHER published boards of this
   machine (`TabDrafts.FindOnOtherBoardsAsync`, read on the pool under the BusyOverlay; never the board
-  the pane is on) lends this component its package, short description, repair notes, pins,
-  replacement parts and links - each ticked when the source has it - as ONE step named after the
+  the pane is on) lends this component its package, short description, pins,
+  replacement parts and links - **rows of one region replacing only that region's: the component's rows for every
+  region stay, filed for the other** (`KeepingOtherRegions`; code review, 2026-11-02) -
+  each ticked when the source has it - as ONE step named after the
   board; pins and parts are filed under THIS component's label and region. Files (another board's
   bytes) and anything the board decides itself (label, category, highlights, baselines) never come.
   **"Also on other boards"** is the other way round (same files, `ComponentCopy.Changed`): offered
@@ -882,7 +935,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   **"Also on other boards" takes the FILES the draft replaced too** (2026-10-26 - the plan's "This
   datasheet is also used by 11 other boards - change it there too?"; `ChangedFiles`, no part number
   needed): a component's file or picture, or a board file under Files (its own button
-  there), whose row - paired by its NAME - cites other bytes than published is offered to every other
+  there), whose row - paired by its NAME and region, as a row's identity is - cites other bytes than published is offered to every other
   published board listing the SAME BYTES (by SHA-256; the live trees share 2,333 files so), where one
   of its component files, pictures or board files cites them - never a scope baseline's or a
   schematic's, the board's own. **The new file goes into THAT board's draft as a change of its rows**
@@ -988,10 +1041,15 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   scope baselines after them, each kind among its own** (`AsAFileHolds`; code review, 2026-11-01: a
   baseline dragged among the pictures was said to be an order the save then lost); and **"Undo changes
   to [U8]" puts each row back where it was** (`ComponentRevert.Restore`/`RestoreImages`: a component's
-  rows that do not stand together went back together, an order change nothing could take back). It is
+  rows that do not stand together went back together, an order change nothing could take back).
+  **A component's OWN rows in another order are a change of it** (`BoardRowOrder.ComponentsReordered`;
+  code review, 2026-11-02: its links dragged read as unchanged): "Draft" in both lists (`ComponentRevert
+  .HasChanges`, `BoardDraftSummary.FromChanges`), a line of its own in "Review changes" and an "Undo changes
+  to" that takes it back. **One only moved past another is none** - a category dragged would mark every chip
+  of it - and is the list's line under "The board". It is
   asked by: the draft's row and Submit (`DraftOtherChanges.Reordered`, against the published board
   as rows are counted), "Review changes" and the Submit dialog ("Order of the files changed",
-  `DraftChangeSummary`), the board parts' "Changed" mark, retirement (a draft in another order is NOT
+  `DraftChangeSummary`), the board parts' "Draft" mark, retirement (a draft in another order is NOT
   retired), and the maintainer's side - the server's summary (`ReviewChangeSummary.ReorderedSections`,
   the wire's `reorderedSections`), a line above the submission's table (`ReviewNotInTable`) and the
   board's History (`SubmissionChanges.Reordered`). The server publishes a submission's rows as sent, so
@@ -1005,7 +1063,9 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   it is sent for review.** Its names ARE its identity and its folder ("<Manufacturer>/<Hardware>/<Board>/
   board.json"), so a change moves the draft (`DraftBoardRename`: the folder whole, then the marker and the
   board file; never over anything, all or nothing, capitals alone through a name in between, emptied parents
-  removed). What the draft holds is settled first; its session closes only once the folder has moved, or its
+  removed; a file held for a moment is waited for, as `FileReplacer` waits - Windows will not move a folder with
+  a file open in it, nor replace a file something has open, and CRT's own reads or a virus scanner hold one so;
+  the move and `DraftMarkerStore.Save`, 2026-11-02). What the draft holds is settled first; its session closes only once the folder has moved, or its
   names changed - its Undo steps go then, which the page says, and never for notes alone or a rename refused (code review, 2026-11-01). **`Main.AfterBoardRenamed` carries over what this machine files under "{hardware}|{board}"**
   (`BoardKeyMove`: settings - `UserSettings.MoveBoard` finds every "...ByBoard" dictionary BY THAT NAME, so a
   new one follows by itself and `BoardKeyMoveTests` proves it - traces, workbooks, devices) and shows the board
@@ -1031,7 +1091,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   icons differ in shape too), a line off in its tone. **The KiCad project is optional**: without it its panel
   and the signals' are Optional, nothing held against the board. **The Schematic images panel counts in the
   owner's words** (owner decision, 2026-11-01: "25 images known by KiCad data", "4 images added", "2 KiCad files
-  mapped", "1 KiCad file aligned" - a picture card keeps "Shows KiCad view"): what is counted is the views, so a
+  mapped", "1 KiCad file aligned" - a picture card says "Associate KiCad file"): what is counted is the views, so a
   PCB file - ALWAYS read as two, its top and its bottom, `KiCadRawProjectLoader.BuildProjectViews` - is 2 images
   and, both sides mapped, "2 KiCad files mapped". **"Net" is one connection**, a netlist the list of them (the
   Schematics tab's "Netlist names" panel became "KiCad nets" that day). **"Can be marked automatically" is a footprint to mark from** (none with no PCB
@@ -1045,7 +1105,8 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   ShowBoard skips its own when that did it), never on every `RefreshDrafts`, and **not while the tab is off
   screen** - then when it is shown (`IsOnScreen`, `ShowReadinessIfStale` from `OnAttachedToVisualTree`; code
   review, 2026-10-26); from the SESSION's content when the board has one (the pane's saves leave the board
-  shown behind). The KiCad facts arrive a moment later through `ReadBoardKiCadAsync` **into the same panels**:
+  shown behind). **Working it out changes nothing in the draft** (`ShowStatusOfAsync`; code review, 2026-11-02 - see "A NEW BOARD'S
+  CREDITS"). The KiCad facts arrive a moment later through `ReadBoardKiCadAsync` **into the same panels**:
   every panel and button is made once and changed in place (`CreateStatusRows`, `InPlaceList.Sync`) - a control
   made again under a press threw the click away; a newer ask wins (`thisReadinessAsk`). A board's last facts
   and KiCad files are KEPT and shown while they are read again; "not known yet" is said, no count guessed.
@@ -1086,7 +1147,9 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   loader reads each footprint's name, value and datasheet (`KiCadPcbFootprint.FootprintName`/`Value`/
   `Datasheet`). On the shipped KiCad data every chip gets its package but 250469's PLA (its own footprint).
 - **"Mark all automatically from KiCad"** ("from KiCad" on the button since 2026-10-30 - owner request:
-  what it marks from was not clear; `PictureToolWording.MarkAutomaticallyButton`) (step 3's slice 3c,
+  what it marks from was not clear; `PictureToolWording.MarkAutomaticallyButton`; **a picture with marks already asks first**,
+  saying they stay and how many get one - owner request, 2026-11-01, `MarkOverMarksWindow`, `TabDrafts.AskBeforeMarkingAsync`;
+  nothing marked or nothing left to mark asks nothing, nor does the marking after aligning) (step 3's slice 3c,
   2026-10-26 - the plan: "on aligned PCB pictures,
   Mark all automatically draws each component's rectangle from its footprint"; `Handlers/Geometry/
   KiCadFootprintMarks`, `TabDrafts.MarkAutomatically.cs`): a green button on each picture card in the
@@ -1225,7 +1288,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   undo steps and "Review changes" say "Schematic image [Top] ..." and "KiCad view of [Top]"
   (`DraftStepWording`, `DraftChangeSummary`), and **"Delete"** ("Remove" until 2026-10-29 - the image
   leaves the board and its file the draft; the contributor's own copy is never touched) asks "Delete
-  schematic image" with Undo to bring back what goes with it (`SchematicRemoval.WhatGoes`). **"Shows KiCad view"** picks the CAD name
+  schematic image" with Undo to bring back what goes with it (`SchematicRemoval.WhatGoes`). **"Associate KiCad file"** ("Shows KiCad view" until 2026-11-01) picks the CAD name
   from the board's views, read by the host off the UI thread from the project the Schematics tab draws,
   ASKED by the pane when the part opens and again whenever the draft's KiCad files change while it is
   open (`KiCadViewsWanted`, numbered like the pins' ask - an older read is never taken;
@@ -2110,11 +2173,12 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   the UI thread, at every switch to the Contribute tab and every component opened. **And never while a
   write of its own runs** (another thread holds `thisWriting`: no answer, the next ask judges; code
   review, 2026-10-26 - its own save, not yet taken as its own, was read back as an outside change).
-- **CRT 4.0's new component data** (step 2's first slice, 2026-10-25): a component's `Package` and
-  `RepairNotes`, a scope baseline's `MachineState` and `Source`, and two sheets of their own after the
+- **CRT 4.0's new component data** (step 2's first slice, 2026-10-25): a component's `Package`, a
+  scope baseline's `MachineState`, and two sheets of their own after the
   component sheets - "Component pins" (`ComponentPinEntry`: label, region, pin, name, direction) and
-  "Component replacements" (`ComponentReplacementEntry`: label, region, part number, kind, what to
-  change, source). **Stored as WORDS, not codes** (`ComponentVocabulary` - rewording one changes the
+  "Component replacements" (`ComponentReplacementEntry`: label, region, part number, kind, note - one
+  `Note` of several lines since 2026-11-01, owner request, when a baseline's "where it comes from" went
+  too; server 8.0.0). **Stored as WORDS, not codes** (`ComponentVocabulary` - rewording one changes the
   published data). A board file writes each new row field only when filled, so a board without them
   keeps its rows line for line. **A submission that does not carry the two lists keeps the published
   ones** (`SubmissionRows.ComponentPins` null - `PublishMerge`); an empty list is "none". Every rule
@@ -2453,7 +2517,9 @@ upload - held by their own contract tests)? No: change it freely. Yes:
   raises it for you**: `api-revision-<N>.txt` holds what a CRT built for revision N may use (written
   the first time, grown as the API grows), and a change that breaks it fails until `ApiRevision` goes
   up. Raise it by hand for what the surface cannot see (a new meaning, a newly required field). Each
-  raise is a MAJOR server bump. `GET /api/health` and Account > "Server version" show both revisions.
+  raise is a MAJOR server bump. **While nobody but the project owner has connected to a revision, it is
+  not raised** (owner decision, 2026-11-01: "no one (other than me) has ever connected to API version 2,
+  so keep it on 2 for now"): its `api-revision-<N>.txt` is brought in line instead, and the turn summary says so. `GET /api/health` and Account > "Server version" show both revisions.
 - **CRT shows the server's words** (`ApiRefusal.Read`; `ReviewApiClient.WithServersWords`).
 - **An outdated CRT gets "CRT has to be updated" over the Contribute and Maintainer tabs, which cannot
   be closed** (owner request, 2026-10-09; `Main.UpdateRequired.cs`, `AppUpdateRequirement`,

@@ -12,7 +12,7 @@ namespace Handlers.DataHandling
     // submitted as a change"). *** BoardDataDiffer counts rows - an added, removed or changed one -
     // and a row only MOVED is none of those, so the order is counted here, beside it, by everything
     // that asks whether a draft holds work: the draft's row and its Submit (DraftOtherChanges), the
-    // board parts' "Changed" mark, "Review changes" (DraftChangeSummary), retirement, and the summary
+    // board parts' "Draft" mark, "Review changes" (DraftChangeSummary), retirement, and the summary
     // a maintainer reads (ReviewSummary.Compare - the server's, sent with the submission). The server
     // publishes a submission's rows as sent, so the order reaches the published board with it.
     //
@@ -53,7 +53,73 @@ namespace Handlers.DataHandling
             return reordered;
         }
 
-        // Whether one list's shared rows stand in another order - the board parts' "Changed" mark asks
+        // ###########################################################################################
+        // THE COMPONENTS WHOSE OWN ROWS STAND IN ANOTHER ORDER (code review, 2026-11-02: U8's links dragged
+        // read as unchanged in the pane, with Submit and "Review changes" saying the order had changed).
+        // Each component's rows are compared among themselves, list by list, so a component only moved past
+        // another - a category dragged, every chip of it along - is none: that is the list's order, said for
+        // the board. By its label as the draft spells it, trimmed.
+        // ###########################################################################################
+        public static IReadOnlySet<string> ComponentsReordered(BoardData published, BoardData draft)
+        {
+            ArgumentNullException.ThrowIfNull(published);
+            ArgumentNullException.ThrowIfNull(draft);
+
+            return new HashSet<string>(
+                BoardRowOrder.ReorderedByLabel(published.Components, draft.Components, row => row.BoardLabel)
+                    .Concat(BoardRowOrder.ReorderedByLabel(published.ComponentImages, draft.ComponentImages, row => row.BoardLabel))
+                    .Concat(BoardRowOrder.ReorderedByLabel(published.ComponentLocalFiles, draft.ComponentLocalFiles, row => row.BoardLabel))
+                    .Concat(BoardRowOrder.ReorderedByLabel(published.ComponentLinks, draft.ComponentLinks, row => row.BoardLabel))
+                    .Concat(BoardRowOrder.ReorderedByLabel(published.ComponentPins, draft.ComponentPins, row => row.BoardLabel))
+                    .Concat(BoardRowOrder.ReorderedByLabel(published.ComponentReplacements, draft.ComponentReplacements, row => row.BoardLabel)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // The same answer for ONE component (code review, 2026-11-02): the component pane asks it on the
+        // UI thread after each component shown and each change, and grouping every component of the
+        // board to answer for one is work nobody asked for.
+        // ###########################################################################################
+        public static bool ComponentReordered(BoardData published, BoardData draft, string? label)
+        {
+            ArgumentNullException.ThrowIfNull(published);
+            ArgumentNullException.ThrowIfNull(draft);
+
+            string wanted = label?.Trim() ?? string.Empty;
+
+            if (wanted.Length == 0)
+            {
+                return false;
+            }
+
+            bool OwnReordered<T>(IEnumerable<T> before, IEnumerable<T> after, Func<T, string?> labelOf)
+                where T : class
+            {
+                bool Own(T row) => string.Equals(labelOf(row)?.Trim(), wanted, StringComparison.OrdinalIgnoreCase);
+
+                return BoardRowOrder.Reordered(before.Where(Own), after.Where(Own));
+            }
+
+            return OwnReordered(published.Components, draft.Components, row => row.BoardLabel) ||
+                   OwnReordered(published.ComponentImages, draft.ComponentImages, row => row.BoardLabel) ||
+                   OwnReordered(published.ComponentLocalFiles, draft.ComponentLocalFiles, row => row.BoardLabel) ||
+                   OwnReordered(published.ComponentLinks, draft.ComponentLinks, row => row.BoardLabel) ||
+                   OwnReordered(published.ComponentPins, draft.ComponentPins, row => row.BoardLabel) ||
+                   OwnReordered(published.ComponentReplacements, draft.ComponentReplacements, row => row.BoardLabel);
+        }
+
+        private static IEnumerable<string> ReorderedByLabel<T>(IEnumerable<T> published, IEnumerable<T> draft, Func<T, string?> labelOf)
+            where T : class
+        {
+            ILookup<string, T> before = published.ToLookup(row => labelOf(row)?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+            return draft
+                .GroupBy(row => labelOf(row)?.Trim() ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .Where(rows => rows.Key.Length > 0 && BoardRowOrder.Reordered(before[rows.Key], rows))
+                .Select(rows => rows.Key);
+        }
+
+        // Whether one list's shared rows stand in another order - the board parts' "Draft" mark asks
         // it of a single list.
         public static bool Reordered<T>(IEnumerable<T>? published, IEnumerable<T>? draft)
             where T : class =>

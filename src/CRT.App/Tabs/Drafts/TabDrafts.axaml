@@ -599,9 +599,11 @@
 										<Grid ColumnDefinitions="*,Auto">
 											<TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis" />
 
-											<!-- The draft changed it - the same mark the component list on the left of CRT shows. -->
+											<!-- The draft changes it from the published board - the same mark, in the same word,
+											     the component list on the left of CRT shows (owner request, 2026-11-02). None on a new
+											     board: there is nothing published to differ from. -->
 											<TextBlock Grid.Column="1"
-													   Text="Changed"
+													   Text="Draft"
 													   Classes="WorkspaceNavCount"
 													   Margin="6,0,0,0"
 													   IsVisible="{Binding IsDrafted}" />

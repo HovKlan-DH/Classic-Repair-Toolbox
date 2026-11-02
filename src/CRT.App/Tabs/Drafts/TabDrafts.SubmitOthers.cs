@@ -39,6 +39,9 @@ namespace CRT
                 return OtherDraftReady.NotSent(SubmitDraftsWording.DraftGone);
             }
 
+            // A new board goes with its credits' rows, as its own Submit does (TabDrafts.NewBoardCredits.cs).
+            this.OfferNewBoardCredits(entry);
+
             // No table or pane is open on another board, so only the draft held in memory can hold
             // a change its file lacks - and a submit sends the file.
             DraftSession? session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile);

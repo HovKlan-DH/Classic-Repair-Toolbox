@@ -18,9 +18,9 @@ namespace Handlers.DataHandling
     {
         // ###########################################################################################
         // The Overview tab's rows of a board - one per component row, in the board's order, with its
-        // files and links. NOTES are the component's repair notes (CRT 4.0, step 2 slice 3c); a
-        // component without any keeps what the column always showed, its first image's note - every
-        // board converted from the Excel data has no repair notes yet, and the column would go blank.
+        // files and links: a row of one region lists that region's and those for every region, and a
+        // row for every region all of them (owner request, 2026-11-02: a file or a link can be of one
+        // region). NOTES are its first image's note.
         // ###########################################################################################
         public static List<OverviewRow> BuildRows(BoardData boardData)
         {
@@ -30,20 +30,21 @@ namespace Handlers.DataHandling
 
             foreach (var comp in boardData.Components)
             {
-                string repairNotes = comp.RepairNotes?.Trim() ?? string.Empty;
-                string note = repairNotes.Length > 0
-                    ? repairNotes
-                    : boardData.ComponentImages
-                        .FirstOrDefault(ci => string.Equals(ci.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))?.Note ?? string.Empty;
+                string note = boardData.ComponentImages
+                    .FirstOrDefault(ci => string.Equals(ci.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))?.Note ?? string.Empty;
+
+                bool OfThisRow(string? label, string? region) =>
+                    string.Equals(label, comp.BoardLabel, StringComparison.OrdinalIgnoreCase) &&
+                    (string.IsNullOrWhiteSpace(comp.Region) || ComponentPaneEdits.InRegion(region, comp.Region));
 
                 var links = new List<OverviewLink>();
 
                 links.AddRange(boardData.ComponentLocalFiles
-                    .Where(lf => string.Equals(lf.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))
+                    .Where(lf => OfThisRow(lf.BoardLabel, lf.Region))
                     .Select(lf => new OverviewLink(lf.Name, lf.File, OverviewLinkType.LocalFile)));
 
                 links.AddRange(boardData.ComponentLinks
-                    .Where(l => string.Equals(l.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))
+                    .Where(l => OfThisRow(l.BoardLabel, l.Region))
                     .Select(l => new OverviewLink(l.Name, l.Url, OverviewLinkType.WebLink)));
 
                 rows.Add(new OverviewRow

@@ -15,20 +15,23 @@ namespace CRT
     // so the left column keeps its room for the component list).
     //
     // Owns:
-    //   - THE TABS: Basics, Replacement parts, Pinout, Pictures, Scope baseline, Files and Links, each
-    //     saying how many it holds. One page shows; every section stays filled behind it, so what the
+    //   - THE TABS: Basics, Replacement parts, Pinout, Pictures, Oscilloscope baseline, Files and Links,
+    //     each saying how many it holds. One page shows; every section stays filled behind it, so what the
     //     pane commits is what it always was. The page stays as another component is picked: walking a
     //     board's chips stays on one page.
-    //   - THE REGION SHOWN, on a board that has regions (BoardRegions): the switch under the component
-    //     list, again (RegionPicked - Main's, so all of CRT follows). What a page lists is what that
+    //   - THE REGION SHOWN, on a board that has regions (BoardRegions). What a page lists is what that
     //     region shows: its own rows and those for every region. A row's "Applies to" moves it (one
-    //     leaving the region shown is let go of here, and said), and Basics and Pinout have a "Different
-    //     per region" tick instead - a set of rows that belong together.
+    //     leaving the region shown is let go of here, and said), and Basics and Pinout have a "This data
+    //     is different per region" tick instead - a set of rows that belong together. The switch under
+    //     the component list is on every page again (PaneRegionSwitch; RegionPicked - Main's, so all of
+    //     CRT follows): under Basics' and Pinout's tick and only while it is ticked (owner request,
+    //     2026-11-01), and always on the five others (owner request, 2026-11-02).
     //   - ITS LABEL (owner report, 2026-11-01: "unable to rename the component label"): on Enter or when
     //     its box is left, never on a pause in typing - every row of the component moves with it.
-    //   - WHAT SUBMIT WOULD REFUSE, MARKED WHERE IT IS: no category; a pin the case does not have.
-    //   - THE TEMPORARY TOOL making pinouts of scope baselines (BaselinePinMigration - gone before CRT 4.0
-    //     goes live, with this section).
+    //   - WHAT SUBMIT WOULD REFUSE, MARKED WHERE IT IS AND ON ITS TAB: no category; a pin the case does not
+    //     have; a baseline lacking its signal name or image; a link's address that is no web address.
+    //   - THE TEMPORARY TOOL making pinouts of oscilloscope baselines (BaselinePinMigration - gone before
+    //     CRT 4.0 goes live, with this section).
     //
     // Part of the ComponentPane partial class - see ComponentPane.axaml.cs for the file map.
     // ###########################################################################################
@@ -44,6 +47,9 @@ namespace CRT
 
         // Asked to show another region - Main's, so all of CRT follows.
         public event EventHandler<string>? RegionPicked;
+
+        // Whether the board open has regions - what offers "Applies to" and the ticks.
+        private bool thisBoardHasRegions;
 
         internal ComponentPage Page => this.thisPage;
 
@@ -132,9 +138,9 @@ namespace CRT
             this.ShowPageTab(ComponentPage.Replacements, this.thisReplacements.Count, hasError: false);
             this.ShowPageTab(ComponentPage.Pinout, this.thisPins.Count, this.thisPins.Any(row => row.PinOutside));
             this.ShowPageTab(ComponentPage.Pictures, this.thisPictures.Count, hasError: false);
-            this.ShowPageTab(ComponentPage.Baselines, this.thisBaselines.Count, this.thisBaselines.Any(row => row.PinOutside));
+            this.ShowPageTab(ComponentPage.Baselines, this.thisBaselines.Count, this.thisBaselines.Any(row => row.PinOutside || row.LacksWhatItNeeds));
             this.ShowPageTab(ComponentPage.Files, this.thisFiles.Count, hasError: false);
-            this.ShowPageTab(ComponentPage.Links, this.thisLinks.Count, hasError: false);
+            this.ShowPageTab(ComponentPage.Links, this.thisLinks.Count, this.thisLinks.Any(row => row.UrlNotWeb));
         }
 
         private void ShowPageTab(ComponentPage page, int count, bool hasError)
@@ -148,10 +154,27 @@ namespace CRT
 
         // ---- the region shown ----------------------------------------------------------------------
 
-        private void OnPaneRegionClick(object? sender, RoutedEventArgs e)
+        private void InitializeRegionSwitches()
         {
-            string region = ReferenceEquals(sender, this.PaneRegionNtscButton) ? BoardRegions.Ntsc : BoardRegions.Pal;
+            foreach (PaneRegionSwitch regionSwitch in this.RegionSwitches())
+            {
+                regionSwitch.RegionPicked += (_, region) => this.OnPaneRegionPicked(region);
+            }
+        }
 
+        private PaneRegionSwitch[] RegionSwitches() =>
+        [
+            this.BasicsRegionSwitch,
+            this.PinsRegionSwitch,
+            this.ReplacementsRegionSwitch,
+            this.PicturesRegionSwitch,
+            this.BaselinesRegionSwitch,
+            this.FilesRegionSwitch,
+            this.LinksRegionSwitch,
+        ];
+
+        private void OnPaneRegionPicked(string region)
+        {
             if (string.Equals(region, this.thisRegion, StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -185,30 +208,50 @@ namespace CRT
             this.ShowComponent();
         }
 
-        // The switch, the "Applies to" lists and the ticks, as the board has regions or not.
+        private void UseBoardRegions(BoardData board) => this.thisBoardHasRegions = BoardRegions.Has(board);
+
+        // The ticks with their switches, and the "Applies to" lists, as the board has regions or not.
         private void ShowRegionChoices(BoardData board)
         {
             bool has = BoardRegions.Has(board);
+            bool basics = ComponentPaneEdits.IsRegional(board, this.thisLabel);
+            bool pins = ComponentPaneEdits.PinsAreRegional(board, this.thisLabel);
 
-            this.RegionSwitchPanel.IsVisible = has;
-            this.PaneRegionPalButton.Classes.Set("active", string.Equals(this.thisRegion, BoardRegions.Pal, StringComparison.OrdinalIgnoreCase));
-            this.PaneRegionNtscButton.Classes.Set("active", string.Equals(this.thisRegion, BoardRegions.Ntsc, StringComparison.OrdinalIgnoreCase));
+            this.UseBoardRegions(board);
 
             this.BasicsRegionalCheck.IsVisible = has;
-            this.BasicsRegionalCheck.IsChecked = ComponentPaneEdits.IsRegional(board, this.thisLabel);
+            this.BasicsRegionalCheck.IsChecked = basics;
+            this.BasicsRegionSwitch.Show(has && basics, this.thisRegion);
+
             this.PinsRegionalCheck.IsVisible = has;
-            this.PinsRegionalCheck.IsChecked = ComponentPaneEdits.PinsAreRegional(board, this.thisLabel);
+            this.PinsRegionalCheck.IsChecked = pins;
+            this.PinsRegionSwitch.Show(has && pins, this.thisRegion);
+
+            // The pages whose rows each say what they apply to need no tick - a row is moved by its own.
+            this.ReplacementsRegionSwitch.Show(has, this.thisRegion);
+            this.PicturesRegionSwitch.Show(has, this.thisRegion);
+            this.BaselinesRegionSwitch.Show(has, this.thisRegion);
+            this.FilesRegionSwitch.Show(has, this.thisRegion);
+            this.LinksRegionSwitch.Show(has, this.thisRegion);
 
             this.FollowRegionChoices(has);
         }
 
-        // Every row of the page offers "Applies to" while the board has regions - new rows too.
+        // Every row of the page offers "Applies to" while the board has regions - new rows too - and the
+        // lists with a heading over their columns say it there.
         private void FollowRegionChoices(bool has)
         {
-            foreach (ComponentPaneRegionalRow row in this.thisBaselines.Cast<ComponentPaneRegionalRow>().Concat(this.thisPictures).Concat(this.thisReplacements))
+            foreach (ComponentPaneRegionalRow row in this.thisBaselines.Cast<ComponentPaneRegionalRow>()
+                .Concat(this.thisPictures)
+                .Concat(this.thisReplacements)
+                .Concat(this.thisFiles)
+                .Concat(this.thisLinks))
             {
                 row.ShowsAppliesTo = has;
             }
+
+            this.FilesAppliesToHeading.IsVisible = has;
+            this.LinksAppliesToHeading.IsVisible = has;
         }
 
         // ###########################################################################################
@@ -224,9 +267,11 @@ namespace CRT
         {
             string? movedTo = null;
 
-            movedTo = ComponentPane.LetGoOfRowsOfOtherRegions(this.thisBaselines, this.thisRegion) ?? movedTo;
-            movedTo = ComponentPane.LetGoOfRowsOfOtherRegions(this.thisPictures, this.thisRegion) ?? movedTo;
-            movedTo = ComponentPane.LetGoOfRowsOfOtherRegions(this.thisReplacements, this.thisRegion) ?? movedTo;
+            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisBaselines) ?? movedTo;
+            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisPictures) ?? movedTo;
+            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisReplacements) ?? movedTo;
+            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisFiles) ?? movedTo;
+            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisLinks) ?? movedTo;
 
             if (movedTo is not null)
             {
@@ -235,14 +280,18 @@ namespace CRT
             }
         }
 
-        private static string? LetGoOfRowsOfOtherRegions<T>(IList<T> rows, string region)
+        private string? LetGoOfRowsOfOtherRegions<T>(IList<T> rows)
             where T : ComponentPaneRegionalRow
         {
             string? movedTo = null;
 
             for (int index = rows.Count - 1; index >= 0; index--)
             {
-                if (!ComponentPaneEdits.InRegion(rows[index].RegionInDraft, region))
+                // A row nothing is typed in yet is in no draft to move: it stays until it holds something
+                // (2026-11-01: "Applies to" picked first took a new row off the page and out of existence).
+                if (!rows[index].HoldsNothingYet &&
+                    !ComponentPaneEdits.InRegion(rows[index].RegionInDraft, this.thisRegion) &&
+                    !this.IsWaitingToBeTyped(rows[index]))
                 {
                     movedTo = rows[index].Region;
                     rows.RemoveAt(index);
@@ -250,6 +299,39 @@ namespace CRT
             }
 
             return movedTo;
+        }
+
+        // ###########################################################################################
+        // *** A NEW ROW GIVEN ANOTHER REGION WAITS UNTIL IT HAS BEEN TYPED IN (code review, 2026-11-02). ***
+        // "Add link", "NTSC" picked, a name typed and a pause: into the draft half typed and off this
+        // region's page, the box gone from under the caret, and no way there to type the address. So it
+        // waits - out of the draft and on the page - through the typing pause and the Tab to its next box,
+        // and moves as the focus leaves the row. Whatever else commits takes it as it is (RowsWaiting.None).
+        //
+        // Only such a row can be here: an existing row moves the moment its region is picked, and a new
+        // part, file or link is the only row that can stay behind for holding nothing (HoldsNothingYet). A
+        // baseline or a picture cannot wait - CommitBaselines has already filed it.
+        // ###########################################################################################
+        private enum RowsWaiting
+        {
+            None,
+            TheOneInFocus,
+            AllOfAnotherRegion,
+        }
+
+        private RowsWaiting thisRowsWaiting;
+
+        private bool IsWaitingToBeTyped(ComponentPaneRegionalRow row)
+        {
+            if (this.thisRowsWaiting == RowsWaiting.None ||
+                row is not (ComponentPaneReplacementRow or ComponentPaneFileRow or ComponentPaneLinkRow) ||
+                ComponentPaneEdits.InRegion(row.Region, this.thisRegion))
+            {
+                return false;
+            }
+
+            return this.thisRowsWaiting == RowsWaiting.AllOfAnotherRegion ||
+                   (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is StyledElement focused && ReferenceEquals(focused.DataContext, row));
         }
 
         // The region a new row of the kind that mostly is per region starts in: the one shown.
@@ -394,7 +476,7 @@ namespace CRT
                 return;
             }
 
-            // Named before the step: what follows it - the left column, "Changed" - goes by the new label.
+            // Named before the step: what follows it - the left column, "Draft" - goes by the new label.
             this.thisLabel = typed;
             this.thisRelabels.Add((from, typed));
 
@@ -576,12 +658,21 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // A row of a component that can apply to one region or to all (owner decision, 2026-11-01): a
-    // baseline, a picture, a replacement part. The list's empty write is no change, as a pin's direction.
+    // A row that can apply to one region or to all (owner decisions, 2026-11-01 and 2026-11-02): a
+    // component's baseline, picture, replacement part, file or link, and the board's files and links (the
+    // list rows' base - a credit and an important signal never say one). The list's empty write is no
+    // change, as a pin's direction.
+    //
+    // *** THE BOX'S LIST STAYS WHILE IT HOLDS THE WORD (code review, 2026-11-02). *** It was made anew
+    // whenever the region changed - which a pick is - and a list replaced in the middle of a pick makes the
+    // box put the item before it back and write that: no row's region could be changed in the pane. So a
+    // new list only for a word it does not hold, which no pick can be. A row's word that is no region stays
+    // listed until the row is shown again.
     // ###########################################################################################
-    public abstract class ComponentPaneRegionalRow : ComponentPaneRowBase
+    public abstract class ComponentPaneRegionalRow : ComponentPaneDraggableRow
     {
         private string thisRegion = string.Empty;
+        private IReadOnlyList<string> thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(null);
         private bool thisShowsAppliesTo;
 
         public string Region
@@ -591,8 +682,13 @@ namespace CRT
             {
                 if (this.Set(ref this.thisRegion, value))
                 {
+                    if (!this.thisAppliesToChoices.Contains(ComponentPaneWording.AppliesToOf(value), StringComparer.Ordinal))
+                    {
+                        this.thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(value);
+                        this.Raise(nameof(this.AppliesToChoices));
+                    }
+
                     this.Raise(nameof(this.AppliesTo));
-                    this.Raise(nameof(this.AppliesToChoices));
                 }
             }
         }
@@ -600,6 +696,9 @@ namespace CRT
         // The region the draft has this row in, once the pane has committed - what decides whether it is
         // still a row of the page.
         public virtual string RegionInDraft => this.Region;
+
+        // A row just added with nothing in it - no row of the draft.
+        public virtual bool HoldsNothingYet => false;
 
         public bool ShowsAppliesTo
         {
@@ -614,7 +713,7 @@ namespace CRT
             }
         }
 
-        public IReadOnlyList<string> AppliesToChoices => ComponentPaneWording.AppliesToChoices(this.thisRegion);
+        public IReadOnlyList<string> AppliesToChoices => this.thisAppliesToChoices;
 
         public string? AppliesTo
         {

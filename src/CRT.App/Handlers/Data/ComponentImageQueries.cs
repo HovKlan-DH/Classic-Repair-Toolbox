@@ -10,7 +10,7 @@ namespace Handlers.DataHandling
     // Extracted from ComponentInfoWindow. Each rule here decides what the user is shown, and each
     // has an edge case that is invisible from the UI: a blank region means "shared" rather than
     // "no region", an image with no File is not displayable at all, and an entry is treated as an
-    // oscilloscope baseline only when it has a pin AND at least one scope setting.
+    // oscilloscope baseline by its pin alone.
     // ###########################################################################################
     public static class ComponentImageQueries
     {
@@ -64,9 +64,9 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Returns true when the entry carries an oscilloscope baseline: it must name a pin and
-        // supply at least one of the three scope settings. CRT.Data's ComponentImageKinds holds the
-        // rule, because the board data converter splits the sheet by the same one.
+        // Returns true when the entry carries an oscilloscope baseline: it names a pin. CRT.Data's
+        // ComponentImageKinds holds the rule, because the board data converter splits the sheet by the
+        // same one.
         // ###########################################################################################
         public static bool IsOscilloscopeImage(ComponentImageEntry? componentImageEntry) =>
             ComponentImageKinds.IsScopeBaseline(componentImageEntry);

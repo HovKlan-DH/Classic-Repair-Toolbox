@@ -111,6 +111,62 @@ public sealed class ChangedFilesTests
         Assert.Empty(ChangedFiles.OfComponent(Draft(), Files(), Published(), PublishedFiles, "U8", "PAL"));
     }
 
+    // ###########################################################################################
+    // *** ROWS OF ONE NAME IN TWO REGIONS (code review, 2026-11-02). *** A row is its name and its region
+    // (BoardDraftNaturalKeys), so two such rows only moved replaced no bytes. Paired by name alone, they
+    // read as each other's replacement, and "Also on other boards" offered to put one on boards holding
+    // the other.
+    // ###########################################################################################
+    [Fact]
+    public void Board_files_of_one_name_in_two_regions_only_moved_are_no_change()
+    {
+        var published = new BoardData
+        {
+            BoardLocalFiles =
+            [
+                new BoardLocalFileEntry { Category = "Manuals", Name = "Datasheet", File = "Board local files/a.pdf", Region = "PAL" },
+                new BoardLocalFileEntry { Category = "Manuals", Name = "Datasheet", File = "Board local files/b.pdf", Region = "NTSC" },
+            ],
+        };
+
+        var moved = new BoardData { BoardLocalFiles = [published.BoardLocalFiles[1], published.BoardLocalFiles[0]] };
+
+        Dictionary<string, BoardDocument.StoredFileRow> files = Files(("Board local files/a.pdf", OldPdf), ("Board local files/b.pdf", NewPdf));
+
+        Assert.Empty(ChangedFiles.OfBoardFiles(moved, files, published, files));
+    }
+
+    // The same of a component, a row for every region beside one of PAL - and either really replaced IS one.
+    [Fact]
+    public void A_components_row_for_every_region_and_its_row_of_one_are_told_apart()
+    {
+        var published = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+            ComponentLocalFiles =
+            [
+                new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/a.pdf" },
+                new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/b.pdf", Region = "PAL" },
+            ],
+        };
+
+        var moved = new BoardData
+        {
+            Components = published.Components,
+            ComponentLocalFiles = [published.ComponentLocalFiles[1], published.ComponentLocalFiles[0]],
+        };
+
+        Dictionary<string, BoardDocument.StoredFileRow> before = Files(("Component local files/a.pdf", OldPdf), ("Component local files/b.pdf", NewPdf));
+
+        Assert.Empty(ChangedFiles.OfComponent(moved, before, published, before, "U8", "PAL"));
+
+        Dictionary<string, BoardDocument.StoredFileRow> replaced = Files(("Component local files/a.pdf", OldPdf), ("Component local files/b.pdf", Other));
+
+        Assert.Equal(
+            [new ChangedFile(ChangedFileKind.ComponentFile, "Datasheet", "Component local files/b.pdf", NewPdf, "Component local files/b.pdf", Other)],
+            ChangedFiles.OfComponent(moved, replaced, published, before, "U8", "PAL"));
+    }
+
     // One old file two rows took two different ways: which one to offer is not known - neither is.
     [Fact]
     public void Old_bytes_that_went_two_ways_are_left_out()

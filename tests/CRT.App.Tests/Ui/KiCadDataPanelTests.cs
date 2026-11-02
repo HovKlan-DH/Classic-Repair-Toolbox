@@ -1140,7 +1140,7 @@ public sealed class KiCadDataPanelTests : IDisposable
 
             string explanation = panel.GetControl<TextBlock>("ViewNamesHintText").Text!;
 
-            Assert.Contains("\"Shows KiCad view\"", explanation);
+            Assert.Contains("\"Associate KiCad file\"", explanation);
             Assert.Contains($"\"{ComponentPaneWording.SchematicImages}\"", explanation);
             Assert.DoesNotContain("Pictures", explanation);
         });

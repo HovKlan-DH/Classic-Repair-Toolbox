@@ -426,7 +426,7 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // One entry in a picture's "Shows KiCad view" drop-down. An object of its own rather than the
+    // One entry in a picture's "Associate KiCad file" drop-down. An object of its own rather than the
     // CRT.Data record, so the entry a drop-down shows keeps its identity while the entries around it
     // come and go (ComponentPaneBoardPictureRow.ApplyCadNameChoices).
     // ###########################################################################################
@@ -539,7 +539,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The "Shows KiCad view" drop-down - the "Schematic images" window's, moved inline. ONE list for
+        // The "Associate KiCad file" drop-down - the "Schematic images" window's, moved inline. ONE list for
         // the row's lifetime, changed in place (ApplyCadNameChoices): a ComboBox whose items are
         // replaced lets go of its selection, and the row would hear "nothing chosen".
         // ###########################################################################################

@@ -41,6 +41,56 @@ public sealed class DraftBoardRenameTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A FILE HELD FOR A MOMENT IS NO REASON TO REFUSE (found by the Stop hook's run, 2026-11-02: a
+    // rename refused at random under load). *** Windows will not move a folder with a file open in it,
+    // and CRT's own reads off the UI thread or a virus scanner hold one that way for a moment. A rename
+    // pressed then was told "something may have its folder open" - tried again it went through. Let go
+    // of at the first pause, so nothing here hangs on how fast the machine is.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Commodore", "Commodore 64", "KU-14194HB")]
+    [InlineData("comodore", "c64", "250407")]
+    public void A_file_held_for_a_moment_does_not_stop_the_rename(string manufacturer, string hardware, string board)
+    {
+        string folder = this.Seed();
+        string heldFile = Path.Combine(folder, "picked.png");
+        File.WriteAllText(heldFile, "picked");
+
+        using var held = new FileStream(heldFile, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        NewBoardRegistration wanted = Registration(manufacturer, hardware, board);
+        DraftRenameResult result = DraftBoardRename.Run(this.DraftsRoot, Old, wanted, _ => held.Dispose());
+
+        Assert.True(result.Renamed, result.Reason);
+        Assert.Equal("picked", File.ReadAllText(Path.Combine(DraftFolderLayout.GetBoardFolder(this.DraftsRoot, wanted.ExcelDataFile), "picked.png")));
+    }
+
+    // One still held after the tries is refused as before, with nothing changed.
+    [Fact]
+    public void A_file_held_for_good_refuses_it_and_changes_nothing()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to move a folder with an open file in it.");
+
+        string folder = this.Seed();
+        string heldFile = Path.Combine(folder, "picked.png");
+        File.WriteAllText(heldFile, "picked");
+
+        int pauses = 0;
+        DraftRenameResult result;
+
+        using (new FileStream(heldFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = DraftBoardRename.Run(this.DraftsRoot, Old, Registration("Commodore", "Commodore 64", "KU-14194HB"), _ => pauses++);
+        }
+
+        Assert.False(result.Renamed);
+        Assert.Contains("Nothing was changed", result.Reason);
+        Assert.Equal(FileReplacer.MoveAttempts - 1, pauses);
+        Assert.Equal("C64", BoardFiles.ReadDocument(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, Old))!.HardwareName);
+        Assert.Equal(Old, DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(this.DraftsRoot, Old))!.BoardKey);
+    }
+
+    // ###########################################################################################
     // The folder moves whole - a stored file and one not taken in yet with it - the marker naming the
     // new identity and registration, the board file its new names, what the board holds kept.
     // ###########################################################################################

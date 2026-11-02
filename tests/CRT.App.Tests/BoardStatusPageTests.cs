@@ -278,7 +278,7 @@ public sealed class BoardStatusPageTests
             [
                 "2 components",
                 "  1 with its pins listed",
-                "  1 scope baseline",
+                "  1 oscilloscope baseline",
                 "  1 replacement part",
                 "1 component in the KiCad data is not on the board yet - \"KiCad: Files\" adds it",
             ],

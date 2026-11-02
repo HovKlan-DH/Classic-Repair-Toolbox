@@ -20,6 +20,8 @@ namespace CRT
     // on the draft as the change finds it, saved at once - all under the BusyOverlay. What came of it
     // is said in the part; the board on screen follows as it does the pane's saves.
     //
+    // A picture with marks on it already asks first (owner request, 2026-11-01; AskBeforeMarkingAsync).
+    //
     // The same plan places both sides' traces on a card's preview (PreviewTracesAsync,
     // 2026-10-29) - its "Traces on the preview".
     //
@@ -36,7 +38,72 @@ namespace CRT
         // `imageFile` tells the card's own picture from another of the same name (code review,
         // 2026-10-30: the first of the name was planned from - its view and its size).
         internal Task MarkAutomaticallyAsync(string picture, string imageFile = "") =>
-            this.OnCurrentDraftAsync(entry => this.MarkFromKiCadAsync(entry, picture, imageFile, afterAligning: false));
+            this.OnCurrentDraftAsync(async entry =>
+            {
+                if (await this.AskBeforeMarkingAsync(entry, picture, imageFile))
+                {
+                    await this.MarkFromKiCadAsync(entry, picture, imageFile, afterAligning: false);
+                }
+            });
+
+        // Stands in for the question in a test: the picture, how many are marked, how many would be.
+        internal Func<string, int, int, Task<bool>>? AskMarkOverMarksOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // *** A PICTURE WITH MARKS ON IT ASKS FIRST (owner request, 2026-11-01: "if components are already
+        // marked, then I think it should show a warning popup"). *** What it says is what happens: the
+        // marks there stay, and the ones with none get one. Asked only when both are so - with nothing
+        // marked, or nothing left to mark, there is nothing to weigh, and what comes of it is said as ever.
+        // ###########################################################################################
+        private async Task<bool> AskBeforeMarkingAsync(HardwareBoardEntry entry, string picture, string imageFile)
+        {
+            if (this.PictureToolOnOverrideForTests?.Invoke() ?? this.thisMainWindow?.IsPictureToolOn == true)
+            {
+                return true;
+            }
+
+            string identity = entry.ExcelDataFile;
+
+            if (DraftManager.Sessions.Find(DraftManager.DraftsRoot, identity) is not { } session ||
+                KiCadFootprintMarks.MarkedCount(session.Content.Board, picture) is not (> 0 and var marked))
+            {
+                return true;
+            }
+
+            int toMark = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.MarkingFromKiCad, async () =>
+            {
+                KiCadProjectRoot? root = await this.ReadKiCadForReadinessAsync(identity, "marking its components");
+                (int Width, int Height)? size = await this.PictureSizeAsync(session, picture, imageFile);
+                BoardContent content = session.Content;
+
+                return await Task.Run(() =>
+                {
+                    KiCadMarkPlan plan = KiCadFootprintMarks.Plan(content, picture, root, size, imageFile);
+
+                    return plan.Problem is null ? plan.Marks(content.Board).Count : 0;
+                });
+            });
+
+            if (toMark == 0)
+            {
+                return true;
+            }
+
+            if (this.AskMarkOverMarksOverrideForTests is { } ask)
+            {
+                return await ask(picture, marked, toMark);
+            }
+
+            if (Avalonia.Controls.TopLevel.GetTopLevel(this) is not Avalonia.Controls.Window owner)
+            {
+                return true;
+            }
+
+            var dialog = new MarkOverMarksWindow();
+            dialog.Initialize(picture, marked, toMark);
+
+            return await dialog.ShowDialog<bool?>(owner) == true;
+        }
 
         // ###########################################################################################
         // *** AFTER "ALIGN KiCad"'s DONE, THE PICTURE IS MARKED BY ITSELF (owner request, 2026-11-01: "it

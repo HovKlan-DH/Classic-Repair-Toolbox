@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace Handlers.DataHandling
 {
@@ -35,6 +36,21 @@ namespace Handlers.DataHandling
 
         // "from KiCad" on the button since 2026-10-30 (owner request: what it marks from was not clear).
         public const string MarkAutomaticallyButton = "Mark all components automatically from KiCad";
+
+        // Asked before marking a picture that has marks already (owner request, 2026-11-01). What is true
+        // is said: KiCadFootprintMarks.For leaves every mark there is alone.
+        public const string MarkOverMarksTitle = "Mark all components automatically";
+        public const string MarkOverMarksButton = "Mark the others";
+
+        public static string MarkOverMarksQuestion(string picture, int marked) => marked == 1
+            ? $"1 component is already marked on [{Trimmed(picture)}]."
+            : $"{marked.ToString(CultureInfo.InvariantCulture)} components are already marked on [{Trimmed(picture)}].";
+
+        public static string MarkOverMarksDetail(int toMark) =>
+            (toMark == 1
+                ? "The 1 component with no mark on it gets one from KiCad."
+                : $"The {toMark.ToString(CultureInfo.InvariantCulture)} components with no mark on it get one from KiCad.") +
+            " Every mark already there stays exactly where it is, also one moved or drawn by hand. \"Undo\" takes the new marks back.";
 
         public const string MarkAutomaticallyTip =
             "Draws a rectangle around every component not marked on this picture yet, from the KiCad data it is aligned with";
@@ -168,6 +184,8 @@ namespace Handlers.DataHandling
             KiCadNotRead, UnmarkedHeading(3), UnmarkedHelp, AllMarked, NoComponentsYet("A"), NoFootprintOnPicture("A"), PictureToolOn,
             DoneNext, DoneNextTip("A"), AlignFirst, MarkedAfterAligning(1, "A"), MarkedAfterAligning(2, "A"),
             MarksFollowedAlignment(1, "A"), MarksFollowedAlignment(2, "A"),
+            MarkOverMarksTitle, MarkOverMarksButton, MarkOverMarksQuestion("A", 1), MarkOverMarksQuestion("A", 2),
+            MarkOverMarksDetail(1), MarkOverMarksDetail(2),
         ];
     }
 }

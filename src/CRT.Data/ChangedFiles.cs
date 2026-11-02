@@ -70,10 +70,12 @@ namespace Handlers.DataHandling
     //     the draft - and a file of another type sat under the old one's name ("6510.txt" as
     //     "6510.pdf").
     //
-    //   - A REPLACED FILE is a row of the published board and a row of the draft with the same NAME
-    //     (trimmed, capitals ignored, in order), citing different bytes. A row renamed and given a new
-    //     file at once is not paired - nothing says it is the same entry. Bytes that went two different
-    //     ways (two rows, one old file, two new ones) are left out: which one is meant is not known.
+    //   - A REPLACED FILE is a row of the published board and a row of the draft with the same NAME AND
+    //     REGION (trimmed, capitals ignored, in order - BoardDraftNaturalKeys' identity of a row, since a
+    //     file can be of one region: two rows of one name only moved are no change; code review,
+    //     2026-11-02), citing different bytes. A row renamed and given a new file at once is not paired -
+    //     nothing says it is the same entry. Bytes that went two different ways (two rows, one old file,
+    //     two new ones) are left out: which one is meant is not known.
     //   - ONLY WHERE ANOTHER BOARD SHOWS IT THE SAME WAY - a component's file or picture, or a board
     //     file. A scope baseline is measured on its board and a schematic image is the board itself
     //     (ComponentCopy's rule: what the board decides itself never comes from another), so a name
@@ -106,15 +108,15 @@ namespace Handlers.DataHandling
 
             IEnumerable<ChangedFile> files = ChangedFiles.Pair(
                 ChangedFileKind.ComponentFile,
-                ComponentPaneEdits.FilesOf(published, label).Select(row => (row.Name, row.File)),
-                ComponentPaneEdits.FilesOf(draft, label).Select(row => (row.Name, row.File)),
+                ComponentPaneEdits.FilesOf(published, label, region).Select(row => (row.Name, row.Region, row.File)),
+                ComponentPaneEdits.FilesOf(draft, label, region).Select(row => (row.Name, row.Region, row.File)),
                 publishedFiles,
                 draftFiles);
 
             IEnumerable<ChangedFile> pictures = ChangedFiles.Pair(
                 ChangedFileKind.ComponentPicture,
-                ComponentPaneEdits.PicturesOf(published, label, region).Select(row => (row.Name, row.File)),
-                ComponentPaneEdits.PicturesOf(draft, label, region).Select(row => (row.Name, row.File)),
+                ComponentPaneEdits.PicturesOf(published, label, region).Select(row => (row.Name, row.Region, row.File)),
+                ComponentPaneEdits.PicturesOf(draft, label, region).Select(row => (row.Name, row.Region, row.File)),
                 publishedFiles,
                 draftFiles);
 
@@ -135,8 +137,8 @@ namespace Handlers.DataHandling
 
             return ChangedFiles.Unambiguous(ChangedFiles.Pair(
                 ChangedFileKind.BoardFile,
-                published.BoardLocalFiles.Select(row => (row.Name, row.File)),
-                draft.BoardLocalFiles.Select(row => (row.Name, row.File)),
+                published.BoardLocalFiles.Select(row => (row.Name, row.Region, row.File)),
+                draft.BoardLocalFiles.Select(row => (row.Name, row.Region, row.File)),
                 publishedFiles,
                 draftFiles));
         }
@@ -247,7 +249,7 @@ namespace Handlers.DataHandling
             }
 
             List<ComponentLocalFileEntry> componentFiles = board.ComponentLocalFiles
-                .Select(row => Cites(row.File) ? new ComponentLocalFileEntry { BoardLabel = row.BoardLabel, Name = row.Name, File = newName } : row)
+                .Select(row => Cites(row.File) ? new ComponentLocalFileEntry { BoardLabel = row.BoardLabel, Name = row.Name, File = newName, Region = row.Region } : row)
                 .ToList();
 
             List<ComponentImageEntry> pictures = board.ComponentImages
@@ -265,13 +267,12 @@ namespace Handlers.DataHandling
                         VoltsDiv = row.VoltsDiv,
                         TriggerLevelVolts = row.TriggerLevelVolts,
                         MachineState = row.MachineState,
-                        Source = row.Source,
                     }
                     : row)
                 .ToList();
 
             List<BoardLocalFileEntry> boardFiles = board.BoardLocalFiles
-                .Select(row => Cites(row.File) ? new BoardLocalFileEntry { Category = row.Category, Name = row.Name, File = newName } : row)
+                .Select(row => Cites(row.File) ? new BoardLocalFileEntry { Category = row.Category, Name = row.Name, File = newName, Region = row.Region } : row)
                 .ToList();
 
             return board
@@ -281,25 +282,28 @@ namespace Handlers.DataHandling
 
         // ---- the rules ----------------------------------------------------------------------------
 
-        // Each row of `before` paired with the first row of `after` of the same name, where their
-        // bytes differ.
+        // Each row of `before` paired with the first row of `after` of the same name and region, where
+        // their bytes differ.
         private static IEnumerable<ChangedFile> Pair(
             ChangedFileKind kind,
-            IEnumerable<(string Name, string File)> before,
-            IEnumerable<(string Name, string File)> after,
+            IEnumerable<(string Name, string Region, string File)> before,
+            IEnumerable<(string Name, string Region, string File)> after,
             IReadOnlyDictionary<string, BoardDocument.StoredFileRow> publishedFiles,
             IReadOnlyDictionary<string, BoardDocument.StoredFileRow> draftFiles)
         {
             var unpaired = after.ToList();
 
-            foreach ((string name, string file) in before)
+            foreach ((string name, string region, string file) in before)
             {
                 string rowName = name?.Trim() ?? string.Empty;
+                string rowRegion = region?.Trim() ?? string.Empty;
 
                 if (rowName.Length == 0)
                     continue;
 
-                int index = unpaired.FindIndex(row => string.Equals(row.Name?.Trim(), rowName, StringComparison.OrdinalIgnoreCase));
+                int index = unpaired.FindIndex(row =>
+                    string.Equals(row.Name?.Trim(), rowName, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(row.Region?.Trim() ?? string.Empty, rowRegion, StringComparison.OrdinalIgnoreCase));
 
                 if (index < 0)
                     continue;

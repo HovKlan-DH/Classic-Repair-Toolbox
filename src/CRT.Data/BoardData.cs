@@ -91,16 +91,13 @@ namespace Handlers.DataHandling
         public string Description { get; init; } = string.Empty;
 
         // ###########################################################################################
-        // New in CRT 4.0 (step 2, 2026-10-25 - the plan's component pane: "a one-line description
-        // with a counter, plus repair notes with clickable links ... Pick a package"). Never in the
-        // Excel generations: a board file writes each only when it is filled.
-        //
-        // Package is the chip's case, "DIP-40" (ComponentVocabulary.Packages offers the usual ones);
-        // the pins are rows of their own (ComponentPinEntry). RepairNotes is the long text the
-        // one-line Description has no room for - several lines, links clickable where it is shown.
+        // New in CRT 4.0 (step 2, 2026-10-25 - the plan's component pane: "Pick a package"). Never in the
+        // Excel generations: a board file writes it only when it is filled. The chip's case, "DIP-40"
+        // (ComponentVocabulary.Packages offers the usual ones); the pins are rows of their own
+        // (ComponentPinEntry). Repair notes beside it went on 2026-11-02 (owner request: "no need for
+        // it") - no released CRT ever read them.
         // ###########################################################################################
         public string Package { get; init; } = string.Empty;
-        public string RepairNotes { get; init; } = string.Empty;
 
         // This row of a relabelled component, every other value as it was. BoardSchematicEntryTests
         // compares every property by reflection.
@@ -122,7 +119,6 @@ namespace Handlers.DataHandling
             Region = region,
             Description = this.Description,
             Package = this.Package,
-            RepairNotes = this.RepairNotes,
         };
     }
 
@@ -140,14 +136,12 @@ namespace Handlers.DataHandling
         public string TriggerLevelVolts { get; init; } = string.Empty;
 
         // ###########################################################################################
-        // A SCOPE BASELINE's conditions, new in CRT 4.0 (step 2, 2026-10-25 - the plan: "region and
-        // machine state ... where it comes from: measured on a known-good board, datasheet, service
-        // manual, or other"). MachineState is what the machine was doing ("READY prompt, nothing
-        // pressed"); Source is one of ComponentVocabulary.BaselineSources. A picture leaves both
-        // empty, and a board file writes each only when it is filled.
+        // A SCOPE BASELINE's condition, new in CRT 4.0 (step 2, 2026-10-25): what the machine was doing
+        // ("READY prompt, nothing pressed"). A picture leaves it empty, and a board file writes it only
+        // when it is filled. Where a baseline comes from went on 2026-11-01 (owner request: "no need for
+        // it") - no released CRT ever read it.
         // ###########################################################################################
         public string MachineState { get; init; } = string.Empty;
-        public string Source { get; init; } = string.Empty;
 
         // This row of a relabelled component, every other value as it was. BoardSchematicEntryTests
         // compares every property by reflection.
@@ -164,7 +158,6 @@ namespace Handlers.DataHandling
             VoltsDiv = this.VoltsDiv,
             TriggerLevelVolts = this.TriggerLevelVolts,
             MachineState = this.MachineState,
-            Source = this.Source,
         };
     }
 
@@ -198,11 +191,10 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // A PART THAT CAN STAND IN FOR A COMPONENT - new in CRT 4.0 (step 2, 2026-10-25 - the plan:
-    // "Replacements: part number; kind (drop-in, or needs changes); what to change; where the advice
-    // comes from"). Kind is one of ComponentVocabulary.ReplacementKinds; Changes says what has to
-    // be done for one that is not a drop-in; Source is where the advice comes from, in words (a
-    // forum thread, a magazine, "tried on my own board").
+    // A PART THAT CAN STAND IN FOR A COMPONENT - new in CRT 4.0 (step 2, 2026-10-25). Kind is one of
+    // ComponentVocabulary.ReplacementKinds; Note is free text of several lines - what has to be done for
+    // one that is not a drop-in, where the advice comes from (owner request, 2026-11-01: one "Note" in
+    // place of "What to change" and "Where the advice comes from"; no released CRT ever read those two).
     // ###########################################################################################
     public class ComponentReplacementEntry
     {
@@ -210,8 +202,7 @@ namespace Handlers.DataHandling
         public string Region { get; init; } = string.Empty;
         public string PartNumber { get; init; } = string.Empty;
         public string Kind { get; init; } = string.Empty;
-        public string Changes { get; init; } = string.Empty;
-        public string Source { get; init; } = string.Empty;
+        public string Note { get; init; } = string.Empty;
 
         // This part of a relabelled component, every other value as it was.
         public ComponentReplacementEntry WithBoardLabel(string boardLabel) => new()
@@ -220,8 +211,7 @@ namespace Handlers.DataHandling
             Region = this.Region,
             PartNumber = this.PartNumber,
             Kind = this.Kind,
-            Changes = this.Changes,
-            Source = this.Source,
+            Note = this.Note,
         };
     }
 
@@ -271,14 +261,20 @@ namespace Handlers.DataHandling
         };
     }
 
+    // ###########################################################################################
+    // A FILE OR A LINK, OF A COMPONENT OR OF THE BOARD, CAN BE OF ONE REGION (owner request, 2026-11-02:
+    // "a new column with the region, as this data could maybe be regionalized"). New in CRT 4.0, never in
+    // the Excel generations: a blank region is every region, and a board file writes it only when filled.
+    // ###########################################################################################
     public class ComponentLocalFileEntry
     {
         public string BoardLabel { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
+        public string Region { get; init; } = string.Empty;
 
         // This file of a relabelled component, every other value as it was.
-        public ComponentLocalFileEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, File = this.File };
+        public ComponentLocalFileEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, File = this.File, Region = this.Region };
     }
 
     public class ComponentLinkEntry
@@ -286,9 +282,10 @@ namespace Handlers.DataHandling
         public string BoardLabel { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Url { get; init; } = string.Empty;
+        public string Region { get; init; } = string.Empty;
 
         // This link of a relabelled component, every other value as it was.
-        public ComponentLinkEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, Url = this.Url };
+        public ComponentLinkEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, Url = this.Url, Region = this.Region };
     }
 
     public class BoardLocalFileEntry
@@ -296,6 +293,7 @@ namespace Handlers.DataHandling
         public string Category { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
+        public string Region { get; init; } = string.Empty;
     }
 
     public class BoardLinkEntry
@@ -303,6 +301,7 @@ namespace Handlers.DataHandling
         public string Category { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string Url { get; init; } = string.Empty;
+        public string Region { get; init; } = string.Empty;
     }
 
     public class CreditEntry

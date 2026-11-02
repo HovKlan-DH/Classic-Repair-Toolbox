@@ -42,10 +42,9 @@ public sealed class BoardDocumentMappingTests
         VoltsDiv = baseline ? "2V" : string.Empty,
         TriggerLevelVolts = baseline ? "1.4V" : string.Empty,
 
-        // CRT 4.0's conditions (2026-10-25) - on pictures too: one typed in the table on a picture
-        // row must not be lost on the way through the file.
+        // CRT 4.0's condition (2026-10-25) - on pictures too: one typed in the table on a picture row
+        // must not be lost on the way through the file.
         MachineState = $"{tag}.machine state",
-        Source = $"{tag}.source",
     };
 
     private static BoardContent Content()
@@ -140,15 +139,19 @@ public sealed class BoardDocumentMappingTests
         {
             // 11 since 2026-10-30: this side's trace colour and both sides' trace opacities.
             [typeof(BoardSchematicEntry)] = 11,
-            [typeof(ComponentEntry)] = 9,
-            [typeof(ComponentImageEntry)] = 12,
+            // 8 since 2026-11-02: the repair notes went.
+            [typeof(ComponentEntry)] = 8,
+            // 11 since 2026-11-01: where a baseline comes from went.
+            [typeof(ComponentImageEntry)] = 11,
             [typeof(ComponentPinEntry)] = 5,
-            [typeof(ComponentReplacementEntry)] = 6,
+            // 5 since 2026-11-01: one Note in place of what to change and where the advice comes from.
+            [typeof(ComponentReplacementEntry)] = 5,
             [typeof(ComponentHighlightEntry)] = 6,
-            [typeof(ComponentLocalFileEntry)] = 3,
-            [typeof(ComponentLinkEntry)] = 3,
-            [typeof(BoardLocalFileEntry)] = 3,
-            [typeof(BoardLinkEntry)] = 3,
+            // 4 each since 2026-11-02: the region they apply to.
+            [typeof(ComponentLocalFileEntry)] = 4,
+            [typeof(ComponentLinkEntry)] = 4,
+            [typeof(BoardLocalFileEntry)] = 4,
+            [typeof(BoardLinkEntry)] = 4,
             [typeof(CreditEntry)] = 4,
             [typeof(KiCadImportantSignalEntry)] = 2,
             [typeof(KiCadCalibrationEntry)] = 8,

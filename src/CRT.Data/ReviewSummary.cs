@@ -358,8 +358,7 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColRegion, entry.Region),
                 new(BoardWorkbookSchema.ColDescription, entry.Description),
-                new(BoardWorkbookSchema.ColPackage, entry.Package),
-                new(BoardWorkbookSchema.ColRepairNotes, entry.RepairNotes)
+                new(BoardWorkbookSchema.ColPackage, entry.Package)
             ],
             ComponentImageEntry entry =>
             [
@@ -373,8 +372,7 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColTimeDiv, entry.TimeDiv),
                 new(BoardWorkbookSchema.ColVoltsDiv, entry.VoltsDiv),
                 new(BoardWorkbookSchema.ColTriggerLevelVolts, entry.TriggerLevelVolts),
-                new(BoardWorkbookSchema.ColMachineState, entry.MachineState),
-                new(BoardWorkbookSchema.ColSource, entry.Source)
+                new(BoardWorkbookSchema.ColMachineState, entry.MachineState)
             ],
             ComponentPinEntry entry =>
             [
@@ -390,8 +388,7 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColRegion, entry.Region),
                 new(BoardWorkbookSchema.ColPartNumber, entry.PartNumber),
                 new(BoardWorkbookSchema.ColKind, entry.Kind),
-                new(BoardWorkbookSchema.ColChanges, entry.Changes),
-                new(BoardWorkbookSchema.ColSource, entry.Source)
+                new(BoardWorkbookSchema.ColNote, entry.Note)
             ],
             // The coordinates are STRINGS here, like every other BoardData field - they are
             // parsed invariant-culture where they are used, not on the way in. So they compare as
@@ -410,25 +407,29 @@ namespace Handlers.DataHandling
             [
                 new(BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
                 new(BoardWorkbookSchema.ColName, entry.Name),
-                new(BoardWorkbookSchema.ColFile, entry.File)
+                new(BoardWorkbookSchema.ColFile, entry.File),
+                new(BoardWorkbookSchema.ColRegion, entry.Region)
             ],
             ComponentLinkEntry entry =>
             [
                 new(BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
                 new(BoardWorkbookSchema.ColName, entry.Name),
-                new(BoardWorkbookSchema.ColUrl, entry.Url)
+                new(BoardWorkbookSchema.ColUrl, entry.Url),
+                new(BoardWorkbookSchema.ColRegion, entry.Region)
             ],
             BoardLocalFileEntry entry =>
             [
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColName, entry.Name),
-                new(BoardWorkbookSchema.ColFile, entry.File)
+                new(BoardWorkbookSchema.ColFile, entry.File),
+                new(BoardWorkbookSchema.ColRegion, entry.Region)
             ],
             BoardLinkEntry entry =>
             [
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColName, entry.Name),
-                new(BoardWorkbookSchema.ColUrl, entry.Url)
+                new(BoardWorkbookSchema.ColUrl, entry.Url),
+                new(BoardWorkbookSchema.ColRegion, entry.Region)
             ],
             CreditEntry entry =>
             [

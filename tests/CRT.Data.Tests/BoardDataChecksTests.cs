@@ -312,6 +312,50 @@ public sealed class BoardDataChecksTests
         Assert.Equal(1, problems[1].Index);
     }
 
+    // ###########################################################################################
+    // A file's or a link's Region says PAL, NTSC or nothing (code review, 2026-11-02): any other word
+    // shows the row in NEITHER region, so it vanishes from the pane, the popup and the "Resources" tab with
+    // nothing said - and the table takes anything typed. A warning, as every new local rule is.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_or_link_of_a_region_that_does_not_exist_is_a_warning_on_its_cell()
+    {
+        BoardCheckRows rows = Rows(
+            components: [Component("U1")],
+            highlights: [Highlight("Main", "U1")],
+            localFiles:
+            [
+                new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Fine", File = $"{Board}/a.pdf", Region = "pal" },
+                new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Odd", File = $"{Board}/b.pdf", Region = "Europe" },
+            ],
+            links: [new ComponentLinkEntry { BoardLabel = "U1", Name = "Odd", Url = "https://example.com", Region = "EU" }],
+            boardFiles: [new BoardLocalFileEntry { Category = "Resources", Name = "Odd", File = $"{Board}/c.pdf", Region = "Japan" }],
+            boardLinks:
+            [
+                new BoardLinkEntry { Category = "Resources", Name = "Every region", Url = "https://example.com" },
+                new BoardLinkEntry { Category = "Resources", Name = "Odd", Url = "https://example.com", Region = "SECAM" },
+            ]);
+
+        List<BoardDataProblem> problems = Everything(rows, $"{Board}/a.pdf", $"{Board}/b.pdf", $"{Board}/c.pdf")
+            .Where(problem => problem.Code == "row.region")
+            .ToList();
+
+        Assert.Equal(
+            [
+                (BoardWorkbookSchema.SheetComponentLocalFiles, 1),
+                (BoardWorkbookSchema.SheetComponentLinks, 0),
+                (BoardWorkbookSchema.SheetBoardLocalFiles, 0),
+                (BoardWorkbookSchema.SheetBoardLinks, 1),
+            ],
+            problems.Select(problem => (problem.Sheet!, problem.Index)));
+        Assert.All(problems, problem =>
+        {
+            Assert.Equal(BoardProblemLevel.Warning, problem.Level);
+            Assert.Equal(BoardWorkbookSchema.ColRegion, problem.Column);
+        });
+        Assert.Contains("[Europe]", problems[0].Message, StringComparison.Ordinal);
+    }
+
     // A component nothing marks on any schematic; a highlight for a component that is not there.
     [Fact]
     public void Components_and_highlights_that_do_not_meet_are_warnings()
@@ -546,10 +590,10 @@ public sealed class BoardDataChecksTests
     // Not a case of its own: every sheet the server does not already refuse a duplicate on warns,
     // naming that sheet's own identity columns, on the first of them.
     [Theory]
-    [InlineData(BoardWorkbookSchema.SheetComponentLocalFiles, BoardWorkbookSchema.ColBoardLabel, "Board label and Name")]
-    [InlineData(BoardWorkbookSchema.SheetComponentLinks, BoardWorkbookSchema.ColBoardLabel, "Board label and Name")]
-    [InlineData(BoardWorkbookSchema.SheetBoardLocalFiles, BoardWorkbookSchema.ColCategory, "Category and Name")]
-    [InlineData(BoardWorkbookSchema.SheetBoardLinks, BoardWorkbookSchema.ColCategory, "Category and Name")]
+    [InlineData(BoardWorkbookSchema.SheetComponentLocalFiles, BoardWorkbookSchema.ColBoardLabel, "Board label, Name and Region")]
+    [InlineData(BoardWorkbookSchema.SheetComponentLinks, BoardWorkbookSchema.ColBoardLabel, "Board label, Name and Region")]
+    [InlineData(BoardWorkbookSchema.SheetBoardLocalFiles, BoardWorkbookSchema.ColCategory, "Category, Name and Region")]
+    [InlineData(BoardWorkbookSchema.SheetBoardLinks, BoardWorkbookSchema.ColCategory, "Category, Name and Region")]
     [InlineData(BoardWorkbookSchema.SheetCredits, BoardWorkbookSchema.ColCategory, "Category, Sub-category and Name or handle")]
     [InlineData(BoardWorkbookSchema.SheetKiCadImportantSignals, BoardWorkbookSchema.ColDisplayName, "Display name and KiCad net name")]
     public void Each_sheet_names_its_own_identity_columns_in_the_warning(string sheet, string column, string columns)
@@ -902,7 +946,6 @@ public sealed class BoardDataChecksTests
     // ###########################################################################################
     [Theory]
     [InlineData("component.long_description", BoardWorkbookSchema.SheetComponents, BoardWorkbookSchema.ColDescription)]
-    [InlineData("baseline.source", BoardWorkbookSchema.SheetComponentImages, BoardWorkbookSchema.ColSource)]
     [InlineData("pin.orphan", BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.ColBoardLabel)]
     [InlineData("pin.unnumbered", BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.ColPin)]
     [InlineData("pin.direction", BoardWorkbookSchema.SheetComponentPins, BoardWorkbookSchema.ColDirection)]
@@ -913,7 +956,7 @@ public sealed class BoardDataChecksTests
     {
         BoardCheckRows rows = Crt4Rows(
             components: [new ComponentEntry { BoardLabel = "U8", Category = "IC", Description = new string('x', ComponentVocabulary.ShortDescriptionLimit + 1) }],
-            images: [new ComponentImageEntry { BoardLabel = "U8", Pin = "2", Name = "PA0", File = $"{Board}/U1.png", TimeDiv = "1mS", Source = "My cousin" }],
+            images: [new ComponentImageEntry { BoardLabel = "U8", Pin = "2", Name = "PA0", File = $"{Board}/U1.png", TimeDiv = "1mS" }],
             pins:
             [
                 new ComponentPinEntry { BoardLabel = "U99", Pin = "1", Name = "VCC", Direction = "Power" },
@@ -942,7 +985,7 @@ public sealed class BoardDataChecksTests
     {
         BoardCheckRows rows = Crt4Rows(
             components: [new ComponentEntry { BoardLabel = "U8", Category = "IC", Description = new string('x', ComponentVocabulary.ShortDescriptionLimit) }],
-            images: [new ComponentImageEntry { BoardLabel = "U8", Pin = "2", Name = "PA0", File = $"{Board}/U1.png", TimeDiv = "1mS", Source = "datasheet" }],
+            images: [new ComponentImageEntry { BoardLabel = "U8", Pin = "2", Name = "PA0", File = $"{Board}/U1.png", TimeDiv = "1mS" }],
             pins: [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS", Direction = "" }, new ComponentPinEntry { BoardLabel = "u8", Pin = "2", Direction = "ground" }],
             replacements: [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "" }]);
 
@@ -950,7 +993,7 @@ public sealed class BoardDataChecksTests
 
         Assert.DoesNotContain(problems, problem => problem.Code.StartsWith("pin.", StringComparison.Ordinal));
         Assert.DoesNotContain(problems, problem => problem.Code.StartsWith("replacement.", StringComparison.Ordinal));
-        Assert.DoesNotContain(problems, problem => problem.Code is "baseline.source" or "component.long_description");
+        Assert.DoesNotContain(problems, problem => problem.Code == "component.long_description");
     }
 
     // Two pins with one number on one component are warned about, as any two rows of one identity.
@@ -967,5 +1010,60 @@ public sealed class BoardDataChecksTests
 
         Assert.Equal(2, duplicates.Count);
         Assert.All(duplicates, problem => Assert.Equal(BoardWorkbookSchema.SheetComponentPins, problem.Sheet));
+    }
+
+    // ###########################################################################################
+    // AN OSCILLOSCOPE BASELINE'S PIN, SIGNAL NAME AND IMAGE ARE MANDATORY, ITS SETTINGS NOT (owner
+    // request, 2026-11-02) - errors on both sides, so the table marks the cell and the server refuses
+    // it. A picture needs neither.
+    // ###########################################################################################
+    [Fact]
+    public void An_oscilloscope_baseline_needs_its_signal_name_and_image_but_no_settings()
+    {
+        var board = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+            ComponentImages =
+            [
+                new ComponentImageEntry { BoardLabel = "U8", Pin = "1", Name = "PA0", File = "Scope baseline/a.png" },
+                new ComponentImageEntry { BoardLabel = "U8", Pin = "2", File = "Scope baseline/b.png" },
+                new ComponentImageEntry { BoardLabel = "U8", Pin = "3", Name = "PA2", Note = "A note and no image" },
+                new ComponentImageEntry { BoardLabel = "U8", Name = "Top", Note = "A picture: a note is enough" },
+            ],
+        };
+
+        List<BoardDataProblem> problems = BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Submission)
+            .Where(problem => problem.Code == "baseline.required_empty")
+            .ToList();
+
+        Assert.Equal(
+            [(1, BoardWorkbookSchema.ColName), (2, BoardWorkbookSchema.ColFile)],
+            problems.Select(problem => (problem.Index, problem.Column!)));
+        Assert.All(problems, problem => Assert.Equal(BoardProblemLevel.Error, problem.Level));
+        Assert.All(problems, problem => Assert.Equal(BoardWorkbookSchema.SheetComponentImages, problem.Sheet));
+    }
+
+    // "Datasheet" of PAL and of NTSC are two rows, not a duplicate (owner request, 2026-11-02).
+    [Fact]
+    public void A_file_or_link_of_one_name_in_each_region_is_no_duplicate()
+    {
+        var board = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+            BoardLocalFiles =
+            [
+                new BoardLocalFileEntry { Category = "Manuals", Name = "Service manual", File = "a.pdf", Region = "PAL" },
+                new BoardLocalFileEntry { Category = "Manuals", Name = "Service manual", File = "b.pdf", Region = "NTSC" },
+            ],
+            ComponentLinks =
+            [
+                new ComponentLinkEntry { BoardLabel = "U8", Name = "Datasheet", Url = "https://example.org/a", Region = "PAL" },
+                new ComponentLinkEntry { BoardLabel = "U8", Name = "Datasheet", Url = "https://example.org/b", Region = "NTSC" },
+            ],
+        };
+
+        Assert.DoesNotContain(
+            BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Everything),
+            problem => problem.Message.Contains("Name and Region", StringComparison.Ordinal));
     }
 }

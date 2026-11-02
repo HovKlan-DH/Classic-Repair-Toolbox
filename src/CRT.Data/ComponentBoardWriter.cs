@@ -99,10 +99,10 @@ namespace Handlers.DataHandling
                     (componentRows ?? []).Select(row =>
                     {
                         // ###########################################################################################
-                        // *** WHAT THIS WINDOW CANNOT EDIT IS KEPT (CRT 4.0, 2026-10-25). *** A package and
-                        // repair notes are typed in the table (and in step 2's component pane), never
-                        // here - rebuilt from the window's fields alone, every "Save to draft" would
-                        // erase them. They come from the row this one replaces: same label, same region.
+                        // *** WHAT THIS WINDOW CANNOT EDIT IS KEPT (CRT 4.0, 2026-10-25). *** A package is
+                        // typed in the table (and in step 2's component pane), never here - rebuilt from
+                        // the window's fields alone, every "Save to draft" would erase it. It comes from
+                        // the row this one replaces: same label, same region.
                         // ###########################################################################################
                         ComponentEntry? before = ComponentBoardWriter.RowBeingReplaced(current.Components, label, row.Region);
 
@@ -116,7 +116,6 @@ namespace Handlers.DataHandling
                             Region = row.Region?.Trim() ?? string.Empty,
                             Description = row.Description?.Trim() ?? string.Empty,
                             Package = before?.Package ?? string.Empty,
-                            RepairNotes = before?.RepairNotes ?? string.Empty,
                         };
                     }).ToList()),
 
@@ -146,7 +145,7 @@ namespace Handlers.DataHandling
                     existing => existing.Region,
                     (componentImageRows ?? []).Select(row =>
                     {
-                        // A baseline's machine state and source are not this window's either - kept
+                        // A baseline's machine state is not this window's either - kept
                         // from the image row this one replaces (the same identity: label, region,
                         // pin and name).
                         ComponentImageEntry? before = ComponentBoardWriter.ImageBeingReplaced(current.ComponentImages, label, row);
@@ -164,7 +163,6 @@ namespace Handlers.DataHandling
                             Note = row.Note?.Trim() ?? string.Empty,
                             File = ComponentBoardWriter.JoinFilePath(row.FileLocation, row.File),
                             MachineState = before?.MachineState ?? string.Empty,
-                            Source = before?.Source ?? string.Empty,
                         };
                     })),
 

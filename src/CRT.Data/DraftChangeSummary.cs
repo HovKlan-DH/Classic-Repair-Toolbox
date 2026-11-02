@@ -168,7 +168,7 @@ namespace Handlers.DataHandling
             lines.AddRange(DraftChangeSummary.Counted(
                 BoardDataDiffer.Compare(PicturesOf(before), PicturesOf(after)), "picture", "pictures"));
             lines.AddRange(DraftChangeSummary.Counted(
-                BoardDataDiffer.Compare(BaselinesOf(before), BaselinesOf(after)), "scope baseline", "scope baselines"));
+                BoardDataDiffer.Compare(BaselinesOf(before), BaselinesOf(after)), "oscilloscope baseline", "oscilloscope baselines"));
             lines.AddRange(DraftChangeSummary.Counted(
                 BoardDataDiffer.Compare(Section(before, highlights: true), Section(after, highlights: true)), "mark on the schematics", "marks on the schematics"));
             lines.AddRange(DraftChangeSummary.Counted(
@@ -181,6 +181,11 @@ namespace Handlers.DataHandling
                 BoardDataDiffer.Compare(Section(before, replacements: true), Section(after, replacements: true)), "replacement part", "replacement parts"));
 
             lines.AddRange(replacedFiles.Distinct(StringComparer.OrdinalIgnoreCase).Select(name => $"File [{name}] replaced"));
+
+            // Its own rows put in another order (order is a change - owner decision, 2026-10-30): said here
+            // too, so it has its "Undo changes to" (code review, 2026-11-02). The board's lines say the list
+            // changed, whatever moved in it.
+            lines.AddRange(BoardRowOrder.ReorderedSheets(before, after).Select(BoardRowOrder.OrderChangedLine));
 
             if (lines.Count == 0)
                 return null;

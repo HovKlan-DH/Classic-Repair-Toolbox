@@ -13,6 +13,57 @@ public sealed class BoardCategoryEditsTests
 
     private static BoardData Board(params ComponentEntry[] components) => new() { Components = [.. components] };
 
+    // ###########################################################################################
+    // Their order IS which is seen first in the rows (owner request, 2026-11-01: "rearrange the category
+    // up/down, alike Files or Links"): a category's rows move together, in the order they had, and what
+    // every list of categories reads follows.
+    // ###########################################################################################
+    [Fact]
+    public void Categories_put_in_another_order_move_their_components_rows_together()
+    {
+        BoardData board = Board(
+            Component("U1", "IC"),
+            Component("C1", "Capacitor"),
+            Component("U2", "IC"),
+            Component("R1", "Resistor"),
+            Component("C2", "Capacitor"));
+
+        BoardData moved = BoardCategoryEdits.InOrder(board, ["Resistor", "IC", "Capacitor"]);
+
+        Assert.Equal(["R1", "U1", "U2", "C1", "C2"], moved.Components.Select(row => row.BoardLabel));
+        Assert.Equal(["Resistor", "IC", "Capacitor"], BoardCategoryEdits.Of(moved).Select(row => row.Name));
+        Assert.Equal(["Resistor", "IC", "Capacitor"], ComponentListBuilder.BuildDistinctCategories(moved));
+
+        // Rows of one component stay as they stood - a regional twin beside its twin.
+        BoardData twins = BoardCategoryEdits.InOrder(
+            Board(Component("U9", "IC", "PAL"), Component("U9", "IC", "NTSC"), Component("C1", "Capacitor")),
+            ["Capacitor", "IC"]);
+
+        Assert.Equal(["C1|", "U9|PAL", "U9|NTSC"], twins.Components.Select(row => $"{row.BoardLabel}|{row.Region}"));
+    }
+
+    // No step when nothing moves - even with a category's rows standing apart, which only a change of
+    // order is a reason to gather.
+    [Fact]
+    public void Categories_already_in_that_order_are_the_same_board()
+    {
+        BoardData board = Board(Component("U1", "IC"), Component("C1", "Capacitor"), Component("U2", "IC"));
+
+        Assert.Same(board, BoardCategoryEdits.InOrder(board, ["IC", "Capacitor"]));
+        Assert.Same(board, BoardCategoryEdits.InOrder(board, ["ic", " capacitor "]));
+    }
+
+    // The components with none stay first, as Of lists them; a category not named comes last.
+    [Fact]
+    public void Components_with_no_category_stay_first_and_a_category_not_named_comes_last()
+    {
+        BoardData board = Board(Component("U1", "IC"), Component("X1", ""), Component("C1", "Capacitor"), Component("R1", "Resistor"));
+
+        BoardData moved = BoardCategoryEdits.InOrder(board, ["Capacitor", "IC"]);
+
+        Assert.Equal(["X1", "C1", "U1", "R1"], moved.Components.Select(row => row.BoardLabel));
+    }
+
     [Fact]
     public void Every_category_is_listed_once_with_how_many_components_carry_it_in_first_seen_order()
     {

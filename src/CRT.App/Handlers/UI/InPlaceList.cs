@@ -8,7 +8,7 @@ namespace CRT
     // items breaks what is on screen (2026-10-10):
     //
     //   - a ComboBox whose items are replaced lets go of its selection, and its binding writes
-    //     "nothing" back (the picture cards' "Shows KiCad view" drop-downs - Sync);
+    //     "nothing" back (the picture cards' "Associate KiCad file" drop-downs - Sync);
     //   - a row replaced between a click's press and its release throws the click away (the Drafts
     //     tab's list, read again whenever CRT's window comes to the front - KeepUnchanged).
     //

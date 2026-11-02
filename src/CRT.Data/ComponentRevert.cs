@@ -49,6 +49,7 @@ namespace Handlers.DataHandling
             BoardData reverted = ComponentRevert.ToPublished(draft, published, label);
 
             return BoardDataDiffer.Compare(draft, reverted).Count > 0 ||
+                   ComponentRevert.OwnRowsReordered(draft, reverted, label) ||
                    ComponentRevert.ReplacedFiles(draft, published, label, publishedFiles, draftFiles).Count > 0;
         }
 
@@ -63,8 +64,19 @@ namespace Handlers.DataHandling
 
             BoardData reverted = ComponentRevert.ToPublished(draft, published, label);
 
-            return ReferenceEquals(reverted, draft) || BoardDataDiffer.Compare(draft, reverted).Count == 0 ? null : reverted;
+            return ReferenceEquals(reverted, draft) ||
+                   (BoardDataDiffer.Compare(draft, reverted).Count == 0 && !ComponentRevert.OwnRowsReordered(draft, reverted, label))
+                ? null
+                : reverted;
         }
+
+        // ###########################################################################################
+        // Its own rows in another order than published (code review, 2026-11-02): the differ counts no
+        // row for it, and Submit and "Review changes" count it a change (BoardRowOrder) - with no "Draft"
+        // and nothing here to take it back. Only moved past another component is no change of THIS one.
+        // ###########################################################################################
+        private static bool OwnRowsReordered(BoardData draft, BoardData reverted, string? label) =>
+            BoardRowOrder.ComponentReordered(reverted, draft, label);
 
         // ###########################################################################################
         // THE COMPONENT'S FILES THE DRAFT REPLACED UNDER THEIR OWN NAMES (code review, 2026-10-26):

@@ -40,7 +40,11 @@ namespace Handlers.DataHandling
             return board.Components.Count(row => BoardRegions.IsRegion(row.Region)) +
                    board.ComponentImages.Count(row => BoardRegions.IsRegion(row.Region)) +
                    board.ComponentPins.Count(row => BoardRegions.IsRegion(row.Region)) +
-                   board.ComponentReplacements.Count(row => BoardRegions.IsRegion(row.Region));
+                   board.ComponentReplacements.Count(row => BoardRegions.IsRegion(row.Region)) +
+                   board.ComponentLocalFiles.Count(row => BoardRegions.IsRegion(row.Region)) +
+                   board.ComponentLinks.Count(row => BoardRegions.IsRegion(row.Region)) +
+                   board.BoardLocalFiles.Count(row => BoardRegions.IsRegion(row.Region)) +
+                   board.BoardLinks.Count(row => BoardRegions.IsRegion(row.Region));
         }
 
         // Whether two boards differ in what they say about their regions - what a draft has to submit.

@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
@@ -90,6 +92,352 @@ public sealed class ComponentPanePagesTests : IDisposable
         box.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     }
 
+    // ---- replacement parts --------------------------------------------------------------------------
+
+    // A row's boxes as drawn, typed into as a person types: the box holds the text, then it is left.
+    private static void Type(ComponentPane pane, string list, int row, string text)
+    {
+        TextBox box = Get<ItemsControl>(pane, list).GetRealizedContainers().ElementAt(row).GetVisualDescendants().OfType<TextBox>().First();
+
+        box.Focus();
+        box.Text = text;
+        Dispatcher.UIThread.RunJobs();
+        Get<Button>(pane, "AddReplacementButton").Focus();
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    // *** OWNER REPORT, 2026-11-01: "adding another replacement part will just overwrite the first one -
+    // it will not add one". On a component told apart per region, as U1 was, and on one that is not. ***
+    [Theory]
+    [InlineData("U8", "PAL")]
+    [InlineData("U1", "NTSC")]
+    [InlineData("U1", "PAL")]
+    public void Another_replacement_part_is_added_beside_the_first(string label, string region)
+    {
+        BoardData board = Board();
+        board.Components.Add(new ComponentEntry { BoardLabel = "U1", Region = "PAL", Category = "IC" });
+        board.Components.Add(new ComponentEntry { BoardLabel = "U1", Region = "NTSC", Category = "IC" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session, label, region);
+
+            pane.ShowPage(ComponentPage.Replacements);
+            Dispatcher.UIThread.RunJobs();
+
+            Click(Get<Button>(pane, "AddReplacementButton"));
+            Dispatcher.UIThread.RunJobs();
+            Type(pane, "ReplacementsItemsControl", 0, "8500");
+
+            Click(Get<Button>(pane, "AddReplacementButton"));
+            Dispatcher.UIThread.RunJobs();
+            Type(pane, "ReplacementsItemsControl", 1, "6510");
+
+            Assert.Equal(
+                ["8500", "6510"],
+                ComponentPaneEdits.ReplacementsOf(session.Content.Board, label, region).Select(row => row.PartNumber));
+
+            window.Close();
+        });
+    }
+
+    // A part's one note holds several lines, and is a box of several lines while empty too.
+    [Fact]
+    public void A_replacement_parts_note_is_one_box_of_several_lines()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.ShowPage(ComponentPage.Replacements);
+            Dispatcher.UIThread.RunJobs();
+            Click(Get<Button>(pane, "AddReplacementButton"));
+            Dispatcher.UIThread.RunJobs();
+
+            Control row = Get<ItemsControl>(pane, "ReplacementsItemsControl").GetRealizedContainers().Single();
+            TextBox note = row.GetVisualDescendants().OfType<TextBox>().Single(box => box.AcceptsReturn);
+
+            Assert.True(note.TextWrapping == Avalonia.Media.TextWrapping.Wrap);
+            Assert.True(note.MinHeight >= 60);
+            Assert.Equal(["Part number", "Kind", "Note", "Applies to"], FieldLabels(row));
+
+            note.Text = "Add a resistor\nSee the forum";
+            pane.CommitHeld();
+
+            Assert.Equal("Add a resistor\nSee the forum", ComponentPaneEdits.ReplacementsOf(session.Content.Board, "U8", "PAL").Single().Note);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "Applies to" picked first, on a part with nothing in it yet: it is in no draft to move, so it stays
+    // on the page until something is typed - it used to go, with nothing kept (2026-11-01). Then it moves
+    // as any row does.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_part_with_nothing_in_it_stays_when_its_region_is_picked_first()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.ShowPage(ComponentPage.Replacements);
+            Dispatcher.UIThread.RunJobs();
+            Click(Get<Button>(pane, "AddReplacementButton"));
+
+            ItemsControl list = Get<ItemsControl>(pane, "ReplacementsItemsControl");
+            ComponentPaneReplacementRow row = list.Items.OfType<ComponentPaneReplacementRow>().Single();
+
+            row.AppliesTo = "NTSC";
+            pane.CommitHeld();
+
+            Assert.Same(row, list.Items.OfType<ComponentPaneReplacementRow>().Single());
+            Assert.Empty(session.Content.Board.ComponentReplacements);
+
+            row.PartNumber = "8565";
+            pane.CommitHeld();
+
+            Assert.Empty(list.Items.OfType<ComponentPaneReplacementRow>());
+            Assert.Equal("NTSC", session.Content.Board.ComponentReplacements.Single().Region);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A NEW ROW FOR ANOTHER REGION STAYS WHILE IT IS TYPED IN (code review, 2026-11-02). *** "Add
+    // link", "NTSC" picked, a name typed and a pause: it went into the draft half typed and off the page,
+    // the box from under the caret, and the address could not be typed there. So it waits until the focus
+    // leaves the row - neither the typing pause nor the Tab to its next box - and then moves, once.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_link_for_another_region_stays_on_the_page_while_it_is_typed_in()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.ShowPage(ComponentPage.Links);
+            Dispatcher.UIThread.RunJobs();
+            Click(Get<Button>(pane, "AddLinkButton"));
+            Dispatcher.UIThread.RunJobs();
+
+            ItemsControl list = Get<ItemsControl>(pane, "LinksItemsControl");
+            ComponentPaneLinkRow row = list.Items.OfType<ComponentPaneLinkRow>().Single();
+
+            row.AppliesTo = "NTSC";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            List<TextBox> boxes = list.GetRealizedContainers().Single().GetVisualDescendants().OfType<TextBox>().ToList();
+
+            boxes[0].Focus();
+            boxes[0].Text = "Datasheet";
+            Dispatcher.UIThread.RunJobs();
+
+            // The typing pause.
+            pane.CommitHeld(fromTyping: true);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(row, list.Items.OfType<ComponentPaneLinkRow>().Single());
+            Assert.Empty(session.Content.Board.ComponentLinks);
+
+            // On to the row's next box.
+            boxes[1].Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(row, list.Items.OfType<ComponentPaneLinkRow>().Single());
+            Assert.Empty(session.Content.Board.ComponentLinks);
+
+            boxes[1].Text = "https://example.org/d";
+            Dispatcher.UIThread.RunJobs();
+
+            // Out of the row: into the draft once, and off this region's page.
+            Get<Button>(pane, "AddLinkButton").Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Empty(list.Items.OfType<ComponentPaneLinkRow>());
+            Assert.Equal(
+                ["Datasheet|https://example.org/d|NTSC"],
+                session.Content.Board.ComponentLinks.Select(link => $"{link.Name}|{link.Url}|{link.Region}"));
+
+            window.Close();
+        });
+    }
+
+    // A commit nobody can wait out - CRT closing, the pane handed over - keeps what was typed.
+    [Fact]
+    public void A_row_for_another_region_being_typed_in_goes_into_the_draft_when_the_pane_is_handed_over()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.ShowPage(ComponentPage.Replacements);
+            Dispatcher.UIThread.RunJobs();
+            Click(Get<Button>(pane, "AddReplacementButton"));
+            Dispatcher.UIThread.RunJobs();
+
+            ItemsControl list = Get<ItemsControl>(pane, "ReplacementsItemsControl");
+            ComponentPaneReplacementRow row = list.Items.OfType<ComponentPaneReplacementRow>().Single();
+
+            row.AppliesTo = "NTSC";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            TextBox box = list.GetRealizedContainers().Single().GetVisualDescendants().OfType<TextBox>().First();
+            box.Focus();
+            box.Text = "8565";
+            Dispatcher.UIThread.RunJobs();
+
+            pane.CommitHeld(fromTyping: true);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Empty(session.Content.Board.ComponentReplacements);
+
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("8565|NTSC", session.Content.Board.ComponentReplacements.Select(part => $"{part.PartNumber}|{part.Region}").Single());
+            Assert.Empty(list.Items.OfType<ComponentPaneReplacementRow>());
+
+            window.Close();
+        });
+    }
+
+    // ---- what stops Submit, on its tab ----------------------------------------------------------------
+
+    private static bool TabIsRed(ComponentPane pane, string label) => Get<TextBlock>(pane, label).Classes.Contains("error");
+
+    // ###########################################################################################
+    // *** EVERY ERROR ON A PAGE MARKS ITS TAB (code review, 2026-11-02). *** Only a pin past the case did
+    // on the Baselines tab, and nothing on the Links tab, so from another page there was no sign until
+    // Submit refused: a baseline with no signal name (typed in the table) and a link's "www.lemon64.com".
+    // ###########################################################################################
+    [Fact]
+    public void A_baseline_lacking_what_it_needs_marks_its_tab_and_says_why()
+    {
+        BoardData board = Board();
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U2", Pin = "1", Name = "", File = "Scope baseline/x.png" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session, label: "U2");
+
+            pane.ShowPage(ComponentPage.Basics);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(TabIsRed(pane, "BaselinesPageLabel"));
+            Assert.Contains("its signal name", pane.BaselinesForTests.Single().Problem, StringComparison.Ordinal);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_baseline_with_all_it_needs_leaves_its_tab_plain()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.False(TabIsRed(pane, "BaselinesPageLabel"));
+            Assert.False(pane.BaselinesForTests.Single().HasProblem);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_link_address_Submit_would_refuse_marks_its_tab_until_it_is_put_right()
+    {
+        BoardData board = Board();
+        board.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U8", Name = "Forum", Url = "www.lemon64.com" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.True(TabIsRed(pane, "LinksPageLabel"));
+
+            pane.ShowPage(ComponentPage.Links);
+            Dispatcher.UIThread.RunJobs();
+
+            pane.GetLogicalDescendants().OfType<ItemsControl>().Single(list => list.Name == "LinksItemsControl")
+                .Items.OfType<ComponentPaneLinkRow>().Single().Url = "https://www.lemon64.com";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(TabIsRed(pane, "LinksPageLabel"));
+
+            window.Close();
+        });
+    }
+
+    // ---- what an entry shows ------------------------------------------------------------------------
+
+    // The field labels of a row as drawn, top to bottom.
+    private static List<string> FieldLabels(Control row) =>
+        row.GetVisualDescendants().OfType<TextBlock>()
+            .Where(text => text.Classes.Contains("FieldLabel") && text.IsEffectivelyVisible)
+            .Select(text => text.Text ?? string.Empty)
+            .ToList();
+
+    // ###########################################################################################
+    // Owner's list, 2026-11-01: each entry in a dark gray frame, "Applies to" last, no "Where it comes
+    // from", and a picture's note a box of several lines while empty too.
+    // ###########################################################################################
+    [Fact]
+    public void A_baseline_and_a_picture_are_framed_and_say_what_they_apply_to_last()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.ShowPage(ComponentPage.Baselines);
+            Dispatcher.UIThread.RunJobs();
+
+            Control baseline = Get<ItemsControl>(pane, "BaselinesItemsControl").GetRealizedContainers().First();
+
+            Assert.Equal(
+                ["Pin", "Signal name", "Expected reading", "T/DIV", "V/DIV", "Trigger level", "Machine state", "Note", "Applies to"],
+                FieldLabels(baseline));
+            Assert.Contains(baseline.GetVisualDescendants().OfType<Border>(), border => border.Classes.Contains("PaneEntry"));
+
+            pane.ShowPage(ComponentPage.Pictures);
+            Dispatcher.UIThread.RunJobs();
+
+            Control picture = Get<ItemsControl>(pane, "PicturesItemsControl").GetRealizedContainers().First();
+            TextBox note = picture.GetVisualDescendants().OfType<TextBox>().Single(box => box.AcceptsReturn);
+
+            Assert.Equal(["Name", "Note", "Applies to"], FieldLabels(picture));
+            Assert.Contains(picture.GetVisualDescendants().OfType<Border>(), border => border.Classes.Contains("PaneEntry"));
+            Assert.Equal(string.Empty, note.Text ?? string.Empty);
+            Assert.True(note.MinHeight >= 60);
+
+            window.Close();
+        });
+    }
+
     // ---- the pages --------------------------------------------------------------------------------
 
     // Owner's list, in the owner's order and words.
@@ -104,7 +452,7 @@ public sealed class ComponentPanePagesTests : IDisposable
 
             Assert.True(Get<Border>(pane, "PageTabs").IsVisible);
             Assert.Equal(
-                ["Basics", "Replacement parts", "Pinout (2)", "Pictures (1)", "Scope baseline (1)", "Files", "Links"],
+                ["Basics", "Replacement parts", "Pinout (2)", "Pictures (1)", "Oscilloscope baseline (1)", "Files", "Links"],
                 Get<Border>(pane, "PageTabs").GetLogicalDescendants().OfType<TextBlock>().Select(label => label.Text));
 
             window.Close();
@@ -288,7 +636,7 @@ public sealed class ComponentPanePagesTests : IDisposable
             Assert.Equal(2, board.ComponentPins.Count(pin => pin.BoardLabel == "U80"));
             Assert.Equal(3, board.ComponentImages.Count(image => image.BoardLabel == "U80"));
             Assert.Equal("U80", Assert.Single(board.ComponentHighlights).BoardLabel);
-            Assert.Equal("U80 - CPU | 6510", Get<TextBlock>(pane, "TitleText").Text);
+            Assert.Equal("Component: U80 - CPU | 6510", Get<TextBlock>(pane, "TitleText").Text);
 
             window.Close();
         });
@@ -511,17 +859,49 @@ public sealed class ComponentPanePagesTests : IDisposable
     // ---- the region shown --------------------------------------------------------------------------
 
     [Fact]
-    public void The_switch_shows_only_on_a_board_with_regions_and_says_the_region_shown()
+    public void The_switch_stands_under_its_tick_and_shows_only_while_it_is_ticked()
     {
-        DraftSession session = this.OpenDraft();
+        BoardData board = Board();
+        board.Components.Add(new ComponentEntry { BoardLabel = "U1", Region = "PAL", Category = "IC" });
+        board.Components.Add(new ComponentEntry { BoardLabel = "U1", Region = "NTSC", Category = "IC" });
+        board.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U1", Region = "PAL", Pin = "1", Name = "VCC" });
+
+        DraftSession session = this.OpenDraft(board);
 
         UiTest.Run(() =>
         {
-            (ComponentPane pane, Window window) = Shown(session);
+            // Told apart per region, in both: each switch under its tick, saying the region shown.
+            (ComponentPane pane, Window window) = Shown(session, "U1");
 
-            Assert.True(Get<StackPanel>(pane, "RegionSwitchPanel").IsVisible);
-            Assert.Contains("active", Get<Button>(pane, "PaneRegionPalButton").Classes);
-            Assert.DoesNotContain("active", Get<Button>(pane, "PaneRegionNtscButton").Classes);
+            Assert.Equal("This data is different per region", Get<CheckBox>(pane, "BasicsRegionalCheck").Content);
+            Assert.Equal("This data is different per region", Get<CheckBox>(pane, "PinsRegionalCheck").Content);
+            Assert.True(Get<StackPanel>(pane, "BasicsRegionSwitch").IsVisible);
+            Assert.True(Get<StackPanel>(pane, "PinsRegionSwitch").IsVisible);
+            Assert.Contains("active", Get<PaneRegionSwitch>(pane, "BasicsRegionSwitch").PalButton.Classes);
+            Assert.DoesNotContain("active", Get<PaneRegionSwitch>(pane, "BasicsRegionSwitch").NtscButton.Classes);
+            Assert.Contains("active", Get<PaneRegionSwitch>(pane, "PinsRegionSwitch").PalButton.Classes);
+
+            StackPanel section = Get<StackPanel>(pane, "BasicsSection");
+            Assert.Equal(section.Children.IndexOf(Get<CheckBox>(pane, "BasicsRegionalCheck")) + 1, section.Children.IndexOf(Get<StackPanel>(pane, "BasicsRegionSwitch")));
+
+            // One picks for both - and for all of CRT.
+            Click(Get<PaneRegionSwitch>(pane, "PinsRegionSwitch").NtscButton);
+            Assert.Contains("active", Get<PaneRegionSwitch>(pane, "BasicsRegionSwitch").NtscButton.Classes);
+
+            // A component that is one and the same everywhere: the ticks, and no switch.
+            pane.Show(session, "U8", "PAL", board);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Get<CheckBox>(pane, "BasicsRegionalCheck").IsVisible);
+            Assert.False(Get<StackPanel>(pane, "BasicsRegionSwitch").IsVisible);
+            Assert.False(Get<StackPanel>(pane, "PinsRegionSwitch").IsVisible);
+
+            // Ticked, it comes.
+            Tick(Get<CheckBox>(pane, "BasicsRegionalCheck"), on: true);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Get<StackPanel>(pane, "BasicsRegionSwitch").IsVisible);
+            Assert.False(Get<StackPanel>(pane, "PinsRegionSwitch").IsVisible);
 
             window.Close();
         });
@@ -540,7 +920,8 @@ public sealed class ComponentPanePagesTests : IDisposable
         {
             (ComponentPane pane, Window window) = Shown(session);
 
-            Assert.False(Get<StackPanel>(pane, "RegionSwitchPanel").IsVisible);
+            Assert.False(Get<StackPanel>(pane, "BasicsRegionSwitch").IsVisible);
+            Assert.False(Get<StackPanel>(pane, "PinsRegionSwitch").IsVisible);
             Assert.False(Get<CheckBox>(pane, "BasicsRegionalCheck").IsVisible);
             Assert.False(Get<CheckBox>(pane, "PinsRegionalCheck").IsVisible);
             Assert.False(pane.PicturesForTests[0].ShowsAppliesTo);
@@ -562,14 +943,14 @@ public sealed class ComponentPanePagesTests : IDisposable
 
             Assert.Equal("Scope baseline/a.png", Assert.Single(pane.BaselinesForTests).File);
 
-            Click(Get<Button>(pane, "PaneRegionNtscButton"));
+            Click(Get<PaneRegionSwitch>(pane, "BasicsRegionSwitch").NtscButton);
 
             Assert.Equal(["NTSC"], picked);
             Assert.Equal("Scope baseline/b.png", Assert.Single(pane.BaselinesForTests).File);
-            Assert.Contains("active", Get<Button>(pane, "PaneRegionNtscButton").Classes);
+            Assert.Contains("active", Get<PaneRegionSwitch>(pane, "BasicsRegionSwitch").NtscButton.Classes);
 
             // The one shown already, from either switch: nothing to do.
-            Click(Get<Button>(pane, "PaneRegionNtscButton"));
+            Click(Get<PaneRegionSwitch>(pane, "BasicsRegionSwitch").NtscButton);
             pane.UseRegion("NTSC");
             Assert.Single(picked);
 
@@ -1029,13 +1410,84 @@ public sealed class ComponentPanePagesTests : IDisposable
         BoardData published = Board();
 
         var added = new BoardData { Components = [.. published.Components, new ComponentEntry { BoardLabel = "U9", Category = "IC" }] };
-        var moved = new BoardData { Components = [.. published.Components.AsEnumerable().Reverse()] };
+        var moved = new BoardData { Components = [published.Components[1], published.Components[0], published.Components[2]] };
+        var reordered = new BoardData { Components = [.. published.Components.AsEnumerable().Reverse()] };
 
         Assert.False(ComponentPane.BoardPartDiffers(PaneBoardPart.Categories, added, published));
         Assert.False(ComponentPane.BoardPartDiffers(PaneBoardPart.Categories, moved, published));
+
+        // The categories' own order is a change since they can be put in order (2026-11-01).
+        Assert.True(ComponentPane.BoardPartDiffers(PaneBoardPart.Categories, reordered, published));
         Assert.True(ComponentPane.BoardPartDiffers(PaneBoardPart.Categories, BoardCategoryEdits.Renamed(published, "IC", "Chip"), published));
         Assert.True(ComponentPane.BoardPartDiffers(PaneBoardPart.Categories, BoardCategoryEdits.Renamed(published, "IC", "ic"), published));
         Assert.True(ComponentPane.BoardPartDiffers(PaneBoardPart.Categories, published, null));
+    }
+
+    // ###########################################################################################
+    // Owner request, 2026-11-01: "rearrange the category up/down, alike Files or Links" - one step that
+    // "Undo" takes back, what the draft's components carry following. The components with no category
+    // and one nothing uses have no rows to move, so no handle, and nothing moves past them.
+    // ###########################################################################################
+    [Fact]
+    public void A_category_moves_up_and_down_as_one_step_and_undo_takes_it_back()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Categories);
+
+            ComponentPaneCategoryRow ic = pane.CategoriesForTests.Single(row => row.Name == "IC");
+            ComponentPaneCategoryRow capacitor = pane.CategoriesForTests.Single(row => row.Name == "Capacitor");
+
+            Assert.True(capacitor.CanMove);
+            Assert.False(pane.MoveCategory(capacitor, +1));
+            Assert.False(pane.MoveCategory(ic, -1));
+            Assert.False(session.CanUndo);
+
+            Assert.True(pane.MoveCategory(capacitor, -1));
+
+            Assert.Equal(["Capacitor", "IC"], pane.CategoriesForTests.Select(row => row.Name));
+            Assert.Same(capacitor, pane.CategoriesForTests[0]);
+            Assert.Equal(["C1", "U8", "U2"], session.Content.Board.Components.Select(row => row.BoardLabel));
+            Assert.Equal(["Capacitor", "IC"], ComponentListBuilder.BuildDistinctCategories(session.Content.Board));
+            Assert.Equal(DraftStepWording.CategoriesOrdered, session.UndoDescription);
+            Assert.True(Get<Border>(pane, "ChangedMark").IsVisible);
+
+            Assert.True(session.Undo());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["IC", "Capacitor"], pane.CategoriesForTests.Select(row => row.Name));
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_category_with_no_components_and_the_components_with_none_do_not_move()
+    {
+        BoardData board = Board();
+        board.Components.Add(new ComponentEntry { BoardLabel = "X1", Category = "" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Categories);
+
+            Get<TextBox>(pane, "NewCategoryNameBox").Text = "Unused";
+            pane.AddCategory();
+
+            Assert.Equal(["", "IC", "Capacitor", "Unused"], pane.CategoriesForTests.Select(row => row.Name));
+            Assert.False(pane.CategoriesForTests[0].CanMove);
+            Assert.False(pane.CategoriesForTests[3].CanMove);
+
+            Assert.False(pane.MoveCategory(pane.CategoriesForTests[3], -1));
+            Assert.False(pane.MoveCategory(pane.CategoriesForTests[1], -1));
+            Assert.False(pane.MoveCategory(pane.CategoriesForTests[2], +1));
+
+            window.Close();
+        });
     }
 
     [Fact]
@@ -1273,5 +1725,505 @@ public sealed class ComponentPanePagesTests : IDisposable
 
             window.Close();
         });
+    }
+
+    // ---- what the owner asked on 2026-11-02 -----------------------------------------------------------
+
+    // A board with regions: the switch on the five pages with no tick, always - "The checkbox is not needed".
+    [Fact]
+    public void The_pages_with_no_tick_show_the_region_switch_on_a_board_with_regions()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            foreach (string name in new[] { "ReplacementsRegionSwitch", "PicturesRegionSwitch", "BaselinesRegionSwitch", "FilesRegionSwitch", "LinksRegionSwitch" })
+            {
+                PaneRegionSwitch regionSwitch = Get<PaneRegionSwitch>(pane, name);
+
+                Assert.True(regionSwitch.IsVisible, name);
+                Assert.Contains("active", regionSwitch.PalButton.Classes);
+                Assert.DoesNotContain("active", regionSwitch.NtscButton.Classes);
+            }
+
+            // Picking on one is picking for them all, and what the pages list follows.
+            Click(Get<PaneRegionSwitch>(pane, "BaselinesRegionSwitch").NtscButton);
+
+            Assert.Contains("active", Get<PaneRegionSwitch>(pane, "FilesRegionSwitch").NtscButton.Classes);
+            Assert.Equal("Scope baseline/b.png", Assert.Single(pane.BaselinesForTests).File);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void A_board_without_regions_shows_no_switch_on_any_page()
+    {
+        DraftSession session = this.OpenDraft(new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }] });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            foreach (string name in new[] { "ReplacementsRegionSwitch", "PicturesRegionSwitch", "BaselinesRegionSwitch", "FilesRegionSwitch", "LinksRegionSwitch" })
+            {
+                Assert.False(Get<PaneRegionSwitch>(pane, name).IsVisible, name);
+            }
+
+            window.Close();
+        });
+    }
+
+    // Files and links of a component: "Applies to" per row, what the region shows, moved one place.
+    [Fact]
+    public void A_components_files_and_links_say_what_they_apply_to_and_move_up_and_down()
+    {
+        BoardData board = Board();
+        board.ComponentLocalFiles.AddRange(
+        [
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "One", File = "a.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Two", File = "b.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "NTSC", File = "c.pdf", Region = "NTSC" },
+        ]);
+        board.ComponentLinks.AddRange(
+        [
+            new ComponentLinkEntry { BoardLabel = "U8", Name = "First", Url = "https://example.org/1" },
+            new ComponentLinkEntry { BoardLabel = "U8", Name = "Second", Url = "https://example.org/2" },
+        ]);
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.Equal(["One", "Two"], pane.FilesForTests.Select(row => row.Name));
+            Assert.All(pane.FilesForTests, row => Assert.True(row.ShowsAppliesTo));
+            Assert.True(Get<TextBlock>(pane, "FilesAppliesToHeading").IsVisible);
+            Assert.True(Get<TextBlock>(pane, "LinksAppliesToHeading").IsVisible);
+
+            // Moved: the order is what the draft holds, one step.
+            Assert.True(pane.MoveFile(pane.FilesForTests[1], -1));
+            Assert.Equal(["Two", "One"], ComponentPaneEdits.FilesOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
+            Assert.Equal(DraftStepWording.ComponentFiles("U8"), session.UndoDescription);
+            Assert.False(pane.MoveFile(pane.FilesForTests[0], -1));
+
+            ComponentPaneLinkRow second = Assert.Single(Get<ItemsControl>(pane, "LinksItemsControl").Items.OfType<ComponentPaneLinkRow>(), row => row.Name == "Second");
+            Assert.True(pane.MoveLink(second, -1));
+            Assert.Equal(["Second", "First"], ComponentPaneEdits.LinksOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
+
+            // "Applies to" moves a file out of the region shown, and the page says so.
+            ComponentPaneFileRow file = pane.FilesForTests[0];
+            file.AppliesTo = "NTSC";
+            pane.CommitHeld();
+
+            Assert.Equal(["One"], pane.FilesForTests.Select(row => row.Name));
+            Assert.Equal("NTSC", session.Content.Board.ComponentLocalFiles.Single(row => row.Name == "Two").Region);
+            Assert.Equal(ComponentPaneWording.MovedToRegion("NTSC"), Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    // The board's own files and links say it too, every row of the board shown whatever region CRT shows.
+    [Fact]
+    public void The_boards_files_and_links_have_a_region_column_while_the_board_has_regions()
+    {
+        BoardData board = Board();
+        board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Manuals", Name = "Service manual", File = "a.pdf", Region = "NTSC" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Files);
+
+            ComponentPaneBoardFileRow row = Assert.Single(pane.BoardFilesForTests);
+            Assert.True(row.ShowsAppliesTo);
+            Assert.Equal("NTSC", row.AppliesTo);
+            Assert.True(Get<TextBlock>(pane, "BoardFilesAppliesToHeading").IsVisible);
+
+            row.AppliesTo = ComponentPaneWording.AllRegions;
+            pane.CommitHeld();
+
+            Assert.Equal(string.Empty, Assert.Single(session.Content.Board.BoardLocalFiles).Region);
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Without_regions_a_boards_files_have_no_region_column()
+    {
+        BoardData board = Board(regions: false);
+        board.ComponentImages.RemoveAll(row => row.Region.Length > 0);
+        board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Manuals", Name = "Service manual", File = "a.pdf" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Files);
+
+            Assert.False(Assert.Single(pane.BoardFilesForTests).ShowsAppliesTo);
+            Assert.False(Get<TextBlock>(pane, "BoardFilesAppliesToHeading").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "When adding a new pin and I give it a number that exists (and this has KiCad data), then it
+    // should per default copy the Signal name" - the pinout's, else KiCad's; never over a name typed.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_baselines_signal_name_comes_with_its_pin()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.UseKiCadPins(session, "U8", [new KiCadPin("7", "PA3", "Input", "/PA3")]);
+            pane.OpenNewBaseline();
+
+            TextBox pin = Get<TextBox>(pane, "NewBaselinePinBox");
+            TextBox name = Get<TextBox>(pane, "NewBaselineNameBox");
+
+            // The pinout's name, then KiCad's, and a pin neither names takes back what was offered.
+            pin.Text = "40";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("RES", name.Text);
+
+            pin.Text = "7";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("PA3", name.Text);
+
+            pin.Text = "9";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(string.Empty, name.Text);
+
+            // A name typed stays, whatever the pin.
+            name.Text = "My signal";
+            pin.Text = "7";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("My signal", name.Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "There is no requirement that one of T/DIV or V/DIV or Trigger level must be set - they can be
+    // empty, but the Pin + Signal name + image are mandatory". Saved without them it is still a baseline,
+    // read back as one.
+    // ###########################################################################################
+    [Fact]
+    public void An_oscilloscope_baseline_goes_in_with_no_settings_and_not_without_its_signal_name()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            ComponentPaneBaselineRow row = Assert.Single(pane.BaselinesForTests);
+
+            row.TimeDiv = string.Empty;
+            pane.CommitHeld();
+
+            Assert.False(row.HasProblem);
+            Assert.Single(ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL"), baseline => baseline.Pin == "1" && baseline.TimeDiv.Length == 0);
+
+            row.Name = string.Empty;
+            pane.CommitHeld();
+
+            Assert.StartsWith("An oscilloscope baseline needs its signal name.", row.Problem, StringComparison.Ordinal);
+            Assert.Equal("VSS", Assert.Single(ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")).Name);
+
+            window.Close();
+        });
+    }
+
+    // Pictures move up and down as schematic images do: the ends greyed out, one step each.
+    [Fact]
+    public void A_components_pictures_move_up_and_down()
+    {
+        BoardData board = Board();
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U8", Name = "Bottom", File = "Component images/d.png" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.Equal(["Top", "Bottom"], pane.PicturesForTests.Select(row => row.Name));
+            Assert.False(pane.PicturesForTests[0].CanMoveUp);
+            Assert.True(pane.PicturesForTests[0].CanMoveDown);
+            Assert.True(pane.PicturesForTests[1].CanMoveUp);
+            Assert.False(pane.PicturesForTests[1].CanMoveDown);
+
+            Assert.True(pane.MoveComponentPicture(pane.PicturesForTests[1], -1));
+
+            Assert.Equal(["Bottom", "Top"], pane.PicturesForTests.Select(row => row.Name));
+            Assert.Equal(["Bottom", "Top"], ComponentPaneEdits.PicturesOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
+            Assert.Equal(DraftStepWording.ComponentPictures("U8"), session.UndoDescription);
+            Assert.False(pane.PicturesForTests[0].CanMoveUp);
+            Assert.True(pane.PicturesForTests[1].CanMoveUp);
+
+            Assert.False(pane.MoveComponentPicture(pane.PicturesForTests[0], -1));
+
+            window.Close();
+        });
+    }
+
+    // Repair notes went (owner request, 2026-11-02: "no need for it").
+    [Fact]
+    public void Basics_has_no_repair_notes_any_more()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.DoesNotContain("Repair notes", FieldLabels(Get<StackPanel>(pane, "BasicsSection")));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // On a new board nothing is published to differ from, so nothing is marked (owner request,
+    // 2026-11-02) - a published board's differing component says "Draft".
+    // ###########################################################################################
+    [Fact]
+    public void A_new_boards_component_has_no_mark_and_nothing_to_undo_back_to()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+
+            pane.Show(session, "U8", "PAL", published: null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(pane.IsComponentChanged);
+            Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
+            Assert.False(Get<Button>(pane, "UndoChangesButton").IsVisible);
+
+            // One it does differ from: the mark, in the component list's word.
+            pane.Show(session, "U8", "PAL", new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "Another" }] });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Get<Border>(pane, "ChangedMark").IsVisible);
+            Assert.Equal("Draft", ((TextBlock)Get<Border>(pane, "ChangedMark").Child!).Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // ... BUT "ALSO ON OTHER BOARDS" STAYS (code review, 2026-11-02). The owner asked for no mark and no
+    // undo on a new board; the offer rode on the same answer and went with them, though all a new board's
+    // chip holds is what another board's same chip could take.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_boards_component_still_offers_also_on_other_boards()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+
+            pane.Show(session, "U8", "PAL", published: null);
+            Dispatcher.UIThread.RunJobs();
+
+            Get<TextBox>(pane, "PartNumberBox").Text = "6510";
+            pane.CommitHeld();
+
+            Assert.True(Get<Button>(pane, "AlsoOnOtherBoardsButton").IsVisible);
+            Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
+            Assert.False(Get<Button>(pane, "UndoChangesButton").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A component's links only dragged into another order are a change of it (code review, 2026-11-02):
+    // "Draft" and "Undo changes to", which puts them back - Submit and "Review changes" said so already.
+    // ###########################################################################################
+    [Fact]
+    public void Its_links_only_moved_say_draft_and_undo_changes_puts_them_back()
+    {
+        BoardData Linked()
+        {
+            BoardData board = Board();
+            board.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U8", Name = "First", Url = "https://example.org/1" });
+            board.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U8", Name = "Second", Url = "https://example.org/2" });
+            return board;
+        }
+
+        DraftSession session = this.OpenDraft(Linked());
+
+        UiTest.Run(() =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+
+            pane.Show(session, "U8", "PAL", Linked());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
+
+            ComponentPaneLinkRow second = Assert.Single(Get<ItemsControl>(pane, "LinksItemsControl").Items.OfType<ComponentPaneLinkRow>(), row => row.Name == "Second");
+            Assert.True(pane.MoveLink(second, -1));
+
+            Assert.True(Get<Border>(pane, "ChangedMark").IsVisible);
+            Assert.True(Get<Button>(pane, "UndoChangesButton").IsVisible);
+
+            _ = pane.UndoComponentChanges();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["First", "Second"], session.Content.Board.ComponentLinks.Select(row => row.Name));
+            Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // ---- "Applies to", picked in the box itself ------------------------------------------------------
+
+    private static ComboBox AppliesToBox(ComponentPane pane, string list, int row) =>
+        Get<ItemsControl>(pane, list).ContainerFromIndex(row)!.GetVisualDescendants().OfType<ComboBox>().Single();
+
+    // ###########################################################################################
+    // *** A PICK HOLDS (code review, 2026-11-02). *** The row handed out a NEW list of choices each time
+    // its region changed, and a list replaced in the middle of a pick makes the box put the item before it
+    // back and write that: no row's region could be changed in the pane at all. The tests set
+    // row.AppliesTo on the model, a path that keeps the value - so this one picks in the box.
+    // ###########################################################################################
+    [Fact]
+    public void A_region_picked_in_applies_to_holds_in_the_box_and_goes_into_the_draft()
+    {
+        BoardData board = Board();
+        board.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U8", Name = "Datasheet", Url = "https://example.org/1" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.ShowPage(ComponentPage.Links);
+            Dispatcher.UIThread.RunJobs();
+
+            ComboBox box = AppliesToBox(pane, "LinksItemsControl", 0);
+            Assert.Equal(ComponentPaneWording.AllRegions, box.SelectedItem);
+
+            box.SelectedItem = BoardRegions.Pal;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardRegions.Pal, box.SelectedItem);
+
+            pane.CommitHeld();
+            Assert.Equal(BoardRegions.Pal, Assert.Single(session.Content.Board.ComponentLinks).Region);
+
+            // The other region: it leaves the page, and the page says so.
+            box = AppliesToBox(pane, "LinksItemsControl", 0);
+            box.SelectedItem = BoardRegions.Ntsc;
+            Dispatcher.UIThread.RunJobs();
+            pane.CommitHeld();
+
+            Assert.Equal(BoardRegions.Ntsc, Assert.Single(session.Content.Board.ComponentLinks).Region);
+            Assert.Equal(ComponentPaneWording.MovedToRegion(BoardRegions.Ntsc), Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    // A word the board holds that is no region stays listed, so the row can be put right - in one pick.
+    [Fact]
+    public void A_row_holding_another_word_can_be_picked_away_from_it()
+    {
+        BoardData board = Board();
+        board.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U8", Name = "Datasheet", Url = "https://example.org/1", Region = "PAL" });
+        board.BoardLinks.Add(new BoardLinkEntry { Category = "Resources", Name = "Odd", Url = "https://example.org/2", Region = "Europe" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Links);
+
+            ComboBox box = AppliesToBox(pane, "BoardLinksItemsControl", 0);
+            Assert.Equal("Europe", box.SelectedItem);
+
+            box.SelectedItem = BoardRegions.Ntsc;
+            Dispatcher.UIThread.RunJobs();
+            pane.CommitHeld();
+
+            Assert.Equal(BoardRegions.Ntsc, box.SelectedItem);
+            Assert.Equal(BoardRegions.Ntsc, Assert.Single(session.Content.Board.BoardLinks).Region);
+
+            window.Close();
+        });
+    }
+
+    // Alt+Down is what opens a drop-down list (code review, 2026-11-02: on "Applies to" it moved the row
+    // and saved a reorder step). In a row's other boxes it still moves the row.
+    [Fact]
+    public void Alt_down_on_applies_to_opens_its_list_and_moves_no_row()
+    {
+        BoardData board = Board();
+        board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Resources", Name = "One", File = "a.pdf" });
+        board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Resources", Name = "Two", File = "b.pdf" });
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Files);
+
+            ComboBox box = AppliesToBox(pane, "BoardFilesItemsControl", 0);
+            box.Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            window.KeyPress(Key.Down, RawInputModifiers.Alt, PhysicalKey.ArrowDown, keySymbol: null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["One", "Two"], session.Content.Board.BoardLocalFiles.Select(row => row.Name));
+            Assert.True(box.IsDropDownOpen);
+
+            box.IsDropDownOpen = false;
+            window.Close();
+        });
+    }
+
+    // Given a name, the row of the components with no category stays - the same object - and has to say
+    // that it can now be moved (code review, 2026-11-02: its handle stayed hidden until the part opened again).
+    [Fact]
+    public void The_row_of_no_category_given_a_name_gets_its_handle()
+    {
+        var row = new ComponentPaneCategoryRow(new BoardCategoryRow(string.Empty, 2));
+        var raised = new List<string?>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        Assert.False(row.CanMove);
+
+        row.UseName("Misc");
+
+        Assert.True(row.CanMove);
+        Assert.Contains(nameof(ComponentPaneCategoryRow.CanMove), raised);
     }
 }

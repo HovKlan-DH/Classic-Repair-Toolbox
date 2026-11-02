@@ -181,6 +181,20 @@ namespace Handlers.Geometry
             return board.ComponentHighlights.Any(row => string.Equals(row.SchematicName?.Trim(), name, StringComparison.OrdinalIgnoreCase));
         }
 
+        // How many components have a mark on `picture` - each once, capitals ignored.
+        public static int MarkedCount(BoardData board, string? picture)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            string name = picture?.Trim() ?? string.Empty;
+
+            return board.ComponentHighlights
+                .Where(row => string.Equals(row.SchematicName?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+                .Select(row => row.BoardLabel?.Trim() ?? string.Empty)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+        }
+
         // ###########################################################################################
         // Everything on the PCB the overlay draws - tracks, vias, arcs, pads, copper zones - as one
         // world rectangle: what a calibration maps onto the picture.

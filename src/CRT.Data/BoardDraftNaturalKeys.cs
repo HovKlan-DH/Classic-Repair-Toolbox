@@ -64,17 +64,23 @@ namespace Handlers.DataHandling
         public static string ForComponentHighlight(string schematicName, string boardLabel) =>
             Join(schematicName, boardLabel);
 
-        public static string ForComponentLocalFile(string boardLabel, string name) =>
-            Join(boardLabel, name);
+        // ###########################################################################################
+        // A file or a link is its label or category and its name, PLUS ITS REGION when it has one (owner
+        // request, 2026-11-02) - "Datasheet" of PAL and of NTSC are two rows. With no region the key is as
+        // it always was, as a component's is; changing a row's region alone is still ONE row edited
+        // (BoardDataDiffer.PairRenamedRows).
+        // ###########################################################################################
+        public static string ForComponentLocalFile(string boardLabel, string name, string? region = null) =>
+            JoinWithRegion(boardLabel, name, region);
 
-        public static string ForComponentLink(string boardLabel, string name) =>
-            Join(boardLabel, name);
+        public static string ForComponentLink(string boardLabel, string name, string? region = null) =>
+            JoinWithRegion(boardLabel, name, region);
 
-        public static string ForBoardLocalFile(string category, string name) =>
-            Join(category, name);
+        public static string ForBoardLocalFile(string category, string name, string? region = null) =>
+            JoinWithRegion(category, name, region);
 
-        public static string ForBoardLink(string category, string name) =>
-            Join(category, name);
+        public static string ForBoardLink(string category, string name, string? region = null) =>
+            JoinWithRegion(category, name, region);
 
         // *** THE NAME IS PART OF IT, because one item can credit several people. *** Changing only
         // the name is still ONE row edited, not a removal plus an addition - see
@@ -126,10 +132,10 @@ namespace Handlers.DataHandling
             ComponentEntry component => ForComponent(component.BoardLabel, component.Region),
             ComponentImageEntry image => ForComponentImage(image.BoardLabel, image.Region, image.Pin, image.Name),
             ComponentHighlightEntry highlight => ForComponentHighlight(highlight.SchematicName, highlight.BoardLabel),
-            ComponentLocalFileEntry componentFile => ForComponentLocalFile(componentFile.BoardLabel, componentFile.Name),
-            ComponentLinkEntry componentLink => ForComponentLink(componentLink.BoardLabel, componentLink.Name),
-            BoardLocalFileEntry boardFile => ForBoardLocalFile(boardFile.Category, boardFile.Name),
-            BoardLinkEntry boardLink => ForBoardLink(boardLink.Category, boardLink.Name),
+            ComponentLocalFileEntry componentFile => ForComponentLocalFile(componentFile.BoardLabel, componentFile.Name, componentFile.Region),
+            ComponentLinkEntry componentLink => ForComponentLink(componentLink.BoardLabel, componentLink.Name, componentLink.Region),
+            BoardLocalFileEntry boardFile => ForBoardLocalFile(boardFile.Category, boardFile.Name, boardFile.Region),
+            BoardLinkEntry boardLink => ForBoardLink(boardLink.Category, boardLink.Name, boardLink.Region),
             CreditEntry credit => ForCredit(credit.Category, credit.SubCategory, credit.NameOrHandle),
             KiCadImportantSignalEntry signal => ForKiCadImportantSignal(signal.DisplayName, signal.KiCadNetName),
             ComponentPinEntry pin => ForComponentPin(pin.BoardLabel, pin.Region, pin.Pin),
@@ -157,10 +163,10 @@ namespace Handlers.DataHandling
             BoardWorkbookSchema.SheetComponents => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion],
             BoardWorkbookSchema.SheetComponentImages =>
                 [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion, BoardWorkbookSchema.ColPin, BoardWorkbookSchema.ColName],
-            BoardWorkbookSchema.SheetComponentLocalFiles => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName],
-            BoardWorkbookSchema.SheetComponentLinks => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName],
-            BoardWorkbookSchema.SheetBoardLocalFiles => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName],
-            BoardWorkbookSchema.SheetBoardLinks => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName],
+            BoardWorkbookSchema.SheetComponentLocalFiles => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColRegion],
+            BoardWorkbookSchema.SheetComponentLinks => [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColRegion],
+            BoardWorkbookSchema.SheetBoardLocalFiles => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColRegion],
+            BoardWorkbookSchema.SheetBoardLinks => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColRegion],
             BoardWorkbookSchema.SheetCredits =>
                 [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColSubCategory, BoardWorkbookSchema.ColNameOrHandle],
             BoardWorkbookSchema.SheetKiCadImportantSignals => [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName],
@@ -194,10 +200,10 @@ namespace Handlers.DataHandling
                 nameof(ComponentImageEntry.Name)
             ],
             [typeof(ComponentHighlightEntry)] = [nameof(ComponentHighlightEntry.SchematicName), nameof(ComponentHighlightEntry.BoardLabel)],
-            [typeof(ComponentLocalFileEntry)] = [nameof(ComponentLocalFileEntry.BoardLabel), nameof(ComponentLocalFileEntry.Name)],
-            [typeof(ComponentLinkEntry)] = [nameof(ComponentLinkEntry.BoardLabel), nameof(ComponentLinkEntry.Name)],
-            [typeof(BoardLocalFileEntry)] = [nameof(BoardLocalFileEntry.Category), nameof(BoardLocalFileEntry.Name)],
-            [typeof(BoardLinkEntry)] = [nameof(BoardLinkEntry.Category), nameof(BoardLinkEntry.Name)],
+            [typeof(ComponentLocalFileEntry)] = [nameof(ComponentLocalFileEntry.BoardLabel), nameof(ComponentLocalFileEntry.Name), nameof(ComponentLocalFileEntry.Region)],
+            [typeof(ComponentLinkEntry)] = [nameof(ComponentLinkEntry.BoardLabel), nameof(ComponentLinkEntry.Name), nameof(ComponentLinkEntry.Region)],
+            [typeof(BoardLocalFileEntry)] = [nameof(BoardLocalFileEntry.Category), nameof(BoardLocalFileEntry.Name), nameof(BoardLocalFileEntry.Region)],
+            [typeof(BoardLinkEntry)] = [nameof(BoardLinkEntry.Category), nameof(BoardLinkEntry.Name), nameof(BoardLinkEntry.Region)],
             [typeof(CreditEntry)] = [nameof(CreditEntry.Category), nameof(CreditEntry.SubCategory), nameof(CreditEntry.NameOrHandle)],
             [typeof(KiCadImportantSignalEntry)] = [nameof(KiCadImportantSignalEntry.DisplayName), nameof(KiCadImportantSignalEntry.KiCadNetName)],
             [typeof(ComponentPinEntry)] = [nameof(ComponentPinEntry.BoardLabel), nameof(ComponentPinEntry.Region), nameof(ComponentPinEntry.Pin)],
@@ -224,6 +230,9 @@ namespace Handlers.DataHandling
 
             return string.Join(Separator, parts);
         }
+
+        private static string JoinWithRegion(string owner, string name, string? region) =>
+            Normalize(region).Length == 0 ? Join(owner, name) : Join(owner, name, region!);
 
         private static string Normalize(string? value) => value?.Trim() ?? string.Empty;
     }

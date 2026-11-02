@@ -290,11 +290,13 @@ answer BoardTableAnswer | .rows object
 answer BoardTableAnswer | .rows.boardLinks array of object
 answer BoardTableAnswer | .rows.boardLinks[].category string
 answer BoardTableAnswer | .rows.boardLinks[].name string
+answer BoardTableAnswer | .rows.boardLinks[].region string
 answer BoardTableAnswer | .rows.boardLinks[].url string
 answer BoardTableAnswer | .rows.boardLocalFiles array of object
 answer BoardTableAnswer | .rows.boardLocalFiles[].category string
 answer BoardTableAnswer | .rows.boardLocalFiles[].file string
 answer BoardTableAnswer | .rows.boardLocalFiles[].name string
+answer BoardTableAnswer | .rows.boardLocalFiles[].region string
 answer BoardTableAnswer | .rows.componentHighlights array of object
 answer BoardTableAnswer | .rows.componentHighlights[].boardLabel string
 answer BoardTableAnswer | .rows.componentHighlights[].height string
@@ -311,18 +313,19 @@ answer BoardTableAnswer | .rows.componentImages[].name string
 answer BoardTableAnswer | .rows.componentImages[].note string
 answer BoardTableAnswer | .rows.componentImages[].pin string
 answer BoardTableAnswer | .rows.componentImages[].region string
-answer BoardTableAnswer | .rows.componentImages[].source string
 answer BoardTableAnswer | .rows.componentImages[].timeDiv string
 answer BoardTableAnswer | .rows.componentImages[].triggerLevelVolts string
 answer BoardTableAnswer | .rows.componentImages[].voltsDiv string
 answer BoardTableAnswer | .rows.componentLinks array of object
 answer BoardTableAnswer | .rows.componentLinks[].boardLabel string
 answer BoardTableAnswer | .rows.componentLinks[].name string
+answer BoardTableAnswer | .rows.componentLinks[].region string
 answer BoardTableAnswer | .rows.componentLinks[].url string
 answer BoardTableAnswer | .rows.componentLocalFiles array of object
 answer BoardTableAnswer | .rows.componentLocalFiles[].boardLabel string
 answer BoardTableAnswer | .rows.componentLocalFiles[].file string
 answer BoardTableAnswer | .rows.componentLocalFiles[].name string
+answer BoardTableAnswer | .rows.componentLocalFiles[].region string
 answer BoardTableAnswer | .rows.componentPins array of object
 answer BoardTableAnswer | .rows.componentPins[].boardLabel string
 answer BoardTableAnswer | .rows.componentPins[].direction string
@@ -331,11 +334,10 @@ answer BoardTableAnswer | .rows.componentPins[].pin string
 answer BoardTableAnswer | .rows.componentPins[].region string
 answer BoardTableAnswer | .rows.componentReplacements array of object
 answer BoardTableAnswer | .rows.componentReplacements[].boardLabel string
-answer BoardTableAnswer | .rows.componentReplacements[].changes string
 answer BoardTableAnswer | .rows.componentReplacements[].kind string
+answer BoardTableAnswer | .rows.componentReplacements[].note string
 answer BoardTableAnswer | .rows.componentReplacements[].partNumber string
 answer BoardTableAnswer | .rows.componentReplacements[].region string
-answer BoardTableAnswer | .rows.componentReplacements[].source string
 answer BoardTableAnswer | .rows.components array of object
 answer BoardTableAnswer | .rows.components[].boardLabel string
 answer BoardTableAnswer | .rows.components[].category string
@@ -344,7 +346,6 @@ answer BoardTableAnswer | .rows.components[].friendlyName string
 answer BoardTableAnswer | .rows.components[].package string
 answer BoardTableAnswer | .rows.components[].partNumber string
 answer BoardTableAnswer | .rows.components[].region string
-answer BoardTableAnswer | .rows.components[].repairNotes string
 answer BoardTableAnswer | .rows.components[].technicalNameOrValue string
 answer BoardTableAnswer | .rows.credits array of object
 answer BoardTableAnswer | .rows.credits[].category string
@@ -580,11 +581,13 @@ answer ReviewTableData | .published object
 answer ReviewTableData | .published.boardLinks array of object
 answer ReviewTableData | .published.boardLinks[].category string
 answer ReviewTableData | .published.boardLinks[].name string
+answer ReviewTableData | .published.boardLinks[].region string
 answer ReviewTableData | .published.boardLinks[].url string
 answer ReviewTableData | .published.boardLocalFiles array of object
 answer ReviewTableData | .published.boardLocalFiles[].category string
 answer ReviewTableData | .published.boardLocalFiles[].file string
 answer ReviewTableData | .published.boardLocalFiles[].name string
+answer ReviewTableData | .published.boardLocalFiles[].region string
 answer ReviewTableData | .published.componentHighlights array of object
 answer ReviewTableData | .published.componentHighlights[].boardLabel string
 answer ReviewTableData | .published.componentHighlights[].height string
@@ -601,18 +604,19 @@ answer ReviewTableData | .published.componentImages[].name string
 answer ReviewTableData | .published.componentImages[].note string
 answer ReviewTableData | .published.componentImages[].pin string
 answer ReviewTableData | .published.componentImages[].region string
-answer ReviewTableData | .published.componentImages[].source string
 answer ReviewTableData | .published.componentImages[].timeDiv string
 answer ReviewTableData | .published.componentImages[].triggerLevelVolts string
 answer ReviewTableData | .published.componentImages[].voltsDiv string
 answer ReviewTableData | .published.componentLinks array of object
 answer ReviewTableData | .published.componentLinks[].boardLabel string
 answer ReviewTableData | .published.componentLinks[].name string
+answer ReviewTableData | .published.componentLinks[].region string
 answer ReviewTableData | .published.componentLinks[].url string
 answer ReviewTableData | .published.componentLocalFiles array of object
 answer ReviewTableData | .published.componentLocalFiles[].boardLabel string
 answer ReviewTableData | .published.componentLocalFiles[].file string
 answer ReviewTableData | .published.componentLocalFiles[].name string
+answer ReviewTableData | .published.componentLocalFiles[].region string
 answer ReviewTableData | .published.componentPins array of object
 answer ReviewTableData | .published.componentPins[].boardLabel string
 answer ReviewTableData | .published.componentPins[].direction string
@@ -621,11 +625,10 @@ answer ReviewTableData | .published.componentPins[].pin string
 answer ReviewTableData | .published.componentPins[].region string
 answer ReviewTableData | .published.componentReplacements array of object
 answer ReviewTableData | .published.componentReplacements[].boardLabel string
-answer ReviewTableData | .published.componentReplacements[].changes string
 answer ReviewTableData | .published.componentReplacements[].kind string
+answer ReviewTableData | .published.componentReplacements[].note string
 answer ReviewTableData | .published.componentReplacements[].partNumber string
 answer ReviewTableData | .published.componentReplacements[].region string
-answer ReviewTableData | .published.componentReplacements[].source string
 answer ReviewTableData | .published.components array of object
 answer ReviewTableData | .published.components[].boardLabel string
 answer ReviewTableData | .published.components[].category string
@@ -634,7 +637,6 @@ answer ReviewTableData | .published.components[].friendlyName string
 answer ReviewTableData | .published.components[].package string
 answer ReviewTableData | .published.components[].partNumber string
 answer ReviewTableData | .published.components[].region string
-answer ReviewTableData | .published.components[].repairNotes string
 answer ReviewTableData | .published.components[].technicalNameOrValue string
 answer ReviewTableData | .published.credits array of object
 answer ReviewTableData | .published.credits[].category string
@@ -671,11 +673,13 @@ answer ReviewTableData | .submitted object
 answer ReviewTableData | .submitted.boardLinks array of object
 answer ReviewTableData | .submitted.boardLinks[].category string
 answer ReviewTableData | .submitted.boardLinks[].name string
+answer ReviewTableData | .submitted.boardLinks[].region string
 answer ReviewTableData | .submitted.boardLinks[].url string
 answer ReviewTableData | .submitted.boardLocalFiles array of object
 answer ReviewTableData | .submitted.boardLocalFiles[].category string
 answer ReviewTableData | .submitted.boardLocalFiles[].file string
 answer ReviewTableData | .submitted.boardLocalFiles[].name string
+answer ReviewTableData | .submitted.boardLocalFiles[].region string
 answer ReviewTableData | .submitted.componentHighlights array of object
 answer ReviewTableData | .submitted.componentHighlights[].boardLabel string
 answer ReviewTableData | .submitted.componentHighlights[].height string
@@ -692,18 +696,19 @@ answer ReviewTableData | .submitted.componentImages[].name string
 answer ReviewTableData | .submitted.componentImages[].note string
 answer ReviewTableData | .submitted.componentImages[].pin string
 answer ReviewTableData | .submitted.componentImages[].region string
-answer ReviewTableData | .submitted.componentImages[].source string
 answer ReviewTableData | .submitted.componentImages[].timeDiv string
 answer ReviewTableData | .submitted.componentImages[].triggerLevelVolts string
 answer ReviewTableData | .submitted.componentImages[].voltsDiv string
 answer ReviewTableData | .submitted.componentLinks array of object
 answer ReviewTableData | .submitted.componentLinks[].boardLabel string
 answer ReviewTableData | .submitted.componentLinks[].name string
+answer ReviewTableData | .submitted.componentLinks[].region string
 answer ReviewTableData | .submitted.componentLinks[].url string
 answer ReviewTableData | .submitted.componentLocalFiles array of object
 answer ReviewTableData | .submitted.componentLocalFiles[].boardLabel string
 answer ReviewTableData | .submitted.componentLocalFiles[].file string
 answer ReviewTableData | .submitted.componentLocalFiles[].name string
+answer ReviewTableData | .submitted.componentLocalFiles[].region string
 answer ReviewTableData | .submitted.componentPins array of object
 answer ReviewTableData | .submitted.componentPins[].boardLabel string
 answer ReviewTableData | .submitted.componentPins[].direction string
@@ -712,11 +717,10 @@ answer ReviewTableData | .submitted.componentPins[].pin string
 answer ReviewTableData | .submitted.componentPins[].region string
 answer ReviewTableData | .submitted.componentReplacements array of object
 answer ReviewTableData | .submitted.componentReplacements[].boardLabel string
-answer ReviewTableData | .submitted.componentReplacements[].changes string
 answer ReviewTableData | .submitted.componentReplacements[].kind string
+answer ReviewTableData | .submitted.componentReplacements[].note string
 answer ReviewTableData | .submitted.componentReplacements[].partNumber string
 answer ReviewTableData | .submitted.componentReplacements[].region string
-answer ReviewTableData | .submitted.componentReplacements[].source string
 answer ReviewTableData | .submitted.components array of object
 answer ReviewTableData | .submitted.components[].boardLabel string
 answer ReviewTableData | .submitted.components[].category string
@@ -725,7 +729,6 @@ answer ReviewTableData | .submitted.components[].friendlyName string
 answer ReviewTableData | .submitted.components[].package string
 answer ReviewTableData | .submitted.components[].partNumber string
 answer ReviewTableData | .submitted.components[].region string
-answer ReviewTableData | .submitted.components[].repairNotes string
 answer ReviewTableData | .submitted.components[].technicalNameOrValue string
 answer ReviewTableData | .submitted.credits array of object
 answer ReviewTableData | .submitted.credits[].category string
@@ -886,11 +889,13 @@ answer SubmissionDetailAnswer | .manifest.rows object
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks array of object
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].category string
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].name string
+answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].region string
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].url string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles array of object
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].category string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].file string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].name string
+answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].region string
 answer SubmissionDetailAnswer | .manifest.rows.componentHighlights array of object
 answer SubmissionDetailAnswer | .manifest.rows.componentHighlights[].boardLabel string
 answer SubmissionDetailAnswer | .manifest.rows.componentHighlights[].height string
@@ -907,18 +912,19 @@ answer SubmissionDetailAnswer | .manifest.rows.componentImages[].name string
 answer SubmissionDetailAnswer | .manifest.rows.componentImages[].note string
 answer SubmissionDetailAnswer | .manifest.rows.componentImages[].pin string
 answer SubmissionDetailAnswer | .manifest.rows.componentImages[].region string
-answer SubmissionDetailAnswer | .manifest.rows.componentImages[].source string
 answer SubmissionDetailAnswer | .manifest.rows.componentImages[].timeDiv string
 answer SubmissionDetailAnswer | .manifest.rows.componentImages[].triggerLevelVolts string
 answer SubmissionDetailAnswer | .manifest.rows.componentImages[].voltsDiv string
 answer SubmissionDetailAnswer | .manifest.rows.componentLinks array of object
 answer SubmissionDetailAnswer | .manifest.rows.componentLinks[].boardLabel string
 answer SubmissionDetailAnswer | .manifest.rows.componentLinks[].name string
+answer SubmissionDetailAnswer | .manifest.rows.componentLinks[].region string
 answer SubmissionDetailAnswer | .manifest.rows.componentLinks[].url string
 answer SubmissionDetailAnswer | .manifest.rows.componentLocalFiles array of object
 answer SubmissionDetailAnswer | .manifest.rows.componentLocalFiles[].boardLabel string
 answer SubmissionDetailAnswer | .manifest.rows.componentLocalFiles[].file string
 answer SubmissionDetailAnswer | .manifest.rows.componentLocalFiles[].name string
+answer SubmissionDetailAnswer | .manifest.rows.componentLocalFiles[].region string
 answer SubmissionDetailAnswer | .manifest.rows.componentPins array of object
 answer SubmissionDetailAnswer | .manifest.rows.componentPins[].boardLabel string
 answer SubmissionDetailAnswer | .manifest.rows.componentPins[].direction string
@@ -927,11 +933,10 @@ answer SubmissionDetailAnswer | .manifest.rows.componentPins[].pin string
 answer SubmissionDetailAnswer | .manifest.rows.componentPins[].region string
 answer SubmissionDetailAnswer | .manifest.rows.componentReplacements array of object
 answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].boardLabel string
-answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].changes string
 answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].kind string
+answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].note string
 answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].partNumber string
 answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].region string
-answer SubmissionDetailAnswer | .manifest.rows.componentReplacements[].source string
 answer SubmissionDetailAnswer | .manifest.rows.components array of object
 answer SubmissionDetailAnswer | .manifest.rows.components[].boardLabel string
 answer SubmissionDetailAnswer | .manifest.rows.components[].category string
@@ -940,7 +945,6 @@ answer SubmissionDetailAnswer | .manifest.rows.components[].friendlyName string
 answer SubmissionDetailAnswer | .manifest.rows.components[].package string
 answer SubmissionDetailAnswer | .manifest.rows.components[].partNumber string
 answer SubmissionDetailAnswer | .manifest.rows.components[].region string
-answer SubmissionDetailAnswer | .manifest.rows.components[].repairNotes string
 answer SubmissionDetailAnswer | .manifest.rows.components[].technicalNameOrValue string
 answer SubmissionDetailAnswer | .manifest.rows.credits array of object
 answer SubmissionDetailAnswer | .manifest.rows.credits[].category string
@@ -1124,11 +1128,13 @@ body POST /api/review/boards/edit | .rows object
 body POST /api/review/boards/edit | .rows.boardLinks array of object
 body POST /api/review/boards/edit | .rows.boardLinks[].category string
 body POST /api/review/boards/edit | .rows.boardLinks[].name string
+body POST /api/review/boards/edit | .rows.boardLinks[].region string
 body POST /api/review/boards/edit | .rows.boardLinks[].url string
 body POST /api/review/boards/edit | .rows.boardLocalFiles array of object
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].category string
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].file string
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].name string
+body POST /api/review/boards/edit | .rows.boardLocalFiles[].region string
 body POST /api/review/boards/edit | .rows.componentHighlights array of object
 body POST /api/review/boards/edit | .rows.componentHighlights[].boardLabel string
 body POST /api/review/boards/edit | .rows.componentHighlights[].height string
@@ -1145,18 +1151,19 @@ body POST /api/review/boards/edit | .rows.componentImages[].name string
 body POST /api/review/boards/edit | .rows.componentImages[].note string
 body POST /api/review/boards/edit | .rows.componentImages[].pin string
 body POST /api/review/boards/edit | .rows.componentImages[].region string
-body POST /api/review/boards/edit | .rows.componentImages[].source string
 body POST /api/review/boards/edit | .rows.componentImages[].timeDiv string
 body POST /api/review/boards/edit | .rows.componentImages[].triggerLevelVolts string
 body POST /api/review/boards/edit | .rows.componentImages[].voltsDiv string
 body POST /api/review/boards/edit | .rows.componentLinks array of object
 body POST /api/review/boards/edit | .rows.componentLinks[].boardLabel string
 body POST /api/review/boards/edit | .rows.componentLinks[].name string
+body POST /api/review/boards/edit | .rows.componentLinks[].region string
 body POST /api/review/boards/edit | .rows.componentLinks[].url string
 body POST /api/review/boards/edit | .rows.componentLocalFiles array of object
 body POST /api/review/boards/edit | .rows.componentLocalFiles[].boardLabel string
 body POST /api/review/boards/edit | .rows.componentLocalFiles[].file string
 body POST /api/review/boards/edit | .rows.componentLocalFiles[].name string
+body POST /api/review/boards/edit | .rows.componentLocalFiles[].region string
 body POST /api/review/boards/edit | .rows.componentPins array of object
 body POST /api/review/boards/edit | .rows.componentPins[].boardLabel string
 body POST /api/review/boards/edit | .rows.componentPins[].direction string
@@ -1165,11 +1172,10 @@ body POST /api/review/boards/edit | .rows.componentPins[].pin string
 body POST /api/review/boards/edit | .rows.componentPins[].region string
 body POST /api/review/boards/edit | .rows.componentReplacements array of object
 body POST /api/review/boards/edit | .rows.componentReplacements[].boardLabel string
-body POST /api/review/boards/edit | .rows.componentReplacements[].changes string
 body POST /api/review/boards/edit | .rows.componentReplacements[].kind string
+body POST /api/review/boards/edit | .rows.componentReplacements[].note string
 body POST /api/review/boards/edit | .rows.componentReplacements[].partNumber string
 body POST /api/review/boards/edit | .rows.componentReplacements[].region string
-body POST /api/review/boards/edit | .rows.componentReplacements[].source string
 body POST /api/review/boards/edit | .rows.components array of object
 body POST /api/review/boards/edit | .rows.components[].boardLabel string
 body POST /api/review/boards/edit | .rows.components[].category string
@@ -1178,7 +1184,6 @@ body POST /api/review/boards/edit | .rows.components[].friendlyName string
 body POST /api/review/boards/edit | .rows.components[].package string
 body POST /api/review/boards/edit | .rows.components[].partNumber string
 body POST /api/review/boards/edit | .rows.components[].region string
-body POST /api/review/boards/edit | .rows.components[].repairNotes string
 body POST /api/review/boards/edit | .rows.components[].technicalNameOrValue string
 body POST /api/review/boards/edit | .rows.credits array of object
 body POST /api/review/boards/edit | .rows.credits[].category string
@@ -1220,11 +1225,13 @@ body POST /api/review/boards/edit/check | .rows object
 body POST /api/review/boards/edit/check | .rows.boardLinks array of object
 body POST /api/review/boards/edit/check | .rows.boardLinks[].category string
 body POST /api/review/boards/edit/check | .rows.boardLinks[].name string
+body POST /api/review/boards/edit/check | .rows.boardLinks[].region string
 body POST /api/review/boards/edit/check | .rows.boardLinks[].url string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles array of object
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].category string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].file string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].name string
+body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].region string
 body POST /api/review/boards/edit/check | .rows.componentHighlights array of object
 body POST /api/review/boards/edit/check | .rows.componentHighlights[].boardLabel string
 body POST /api/review/boards/edit/check | .rows.componentHighlights[].height string
@@ -1241,18 +1248,19 @@ body POST /api/review/boards/edit/check | .rows.componentImages[].name string
 body POST /api/review/boards/edit/check | .rows.componentImages[].note string
 body POST /api/review/boards/edit/check | .rows.componentImages[].pin string
 body POST /api/review/boards/edit/check | .rows.componentImages[].region string
-body POST /api/review/boards/edit/check | .rows.componentImages[].source string
 body POST /api/review/boards/edit/check | .rows.componentImages[].timeDiv string
 body POST /api/review/boards/edit/check | .rows.componentImages[].triggerLevelVolts string
 body POST /api/review/boards/edit/check | .rows.componentImages[].voltsDiv string
 body POST /api/review/boards/edit/check | .rows.componentLinks array of object
 body POST /api/review/boards/edit/check | .rows.componentLinks[].boardLabel string
 body POST /api/review/boards/edit/check | .rows.componentLinks[].name string
+body POST /api/review/boards/edit/check | .rows.componentLinks[].region string
 body POST /api/review/boards/edit/check | .rows.componentLinks[].url string
 body POST /api/review/boards/edit/check | .rows.componentLocalFiles array of object
 body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].boardLabel string
 body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].file string
 body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].name string
+body POST /api/review/boards/edit/check | .rows.componentLocalFiles[].region string
 body POST /api/review/boards/edit/check | .rows.componentPins array of object
 body POST /api/review/boards/edit/check | .rows.componentPins[].boardLabel string
 body POST /api/review/boards/edit/check | .rows.componentPins[].direction string
@@ -1261,11 +1269,10 @@ body POST /api/review/boards/edit/check | .rows.componentPins[].pin string
 body POST /api/review/boards/edit/check | .rows.componentPins[].region string
 body POST /api/review/boards/edit/check | .rows.componentReplacements array of object
 body POST /api/review/boards/edit/check | .rows.componentReplacements[].boardLabel string
-body POST /api/review/boards/edit/check | .rows.componentReplacements[].changes string
 body POST /api/review/boards/edit/check | .rows.componentReplacements[].kind string
+body POST /api/review/boards/edit/check | .rows.componentReplacements[].note string
 body POST /api/review/boards/edit/check | .rows.componentReplacements[].partNumber string
 body POST /api/review/boards/edit/check | .rows.componentReplacements[].region string
-body POST /api/review/boards/edit/check | .rows.componentReplacements[].source string
 body POST /api/review/boards/edit/check | .rows.components array of object
 body POST /api/review/boards/edit/check | .rows.components[].boardLabel string
 body POST /api/review/boards/edit/check | .rows.components[].category string
@@ -1274,7 +1281,6 @@ body POST /api/review/boards/edit/check | .rows.components[].friendlyName string
 body POST /api/review/boards/edit/check | .rows.components[].package string
 body POST /api/review/boards/edit/check | .rows.components[].partNumber string
 body POST /api/review/boards/edit/check | .rows.components[].region string
-body POST /api/review/boards/edit/check | .rows.components[].repairNotes string
 body POST /api/review/boards/edit/check | .rows.components[].technicalNameOrValue string
 body POST /api/review/boards/edit/check | .rows.credits array of object
 body POST /api/review/boards/edit/check | .rows.credits[].category string
@@ -1338,11 +1344,13 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].category string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].name string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].url string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].category string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].file string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].name string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentHighlights array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentHighlights[].boardLabel string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentHighlights[].height string
@@ -1359,18 +1367,19 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentIma
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].note string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].pin string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].region string
-body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].source string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].timeDiv string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].triggerLevelVolts string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentImages[].voltsDiv string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLinks array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLinks[].boardLabel string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLinks[].name string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLinks[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLinks[].url string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLocalFiles array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLocalFiles[].boardLabel string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLocalFiles[].file string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLocalFiles[].name string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentLocalFiles[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentPins array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentPins[].boardLabel string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentPins[].direction string
@@ -1379,11 +1388,10 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentPin
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentPins[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].boardLabel string
-body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].changes string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].kind string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].note string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].partNumber string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].region string
-body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentReplacements[].source string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].boardLabel string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].category string
@@ -1392,7 +1400,6 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[]
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].package string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].partNumber string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].region string
-body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].repairNotes string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].technicalNameOrValue string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].category string
@@ -1460,11 +1467,13 @@ body POST /api/submissions | .rows object
 body POST /api/submissions | .rows.boardLinks array of object
 body POST /api/submissions | .rows.boardLinks[].category string
 body POST /api/submissions | .rows.boardLinks[].name string
+body POST /api/submissions | .rows.boardLinks[].region string
 body POST /api/submissions | .rows.boardLinks[].url string
 body POST /api/submissions | .rows.boardLocalFiles array of object
 body POST /api/submissions | .rows.boardLocalFiles[].category string
 body POST /api/submissions | .rows.boardLocalFiles[].file string
 body POST /api/submissions | .rows.boardLocalFiles[].name string
+body POST /api/submissions | .rows.boardLocalFiles[].region string
 body POST /api/submissions | .rows.componentHighlights array of object
 body POST /api/submissions | .rows.componentHighlights[].boardLabel string
 body POST /api/submissions | .rows.componentHighlights[].height string
@@ -1481,18 +1490,19 @@ body POST /api/submissions | .rows.componentImages[].name string
 body POST /api/submissions | .rows.componentImages[].note string
 body POST /api/submissions | .rows.componentImages[].pin string
 body POST /api/submissions | .rows.componentImages[].region string
-body POST /api/submissions | .rows.componentImages[].source string
 body POST /api/submissions | .rows.componentImages[].timeDiv string
 body POST /api/submissions | .rows.componentImages[].triggerLevelVolts string
 body POST /api/submissions | .rows.componentImages[].voltsDiv string
 body POST /api/submissions | .rows.componentLinks array of object
 body POST /api/submissions | .rows.componentLinks[].boardLabel string
 body POST /api/submissions | .rows.componentLinks[].name string
+body POST /api/submissions | .rows.componentLinks[].region string
 body POST /api/submissions | .rows.componentLinks[].url string
 body POST /api/submissions | .rows.componentLocalFiles array of object
 body POST /api/submissions | .rows.componentLocalFiles[].boardLabel string
 body POST /api/submissions | .rows.componentLocalFiles[].file string
 body POST /api/submissions | .rows.componentLocalFiles[].name string
+body POST /api/submissions | .rows.componentLocalFiles[].region string
 body POST /api/submissions | .rows.componentPins array of object
 body POST /api/submissions | .rows.componentPins[].boardLabel string
 body POST /api/submissions | .rows.componentPins[].direction string
@@ -1501,11 +1511,10 @@ body POST /api/submissions | .rows.componentPins[].pin string
 body POST /api/submissions | .rows.componentPins[].region string
 body POST /api/submissions | .rows.componentReplacements array of object
 body POST /api/submissions | .rows.componentReplacements[].boardLabel string
-body POST /api/submissions | .rows.componentReplacements[].changes string
 body POST /api/submissions | .rows.componentReplacements[].kind string
+body POST /api/submissions | .rows.componentReplacements[].note string
 body POST /api/submissions | .rows.componentReplacements[].partNumber string
 body POST /api/submissions | .rows.componentReplacements[].region string
-body POST /api/submissions | .rows.componentReplacements[].source string
 body POST /api/submissions | .rows.components array of object
 body POST /api/submissions | .rows.components[].boardLabel string
 body POST /api/submissions | .rows.components[].category string
@@ -1514,7 +1523,6 @@ body POST /api/submissions | .rows.components[].friendlyName string
 body POST /api/submissions | .rows.components[].package string
 body POST /api/submissions | .rows.components[].partNumber string
 body POST /api/submissions | .rows.components[].region string
-body POST /api/submissions | .rows.components[].repairNotes string
 body POST /api/submissions | .rows.components[].technicalNameOrValue string
 body POST /api/submissions | .rows.credits array of object
 body POST /api/submissions | .rows.credits[].category string

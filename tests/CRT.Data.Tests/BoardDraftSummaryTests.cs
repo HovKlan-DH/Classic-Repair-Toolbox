@@ -32,6 +32,18 @@ public sealed class BoardDraftSummaryTests
             Kind = kind,
         };
 
+    // A component whose own rows only moved says "Draft" too (code review, 2026-11-02) - the mark the
+    // Contribute tab's list and the component list read once the board is shown again.
+    [Fact]
+    public void A_component_with_its_own_rows_in_another_order_is_marked_though_no_row_changed()
+    {
+        BoardDraftSummary summary = BoardDraftSummary.FromChanges([], new HashSet<string> { "U8" });
+
+        Assert.Contains("u8", summary.DraftedComponentBoardLabels);
+        Assert.True(summary.HasAnyMarkers);
+        Assert.Same(BoardDraftSummary.Empty, BoardDraftSummary.FromChanges([], new HashSet<string>()));
+    }
+
     [Fact]
     public void A_changed_component_is_marked_by_its_board_label()
     {

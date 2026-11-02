@@ -88,6 +88,7 @@ namespace Handlers.DataHandling
                 BoardDataChecks.CheckPartNumbers(context);
                 BoardDataChecks.CheckDuplicateRows(context);
                 BoardDataChecks.CheckCrt4Data(context);
+                BoardDataChecks.CheckFileAndLinkRegions(context);
             }
 
             return context.Problems;
@@ -497,11 +498,43 @@ namespace Handlers.DataHandling
             BoardDataChecks.ErrorOnEmpty(context, context.Rows.Credits ?? [], BoardRowRequired.EmptyColumns, "credit", BoardWorkbookSchema.SheetCredits);
             BoardDataChecks.ErrorOnEmpty(
                 context, context.Rows.ImportantSignals ?? [], BoardRowRequired.EmptyColumns, "important signal", BoardWorkbookSchema.SheetKiCadImportantSignals);
+            BoardDataChecks.CheckBaselinesComplete(context);
+        }
+
+        // ###########################################################################################
+        // *** AN OSCILLOSCOPE BASELINE'S SIGNAL NAME AND IMAGE ARE MANDATORY (owner request, 2026-11-02:
+        // "the Pin + Signal name + image are mandatory") - the settings are not. *** No shipped row lacks
+        // either (measured that day). A code of its own: Board status says it among the components' errors,
+        // never as one of the board's own lists' rows. An image a row without a note lacks is its
+        // "file.unreferenced" already (CheckComponentImages), so a row with a note alone is the one said here.
+        // ###########################################################################################
+        private static void CheckBaselinesComplete(Context context)
+        {
+            for (int i = 0; i < context.Rows.ComponentImages.Count; i++)
+            {
+                ComponentImageEntry row = context.Rows.ComponentImages[i];
+
+                foreach (string column in BoardRowRequired.EmptyColumns(row))
+                {
+                    if (column == BoardWorkbookSchema.ColFile && !BoardDataChecks.IsNoteOnlyImage(row.File, row.Note))
+                    {
+                        continue;
+                    }
+
+                    string label = (row.BoardLabel ?? string.Empty).Trim();
+
+                    context.Error(
+                        "baseline.required_empty",
+                        label,
+                        $"This oscilloscope baseline of [{label}], pin {(row.Pin ?? string.Empty).Trim()}, has no {BoardRowRequired.BaselineFieldName(column)}.",
+                        BoardWorkbookSchema.SheetComponentImages, i, column);
+                }
+            }
         }
 
         // ###########################################################################################
         // *** A PIN MUST BE ON THE COMPONENT'S CASE (owner request, 2026-11-01: "if I e.g. put pin 48 on a
-        // 24 pin package, this is an error"). *** A scope baseline's pin and a pinout's - each against
+        // 24 pin package, this is an error"). *** An oscilloscope baseline's pin and a pinout's - each against
         // the package of the component's row in its region. A case whose count CRT cannot tell, a
         // component with none picked and a pin named rather than numbered say nothing
         // (ComponentVocabulary.IsOnPackage): no published board names a package yet, so nothing
@@ -521,7 +554,7 @@ namespace Handlers.DataHandling
 
                 if (ComponentImageKinds.IsScopeBaseline(row))
                 {
-                    BoardDataChecks.ErrorOutsidePackage(context, byLabel, row.BoardLabel, row.Region, row.Pin, "scope baseline", BoardWorkbookSchema.SheetComponentImages, i);
+                    BoardDataChecks.ErrorOutsidePackage(context, byLabel, row.BoardLabel, row.Region, row.Pin, "oscilloscope baseline", BoardWorkbookSchema.SheetComponentImages, i);
                 }
             }
 
@@ -859,11 +892,10 @@ namespace Handlers.DataHandling
         // value is never a problem, only one CRT will not understand, or a row that belongs nowhere.
         //
         //   - a short description longer than one popup line (ComponentVocabulary.ShortDescriptionLimit;
-        //     2 of the 539 published ones, 2026-10-25) - the rest belongs in the repair notes;
+        //     2 of the 539 published ones, 2026-10-25);
         //   - a pin or replacement row for a component the board does not have, as files and links;
         //   - a pin with no number, a replacement with no part number - nothing to show it by;
-        //   - a pin's direction, a baseline's source and a replacement's kind outside their words
-        //     (ComponentVocabulary).
+        //   - a pin's direction and a replacement's kind outside their words (ComponentVocabulary).
         // ###########################################################################################
         private static void CheckCrt4Data(Context context)
         {
@@ -880,22 +912,8 @@ namespace Handlers.DataHandling
                         "component.long_description",
                         (component.BoardLabel ?? string.Empty).Trim(),
                         $"The short description of [{(component.BoardLabel ?? string.Empty).Trim()}] is {description.Length} characters; the popup has room for " +
-                        $"{ComponentVocabulary.ShortDescriptionLimit}. Shorten it, and put the rest in the repair notes.",
+                        $"{ComponentVocabulary.ShortDescriptionLimit}. Shorten it.",
                         BoardWorkbookSchema.SheetComponents, i, BoardWorkbookSchema.ColDescription);
-                }
-            }
-
-            for (int i = 0; i < context.Rows.ComponentImages.Count; i++)
-            {
-                string source = (context.Rows.ComponentImages[i].Source ?? string.Empty).Trim();
-
-                if (!ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.BaselineSources, source))
-                {
-                    context.Warning(
-                        "baseline.source",
-                        source,
-                        $"Source [{source}] is not one CRT knows. Use one of: {string.Join(", ", ComponentVocabulary.BaselineSources)}.",
-                        BoardWorkbookSchema.SheetComponentImages, i, BoardWorkbookSchema.ColSource);
                 }
             }
 
@@ -971,6 +989,49 @@ namespace Handlers.DataHandling
                         $"Kind [{kind}] is not one CRT knows. Use one of: {string.Join(", ", ComponentVocabulary.ReplacementKinds)}.",
                         replacementSheet, i, BoardWorkbookSchema.ColKind);
                 }
+            }
+        }
+
+        // ###########################################################################################
+        // A FILE OR A LINK OF A REGION THAT DOES NOT EXIST (code review, 2026-11-02). Its Region says PAL,
+        // NTSC or nothing (owner request, 2026-11-02); any other word typed in the table shows the row in
+        // NEITHER region, so it is gone from the pane, the popup and the "Resources" tab with nothing said.
+        // Warned on its cell, as every new local rule is - the server takes it.
+        // ###########################################################################################
+        private static void CheckFileAndLinkRegions(Context context)
+        {
+            void Check(string? region, string sheet, int index)
+            {
+                string word = (region ?? string.Empty).Trim();
+
+                if (word.Length > 0 && !BoardRegions.IsRegion(word))
+                {
+                    context.Warning(
+                        "row.region",
+                        word,
+                        $"Region [{word}] is no region, so this row shows in neither. Write PAL or NTSC, or leave it empty for every region.",
+                        sheet, index, BoardWorkbookSchema.ColRegion);
+                }
+            }
+
+            for (int i = 0; i < context.Rows.ComponentLocalFiles.Count; i++)
+            {
+                Check(context.Rows.ComponentLocalFiles[i].Region, BoardWorkbookSchema.SheetComponentLocalFiles, i);
+            }
+
+            for (int i = 0; i < context.Rows.ComponentLinks.Count; i++)
+            {
+                Check(context.Rows.ComponentLinks[i].Region, BoardWorkbookSchema.SheetComponentLinks, i);
+            }
+
+            for (int i = 0; i < context.Rows.BoardLocalFiles.Count; i++)
+            {
+                Check(context.Rows.BoardLocalFiles[i].Region, BoardWorkbookSchema.SheetBoardLocalFiles, i);
+            }
+
+            for (int i = 0; i < context.Rows.BoardLinks.Count; i++)
+            {
+                Check(context.Rows.BoardLinks[i].Region, BoardWorkbookSchema.SheetBoardLinks, i);
             }
         }
 

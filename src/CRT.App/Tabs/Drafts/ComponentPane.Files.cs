@@ -16,8 +16,8 @@ using System.Threading.Tasks;
 namespace CRT
 {
     // ###########################################################################################
-    // THE COMPONENT PANE'S SCOPE BASELINES, PICTURES AND FILES (CRT 4.0 step 2, slice 3b, 2026-10-26 -
-    // the plan: "Scope baselines: pin; a screenshot, which is required; Capture from my oscilloscope
+    // THE COMPONENT PANE'S OSCILLOSCOPE BASELINES, PICTURES AND FILES (CRT 4.0 step 2, slice 3b, 2026-10-26
+    // - the plan: "Scope baselines: pin; a screenshot, which is required; Capture from my oscilloscope
     // appears when a scope is connected; T/DIV and V/DIV as drop-downs; trigger level, expected reading,
     // region and machine state; where it comes from", and "No 'File location' box. Every file belongs
     // to its board"). See ComponentPane.axaml.cs for the file map.
@@ -27,10 +27,14 @@ namespace CRT
     //     citing it), the rows changed as one step, and the draft SAVED straight away, so its bytes are
     //     in the draft's store and listed. Left lying in the folder until the save a second later, an
     //     undo in between would leave a file no row cites - work, to the draft's retirement.
-    //   - A SCOPE BASELINE IS ONE ONLY WITH ITS PIN AND A SCOPE SETTING (ComponentImageKinds - else
-    //     every reader takes it for a picture) and a screenshot. A new one waits in its own panel until it
-    //     has all three; an edit of one that would take them away is held back - the draft keeps it as
-    //     it was - with the reason under it (ComponentPaneWording.BaselineProblem).
+    //   - AN OSCILLOSCOPE BASELINE IS ONE ONLY WITH ITS PIN (ComponentImageKinds - else every reader takes
+    //     it for a picture), and needs its signal name and an image; T/DIV, V/DIV and the trigger level may
+    //     stay empty (owner request, 2026-11-02). A new one waits in its own panel until it has all three;
+    //     an edit of one that would take them away is held back - the draft keeps it as it was - with the
+    //     reason under it (ComponentPaneWording.BaselineProblem).
+    //   - A NEW ONE'S SIGNAL NAME COMES WITH ITS PIN (owner request, 2026-11-02: "when adding a new pin and
+    //     I give it a number that exists ... it should per default copy the Signal name"): from the
+    //     component's pinout, else the board's KiCad data, until somebody types one (FollowNewBaselinePin).
     //   - "CAPTURE FROM MY OSCILLOSCOPE" while the Oscilloscope tab has a session (ShowScopeConnected):
     //     the scope's screen as PNG, from the host (TabOscilloscope.CaptureOscilloscopePngAsync).
     //   - THUMBNAILS are decoded small and off the UI thread, and never disposed by hand: one still drawn
@@ -61,6 +65,7 @@ namespace CRT
         private readonly ObservableCollection<ComponentPaneBaselineRow> thisBaselines = new();
         private readonly ObservableCollection<ComponentPanePictureRow> thisPictures = new();
         private readonly ObservableCollection<ComponentPaneFileRow> thisFiles = new();
+        private ListRowDrag<ComponentPaneFileRow>? thisFilesDrag;
 
         // Each file's thumbnail by its name in the board - read once while the component is open.
         // Every picture read while the pane is open - thumbnails and the Pictures part's previews alike.
@@ -100,12 +105,25 @@ namespace CRT
             this.BaselinesItemsControl.ItemsSource = this.thisBaselines;
             this.PicturesItemsControl.ItemsSource = this.thisPictures;
             this.FilesItemsControl.ItemsSource = this.thisFiles;
+            this.thisFilesDrag = new ListRowDrag<ComponentPaneFileRow>(
+                this, this.FilesItemsControl, this.SectionsScrollViewer, this.thisFiles, (_, _, _) => this.CommitFiles());
 
             this.NewBaselineTimeDivBox.ItemsSource = ComponentVocabulary.TimeDivisions;
             this.NewBaselineVoltsDivBox.ItemsSource = ComponentVocabulary.VoltDivisions;
 
             // What the new baseline still needs follows its boxes as they are typed in.
-            this.NewBaselinePanel.AddHandler(TextBox.TextChangedEvent, (_, _) => this.ShowNewBaselineState(), handledEventsToo: true);
+            this.NewBaselinePanel.AddHandler(
+                TextBox.TextChangedEvent,
+                (_, e) =>
+                {
+                    if (ReferenceEquals(e.Source, this.NewBaselinePinBox))
+                    {
+                        this.FollowNewBaselinePin();
+                    }
+
+                    this.ShowNewBaselineState();
+                },
+                handledEventsToo: true);
         }
 
         // ---- showing ----------------------------------------------------------------------------
@@ -114,7 +132,7 @@ namespace CRT
         {
             ComponentPane.Fill(this.thisBaselines, ComponentPaneEdits.BaselinesOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneBaselineRow.From));
             ComponentPane.Fill(this.thisPictures, ComponentPaneEdits.PicturesOf(board, this.thisLabel, this.thisRegion).Select(ComponentPanePictureRow.From));
-            ComponentPane.Fill(this.thisFiles, ComponentPaneEdits.FilesOf(board, this.thisLabel).Select(ComponentPaneFileRow.From));
+            ComponentPane.Fill(this.thisFiles, ComponentPaneEdits.FilesOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneFileRow.From));
 
             this.ShowMeasuringNotes(board);
             this.LoadThumbnails();
@@ -128,11 +146,13 @@ namespace CRT
         // ###########################################################################################
         private void ShowMeasuringNotes(BoardData board)
         {
-            List<BoardLocalFileEntry> notes = ScopeMeasurementFiles.Of(board);
+            List<BoardLocalFileEntry> notes = ScopeMeasurementFiles.Of(board, this.thisRegion);
 
             this.MeasuringNotesItemsControl.ItemsSource = notes;
             this.MeasuringNotesItemsControl.IsVisible = notes.Count > 0;
-            this.MeasuringNotesIntro.Text = ComponentPaneWording.MeasuringNotesLine(notes.Count > 0);
+            this.MeasuringNotesIntro.Text = ComponentPaneWording.MeasuringNotesLine(
+                notes.Count > 0,
+                ScopeMeasurementFiles.Of(board).FirstOrDefault()?.Region);
         }
 
         // For tests, in place of opening a file with the program the system has for it.
@@ -188,6 +208,14 @@ namespace CRT
             this.NoBaselinesText.IsVisible = this.thisBaselines.Count == 0;
             this.NoPicturesText.IsVisible = this.thisPictures.Count == 0;
             this.NoFilesText.IsVisible = this.thisFiles.Count == 0;
+            this.FilesHeading.IsVisible = this.thisFiles.Count > 0;
+
+            // A picture moves one place at a time, as a schematic image does (owner request, 2026-11-02).
+            for (int index = 0; index < this.thisPictures.Count; index++)
+            {
+                this.thisPictures[index].CanMoveUp = index > 0;
+                this.thisPictures[index].CanMoveDown = index < this.thisPictures.Count - 1;
+            }
         }
 
         private void ForgetImagesAndFiles()
@@ -229,7 +257,7 @@ namespace CRT
 
         // ###########################################################################################
         // The baselines as the pane holds them, into the draft as one step - each one that is still a
-        // baseline as it reads now, and the one that would not be (its pin cleared, every scope setting
+        // baseline as it reads now, and the one that would not be (its pin, its signal name or its image
         // cleared) as the draft has it, the reason said under it.
         // ###########################################################################################
         private void CommitBaselines()
@@ -240,7 +268,7 @@ namespace CRT
             foreach (ComponentPaneBaselineRow row in this.thisBaselines)
             {
                 ComponentImageEntry wanted = row.ToEntry();
-                string? problem = ComponentPaneWording.BaselineProblem(wanted.Pin, wanted.TimeDiv, wanted.VoltsDiv, wanted.TriggerLevelVolts, wanted.File);
+                string? problem = ComponentPaneWording.BaselineProblem(wanted.Pin, wanted.Name, wanted.File);
 
                 row.Problem = problem is null ? string.Empty : ComponentPaneWording.BaselineHeldBack(problem);
                 rows.Add(problem is null ? wanted : row.Committed);
@@ -272,11 +300,11 @@ namespace CRT
 
         private void CommitFiles()
         {
-            List<ComponentLocalFileEntry> files = this.thisFiles.Select(row => row.ToEntry()).ToList();
+            List<ComponentLocalFileEntry> files = this.thisFiles.Where(row => !this.IsWaitingToBeTyped(row)).Select(row => row.ToEntry()).ToList();
 
             this.Apply(
                 DraftStepWording.ComponentFiles(this.thisLabel),
-                board => ComponentPaneEdits.WithFiles(board, this.thisLabel, files));
+                board => ComponentPaneEdits.WithFiles(board, this.thisLabel, this.thisRegion, files));
         }
 
         // ###########################################################################################
@@ -474,6 +502,32 @@ namespace CRT
             }
         }
 
+        private void OnMoveComponentPictureUpClick(object? sender, RoutedEventArgs e) => this.MoveComponentPicture(sender, -1);
+
+        private void OnMoveComponentPictureDownClick(object? sender, RoutedEventArgs e) => this.MoveComponentPicture(sender, +1);
+
+        private void MoveComponentPicture(object? sender, int by)
+        {
+            if (sender is Control { Tag: ComponentPanePictureRow row })
+            {
+                this.MoveComponentPicture(row, by);
+            }
+        }
+
+        // One place up (-1) or down (+1) among the pictures shown, ONE step - what the pane holds handed
+        // over first. The row stays the same object: its thumbnail stays with it.
+        internal bool MoveComponentPicture(ComponentPanePictureRow row, int by)
+        {
+            if (!this.MoveRow(this.thisPictures, row, by))
+            {
+                return false;
+            }
+
+            this.CommitPictures();
+            this.ShowEmptyLines();
+            return true;
+        }
+
         // ---- files ------------------------------------------------------------------------------
 
         private async void OnAddFileClick(object? sender, RoutedEventArgs e)
@@ -550,7 +604,22 @@ namespace CRT
             }
         }
 
-        // ---- scope baselines --------------------------------------------------------------------
+        // A file dragged by its handle, or moved by Alt+Up and Alt+Down, as the board's are (owner request,
+        // 2026-11-02: "the reordering is missing in the component part").
+        private void OnFileHandlePressed(object? sender, Avalonia.Input.PointerPressedEventArgs e) => this.thisFilesDrag?.Press(sender, e);
+
+        internal bool MoveFile(ComponentPaneFileRow row, int by)
+        {
+            if (!this.MoveRow(this.thisFiles, row, by))
+            {
+                return false;
+            }
+
+            this.CommitFiles();
+            return true;
+        }
+
+        // ---- oscilloscope baselines -------------------------------------------------------------
 
         private async void OnChangeBaselineScreenshotClick(object? sender, RoutedEventArgs e)
         {
@@ -563,7 +632,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Changing a scope baseline's screenshot in the component pane failed - [{ex}]");
+                Logger.Critical($"Changing an oscilloscope baseline's image in the component pane failed - [{ex}]");
             }
         }
 
@@ -596,7 +665,7 @@ namespace CRT
             }
         }
 
-        // ---- a new scope baseline ---------------------------------------------------------------
+        // ---- a new oscilloscope baseline --------------------------------------------------------
 
         private void OnAddBaselineClick(object? sender, RoutedEventArgs e) => this.OpenNewBaseline();
 
@@ -614,6 +683,7 @@ namespace CRT
 
             this.NewBaselinePinBox.Text = string.Empty;
             this.NewBaselineNameBox.Text = string.Empty;
+            this.thisNewBaselineNameOffered = string.Empty;
             this.NewBaselineTimeDivBox.Text = last?.TimeDiv ?? string.Empty;
             this.NewBaselineVoltsDivBox.Text = last?.VoltsDiv ?? string.Empty;
             this.NewBaselineTriggerBox.Text = last?.TriggerLevel ?? string.Empty;
@@ -622,7 +692,7 @@ namespace CRT
             // Its region: the one shown, as nearly all baselines are of one region (owner decision,
             // 2026-11-01) - on a board that has regions.
             string region = this.RegionForNewBaseline();
-            this.NewBaselineRegionPanel.IsVisible = this.RegionSwitchPanel.IsVisible;
+            this.NewBaselineRegionPanel.IsVisible = this.thisBoardHasRegions;
             this.NewBaselineRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(region);
             this.NewBaselineRegionBox.SelectedItem = ComponentPaneWording.AppliesToOf(region);
 
@@ -661,14 +731,39 @@ namespace CRT
             this.thisNewBaselineIsCapture = false;
         }
 
+        // ###########################################################################################
+        // The signal name that goes with the pin typed - the pinout's, else the board's KiCad data's
+        // (KiCadComponentPins.NameOfPin) - while the box is empty or still holds what was offered for the
+        // pin before: a name somebody typed is never written over. A pin with none takes back what was
+        // offered, so a slip of the keys leaves no name behind.
+        // ###########################################################################################
+        private void FollowNewBaselinePin()
+        {
+            string shown = this.NewBaselineNameBox.Text ?? string.Empty;
+
+            if (shown.Length > 0 && !string.Equals(shown, this.thisNewBaselineNameOffered, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            string offered = KiCadComponentPins.NameOfPin(
+                this.thisPins.Select(row => row.ToEntry()).ToList(),
+                this.thisKiCadPins,
+                this.NewBaselinePinBox.Text);
+
+            this.thisNewBaselineNameOffered = offered;
+            this.NewBaselineNameBox.Text = offered;
+        }
+
+        // What the new baseline's name box was last given (FollowNewBaselinePin).
+        private string thisNewBaselineNameOffered = string.Empty;
+
         // What the new baseline still needs, and Add only once it has nothing more to need.
         private void ShowNewBaselineState()
         {
             string? problem = ComponentPaneWording.BaselineProblem(
                 this.NewBaselinePinBox.Text,
-                this.NewBaselineTimeDivBox.Text,
-                this.NewBaselineVoltsDivBox.Text,
-                this.NewBaselineTriggerBox.Text,
+                this.NewBaselineNameBox.Text,
                 this.thisNewBaselineSource) ?? this.NewBaselinePinProblem();
 
             this.NewBaselineProblemText.Text = problem ?? string.Empty;
@@ -697,7 +792,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Choosing a new scope baseline's screenshot failed - [{ex}]");
+                Logger.Critical($"Choosing a new oscilloscope baseline's image failed - [{ex}]");
             }
         }
 
@@ -722,7 +817,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Capturing a new scope baseline failed - [{ex}]");
+                Logger.Critical($"Capturing a new oscilloscope baseline failed - [{ex}]");
             }
         }
 
@@ -734,7 +829,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Capturing a new scope baseline failed - [{ex}]");
+                Logger.Critical($"Capturing a new oscilloscope baseline failed - [{ex}]");
             }
         }
 
@@ -806,7 +901,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Adding a new scope baseline failed - [{ex}]");
+                Logger.Critical($"Adding a new oscilloscope baseline failed - [{ex}]");
             }
         }
 
@@ -820,9 +915,7 @@ namespace CRT
             if (this.thisNewBaselineSource is not { } source ||
                 ComponentPaneWording.BaselineProblem(
                     this.NewBaselinePinBox.Text,
-                    this.NewBaselineTimeDivBox.Text,
-                    this.NewBaselineVoltsDivBox.Text,
-                    this.NewBaselineTriggerBox.Text,
+                    this.NewBaselineNameBox.Text,
                     source) is not null ||
                 this.NewBaselinePinProblem() is not null)
             {
@@ -949,9 +1042,8 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // One scope baseline as the pane holds it. `Committed` is the baseline as the draft has it - what
-    // goes back in while an edit would make it no baseline (ComponentPane.CommitBaselines). Where it
-    // comes from is picked, never cleared, as a pin's direction is.
+    // One oscilloscope baseline as the pane holds it. `Committed` is the baseline as the draft has it - what
+    // goes back in while an edit would make it no baseline (ComponentPane.CommitBaselines).
     // ###########################################################################################
     public sealed class ComponentPaneBaselineRow : ComponentPaneRegionalRow, IComponentPaneThumbnailRow
     {
@@ -962,7 +1054,6 @@ namespace CRT
         private string thisVoltsDiv = string.Empty;
         private string thisTriggerLevel = string.Empty;
         private string thisMachineState = string.Empty;
-        private string thisSource = string.Empty;
         private string thisNote = string.Empty;
         private string thisFile = string.Empty;
         private string thisProblem = string.Empty;
@@ -988,18 +1079,6 @@ namespace CRT
 
         public string MachineState { get => this.thisMachineState; set => this.Set(ref this.thisMachineState, value ?? string.Empty); }
 
-        public string? Source
-        {
-            get => this.thisSource.Length == 0 ? null : this.thisSource;
-            set
-            {
-                if (value is not null)
-                {
-                    this.Set(ref this.thisSource, value);
-                }
-            }
-        }
-
         public string Note { get => this.thisNote; set => this.Set(ref this.thisNote, value ?? string.Empty); }
 
         public string File { get => this.thisFile; set => this.Set(ref this.thisFile, value ?? string.Empty); }
@@ -1016,6 +1095,10 @@ namespace CRT
         }
 
         public bool HasProblem => this.thisProblem.Length > 0;
+
+        // The draft's baseline lacks its pin, its signal name or its image - an error Submit stops on,
+        // typed in the table or held back here (baseline.required_empty).
+        public bool LacksWhatItNeeds => ComponentPaneWording.BaselineProblem(this.Committed.Pin, this.Committed.Name, this.Committed.File) is not null;
 
         // A pin the component's case does not have - an error, marked on its box (ShowPinProblems).
         public string PinProblem => this.thisPinProblem;
@@ -1044,12 +1127,6 @@ namespace CRT
             }
         }
 
-        // The vocabulary, and a word the board already holds that is not in it.
-        public IReadOnlyList<string> SourceChoices =>
-            ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.BaselineSources, this.thisSource)
-                ? ComponentVocabulary.BaselineSources
-                : [.. ComponentVocabulary.BaselineSources, this.thisSource];
-
         public static ComponentPaneBaselineRow From(ComponentImageEntry row) => new()
         {
             Region = row.Region ?? string.Empty,
@@ -1061,9 +1138,13 @@ namespace CRT
             VoltsDiv = row.VoltsDiv ?? string.Empty,
             TriggerLevel = row.TriggerLevelVolts ?? string.Empty,
             MachineState = row.MachineState ?? string.Empty,
-            Source = string.IsNullOrWhiteSpace(row.Source) ? null : row.Source.Trim(),
             Note = row.Note ?? string.Empty,
             File = row.File ?? string.Empty,
+
+            // Said as it is shown, not only once a commit holds an edit back: its tab is marked already.
+            Problem = ComponentPaneWording.BaselineProblem(row.Pin, row.Name, row.File) is { } problem
+                ? ComponentPaneWording.BaselineHeldBack(problem)
+                : string.Empty,
         };
 
         public ComponentImageEntry ToEntry() => new()
@@ -1078,7 +1159,6 @@ namespace CRT
             VoltsDiv = this.thisVoltsDiv,
             TriggerLevelVolts = this.thisTriggerLevel,
             MachineState = this.thisMachineState,
-            Source = this.thisSource,
         };
     }
 
@@ -1093,6 +1173,34 @@ namespace CRT
         private string thisNote = string.Empty;
         private string thisFile = string.Empty;
         private Bitmap? thisThumbnail;
+        private bool thisCanMoveUp;
+        private bool thisCanMoveDown;
+
+        public bool CanMoveUp
+        {
+            get => this.thisCanMoveUp;
+            set
+            {
+                if (this.thisCanMoveUp != value)
+                {
+                    this.thisCanMoveUp = value;
+                    this.Raise(nameof(this.CanMoveUp));
+                }
+            }
+        }
+
+        public bool CanMoveDown
+        {
+            get => this.thisCanMoveDown;
+            set
+            {
+                if (this.thisCanMoveDown != value)
+                {
+                    this.thisCanMoveDown = value;
+                    this.Raise(nameof(this.CanMoveDown));
+                }
+            }
+        }
 
         public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
 
@@ -1134,12 +1242,11 @@ namespace CRT
             VoltsDiv = this.thisRead.VoltsDiv,
             TriggerLevelVolts = this.thisRead.TriggerLevelVolts,
             MachineState = this.thisRead.MachineState,
-            Source = this.thisRead.Source,
         };
     }
 
     // One file of the component as the pane holds it.
-    public sealed class ComponentPaneFileRow : ComponentPaneRowBase
+    public sealed class ComponentPaneFileRow : ComponentPaneRegionalRow
     {
         private string thisName = string.Empty;
         private string thisFile = string.Empty;
@@ -1148,12 +1255,16 @@ namespace CRT
 
         public string File { get => this.thisFile; set => this.Set(ref this.thisFile, value ?? string.Empty); }
 
+        // ComponentPaneEdits.WithFiles' rule for a row it leaves out.
+        public override bool HoldsNothingYet => string.IsNullOrWhiteSpace(this.thisName) && string.IsNullOrWhiteSpace(this.thisFile);
+
         public static ComponentPaneFileRow From(ComponentLocalFileEntry row) => new()
         {
+            Region = row.Region ?? string.Empty,
             Name = row.Name ?? string.Empty,
             File = row.File ?? string.Empty,
         };
 
-        public ComponentLocalFileEntry ToEntry() => new() { Name = this.thisName, File = this.thisFile };
+        public ComponentLocalFileEntry ToEntry() => new() { Region = this.Region, Name = this.thisName, File = this.thisFile };
     }
 }

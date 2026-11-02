@@ -1255,12 +1255,18 @@ namespace Handlers.DataHandling
             //
             // The published board is read through the ordinary cached reader, so a second board
             // load pays nothing for it.
+            //
+            // *** NOTHING IS MARKED ON A NEW BOARD (owner request, 2026-11-02: "I do not think there is
+            // any reason to see the Changed text in the list of components, as these are all new ones?
+            // Only if this is different than published"). *** With no published board to differ from,
+            // every row would be marked, which says nothing.
             // ###########################################################################################
-            LastLoadedDraftSummary = source.IsDraft && board != null
-                ? BoardDraftSummary.FromChanges(
-                    BoardDataDiffer.Compare(
-                        await DataManager.LoadPublishedForComparisonAsync(source.PublishedWorkbookPath),
-                        board))
+            BoardData? publishedForComparison = source.IsDraft && board != null
+                ? await DataManager.LoadPublishedForComparisonAsync(source.PublishedWorkbookPath)
+                : null;
+
+            LastLoadedDraftSummary = publishedForComparison is not null
+                ? BoardDraftSummary.FromChanges(BoardDataDiffer.Compare(publishedForComparison, board!), BoardRowOrder.ComponentsReordered(publishedForComparison, board!))
                 : BoardDraftSummary.Empty;
 
             return board;

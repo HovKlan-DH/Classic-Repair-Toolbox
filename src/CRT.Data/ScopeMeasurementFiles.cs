@@ -24,6 +24,10 @@ namespace Handlers.DataHandling
         // with a file to open.
         public static List<BoardLocalFileEntry> Of(BoardData? board) => ScopeMeasurementFiles.Among(board?.BoardLocalFiles);
 
+        // Those `region` shows: a note can be of one region, as every board file (2026-11-02).
+        public static List<BoardLocalFileEntry> Of(BoardData? board, string? region) =>
+            ScopeMeasurementFiles.Of(board).Where(row => ComponentPaneEdits.InRegion(row.Region, region)).ToList();
+
         // The same, among a board's list of files.
         public static List<BoardLocalFileEntry> Among(IEnumerable<BoardLocalFileEntry>? boardFiles) =>
             boardFiles?

@@ -324,6 +324,55 @@ public sealed class TabDraftsHeaderTests : IDisposable
     }
 
     // ###########################################################################################
+    // "Review changes" on a new board offers no "Undo changes to [U0]" (owner request, 2026-11-02: a new
+    // board has nothing published to go back to; code review the same day - the window still offered it,
+    // saying "Put [U0] back as it is published", and a click took the component out of the draft). A
+    // board with something published to go back to still has it.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 1)]
+    public async Task Review_changes_offers_no_undo_on_a_new_board(bool draftOnly, int undoButtons)
+    {
+        WriteDraft(TabDraftsHeaderTests.BoardA, friendlyName: "ULA");
+
+        await UiTest.RunAsync(async () =>
+        {
+            var entry = new HardwareBoardEntry
+            {
+                HardwareName = "Commodore 64",
+                BoardName = "250407",
+                ExcelDataFile = TabDraftsHeaderTests.BoardA,
+                IsDraftOnly = draftOnly,
+            };
+
+            ReviewChangesWindow? shown = null;
+            (TabDrafts tab, _) = this.BuildTab(entry);
+            tab.ReviewWindowFactoryForTests = () => shown = new ReviewChangesWindow();
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Task review = tab.ReviewChangesAsync(entry);
+
+            for (int attempt = 0; attempt < 200 && shown is not { IsVisible: true }; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.NotNull(shown);
+            Assert.True(shown.IsVisible, "The window never opened.");
+            Assert.Equal(undoButtons, shown.UndoButtonsForTests.Count);
+
+            shown.Close();
+            await review;
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // The row's Undo, Redo, Try again and Review changes are bound to its own commands - a button
     // left on another command, or none, compiles and does nothing. Try again shows only after a save
     // that could not be made.

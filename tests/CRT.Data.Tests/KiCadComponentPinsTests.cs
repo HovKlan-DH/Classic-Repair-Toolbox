@@ -171,4 +171,31 @@ public sealed class KiCadComponentPinsTests
         Assert.Equal(["1", "2", "10"], nets.Keys.Order(ComponentPaneEdits.PinOrder));
         Assert.Equal("D0", nets["10"]);
     }
+
+    // ###########################################################################################
+    // A new oscilloscope baseline's signal name comes with its pin (owner request, 2026-11-02): the
+    // pinout's, as somebody may have worked on it, else the board's KiCad data's.
+    // ###########################################################################################
+    [Fact]
+    public void A_pins_name_is_the_pinouts_else_the_KiCad_datas()
+    {
+        ComponentPinEntry[] pinout =
+        [
+            new() { Pin = "1", Name = "My name" },
+            new() { Pin = "2", Name = " " },
+        ];
+
+        KiCadPin[] kiCad =
+        [
+            new("1", "RESET", "Input", "/RESET"),
+            new("2", "GND", "Ground", "GND"),
+            new("3", "D0", "Input/output", "/D0"),
+        ];
+
+        Assert.Equal("My name", KiCadComponentPins.NameOfPin(pinout, kiCad, " 1 "));
+        Assert.Equal("GND", KiCadComponentPins.NameOfPin(pinout, kiCad, "2"));
+        Assert.Equal("D0", KiCadComponentPins.NameOfPin(pinout, kiCad, "3 [64K]"));
+        Assert.Equal(string.Empty, KiCadComponentPins.NameOfPin(pinout, kiCad, "4"));
+        Assert.Equal(string.Empty, KiCadComponentPins.NameOfPin(pinout, kiCad, ""));
+    }
 }

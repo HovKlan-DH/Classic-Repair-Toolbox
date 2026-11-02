@@ -39,7 +39,7 @@ namespace CRT
     //     2026-10-30 - owner request: "a North/South icon and then drag the whole line up/down, just
     //     alike in the workbook for photos"), or Alt+Up / Alt+Down in its boxes (BoardPartEdits
     //     .CanMove/Moved). The new order is a change Submit sends (BoardRowOrder - owner decision,
-    //     2026-10-30), and the part's "Changed" mark says it.
+    //     2026-10-30), and the part's "Draft" mark says it.
     //   - A FIELD A ROW NEEDS, LEFT EMPTY, IS MARKED ON ITS BOX (owner requests, 2026-10-30 and
     //     2026-11-01: "highlight the problematic cell with a helper what is missing ... These errors must
     //     be flagged in 'Board status' and then it should not be possible to submit"): a red frame and
@@ -74,6 +74,7 @@ namespace CRT
         private ListRowDrag<ComponentPaneBoardLinkRow>? thisBoardLinksDrag;
         private ListRowDrag<ComponentPaneCreditRow>? thisCreditsDrag;
         private ListRowDrag<ComponentPaneSignalRow>? thisSignalsDrag;
+        private ListRowDrag<ComponentPaneCategoryRow>? thisCategoriesDrag;
 
         internal PaneBoardPart? BoardPart => this.thisBoardPart;
 
@@ -105,9 +106,12 @@ namespace CRT
                 this, this.CreditsItemsControl, this.BoardPartPanel, this.thisCredits, (_, _, _) => this.CommitCredits());
             this.thisSignalsDrag = new ListRowDrag<ComponentPaneSignalRow>(
                 this, this.SignalsItemsControl, this.BoardPartPanel, this.thisSignals, (_, _, _) => this.CommitSignals());
+            this.thisCategoriesDrag = new ListRowDrag<ComponentPaneCategoryRow>(
+                this, this.CategoriesItemsControl, this.BoardPartPanel, this.thisCategories, (_, _, _) => this.CommitCategoryOrder());
 
             // Alt+Up and Alt+Down in a row's boxes move it - ahead of the boxes, which would take the keys.
-            this.BoardPartPanel.AddHandler(InputElement.KeyDownEvent, this.OnBoardPartKeyDown, RoutingStrategies.Tunnel);
+            this.BoardPartPanel.AddHandler(InputElement.KeyDownEvent, this.OnRowKeyDown, RoutingStrategies.Tunnel);
+            this.SectionsScrollViewer.AddHandler(InputElement.KeyDownEvent, this.OnRowKeyDown, RoutingStrategies.Tunnel);
         }
 
         // Every drag ended - the rows are about to be replaced, and a drag must never outlive its row.
@@ -117,15 +121,20 @@ namespace CRT
             this.thisBoardLinksDrag?.Reset();
             this.thisCreditsDrag?.Reset();
             this.thisSignalsDrag?.Reset();
+            this.thisCategoriesDrag?.Reset();
+            this.thisFilesDrag?.Reset();
+            this.thisLinksDrag?.Reset();
         }
 
         internal bool IsDraggingARowForTests =>
             this.thisBoardFilesDrag?.IsDragging == true || this.thisBoardLinksDrag?.IsDragging == true ||
-            this.thisCreditsDrag?.IsDragging == true || this.thisSignalsDrag?.IsDragging == true;
+            this.thisCreditsDrag?.IsDragging == true || this.thisSignalsDrag?.IsDragging == true ||
+            this.thisCategoriesDrag?.IsDragging == true ||
+            this.thisFilesDrag?.IsDragging == true || this.thisLinksDrag?.IsDragging == true;
 
         // ###########################################################################################
         // Shows `part` of the draft held in `session`. `published` and its file as for Show - what the
-        // "Changed" mark compares with. What the pane held for a component goes in first.
+        // "Draft" mark compares with. What the pane held for a component goes in first.
         // ###########################################################################################
         // `region`: the one CRT shows - the Pictures part marks its components (code review, 2026-10-26:
         // the part used whatever region the last component opened had, empty at first).
@@ -247,6 +256,8 @@ namespace CRT
                     this.thisSignals,
                     board.KiCadImportantSignals.Select(row => ComponentPaneSignalRow.From(row, this.thisNetChoices)));
 
+                this.UseBoardRegions(board);
+
                 if (part == PaneBoardPart.Pictures)
                 {
                     this.DropPicturesNoteIfMovedOn();
@@ -269,7 +280,6 @@ namespace CRT
             }
 
             this.RegionText.IsVisible = false;
-            this.RegionSwitchPanel.IsVisible = false;
             this.ActionsPanel.IsVisible = false;
             this.GonePanel.IsVisible = false;
             this.NewComponentPanel.IsVisible = false;
@@ -312,6 +322,16 @@ namespace CRT
 
             this.NoSignalsText.IsVisible = this.thisSignals.Count == 0;
             this.SignalsHeadings.IsVisible = this.thisSignals.Count > 0;
+
+            // What each file and link applies to, on a board with regions (owner request, 2026-11-02) - a
+            // list of the whole board, so every row shows whatever region CRT shows.
+            foreach (ComponentPaneRegionalRow row in this.thisBoardFiles.Cast<ComponentPaneRegionalRow>().Concat(this.thisBoardLinks))
+            {
+                row.ShowsAppliesTo = this.thisBoardHasRegions;
+            }
+
+            this.BoardFilesAppliesToHeading.IsVisible = this.thisBoardHasRegions;
+            this.BoardLinksAppliesToHeading.IsVisible = this.thisBoardHasRegions;
 
             this.ShowNetsLine();
             this.ShowNewSignalPicker();
@@ -361,13 +381,13 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // "Changed" while the draft's list differs from the published board's - by the rules Submit
+        // "Draft" while the draft's list differs from the published board's - by the rules Submit
         // counts by (code review, 2026-10-30): BoardDataDiffer's for the rows, and BoardRowOrder's for
         // their order, which is a change since the owner's decision the same day ("a change of (any)
-        // order should also be submitted as a change").
+        // order should also be submitted as a change"). A new board has nothing published to differ from.
         // ###########################################################################################
         internal bool IsBoardPartChanged =>
-            this.thisSession is { } session && this.thisBoardPart is { } part &&
+            this.thisSession is { } session && this.thisBoardPart is { } part && this.thisPublished is not null &&
             ComponentPane.BoardPartDiffers(part, session.Content.Board, this.thisPublished);
 
         internal static bool BoardPartDiffers(PaneBoardPart part, BoardData board, BoardData? published) => part switch
@@ -381,11 +401,14 @@ namespace CRT
             _ => ComponentPane.ListDiffers(published?.KiCadImportantSignals, board.KiCadImportantSignals),
         };
 
-        // Whether two boards sort their components under the same words - the names alone (code review,
-        // 2026-11-01): how many carry each and which is seen first change with any component added or moved.
+        // ###########################################################################################
+        // Whether two boards sort their components under the same words, in the same order (order is a
+        // change - owner decision, 2026-10-30). The names alone (code review, 2026-11-01): how many carry
+        // each changes with any component added.
+        // ###########################################################################################
         private static bool SameCategories(BoardData? published, BoardData board) =>
-            (published is null ? [] : BoardCategoryEdits.Of(published)).Select(row => row.Name).ToHashSet(StringComparer.Ordinal)
-                .SetEquals(BoardCategoryEdits.Of(board).Select(row => row.Name));
+            (published is null ? [] : BoardCategoryEdits.Of(published)).Select(row => row.Name)
+                .SequenceEqual(BoardCategoryEdits.Of(board).Select(row => row.Name), StringComparer.Ordinal);
 
         private static bool ListDiffers<T>(IReadOnlyList<T>? published, IReadOnlyList<T> draft)
             where T : class =>
@@ -483,7 +506,7 @@ namespace CRT
             this.ApplyBoardPart(description, board => with(board, entries));
         }
 
-        // One change of a board part, as the pane's own step - "Changed" follows.
+        // One change of a board part, as the pane's own step - "Draft" follows.
         private void ApplyBoardPart(string description, Func<BoardData, BoardData> transform)
         {
             if (this.thisSession is not { } session)
@@ -693,12 +716,12 @@ namespace CRT
         // ###########################################################################################
         // Alt+Up / Alt+Down in a row's boxes moves the row one place - the keyboard's way to what the
         // handle's drag does. The focus is put back in the same box of the row where it now stands: a
-        // moved row's controls are made again.
+        // moved row's controls are made again. Not on a drop-down list: there the keys open and close it.
         // ###########################################################################################
-        private void OnBoardPartKeyDown(object? sender, KeyEventArgs e)
+        private void OnRowKeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyModifiers != KeyModifiers.Alt || e.Key is not (Key.Up or Key.Down) ||
-                e.Source is not Control { DataContext: ComponentPaneListRow row } source)
+            if (e.KeyModifiers != KeyModifiers.Alt || e.Key is not (Key.Up or Key.Down) || e.Source is ComboBox ||
+                e.Source is not Control { DataContext: ComponentPaneDraggableRow row } source)
             {
                 return;
             }
@@ -709,8 +732,17 @@ namespace CRT
                 ComponentPaneBoardFileRow => this.BoardFilesItemsControl,
                 ComponentPaneBoardLinkRow => this.BoardLinksItemsControl,
                 ComponentPaneCreditRow => this.CreditsItemsControl,
-                _ => this.SignalsItemsControl,
+                ComponentPaneCategoryRow => this.CategoriesItemsControl,
+                ComponentPaneSignalRow => this.SignalsItemsControl,
+                ComponentPaneFileRow => this.FilesItemsControl,
+                ComponentPaneLinkRow => this.LinksItemsControl,
+                _ => null,
             };
+
+            if (list is null)
+            {
+                return;
+            }
 
             int focusAt = ComponentPane.FocusableIndexIn(list.ContainerFromItem(row), source);
 
@@ -720,6 +752,9 @@ namespace CRT
                 ComponentPaneBoardLinkRow link => this.MoveBoardLink(link, by),
                 ComponentPaneCreditRow credit => this.MoveCredit(credit, by),
                 ComponentPaneSignalRow signal => this.MoveSignal(signal, by),
+                ComponentPaneCategoryRow category => this.MoveCategory(category, by),
+                ComponentPaneFileRow file => this.MoveFile(file, by),
+                ComponentPaneLinkRow link => this.MoveLink(link, by),
                 _ => false,
             };
 
@@ -775,7 +810,7 @@ namespace CRT
         // cannot move.
         // ###########################################################################################
         private bool MoveRow<TRow>(ObservableCollection<TRow> rows, TRow row, int by)
-            where TRow : ComponentPaneListRow
+            where TRow : ComponentPaneDraggableRow
         {
             this.CommitHeld();
 
@@ -991,14 +1026,12 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // A row of the files, links, credits or important signals: DRAGGED up or down by its handle, a
-    // dashed placeholder where it will land (ListRowDrag - owner request, 2026-10-30: "a North/South
-    // icon and then drag the whole line up/down, just alike in the workbook for photos"), and each
-    // field it needs MARKED while empty (BoardRowRequired - owner request, 2026-11-01: "highlight the
-    // problematic cell with a helper what is missing"): its "...Missing" says so to the markup, raised
-    // whenever a field changes.
+    // A row DRAGGED up or down by its handle, a dashed placeholder where it will land (ListRowDrag - owner
+    // request, 2026-10-30: "a North/South icon and then drag the whole line up/down, just alike in the
+    // workbook for photos"): the files, links, credits and important signals - the board's, and a
+    // component's files and links (owner request, 2026-11-02) - and the categories.
     // ###########################################################################################
-    public abstract class ComponentPaneListRow : ComponentPaneRowBase, IDraggableRow
+    public abstract class ComponentPaneDraggableRow : ComponentPaneRowBase, IDraggableRow
     {
         private bool thisIsDropPlaceholder;
         private double thisPlaceholderHeight;
@@ -1031,7 +1064,15 @@ namespace CRT
                 }
             }
         }
+    }
 
+    // ###########################################################################################
+    // A row of the files, links, credits or important signals, each field it needs MARKED while empty
+    // (BoardRowRequired - owner request, 2026-11-01: "highlight the problematic cell with a helper what
+    // is missing"): its "...Missing" says so to the markup, raised whenever a field changes.
+    // ###########################################################################################
+    public abstract class ComponentPaneListRow : ComponentPaneRegionalRow
+    {
         // Nothing typed in it - no row of the draft (CommitList). BoardPartEdits.IsBlank's rule, the one
         // the list written goes by: two copies could count a row the edit then dropped.
         public abstract bool IsBlank { get; }
@@ -1113,11 +1154,12 @@ namespace CRT
             Category = row.Category ?? string.Empty,
             Name = row.Name ?? string.Empty,
             File = row.File ?? string.Empty,
+            Region = row.Region ?? string.Empty,
             CategoryChoices = categories,
             Committed = row,
         };
 
-        public override BoardLocalFileEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, File = this.thisFile };
+        public override BoardLocalFileEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, File = this.thisFile, Region = this.Region };
     }
 
     public sealed class ComponentPaneBoardLinkRow : ComponentPaneListRow<BoardLinkEntry>
@@ -1188,11 +1230,12 @@ namespace CRT
             Category = row.Category ?? string.Empty,
             Name = row.Name ?? string.Empty,
             Url = row.Url ?? string.Empty,
+            Region = row.Region ?? string.Empty,
             CategoryChoices = categories,
             Committed = row,
         };
 
-        public override BoardLinkEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, Url = this.thisUrl };
+        public override BoardLinkEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, Url = this.thisUrl, Region = this.Region };
     }
 
     public sealed class ComponentPaneCreditRow : ComponentPaneListRow<CreditEntry>

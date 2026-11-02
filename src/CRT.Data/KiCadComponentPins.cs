@@ -206,7 +206,25 @@ namespace Handlers.DataHandling
             return rows.OrderBy(row => row.Pin, ComponentPaneEdits.PinOrder).ToList();
         }
 
-        // Each pin's net by its number - for the popup's "net on this board".
+        // ###########################################################################################
+        // The signal name that goes with `pin`: what the component's pinout says, else what the board's
+        // KiCad data does - "" for a pin neither names (owner request, 2026-11-02: a new oscilloscope
+        // baseline's name comes with its pin).
+        // ###########################################################################################
+        public static string NameOfPin(IEnumerable<ComponentPinEntry> pins, IEnumerable<KiCadPin> kiCad, string? pin)
+        {
+            ArgumentNullException.ThrowIfNull(pins);
+            ArgumentNullException.ThrowIfNull(kiCad);
+
+            string? fromPinout = pins
+                .Where(row => ComponentVocabulary.IsSamePin(row.Pin, pin) && !string.IsNullOrWhiteSpace(row.Name))
+                .Select(row => row.Name)
+                .FirstOrDefault();
+
+            return (fromPinout ?? kiCad.FirstOrDefault(row => ComponentVocabulary.IsSamePin(row.Pin, pin))?.Name)?.Trim() ?? string.Empty;
+        }
+
+        // Each pin's net by its number - for the popup's net names.
         public static Dictionary<string, string> NetsByPin(IEnumerable<KiCadPin> pins)
         {
             ArgumentNullException.ThrowIfNull(pins);

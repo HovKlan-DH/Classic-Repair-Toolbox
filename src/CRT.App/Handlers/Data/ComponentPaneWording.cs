@@ -42,12 +42,13 @@ namespace Handlers.DataHandling
 
     // ###########################################################################################
     // WHAT THE COMPONENT PANE SAYS (CRT 4.0 step 2, 2026-10-25) - its title, the region line, the
-    // offer to add the case's pins, its sections' headings and what a scope baseline still needs. Words only, so
+    // offer to add the case's pins, its sections' headings and what an oscilloscope baseline still needs. Words only, so
     // they are tested without a display.
     // ###########################################################################################
     internal static class ComponentPaneWording
     {
-        // "U8 - VIC-II | 6569" - the label, then what the component list shows beside it.
+        // "Component: U8 - VIC-II | 6569" - the label, then what the component list shows beside it. It
+        // says "Component" as a board part's headline says "Board" (owner request, 2026-11-02).
         public static string Title(ComponentEntry row)
         {
             ArgumentNullException.ThrowIfNull(row);
@@ -58,8 +59,10 @@ namespace Handlers.DataHandling
                 .Where(name => name.Length > 0)
                 .ToArray();
 
-            return names.Length == 0 ? label : $"{label} - {string.Join(" | ", names)}";
+            return names.Length == 0 ? ComponentPaneWording.Title(label) : $"{ComponentPaneWording.Title(label)} - {string.Join(" | ", names)}";
         }
+
+        public static string Title(string label) => $"Component: {label}";
 
         // Said only for a component with a row of its own per region - which one is open.
         public static string RegionLine(string? rowRegion)
@@ -124,13 +127,16 @@ namespace Handlers.DataHandling
         // What a row of a board with regions says it applies to - the words of its drop-down list.
         public const string AllRegions = "All regions";
 
-        // The choices, and a word the board already holds that is not one of them.
+        private static readonly IReadOnlyList<string> UsualAppliesToChoices = [AllRegions, .. BoardRegions.All];
+
+        // The choices, and a word the board already holds that is not one of them. The usual ones are ONE
+        // list: a box's list replaced in the middle of a pick undoes the pick (ComponentPaneRegionalRow).
         public static IReadOnlyList<string> AppliesToChoices(string? region)
         {
             string own = region?.Trim() ?? string.Empty;
 
             return own.Length == 0 || BoardRegions.All.Contains(own, StringComparer.OrdinalIgnoreCase)
-                ? [AllRegions, .. BoardRegions.All]
+                ? UsualAppliesToChoices
                 : [AllRegions, .. BoardRegions.All, own];
         }
 
@@ -146,18 +152,18 @@ namespace Handlers.DataHandling
 
         // A row changed to the other region leaves what this one shows - said, or it reads as gone.
         public static string MovedToRegion(string region) =>
-            $"Moved to {region.Trim()} - it no longer shows here, as this is the other region. Pick {region.Trim()} above to see it.";
+            $"Moved to {region.Trim()} - it no longer shows here, as this is the other region. Pick \"{region.Trim()}\" to see it.";
 
         // A component or its pins made the same in every region: what went, and how to get it back.
         public static string MadeTheSameInEveryRegion(string what, string region) =>
             $"{what} now the same in every region, as {region.Trim()} had it. \"Undo\" brings the other region's back.";
 
-        // "Different per region" ticked on a component with no pins: nothing to tell apart yet, so no step.
+        // "This data is different per region" ticked on a component with no pins: nothing to tell apart yet, so no step.
         public const string NoPinsToTellApart = "It has no pins yet, so there is nothing to tell apart per region - add its pins first.";
 
         // ... taken off while the region shown has none: its pins would be every region's, so all would go.
         public static string NoPinsInRegion(string region) =>
-            $"{region.Trim()} has no pins of its own to make the same in every region. Pick the region whose pins it should be, and take \"Different per region\" off there.";
+            $"{region.Trim()} has no pins of its own to make the same in every region. Pick the region whose pins it should be, and take \"This data is different per region\" off there.";
 
         public const string RegionsHasOnBoard =
             "This board comes in PAL and NTSC versions";
@@ -189,18 +195,18 @@ namespace Handlers.DataHandling
 
         public static string CategoryAlreadyThere(string name) => $"This board already has the category [{name.Trim()}].";
 
-        // ---- TEMPORARY: the tool that makes pinouts of scope baselines ---------------------------------
+        // ---- TEMPORARY: the tool that makes pinouts of oscilloscope baselines ---------------------------
         // *** REMOVED BEFORE CRT 4.0 GOES LIVE - see BaselinePinMigration. ***
 
         public const string MigrationNote =
-            "Temporary, until CRT 4.0 goes live: make the pins from the scope baselines - each pin's number and signal name, and the package when that is certain. What you typed stays, and \"Undo\" takes it back.";
+            "Temporary, until CRT 4.0 goes live: make the pins from the oscilloscope baselines - each pin's number and signal name, and the package when that is certain. What you typed stays, and \"Undo\" takes it back.";
 
-        public const string MigrationNothing = "The pins already have everything the scope baselines say.";
+        public const string MigrationNothing = "The pins already have everything the oscilloscope baselines say.";
 
         public static string MigratedBoard(int components) =>
             components == 1
-                ? "Made the pins of 1 component from its scope baselines. \"Undo\" takes it back."
-                : $"Made the pins of {components.ToString(CultureInfo.InvariantCulture)} components from their scope baselines. \"Undo\" takes them all back.";
+                ? "Made the pins of 1 component from its oscilloscope baselines. \"Undo\" takes it back."
+                : $"Made the pins of {components.ToString(CultureInfo.InvariantCulture)} components from their oscilloscope baselines. \"Undo\" takes them all back.";
 
         public static string ShowOnBoardTip(string label, bool marked) =>
             marked
@@ -208,7 +214,7 @@ namespace Handlers.DataHandling
                 : $"[{label}] is not marked on any picture yet, so there is nothing to show";
 
         public static string DeleteTip(string label) =>
-            $"Take [{label}] off the board in your draft - every row of it in every region, with its pictures, scope baselines, pins and files. \"Undo\" brings it back.";
+            $"Take [{label}] off the board in your draft - every row of it in every region, with its pictures, oscilloscope baselines, pins and files. \"Undo\" brings it back.";
 
         // Offered while the step that deleted it is the latest one.
         public static string BringBack(string label) => $"Bring [{label}] back";
@@ -237,7 +243,7 @@ namespace Handlers.DataHandling
                 ComponentPage.Replacements => "Replacement parts",
                 ComponentPage.Pinout => "Pinout",
                 ComponentPage.Pictures => "Pictures",
-                ComponentPage.Baselines => "Scope baseline",
+                ComponentPage.Baselines => "Oscilloscope baseline",
                 ComponentPage.Files => "Files",
                 _ => "Links",
             };
@@ -260,7 +266,7 @@ namespace Handlers.DataHandling
         // Under the KiCad views "KiCad: Files" lists - where a picture is matched to one, the part named
         // as the left column names it (code review, 2026-10-30: it still said "Pictures").
         public const string KiCadViewsHint =
-            "Each of these can be matched to one picture of the board. Pick it under \"Shows KiCad view\" on the picture's card - \"" +
+            "Each of these can be matched to one picture of the board. Pick it under \"Associate KiCad file\" on the picture's card - \"" +
             SchematicImages + "\" on the left of the \"Contribute\" tab.";
 
         // Under an important signal whose net the Schematics tab's panel will not find.
@@ -294,34 +300,36 @@ namespace Handlers.DataHandling
         public static string LinkNotOpened(string? name) =>
             $"[{name?.Trim()}] has no web address CRT can open.";
 
-        // What the "Changed" mark says of a component, and of a board part.
+        // What the "Draft" mark says of a component, and of a board part - neither on a new board, where
+        // nothing is published to differ from (owner request, 2026-11-02).
         public const string ComponentChangedTip =
             "Your draft changes this component - the published board reads otherwise until your draft is submitted and published";
 
         public const string BoardPartChangedTip =
             "Your draft changes this part of the board - the published board reads otherwise until your draft is submitted and published";
 
-        // A section's heading with how many it holds - "Scope baselines (3)", as the plan draws it.
+        // A section's heading with how many it holds - "Pictures (3)", as the plan draws it.
         public static string Heading(string name, int count) =>
             $"{name} ({count.ToString(CultureInfo.InvariantCulture)})";
 
         // ###########################################################################################
-        // What a scope baseline still needs, or null when it has it all: its pin and one scope setting
-        // - the one rule that makes a row a baseline and not a picture (ComponentImageKinds) - and a
-        // screenshot (the plan: "a screenshot, which is required").
+        // What an oscilloscope baseline still needs, or null when it has it all: its pin - what makes a
+        // row a baseline and not a picture (ComponentImageKinds) - its signal name and an image (owner
+        // request, 2026-11-02: "the Pin + Signal name + image are mandatory"). T/DIV, V/DIV and the
+        // trigger level may stay empty; one of them was needed until then.
         // ###########################################################################################
-        public static string? BaselineProblem(string? pin, string? timeDiv, string? voltsDiv, string? triggerLevel, string? file)
+        public static string? BaselineProblem(string? pin, string? signalName, string? file)
         {
             var missing = new List<string>(3);
 
             if (string.IsNullOrWhiteSpace(pin))
                 missing.Add("its pin");
 
-            if (string.IsNullOrWhiteSpace(file))
-                missing.Add("a screenshot");
+            if (string.IsNullOrWhiteSpace(signalName))
+                missing.Add("its signal name");
 
-            if (string.IsNullOrWhiteSpace(timeDiv) && string.IsNullOrWhiteSpace(voltsDiv) && string.IsNullOrWhiteSpace(triggerLevel))
-                missing.Add("one of T/DIV, V/DIV or trigger level");
+            if (string.IsNullOrWhiteSpace(file))
+                missing.Add("an image");
 
             if (missing.Count == 0)
                 return null;
@@ -330,20 +338,29 @@ namespace Handlers.DataHandling
                 ? missing[0]
                 : $"{string.Join(", ", missing.Take(missing.Count - 1))} and {missing[^1]}";
 
-            return $"A scope baseline needs {listed}.";
+            return $"An oscilloscope baseline needs {listed}.";
         }
 
         // Under a baseline whose edit is held back: what it needs, and that the draft keeps it as it was.
         public static string BaselineHeldBack(string problem) => $"{problem} Until it has, your draft keeps it as it was.";
 
         // ###########################################################################################
-        // Above a component's scope baselines: how the board's were measured is in its "Scope
+        // Above a component's oscilloscope baselines: how the board's were measured is in its "Scope
         // measurements" files - or not written down yet, and where it goes (owner decision, 2026-10-26).
+        // `elsewhere`: the region the board's notes are of when none is of the region shown - never "not
+        // written down", which asks for a second copy of notes the board has (code review, 2026-11-02).
         // ###########################################################################################
-        public static string MeasuringNotesLine(bool hasNotes) =>
-            hasNotes
-                ? "How this board's baselines were measured:"
-                : $"How this board's baselines were measured is not written down yet - add a file to the board under \"Board: Files\", in the category \"{ScopeMeasurementFiles.Category}\".";
+        public static string MeasuringNotesLine(bool hasNotes, string? elsewhere = null)
+        {
+            if (hasNotes)
+                return "How this board's baselines were measured:";
+
+            string where = $"under \"Board: Files\", in the category \"{ScopeMeasurementFiles.Category}\"";
+
+            return string.IsNullOrWhiteSpace(elsewhere)
+                ? $"How this board's baselines were measured is not written down yet - add a file to the board {where}."
+                : $"How this board's baselines were measured is written down for {elsewhere.Trim()} only - show {elsewhere.Trim()} to read it, or add a file for this region {where}.";
+        }
 
         // ---- copy from another board (slice 5) --------------------------------------------------------
 
@@ -362,7 +379,7 @@ namespace Handlers.DataHandling
             $"The same part - part number [{partNumber.Trim()}] - is on these boards. What you changed here goes into each ticked board's own draft, as one step there - each is reviewed by that board's maintainers. What the part has there of what is ticked is replaced.";
 
         public const string AlsoNothingChanged =
-            "Your draft changes nothing of this part that could go to another board yet - its package, notes, pins, replacement parts, links, files or pictures.";
+            "Your draft changes nothing of this part that could go to another board yet - its package, short description, pins, replacement parts, links, files or pictures.";
 
         // A file replaced with nothing on the other boards to change: no part number to find the part
         // by, or none that has it, and no other board with the file it replaced.
@@ -575,7 +592,8 @@ namespace Handlers.DataHandling
             return $"Filled from KiCad: {string.Join(", ", parts)}.";
         }
 
-        // Above the nets: what they are - read from the board's KiCad data, never stored.
+        // Above the nets ("Net name" - "Net on this board" until 2026-11-02, owner request): what they
+        // are - read from the board's KiCad data, never stored.
         public const string NetHeadingTip =
             "The net each pin is on, on this board - read from the board's KiCad data as it is shown, not stored with the pins.";
 

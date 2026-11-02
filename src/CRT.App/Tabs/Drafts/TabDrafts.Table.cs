@@ -241,6 +241,12 @@ namespace CRT
             DraftSession? session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, entry.ExcelDataFile);
             session?.ReadFileIfChanged(DraftSaveWording.ReadAgainStep);
 
+            // A new board's credits start with their rows, on this sheet too (TabDrafts.NewBoardCredits.cs).
+            if (session is not null)
+            {
+                this.OfferNewBoardCredits(entry, session);
+            }
+
             // The downloaded data too, so the table's checks find a row's files where a submit
             // finds them (owner request, 2026-10-02).
             if (session is null ||

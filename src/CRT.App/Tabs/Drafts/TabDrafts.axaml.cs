@@ -58,6 +58,7 @@ namespace CRT
     //                         making each ready once Submit is pressed
     //   TabDrafts.Readiness.cs - "Board status", the start panel: a panel per part of the board, its
     //                         rules and words BoardStatusPage's
+    //   TabDrafts.NewBoardCredits.cs - the rows a new board's credits start with (NewBoardCredits)
     //   TabDrafts.MarkAutomatically.cs - a picture's "Mark all automatically": every component's
     //                         rectangle from its KiCad footprint, on a picture aligned with KiCad - and
     //                         the other side's traces for its card's preview
@@ -548,6 +549,10 @@ namespace CRT
             {
                 return;
             }
+
+            // A new board goes with its credits' rows, even with "Board: Credits" never opened - and saved
+            // with the rest, just below (TabDrafts.NewBoardCredits.cs).
+            this.OfferNewBoardCredits(entry);
 
             // What is sent is the draft FILE, so edits still sitting unsaved in the table would
             // silently be left out of the submission.

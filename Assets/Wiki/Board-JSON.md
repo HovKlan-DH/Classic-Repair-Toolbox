@@ -40,13 +40,13 @@ one entry per line, so two versions of a board compare line by line:
 | List | One entry per | What it holds |
 | --- | --- | --- |
 | `schematics` | Picture of the board | Its name, its image file, the colors and opacities components are marked in (on the picture and on its thumbnail), how lit KiCad traces are drawn on it (this side's color and opacity, the other side's color and opacity - left out until set, and then the picture's highlight is used), and the KiCad view it shows (`cadName`) |
-| `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category (every component needs one), region (`PAL`, `NTSC` or empty for both), short description - and, from CRT 4, its package and repair notes |
-| `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Input, Output, Analog output, Power, Ground, Unknown ...) |
-| `componentReplacements` | Replacement part | Its part number, whether it is a drop-in or needs changes, what to change, and where that is known from |
+| `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category (every component needs one), region (`PAL`, `NTSC` or empty for both), short description - and, from CRT 4, its package |
+| `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Input, Output, Power, Ground, Unknown ...) |
+| `componentReplacements` | Replacement part | Its part number, whether it is a drop-in, needs changes or is an improvement, and a note: what to change, and where that is known from |
 | `componentImages` | Picture of a component | A photo, a pinout, a render - with its name and a note |
-| `scopeBaselines` | Oscilloscope reading of one pin | The pin, the reading expected, the screenshot, the scope settings it was taken with (`timeDiv`, `voltsDiv`, `triggerLevel`), what the machine was doing and where the reading comes from |
-| `componentFiles`, `componentLinks` | File or web page about a component | A datasheet, an article |
-| `boardFiles`, `boardLinks` | File or web page about the board | Service manuals, schematics, forum threads - each with a category |
+| `scopeBaselines` | Oscilloscope reading of one pin | The pin, its signal name, the reading expected, the image, the scope settings it was taken with (`timeDiv`, `voltsDiv`, `triggerLevel` - any of them may be empty), and what the machine was doing |
+| `componentFiles`, `componentLinks` | File or web page about a component | A datasheet, an article - from CRT 4, with the `region` it applies to, left out for both |
+| `boardFiles`, `boardLinks` | File or web page about the board | Service manuals, schematics, forum threads - each with a category and, from CRT 4, the `region` it applies to, left out for both |
 | `credits` | Person thanked | What they did, their name or handle, and how to reach them |
 | `importantSignals` | Signal the "Schematics" tab's panel lists | Its name (`+5VDC`) and the KiCad net it is (`+5V`) |
 | `highlights` | Rectangle marking a component on a picture | The picture, the board label, and `x`, `y`, `width`, `height` in the picture's own pixels |
@@ -61,9 +61,9 @@ or `NTSC`.
 
 Some entries need fields filled in: a component its category; a board file its category, name and file; a board link its
 category, name and address; a credit what it is for and the name or handle; an important signal its
-name and its KiCad net. The "Contribute" tab marks an empty one where you type it, "Board: Overview"
+name and its KiCad net; an oscilloscope baseline its pin, its signal name and its image. The "Contribute" tab marks an empty one where you type it, "Board: Overview"
 lists it, and a board with one cannot be submitted until it is filled in. A link's address must be
-the whole address, starting with `http://` or `https://`. A pin - of a component's pinout or of a scope
+the whole address, starting with `http://` or `https://`. A pin - of a component's pinout or of an oscilloscope
 baseline - must be on the component's package: a DIP-24 has no pin 48.
 
 ## Files are named by the board

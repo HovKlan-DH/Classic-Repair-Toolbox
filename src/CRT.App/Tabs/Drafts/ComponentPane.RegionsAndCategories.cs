@@ -20,6 +20,10 @@ namespace CRT
     //     or a delete is one step changing those rows, and one no component uses yet is held here, by
     //     the board, until something does or CRT closes (owner decision: "kept until first used").
     //     A name commits on Enter or when its box is left, never on a pause in typing.
+    //   - AND THEIR ORDER (owner request, 2026-11-01: "rearrange the category up/down, alike Files or
+    //     Links"): dragged by a handle or Alt+Up/Down, one step moving its components' rows - the order
+    //     IS which is seen first (BoardCategoryEdits.InOrder). One nothing uses has no rows to move, so
+    //     no handle, and the components with no category stay on top, as what needs doing.
     //
     // Part of the ComponentPane partial class - see ComponentPane.axaml.cs for the file map.
     // ###########################################################################################
@@ -106,6 +110,51 @@ namespace CRT
             {
                 row.UseOtherCategories(names);
             }
+        }
+
+        // A row's handle pressed - the drag starts once the pointer moves (ListRowDrag.Press).
+        private void OnCategoryHandlePressed(object? sender, PointerPressedEventArgs e) => this.thisCategoriesDrag?.Press(sender, e);
+
+        // ###########################################################################################
+        // A category moved one place up (-1) or down (+1), past the next one that can move - false when
+        // it cannot. The rows are moved in place, so the list keeps its boxes.
+        // ###########################################################################################
+        internal bool MoveCategory(ComponentPaneCategoryRow row, int by)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            this.CommitHeld();
+
+            int index = this.thisCategories.IndexOf(row);
+            int to = index + by;
+
+            if (index < 0 || !row.CanMove || to < 0 || to >= this.thisCategories.Count || !this.thisCategories[to].CanMove)
+            {
+                return false;
+            }
+
+            this.thisCategories.Move(index, to);
+            this.CommitCategoryOrder();
+
+            return true;
+        }
+
+        // ###########################################################################################
+        // The categories as they now stand on screen, into the draft as one step. A row dropped among
+        // those that cannot move goes back beside the ones that can as the part is read again.
+        // ###########################################################################################
+        private void CommitCategoryOrder()
+        {
+            if (this.thisSession is not { } session)
+            {
+                return;
+            }
+
+            List<string> names = this.thisCategories.Where(row => row.CanMove).Select(row => row.Name).ToList();
+
+            this.Apply(DraftStepWording.CategoriesOrdered, board => BoardCategoryEdits.InOrder(board, names));
+            this.ShowCategoriesPart(session.Content.Board);
+            this.ShowBoardPartChanged();
         }
 
         private void OnCategoryNameKeyDown(object? sender, KeyEventArgs e)
@@ -310,7 +359,7 @@ namespace CRT
     // One category as "Board: Categories" holds it: the name in its box, how many components carry it,
     // and - while it is being deleted - where they go. A blank name is the components with none.
     // ###########################################################################################
-    public sealed class ComponentPaneCategoryRow : ComponentPaneRowBase
+    public sealed class ComponentPaneCategoryRow : ComponentPaneDraggableRow
     {
         private string thisName;
         private string thisNameDraft;
@@ -338,6 +387,9 @@ namespace CRT
         public bool NeedsOne => this.thisName.Length == 0;
 
         public bool CanDelete => !this.NeedsOne;
+
+        // Only a category components carry has rows to move.
+        public bool CanMove => !this.NeedsOne && this.Components > 0;
 
         public string Problem
         {
@@ -399,6 +451,7 @@ namespace CRT
             this.Raise(nameof(this.NameDraft));
             this.Raise(nameof(this.NeedsOne));
             this.Raise(nameof(this.CanDelete));
+            this.Raise(nameof(this.CanMove));
             this.Raise(nameof(this.Problem));
             this.Raise(nameof(this.HasProblem));
         }

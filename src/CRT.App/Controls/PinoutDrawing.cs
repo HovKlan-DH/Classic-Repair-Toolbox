@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Handlers.DataHandling;
 using Handlers.Geometry;
@@ -15,21 +17,48 @@ namespace CRT
     // the top view, with the notch and pin 1"). The component pane and the component popup hand it the
     // package and the pins - so it is in Controls/ since slice 3c - and every position is
     // PinoutGeometry's, so this only paints. A case CRT cannot draw takes no room.
+    //
+    // WITH PinsCanBePicked (the popup's - owner request, 2026-11-01) a pin lights up under the pointer, and
+    // a click on it raises PinPicked. The host can light one up too (HoverPin - the list beside it), and
+    // MARKS THE PIN OF THE IMAGE SHOWN, which stays lit whatever the pointer does (MarkPin - owner request,
+    // 2026-11-02: "if I am viewing a specific pin, then do highlight it").
     // ###########################################################################################
     public sealed class PinoutDrawing : Control
     {
         private const double TextSize = 11;
 
+        public static readonly RoutedEvent<PinPickedEventArgs> PinPickedEvent =
+            RoutedEvent.Register<PinoutDrawing, PinPickedEventArgs>(nameof(PinPicked), RoutingStrategies.Bubble);
+
         private PinoutLayout? thisLayout;
         private Dictionary<int, string> thisNames = new();
+        private double thisNameWidth = PinoutGeometry.NameWidth;
+
+        // The pin under the pointer - here or in the host's list - and the pin the host says is shown.
+        private int? thisHoveredPin;
+        private int? thisMarkedPin;
+
+        public event EventHandler<PinPickedEventArgs>? PinPicked
+        {
+            add => this.AddHandler(PinoutDrawing.PinPickedEvent, value);
+            remove => this.RemoveHandler(PinoutDrawing.PinPickedEvent, value);
+        }
+
+        public bool PinsCanBePicked { get; set; }
+
+        // The pin lit up by the pointer, else the one marked - for the tests.
+        internal int? LitPinForTests => this.thisHoveredPin ?? this.thisMarkedPin;
+
+        internal int? MarkedPinForTests => this.thisMarkedPin;
 
         // The case and its pins, drawn again.
         public void Show(string? package, IReadOnlyList<ComponentPinEntry> pins)
         {
             ArgumentNullException.ThrowIfNull(pins);
 
-            this.thisLayout = PinoutGeometry.For(package, pins.Select(pin => pin.Pin));
             this.thisNames = new Dictionary<int, string>();
+            this.thisHoveredPin = null;
+            this.thisMarkedPin = null;
 
             foreach (ComponentPinEntry pin in pins)
             {
@@ -40,13 +69,82 @@ namespace CRT
                 }
             }
 
+            // As wide as its names need - the names not on the case's pins take no room either.
+            this.thisNameWidth = PinoutGeometry.NameWidthFor(
+                this.thisNames.Values
+                    .Where(name => name.Length > 0)
+                    .Select(name => PinoutDrawing.Text(name, Brushes.Black, double.PositiveInfinity, bold: false).Width)
+                    .DefaultIfEmpty(0)
+                    .Max());
+
+            this.thisLayout = PinoutGeometry.For(package, pins.Select(pin => pin.Pin), this.thisNameWidth);
             this.IsVisible = this.thisLayout is not null;
             this.InvalidateMeasure();
             this.InvalidateVisual();
         }
 
-        // Whether there is anything to draw - for the tests.
+        // Whether there is anything to draw - for the tests, and how wide for the popup's list beside it.
         internal PinoutLayout? LayoutForTests => this.thisLayout;
+
+        // The pin of what the host shows - null for none. It stays lit until the host says otherwise.
+        public void MarkPin(int? number)
+        {
+            if (this.thisMarkedPin != number)
+            {
+                this.thisMarkedPin = number;
+                this.InvalidateVisual();
+            }
+        }
+
+        // The pin under the pointer in the host's list - null for none.
+        public void HoverPin(int? number)
+        {
+            if (this.thisHoveredPin != number)
+            {
+                this.thisHoveredPin = number;
+                this.InvalidateVisual();
+            }
+        }
+
+        protected override void OnPointerMoved(PointerEventArgs e)
+        {
+            base.OnPointerMoved(e);
+
+            if (this.PinsCanBePicked && this.thisLayout is { } layout)
+            {
+                this.HoverOver(PinoutGeometry.PinAt(layout, e.GetPosition(this))?.Number);
+            }
+        }
+
+        protected override void OnPointerExited(PointerEventArgs e)
+        {
+            base.OnPointerExited(e);
+            this.HoverOver(null);
+        }
+
+        protected override void OnPointerPressed(PointerPressedEventArgs e)
+        {
+            base.OnPointerPressed(e);
+
+            if (this.PinsCanBePicked &&
+                this.thisLayout is { } layout &&
+                e.GetCurrentPoint(this).Properties.IsLeftButtonPressed &&
+                PinoutGeometry.PinAt(layout, e.GetPosition(this)) is { } pin)
+            {
+                this.RaiseEvent(new PinPickedEventArgs(PinoutDrawing.PinPickedEvent, pin.Number));
+                e.Handled = true;
+            }
+        }
+
+        private void HoverOver(int? number)
+        {
+            if (this.thisHoveredPin != number)
+            {
+                this.thisHoveredPin = number;
+                this.Cursor = number is null ? null : new Cursor(StandardCursorType.Hand);
+                this.InvalidateVisual();
+            }
+        }
 
         protected override Size MeasureOverride(Size availableSize) => this.thisLayout?.Size ?? default;
 
@@ -62,6 +160,13 @@ namespace CRT
             IBrush firstPin = this.Brush("Schematics_FirstPin", Brushes.IndianRed);
             var outline = new Pen(foreground, 1);
 
+            // Clear, not nothing: only what is drawn takes the pointer, and the gaps between the pins' names
+            // would otherwise let it through.
+            if (this.PinsCanBePicked)
+            {
+                context.FillRectangle(Brushes.Transparent, new Rect(layout.Size));
+            }
+
             context.DrawRectangle(body, outline, layout.Body, 3, 3);
 
             if (layout.IsDualInLine)
@@ -75,6 +180,18 @@ namespace CRT
             }
 
             context.DrawEllipse(firstPin, null, layout.FirstPinDot, 3, 3);
+
+            // The pin shown and the pin under the pointer, each in its own - as a list's selected row and
+            // the one under the pointer are.
+            if (this.thisMarkedPin is int marked && layout.Pins.FirstOrDefault(pin => pin.Number == marked) is { } markedPin)
+            {
+                context.DrawRectangle(this.Brush("Form_Selected_Bg", Brushes.LightBlue), null, PinoutGeometry.AreaOf(layout, markedPin), 2, 2);
+            }
+
+            if (this.thisHoveredPin is int lit && lit != this.thisMarkedPin && layout.Pins.FirstOrDefault(pin => pin.Number == lit) is { } litPin)
+            {
+                context.DrawRectangle(this.Brush("Form_Selected_Hover_Bg", Brushes.SkyBlue), null, PinoutGeometry.AreaOf(layout, litPin), 2, 2);
+            }
 
             foreach (PinoutPin pin in layout.Pins)
             {
@@ -99,7 +216,7 @@ namespace CRT
                     continue;
                 }
 
-                FormattedText nameText = PinoutDrawing.Text(name, foreground, PinoutGeometry.NameWidth - 8, bold: false);
+                FormattedText nameText = PinoutDrawing.Text(name, foreground, this.thisNameWidth - PinoutGeometry.NameGaps, bold: false);
 
                 Point nameAt = pin.Side == PinSide.Left
                     ? new Point(pin.NameAnchor.X - nameText.Width, pin.NameAnchor.Y - (nameText.Height / 2))
@@ -119,5 +236,11 @@ namespace CRT
                 MaxLineCount = 1,
                 Trimming = TextTrimming.CharacterEllipsis,
             };
+    }
+
+    // A pin of a drawn case clicked - its number.
+    public sealed class PinPickedEventArgs(RoutedEvent routedEvent, int pin) : RoutedEventArgs(routedEvent)
+    {
+        public int Pin { get; } = pin;
     }
 }

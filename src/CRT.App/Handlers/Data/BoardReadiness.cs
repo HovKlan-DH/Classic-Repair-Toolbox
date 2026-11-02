@@ -299,6 +299,11 @@ namespace Handlers.DataHandling
 
         public const string NoCreditsGap = "Nobody is credited for the board's data yet.";
 
+        // The rows a new board's credits start with, not in its draft until they are gone to (NewBoardCredits).
+        public static string CreditsToFillIn(int rows) => rows == 1
+            ? $"\"{BoardReadiness.CreditsAction}\" adds 1 row to fill in or delete."
+            : $"\"{BoardReadiness.CreditsAction}\" adds {BoardReadiness.Count(rows)} rows to fill in or delete.";
+
         // The headings of "What's missing", counted.
         public static string NotInKiCadHeading(int count) => $"Not in the KiCad data - their traces cannot light up ({BoardReadiness.Count(count)})";
 
@@ -308,7 +313,7 @@ namespace Handlers.DataHandling
         public static string UnmarkedHeading(int count) =>
             $"Warning - not marked on any schematic image, so CRT cannot point them out on the board ({BoardReadiness.Count(count)})";
 
-        public static string PinsWithoutBaselineHeading(int count) => $"Pins listed, but no scope baseline ({BoardReadiness.Count(count)})";
+        public static string PinsWithoutBaselineHeading(int count) => $"Pins listed, but no oscilloscope baseline ({BoardReadiness.Count(count)})";
 
         // ###########################################################################################
         // Under a "What's missing" group naming its first ListedAtMost: how many more there are - ""

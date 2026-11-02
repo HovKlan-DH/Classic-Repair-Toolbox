@@ -93,7 +93,8 @@ namespace Handlers.DataHandling
             IReadOnlyList<KiCadCalibrationEntry>? calibrations,
             IReadOnlyList<string>? kiCadFiles,
             BoardKiCadFacts? kiCad,
-            IReadOnlyList<BoardDataProblem>? problems = null)
+            IReadOnlyList<BoardDataProblem>? problems = null,
+            int creditsToOffer = 0)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(missing);
@@ -131,7 +132,7 @@ namespace Handlers.DataHandling
                 board.BoardLinks.Select(row => row.Category),
                 missing, BoardGapKind.IncompleteLinks));
 
-            panels.Add(BoardStatusPage.CreditsPanel(board, missing));
+            panels.Add(BoardStatusPage.CreditsPanel(board, missing, creditsToOffer));
 
             return BoardStatusPage.WithProblems(panels, problems ?? []);
         }
@@ -355,7 +356,7 @@ namespace Handlers.DataHandling
         }
 
         // Counted in the owner's own words (2026-11-01: "25 images known by KiCad data", "4 images added",
-        // "2 KiCad files mapped", "1 KiCad file aligned"), though a picture card says "Shows KiCad view". What
+        // "2 KiCad files mapped", "1 KiCad file aligned"), though a picture card says "Associate KiCad file". What
         // is counted is the views, so the two sides of one PCB file are two.
         private static BoardStatusPanel PicturesPanel(BoardData board, IReadOnlyList<KiCadCalibrationEntry>? calibrations, BoardKiCadFacts? facts)
         {
@@ -540,7 +541,7 @@ namespace Handlers.DataHandling
 
             if (baselines > 0)
             {
-                lines.Add(new BoardStatusLine(Counted(baselines, "scope baseline", "scope baselines"), 1));
+                lines.Add(new BoardStatusLine(Counted(baselines, "oscilloscope baseline", "oscilloscope baselines"), 1));
             }
 
             if (replacements > 0)
@@ -612,7 +613,9 @@ namespace Handlers.DataHandling
             return new BoardStatusPanel(part, state, title, explanation, action, lines);
         }
 
-        private static BoardStatusPanel CreditsPanel(BoardData board, BoardMissing missing)
+        // `rowsToOffer`: the rows a new board's credits would be given as they open (NewBoardCredits) - said
+        // here, and in the draft only once the contributor goes to them.
+        private static BoardStatusPanel CreditsPanel(BoardData board, BoardMissing missing, int rowsToOffer)
         {
             var lines = new List<BoardStatusLine>();
             BoardGap? incomplete = BoardStatusPage.GapOf(missing, BoardGapKind.IncompleteCredits);
@@ -621,6 +624,11 @@ namespace Handlers.DataHandling
                 ? new BoardStatusLine(BoardReadiness.NoCreditsGap, Tone: BoardStatusState.ToDo)
                 : new BoardStatusLine($"{Counted(board.Credits.Count, "credit", "credits")} defined"));
 
+            if (rowsToOffer > 0)
+            {
+                lines.Add(new BoardStatusLine(BoardReadiness.CreditsToFillIn(rowsToOffer), Tone: BoardStatusState.ToDo));
+            }
+
             if (incomplete is not null)
             {
                 lines.Add(new BoardStatusLine(incomplete.Text, Tone: BoardStatusState.Error));
@@ -628,7 +636,7 @@ namespace Handlers.DataHandling
 
             BoardStatusState state =
                 incomplete is not null ? BoardStatusState.Error
-                : board.Credits.Count == 0 ? BoardStatusState.ToDo
+                : board.Credits.Count == 0 || rowsToOffer > 0 ? BoardStatusState.ToDo
                 : BoardStatusState.Done;
 
             return new BoardStatusPanel(

@@ -23,7 +23,6 @@ namespace CRT
     //     | IC1  Ferranti ULA 6C001E-7              [Changed] |
     //     | Basics                                            |
     //     |   Short description [one line ...........] 42/100 |
-    //     |   Repair notes [                              ]   |
     //     | Pinout     DIP-40 [drawn top view]                |
     //     | Replacements (0)                 [Add replacement]|
     //
@@ -41,7 +40,7 @@ namespace CRT
     //     the draft's header says Saved, Saving... or "Could not save" with Try again.
     //   - WHAT ANOTHER EDITOR CHANGES SHOWS AT ONCE: before any change not the pane's own, what the
     //     pane holds goes in first (ChangeComing), and after it the pane reads the component again.
-    //   - ITS SCOPE BASELINES, PICTURES AND FILES TOO (slice 3b, 2026-10-26): a file added goes into the
+    //   - ITS OSCILLOSCOPE BASELINES, PICTURES AND FILES TOO (slice 3b, 2026-10-26): a file added goes into the
     //     draft under a name of the board's own and is saved at once (ComponentPane.Files.cs).
     //   - AND THE COMPONENT AS A WHOLE (slice 3c, 2026-10-26): a new one added, one deleted, "Show on
     //     board" and "Preview popup" (ComponentPane.Whole.cs) - the component editor's window is gone.
@@ -55,10 +54,11 @@ namespace CRT
     //                             committing and saving, Undo changes
     //   ComponentPane.Pages.cs  - a component's pages as tabs, the region shown and "Applies to", its
     //                             label, what Submit would refuse marked where it is, and the temporary
-    //                             tool making pinouts of scope baselines
+    //                             tool making pinouts of oscilloscope baselines
+    //   PaneRegionSwitch.cs     - "Showing [PAL] [NTSC]" on a component's pages
     //   ComponentPane.RegionsAndCategories.cs - "Board: Regions" and "Board: Categories"
-    //   ComponentPane.Files.cs  - scope baselines (with the new-baseline panel and the capture),
-    //                             pictures and files: adding, changing, thumbnails
+    //   ComponentPane.Files.cs  - oscilloscope baselines (with the new-baseline panel and the capture),
+    //                             pictures and files: adding, changing, moving, thumbnails
     //   ComponentPane.Whole.cs  - the new-component form, Delete component and "Bring back", the
     //                             buttons that ask the host to show the component on the board or
     //                             preview its popup
@@ -91,6 +91,7 @@ namespace CRT
         private readonly ObservableCollection<ComponentPanePinRow> thisPins = new();
         private readonly ObservableCollection<ComponentPaneReplacementRow> thisReplacements = new();
         private readonly ObservableCollection<ComponentPaneLinkRow> thisLinks = new();
+        private ListRowDrag<ComponentPaneLinkRow>? thisLinksDrag;
 
         // Each field's value as the draft holds it - a box reading otherwise holds a change.
         private readonly Dictionary<ComponentField, string> thisShownValues = new();
@@ -132,10 +133,13 @@ namespace CRT
             this.PinsItemsControl.ItemsSource = this.thisPins;
             this.ReplacementsItemsControl.ItemsSource = this.thisReplacements;
             this.LinksItemsControl.ItemsSource = this.thisLinks;
+            this.thisLinksDrag = new ListRowDrag<ComponentPaneLinkRow>(
+                this, this.LinksItemsControl, this.SectionsScrollViewer, this.thisLinks, (_, _, _) => this.CommitLinks());
             this.PackageBox.ItemsSource = ComponentVocabulary.Packages;
             this.InitializeImagesAndFiles();
             this.InitializeWhole();
             this.InitializeBoardParts();
+            this.InitializeRegionSwitches();
 
             this.thisSaveTimer.Tick += (_, _) => this.SaveIfDue();
             this.thisTypingTimer.Tick += (_, _) =>
@@ -169,8 +173,13 @@ namespace CRT
         internal DraftSession? Session => this.thisSession;
 
         // Whether the draft changes the component shown - against the board as published, a file of
-        // it replaced under its own name included (the draft's list as the session last saw it).
-        internal bool IsComponentChanged =>
+        // it replaced under its own name included (the draft's list as the session last saw it). On a new
+        // board nothing is published to differ from, so nothing is said (owner request, 2026-11-02).
+        internal bool IsComponentChanged => this.thisPublished is not null && this.HoldsWorkOfItsOwn;
+
+        // The same, whether or not anything is published: a new board's component is all work of its own -
+        // no mark and no undo say so, while "Also on other boards" offers it (code review, 2026-11-02).
+        private bool HoldsWorkOfItsOwn =>
             this.thisSession is { } session &&
             ComponentRevert.HasChanges(session.Content.Board, this.thisPublished, this.thisLabel, DraftFiles.ListedIn(this.thisPublishedBoardFile), session.ListedFiles);
 
@@ -190,7 +199,7 @@ namespace CRT
 
         // ###########################################################################################
         // Shows `label` of the draft held in `session`, as it reads in `region`. `published` is the
-        // board as published - what "Changed" and "Undo changes to" compare with; null for a board
+        // board as published - what "Draft" and "Undo changes to" compare with; null for a board
         // that exists only as a draft - and `publishedBoardFile` its file, whose list of files the
         // draft's is compared with. What the pane held for another component goes in first.
         // ###########################################################################################
@@ -374,10 +383,9 @@ namespace CRT
 
             if (row is null)
             {
-                this.TitleText.Text = this.thisLabel;
+                this.TitleText.Text = ComponentPaneWording.Title(this.thisLabel);
                 this.RegionText.Text = string.Empty;
                 this.RegionText.IsVisible = false;
-                this.RegionSwitchPanel.IsVisible = false;
                 this.GoneText.Text = ComponentPaneWording.NotOnBoard(this.thisLabel);
                 this.ShowChangedState();
                 this.ShowGoneActions();
@@ -399,6 +407,7 @@ namespace CRT
             }
 
             this.ShowActions(board);
+            this.ResetRowDrags();
             this.thisShowing = true;
 
             try
@@ -420,7 +429,7 @@ namespace CRT
 
                 ComponentPane.Fill(this.thisPins, ComponentPaneEdits.PinsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPanePinRow.From));
                 ComponentPane.Fill(this.thisReplacements, ComponentPaneEdits.ReplacementsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneReplacementRow.From));
-                ComponentPane.Fill(this.thisLinks, ComponentPaneEdits.LinksOf(board, this.thisLabel).Select(ComponentPaneLinkRow.From));
+                ComponentPane.Fill(this.thisLinks, ComponentPaneEdits.LinksOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneLinkRow.From));
                 this.ShowImagesAndFiles(board);
 
                 this.TitleText.Text = ComponentPaneWording.Title(row);
@@ -458,7 +467,6 @@ namespace CRT
             ComponentField.TechnicalNameOrValue => this.TechnicalNameBox,
             ComponentField.PartNumber => this.PartNumberBox,
             ComponentField.Description => this.DescriptionBox,
-            ComponentField.RepairNotes => this.RepairNotesBox,
             _ => null,
         };
 
@@ -523,11 +531,11 @@ namespace CRT
             this.NoLinksText.IsVisible = this.thisLinks.Count == 0;
             this.LinksHeading.IsVisible = this.thisLinks.Count > 0;
             this.ShowImageAndFileHeadings();
-            this.FollowRegionChoices(this.RegionSwitchPanel.IsVisible);
+            this.FollowRegionChoices(this.thisBoardHasRegions);
             this.ShowPageTabs();
         }
 
-        // "Changed", and "Undo changes to <label>", while the draft changes the component.
+        // "Draft", and "Undo changes to <label>", while the draft changes the component.
         private void ShowChangedState()
         {
             bool changed = this.IsComponentChanged;
@@ -548,8 +556,12 @@ namespace CRT
         // `fromTyping`: the typing pause asked. A picture's NAME is never taken then - a rename happens
         // on Enter or when its box is left (code review, 2026-10-28: a pause mid-word saved "Top" as a
         // rename, or refused it as taken and put the old name back under the caret).
+        //
+        // `leftABox`: a box lost the focus. A new row of another region the focus is still in waits, as it
+        // does on the typing pause (ComponentPane.Pages.cs); every other commit takes all there is, as
+        // nothing may wait out CRT closing or the pane being handed over.
         // ###########################################################################################
-        internal void CommitHeld(bool fromTyping = false)
+        internal void CommitHeld(bool fromTyping = false, bool leftABox = false)
         {
             if (this.thisSession is null || this.thisShowing)
             {
@@ -582,13 +594,24 @@ namespace CRT
 
             this.ShowCategoryProblem();
 
-            this.CommitPins();
-            this.CommitBaselines();
-            this.CommitPictures();
-            this.CommitReplacements();
-            this.CommitFiles();
-            this.CommitLinks();
-            this.LetGoOfRowsOfOtherRegions();
+            // Put back as it was, not to None: a focused row taken off the page commits inside this one.
+            RowsWaiting waitingBefore = this.thisRowsWaiting;
+            this.thisRowsWaiting = fromTyping ? RowsWaiting.AllOfAnotherRegion : leftABox ? RowsWaiting.TheOneInFocus : RowsWaiting.None;
+
+            try
+            {
+                this.CommitPins();
+                this.CommitBaselines();
+                this.CommitPictures();
+                this.CommitReplacements();
+                this.CommitFiles();
+                this.CommitLinks();
+                this.LetGoOfRowsOfOtherRegions();
+            }
+            finally
+            {
+                this.thisRowsWaiting = waitingBefore;
+            }
 
             // The case drawn as the package now reads.
             this.ShowPinout();
@@ -604,11 +627,13 @@ namespace CRT
                 return;
             }
 
+            // Before the change is told: what follows it reads this - a part number typed alone is what
+            // "Also on other boards" waits for, and it stayed hidden until the next change.
+            this.thisShownValues[field] = wanted;
+
             this.Apply(
                 DraftStepWording.ComponentField(this.thisLabel, ComponentPaneEdits.NameOf(field)),
                 board => ComponentPaneEdits.WithField(board, this.thisLabel, this.thisRegion, field, text));
-
-            this.thisShownValues[field] = wanted;
         }
 
         private void CommitPins()
@@ -622,7 +647,7 @@ namespace CRT
 
         private void CommitReplacements()
         {
-            List<ComponentReplacementEntry> replacements = this.thisReplacements.Select(row => row.ToEntry()).ToList();
+            List<ComponentReplacementEntry> replacements = this.thisReplacements.Where(row => !this.IsWaitingToBeTyped(row)).Select(row => row.ToEntry()).ToList();
 
             this.Apply(
                 DraftStepWording.ComponentReplacements(this.thisLabel),
@@ -631,11 +656,11 @@ namespace CRT
 
         private void CommitLinks()
         {
-            List<ComponentLinkEntry> links = this.thisLinks.Select(row => row.ToEntry()).ToList();
+            List<ComponentLinkEntry> links = this.thisLinks.Where(row => !this.IsWaitingToBeTyped(row)).Select(row => row.ToEntry()).ToList();
 
             this.Apply(
                 DraftStepWording.ComponentLinks(this.thisLabel),
-                board => ComponentPaneEdits.WithLinks(board, this.thisLabel, links));
+                board => ComponentPaneEdits.WithLinks(board, this.thisLabel, this.thisRegion, links));
         }
 
         // One change applied to the draft held in memory, as the pane's own step.
@@ -738,7 +763,7 @@ namespace CRT
         private void OnAnyLostFocus(object? sender, RoutedEventArgs e)
         {
             this.thisTypingTimer.Stop();
-            this.CommitHeld();
+            this.CommitHeld(leftABox: true);
             this.ShowPinout();
         }
 
@@ -913,6 +938,21 @@ namespace CRT
             }
         }
 
+        // A link dragged by its handle, or moved by Alt+Up and Alt+Down, as the board's are (owner request,
+        // 2026-11-02: "the reordering is missing in the component part").
+        private void OnLinkHandlePressed(object? sender, PointerPressedEventArgs e) => this.thisLinksDrag?.Press(sender, e);
+
+        internal bool MoveLink(ComponentPaneLinkRow row, int by)
+        {
+            if (!this.MoveRow(this.thisLinks, row, by))
+            {
+                return false;
+            }
+
+            this.CommitLinks();
+            return true;
+        }
+
         // ---- saving -----------------------------------------------------------------------------
 
         private void SaveIfDue()
@@ -1076,13 +1116,13 @@ namespace CRT
         }
     }
 
-    // One replacement part as the pane holds it - the kind picked as a pin's direction is.
+    // One replacement part as the pane holds it - the kind picked as a pin's direction is, its note of
+    // several lines.
     public sealed class ComponentPaneReplacementRow : ComponentPaneRegionalRow
     {
         private string thisPartNumber = string.Empty;
         private string thisKind = string.Empty;
-        private string thisChanges = string.Empty;
-        private string thisSource = string.Empty;
+        private string thisNote = string.Empty;
 
         public string PartNumber { get => this.thisPartNumber; set => this.Set(ref this.thisPartNumber, value ?? string.Empty); }
 
@@ -1098,9 +1138,11 @@ namespace CRT
             }
         }
 
-        public string Changes { get => this.thisChanges; set => this.Set(ref this.thisChanges, value ?? string.Empty); }
+        public string Note { get => this.thisNote; set => this.Set(ref this.thisNote, value ?? string.Empty); }
 
-        public string Source { get => this.thisSource; set => this.Set(ref this.thisSource, value ?? string.Empty); }
+        // ComponentPaneEdits.WithReplacements' rule for a row it leaves out.
+        public override bool HoldsNothingYet =>
+            string.IsNullOrWhiteSpace(this.thisPartNumber) && string.IsNullOrWhiteSpace(this.thisKind) && string.IsNullOrWhiteSpace(this.thisNote);
 
         public IReadOnlyList<string> KindChoices =>
             ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, this.thisKind)
@@ -1112,8 +1154,7 @@ namespace CRT
             Region = row.Region ?? string.Empty,
             PartNumber = row.PartNumber ?? string.Empty,
             Kind = string.IsNullOrWhiteSpace(row.Kind) ? null : row.Kind.Trim(),
-            Changes = row.Changes ?? string.Empty,
-            Source = row.Source ?? string.Empty,
+            Note = row.Note ?? string.Empty,
         };
 
         public ComponentReplacementEntry ToEntry() => new()
@@ -1121,18 +1162,15 @@ namespace CRT
             Region = this.Region,
             PartNumber = this.thisPartNumber,
             Kind = this.thisKind,
-            Changes = this.thisChanges,
-            Source = this.thisSource,
+            Note = this.thisNote,
         };
     }
 
     // One link as the pane holds it.
-    public sealed class ComponentPaneLinkRow : INotifyPropertyChanged
+    public sealed class ComponentPaneLinkRow : ComponentPaneRegionalRow
     {
         private string thisName = string.Empty;
         private string thisUrl = string.Empty;
-
-        public event PropertyChangedEventHandler? PropertyChanged;
 
         public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
 
@@ -1142,7 +1180,7 @@ namespace CRT
             set
             {
                 this.Set(ref this.thisUrl, value ?? string.Empty);
-                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.UrlNotWeb)));
+                this.Raise(nameof(this.UrlNotWeb));
             }
         }
 
@@ -1151,23 +1189,16 @@ namespace CRT
 
         public string NotWebText => ComponentPaneWording.LinkNotWeb;
 
+        // ComponentPaneEdits.WithLinks' rule for a row it leaves out.
+        public override bool HoldsNothingYet => string.IsNullOrWhiteSpace(this.thisName) && string.IsNullOrWhiteSpace(this.thisUrl);
+
         public static ComponentPaneLinkRow From(ComponentLinkEntry row) => new()
         {
+            Region = row.Region ?? string.Empty,
             Name = row.Name ?? string.Empty,
             Url = row.Url ?? string.Empty,
         };
 
-        public ComponentLinkEntry ToEntry() => new() { Name = this.thisName, Url = this.thisUrl };
-
-        private void Set(ref string field, string value, [CallerMemberName] string? name = null)
-        {
-            if (string.Equals(field, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            field = value;
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
+        public ComponentLinkEntry ToEntry() => new() { Region = this.Region, Name = this.thisName, Url = this.thisUrl };
     }
 }

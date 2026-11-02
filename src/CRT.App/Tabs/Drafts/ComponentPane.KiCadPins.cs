@@ -96,7 +96,7 @@ namespace CRT
         private void FollowKiCadFiles()
         {
             // The Pictures part asks for the board's KiCad views again (code review, 2026-10-28: a
-            // project imported while the part was open left "Shows KiCad view" empty until it was
+            // project imported while the part was open left "Associate KiCad file" empty until it was
             // opened again).
             if (this.thisBoardPart == PaneBoardPart.Pictures && this.thisSession is { } shown)
             {

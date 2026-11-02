@@ -28,8 +28,9 @@ namespace Handlers.DataHandling
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
-        // Board labels with a Modified or Added row in the draft's Components section - what the
-        // component list checks per row to decide whether to show the "drafted" chip.
+        // Board labels with a Modified or Added row in the draft's Components section, or with their own
+        // rows in another order - what the component list checks per row to decide whether to show the
+        // "drafted" chip.
         public IReadOnlySet<string> DraftedComponentBoardLabels { get; }
 
         // "<schematic>␟<label>" keys (BoardDraftNaturalKeys.ForComponentHighlight's own
@@ -64,15 +65,18 @@ namespace Handlers.DataHandling
         // that is absent from the draft is not ON the rendered board, so there is nothing on
         // screen to mark. Marking it would mean drawing a chip for a component the contributor
         // has removed.
+        //
+        // `reorderedComponents` is what the comparison cannot say (BoardRowOrder.ComponentsReordered): a
+        // component whose own rows only moved has no changed row, and says "Draft" all the same.
         // ###########################################################################################
-        public static BoardDraftSummary FromChanges(IEnumerable<BoardRowChange>? changes)
+        public static BoardDraftSummary FromChanges(IEnumerable<BoardRowChange>? changes, IReadOnlySet<string>? reorderedComponents = null)
         {
             if (changes is null)
             {
                 return Empty;
             }
 
-            var draftedComponentBoardLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var draftedComponentBoardLabels = new HashSet<string>(reorderedComponents ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
             var draftedHighlightKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (BoardRowChange change in changes)

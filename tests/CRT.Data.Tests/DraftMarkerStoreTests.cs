@@ -45,6 +45,25 @@ public sealed class DraftMarkerStoreTests : IDisposable
         Assert.Equal(("Commodore 64", "250407"), (marker.NewBoard!.HardwareName, marker.NewBoard.BoardName));
     }
 
+    // ###########################################################################################
+    // *** A MARKER HELD FOR A MOMENT IS WAITED FOR (found by running a new board's rename over and over,
+    // 2026-11-02: refused about once in 64 runs, "Access to the path is denied"). *** Windows will not
+    // replace a file something has open, and a virus scanner opens what was just written or moved. Let go
+    // of at the first pause, so nothing here hangs on how fast the machine is.
+    // ###########################################################################################
+    [Fact]
+    public void A_marker_held_for_a_moment_is_still_saved()
+    {
+        string path = this.thisWorkspace.Path_("Drafts", "Commodore", "C64", "250407", DraftFolderLayout.DraftMarkerFileName);
+        DraftMarkerStore.Save(path, new DraftMarker { BoardKey = "Commodore/C64/250407/board.json" });
+
+        using var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        DraftMarkerStore.Save(path, new DraftMarker { BoardKey = "Commodore/C64/250425/board.json" }, _ => held.Dispose());
+
+        Assert.Equal("Commodore/C64/250425/board.json", DraftMarkerStore.Load(path)!.BoardKey);
+    }
+
     [Fact]
     public void A_marker_is_written_with_the_names_every_CRT_reads()
     {

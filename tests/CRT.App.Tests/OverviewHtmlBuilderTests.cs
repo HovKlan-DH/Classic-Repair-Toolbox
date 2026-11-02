@@ -299,16 +299,15 @@ public class OverviewHtmlBuilderTests
         Assert.Empty(rows[1].Links);
     }
 
-    // Notes are the repair notes; a component without any keeps the column's old content, its first
-    // image's note - every converted board has no repair notes yet.
+    // Notes are the component's first image's note.
     [Fact]
-    public void Notes_are_the_repair_notes_and_else_the_first_images_note()
+    public void Notes_are_the_first_images_note()
     {
         var board = new BoardData
         {
             Components =
             [
-                new ComponentEntry { BoardLabel = "U8", RepairNotes = "Socket it" },
+                new ComponentEntry { BoardLabel = "U8" },
                 new ComponentEntry { BoardLabel = "U9" },
                 new ComponentEntry { BoardLabel = "U10" },
             ],
@@ -322,6 +321,38 @@ public class OverviewHtmlBuilderTests
 
         List<OverviewRow> rows = OverviewHtmlBuilder.BuildRows(board);
 
-        Assert.Equal(["Socket it", "First of U9", string.Empty], rows.Select(row => row.Notes));
+        Assert.Equal(["Image note of U8", "First of U9", string.Empty], rows.Select(row => row.Notes));
+    }
+
+    // A row of one region lists its region's files and links and those for every region; a row for
+    // every region lists them all (owner request, 2026-11-02).
+    [Fact]
+    public void A_rows_links_are_those_of_its_region()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U1", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "U1", Region = "NTSC" },
+                new ComponentEntry { BoardLabel = "U2" },
+            ],
+            ComponentLocalFiles =
+            [
+                new ComponentLocalFileEntry { BoardLabel = "U1", Name = "All", File = "a.pdf" },
+                new ComponentLocalFileEntry { BoardLabel = "U1", Name = "NTSC", File = "b.pdf", Region = "NTSC" },
+            ],
+            ComponentLinks =
+            [
+                new ComponentLinkEntry { BoardLabel = "U1", Name = "PAL", Url = "https://example.org/pal", Region = "PAL" },
+                new ComponentLinkEntry { BoardLabel = "U2", Name = "One region", Url = "https://example.org/u2", Region = "NTSC" },
+            ],
+        };
+
+        List<OverviewRow> rows = OverviewHtmlBuilder.BuildRows(board);
+
+        Assert.Equal(["All", "PAL"], rows[0].Links.Select(link => link.Name));
+        Assert.Equal(["All", "NTSC"], rows[1].Links.Select(link => link.Name));
+        Assert.Equal(["One region"], rows[2].Links.Select(link => link.Name));
     }
 }

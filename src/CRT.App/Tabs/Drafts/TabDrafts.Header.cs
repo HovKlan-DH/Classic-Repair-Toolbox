@@ -166,7 +166,9 @@ namespace CRT
             DraftChangeSummary summary = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
 
             var window = this.ReviewWindowFactoryForTests?.Invoke() ?? new ReviewChangesWindow();
-            window.Initialize(entry.ToString(), summary, label => this.UndoComponentChangesAsync(entry, label));
+
+            // A new board has nothing published to go back to (owner request, 2026-11-02), so no undo.
+            window.Initialize(entry.ToString(), summary, TabDrafts.IsDraftOnly(entry) ? null : label => this.UndoComponentChangesAsync(entry, label));
 
             await window.ShowDialog(ownerWindow);
         }

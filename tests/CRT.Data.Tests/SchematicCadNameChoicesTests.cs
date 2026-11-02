@@ -13,12 +13,12 @@ public sealed class SchematicCadNameChoicesTests
         SchematicCadNameChoices.For(images, imageIndex, Views);
 
     [Fact]
-    public void No_CAD_name_comes_first_then_every_view_in_the_projects_order()
+    public void Not_associated_comes_first_then_every_view_in_the_projects_order()
     {
         IReadOnlyList<SchematicCadNameChoice> choices = For(0, ("Top", ""));
 
         Assert.Equal(["", .. Views], choices.Select(choice => choice.CadName));
-        Assert.Equal(["No CAD name", .. Views], choices.Select(choice => choice.Label));
+        Assert.Equal(["Not associated", .. Views], choices.Select(choice => choice.Label));
         Assert.Equal(SchematicCadNameChoices.NoCadNameLabel, choices[0].Label);
     }
 

@@ -6,8 +6,7 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // THE WORDS CRT 4.0's NEW COMPONENT DATA IS WRITTEN IN (step 2, 2026-10-25) - a pin's direction,
-    // where a scope baseline comes from, what kind of stand-in a replacement is, and the usual chip
-    // cases.
+    // what kind of stand-in a replacement is, and the usual chip cases.
     //
     // Stored as these words, not as codes: a board file is read in a table too, where "Datasheet"
     // says what it is and "2" does not. So the words here ARE the data - rewording one changes
@@ -26,17 +25,16 @@ namespace Handlers.DataHandling
         // A pin's job, as a hobbyist reads a pinout - KiCad's dozen electrical types fold into these.
         //
         // "Power" is the pin that feeds the chip (VCC, +5V); a pin carrying a VOLTAGE LEVEL as its
-        // signal - a sound chip's audio out, a video chip's luminance - is "Analog input" or "Analog
-        // output" (owner question, 2026-11-01). "Unknown" is last: nobody has looked yet, which "Other"
-        // does not say.
+        // signal - a sound chip's audio out, a video chip's luminance - is simply "Input" or "Output"
+        // (owner request, 2026-11-02: "Analog input" and "Analog output" went again after a day, as "it
+        // can be covered by the existing two choices"). "Unknown" is last: nobody has looked yet, which
+        // "Other" does not say.
         // ###########################################################################################
         public static IReadOnlyList<string> PinDirections { get; } =
         [
             "Input",
             "Output",
             "Input/output",
-            "Analog input",
-            "Analog output",
             "Power",
             "Ground",
             "Not connected",
@@ -44,21 +42,13 @@ namespace Handlers.DataHandling
             "Unknown",
         ];
 
-        // Where a scope baseline comes from (the plan: "measured on a known-good board, datasheet,
-        // service manual, or other").
-        public static IReadOnlyList<string> BaselineSources { get; } =
-        [
-            "Known-good board",
-            "Datasheet",
-            "Service manual",
-            "Other",
-        ];
-
-        // A replacement part fits as it is, or only after something is changed (said in Changes).
+        // A replacement part fits as it is, only after something is changed (said in its Note), or is
+        // better than the original (owner request, 2026-11-02).
         public static IReadOnlyList<string> ReplacementKinds { get; } =
         [
             "Drop-in",
             "Needs changes",
+            "Improvement",
         ];
 
         // ###########################################################################################
@@ -159,6 +149,24 @@ namespace Handlers.DataHandling
             return digits.Length is > 0 and < 6 && (digits.Length == text.Length || !char.IsLetterOrDigit(text[digits.Length]))
                 ? int.Parse(digits, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture)
                 : null;
+        }
+
+        // ###########################################################################################
+        // Whether two pins' texts name one pin: the same words, capitals aside, or the same number -
+        // "2 [64K]" being pin 2 (PinNumberOf). A blank is no pin.
+        // ###########################################################################################
+        public static bool IsSamePin(string? first, string? second)
+        {
+            string one = (first ?? string.Empty).Trim();
+            string other = (second ?? string.Empty).Trim();
+
+            if (one.Length == 0 || other.Length == 0)
+            {
+                return false;
+            }
+
+            return string.Equals(one, other, StringComparison.OrdinalIgnoreCase) ||
+                   (ComponentVocabulary.PinNumberOf(one) is int number && ComponentVocabulary.PinNumberOf(other) == number);
         }
 
         // ###########################################################################################

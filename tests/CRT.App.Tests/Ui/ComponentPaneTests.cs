@@ -87,7 +87,7 @@ public sealed class ComponentPaneTests : IDisposable
         {
             (ComponentPane pane, Window window) = Shown(session);
 
-            Assert.Equal("U8 - CPU | 6510", Get<TextBlock>(pane, "TitleText").Text);
+            Assert.Equal("Component: U8 - CPU | 6510", Get<TextBlock>(pane, "TitleText").Text);
             Assert.Equal("CPU", Get<TextBox>(pane, "FriendlyNameBox").Text);
             Assert.Equal("6510", Get<TextBox>(pane, "TechnicalNameBox").Text);
             Assert.Equal("IC", Get<AutoCompleteBox>(pane, "CategoryBox").Text);
@@ -314,7 +314,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             ComponentReplacementEntry saved = Assert.Single(ComponentPaneEdits.ReplacementsOf(session.Content.Board, "U8", "PAL"));
             Assert.Equal("8500|Drop-in", $"{saved.PartNumber}|{saved.Kind}");
-            Assert.Equal(["Datasheet", "Pinout"], ComponentPaneEdits.LinksOf(session.Content.Board, "U8").Select(row => row.Name));
+            Assert.Equal(["Datasheet", "Pinout"], ComponentPaneEdits.LinksOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
 
             pane.ShowPage(ComponentPage.Replacements);
             Dispatcher.UIThread.RunJobs();
@@ -788,7 +788,7 @@ public sealed class ComponentPaneTests : IDisposable
             (ComponentPane pane, Window window) = Shown(session);
             await pane.ThumbnailsLoadedForTests;
 
-            Assert.Equal("Scope baseline (1)", Get<TextBlock>(pane, "BaselinesPageLabel").Text);
+            Assert.Equal("Oscilloscope baseline (1)", Get<TextBlock>(pane, "BaselinesPageLabel").Text);
             Assert.Equal("Pictures (1)", Get<TextBlock>(pane, "PicturesPageLabel").Text);
             Assert.Equal("Files (1)", Get<TextBlock>(pane, "FilesPageLabel").Text);
 
@@ -822,7 +822,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             ComponentImageEntry saved = Assert.Single(ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL"));
             Assert.Equal(("20us", "At the READY prompt"), (saved.TimeDiv, saved.MachineState));
-            Assert.Equal("Scope baselines of [U8]", session.UndoDescription);
+            Assert.Equal("Oscilloscope baselines of [U8]", session.UndoDescription);
 
             window.Close();
         });
@@ -849,7 +849,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             Assert.Equal("VSS", Assert.Single(ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")).Name);
             Assert.True(baseline.HasProblem);
-            Assert.StartsWith("A scope baseline needs its pin.", baseline.Problem, StringComparison.Ordinal);
+            Assert.StartsWith("An oscilloscope baseline needs its pin.", baseline.Problem, StringComparison.Ordinal);
 
             baseline.Pin = "1";
             pane.CommitHeld();
@@ -938,7 +938,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.Equal("1V", Get<AutoCompleteBox>(pane, "NewBaselineVoltsDivBox").Text);
             Assert.Equal("1.5V", Get<TextBox>(pane, "NewBaselineTriggerBox").Text);
             Assert.False(Get<Button>(pane, "AddNewBaselineButton").IsEnabled);
-            Assert.Equal("A scope baseline needs its pin and a screenshot.", Get<TextBlock>(pane, "NewBaselineProblemText").Text);
+            Assert.Equal("An oscilloscope baseline needs its pin, its signal name and an image.", Get<TextBlock>(pane, "NewBaselineProblemText").Text);
 
             Get<TextBox>(pane, "NewBaselinePinBox").Text = "2";
             Get<TextBox>(pane, "NewBaselineNameBox").Text = "PA3";
@@ -952,7 +952,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.Equal(("2", "PA3", "Scope baseline/U8_2_PA3.png", "1V"), (added.Pin, added.Name, added.File, added.VoltsDiv));
             Assert.Contains("Scope baseline/U8_2_PA3.png", this.ListedOnDisk());
             Assert.False(Get<Border>(pane, "NewBaselinePanel").IsVisible);
-            Assert.Equal("Scope baseline (2)", Get<TextBlock>(pane, "BaselinesPageLabel").Text);
+            Assert.Equal("Oscilloscope baseline (2)", Get<TextBlock>(pane, "BaselinesPageLabel").Text);
 
             window.Close();
         });
@@ -988,6 +988,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             screen = ComponentPaneTests.Png;
             Get<TextBox>(pane, "NewBaselinePinBox").Text = "3";
+            Get<TextBox>(pane, "NewBaselineNameBox").Text = "PA1";
             await pane.CaptureNewBaselineAsync();
 
             // Adding it deletes the capture, which its thumbnail may still be reading - left in the
@@ -995,7 +996,7 @@ public sealed class ComponentPaneTests : IDisposable
             await pane.ThumbnailsLoadedForTests;
             await pane.AddNewBaselineAsync();
 
-            Assert.Equal("Scope baseline/U8_3.png", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[^1].File);
+            Assert.Equal("Scope baseline/U8_3_PA1.png", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[^1].File);
 
             pane.ShowScopeConnected(false);
             Assert.False(Get<Button>(pane, "CaptureBaselineButton").IsVisible);
@@ -1005,7 +1006,7 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
-    // A capture waits for "Add this baseline" in the user's OWN app data folder (code review,
+    // A capture waits for "Add oscilloscope image" in the user's OWN app data folder (code review,
     // 2026-10-26): under the temporary folder - the shared /tmp on Linux, at a path anyone can work
     // out - another account could swap the screenshot before it was added to the draft and sent.
     // ###########################################################################################
@@ -1050,13 +1051,13 @@ public sealed class ComponentPaneTests : IDisposable
 
             await pane.AddFileAsync();
 
-            Assert.Equal(["Datasheet", "6510 errata"], ComponentPaneEdits.FilesOf(session.Content.Board, "U8").Select(row => row.Name));
+            Assert.Equal(["Datasheet", "6510 errata"], ComponentPaneEdits.FilesOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
             Assert.Contains("Component local files/6510 errata.txt", this.ListedOnDisk());
             Assert.Equal("Files of [U8]", session.UndoDescription);
 
             pane.FilesForTests[1].Name = "Errata";
             pane.CommitHeld();
-            Assert.Equal("Errata", ComponentPaneEdits.FilesOf(session.Content.Board, "U8")[1].Name);
+            Assert.Equal("Errata", ComponentPaneEdits.FilesOf(session.Content.Board, "U8", "PAL")[1].Name);
 
             window.Close();
         });
@@ -1134,7 +1135,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.Equal("IC", added.Category);
             Assert.Equal(string.Empty, added.Region);
             Assert.Equal("U9", pane.Label);
-            Assert.Equal("U9", Get<TextBlock>(pane, "TitleText").Text);
+            Assert.Equal("Component: U9", Get<TextBlock>(pane, "TitleText").Text);
             Assert.True(Get<ScrollViewer>(pane, "SectionsScrollViewer").IsVisible);
             Assert.False(Get<ScrollViewer>(pane, "NewComponentPanel").IsVisible);
             Assert.True(Get<Border>(pane, "ChangedMark").IsVisible);
@@ -2689,6 +2690,41 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
+    // A note of one region is linked only there (code review, 2026-11-02) - as the "Resources" tab lists it.
+    [Fact]
+    public void A_scope_measurement_file_of_the_other_region_is_not_linked()
+    {
+        BoardData board = Published();
+        board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Scope measurements", Name = "NTSC's", File = "Scope baseline/ntsc.txt", Region = "NTSC" });
+
+        Directory.CreateDirectory(this.DraftFolder);
+        BoardFiles.Write(this.BoardFile, BoardDocumentMapping.ToDocument(
+            new BoardContent(board, [], []),
+            name => name,
+            [this.Stored("Scope baseline/ntsc.txt", [72, 105])]));
+        DraftSession session = DraftSession.Open(this.DraftsRoot, ComponentPaneTests.BoardKey)!;
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.False(Get<ItemsControl>(pane, "MeasuringNotesItemsControl").IsVisible);
+
+            // Written down, for the other region - never "not written down yet", which asks for a second
+            // copy of notes the board has (code review, 2026-11-02).
+            string line = Get<TextBlock>(pane, "MeasuringNotesIntro").Text ?? string.Empty;
+            Assert.DoesNotContain("not written down", line, StringComparison.Ordinal);
+            Assert.Contains("NTSC", line, StringComparison.Ordinal);
+
+            pane.UseRegion("NTSC");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Get<ItemsControl>(pane, "MeasuringNotesItemsControl").IsVisible);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void Without_scope_measurement_files_the_pane_says_where_to_add_them()
     {
@@ -2794,7 +2830,7 @@ public sealed class ComponentPaneTests : IDisposable
             };
 
             Get<TextBox>(pane, "PartNumberBox").Text = "906114-01";
-            Get<TextBox>(pane, "RepairNotesBox").Text = "Socket it";
+            Get<TextBox>(pane, "DescriptionBox").Text = "Socket it";
             pane.CommitHeld();
             Assert.True(also.IsVisible);
 
@@ -2806,7 +2842,7 @@ public sealed class ComponentPaneTests : IDisposable
             List<CheckBox> boards = Get<StackPanel>(pane, "AlsoBoardsPanel").Children.OfType<CheckBox>().ToList();
             Assert.Equal(2, boards.Count);
             Assert.All(boards, box => Assert.True(box.IsChecked));
-            Assert.Equal(["Repair notes"], Get<StackPanel>(pane, "AlsoPartsPanel").Children.OfType<CheckBox>().Select(box => box.Content as string));
+            Assert.Equal(["Short description"], Get<StackPanel>(pane, "AlsoPartsPanel").Children.OfType<CheckBox>().Select(box => box.Content as string));
 
             boards[1].IsChecked = false;
             await pane.ChangeOtherBoardsAsync();
@@ -2814,7 +2850,7 @@ public sealed class ComponentPaneTests : IDisposable
             (string label, List<string> handedBoards, List<ComponentCopyPart> handedParts) = Assert.Single(handed);
             Assert.Equal("U8", label);
             Assert.Equal(["Commodore 64 - 250425"], handedBoards);
-            Assert.Equal([ComponentCopyPart.RepairNotes], handedParts);
+            Assert.Equal([ComponentCopyPart.Description], handedParts);
             Assert.False(pane.IsAlsoPanelOpen);
             Assert.Equal("Changed on 1 board, in its own draft: Commodore 64 - 250425.", Get<TextBlock>(pane, "PaneMessageText").Text);
 
@@ -3012,7 +3048,7 @@ public sealed class ComponentPaneTests : IDisposable
                 [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Component local files/6510.pdf")]));
             pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
 
-            Get<TextBox>(pane, "RepairNotesBox").Text = "Runs hot";
+            Get<TextBox>(pane, "DescriptionBox").Text = "Runs hot";
             pane.CommitHeld();
             await pane.ChangeFileAsync(pane.FilesForTests[0]);
             await pane.OpenAlsoPanelAsync();
@@ -4478,7 +4514,7 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
-    // "Shows KiCad view": the board's views once the host has read them - a view another picture has
+    // "Associate KiCad file": the board's views once the host has read them - a view another picture has
     // left OUT of the list (owner request, 2026-10-10) - picked as ONE step, every list changed IN
     // PLACE (a list replaced lets go of its selection), and Align KiCad offered with it.
     // ###########################################################################################

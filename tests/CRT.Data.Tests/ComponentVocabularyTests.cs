@@ -14,19 +14,19 @@ public sealed class ComponentVocabularyTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("Datasheet")]
-    [InlineData("  service MANUAL ")]
+    [InlineData("Drop-in")]
+    [InlineData("  needs CHANGES ")]
     public void Empty_or_a_known_word_in_any_capitals_is_known(string? value)
     {
-        Assert.True(ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.BaselineSources, value));
+        Assert.True(ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, value));
     }
 
     [Theory]
     [InlineData("My cousin")]
-    [InlineData("Datasheets")]
+    [InlineData("Drop-ins")]
     public void Anything_else_is_not(string value)
     {
-        Assert.False(ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.BaselineSources, value));
+        Assert.False(ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, value));
     }
 
     // The plan's words (2026-10-24), each list in the order the component pane offers it - with
@@ -34,8 +34,7 @@ public sealed class ComponentVocabularyTests
     [Fact]
     public void The_lists_hold_the_plans_words()
     {
-        Assert.Equal(["Known-good board", "Datasheet", "Service manual", "Other"], ComponentVocabulary.BaselineSources);
-        Assert.Equal(["Drop-in", "Needs changes"], ComponentVocabulary.ReplacementKinds);
+        Assert.Equal(["Drop-in", "Needs changes", "Improvement"], ComponentVocabulary.ReplacementKinds);
         // "Unknown" last (owner request, 2026-11-01).
         Assert.Equal("Unknown", ComponentVocabulary.PinDirections[^1]);
         Assert.Equal("Other", ComponentVocabulary.Packages[^1]);
@@ -50,7 +49,6 @@ public sealed class ComponentVocabularyTests
         foreach (IReadOnlyList<string> words in new[]
                  {
                      ComponentVocabulary.PinDirections,
-                     ComponentVocabulary.BaselineSources,
                      ComponentVocabulary.ReplacementKinds,
                      ComponentVocabulary.Packages,
                  })
@@ -162,12 +160,26 @@ public sealed class ComponentVocabularyTests
         Assert.Equal(on, ComponentVocabulary.IsOnPackage(package, pin));
     }
 
-    // A pin carrying a voltage level as its signal - owner question, 2026-11-01.
+    // "Analog input" and "Analog output" went again (owner request, 2026-11-02: "it can be covered by
+    // the existing two choices") - a board already holding one keeps it, shown as it is.
     [Fact]
-    public void Analog_signals_have_words_of_their_own_beside_the_supply()
+    public void A_pin_carrying_a_voltage_level_is_an_input_or_an_output()
     {
-        Assert.Contains("Analog input", ComponentVocabulary.PinDirections);
-        Assert.Contains("Analog output", ComponentVocabulary.PinDirections);
-        Assert.Contains("Power", ComponentVocabulary.PinDirections);
+        Assert.Equal(["Input", "Output", "Input/output", "Power", "Ground", "Not connected", "Other", "Unknown"], ComponentVocabulary.PinDirections);
+    }
+
+    // One rule for "the same pin" - the popup lighting the pin of its image, a new baseline taking its
+    // signal name. "2 [64K]" is pin 2, "1A" a name of its own.
+    [Theory]
+    [InlineData("2", "2", true)]
+    [InlineData(" a1 ", "A1", true)]
+    [InlineData("2 [64K]", "2", true)]
+    [InlineData("1A", "1", false)]
+    [InlineData("2", "3", false)]
+    [InlineData("", "", false)]
+    [InlineData(null, "2", false)]
+    public void Two_texts_name_one_pin_by_their_words_or_their_number(string? first, string? second, bool same)
+    {
+        Assert.Equal(same, ComponentVocabulary.IsSamePin(first, second));
     }
 }

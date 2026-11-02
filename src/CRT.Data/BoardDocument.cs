@@ -124,9 +124,6 @@ namespace Handlers.DataHandling
             [JsonPropertyName("package"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? Package { get; set; }
 
-            [JsonPropertyName("repairNotes"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-            public string? RepairNotes { get; set; }
-
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
@@ -151,13 +148,10 @@ namespace Handlers.DataHandling
             [JsonPropertyName("triggerLevel"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? TriggerLevel { get; set; }
 
-            // A baseline's two conditions (CRT 4.0, 2026-10-25), kept on a picture row that has them
-            // so nothing typed in the table is lost - written only when filled.
+            // A baseline's condition (CRT 4.0, 2026-10-25), kept on a picture row that has it so nothing
+            // typed in the table is lost - written only when filled.
             [JsonPropertyName("machineState"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? MachineState { get; set; }
-
-            [JsonPropertyName("source"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-            public string? Source { get; set; }
 
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
@@ -176,13 +170,9 @@ namespace Handlers.DataHandling
             [JsonPropertyName("voltsDiv")] public string VoltsDiv { get; set; } = string.Empty;
             [JsonPropertyName("triggerLevel")] public string TriggerLevel { get; set; } = string.Empty;
 
-            // CRT 4.0's own (2026-10-25): what the machine was doing, and where the reading comes
-            // from (ComponentVocabulary.BaselineSources) - written only when filled.
+            // CRT 4.0's own (2026-10-25): what the machine was doing - written only when filled.
             [JsonPropertyName("machineState"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? MachineState { get; set; }
-
-            [JsonPropertyName("source"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-            public string? Source { get; set; }
 
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
@@ -205,16 +195,21 @@ namespace Handlers.DataHandling
             [JsonPropertyName("region")] public string Region { get; set; } = string.Empty;
             [JsonPropertyName("partNumber")] public string PartNumber { get; set; } = string.Empty;
             [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
-            [JsonPropertyName("changes")] public string Changes { get; set; } = string.Empty;
-            [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
+            [JsonPropertyName("note")] public string Note { get; set; } = string.Empty;
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
+        // A file's or a link's region (2026-11-02) is written only when filled - so the rows of a board
+        // that has none read as they always did, line for line.
         public sealed class ComponentFileRow : IKeepsUnknownFields
         {
             [JsonPropertyName("boardLabel")] public string BoardLabel { get; set; } = string.Empty;
             [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
             [JsonPropertyName("file")] public string File { get; set; } = string.Empty;
+
+            [JsonPropertyName("region"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Region { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
@@ -223,6 +218,10 @@ namespace Handlers.DataHandling
             [JsonPropertyName("boardLabel")] public string BoardLabel { get; set; } = string.Empty;
             [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
             [JsonPropertyName("url")] public string Url { get; set; } = string.Empty;
+
+            [JsonPropertyName("region"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Region { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
@@ -231,6 +230,10 @@ namespace Handlers.DataHandling
             [JsonPropertyName("category")] public string Category { get; set; } = string.Empty;
             [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
             [JsonPropertyName("file")] public string File { get; set; } = string.Empty;
+
+            [JsonPropertyName("region"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Region { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
@@ -239,6 +242,10 @@ namespace Handlers.DataHandling
             [JsonPropertyName("category")] public string Category { get; set; } = string.Empty;
             [JsonPropertyName("name")] public string Name { get; set; } = string.Empty;
             [JsonPropertyName("url")] public string Url { get; set; } = string.Empty;
+
+            [JsonPropertyName("region"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Region { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 

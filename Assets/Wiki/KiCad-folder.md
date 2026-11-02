@@ -28,7 +28,7 @@ the summary offers **Add N components from KiCad**.
 
 From there CRT does most of the rest for you:
 
-* each picture card's **Shows KiCad view** ties a picture to a KiCad view (a side of the board, or a
+* each picture card's **Associate KiCad file** ties a picture to a KiCad view (a side of the board, or a
   schematic sheet) - and **Overview** suggests the pairs it can tell from the names
 * **Align KiCad data** on a picture card lines the KiCad view up with the picture. On a picture of a side
   of the board with nothing marked on it yet, pressing **Done** there also marks every component on

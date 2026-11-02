@@ -139,7 +139,7 @@ namespace Handlers.DataHandling
         // Whether ONE section of a draft differs from the published board's ROWS, by this report's
         // rule - a renamed row is one change, rows only in another ORDER are none here. Order is a
         // change too (owner decision, 2026-10-30), counted beside this report by BoardRowOrder: a
-        // surface marking one section "Changed" (the component pane's board parts) asks both, as
+        // surface marking one section "Draft" (the component pane's board parts) asks both, as
         // Submit counts both. Null on either side is no rows.
         // ###########################################################################################
         public static bool SectionDiffers<T>(IReadOnlyList<T>? published, IReadOnlyList<T>? draft)

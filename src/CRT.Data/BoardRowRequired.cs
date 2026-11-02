@@ -66,6 +66,25 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // AN OSCILLOSCOPE BASELINE'S SIGNAL NAME AND IMAGE (owner request, 2026-11-02: "the Pin + Signal
+        // name + image are mandatory"). Its pin is what makes it one (ComponentImageKinds); a picture needs
+        // neither. BoardDataChecks says these under a code of its own, so they are no part of Of below.
+        // ###########################################################################################
+        public static IReadOnlyList<string> EmptyColumns(ComponentImageEntry row)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            return ComponentImageKinds.IsScopeBaseline(row)
+                ? BoardRowRequired.Empty(
+                    (row.Name, BoardWorkbookSchema.ColName),
+                    (row.File, BoardWorkbookSchema.ColFile))
+                : [];
+        }
+
+        // What a sentence calls such a column.
+        public static string BaselineFieldName(string column) => column == BoardWorkbookSchema.ColName ? "signal name" : "image";
+
+        // ###########################################################################################
         // How many rows of each list have a column they need empty, and how many such columns there
         // are in all - each one ERROR of BoardDataChecks (a board file's empty file is its
         // "file.unreferenced", the rest "row.required_empty"), so Board status can tell them apart from

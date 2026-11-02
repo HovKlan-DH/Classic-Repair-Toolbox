@@ -572,8 +572,8 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             await tab.OpenComponentAsync("U1");
 
             string Shown() => Assert.Single(tab.ComponentsShownForTests).DisplayText;
-            Button pal = tab.ComponentPaneForTests.GetControl<Button>("PaneRegionPalButton");
-            Button ntsc = tab.ComponentPaneForTests.GetControl<Button>("PaneRegionNtscButton");
+            Button pal = tab.ComponentPaneForTests.GetControl<PaneRegionSwitch>("BasicsRegionSwitch").PalButton;
+            Button ntsc = tab.ComponentPaneForTests.GetControl<PaneRegionSwitch>("BasicsRegionSwitch").NtscButton;
 
             Assert.Contains("6569", Shown(), StringComparison.Ordinal);
 
@@ -590,7 +590,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.Contains("6569", Shown(), StringComparison.Ordinal);
             Assert.Contains("active", pal.Classes);
             Assert.DoesNotContain("active", ntsc.Classes);
-            Assert.Equal("U1 - VIC | 6569", tab.ComponentPaneForTests.GetControl<TextBlock>("TitleText").Text);
+            Assert.Equal("Component: U1 - VIC | 6569", tab.ComponentPaneForTests.GetControl<TextBlock>("TitleText").Text);
         });
     }
 
@@ -2067,7 +2067,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             // B has the new file under a name of its own, its row pointed at it as ONE step named after
             // this board, saved; C keeps its own version.
             DraftSession bDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
-            Assert.Equal("Component local files/6510 rev B.pdf", Assert.Single(ComponentPaneEdits.FilesOf(bDraft.Content.Board, "U7")).File);
+            Assert.Equal("Component local files/6510 rev B.pdf", Assert.Single(ComponentPaneEdits.FilesOf(bDraft.Content.Board, "U7", "PAL")).File);
             Assert.Equal(Sha(mine), bDraft.ListedFiles["Component local files/6510 rev B.pdf"].Sha256);
             Assert.Equal($"[Datasheet] copied from {a}", bDraft.UndoDescription);
             Assert.False(bDraft.HasUnsavedChanges);

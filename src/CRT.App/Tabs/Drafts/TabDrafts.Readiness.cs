@@ -76,6 +76,9 @@ namespace CRT
         // The draft's errors and warnings as last checked, and the board they are of.
         private (string Board, IReadOnlyList<BoardDataProblem> Problems)? thisStatusProblems;
 
+        // How many credits' rows a new board would be given, as last worked out, and the board it is of.
+        private (string Board, int Rows)? thisStatusCreditsToOffer;
+
         // ###########################################################################################
         // What a button did - said only while the draft is as it left it (code review,
         // 2026-10-26: after an Undo it still said the components were added): its board, the draft's
@@ -181,7 +184,7 @@ namespace CRT
             string identity = entry.ExcelDataFile;
             DraftSession? held = DraftManager.Sessions.Find(DraftManager.DraftsRoot, identity);
 
-            this.ShowStatus(entry, held, held?.Content.Board ?? board, held?.Content.Calibrations, this.KnownKiCadFiles(identity), this.KnownKiCadFacts(identity), this.KnownProblems(identity));
+            this.ShowStatus(entry, held, held?.Content.Board ?? board, held?.Content.Calibrations, this.KnownKiCadFiles(identity), this.KnownKiCadFacts(identity), this.KnownProblems(identity), this.KnownCreditsToOffer(identity));
 
             this.thisReadinessShown = this.ShowStatusOfAsync(entry, board, ask);
         }
@@ -197,7 +200,7 @@ namespace CRT
         // published board file has it (its calibrations are there) - its KiCad files, and what its KiCad
         // data says, read off the UI thread (KiCadProjectLoader keeps the parse, so the board on screen
         // has usually read it already). A newer ask wins; a new board whose draft cannot be opened
-        // shows nothing.
+        // shows nothing. Reading it changes nothing in the draft (TabDrafts.NewBoardCredits.cs).
         // ###########################################################################################
         private async Task ShowStatusOfAsync(HardwareBoardEntry entry, BoardData shown, int ask)
         {
@@ -212,7 +215,9 @@ namespace CRT
                                             ? DraftManager.Sessions.Get(draftsRoot, identity)
                                             : null);
 
-                if (ask != this.thisReadinessAsk)
+                // The page gone meanwhile, nothing below is wanted. The page coming back asks again
+                // (ShowStartPanel).
+                if (ask != this.thisReadinessAsk || !this.StartPanel.IsVisible)
                 {
                     return;
                 }
@@ -230,10 +235,11 @@ namespace CRT
 
                 // The draft's errors and warnings, as the table's checks find them on what it holds now -
                 // a board with no draft has none to say.
-                (BoardContent? content, List<string> files, IReadOnlyList<BoardDataProblem> problems) = await Task.Run(() =>
+                (BoardContent? content, List<string> files, IReadOnlyList<BoardDataProblem> problems, int creditsToOffer) = await Task.Run(() =>
                     (session?.Content ?? TabDrafts.PublishedContentOf(published),
                      TabDrafts.KiCadFileNamesOf(draftsRoot, identity, listed, published),
-                     session is null ? [] : DraftStatusReader.ProblemsOf(session.Content.Board, dataRoot, draftFolder)));
+                     session is null ? [] : DraftStatusReader.ProblemsOf(session.Content.Board, dataRoot, draftFolder),
+                     session is null ? 0 : TabDrafts.NewBoardCreditsToOffer(entry, session)));
 
                 if (ask != this.thisReadinessAsk)
                 {
@@ -242,9 +248,10 @@ namespace CRT
 
                 this.thisStatusFiles = (identity, files);
                 this.thisStatusProblems = (identity, problems);
+                this.thisStatusCreditsToOffer = (identity, creditsToOffer);
 
                 BoardKiCadFacts? known = files.Count > 0 ? this.KnownKiCadFacts(identity) : null;
-                this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, known, problems);
+                this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, known, problems, creditsToOffer);
 
                 if (files.Count == 0)
                 {
@@ -263,7 +270,7 @@ namespace CRT
                 if (ask == this.thisReadinessAsk)
                 {
                     this.thisReadinessFacts = (identity, facts);
-                    this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, facts, problems);
+                    this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, facts, problems, creditsToOffer);
                 }
             }
             catch (Exception ex)
@@ -303,6 +310,10 @@ namespace CRT
         private IReadOnlyList<BoardDataProblem> KnownProblems(string identity) =>
             this.thisStatusProblems is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Problems : [];
 
+        // The credits' rows a new board would be given, as last worked out - none known yet is none said.
+        private int KnownCreditsToOffer(string identity) =>
+            this.thisStatusCreditsToOffer is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Rows : 0;
+
         // What the last button here did - said while the draft is the content it was said of.
         private void ShowReadinessNote(string board, DraftSession? session)
         {
@@ -333,12 +344,13 @@ namespace CRT
             IReadOnlyList<KiCadCalibrationEntry>? calibrations,
             IReadOnlyList<string>? files,
             BoardKiCadFacts? kiCad,
-            IReadOnlyList<BoardDataProblem> problems)
+            IReadOnlyList<BoardDataProblem> problems,
+            int creditsToOffer)
         {
             this.CreateStatusRows();
 
             BoardMissing missing = BoardReadiness.Missing(board, hasKiCadFiles: files is { Count: > 0 }, kiCad);
-            List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, missing, calibrations, files, kiCad, problems);
+            List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, missing, calibrations, files, kiCad, problems, creditsToOffer);
 
             this.MissingForTests = missing;
             this.thisStatusPanels = panels;

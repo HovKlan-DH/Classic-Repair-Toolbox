@@ -12,6 +12,82 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class PinoutGeometryTests
 {
+    // ###########################################################################################
+    // A pin to point at and click (owner request, 2026-11-01): a whole row of the drawing, its name
+    // and its number in the case - not the 6 pixels of its lead - and the rows never overlap, so a point
+    // is one pin.
+    // ###########################################################################################
+    [Fact]
+    public void A_dips_pin_is_found_anywhere_on_its_row_from_its_name_to_its_number()
+    {
+        PinoutLayout layout = PinoutGeometry.DualInLine(8, wide: false);
+        PinoutPin first = layout.Pins[0];
+        PinoutPin last = layout.Pins[7];
+
+        Assert.Same(first, PinoutGeometry.PinAt(layout, new Point(1, first.Lead.Center.Y)));
+        Assert.Same(first, PinoutGeometry.PinAt(layout, first.NumberAnchor));
+        Assert.Same(last, PinoutGeometry.PinAt(layout, new Point(layout.Size.Width - 1, last.Lead.Center.Y)));
+        Assert.Same(last, PinoutGeometry.PinAt(layout, last.NumberAnchor));
+
+        // The middle of the case is no pin.
+        Assert.Null(PinoutGeometry.PinAt(layout, layout.Body.Center));
+
+        // Off the line two rows share, which the first of them takes.
+        for (int y = 0; y < (int)layout.Size.Height; y++)
+        {
+            Assert.True(layout.Pins.Count(pin => PinoutGeometry.AreaOf(layout, pin).Contains(new Point(10, y + 0.5))) <= 1);
+        }
+    }
+
+    [Fact]
+    public void A_single_rows_pin_is_found_on_its_lead_and_number_below_the_case()
+    {
+        PinoutLayout layout = PinoutGeometry.SingleRow(3);
+        PinoutPin second = layout.Pins[1];
+
+        Assert.Same(second, PinoutGeometry.PinAt(layout, second.Lead.Center));
+        Assert.Same(second, PinoutGeometry.PinAt(layout, new Point(second.NumberAnchor.X, second.NumberAnchor.Y + 4)));
+        Assert.Null(PinoutGeometry.PinAt(layout, layout.Body.Center));
+    }
+
+    // A DIP is as wide as its names need, up to where a longer one is cut - the room is the pin list's.
+    [Theory]
+    [InlineData(0, 8)]
+    [InlineData(40, 48)]
+    [InlineData(40.2, 49)]
+    [InlineData(112, 120)]
+    [InlineData(500, 120)]
+    public void A_dips_name_columns_fit_its_longest_name(double longest, double expected)
+    {
+        Assert.Equal(expected, PinoutGeometry.NameWidthFor(longest));
+    }
+
+    [Fact]
+    public void Narrower_name_columns_move_the_case_and_keep_its_pins_row_by_row()
+    {
+        PinoutLayout usual = PinoutGeometry.DualInLine(8, wide: false);
+        PinoutLayout narrow = PinoutGeometry.DualInLine(8, wide: false, nameWidth: 48);
+
+        Assert.Equal(usual.Size.Width - (2 * (PinoutGeometry.NameWidth - 48)), narrow.Size.Width);
+        Assert.Equal(usual.Size.Height, narrow.Size.Height);
+        Assert.Equal(48 + PinoutGeometry.LeadLength, narrow.Body.Left);
+        Assert.Equal(usual.Pins.Select(pin => pin.Lead.Center.Y), narrow.Pins.Select(pin => pin.Lead.Center.Y));
+    }
+
+    // Beside the drawing when the list keeps its room; with no drawing, or before the width is known,
+    // there is nothing to go under.
+    [Theory]
+    [InlineData(600, 340, true)]
+    [InlineData(552, 340, true)]
+    [InlineData(551, 340, false)]
+    [InlineData(300, 340, false)]
+    [InlineData(300, 0, true)]
+    [InlineData(0, 340, true)]
+    public void The_pin_list_stands_beside_the_drawing_while_it_fits(double width, double drawing, bool beside)
+    {
+        Assert.Equal(beside, PinoutGeometry.ListFitsBeside(width, drawing));
+    }
+
     [Fact]
     public void A_DIP_runs_down_the_left_and_up_the_right_with_the_last_pin_opposite_pin_1()
     {

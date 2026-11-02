@@ -236,7 +236,7 @@ public sealed class DraftRebaserTests : IDisposable
 
         BoardDocument draft = BoardFiles.ReadDocument(this.DraftWorkbook)!;
         Assert.Equal(contributorChangedIt, draft.Files.Any(file => file.Name == ImageB));
-        Assert.Equal(contributorChangedIt, draft.ComponentImages.Any(row => row.File == ImageB));
+        Assert.Equal(contributorChangedIt, draft.ScopeBaselines.Any(row => row.File == ImageB));
 
         if (contributorChangedIt)
             Assert.Equal("u8 MINE", this.DraftFileText(ImageB));

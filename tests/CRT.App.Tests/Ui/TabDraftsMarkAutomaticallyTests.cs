@@ -168,6 +168,85 @@ public sealed class TabDraftsMarkAutomaticallyTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A PICTURE WITH MARKS ON IT ASKS FIRST (owner request, 2026-11-01: "it should show a warning
+    // popup"). *** Told how many are marked and how many would be; turned down, nothing changes.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picture_with_marks_asks_first_and_turned_down_marks_nothing()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = Tab(Entry(), KiCad());
+            var asked = new List<(string Picture, int Marked, int ToMark)>();
+            bool answer = false;
+
+            tab.AskMarkOverMarksOverrideForTests = (picture, marked, toMark) =>
+            {
+                asked.Add((picture, marked, toMark));
+                return Task.FromResult(answer);
+            };
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+            await tab.MarkAutomaticallyAsync("Top");
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, Identity)!;
+
+            Assert.Equal(("Top", 1, 1), Assert.Single(asked));
+            Assert.Equal(["U1"], session.Content.Board.ComponentHighlights.Select(row => row.BoardLabel));
+            Assert.False(session.CanUndo);
+
+            answer = true;
+            await tab.MarkAutomaticallyAsync("Top");
+
+            Assert.Equal(2, asked.Count);
+            Assert.Equal(["U1", "U2"], session.Content.Board.ComponentHighlights.Select(row => row.BoardLabel));
+
+            // U1's mark, drawn by hand, is where it was - what the question promises.
+            Assert.Equal(("1", "1"), (session.Content.Board.ComponentHighlights[0].X, session.Content.Board.ComponentHighlights[0].Y));
+
+            // Nothing left to mark: nothing to weigh, so no question, and the note says so as ever.
+            await tab.MarkAutomaticallyAsync("Top");
+
+            Assert.Equal(2, asked.Count);
+            Assert.Equal(PictureToolWording.MarkedAutomatically(0, "Top"), tab.ComponentPaneForTests.PicturesNoteForTests);
+        });
+    }
+
+    // With nothing marked yet there is nothing to weigh; and the marking after "Align KiCad" never asks.
+    [Fact]
+    public async Task A_picture_with_no_marks_asks_nothing()
+    {
+        BoardData board = Board();
+        board.ComponentHighlights.Clear();
+        WriteDraft(board);
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = Tab(Entry(), KiCad());
+            tab.AskMarkOverMarksOverrideForTests = (_, _, _) => throw new InvalidOperationException("Asked, with nothing marked.");
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+            await tab.MarkAutomaticallyAsync("Top");
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, Identity)!;
+            Assert.Equal(["U1", "U2"], session.Content.Board.ComponentHighlights.Select(row => row.BoardLabel));
+        });
+    }
+
+    // What the question says is what happens, with its numbers right - one is not several.
+    [Fact]
+    public void The_question_says_what_stays_and_what_comes()
+    {
+        Assert.Equal("358 components are already marked on [Bottom].", PictureToolWording.MarkOverMarksQuestion("Bottom", 358));
+        Assert.Equal("1 component is already marked on [Bottom].", PictureToolWording.MarkOverMarksQuestion("Bottom", 1));
+        Assert.StartsWith("The 4 components with no mark on it get one from KiCad.", PictureToolWording.MarkOverMarksDetail(4));
+        Assert.StartsWith("The 1 component with no mark on it gets one from KiCad.", PictureToolWording.MarkOverMarksDetail(1));
+        Assert.Contains("stays exactly where it is", PictureToolWording.MarkOverMarksDetail(4));
+    }
+
+    // ###########################################################################################
     // *** AFTER "ALIGN KiCad"'s DONE, A PICTURE WITH NO MARKS IS MARKED BY ITSELF (owner request,
     // 2026-11-01: Done marks without asking, Undo takes it back). *** Every component seen on it gets
     // its rectangle as ONE step, saved, and the part says the alignment is in and the marks are made.
@@ -584,7 +663,9 @@ public sealed class TabDraftsMarkAutomaticallyTests : IDisposable
             await Until(() => tab.ComponentPaneForTests.PicturesNoteForTests is not null);
 
             Assert.Equal(PictureToolWording.MarkedAutomatically(1, "Top"), tab.ComponentPaneForTests.PicturesNoteForTests);
-            Assert.Equal(["Images/top.png"], sized);
+
+            // The card's own file, every time it is read: the question before marking reads it too.
+            Assert.Equal(["Images/top.png"], sized.Distinct());
         });
     }
 }

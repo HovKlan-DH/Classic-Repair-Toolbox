@@ -590,30 +590,7 @@ namespace CRT
                                 orderedThumbnails[savedIndex >= 0 ? savedIndex : 0];
                         }
 
-                        // Found by name in the board's file list, with the root it was found under -
-                        // the launcher opens nothing outside it.
-                        var localFiles = boardData.BoardLocalFiles.Select(file =>
-                        {
-                            DraftFileResolution? resolved = string.IsNullOrWhiteSpace(file.File)
-                                ? null
-                                : DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, file.File, entry.ExcelDataFile);
-
-                            return new ResourceItem(
-                                file.Category,
-                                file.Name,
-                                resolved?.FullPath ??
-                                    (string.IsNullOrWhiteSpace(file.File)
-                                        ? string.Empty
-                                        : Path.Combine(dataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))),
-                                resolved?.Root);
-                        });
-
-                        var webLinks = boardData.BoardLinks.Select(link => new ResourceItem(
-                            link.Category,
-                            link.Name,
-                            link.Url));
-
-                        this.TabResources.LoadData(localFiles, webLinks);
+                        this.ShowResources(boardData, entry, dataRoot, draftBoardFolder);
                         this.TabOverview.LoadData(boardData);
                         this.ShowBoardInContributeTab(entry);
                         this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
@@ -916,6 +893,58 @@ namespace CRT
         // ###########################################################################################
         internal static List<string> KiCadRawPathsFor(string dataRoot, string draftFolder, string excelDataFile) =>
             KiCadRawFileScanner.Scan(BoardKiCadFolder.ForBoard(dataRoot, draftFolder, excelDataFile, AppConfig.KiCadCacheFolder));
+
+        // ###########################################################################################
+        // The "Resources" tab: the board's files and links of the region shown (owner request, 2026-11-02:
+        // each can be of one region) - as the board is shown, and when the region is switched. A file is
+        // found by name in the board's file list, with the root it was found under - the launcher opens
+        // nothing outside it.
+        // ###########################################################################################
+        private void ShowResources(BoardData boardData, HardwareBoardEntry entry, string dataRoot, string draftBoardFolder)
+        {
+            var webLinks = boardData.BoardLinks
+                .Where(link => ComponentPaneEdits.InRegion(link.Region, this._localRegion))
+                .Select(link => new ResourceItem(
+                    link.Category,
+                    link.Name,
+                    link.Url));
+
+            this.TabResources.LoadData(
+                Main.ResourceFilesOf(boardData, this._localRegion, dataRoot, draftBoardFolder, entry.ExcelDataFile, new BoardFileListings()),
+                webLinks);
+        }
+
+        // ###########################################################################################
+        // The "Resources" tab's files: the board's of `region`, each found as every file of a board is.
+        // Asked at every PAL/NTSC click, on the UI thread, so `listings` keeps the board file read once:
+        // for two seconds after a save its shared cache is not trusted, and each file would parse the
+        // whole board file again (code review, 2026-11-02).
+        // ###########################################################################################
+        internal static List<ResourceItem> ResourceFilesOf(
+            BoardData boardData,
+            string? region,
+            string dataRoot,
+            string draftBoardFolder,
+            string boardIdentity,
+            BoardFileListings listings) =>
+            boardData.BoardLocalFiles
+                .Where(file => ComponentPaneEdits.InRegion(file.Region, region))
+                .Select(file =>
+                {
+                    DraftFileResolution? resolved = string.IsNullOrWhiteSpace(file.File)
+                        ? null
+                        : DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, file.File, boardIdentity, listings);
+
+                    return new ResourceItem(
+                        file.Category,
+                        file.Name,
+                        resolved?.FullPath ??
+                            (string.IsNullOrWhiteSpace(file.File)
+                                ? string.Empty
+                                : Path.Combine(dataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))),
+                        resolved?.Root);
+                })
+                .ToList();
 
         // ###########################################################################################
         // Reloads the currently selected board from disk and restores the given schematic selection.

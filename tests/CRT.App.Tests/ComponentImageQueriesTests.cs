@@ -7,7 +7,7 @@ namespace ClassicRepairToolbox.Tests;
 //
 // These were private members of ComponentInfoWindow. Each rule has an edge case invisible from
 // the UI: a blank region means "shared", an image with no File is not displayable at all, and an
-// entry counts as an oscilloscope baseline only with a pin AND at least one scope setting.
+// entry counts as an oscilloscope baseline when it names a pin - the scope settings may stay empty.
 public class ComponentImageQueriesTests
 {
     private static ComponentImageEntry Image(
@@ -144,11 +144,12 @@ public class ComponentImageQueriesTests
 
     // -------------------------------------------------------------- IsOscilloscopeImage
 
-    // A pin alone is not enough - without a scope setting there is nothing to apply to the scope.
+    // A pin is enough since 2026-11-02 (owner request: T/DIV, V/DIV and the trigger level may stay
+    // empty) - the scope then simply keeps its settings when the image is shown.
     [Fact]
-    public void An_entry_with_a_pin_but_no_scope_settings_is_not_an_oscilloscope_image()
+    public void An_entry_with_a_pin_and_no_scope_settings_is_an_oscilloscope_image()
     {
-        Assert.False(ComponentImageQueries.IsOscilloscopeImage(Image(pin: "7")));
+        Assert.True(ComponentImageQueries.IsOscilloscopeImage(Image(pin: "7")));
     }
 
     // Equally, scope settings without a pin are not enough - there is no probe point.

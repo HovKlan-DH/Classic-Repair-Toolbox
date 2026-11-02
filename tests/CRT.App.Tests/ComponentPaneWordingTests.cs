@@ -4,7 +4,7 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // ComponentPaneWording - what the component pane says (CRT 4.0 step 2, 2026-10-25): its title,
-// the region line, the offer to add the case's pins, what a scope baseline still needs, the new
+// the region line, the offer to add the case's pins, what an oscilloscope baseline still needs, the new
 // component's form and the whole component's buttons (slice 3c), and the board's own lists (4a).
 // ###########################################################################################
 public sealed class ComponentPaneWordingTests
@@ -12,9 +12,9 @@ public sealed class ComponentPaneWordingTests
     [Fact]
     public void The_title_is_the_label_and_what_the_component_list_shows_beside_it()
     {
-        Assert.Equal("U8 - CPU | 6510", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510" }));
-        Assert.Equal("C12 - 10uF", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "C12", TechnicalNameOrValue = " 10uF " }));
-        Assert.Equal("R1", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "R1" }));
+        Assert.Equal("Component: U8 - CPU | 6510", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510" }));
+        Assert.Equal("Component: C12 - 10uF", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "C12", TechnicalNameOrValue = " 10uF " }));
+        Assert.Equal("Component: R1", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "R1" }));
     }
 
     // Said only for a component with a row of its own per region.
@@ -30,31 +30,28 @@ public sealed class ComponentPaneWordingTests
     [Fact]
     public void A_sections_heading_counts_what_it_holds()
     {
-        Assert.Equal("Scope baselines (3)", ComponentPaneWording.Heading("Scope baselines", 3));
+        Assert.Equal("Oscilloscope baseline (3)", ComponentPaneWording.Heading("Oscilloscope baseline", 3));
         Assert.Equal("Pictures (0)", ComponentPaneWording.Heading("Pictures", 0));
     }
 
     // ###########################################################################################
-    // WHAT A SCOPE BASELINE STILL NEEDS (slice 3b): its pin and one scope setting - the one rule that
-    // makes a row a baseline and not a picture (ComponentImageKinds) - and a screenshot (the plan: "a
-    // screenshot, which is required"). Nothing when it has all three.
+    // WHAT AN OSCILLOSCOPE BASELINE STILL NEEDS (owner request, 2026-11-02: "the Pin + Signal name +
+    // image are mandatory"): T/DIV, V/DIV and the trigger level may stay empty. Nothing when it has all three.
     // ###########################################################################################
     [Fact]
-    public void What_a_scope_baseline_still_needs_is_said_in_plain_words()
+    public void What_an_oscilloscope_baseline_still_needs_is_said_in_plain_words()
     {
-        Assert.Null(ComponentPaneWording.BaselineProblem("1", "50us", "", "", "Scope baseline/U8_1.png"));
-        Assert.Null(ComponentPaneWording.BaselineProblem("1", "", "", "1.5V", "Scope baseline/U8_1.png"));
+        Assert.Null(ComponentPaneWording.BaselineProblem("1", "PA0", "Scope baseline/U8_1.png"));
 
-        Assert.Equal("A scope baseline needs its pin.", ComponentPaneWording.BaselineProblem(" ", "50us", "1V", "1.5V", "x.png"));
-        Assert.Equal("A scope baseline needs one of T/DIV, V/DIV or trigger level.", ComponentPaneWording.BaselineProblem("1", "", " ", "", "x.png"));
-        Assert.Equal(
-            "A scope baseline needs its pin, a screenshot and one of T/DIV, V/DIV or trigger level.",
-            ComponentPaneWording.BaselineProblem("", "", "", "", ""));
-        Assert.Equal("A scope baseline needs its pin and a screenshot.", ComponentPaneWording.BaselineProblem("", "1us", "", "", null));
+        Assert.Equal("An oscilloscope baseline needs its pin.", ComponentPaneWording.BaselineProblem(" ", "PA0", "x.png"));
+        Assert.Equal("An oscilloscope baseline needs its signal name.", ComponentPaneWording.BaselineProblem("1", " ", "x.png"));
+        Assert.Equal("An oscilloscope baseline needs an image.", ComponentPaneWording.BaselineProblem("1", "PA0", null));
+        Assert.Equal("An oscilloscope baseline needs its pin, its signal name and an image.", ComponentPaneWording.BaselineProblem("", "", ""));
+        Assert.Equal("An oscilloscope baseline needs its pin and an image.", ComponentPaneWording.BaselineProblem("", "PA0", null));
 
         Assert.Equal(
-            "A scope baseline needs its pin. Until it has, your draft keeps it as it was.",
-            ComponentPaneWording.BaselineHeldBack("A scope baseline needs its pin."));
+            "An oscilloscope baseline needs its pin. Until it has, your draft keeps it as it was.",
+            ComponentPaneWording.BaselineHeldBack("An oscilloscope baseline needs its pin."));
     }
 
     // ###########################################################################################

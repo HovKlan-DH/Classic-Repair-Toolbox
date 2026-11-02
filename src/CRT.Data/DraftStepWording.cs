@@ -37,11 +37,13 @@ namespace Handlers.DataHandling
 
         public static string CategoryDeleted(string name, string movedTo) => $"Category [{name}] deleted, its components moved to [{movedTo}]";
 
-        // The temporary tool that makes pinouts of scope baselines (BaselinePinMigration).
-        public static string PinsFromBaselines(string label) => $"Pins of [{label}] from its scope baselines";
+        public const string CategoriesOrdered = "Order of the categories";
+
+        // The temporary tool that makes pinouts of oscilloscope baselines (BaselinePinMigration).
+        public static string PinsFromBaselines(string label) => $"Pins of [{label}] from its oscilloscope baselines";
 
         public static string PinsFromBaselinesOfBoard(int components) =>
-            components == 1 ? "Pins of 1 component from its scope baselines" : $"Pins of {components.ToString(CultureInfo.InvariantCulture)} components from their scope baselines";
+            components == 1 ? "Pins of 1 component from its oscilloscope baselines" : $"Pins of {components.ToString(CultureInfo.InvariantCulture)} components from their oscilloscope baselines";
 
         // A new board's components from its KiCad data, all in one go (step 3) - how many.
         public static string ComponentsFromKiCad(int count) =>
@@ -80,7 +82,7 @@ namespace Handlers.DataHandling
 
         public static string ComponentPictures(string label) => $"Pictures of [{label}]";
 
-        public static string ComponentBaselines(string label) => $"Scope baselines of [{label}]";
+        public static string ComponentBaselines(string label) => $"Oscilloscope baselines of [{label}]";
 
         public static string ComponentFiles(string label) => $"Files of [{label}]";
 
@@ -90,6 +92,9 @@ namespace Handlers.DataHandling
         public const string BoardLinks = "The board's links";
 
         public const string Credits = "Credits";
+
+        // The rows a new board's credits start with (NewBoardCredits, 2026-11-02).
+        public const string CreditsOfNewBoard = "Credits to fill in for the new board";
 
         // "Important KiCad signals" wherever the part is named since 2026-11-01 (owner request) - the
         // sheet keeps its stored name, "Important signals".

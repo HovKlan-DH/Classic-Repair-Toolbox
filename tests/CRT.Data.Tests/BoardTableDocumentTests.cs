@@ -2161,4 +2161,55 @@ public sealed class BoardTableDocumentTests
         Assert.Equal("Anna K", again.Board.Credits.Single().NameOrHandle);
         Assert.Same(edited.Board.Components, again.Board.Components);
     }
+
+    // A regional variant deleted beside its twin takes its region's files and links too, now each can
+    // be of one region (owner request, 2026-11-02) - those for every region still belong to the twin.
+    [Fact]
+    public void Deleting_one_regional_variant_takes_that_regions_files_and_links()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Region = "PAL", FriendlyName = "VIC", TechnicalNameOrValue = "6569" },
+                new ComponentEntry { BoardLabel = "U8", Region = "NTSC", FriendlyName = "VIC", TechnicalNameOrValue = "6567" }
+            ],
+            ComponentLocalFiles =
+            [
+                new ComponentLocalFileEntry { BoardLabel = "U8", Region = "PAL", Name = "PAL", File = "a/pal.pdf" },
+                new ComponentLocalFileEntry { BoardLabel = "U8", Name = "All", File = "a/all.pdf" }
+            ],
+            ComponentLinks =
+            [
+                new ComponentLinkEntry { BoardLabel = "U8", Region = "PAL", Name = "PAL", Url = "https://example.org/pal" },
+                new ComponentLinkEntry { BoardLabel = "U8", Region = "NTSC", Name = "NTSC", Url = "https://example.org/ntsc" }
+            ]
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = Components(document);
+
+        components.DeleteRow(components.Rows.Single(row => components.CellText(row, BoardWorkbookSchema.ColRegion) == "PAL"));
+
+        BoardData saved = document.ApplyTo(board);
+
+        Assert.Equal(["All"], saved.ComponentLocalFiles.Select(row => row.Name));
+        Assert.Equal(["NTSC"], saved.ComponentLinks.Select(row => row.Name));
+    }
+
+    // The table shows a file's and a link's region, and a change of it goes in (owner request, 2026-11-02).
+    [Fact]
+    public void A_files_region_is_a_column_of_its_sheet_and_goes_back_into_the_board()
+    {
+        var board = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "VIC", TechnicalNameOrValue = "6569" }],
+            BoardLinks = [new BoardLinkEntry { Category = "Forums", Name = "Lemon64", Url = "https://example.org", Region = "PAL" }]
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+
+        Assert.Equal("PAL", Assert.Single(document.ApplyTo(board).BoardLinks).Region);
+        Assert.Contains(BoardWorkbookSchema.ColRegion, BoardWorkbookSchema.BoardLinks.ColumnOrder);
+    }
 }

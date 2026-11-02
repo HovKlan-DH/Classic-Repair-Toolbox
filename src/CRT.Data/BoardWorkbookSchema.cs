@@ -109,16 +109,13 @@ namespace Handlers.DataHandling
         public const string ColKiCadNetName = "KiCad net name";
 
         // ---- CRT 4.0's own columns (step 2, 2026-10-25) --------------------------------------
-        // On Components (Package, Repair notes), on Component images for a scope baseline
-        // (Machine state, Source), and on the two new sheets (Direction; Kind, What to change,
-        // Source). Source is shared: where a baseline, or a replacement's advice, comes from.
+        // On Components (Package), on Component images for a scope baseline (Machine state), and on the
+        // two new sheets (Direction; Kind, and the Note every image row has too). The files' and links'
+        // Region (2026-11-02) is ColRegion, as on every other sheet - last, as they are written last.
         public const string ColPackage = "Package";
-        public const string ColRepairNotes = "Repair notes";
         public const string ColMachineState = "Machine state";
-        public const string ColSource = "Source";
         public const string ColDirection = "Direction";
         public const string ColKind = "Kind";
-        public const string ColChanges = "What to change";
 
         // ###########################################################################################
         // The marker cell carrying the board's hand-maintained revision date, in the top-left
@@ -190,8 +187,7 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColRegion,
                 BoardWorkbookSchema.ColDescription,
-                BoardWorkbookSchema.ColPackage,
-                BoardWorkbookSchema.ColRepairNotes
+                BoardWorkbookSchema.ColPackage
             ],
             [
                 BoardWorkbookSchema.ColBoardLabel,
@@ -212,8 +208,7 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColTimeDiv,
                 BoardWorkbookSchema.ColVoltsDiv,
                 BoardWorkbookSchema.ColTriggerLevelVolts,
-                BoardWorkbookSchema.ColMachineState,
-                BoardWorkbookSchema.ColSource
+                BoardWorkbookSchema.ColMachineState
             ],
             [
                 BoardWorkbookSchema.ColBoardLabel,
@@ -240,8 +235,7 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColRegion,
                 BoardWorkbookSchema.ColPartNumber,
                 BoardWorkbookSchema.ColKind,
-                BoardWorkbookSchema.ColChanges,
-                BoardWorkbookSchema.ColSource
+                BoardWorkbookSchema.ColNote
             ],
             [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColPartNumber]);
 
@@ -250,7 +244,8 @@ namespace Handlers.DataHandling
             [
                 BoardWorkbookSchema.ColBoardLabel,
                 BoardWorkbookSchema.ColName,
-                BoardWorkbookSchema.ColFile
+                BoardWorkbookSchema.ColFile,
+                BoardWorkbookSchema.ColRegion
             ],
             [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColFile]);
 
@@ -259,7 +254,8 @@ namespace Handlers.DataHandling
             [
                 BoardWorkbookSchema.ColBoardLabel,
                 BoardWorkbookSchema.ColName,
-                BoardWorkbookSchema.ColUrl
+                BoardWorkbookSchema.ColUrl,
+                BoardWorkbookSchema.ColRegion
             ],
             [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColUrl]);
 
@@ -268,7 +264,8 @@ namespace Handlers.DataHandling
             [
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColName,
-                BoardWorkbookSchema.ColFile
+                BoardWorkbookSchema.ColFile,
+                BoardWorkbookSchema.ColRegion
             ],
             [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColFile]);
 
@@ -277,7 +274,8 @@ namespace Handlers.DataHandling
             [
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColName,
-                BoardWorkbookSchema.ColUrl
+                BoardWorkbookSchema.ColUrl,
+                BoardWorkbookSchema.ColRegion
             ],
             [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColUrl]);
 
@@ -363,8 +361,7 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColRegion, entry.Region),
                     (BoardWorkbookSchema.ColDescription, entry.Description),
-                    (BoardWorkbookSchema.ColPackage, entry.Package),
-                    (BoardWorkbookSchema.ColRepairNotes, entry.RepairNotes)))];
+                    (BoardWorkbookSchema.ColPackage, entry.Package)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentImages)
@@ -380,8 +377,7 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColTimeDiv, entry.TimeDiv),
                     (BoardWorkbookSchema.ColVoltsDiv, entry.VoltsDiv),
                     (BoardWorkbookSchema.ColTriggerLevelVolts, entry.TriggerLevelVolts),
-                    (BoardWorkbookSchema.ColMachineState, entry.MachineState),
-                    (BoardWorkbookSchema.ColSource, entry.Source)))];
+                    (BoardWorkbookSchema.ColMachineState, entry.MachineState)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentPins)
@@ -401,8 +397,7 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColRegion, entry.Region),
                     (BoardWorkbookSchema.ColPartNumber, entry.PartNumber),
                     (BoardWorkbookSchema.ColKind, entry.Kind),
-                    (BoardWorkbookSchema.ColChanges, entry.Changes),
-                    (BoardWorkbookSchema.ColSource, entry.Source)))];
+                    (BoardWorkbookSchema.ColNote, entry.Note)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentLocalFiles)
@@ -410,7 +405,8 @@ namespace Handlers.DataHandling
                 return [.. data.ComponentLocalFiles.Select(entry => Row(
                     (BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
                     (BoardWorkbookSchema.ColName, entry.Name),
-                    (BoardWorkbookSchema.ColFile, entry.File)))];
+                    (BoardWorkbookSchema.ColFile, entry.File),
+                    (BoardWorkbookSchema.ColRegion, entry.Region)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentLinks)
@@ -418,7 +414,8 @@ namespace Handlers.DataHandling
                 return [.. data.ComponentLinks.Select(entry => Row(
                     (BoardWorkbookSchema.ColBoardLabel, entry.BoardLabel),
                     (BoardWorkbookSchema.ColName, entry.Name),
-                    (BoardWorkbookSchema.ColUrl, entry.Url)))];
+                    (BoardWorkbookSchema.ColUrl, entry.Url),
+                    (BoardWorkbookSchema.ColRegion, entry.Region)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetBoardLocalFiles)
@@ -426,7 +423,8 @@ namespace Handlers.DataHandling
                 return [.. data.BoardLocalFiles.Select(entry => Row(
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColName, entry.Name),
-                    (BoardWorkbookSchema.ColFile, entry.File)))];
+                    (BoardWorkbookSchema.ColFile, entry.File),
+                    (BoardWorkbookSchema.ColRegion, entry.Region)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetBoardLinks)
@@ -434,7 +432,8 @@ namespace Handlers.DataHandling
                 return [.. data.BoardLinks.Select(entry => Row(
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColName, entry.Name),
-                    (BoardWorkbookSchema.ColUrl, entry.Url)))];
+                    (BoardWorkbookSchema.ColUrl, entry.Url),
+                    (BoardWorkbookSchema.ColRegion, entry.Region)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetCredits)
@@ -522,8 +521,7 @@ namespace Handlers.DataHandling
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Region = Val(r, BoardWorkbookSchema.ColRegion),
                 Description = Val(r, BoardWorkbookSchema.ColDescription),
-                Package = Val(r, BoardWorkbookSchema.ColPackage),
-                RepairNotes = Val(r, BoardWorkbookSchema.ColRepairNotes)
+                Package = Val(r, BoardWorkbookSchema.ColPackage)
             }).ToList();
 
         public static List<ComponentImageEntry> MapComponentImages(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -539,8 +537,7 @@ namespace Handlers.DataHandling
                 TimeDiv = Val(r, BoardWorkbookSchema.ColTimeDiv),
                 VoltsDiv = Val(r, BoardWorkbookSchema.ColVoltsDiv),
                 TriggerLevelVolts = Val(r, BoardWorkbookSchema.ColTriggerLevelVolts),
-                MachineState = Val(r, BoardWorkbookSchema.ColMachineState),
-                Source = Val(r, BoardWorkbookSchema.ColSource)
+                MachineState = Val(r, BoardWorkbookSchema.ColMachineState)
             }).ToList();
 
         public static List<ComponentPinEntry> MapComponentPins(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -560,8 +557,7 @@ namespace Handlers.DataHandling
                 Region = Val(r, BoardWorkbookSchema.ColRegion),
                 PartNumber = Val(r, BoardWorkbookSchema.ColPartNumber),
                 Kind = Val(r, BoardWorkbookSchema.ColKind),
-                Changes = Val(r, BoardWorkbookSchema.ColChanges),
-                Source = Val(r, BoardWorkbookSchema.ColSource)
+                Note = Val(r, BoardWorkbookSchema.ColNote)
             }).ToList();
 
         public static List<ComponentLocalFileEntry> MapComponentLocalFiles(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -569,7 +565,8 @@ namespace Handlers.DataHandling
             {
                 BoardLabel = Val(r, BoardWorkbookSchema.ColBoardLabel),
                 Name = Val(r, BoardWorkbookSchema.ColName),
-                File = Val(r, BoardWorkbookSchema.ColFile)
+                File = Val(r, BoardWorkbookSchema.ColFile),
+                Region = Val(r, BoardWorkbookSchema.ColRegion)
             }).ToList();
 
         public static List<ComponentLinkEntry> MapComponentLinks(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -577,7 +574,8 @@ namespace Handlers.DataHandling
             {
                 BoardLabel = Val(r, BoardWorkbookSchema.ColBoardLabel),
                 Name = Val(r, BoardWorkbookSchema.ColName),
-                Url = Val(r, BoardWorkbookSchema.ColUrl)
+                Url = Val(r, BoardWorkbookSchema.ColUrl),
+                Region = Val(r, BoardWorkbookSchema.ColRegion)
             }).ToList();
 
         public static List<BoardLocalFileEntry> MapBoardLocalFiles(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -585,7 +583,8 @@ namespace Handlers.DataHandling
             {
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Name = Val(r, BoardWorkbookSchema.ColName),
-                File = Val(r, BoardWorkbookSchema.ColFile)
+                File = Val(r, BoardWorkbookSchema.ColFile),
+                Region = Val(r, BoardWorkbookSchema.ColRegion)
             }).ToList();
 
         public static List<BoardLinkEntry> MapBoardLinks(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -593,7 +592,8 @@ namespace Handlers.DataHandling
             {
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Name = Val(r, BoardWorkbookSchema.ColName),
-                Url = Val(r, BoardWorkbookSchema.ColUrl)
+                Url = Val(r, BoardWorkbookSchema.ColUrl),
+                Region = Val(r, BoardWorkbookSchema.ColRegion)
             }).ToList();
 
         public static List<CreditEntry> MapCredits(IEnumerable<IReadOnlyDictionary<string, string>> rows)

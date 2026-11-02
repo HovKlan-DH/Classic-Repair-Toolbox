@@ -10,6 +10,19 @@
         MinHeight="260">
 
 	<Window.Styles>
+		<!-- A pin of the list, under the pointer: a click on it goes to its images (owner request, 2026-11-01). -->
+		<Style Selector="Border.PopupPinRow">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+		<Style Selector="Border.PopupPinRow:pointerover">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+		</Style>
+		<!-- The pin of the image shown (owner request, 2026-11-02) - as the drawing beside it lights it. -->
+		<Style Selector="Border.PopupPinRow.viewed">
+			<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+		</Style>
+
 		<!-- Region toggle buttons -->
 		<Style Selector="Button.RegionToggle.active">
 			<Setter Property="BorderThickness" Value="2" />
@@ -507,21 +520,6 @@
 						</Grid>
 					</StackPanel>
 
-					<!-- Repair notes (CRT 4.0, hidden when empty) - a link in them can be clicked. -->
-					<StackPanel x:Name="RepairNotesSection"
-								IsVisible="False"
-								Spacing="2"
-								Margin="0,8,0,0">
-						<TextBlock Text="Repair notes"
-								   FontSize="10"
-								   FontWeight="SemiBold"
-								   Foreground="{DynamicResource Fg}" />
-						<TextBlock x:Name="InfoRepairNotes"
-								   TextWrapping="Wrap"
-								   FontSize="12"
-								   Foreground="{DynamicResource Fg}" />
-					</StackPanel>
-
 					<!-- 4. Image note (hidden when empty or no thumbnail selected) -->
 					<StackPanel x:Name="ImageNoteSection"
 								IsVisible="False"
@@ -542,12 +540,12 @@
 						</Grid>
 					</StackPanel>
 
-					<!-- What the scope baseline shown was measured under (CRT 4.0, hidden when it says nothing). -->
+					<!-- What the oscilloscope baseline shown was measured under (CRT 4.0, hidden when it says nothing). -->
 					<StackPanel x:Name="BaselineConditionsSection"
 								IsVisible="False"
 								Spacing="2"
 								Margin="0,8,0,0">
-						<TextBlock Text="Scope baseline"
+						<TextBlock Text="Oscilloscope baseline"
 								   FontSize="10"
 								   FontWeight="SemiBold"
 								   Foreground="{DynamicResource Fg}" />
@@ -577,8 +575,10 @@
 						</ItemsControl>
 					</StackPanel>
 
-					<!-- The pinout (CRT 4.0, hidden without pins): the case drawn when CRT can draw it, and
-					     every pin with its signal name and direction. -->
+					<!-- The pinout (CRT 4.0, hidden without pins): the case drawn when CRT can draw it, and every
+					     pin with its signal name and direction BESIDE it, so both are seen at once (owner request,
+					     2026-11-01) - under it only when the popup is too narrow (PinoutGeometry.ListFitsBeside).
+					     A pin of either is clicked to go to its images. -->
 					<StackPanel x:Name="PinoutSection"
 								IsVisible="False"
 								Spacing="4"
@@ -587,29 +587,40 @@
 								   FontSize="10"
 								   FontWeight="SemiBold"
 								   Foreground="{DynamicResource Fg}" />
+						<Grid x:Name="PinoutGrid" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" SizeChanged="OnPinoutGridSizeChanged">
 						<local:PinoutDrawing x:Name="InfoPinoutDrawing"
+											 Grid.Column="0"
 											 HorizontalAlignment="Left"
-											 Margin="0,2,0,4"
+											 VerticalAlignment="Top"
+											 Margin="0,2,12,4"
+											 PinsCanBePicked="True"
+											 PinPicked="OnPinPickedInDrawing"
 											 IsVisible="False" />
 						<!-- With the board's KiCad data, each pin's net on this board beside its signal name
 						     (the plan: "side by side") - the headings say which is which. -->
-						<StackPanel Spacing="0" Grid.IsSharedSizeScope="True">
+						<StackPanel x:Name="InfoPinsPanel" Grid.Column="1" Spacing="0" Grid.IsSharedSizeScope="True">
 							<!-- The signal name narrows with the popup, never wider than it was before nets. -->
-							<Grid x:Name="InfoPinsHeading" IsVisible="False">
+							<Grid x:Name="InfoPinsHeading">
 								<Grid.ColumnDefinitions>
 									<ColumnDefinition Width="36" />
 									<ColumnDefinition Width="*" MaxWidth="140" />
 									<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinNet" />
 									<ColumnDefinition Width="*" />
 								</Grid.ColumnDefinitions>
-								<TextBlock Grid.Column="0" Text="Pin" FontSize="10" Opacity="0.75" Foreground="{DynamicResource Fg}" />
-								<TextBlock Grid.Column="1" Text="Signal" FontSize="10" Opacity="0.75" Foreground="{DynamicResource Fg}" />
-								<TextBlock Grid.Column="2" Text="Net on this board" Margin="0,0,6,0" FontSize="10" Opacity="0.75" Foreground="{DynamicResource Fg}" />
-								<TextBlock Grid.Column="3" Text="Direction" FontSize="10" Opacity="0.75" Foreground="{DynamicResource Fg}" />
+								<TextBlock Grid.Column="0" Text="Pin" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
+								<TextBlock Grid.Column="1" Text="Signal" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
+								<TextBlock x:Name="InfoPinsNetHeading" Grid.Column="2" Text="Net name" Margin="0,0,6,0" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
+								<TextBlock Grid.Column="3" Text="Direction" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
 							</Grid>
 							<ItemsControl x:Name="InfoPinsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="data:ComponentPopupPin">
+										<Border Classes="PopupPinRow"
+												Classes.viewed="{Binding IsViewed}"
+												Tag="{Binding}"
+												PointerPressed="OnPinRowPressed"
+												PointerEntered="OnPinRowEntered"
+												PointerExited="OnPinRowExited">
 										<Grid>
 											<Grid.ColumnDefinitions>
 												<ColumnDefinition Width="36" />
@@ -629,10 +640,12 @@
 													   Foreground="{DynamicResource Fg}" />
 											<TextBlock Grid.Column="3" Text="{Binding Direction}" FontSize="11" Opacity="0.75" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
 										</Grid>
+										</Border>
 									</DataTemplate>
 								</ItemsControl.ItemTemplate>
 							</ItemsControl>
 						</StackPanel>
+						</Grid>
 					</StackPanel>
 
 					<!-- Replacement parts (CRT 4.0, hidden without any). -->
@@ -649,8 +662,7 @@
 								<DataTemplate x:DataType="data:ComponentPopupReplacement">
 									<StackPanel Margin="0,0,0,6">
 										<TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
-										<TextBlock Text="{Binding Changes}" IsVisible="{Binding HasChanges}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
-										<TextBlock Text="{Binding Source}" IsVisible="{Binding HasSource}" FontSize="11" Opacity="0.75" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
+										<TextBlock Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
 									</StackPanel>
 								</DataTemplate>
 							</ItemsControl.ItemTemplate>

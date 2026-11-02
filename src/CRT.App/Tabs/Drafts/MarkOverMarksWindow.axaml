@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CRT.MarkOverMarksWindow"
+        Title="Mark all components automatically"
+        Width="440"
+        MinWidth="400"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<StackPanel Margin="18" Spacing="4">
+		<TextBlock x:Name="HeadingText" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
+
+		<TextBlock x:Name="QuestionText" TextWrapping="Wrap" FontWeight="Bold" />
+
+		<!-- What comes of it: the marks there stay, the others get one. -->
+		<TextBlock x:Name="DetailText" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
+			<Button Content="Cancel" Click="OnCancelClick" />
+			<Button x:Name="MarkButton" Classes="Accept" Click="OnMarkClick" />
+		</StackPanel>
+	</StackPanel>
+</Window>

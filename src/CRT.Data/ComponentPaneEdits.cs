@@ -13,13 +13,12 @@ namespace Handlers.DataHandling
         Category,
         Package,
         Description,
-        RepairNotes,
     }
 
     // ###########################################################################################
     // WHAT THE COMPONENT PANE CHANGES IN A DRAFT (CRT 4.0 step 2, 2026-10-25 - the plan: "A
     // component opens in a pane, never in a maximized window ... Basics: a one-line short description
-    // with a counter, plus multi-line repair notes ... Pinout ... Replacements").
+    // with a counter ... Pinout ... Replacements").
     //
     // The pane edits a component as it is SHOWN: the region CRT shows, by the component list's own
     // rule (ComponentListBuilder - a row with a blank region is in every region). Every edit is one
@@ -47,7 +46,6 @@ namespace Handlers.DataHandling
             ComponentField.Category => "Category",
             ComponentField.Package => "Package",
             ComponentField.Description => "Short description",
-            ComponentField.RepairNotes => "Repair notes",
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, null),
         };
 
@@ -84,26 +82,22 @@ namespace Handlers.DataHandling
                 ComponentField.Category => row.Category,
                 ComponentField.Package => row.Package,
                 ComponentField.Description => row.Description,
-                ComponentField.RepairNotes => row.RepairNotes,
                 _ => throw new ArgumentOutOfRangeException(nameof(field), field, null),
             } ?? string.Empty;
         }
 
-        // ###########################################################################################
-        // A field's value as it is kept: trimmed, and on one line - except the repair notes, which
-        // keep their lines (each ended by "\n" alone, whatever the clipboard brought).
-        // ###########################################################################################
+        // A field's value as it is kept: trimmed, and on one line.
         public static string Normalised(ComponentField field, string? value)
         {
             string text = value ?? string.Empty;
 
-            if (field == ComponentField.RepairNotes)
-            {
-                return text.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
-            }
-
             return text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
         }
+
+        // A note of several lines as it is kept: trimmed, each line ended by "\n" alone, whatever the
+        // clipboard brought.
+        public static string NormalisedNote(string? value) =>
+            (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Trim();
 
         // ###########################################################################################
         // The board with one field of the component's row in `region` set - the same board when the
@@ -135,7 +129,6 @@ namespace Handlers.DataHandling
                 Category = field == ComponentField.Category ? wanted : row.Category,
                 Package = field == ComponentField.Package ? wanted : row.Package,
                 Description = field == ComponentField.Description ? wanted : row.Description,
-                RepairNotes = field == ComponentField.RepairNotes ? wanted : row.RepairNotes,
             };
 
             List<ComponentEntry> components = board.Components.Select(entry => ReferenceEquals(entry, row) ? changed : entry).ToList();
@@ -443,10 +436,9 @@ namespace Handlers.DataHandling
                     Region = row.Region?.Trim() ?? string.Empty,
                     PartNumber = row.PartNumber?.Trim() ?? string.Empty,
                     Kind = row.Kind?.Trim() ?? string.Empty,
-                    Changes = row.Changes?.Trim() ?? string.Empty,
-                    Source = row.Source?.Trim() ?? string.Empty,
+                    Note = ComponentPaneEdits.NormalisedNote(row.Note),
                 })
-                .Where(row => row.PartNumber.Length > 0 || row.Kind.Length > 0 || row.Changes.Length > 0 || row.Source.Length > 0)
+                .Where(row => row.PartNumber.Length > 0 || row.Kind.Length > 0 || row.Note.Length > 0)
                 .ToList();
 
             if (ComponentPaneEdits.SameRows(before, rows, ComponentPaneEdits.KeyOf))
@@ -462,32 +454,27 @@ namespace Handlers.DataHandling
 
         // ---- links ------------------------------------------------------------------------------
 
-        // The component's links - a link has no region: it is the component's in every region.
-        public static List<ComponentLinkEntry> LinksOf(BoardData board, string? label)
+        // The component's links in `region` (owner request, 2026-11-02: a link can be of one region).
+        public static List<ComponentLinkEntry> LinksOf(BoardData board, string? label, string? region)
         {
             ArgumentNullException.ThrowIfNull(board);
 
-            string wanted = label?.Trim() ?? string.Empty;
-
-            return wanted.Length == 0
-                ? []
-                : board.ComponentLinks.Where(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)).ToList();
+            return board.ComponentLinks.Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region)).ToList();
         }
 
-        public static BoardData WithLinks(BoardData board, string? label, IReadOnlyList<ComponentLinkEntry> links)
+        // The same as WithPins, for the component's links.
+        public static BoardData WithLinks(BoardData board, string? label, string? region, IReadOnlyList<ComponentLinkEntry> links)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(links);
 
-            string wanted = label?.Trim() ?? string.Empty;
-
-            if (wanted.Length == 0)
+            if (string.IsNullOrWhiteSpace(label))
             {
                 return board;
             }
 
-            List<ComponentLinkEntry> before = ComponentPaneEdits.LinksOf(board, label);
-            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region: null, before.Select(row => row.BoardLabel));
+            List<ComponentLinkEntry> before = ComponentPaneEdits.LinksOf(board, label, region);
+            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region, before.Select(row => row.BoardLabel));
 
             List<ComponentLinkEntry> rows = links
                 .Select(row => new ComponentLinkEntry
@@ -495,18 +482,19 @@ namespace Handlers.DataHandling
                     BoardLabel = filedLabel,
                     Name = row.Name?.Trim() ?? string.Empty,
                     Url = row.Url?.Trim() ?? string.Empty,
+                    Region = row.Region?.Trim() ?? string.Empty,
                 })
                 .Where(row => row.Name.Length > 0 || row.Url.Length > 0)
                 .ToList();
 
-            if (ComponentPaneEdits.SameRows(before, rows, row => string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Name?.Trim(), row.Url?.Trim())))
+            if (ComponentPaneEdits.SameRows(before, rows, row => string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim())))
             {
                 return board;
             }
 
             return board.WithComponentSections(componentLinks: ComponentPaneEdits.ReplaceInScope(
                 board.ComponentLinks,
-                row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted),
+                row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region),
                 rows));
         }
 
@@ -523,7 +511,7 @@ namespace Handlers.DataHandling
                 .ToList();
         }
 
-        // The component's scope baselines in `region`: a pin AND a scope setting.
+        // The component's scope baselines in `region`: the rows naming a pin.
         public static List<ComponentImageEntry> BaselinesOf(BoardData board, string? label, string? region)
         {
             ArgumentNullException.ThrowIfNull(board);
@@ -545,8 +533,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // The same for the component's scope baselines, its pictures left in place. A row handed over
         // that is no baseline by the rule is written as it is - read as a picture from then on: the pane
-        // holds back an edit that would do that (a pin cleared, every scope setting cleared), and
-        // nothing here drops a row.
+        // holds back an edit that would do that (a pin cleared), and nothing here drops a row.
         // ###########################################################################################
         public static BoardData WithBaselines(BoardData board, string? label, string? region, IReadOnlyList<ComponentImageEntry> baselines) =>
             ComponentPaneEdits.WithImages(board, label, region, baselines, baselines: true);
@@ -570,12 +557,11 @@ namespace Handlers.DataHandling
                     Name = row.Name?.Trim() ?? string.Empty,
                     ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
-                    Note = ComponentPaneEdits.Normalised(ComponentField.RepairNotes, row.Note),
+                    Note = ComponentPaneEdits.NormalisedNote(row.Note),
                     TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
                     VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
                     TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
                     MachineState = row.MachineState?.Trim() ?? string.Empty,
-                    Source = row.Source?.Trim() ?? string.Empty,
                 })
                 .Where(row => row.Name.Length > 0 || row.File.Length > 0 || row.Note.Length > 0 || row.Pin.Length > 0)
                 .ToList();
@@ -593,33 +579,27 @@ namespace Handlers.DataHandling
 
         // ---- files ------------------------------------------------------------------------------
 
-        // The component's files - a file has no region: it is the component's in every region.
-        public static List<ComponentLocalFileEntry> FilesOf(BoardData board, string? label)
+        // The component's files in `region` (owner request, 2026-11-02: a file can be of one region).
+        public static List<ComponentLocalFileEntry> FilesOf(BoardData board, string? label, string? region)
         {
             ArgumentNullException.ThrowIfNull(board);
 
-            string wanted = label?.Trim() ?? string.Empty;
-
-            return wanted.Length == 0
-                ? []
-                : board.ComponentLocalFiles.Where(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)).ToList();
+            return board.ComponentLocalFiles.Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region)).ToList();
         }
 
         // The same as WithLinks, for the component's files.
-        public static BoardData WithFiles(BoardData board, string? label, IReadOnlyList<ComponentLocalFileEntry> files)
+        public static BoardData WithFiles(BoardData board, string? label, string? region, IReadOnlyList<ComponentLocalFileEntry> files)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(files);
 
-            string wanted = label?.Trim() ?? string.Empty;
-
-            if (wanted.Length == 0)
+            if (string.IsNullOrWhiteSpace(label))
             {
                 return board;
             }
 
-            List<ComponentLocalFileEntry> before = ComponentPaneEdits.FilesOf(board, label);
-            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region: null, before.Select(row => row.BoardLabel));
+            List<ComponentLocalFileEntry> before = ComponentPaneEdits.FilesOf(board, label, region);
+            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region, before.Select(row => row.BoardLabel));
 
             List<ComponentLocalFileEntry> rows = files
                 .Select(row => new ComponentLocalFileEntry
@@ -627,18 +607,19 @@ namespace Handlers.DataHandling
                     BoardLabel = filedLabel,
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
+                    Region = row.Region?.Trim() ?? string.Empty,
                 })
                 .Where(row => row.Name.Length > 0 || row.File.Length > 0)
                 .ToList();
 
-            if (ComponentPaneEdits.SameRows(before, rows, row => string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Name?.Trim(), row.File?.Trim())))
+            if (ComponentPaneEdits.SameRows(before, rows, row => string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.File?.Trim())))
             {
                 return board;
             }
 
             return board.WithComponentSections(componentLocalFiles: ComponentPaneEdits.ReplaceInScope(
                 board.ComponentLocalFiles,
-                row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted),
+                row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region),
                 rows));
         }
 
@@ -693,15 +674,14 @@ namespace Handlers.DataHandling
                 row.Name?.Trim(),
                 row.ExpectedOscilloscopeReading?.Trim(),
                 row.File?.Trim(),
-                ComponentPaneEdits.Normalised(ComponentField.RepairNotes, row.Note),
+                ComponentPaneEdits.NormalisedNote(row.Note),
                 row.TimeDiv?.Trim(),
                 row.VoltsDiv?.Trim(),
                 row.TriggerLevelVolts?.Trim(),
-                row.MachineState?.Trim(),
-                row.Source?.Trim());
+                row.MachineState?.Trim());
 
         private static string KeyOf(ComponentReplacementEntry row) =>
-            string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), row.Changes?.Trim(), row.Source?.Trim());
+            string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), ComponentPaneEdits.NormalisedNote(row.Note));
 
         private static bool SameRows<T>(IReadOnlyList<T> first, IReadOnlyList<T> second, Func<T, string> key) =>
             first.Count == second.Count && first.Select(key).SequenceEqual(second.Select(key), StringComparer.Ordinal);

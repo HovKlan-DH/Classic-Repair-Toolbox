@@ -54,6 +54,48 @@ public sealed class ComponentRevertTests
         Assert.True(ComponentRevert.HasChanges(reverted, published, "U1"));
     }
 
+    // ###########################################################################################
+    // *** ITS ROWS ONLY PUT IN ANOTHER ORDER (code review, 2026-11-02). *** Order is a change
+    // (BoardRowOrder), which Submit and "Review changes" counted - while the component read as unchanged:
+    // no "Draft", no "Undo changes to", and that undo, asked anyway, did nothing.
+    // ###########################################################################################
+    [Fact]
+    public void Its_rows_only_put_in_another_order_are_a_change_and_go_back()
+    {
+        BoardData published = Board(Component("U8", "CPU"));
+        published.ComponentLinks.AddRange(
+        [
+            new ComponentLinkEntry { BoardLabel = "U8", Name = "First", Url = "https://example.org/1" },
+            new ComponentLinkEntry { BoardLabel = "U8", Name = "Second", Url = "https://example.org/2" },
+        ]);
+
+        BoardData draft = Board(Component("U8", "CPU"));
+        draft.ComponentLinks.AddRange([published.ComponentLinks[1], published.ComponentLinks[0]]);
+
+        Assert.True(ComponentRevert.HasChanges(draft, published, "U8"));
+
+        BoardData? reverted = ComponentRevert.RowsToPublished(draft, published, "U8");
+
+        Assert.NotNull(reverted);
+        Assert.Equal(["First", "Second"], reverted.ComponentLinks.Select(link => link.Name));
+        Assert.False(ComponentRevert.HasChanges(reverted, published, "U8"));
+        Assert.Null(ComponentRevert.RowsToPublished(reverted, published, "U8"));
+    }
+
+    // Only moved past another component (a category dragged, every chip with it): that is the list's
+    // order, said for the board - no "Draft" on every component of the category.
+    [Fact]
+    public void A_component_only_moved_past_another_is_no_change_of_it()
+    {
+        BoardData published = Board(Component("U1"), Component("U8"), Component("U9"));
+        BoardData draft = Board(Component("U9"), Component("U1"), Component("U8"));
+
+        Assert.False(ComponentRevert.HasChanges(draft, published, "U1"));
+        Assert.False(ComponentRevert.HasChanges(draft, published, "U8"));
+        Assert.False(ComponentRevert.HasChanges(draft, published, "U9"));
+        Assert.Null(ComponentRevert.RowsToPublished(draft, published, "U8"));
+    }
+
     // A component the published board does not have goes altogether, with everything of it.
     [Fact]
     public void A_new_component_goes_altogether()

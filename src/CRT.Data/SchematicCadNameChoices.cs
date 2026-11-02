@@ -23,7 +23,7 @@ namespace Handlers.DataHandling
     // name entirely from the drop-down when it has been selected once, so it will be easier and
     // easier to select the correct one"). *** It was first listed greyed out with "(used by ...)";
     // on a board with two dozen views that buried the few still free. It comes back as soon as that
-    // image picks another name or "No CAD name".
+    // image picks another name or "Not associated".
     //
     // *** THE IMAGE'S OWN NAME IS ALWAYS LISTED. *** Two images sharing one name (typed into Excel)
     // each keep theirs - nothing here takes a name away. A name that is no view of this KiCad data is
@@ -32,7 +32,7 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class SchematicCadNameChoices
     {
-        public const string NoCadNameLabel = "No CAD name";
+        public const string NoCadNameLabel = "Not associated";
 
         // The choices for the image at imageIndex, given every image's schematic name and CAD name
         // in the window's order and the KiCad project's view names.

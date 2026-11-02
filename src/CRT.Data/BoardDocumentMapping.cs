@@ -73,7 +73,6 @@ namespace Handlers.DataHandling
                     Region = row.Region,
                     Description = row.Description,
                     Package = BoardDocumentMapping.WhenGiven(row.Package),
-                    RepairNotes = BoardDocumentMapping.WhenGiven(row.RepairNotes),
                 }).ToList(),
                 ComponentImages = board.ComponentImages
                     .Where(row => !ComponentImageKinds.IsScopeBaseline(row))
@@ -90,7 +89,6 @@ namespace Handlers.DataHandling
                         VoltsDiv = BoardDocumentMapping.WhenGiven(row.VoltsDiv),
                         TriggerLevel = BoardDocumentMapping.WhenGiven(row.TriggerLevelVolts),
                         MachineState = BoardDocumentMapping.WhenGiven(row.MachineState),
-                        Source = BoardDocumentMapping.WhenGiven(row.Source),
                     }).ToList(),
                 ScopeBaselines = board.ComponentImages
                     .Where(ComponentImageKinds.IsScopeBaseline)
@@ -107,19 +105,20 @@ namespace Handlers.DataHandling
                         VoltsDiv = row.VoltsDiv,
                         TriggerLevel = row.TriggerLevelVolts,
                         MachineState = BoardDocumentMapping.WhenGiven(row.MachineState),
-                        Source = BoardDocumentMapping.WhenGiven(row.Source),
                     }).ToList(),
                 ComponentFiles = board.ComponentLocalFiles.Select(row => new BoardDocument.ComponentFileRow
                 {
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
                     File = Name(row.File),
+                    Region = BoardDocumentMapping.WhenGiven(row.Region),
                 }).ToList(),
                 ComponentLinks = board.ComponentLinks.Select(row => new BoardDocument.ComponentLinkRow
                 {
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
                     Url = row.Url,
+                    Region = BoardDocumentMapping.WhenGiven(row.Region),
                 }).ToList(),
                 ComponentPins = board.ComponentPins.Select(row => new BoardDocument.ComponentPinRow
                 {
@@ -135,20 +134,21 @@ namespace Handlers.DataHandling
                     Region = row.Region,
                     PartNumber = row.PartNumber,
                     Kind = row.Kind,
-                    Changes = row.Changes,
-                    Source = row.Source,
+                    Note = row.Note,
                 }).ToList(),
                 BoardFiles = board.BoardLocalFiles.Select(row => new BoardDocument.BoardFileRow
                 {
                     Category = row.Category,
                     Name = row.Name,
                     File = Name(row.File),
+                    Region = BoardDocumentMapping.WhenGiven(row.Region),
                 }).ToList(),
                 BoardLinks = board.BoardLinks.Select(row => new BoardDocument.BoardLinkRow
                 {
                     Category = row.Category,
                     Name = row.Name,
                     Url = row.Url,
+                    Region = BoardDocumentMapping.WhenGiven(row.Region),
                 }).ToList(),
                 Credits = board.Credits.Select(row => new BoardDocument.CreditRow
                 {
@@ -227,7 +227,6 @@ namespace Handlers.DataHandling
                     Region = row.Region,
                     Description = row.Description,
                     Package = row.Package ?? string.Empty,
-                    RepairNotes = row.RepairNotes ?? string.Empty,
                 }).ToList(),
                 ComponentImages = document.ComponentImages
                     .Select(row => new ComponentImageEntry
@@ -243,7 +242,6 @@ namespace Handlers.DataHandling
                         VoltsDiv = row.VoltsDiv ?? string.Empty,
                         TriggerLevelVolts = row.TriggerLevel ?? string.Empty,
                         MachineState = row.MachineState ?? string.Empty,
-                        Source = row.Source ?? string.Empty,
                     })
                     .Concat(document.ScopeBaselines.Select(row => new ComponentImageEntry
                     {
@@ -258,7 +256,6 @@ namespace Handlers.DataHandling
                         VoltsDiv = row.VoltsDiv,
                         TriggerLevelVolts = row.TriggerLevel,
                         MachineState = row.MachineState ?? string.Empty,
-                        Source = row.Source ?? string.Empty,
                     }))
                     .ToList(),
                 ComponentHighlights = document.Highlights.Select(row => new ComponentHighlightEntry
@@ -275,24 +272,28 @@ namespace Handlers.DataHandling
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
                     File = row.File,
+                    Region = row.Region ?? string.Empty,
                 }).ToList(),
                 ComponentLinks = document.ComponentLinks.Select(row => new ComponentLinkEntry
                 {
                     BoardLabel = row.BoardLabel,
                     Name = row.Name,
                     Url = row.Url,
+                    Region = row.Region ?? string.Empty,
                 }).ToList(),
                 BoardLocalFiles = document.BoardFiles.Select(row => new BoardLocalFileEntry
                 {
                     Category = row.Category,
                     Name = row.Name,
                     File = row.File,
+                    Region = row.Region ?? string.Empty,
                 }).ToList(),
                 BoardLinks = document.BoardLinks.Select(row => new BoardLinkEntry
                 {
                     Category = row.Category,
                     Name = row.Name,
                     Url = row.Url,
+                    Region = row.Region ?? string.Empty,
                 }).ToList(),
                 Credits = document.Credits.Select(row => new CreditEntry
                 {
@@ -320,8 +321,7 @@ namespace Handlers.DataHandling
                     Region = row.Region,
                     PartNumber = row.PartNumber,
                     Kind = row.Kind,
-                    Changes = row.Changes,
-                    Source = row.Source,
+                    Note = row.Note,
                 }).ToList(),
             };
 

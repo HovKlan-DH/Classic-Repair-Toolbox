@@ -24,11 +24,12 @@ public sealed class ComponentImageKindsTests
         Assert.True(ComponentImageKinds.IsScopeBaseline(Row("7", timeDiv, voltsDiv, trigger)));
     }
 
-    // A per-pin photo with no scope setting is a picture of that pin, not a reading.
+    // The settings may stay empty since 2026-11-02 (owner request) - and no shipped row is affected:
+    // all 33,390 rows naming a pin have one of them too.
     [Fact]
-    public void A_row_with_a_pin_and_no_scope_setting_is_a_picture()
+    public void A_row_with_a_pin_and_no_scope_setting_is_a_baseline()
     {
-        Assert.False(ComponentImageKinds.IsScopeBaseline(Row("7")));
+        Assert.True(ComponentImageKinds.IsScopeBaseline(Row("7")));
     }
 
     [Fact]
@@ -41,7 +42,6 @@ public sealed class ComponentImageKindsTests
     public void Blank_text_counts_as_nothing_and_no_row_is_no_baseline()
     {
         Assert.False(ComponentImageKinds.IsScopeBaseline(Row("  ", "1uS")));
-        Assert.False(ComponentImageKinds.IsScopeBaseline(Row("7", "  ", " ", "\t")));
         Assert.False(ComponentImageKinds.IsScopeBaseline(null));
     }
 }

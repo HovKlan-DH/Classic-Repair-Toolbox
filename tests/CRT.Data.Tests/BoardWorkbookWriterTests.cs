@@ -173,7 +173,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
         ],
         ComponentReplacements =
         [
-            new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Needs changes", Changes = "Swap C12", Source = "Forum" }
+            new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Needs changes", Note = "Swap C12" }
         ]
     };
 

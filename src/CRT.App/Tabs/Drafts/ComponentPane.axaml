@@ -88,8 +88,18 @@
 			<Setter Property="Opacity" Value="1" />
 		</Style>
 
-		<!-- The region shown, on top of a component's pages (owner decision, 2026-11-01) - the buttons under
-		     the component list and on the popup, in their colors. -->
+		<!-- One entry of a component's replacement parts, pictures or oscilloscope baselines in a frame of its own
+		     (owner request, 2026-11-01: "a darkgrey border around it") - the schematic images' cards' look. -->
+		<Style Selector="Border.PaneEntry">
+			<Setter Property="BorderBrush" Value="DarkGray" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="4" />
+			<Setter Property="Padding" Value="12" />
+			<Setter Property="Margin" Value="0,0,0,12" />
+		</Style>
+
+		<!-- The region shown, under a component's "different per region" ticks (owner request, 2026-11-01) -
+		     the buttons under the component list and on the popup, in their colors. -->
 		<Style Selector="Button.PaneRegion.active">
 			<Setter Property="BorderThickness" Value="2" />
 		</Style>
@@ -165,35 +175,13 @@
 								Padding="5,1"
 								VerticalAlignment="Center"
 								ToolTip.Tip="Your draft changes this component - the published board reads otherwise until your draft is submitted and published">
-							<TextBlock Text="Changed" FontSize="11" Foreground="{DynamicResource Draft_Chip_Fg}" />
+							<TextBlock Text="Draft" FontSize="11" Foreground="{DynamicResource Draft_Chip_Fg}" />
 						</Border>
 					</StackPanel>
 					<TextBlock x:Name="RegionText"
 							   FontSize="11"
 							   Opacity="0.75"
 							   TextWrapping="Wrap" />
-
-					<!-- Which region the pages show, on a board that has regions (owner decision, 2026-11-01: "the
-					     same switch as under the component list" - it IS that switch: picking here picks there). -->
-					<StackPanel x:Name="RegionSwitchPanel" Orientation="Horizontal" Spacing="6" Margin="0,4,0,0" IsVisible="False">
-						<TextBlock Text="Showing" VerticalAlignment="Center" FontSize="12" />
-						<Button x:Name="PaneRegionPalButton"
-								Classes="PaneRegion pal"
-								Content="PAL"
-								MinWidth="60"
-								HorizontalContentAlignment="Center"
-								FontSize="12"
-								Padding="4"
-								Click="OnPaneRegionClick" />
-						<Button x:Name="PaneRegionNtscButton"
-								Classes="PaneRegion ntsc"
-								Content="NTSC"
-								MinWidth="60"
-								HorizontalContentAlignment="Center"
-								FontSize="12"
-								Padding="4"
-								Click="OnPaneRegionClick" />
-					</StackPanel>
 
 					<!-- What an action could not do - a picked file CRT cannot show, a capture that brought nothing. -->
 					<TextBlock x:Name="PaneMessageText"
@@ -214,7 +202,7 @@
 						<Button x:Name="CopyFromOtherBoardButton"
 								Content="Copy from another board"
 								Margin="0,0,6,4"
-								ToolTip.Tip="Take the package, pins, replacement parts, notes or links from the same part - the same part number - on another board"
+								ToolTip.Tip="Take the package, short description, pins, replacement parts or links from the same part - the same part number - on another board"
 								Click="OnCopyFromOtherBoardClick" />
 						<!-- What this draft changed of the part, on the same part of the other boards (slice 5). -->
 						<Button x:Name="AlsoOnOtherBoardsButton"
@@ -358,7 +346,7 @@
 						<TextBlock x:Name="CopyNothingText"
 								   Classes="EmptyLine"
 								   IsVisible="False"
-								   Text="That component has nothing to copy - no package, notes, pins, replacement parts or links." />
+								   Text="That component has nothing to copy - no package, short description, pins, replacement parts or links." />
 						<StackPanel Orientation="Horizontal" Spacing="6">
 							<Button x:Name="CopyButton"
 									Classes="Accept"
@@ -415,13 +403,17 @@
 
 					<!-- A row of its own per region - the VIC-II is a 6569 in one and a 6567 in the other. -->
 					<CheckBox x:Name="BasicsRegionalCheck"
-							  Content="Different per region"
+							  Content="This data is different per region"
 							  IsVisible="False"
 							  Margin="0,0,0,4"
 							  ToolTip.Tip="The component is another part in each region, so each has these fields of its own. Off, one set of fields is for every region."
 							  Click="OnBasicsRegionalClick" />
 
-					<Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+					<!-- Which region these fields are of - the switch under the component list, again: picking here
+					     picks there. Under the tick and only while it is ticked (owner request, 2026-11-01). -->
+					<local:PaneRegionSwitch x:Name="BasicsRegionSwitch" />
+
+					<Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto,Auto">
 						<!-- Its label renames it on Enter or when left, never on a pause in typing: every row
 						     of the component moves with it (owner report, 2026-11-01: "unable to rename"). -->
 						<StackPanel Grid.Row="0" Grid.Column="0">
@@ -466,14 +458,6 @@
 									 Watermark="Other relevant details" />
 							<TextBlock x:Name="DescriptionCounter" Classes="Counter" />
 						</StackPanel>
-						<StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3">
-							<TextBlock Classes="FieldLabel" Text="Repair notes" />
-							<TextBox x:Name="RepairNotesBox"
-									 AcceptsReturn="True"
-									 TextWrapping="Wrap"
-									 MinHeight="80"
-									 Watermark="What usually goes wrong with it, how to test it, what to look out for - links are fine" />
-						</StackPanel>
 					</Grid>
 				</StackPanel>
 
@@ -491,7 +475,7 @@
 								<WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
 									<Button x:Name="MigrateComponentButton"
 											Classes="Accept"
-											Content="Create pinout from scope baselines"
+											Content="Create pinout from oscilloscope baselines"
 											Click="OnMigrateComponentClick" />
 									<Button x:Name="MigrateBoardButton"
 											Classes="Accept"
@@ -504,11 +488,15 @@
 
 					<!-- One set of pins for every region, or a set of each's own (2026-11-01). -->
 					<CheckBox x:Name="PinsRegionalCheck"
-							  Content="Different per region"
+							  Content="This data is different per region"
 							  IsVisible="False"
 							  Margin="0,0,0,4"
 							  ToolTip.Tip="The pins are not the same in each region, so each has a set of its own. Off, one set of pins is for every region."
 							  Click="OnPinsRegionalClick" />
+
+					<!-- Which region these fields are of - the switch under the component list, again: picking here
+					     picks there. Under the tick and only while it is ticked (owner request, 2026-11-01). -->
+					<local:PaneRegionSwitch x:Name="PinsRegionSwitch" />
 
 					<StackPanel Orientation="Horizontal" Spacing="8">
 						<StackPanel Width="200">
@@ -570,7 +558,7 @@
 										   Grid.Column="6"
 										   Classes="FieldLabel"
 										   Margin="0,0,8,0"
-										   Text="Net on this board"
+										   Text="Net name"
 										   IsVisible="False" />
 							</Grid>
 
@@ -628,10 +616,12 @@
 					</Grid>
 				</StackPanel>
 
-				<!-- ==== Scope baselines (slice 3b) ==== -->
+				<!-- ==== Oscilloscope baselines (slice 3b) ==== -->
 				<StackPanel x:Name="BaselinesSection" Spacing="4">
 					<TextBlock Classes="PaneIntro"
-							   Text="What a working board shows on the scope at each pin - the screenshot and how the scope was set, so the next person can compare theirs." />
+							   Text="What a working board shows on the oscilloscope at each pin - the image and how the oscilloscope was set, so the next person can compare theirs." />
+
+					<local:PaneRegionSwitch x:Name="BaselinesRegionSwitch" />
 
 					<!-- How the board's baselines were measured: its "Scope measurements" files (owner decision,
 					     2026-10-26 - ScopeMeasurementFiles), each a link that opens it. -->
@@ -660,15 +650,12 @@
 						</ItemsControl>
 					</StackPanel>
 
-					<TextBlock x:Name="NoBaselinesText" Classes="EmptyLine" Text="No scope baselines yet." />
+					<TextBlock x:Name="NoBaselinesText" Classes="EmptyLine" Text="No oscilloscope baselines yet." />
 
 					<ItemsControl x:Name="BaselinesItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneBaselineRow">
-								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
-										BorderThickness="0,0,0,1"
-										Padding="0,0,0,8"
-										Margin="0,0,0,8">
+								<Border Classes="PaneEntry">
 									<Grid ColumnDefinitions="168,12,*">
 										<Border Grid.Column="0"
 												Width="168"
@@ -679,13 +666,6 @@
 										</Border>
 
 										<StackPanel Grid.Column="2">
-											<!-- What it applies to, on a board with regions (owner decision, 2026-11-01). -->
-											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsAppliesTo}">
-												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
-												<ComboBox MinWidth="130"
-														  ItemsSource="{Binding AppliesToChoices}"
-														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
-											</StackPanel>
 											<Grid ColumnDefinitions="70,8,*,8,*">
 												<StackPanel Grid.Column="0">
 													<TextBlock Classes="FieldLabel" Text="Pin" />
@@ -727,22 +707,19 @@
 													<TextBox Text="{Binding TriggerLevel, Mode=TwoWay}" Watermark="1.5V" />
 												</StackPanel>
 											</Grid>
-											<Grid ColumnDefinitions="*,8,*">
-												<StackPanel Grid.Column="0">
-													<TextBlock Classes="FieldLabel" Text="Machine state" />
-													<TextBox Text="{Binding MachineState, Mode=TwoWay}" Watermark="At the READY prompt, running a game" />
-												</StackPanel>
-												<StackPanel Grid.Column="2">
-													<TextBlock Classes="FieldLabel" Text="Where it comes from" />
-													<ComboBox HorizontalAlignment="Stretch"
-															  ItemsSource="{Binding SourceChoices}"
-															  SelectedItem="{Binding Source, Mode=TwoWay}"
-															  PlaceholderText="Where it comes from" />
-												</StackPanel>
-											</Grid>
+											<TextBlock Classes="FieldLabel" Text="Machine state" />
+											<TextBox Text="{Binding MachineState, Mode=TwoWay}" Watermark="At the READY prompt, running a game" />
 											<TextBlock Classes="FieldLabel" Text="Note" />
 											<!-- Several lines, always open as such (owner request, 2026-11-01). -->
 											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+
+											<!-- What it applies to, on a board with regions - its last field (owner request, 2026-11-01). -->
+											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
+												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+												<ComboBox MinWidth="130"
+														  ItemsSource="{Binding AppliesToChoices}"
+														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+											</StackPanel>
 
 											<TextBlock Text="{Binding Problem}"
 													   IsVisible="{Binding HasProblem}"
@@ -751,14 +728,14 @@
 													   TextWrapping="Wrap" />
 
 											<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-												<Button Content="Change screenshot"
+												<Button Content="Change image"
 														Tag="{Binding}"
-														ToolTip.Tip="Pick another screenshot for this baseline"
+														ToolTip.Tip="Pick another image for this baseline"
 														Click="OnChangeBaselineScreenshotClick" />
 												<Button Classes="Danger"
 														Content="Remove"
 														Tag="{Binding}"
-														ToolTip.Tip="Remove this scope baseline"
+														ToolTip.Tip="Remove this oscilloscope baseline"
 														Click="OnRemoveBaselineClick" />
 											</StackPanel>
 										</StackPanel>
@@ -768,16 +745,13 @@
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
 
-					<!-- A new baseline, held here until it can be one - its pin, a screenshot and one scope
-					     setting (ComponentImageKinds; the plan: "a screenshot, which is required"). -->
+					<!-- A new baseline, held here until it can be one - its pin, its signal name and an image
+					     (owner request, 2026-11-02: the scope settings may stay empty). -->
 					<Border x:Name="NewBaselinePanel"
-							IsVisible="False"
-							BorderBrush="{DynamicResource Table_BorderRowLine}"
-							BorderThickness="1"
-							CornerRadius="3"
-							Padding="8">
+							Classes="PaneEntry"
+							IsVisible="False">
 						<StackPanel Spacing="4">
-							<TextBlock Classes="PaneHeading" FontSize="12" Text="New scope baseline" />
+							<TextBlock Classes="PaneHeading" FontSize="12" Text="New oscilloscope baseline" />
 							<Grid ColumnDefinitions="168,12,*">
 								<Border Grid.Column="0"
 										Width="168"
@@ -787,11 +761,6 @@
 									<Image x:Name="NewBaselineThumbnail" Stretch="Uniform" />
 								</Border>
 								<StackPanel Grid.Column="2">
-									<!-- What it applies to, on a board with regions: the region shown, to start with. -->
-									<StackPanel x:Name="NewBaselineRegionPanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
-										<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
-										<ComboBox x:Name="NewBaselineRegionBox" MinWidth="130" />
-									</StackPanel>
 									<Grid ColumnDefinitions="70,8,*">
 										<StackPanel Grid.Column="0">
 											<TextBlock Classes="FieldLabel" Text="Pin" />
@@ -826,23 +795,28 @@
 											<TextBox x:Name="NewBaselineTriggerBox" Watermark="1.5V" />
 										</StackPanel>
 									</Grid>
+									<!-- What it applies to, on a board with regions: the region shown, to start with. -->
+									<StackPanel x:Name="NewBaselineRegionPanel" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="False">
+										<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+										<ComboBox x:Name="NewBaselineRegionBox" MinWidth="130" />
+									</StackPanel>
 									<TextBlock x:Name="NewBaselineProblemText"
 											   Margin="0,4,0,0"
 											   Foreground="{DynamicResource Text_Warning_Fg}"
 											   TextWrapping="Wrap" />
 									<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
 										<Button x:Name="NewBaselineChooseButton"
-												Content="Choose screenshot"
-												ToolTip.Tip="Pick the screenshot from a file"
+												Content="Choose image"
+												ToolTip.Tip="Pick the image from a file"
 												Click="OnChooseNewBaselineScreenshotClick" />
 										<Button x:Name="NewBaselineCaptureButton"
 												Content="Capture from my oscilloscope"
 												IsVisible="False"
-												ToolTip.Tip="Take the screenshot from the oscilloscope connected on the &quot;Oscilloscope&quot; tab"
+												ToolTip.Tip="Take the image from the oscilloscope connected on the &quot;Oscilloscope&quot; tab"
 												Click="OnCaptureNewBaselineClick" />
 										<Button x:Name="AddNewBaselineButton"
 												Classes="Accept"
-												Content="Add this baseline"
+												Content="Add oscilloscope image"
 												IsEnabled="False"
 												Click="OnAddNewBaselineClick" />
 										<Button x:Name="CancelNewBaselineButton"
@@ -857,7 +831,7 @@
 					<StackPanel x:Name="AddBaselineButtons" Orientation="Horizontal" Spacing="6">
 						<Button x:Name="AddBaselineButton"
 								Classes="Accept"
-								Content="Add baseline"
+								Content="Add oscilloscope image"
 								Click="OnAddBaselineClick" />
 						<Button x:Name="CaptureBaselineButton"
 								Content="Capture from my oscilloscope"
@@ -872,15 +846,14 @@
 					<TextBlock Classes="PaneIntro"
 							   Text="Photos and drawings of the component - its markings, its pinout, where it sits on the board." />
 
+					<local:PaneRegionSwitch x:Name="PicturesRegionSwitch" />
+
 					<TextBlock x:Name="NoPicturesText" Classes="EmptyLine" Text="No pictures yet." />
 
 					<ItemsControl x:Name="PicturesItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPanePictureRow">
-								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
-										BorderThickness="0,0,0,1"
-										Padding="0,0,0,8"
-										Margin="0,0,0,8">
+								<Border Classes="PaneEntry">
 									<Grid ColumnDefinitions="168,12,*">
 										<Border Grid.Column="0"
 												Width="168"
@@ -890,18 +863,30 @@
 											<Image Source="{Binding Thumbnail}" Stretch="Uniform" />
 										</Border>
 										<StackPanel Grid.Column="2">
-											<!-- What it applies to, on a board with regions (owner decision, 2026-11-01). -->
-											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsAppliesTo}">
+											<TextBlock Classes="FieldLabel" Text="Name" />
+											<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="Top, Pinout, Markings" />
+											<TextBlock Classes="FieldLabel" Text="Note" />
+											<!-- Several lines, open as such while empty too (owner request, 2026-11-01). -->
+											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+											<!-- What it applies to, on a board with regions - its last field (owner request, 2026-11-01). -->
+											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
 												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
 												<ComboBox MinWidth="130"
 														  ItemsSource="{Binding AppliesToChoices}"
 														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
 											</StackPanel>
-											<TextBlock Classes="FieldLabel" Text="Name" />
-											<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="Top, Pinout, Markings" />
-											<TextBlock Classes="FieldLabel" Text="Note" />
-											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" />
 											<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+												<!-- Its place among the component's pictures, as a schematic image's (owner request, 2026-11-02). -->
+												<Button Content="Move up"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanMoveUp}"
+														ToolTip.Tip="Move this picture up - the order the component's popup shows them in"
+														Click="OnMoveComponentPictureUpClick" />
+												<Button Content="Move down"
+														Tag="{Binding}"
+														IsEnabled="{Binding CanMoveDown}"
+														ToolTip.Tip="Move this picture down - the order the component's popup shows them in"
+														Click="OnMoveComponentPictureDownClick" />
 												<Button Content="Change picture"
 														Tag="{Binding}"
 														ToolTip.Tip="Pick another file for this picture"
@@ -931,15 +916,14 @@
 					<TextBlock Classes="PaneIntro"
 							   Text="Parts that can stand in for this one - and what has to change for one that does not simply drop in." />
 
+					<local:PaneRegionSwitch x:Name="ReplacementsRegionSwitch" />
+
 					<TextBlock x:Name="NoReplacementsText" Classes="EmptyLine" Text="No replacement parts yet." />
 
 					<ItemsControl x:Name="ReplacementsItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneReplacementRow">
-								<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
-										BorderThickness="0,0,0,1"
-										Padding="0,0,0,8"
-										Margin="0,0,0,8">
+								<Border Classes="PaneEntry">
 									<Grid ColumnDefinitions="*,8,160,8,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
 										<TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Part number" />
 										<TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PartNumber, Mode=TwoWay}" />
@@ -955,14 +939,14 @@
 												Tag="{Binding}"
 												ToolTip.Tip="Remove this replacement part"
 												Click="OnRemoveReplacementClick" />
-										<Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" ColumnDefinitions="*,8,*">
-											<TextBlock Grid.Column="0" Classes="FieldLabel" Text="What to change" />
-											<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Where the advice comes from" />
-										</Grid>
-										<Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5" ColumnDefinitions="*,8,*">
-											<TextBox Grid.Column="0" Text="{Binding Changes, Mode=TwoWay}" Watermark="Nothing, for a drop-in" />
-											<TextBox Grid.Column="2" Text="{Binding Source, Mode=TwoWay}" Watermark="A forum thread, a magazine, tried on my own board" />
-										</Grid>
+										<!-- One note of several lines (owner request, 2026-11-01), open as such while empty. -->
+										<TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" Classes="FieldLabel" Text="Note" />
+										<TextBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5"
+												 Text="{Binding Note, Mode=TwoWay}"
+												 AcceptsReturn="True"
+												 TextWrapping="Wrap"
+												 MinHeight="80"
+												 Watermark="What has to change for it to fit, and where that advice comes from" />
 										<!-- What it applies to, on a board with regions (owner decision, 2026-11-01). -->
 										<StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="5" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
 											<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
@@ -984,34 +968,90 @@
 				</StackPanel>
 
 				<!-- ==== Files (slice 3b) ==== -->
-				<StackPanel x:Name="FilesSection" Spacing="4">
+				<StackPanel x:Name="FilesSection" Spacing="4" Grid.IsSharedSizeScope="True">
 					<TextBlock Classes="PaneIntro"
-							   Text="Documents kept with the board about this component - a datasheet, a service note, a ROM dump." />
+							   Text="Documents kept with the board about this component - a datasheet, a service note, a ROM dump. Drag a file by its handle to move it up or down." />
+
+					<local:PaneRegionSwitch x:Name="FilesRegionSwitch" />
 
 					<TextBlock x:Name="NoFilesText" Classes="EmptyLine" Text="No files yet." />
+
+					<Grid x:Name="FilesHeading">
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="8" />
+							<ColumnDefinition Width="*" />
+							<ColumnDefinition Width="8" />
+							<ColumnDefinition Width="Auto" SharedSizeGroup="FileRegion" />
+							<ColumnDefinition Width="8" />
+							<ColumnDefinition Width="Auto" SharedSizeGroup="FileButtons" />
+						</Grid.ColumnDefinitions>
+						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name" />
+						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="File" />
+						<TextBlock x:Name="FilesAppliesToHeading" Grid.Column="4" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+					</Grid>
 
 					<ItemsControl x:Name="FilesItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneFileRow">
-								<Grid ColumnDefinitions="*,8,*,8,Auto,8,Auto" Margin="0,0,0,4">
-									<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
-									<TextBlock Grid.Column="2"
-											   Text="{Binding File}"
-											   VerticalAlignment="Center"
-											   FontSize="11"
-											   Opacity="0.75"
-											   TextTrimming="CharacterEllipsis" />
-									<Button Grid.Column="4"
-											Content="Change file"
-											Tag="{Binding}"
-											ToolTip.Tip="Pick another file for this entry"
-											Click="OnChangeFileClick" />
-									<Button Grid.Column="6"
-											Classes="Danger"
-											Content="Remove"
-											Tag="{Binding}"
-											ToolTip.Tip="Remove this file"
-											Click="OnRemoveFileClick" />
+								<Grid>
+									<!-- While the row is dragged: a dashed slot its height, where a drop will land (ListRowDrag). -->
+									<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+										<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+												StrokeThickness="2"
+												StrokeDashArray="4,3"
+												RadiusX="3"
+												RadiusY="3"
+												Margin="0,0,0,4"
+												Fill="{DynamicResource Bg}" />
+										<TextBlock Text="Move the file up/down and release mouse button for new location"
+												FontSize="11"
+												Opacity="0.7"
+												TextAlignment="Center"
+												HorizontalAlignment="Center"
+												VerticalAlignment="Center"
+												Margin="0,0,0,4" />
+									</Panel>
+									<Grid Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="Auto" SharedSizeGroup="FileRegion" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="Auto" SharedSizeGroup="FileButtons" />
+										</Grid.ColumnDefinitions>
+										<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
+										<TextBlock Grid.Column="2"
+												   Text="{Binding File}"
+												   VerticalAlignment="Center"
+												   FontSize="11"
+												   Opacity="0.75"
+												   TextTrimming="CharacterEllipsis" />
+										<!-- What it applies to, on a board with regions (owner request, 2026-11-02). -->
+										<ComboBox Grid.Column="4"
+												  MinWidth="130"
+												  IsVisible="{Binding ShowsAppliesTo}"
+												  ItemsSource="{Binding AppliesToChoices}"
+												  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+										<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+											<Button Content="Change file"
+													Tag="{Binding}"
+													ToolTip.Tip="Pick another file for this entry"
+													Click="OnChangeFileClick" />
+											<Button Classes="Danger"
+													Content="Remove"
+													Tag="{Binding}"
+													ToolTip.Tip="Remove this file"
+													Click="OnRemoveFileClick" />
+											<Border Classes="RowDragHandle"
+													PointerPressed="OnFileHandlePressed"
+													ToolTip.Tip="Drag to move this file up or down - or Alt+Up and Alt+Down in its box">
+												<TextBlock Text="&#xf338;" />
+											</Border>
+										</StackPanel>
+									</Grid>
 								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
@@ -1027,7 +1067,9 @@
 				<!-- ==== Links ==== -->
 				<StackPanel x:Name="LinksSection" Spacing="4" Grid.IsSharedSizeScope="True">
 					<TextBlock Classes="PaneIntro"
-							   Text="Pages about this component - a datasheet online, a forum thread, a video." />
+							   Text="Pages about this component - a datasheet online, a forum thread, a video. Drag a link by its handle to move it up or down." />
+
+					<local:PaneRegionSwitch x:Name="LinksRegionSwitch" />
 
 					<TextBlock x:Name="NoLinksText" Classes="EmptyLine" Text="No links yet." />
 
@@ -1037,32 +1079,68 @@
 							<ColumnDefinition Width="8" />
 							<ColumnDefinition Width="2*" />
 							<ColumnDefinition Width="8" />
+							<ColumnDefinition Width="Auto" SharedSizeGroup="LinkRegion" />
+							<ColumnDefinition Width="8" />
 							<ColumnDefinition Width="Auto" SharedSizeGroup="LinkButtons" />
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name" />
 						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Address" />
+						<TextBlock x:Name="LinksAppliesToHeading" Grid.Column="4" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
 					</Grid>
 
 					<ItemsControl x:Name="LinksItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneLinkRow">
-								<Grid Margin="0,0,0,4" RowDefinitions="Auto,Auto">
-									<Grid.ColumnDefinitions>
-										<ColumnDefinition Width="*" />
-										<ColumnDefinition Width="8" />
-										<ColumnDefinition Width="2*" />
-										<ColumnDefinition Width="8" />
-										<ColumnDefinition Width="Auto" SharedSizeGroup="LinkButtons" />
-									</Grid.ColumnDefinitions>
-									<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
-									<TextBox Grid.Column="2" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" Classes.Missing="{Binding UrlNotWeb}" />
-									<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" Text="{Binding NotWebText}" IsVisible="{Binding UrlNotWeb}" />
-									<Button Grid.Column="4"
-											Classes="Danger"
-											Content="Remove"
-											Tag="{Binding}"
-											ToolTip.Tip="Remove this link"
-											Click="OnRemoveLinkClick" />
+								<Grid>
+									<!-- While the row is dragged: a dashed slot its height, where a drop will land (ListRowDrag). -->
+									<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+										<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+												StrokeThickness="2"
+												StrokeDashArray="4,3"
+												RadiusX="3"
+												RadiusY="3"
+												Margin="0,0,0,4"
+												Fill="{DynamicResource Bg}" />
+										<TextBlock Text="Move the link up/down and release mouse button for new location"
+												FontSize="11"
+												Opacity="0.7"
+												TextAlignment="Center"
+												HorizontalAlignment="Center"
+												VerticalAlignment="Center"
+												Margin="0,0,0,4" />
+									</Panel>
+									<Grid Margin="0,0,0,4" RowDefinitions="Auto,Auto" IsVisible="{Binding IsNotDropPlaceholder}">
+										<Grid.ColumnDefinitions>
+											<ColumnDefinition Width="*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="2*" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="Auto" SharedSizeGroup="LinkRegion" />
+											<ColumnDefinition Width="8" />
+											<ColumnDefinition Width="Auto" SharedSizeGroup="LinkButtons" />
+										</Grid.ColumnDefinitions>
+										<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
+										<TextBox Grid.Column="2" Text="{Binding Url, Mode=TwoWay}" Watermark="https://" Classes.Missing="{Binding UrlNotWeb}" />
+										<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" Text="{Binding NotWebText}" IsVisible="{Binding UrlNotWeb}" />
+										<!-- What it applies to, on a board with regions (owner request, 2026-11-02). -->
+										<ComboBox Grid.Column="4"
+												  MinWidth="130"
+												  IsVisible="{Binding ShowsAppliesTo}"
+												  ItemsSource="{Binding AppliesToChoices}"
+												  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+										<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+											<Button Classes="Danger"
+													Content="Remove"
+													Tag="{Binding}"
+													ToolTip.Tip="Remove this link"
+													Click="OnRemoveLinkClick" />
+											<Border Classes="RowDragHandle"
+													PointerPressed="OnLinkHandlePressed"
+													ToolTip.Tip="Drag to move this link up or down - or Alt+Up and Alt+Down in its boxes">
+												<TextBlock Text="&#xf338;" />
+											</Border>
+										</StackPanel>
+									</Grid>
 								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
@@ -1102,13 +1180,31 @@
 				<!-- ==== Board: Categories (owner request, 2026-11-01; ComponentPane.RegionsAndCategories.cs) ==== -->
 				<StackPanel x:Name="CategoriesPart" Spacing="4">
 					<TextBlock Classes="PaneIntro"
-							   Text="What the board's components are sorted under - in the list beside the &quot;Schematics&quot; tab and on the &quot;Overview&quot; tab. Rename one and every component in it follows; name it as another and the two become one. A category nothing uses yet is kept until CRT closes." />
+							   Text="What the board's components are sorted under - in the list beside the &quot;Schematics&quot; tab and on the &quot;Overview&quot; tab. Rename one and every component in it follows; name it as another and the two become one. Drag one by its handle to set the order they are listed in. A category nothing uses yet is kept until CRT closes." />
 
 					<ItemsControl x:Name="CategoriesItemsControl">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneCategoryRow">
-								<StackPanel Margin="0,0,0,6" Spacing="4">
-									<Grid ColumnDefinitions="*,12,140,12,70">
+								<Grid>
+								<!-- While the row is dragged: a dashed slot its height, where a drop will land (ListRowDrag). -->
+								<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
+									<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+											StrokeThickness="2"
+											StrokeDashArray="4,3"
+											RadiusX="3"
+											RadiusY="3"
+											Margin="0,0,0,6"
+											Fill="{DynamicResource Bg}" />
+									<TextBlock Text="Move the category up/down and release mouse button for new location"
+											FontSize="11"
+											Opacity="0.7"
+											TextAlignment="Center"
+											HorizontalAlignment="Center"
+											VerticalAlignment="Center"
+											Margin="0,0,0,6" />
+								</Panel>
+								<StackPanel Margin="0,0,0,6" Spacing="4" IsVisible="{Binding IsNotDropPlaceholder}">
+									<Grid ColumnDefinitions="*,12,140,12,70,6,28">
 										<TextBox Grid.Column="0"
 												 Text="{Binding NameDraft, Mode=TwoWay}"
 												 Classes.Missing="{Binding NeedsOne}"
@@ -1123,6 +1219,13 @@
 												IsVisible="{Binding CanDelete}"
 												ToolTip.Tip="Delete this category - its components move to another, one step, so &quot;Undo&quot; brings it back"
 												Click="OnDeleteCategoryClick" />
+										<Border Grid.Column="6"
+												Classes="RowDragHandle"
+												IsVisible="{Binding CanMove}"
+												PointerPressed="OnCategoryHandlePressed"
+												ToolTip.Tip="Drag to move this category up or down - or Alt+Up and Alt+Down in its box">
+											<TextBlock Text="&#xf338;" />
+										</Border>
 									</Grid>
 									<TextBlock Classes="Required" Text="{Binding Problem}" IsVisible="{Binding HasProblem}" />
 
@@ -1151,6 +1254,7 @@
 										</StackPanel>
 									</Border>
 								</StackPanel>
+								</Grid>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
@@ -1275,7 +1379,7 @@
 
 											<!-- The KiCad view the image shows - once the board's views are read. -->
 											<StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowsCadNames}">
-												<TextBlock Text="Shows KiCad view" VerticalAlignment="Center" />
+												<TextBlock Text="Associate KiCad file" VerticalAlignment="Center" />
 												<ComboBox ItemsSource="{Binding CadNameChoices}"
 														  SelectedItem="{Binding SelectedCadNameChoice, Mode=TwoWay}"
 														  MinWidth="220"
@@ -1455,11 +1559,14 @@
 								<ColumnDefinition Width="8" />
 								<ColumnDefinition Width="*" />
 								<ColumnDefinition Width="8" />
+								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileRegion" />
+								<ColumnDefinition Width="8" />
 								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileButtons" />
 							</Grid.ColumnDefinitions>
 							<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Category" />
 							<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Name" />
 							<TextBlock Grid.Column="4" Classes="FieldLabel" Text="File" />
+							<TextBlock x:Name="BoardFilesAppliesToHeading" Grid.Column="6" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
 						</Grid>
 
 						<ItemsControl x:Name="BoardFilesItemsControl">
@@ -1493,6 +1600,8 @@
 													<ColumnDefinition Width="8" />
 													<ColumnDefinition Width="*" />
 													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileRegion" />
+													<ColumnDefinition Width="8" />
 													<ColumnDefinition Width="Auto" SharedSizeGroup="BoardFileButtons" />
 												</Grid.ColumnDefinitions>
 												<AutoCompleteBox Grid.Column="0" Classes.Missing="{Binding CategoryMissing}"
@@ -1512,7 +1621,13 @@
 														   FontSize="11"
 														   Opacity="0.75"
 														   TextTrimming="CharacterEllipsis" />
-												<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+												<!-- What it applies to, on a board with regions (owner request, 2026-11-02). -->
+												<ComboBox Grid.Column="6"
+														  MinWidth="130"
+														  IsVisible="{Binding ShowsAppliesTo}"
+														  ItemsSource="{Binding AppliesToChoices}"
+														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+												<StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="6">
 													<!-- The file opened with the program the system has for it (owner request,
 													     2026-10-29: "a possibility to open the file so I can view it"). -->
 													<Button Content="Open file"
@@ -1597,11 +1712,14 @@
 								<ColumnDefinition Width="8" />
 								<ColumnDefinition Width="2*" />
 								<ColumnDefinition Width="8" />
+								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardLinkRegion" />
+								<ColumnDefinition Width="8" />
 								<ColumnDefinition Width="Auto" SharedSizeGroup="BoardLinkButtons" />
 							</Grid.ColumnDefinitions>
 							<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Category" />
 							<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Name" />
 							<TextBlock Grid.Column="4" Classes="FieldLabel" Text="Address" />
+							<TextBlock x:Name="BoardLinksAppliesToHeading" Grid.Column="6" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
 						</Grid>
 
 						<ItemsControl x:Name="BoardLinksItemsControl">
@@ -1635,6 +1753,8 @@
 													<ColumnDefinition Width="8" />
 													<ColumnDefinition Width="2*" />
 													<ColumnDefinition Width="8" />
+													<ColumnDefinition Width="Auto" SharedSizeGroup="BoardLinkRegion" />
+													<ColumnDefinition Width="8" />
 													<ColumnDefinition Width="Auto" SharedSizeGroup="BoardLinkButtons" />
 												</Grid.ColumnDefinitions>
 												<AutoCompleteBox Grid.Column="0" Classes.Missing="{Binding CategoryMissing}"
@@ -1650,7 +1770,13 @@
 												<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" IsVisible="{Binding NameMissing}" />
 												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" IsVisible="{Binding UrlMissing}" />
 												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" Text="{Binding NotWebText}" IsVisible="{Binding UrlNotWeb}" />
-												<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+												<!-- What it applies to, on a board with regions (owner request, 2026-11-02). -->
+												<ComboBox Grid.Column="6"
+														  MinWidth="130"
+														  IsVisible="{Binding ShowsAppliesTo}"
+														  ItemsSource="{Binding AppliesToChoices}"
+														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+												<StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="6">
 													<!-- The page opened in the browser (owner request, 2026-10-29). -->
 													<Button Content="Open link"
 															Tag="{Binding}"

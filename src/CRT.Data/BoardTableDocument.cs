@@ -626,9 +626,8 @@ namespace Handlers.DataHandling
         //   - No row still has the label: every image, local file, link, pin and replacement row for
         //     it goes.
         //   - Another row has the label but none has this REGION (a regional variant deleted, its
-        //     twin kept): only the image, pin and replacement rows for that label AND region go.
-        //     Files and links are not per region, and still belong to the twin; so do rows with a
-        //     blank region.
+        //     twin kept): only the rows for that label AND region go - images, files, links (2026-11-02),
+        //     pins and replacement parts alike. Rows with a blank region still belong to the twin.
         //   - Otherwise (a duplicate row deleted): nothing else goes.
         //
         // Labels and regions compare ignoring case, as everywhere else. Null when nothing went.
@@ -656,13 +655,6 @@ namespace Handlers.DataHandling
 
             var counts = new List<BoardTableSheetCount>();
 
-            // Pins and replacement parts (CRT 4.0, 2026-10-25) are filed by region as images are,
-            // so a regional variant deleted takes its own along.
-            bool PerRegion(string sheetName) =>
-                sheetName is BoardWorkbookSchema.SheetComponentImages
-                    or BoardWorkbookSchema.SheetComponentPins
-                    or BoardWorkbookSchema.SheetComponentReplacements;
-
             foreach (string sheetName in new[]
             {
                 BoardWorkbookSchema.SheetComponentImages,
@@ -672,11 +664,6 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.SheetComponentReplacements
             })
             {
-                if (labelRemains && !PerRegion(sheetName))
-                {
-                    continue;
-                }
-
                 if (this.FindSheet(sheetName) is not BoardTableSheet sheet)
                 {
                     continue;

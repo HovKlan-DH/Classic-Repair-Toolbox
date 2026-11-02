@@ -12,6 +12,7 @@ using Handlers.Oscilloscope;
 using Handlers.Theming;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -88,10 +89,19 @@ namespace CRT
         private IReadOnlyList<ComponentPinEntry> _allPins = [];
         private IReadOnlyList<ComponentReplacementEntry> _allReplacements = [];
 
+        // The pins listed beside the drawing - InfoPinsItemsControl's, changed in place (ShowViewedPin).
+        private readonly System.Collections.ObjectModel.ObservableCollection<ComponentPopupPin> _pinRows = new();
+
+        // The component's files and links of every region, each as a row of its section.
+        private IReadOnlyList<ComponentLocalFileEntry> _allLocalFiles = [];
+        private IReadOnlyList<ComponentLinkEntry> _allLinks = [];
+
         // Each pin's net on this board by its number, from the board's KiCad data - empty without.
         private IReadOnlyDictionary<string, string> _pinNets = new Dictionary<string, string>();
 
-        // The board's "Scope measurements" files, found - linked under a scope baseline.
+        // The board's "Scope measurements" files, found, with the region of each - and those of the
+        // region shown, linked under a scope baseline.
+        private IReadOnlyList<(string Region, ComponentLocalFileItem Note)> _allMeasuringNotes = [];
         private IReadOnlyList<ComponentLocalFileItem> _measuringNotes = [];
         private bool _suppressThumbnailSelection = false;
         private bool _suppressRegionToggle = false;
@@ -122,6 +132,8 @@ namespace CRT
         public ComponentInfoWindow()
         {
             this.InitializeComponent();
+
+            this.InfoPinsItemsControl.ItemsSource = this._pinRows;
 
             // Aggressively steal focus from the Main window's TextBox when interacting with this window
             this.PointerPressed += (_, _) => this.Focus();
@@ -481,8 +493,8 @@ namespace CRT
                 var items = this.ThumbnailList.ItemsSource as List<ComponentImageItem>;
                 if (items != null && items.Count > 0)
                 {
-                    int matchIndex = items.FindIndex(item =>
-                        string.Equals(item.Pin, this._pinBuffer, StringComparison.OrdinalIgnoreCase));
+                    // By the rule a click on the pin goes by (GoToPin): "2 [64K]" is pin 2.
+                    int matchIndex = ComponentPopupContent.FirstImageOfPin(items.Select(item => item.Pin).ToList(), this._pinBuffer);
 
                     if (matchIndex >= 0)
                     {
@@ -784,18 +796,10 @@ namespace CRT
             this._pinNets = pinNets ?? new Dictionary<string, string>();
 
             // Found as the component's own files are - see below - each with the root it came from.
-            this._measuringNotes = ScopeMeasurementFiles.Among(boardFiles)
-                .Select(note =>
-                {
-                    DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, note.File, boardIdentity);
+            var listings = new BoardFileListings();
 
-                    return new ComponentLocalFileItem
-                    {
-                        Name = note.Name,
-                        FullPath = resolved?.FullPath ?? Path.Combine(dataRoot, note.File.Replace('/', Path.DirectorySeparatorChar)),
-                        SourceRoot = resolved?.Root ?? dataRoot,
-                    };
-                })
+            this._allMeasuringNotes = ScopeMeasurementFiles.Among(boardFiles)
+                .Select(note => (note.Region, ComponentInfoWindow.FoundFile(note.Name, note.File, dataRoot, draftBoardFolder, boardIdentity, listings)))
                 .ToList();
 
             // Reset pin navigation state whenever a new component is loaded
@@ -804,53 +808,8 @@ namespace CRT
             this._pinFlashCts?.Cancel();
             this.PinFlashBorder.IsVisible = false;
 
-            // Local files — filter by board label. Resolved through the same draft-first rule every
-            // other BoardData File value uses - see DraftFileResolver. SourceRoot records which root
-            // the path actually came from, so OnLocalFileButtonClick can hand ExternalTargetLauncher
-            // the matching containment root rather than always DataRoot.
-            //
-            // *** THE ROOT COMES FROM THE RESOLVER, NEVER FROM A SECOND GUESS HERE. *** This used to
-            // derive it as "drafted only when the official copy is missing" - the old official-first
-            // order. Once the order flipped, a file present in BOTH trees (every file a seeded draft
-            // copies) resolved to the draft path but was tagged with the data root, and the launcher's
-            // containment check refused it: the button silently did nothing on every drafted board.
-            var matchingLocalFiles = localFiles
-                .Where(f => string.Equals(f.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            bool hasLocalFiles = matchingLocalFiles.Count > 0;
-            this.LocalFilesSection.IsVisible = hasLocalFiles;
-            this.LocalFilesItemsControl.ItemsSource = hasLocalFiles
-                ? matchingLocalFiles
-                    .Select(f =>
-                    {
-                        string officialPath = Path.Combine(dataRoot, f.File.Replace('/', Path.DirectorySeparatorChar));
-                        DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, f.File, boardIdentity);
-
-                        return new ComponentLocalFileItem
-                        {
-                            Name = f.Name,
-                            FullPath = resolved?.FullPath ?? officialPath,
-                            SourceRoot = resolved?.Root ?? dataRoot
-                        };
-                    })
-                    .ToList()
-                : null;
-
-            // Links — filter by board label
-            var matchingLinks = links
-                .Where(l => string.Equals(l.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            bool hasLinks = matchingLinks.Count > 0;
-            this.LinksSection.IsVisible = hasLinks;
-            this.LinksItemsControl.ItemsSource = hasLinks
-                ? matchingLinks
-                    .Select(l => new ComponentLinkItem
-                    {
-                        Name = l.Name,
-                        Url = l.Url
-                    })
-                    .ToList()
-                : null;
+            this._allLocalFiles = localFiles;
+            this._allLinks = links;
 
             // Store state for region toggling; reset local region to the global value on each load
             this._boardLabel = boardLabel;
@@ -867,6 +826,68 @@ namespace CRT
             // Reset selection on initial load so a lingering pin from a previous component
             // is never accidentally matched against this component's image list
             this.RefreshImages(resetSelection: true);
+        }
+
+        // ###########################################################################################
+        // THE COMPONENT'S FILES AND LINKS OF THE REGION SHOWN (owner request, 2026-11-02: each can be of
+        // one region) - after the component is loaded and whenever the region is switched.
+        //
+        // Local files are resolved through the same draft-first rule every other BoardData File value
+        // uses - see DraftFileResolver. SourceRoot records which root the path actually came from, so
+        // OnLocalFileButtonClick can hand ExternalTargetLauncher the matching containment root rather than
+        // always DataRoot.
+        //
+        // *** THE ROOT COMES FROM THE RESOLVER, NEVER FROM A SECOND GUESS HERE. *** This used to derive it
+        // as "drafted only when the official copy is missing" - the old official-first order. Once the
+        // order flipped, a file present in BOTH trees (every file a seeded draft copies) resolved to the
+        // draft path but was tagged with the data root, and the launcher's containment check refused it:
+        // the button silently did nothing on every drafted board.
+        //
+        // Asked at every PAL/NTSC click, on the UI thread, so ONE lookup's memory of the board file serves
+        // them all (Main.ResourceFilesOf has why; code review, 2026-11-02).
+        // ###########################################################################################
+        private void RefreshFilesAndLinks()
+        {
+            this._measuringNotes = this._allMeasuringNotes
+                .Where(entry => ComponentPaneEdits.InRegion(entry.Region, this._localRegion))
+                .Select(entry => entry.Note)
+                .ToList();
+
+            var listings = new BoardFileListings();
+
+            List<ComponentLocalFileEntry> files = ComponentPopupContent.FilesOf(this._allLocalFiles, this._boardLabel, this._localRegion);
+            this.LocalFilesSection.IsVisible = files.Count > 0;
+            this.LocalFilesItemsControl.ItemsSource = files.Count > 0
+                ? files
+                    .Select(f => ComponentInfoWindow.FoundFile(f.Name, f.File, this._dataRoot, this._draftBoardFolder, this._boardIdentity, listings))
+                    .ToList()
+                : null;
+
+            List<ComponentLinkEntry> links = ComponentPopupContent.LinksOf(this._allLinks, this._boardLabel, this._localRegion);
+            this.LinksSection.IsVisible = links.Count > 0;
+            this.LinksItemsControl.ItemsSource = links.Count > 0
+                ? links.Select(l => new ComponentLinkItem { Name = l.Name, Url = l.Url }).ToList()
+                : null;
+        }
+
+        // A file of the board found, with the root it was found under - a file found nowhere still names
+        // where the data root would have it.
+        internal static ComponentLocalFileItem FoundFile(
+            string name,
+            string file,
+            string dataRoot,
+            string draftBoardFolder,
+            string boardIdentity,
+            BoardFileListings listings)
+        {
+            DraftFileResolution? resolved = DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, file, boardIdentity, listings);
+
+            return new ComponentLocalFileItem
+            {
+                Name = name,
+                FullPath = resolved?.FullPath ?? Path.Combine(dataRoot, file.Replace('/', Path.DirectorySeparatorChar)),
+                SourceRoot = resolved?.Root ?? dataRoot,
+            };
         }
 
         // ###########################################################################################
@@ -887,6 +908,7 @@ namespace CRT
             this.UpdateInfoOverlay();
             this.UpdateImageCounter();
             this.UpdateImageNote(selected);
+            this.ShowViewedPin(selected);
             this.ScheduleSelectedOscilloscopeImageSync(selected);
         }
 
@@ -1202,6 +1224,7 @@ namespace CRT
                 this.UpdateInfoOverlay();
                 this.UpdateImageCounter();
                 this.UpdateImageNote(selected);
+                this.ShowViewedPin(selected);
                 this.ScheduleSelectedOscilloscopeImageSync(selected);
 
                 // Dispose the previous bitmaps only after the UI has fully transitioned to the new set
@@ -1251,6 +1274,7 @@ namespace CRT
         {
             // Update text fields immediately so they reflect the new region before images finish loading
             this.RefreshComponentText();
+            this.RefreshFilesAndLinks();
 
             // Capture the current pin so the same gallery position can be restored after the reload,
             // unless this is a full component reset where selection should always start at index 0.
@@ -1393,27 +1417,98 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // CRT 4.0's new component data, of the region shown (step 2, slice 3c): the repair notes with
-        // their links clickable, the pinout - the case drawn when CRT can draw it, and every pin listed
-        // with its signal name and direction - and the replacement parts. A section with nothing in it
-        // is hidden, as every other one is.
+        // CRT 4.0's new component data, of the region shown (step 2, slice 3c): the pinout - the case
+        // drawn when CRT can draw it, and every pin listed beside it with its signal name and direction -
+        // and the replacement parts. A section with nothing in it is hidden, as every other one is.
         // ###########################################################################################
         private void RefreshCrt4Data(ComponentEntry? entry)
         {
-            string notes = entry?.RepairNotes?.Trim() ?? string.Empty;
-            this.RepairNotesSection.IsVisible = notes.Length > 0;
-            // Links only - not the Workbooks tab's search marks, which are about worklogs.
-            TextLinkRenderer.ApplySegments(this.InfoRepairNotes, notes, segments: null);
-
-            List<ComponentPopupPin> pins = ComponentPopupContent.PinsOf(this._allPins, this._boardLabel, this._localRegion, this._pinNets);
-            this.PinoutSection.IsVisible = pins.Count > 0;
-            this.InfoPinsHeading.IsVisible = pins.Any(pin => pin.HasNet);
-            this.InfoPinsItemsControl.ItemsSource = pins;
             this.InfoPinoutDrawing.Show(entry?.Package, ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion));
+            this.ShowViewedPin(this.ThumbnailList.SelectedItem as ComponentImageItem);
+            this.PinoutSection.IsVisible = this._pinRows.Count > 0;
+            this.InfoPinsNetHeading.IsVisible = this._pinRows.Any(pin => pin.HasNet);
+            this.PlacePinList(this.PinoutGrid.Bounds.Width);
 
             List<ComponentPopupReplacement> replacements = ComponentPopupContent.ReplacementsOf(this._allReplacements, this._boardLabel, this._localRegion);
             this.ReplacementsSection.IsVisible = replacements.Count > 0;
             this.InfoReplacementsItemsControl.ItemsSource = replacements;
+        }
+
+        // ###########################################################################################
+        // THE PIN OF THE IMAGE SHOWN IS LIT, on the drawing and in the list beside it (owner request,
+        // 2026-11-02: "if I am viewing a specific pin, then do highlight it on the pinout image and in the
+        // right-side text"). The list keeps every row that does not change: a row is pressed to go to its
+        // images, which changes the selection, and one made again under the pointer loses its hover.
+        // ###########################################################################################
+        private void ShowViewedPin(ComponentImageItem? shown)
+        {
+            string? pin = shown?.Pin;
+
+            InPlaceList.KeepUnchanged(
+                this._pinRows,
+                ComponentPopupContent.PinsOf(this._allPins, this._boardLabel, this._localRegion, this._pinNets, pin),
+                (row, wanted) => row == wanted);
+
+            this.InfoPinoutDrawing.MarkPin(ComponentVocabulary.PinNumberOf(pin));
+        }
+
+        // ###########################################################################################
+        // THE PINS GO TO THEIR IMAGES (owner request, 2026-11-01: "have the pins clickable with mouse (and
+        // highlighted when hovering) so the user quickly can go to that pin and see what images are
+        // available for that pin"): from the drawing and from the list, by the same way typing a pin
+        // number goes there - the first image of the pin selected and scrolled to, the pin flashed over
+        // it, or the flash saying it has none.
+        // ###########################################################################################
+        private void OnPinPickedInDrawing(object? sender, PinPickedEventArgs e) =>
+            this.GoToPin(e.Pin.ToString(CultureInfo.InvariantCulture));
+
+        private void OnPinRowPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPopupPin pin } control && e.GetCurrentPoint(control).Properties.IsLeftButtonPressed)
+            {
+                this.GoToPin(pin.Pin);
+                e.Handled = true;
+            }
+        }
+
+        // The pin under the pointer in the list is the pin marked in the drawing.
+        private void OnPinRowEntered(object? sender, PointerEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPopupPin pin })
+            {
+                this.InfoPinoutDrawing.HoverPin(ComponentVocabulary.PinNumberOf(pin.Pin));
+            }
+        }
+
+        private void OnPinRowExited(object? sender, PointerEventArgs e) => this.InfoPinoutDrawing.HoverPin(null);
+
+        internal void GoToPin(string? pin)
+        {
+            List<ComponentImageItem> items = this.ThumbnailList.ItemsSource as List<ComponentImageItem> ?? [];
+            int index = ComponentPopupContent.FirstImageOfPin(items.Select(item => item.Pin).ToList(), pin);
+
+            if (index < 0)
+            {
+                this.ShowPinFlashAsync(ComponentPopupContent.NoImageOfPin(pin));
+                return;
+            }
+
+            this.ThumbnailList.SelectedIndex = index;
+            this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
+            this.ShowPinFlashAsync(pin?.Trim() ?? string.Empty);
+        }
+
+        // The pin list beside the drawing while the popup has the room for it, else under it.
+        private void OnPinoutGridSizeChanged(object? sender, SizeChangedEventArgs e) => this.PlacePinList(e.NewSize.Width);
+
+        private void PlacePinList(double width)
+        {
+            double drawing = this.InfoPinoutDrawing.IsVisible ? this.InfoPinoutDrawing.LayoutForTests?.Size.Width ?? 0 : 0;
+            bool beside = PinoutGeometry.ListFitsBeside(width, drawing);
+
+            Grid.SetColumn(this.InfoPinsPanel, beside ? 1 : 0);
+            Grid.SetColumnSpan(this.InfoPinsPanel, beside ? 1 : 2);
+            Grid.SetRow(this.InfoPinsPanel, beside ? 0 : 1);
         }
 
         private IcTestEntry? _activeTestEntry;

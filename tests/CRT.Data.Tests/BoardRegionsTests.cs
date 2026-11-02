@@ -196,4 +196,21 @@ public sealed class BoardRegionsTests
         Assert.Equal(["PAL", "NTSC"], DraftRebase.Merge(plain, plain, ticked, null, null, null).Board.Regions);
         Assert.Empty(DraftRebase.Merge(ticked, plain, ticked, null, null, null).Board.Regions);
     }
+
+    // A file or a link of one region counts as well (owner request, 2026-11-02): "Board: Regions" cannot
+    // be unticked under it, and a board that has not said has regions because of it.
+    [Fact]
+    public void A_file_or_a_link_saying_a_region_counts_among_the_regional_rows()
+    {
+        var board = new BoardData
+        {
+            ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U1", Name = "a", File = "a.pdf", Region = "PAL" }],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U1", Name = "b", Url = "https://example.org", Region = "NTSC" }],
+            BoardLocalFiles = [new BoardLocalFileEntry { Category = "c", Name = "d", File = "d.pdf", Region = "PAL" }],
+            BoardLinks = [new BoardLinkEntry { Category = "c", Name = "e", Url = "https://example.org", Region = "NTSC" }],
+        };
+
+        Assert.Equal(4, BoardRegions.RegionalRows(board));
+        Assert.True(BoardRegions.Has(board));
+    }
 }

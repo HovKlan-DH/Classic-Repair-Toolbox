@@ -102,11 +102,12 @@ namespace Handlers.DataHandling
                     Category = row.Category?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
+                    Region = row.Region?.Trim() ?? string.Empty,
                 })
                 .Where(row => !BoardPartEdits.IsBlank(row))
                 .ToList();
 
-            return BoardPartEdits.SameRows(board.BoardLocalFiles, rows, row => string.Join('\u001F', row.Category, row.Name, row.File))
+            return BoardPartEdits.SameRows(board.BoardLocalFiles, rows, row => string.Join('\u001F', row.Category, row.Name, row.File, row.Region))
                 ? board
                 : board.WithBoardSections(boardLocalFiles: rows);
         }
@@ -122,11 +123,12 @@ namespace Handlers.DataHandling
                     Category = row.Category?.Trim() ?? string.Empty,
                     Name = row.Name?.Trim() ?? string.Empty,
                     Url = row.Url?.Trim() ?? string.Empty,
+                    Region = row.Region?.Trim() ?? string.Empty,
                 })
                 .Where(row => !BoardPartEdits.IsBlank(row))
                 .ToList();
 
-            return BoardPartEdits.SameRows(board.BoardLinks, rows, row => string.Join('\u001F', row.Category, row.Name, row.Url))
+            return BoardPartEdits.SameRows(board.BoardLinks, rows, row => string.Join('\u001F', row.Category, row.Name, row.Url, row.Region))
                 ? board
                 : board.WithBoardSections(boardLinks: rows);
         }

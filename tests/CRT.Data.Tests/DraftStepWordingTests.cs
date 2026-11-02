@@ -25,7 +25,7 @@ public sealed class DraftStepWordingTests
 
         // The component pane's own sections (CRT 4.0 step 2).
         Assert.Equal("Pictures of [U8]", DraftStepWording.ComponentPictures("U8"));
-        Assert.Equal("Scope baselines of [U8]", DraftStepWording.ComponentBaselines("U8"));
+        Assert.Equal("Oscilloscope baselines of [U8]", DraftStepWording.ComponentBaselines("U8"));
         Assert.Equal("Files of [U8]", DraftStepWording.ComponentFiles("U8"));
         Assert.Equal("[U9] added", DraftStepWording.ComponentAdded("U9"));
         Assert.Equal("[U7] copied from Commodore 64 - 250425", DraftStepWording.ComponentCopied("U7", "Commodore 64 - 250425"));

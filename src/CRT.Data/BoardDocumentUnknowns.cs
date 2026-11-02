@@ -43,12 +43,12 @@ namespace Handlers.DataHandling
             Carry(previous.Components, next.Components, row => BoardDraftNaturalKeys.ForComponent(row.BoardLabel, row.Region));
             Carry(previous.ComponentImages, next.ComponentImages, row => BoardDraftNaturalKeys.ForComponentImage(row.BoardLabel, row.Region, row.Pin, row.Name));
             Carry(previous.ScopeBaselines, next.ScopeBaselines, row => BoardDraftNaturalKeys.ForComponentImage(row.BoardLabel, row.Region, row.Pin, row.Name));
-            Carry(previous.ComponentFiles, next.ComponentFiles, row => BoardDraftNaturalKeys.ForComponentLocalFile(row.BoardLabel, row.Name));
-            Carry(previous.ComponentLinks, next.ComponentLinks, row => BoardDraftNaturalKeys.ForComponentLink(row.BoardLabel, row.Name));
+            Carry(previous.ComponentFiles, next.ComponentFiles, row => BoardDraftNaturalKeys.ForComponentLocalFile(row.BoardLabel, row.Name, row.Region));
+            Carry(previous.ComponentLinks, next.ComponentLinks, row => BoardDraftNaturalKeys.ForComponentLink(row.BoardLabel, row.Name, row.Region));
             Carry(previous.ComponentPins, next.ComponentPins, row => BoardDraftNaturalKeys.ForComponentPin(row.BoardLabel, row.Region, row.Pin));
             Carry(previous.ComponentReplacements, next.ComponentReplacements, row => BoardDraftNaturalKeys.ForComponentReplacement(row.BoardLabel, row.Region, row.PartNumber));
-            Carry(previous.BoardFiles, next.BoardFiles, row => BoardDraftNaturalKeys.ForBoardLocalFile(row.Category, row.Name));
-            Carry(previous.BoardLinks, next.BoardLinks, row => BoardDraftNaturalKeys.ForBoardLink(row.Category, row.Name));
+            Carry(previous.BoardFiles, next.BoardFiles, row => BoardDraftNaturalKeys.ForBoardLocalFile(row.Category, row.Name, row.Region));
+            Carry(previous.BoardLinks, next.BoardLinks, row => BoardDraftNaturalKeys.ForBoardLink(row.Category, row.Name, row.Region));
             Carry(previous.Credits, next.Credits, row => BoardDraftNaturalKeys.ForCredit(row.Category, row.SubCategory, row.NameOrHandle));
             Carry(previous.ImportantSignals, next.ImportantSignals, row => BoardDraftNaturalKeys.ForKiCadImportantSignal(row.DisplayName, row.KiCadNetName));
             Carry(previous.Highlights, next.Highlights, row => BoardDraftNaturalKeys.ForComponentHighlight(row.Schematic, row.BoardLabel));

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 
 namespace Handlers.DataHandling
 {
@@ -29,7 +30,10 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class DraftBoardRename
     {
-        public static DraftRenameResult Run(string draftsRoot, string identity, NewBoardRegistration wanted)
+        public static DraftRenameResult Run(string draftsRoot, string identity, NewBoardRegistration wanted) =>
+            DraftBoardRename.Run(draftsRoot, identity, wanted, Thread.Sleep);
+
+        internal static DraftRenameResult Run(string draftsRoot, string identity, NewBoardRegistration wanted, Action<TimeSpan> pause)
         {
             ArgumentNullException.ThrowIfNull(wanted);
 
@@ -68,11 +72,11 @@ namespace Handlers.DataHandling
             {
                 if (!sameFolder)
                 {
-                    DraftBoardRename.Move(oldFolder, newFolder, sameOnDisk);
+                    DraftBoardRename.Move(oldFolder, newFolder, sameOnDisk, pause);
                     moved = true;
                 }
 
-                DraftMarkerStore.Save(newMarkerPath, marker with { BoardKey = wanted.ExcelDataFile, NewBoard = wanted });
+                DraftMarkerStore.Save(newMarkerPath, marker with { BoardKey = wanted.ExcelDataFile, NewBoard = wanted }, pause);
 
                 if (!string.Equals(oldHardware, wanted.HardwareName, StringComparison.Ordinal) ||
                     !string.Equals(oldBoard, wanted.BoardName, StringComparison.Ordinal))
@@ -86,7 +90,7 @@ namespace Handlers.DataHandling
             {
                 CrtLog.Warning($"Could not rename the draft [{identity}] to [{wanted.ExcelDataFile}] - [{ex.Message}]");
 
-                DraftBoardRename.PutBack(oldFolder, newFolder, moved, sameOnDisk, oldMarkerPath, newMarkerPath, marker, oldBoardFile, document, oldHardware, oldBoard);
+                DraftBoardRename.PutBack(oldFolder, newFolder, moved, sameOnDisk, oldMarkerPath, newMarkerPath, marker, oldBoardFile, document, oldHardware, oldBoard, pause);
 
                 return new DraftRenameResult(false, $"The draft could not be renamed - something may have its folder open. Nothing was changed. ({ex.Message})");
             }
@@ -101,29 +105,35 @@ namespace Handlers.DataHandling
             return new DraftRenameResult(true);
         }
 
-        private static void Move(string from, string to, bool capitalsOnly)
+        // ###########################################################################################
+        // *** A FILE HELD FOR A MOMENT IS WAITED FOR (found by the Stop hook's run, 2026-11-02). *** Windows
+        // will not move a folder with a file open in it, and CRT's own reads off the UI thread or a virus
+        // scanner hold one that way for a moment - FileReplacer's rule for a rename, with its tries. A hold
+        // that lasts is refused as before.
+        // ###########################################################################################
+        private static void Move(string from, string to, bool capitalsOnly, Action<TimeSpan> pause)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(to))!);
 
             if (capitalsOnly)
             {
                 string between = from + ".crt-renaming";
-                Directory.Move(from, between);
+                FileReplacer.MoveOver(from, between, Directory.Move, pause);
 
                 try
                 {
-                    Directory.Move(between, to);
+                    FileReplacer.MoveOver(between, to, Directory.Move, pause);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    Directory.Move(between, from);
+                    FileReplacer.MoveOver(between, from, Directory.Move, pause);
                     throw;
                 }
 
                 return;
             }
 
-            Directory.Move(from, to);
+            FileReplacer.MoveOver(from, to, Directory.Move, pause);
         }
 
         // Everything as it was, as far as it can be - a failure here is only logged, the first is said.
@@ -138,17 +148,18 @@ namespace Handlers.DataHandling
             string oldBoardFile,
             BoardDocument document,
             string oldHardware,
-            string oldBoard)
+            string oldBoard,
+            Action<TimeSpan> pause)
         {
             try
             {
                 if (moved)
                 {
-                    DraftBoardRename.Move(newFolder, oldFolder, sameOnDisk);
+                    DraftBoardRename.Move(newFolder, oldFolder, sameOnDisk, pause);
                     DraftBoardRename.RemoveEmptyParents(newFolder, Path.GetDirectoryName(oldFolder) ?? oldFolder);
                 }
 
-                DraftMarkerStore.Save(oldMarkerPath, marker);
+                DraftMarkerStore.Save(oldMarkerPath, marker, pause);
 
                 document.HardwareName = oldHardware;
                 document.BoardName = oldBoard;

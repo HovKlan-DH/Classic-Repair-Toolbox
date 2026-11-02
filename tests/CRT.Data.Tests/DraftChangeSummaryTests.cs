@@ -78,7 +78,7 @@ public sealed class DraftChangeSummaryTests
         DraftChangeGroup group = Single(DraftChangeSummary.Build(Content(published), Content(draft)), "U9");
 
         Assert.Equal(DraftComponentChange.Added, group.Change);
-        Assert.Equal(["New component", "2 pictures added", "1 scope baseline added"], group.Lines);
+        Assert.Equal(["New component", "2 pictures added", "1 oscilloscope baseline added"], group.Lines);
     }
 
     [Fact]
@@ -209,15 +209,15 @@ public sealed class DraftChangeSummaryTests
 
     // ###########################################################################################
     // CRT 4.0's own data (2026-10-25), said under its component like everything else of it: a
-    // package or repair notes as fields changed, pins and replacement parts counted.
+    // package as a field changed, pins and replacement parts counted.
     // ###########################################################################################
     [Fact]
-    public void A_components_package_notes_pins_and_replacements_are_said_under_it()
+    public void A_components_package_pins_and_replacements_are_said_under_it()
     {
         BoardData before = Board(Component("U8", "CIA"));
         before.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" });
 
-        BoardData after = Board(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CIA", Category = "IC", Package = "DIP-40", RepairNotes = "Socket it." });
+        BoardData after = Board(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CIA", Category = "IC", Package = "DIP-40" });
         after.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "GND" });
         after.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "2", Name = "PA0" });
         after.ComponentReplacements.Add(new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in" });
@@ -225,7 +225,7 @@ public sealed class DraftChangeSummaryTests
         DraftChangeGroup group = Single(DraftChangeSummary.Build(Content(before), Content(after)), "U8");
 
         Assert.Equal(
-            ["Package and repair notes changed", "1 pin added", "1 pin changed", "1 replacement part added"],
+            ["Package changed", "1 pin added", "1 pin changed", "1 replacement part added"],
             group.Lines);
     }
 
@@ -234,6 +234,30 @@ public sealed class DraftChangeSummaryTests
     // change) - "Review changes" and the Submit dialog show it, so an order-only draft does not read
     // as empty.
     // ###########################################################################################
+    // A component's own rows put in another order are said under the component too, so "Review changes"
+    // gives it its "Undo changes to" (code review, 2026-11-02) - the board's line says the list changed.
+    [Fact]
+    public void A_components_own_rows_in_another_order_are_said_under_it()
+    {
+        BoardData published = Board(Component("U8", "CPU"), Component("U9", "SID"));
+        published.ComponentLinks.AddRange(
+        [
+            new ComponentLinkEntry { BoardLabel = "U8", Name = "First", Url = "https://example.org/1" },
+            new ComponentLinkEntry { BoardLabel = "U8", Name = "Second", Url = "https://example.org/2" },
+        ]);
+
+        BoardData draft = Board(Component("U8", "CPU"), Component("U9", "SID"));
+        draft.ComponentLinks.AddRange([published.ComponentLinks[1], published.ComponentLinks[0]]);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(published), Content(draft));
+
+        DraftChangeGroup group = Single(summary, "U8");
+        Assert.True(group.IsComponent);
+        Assert.Equal(["Order of the component links changed"], group.Lines);
+        Assert.Equal(["Order of the component links changed"], Single(summary, string.Empty).Lines);
+        Assert.DoesNotContain(summary.Groups, each => each.Label == "U9");
+    }
+
     [Fact]
     public void A_list_in_another_order_is_said_under_the_board()
     {

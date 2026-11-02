@@ -28,8 +28,9 @@ being sent are also shown on the image itself, as the `T/DIV`, `V/DIV` and `T:` 
 
 ## What is synchronized
 
-The values are the baseline's own, as the board's data holds them - the fields of a scope baseline
-in the component's pane on the "Contribute" tab:
+The values are the baseline's own, as the board's data holds them - the fields of an oscilloscope
+baseline in the component's pane on the "Contribute" tab. A field left empty is left as the
+oscilloscope has it:
 
 | Field           | Meaning       |
 | --------------- | ------------- |

@@ -95,6 +95,11 @@ namespace CRT
             this.RefreshImages();
             this.TabSchematicsControl.UpdateOverlayLabels();
             this.TabDrafts.UseRegion(region);
+
+            if (this._currentBoardData is { } board && this.GetCurrentBoardEntry() is { } entry)
+            {
+                this.ShowResources(board, entry, DataManager.DataRoot, DraftManager.GetViewedBoardFolder(entry.ExcelDataFile));
+            }
         }
 
         // ###########################################################################################
