@@ -202,6 +202,9 @@ namespace CRT
             // Who maintains it, for whether a table read earlier is out of date (CatchUpWithBetaAsync).
             this.thisShownMaintainers = detail.Maintainers.Select(maintainer => maintainer.AccountId).ToList();
 
+            // What it held, for what a save with no answer can be taken for (SendTableAsync).
+            this.thisNewestSubmissionShown = BoardSections.NewestSubmissionId(detail);
+
             // The detail's own facts - newer than the list's, if anything moved between the two.
             this.ShowSummary(detail.Board);
             this.ShowSections(detail);

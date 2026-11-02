@@ -254,7 +254,7 @@ namespace Handlers.MaintainerHandling
             if (changes.RegionsNow is bool regions)
             {
                 lines.Add(new HistoryChangeLine([new ReviewNoteRun("Regions", IsCount: false)], IsHeading: true));
-                lines.Add(new HistoryChangeLine([new ReviewNoteRun(BoardRegions.ChangedLine(regions), IsCount: false)], IsHeading: false));
+                lines.Add(new HistoryChangeLine([new ReviewNoteRun(changes.IsNewBoard ? BoardRegions.NewBoardLine : BoardRegions.ChangedLine(regions), IsCount: false)], IsHeading: false));
             }
 
             FileChanges files = changes.Files ?? FileChanges.None;

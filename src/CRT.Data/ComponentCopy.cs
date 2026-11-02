@@ -64,7 +64,8 @@ namespace Handlers.DataHandling
     //     regions at all, as "PAL" would turn its PAL/NTSC buttons on.
     //   - ROWS OF ONE REGION REPLACE ONLY THAT REGION'S (code review, 2026-11-02): the component's rows for
     //     every region are the other region's too, so they stay, filed for it - it goes on showing what it
-    //     showed. Rows for every region copied replace them in every region: the same chip, in both.
+    //     showed. Rows for every region copied replace them in every region, those it told apart per region
+    //     too: the same chip, in both.
     //
     // Files are not copied (their bytes are another board's); nor is anything board-specific - the
     // label, the category, the friendly name, the highlights, the scope baselines.
@@ -120,6 +121,11 @@ namespace Handlers.DataHandling
         // What the draft changed of the component `label` as shown in `region`, against `published` -
         // the parts "Also on other boards" offers to put on the same part elsewhere. Every part it holds
         // for a component the published board does not have. Only parts that can be copied count.
+        //
+        // *** A COMPONENT RENAMED IS THE SAME COMPONENT (code review, 2026-11-02). *** It is looked for under
+        // its old label (ComponentRelabel, the rule the table and the server count with). Under the new one
+        // the published board had none, so a rename alone offered everything it holds as "What you changed
+        // here", every part ticked - and pressing the button overwrote other boards' drafts with them.
         // ###########################################################################################
         public static List<ComponentCopyPart> Changed(BoardData draft, BoardData? published, string? label, string? region)
         {
@@ -133,7 +139,18 @@ namespace Handlers.DataHandling
             var here = new ComponentCopySource(string.Empty, draft, row, RegionShown: region ?? string.Empty);
             List<ComponentCopyPart> available = ComponentCopy.Available(here);
 
-            if (published is null || ComponentPaneEdits.RowShown(published, label, region) is not ComponentEntry before)
+            if (published is null)
+            {
+                return available;
+            }
+
+            string wanted = label?.Trim() ?? string.Empty;
+            string publishedLabel = ComponentRelabel.Between(published.Components, draft.Components)
+                .Where(pair => string.Equals(pair.Value, wanted, StringComparison.OrdinalIgnoreCase))
+                .Select(pair => pair.Key)
+                .FirstOrDefault() ?? wanted;
+
+            if (ComponentPaneEdits.RowShown(published, publishedLabel, region) is not ComponentEntry before)
             {
                 return available;
             }
@@ -147,13 +164,13 @@ namespace Handlers.DataHandling
                 ComponentCopyPart.Description => !ComponentCopy.Same(row.Description, before.Description),
                 ComponentCopyPart.Pins => !ComponentCopy.SameKeys(
                     ComponentPaneEdits.PinsOf(draft, label, ownRegion).Select(pin => $"{pin.Pin?.Trim()}|{pin.Name?.Trim()}|{pin.Direction?.Trim()}"),
-                    ComponentPaneEdits.PinsOf(published, label, beforeRegion).Select(pin => $"{pin.Pin?.Trim()}|{pin.Name?.Trim()}|{pin.Direction?.Trim()}")),
+                    ComponentPaneEdits.PinsOf(published, publishedLabel, beforeRegion).Select(pin => $"{pin.Pin?.Trim()}|{pin.Name?.Trim()}|{pin.Direction?.Trim()}")),
                 ComponentCopyPart.Replacements => !ComponentCopy.SameKeys(
                     ComponentPaneEdits.ReplacementsOf(draft, label, ownRegion).Select(part => $"{part.PartNumber?.Trim()}|{part.Kind?.Trim()}|{part.Note?.Trim()}"),
-                    ComponentPaneEdits.ReplacementsOf(published, label, beforeRegion).Select(part => $"{part.PartNumber?.Trim()}|{part.Kind?.Trim()}|{part.Note?.Trim()}")),
+                    ComponentPaneEdits.ReplacementsOf(published, publishedLabel, beforeRegion).Select(part => $"{part.PartNumber?.Trim()}|{part.Kind?.Trim()}|{part.Note?.Trim()}")),
                 _ => !ComponentCopy.SameKeys(
                     ComponentPaneEdits.LinksOf(draft, label, ownRegion).Select(link => $"{link.Name?.Trim()}|{link.Url?.Trim()}"),
-                    ComponentPaneEdits.LinksOf(published, label, beforeRegion).Select(link => $"{link.Name?.Trim()}|{link.Url?.Trim()}")),
+                    ComponentPaneEdits.LinksOf(published, publishedLabel, beforeRegion).Select(link => $"{link.Name?.Trim()}|{link.Url?.Trim()}")),
             };
 
             return available.Where(Differs).ToList();
@@ -252,11 +269,12 @@ namespace Handlers.DataHandling
                     .Select(pin => Filed(pin, FiledRegion(pin.Region)))
                     .ToList();
 
-                result = ComponentPaneEdits.WithPins(
-                    result,
-                    label,
-                    region,
-                    ComponentCopy.KeepingOtherRegions(pins, ComponentPaneEdits.PinsOf(result, label, region), pin => pin.Region, Filed, shown, others));
+                List<ComponentPinEntry> rows = ComponentCopy.KeepingOtherRegions(pins, ComponentPaneEdits.PinsOf(result, label, region), pin => pin.Region, Filed, shown, others);
+
+                foreach (string? each in ComponentCopy.RegionsReplaced(rows, pin => pin.Region, region, others))
+                {
+                    result = ComponentPaneEdits.WithPins(result, label, each, rows);
+                }
             }
 
             if (parts.Contains(ComponentCopyPart.Replacements))
@@ -268,11 +286,12 @@ namespace Handlers.DataHandling
                     .Select(row => Filed(row, FiledRegion(row.Region)))
                     .ToList();
 
-                result = ComponentPaneEdits.WithReplacements(
-                    result,
-                    label,
-                    region,
-                    ComponentCopy.KeepingOtherRegions(replacements, ComponentPaneEdits.ReplacementsOf(result, label, region), row => row.Region, Filed, shown, others));
+                List<ComponentReplacementEntry> rows = ComponentCopy.KeepingOtherRegions(replacements, ComponentPaneEdits.ReplacementsOf(result, label, region), row => row.Region, Filed, shown, others);
+
+                foreach (string? each in ComponentCopy.RegionsReplaced(rows, row => row.Region, region, others))
+                {
+                    result = ComponentPaneEdits.WithReplacements(result, label, each, rows);
+                }
             }
 
             if (parts.Contains(ComponentCopyPart.Links))
@@ -284,15 +303,28 @@ namespace Handlers.DataHandling
                     .Select(row => Filed(row, FiledRegion(row.Region)))
                     .ToList();
 
-                result = ComponentPaneEdits.WithLinks(
-                    result,
-                    label,
-                    region,
-                    ComponentCopy.KeepingOtherRegions(links, ComponentPaneEdits.LinksOf(result, label, region), row => row.Region, Filed, shown, others));
+                List<ComponentLinkEntry> rows = ComponentCopy.KeepingOtherRegions(links, ComponentPaneEdits.LinksOf(result, label, region), row => row.Region, Filed, shown, others);
+
+                foreach (string? each in ComponentCopy.RegionsReplaced(rows, row => row.Region, region, others))
+                {
+                    result = ComponentPaneEdits.WithLinks(result, label, each, rows);
+                }
             }
 
             return result;
         }
+
+        // ###########################################################################################
+        // The regions whose rows `rows` replace: the one shown - and, when each of them is for every region,
+        // each other region too (code review, 2026-11-02). A row for every region is shown there as well, so
+        // what that region held of its own stayed beside it: NTSC showed pin 1 twice. Asked of each region
+        // in turn, nothing is left of those rows, the rows for every region stay, and a copy that changes
+        // nothing is still the same board.
+        // ###########################################################################################
+        private static IReadOnlyList<string?> RegionsReplaced<T>(IReadOnlyList<T> rows, Func<T, string?> regionOf, string? region, IReadOnlyList<string> others) =>
+            rows.Count > 0 && rows.All(row => string.IsNullOrWhiteSpace(regionOf(row)))
+                ? [region, .. others]
+                : [region];
 
         // ###########################################################################################
         // What goes in place of the rows the region shown lists (`before`), when any copied is of one

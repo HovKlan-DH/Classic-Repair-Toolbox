@@ -38,6 +38,9 @@ public sealed class WorkbooksPreviewReorderTests : IDisposable
 
     private readonly string thisBoardKey = "Commodore 64|250469 " + Guid.NewGuid().ToString("N");
 
+    // A row names a file under the data root, as in CRT - see WorkbooksBoardPreviewTests' header.
+    public WorkbooksPreviewReorderTests() => PublishedBoardTree.Unload(this.thisWorkspace.Root);
+
     public void Dispose()
     {
         this.LoadWorklog();
@@ -66,7 +69,7 @@ public sealed class WorkbooksPreviewReorderTests : IDisposable
             renderTarget.Save(stream, PngBitmapEncoderOptions.Default);
         }
 
-        return path;
+        return fileName;
     }
 
     /// <summary>

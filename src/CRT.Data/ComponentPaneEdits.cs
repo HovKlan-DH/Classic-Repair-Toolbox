@@ -28,9 +28,9 @@ namespace Handlers.DataHandling
     //
     //   - A FIELD changes the component's row in the region shown, and nothing else.
     //   - A SECTION (pins, replacement parts, links) replaces the component's rows of that section in
-    //     the region shown, where the first of them stood - the other region's rows, and every other
-    //     component's, are carried across untouched (ComponentBoardWriter's lesson: "Before assuming a
-    //     section can be replaced wholesale, check how it was loaded").
+    //     the region shown, each in its own place (ReplaceInScope) - the other region's rows, and every
+    //     other component's, are carried across untouched (ComponentBoardWriter's lesson: "Before
+    //     assuming a section can be replaced wholesale, check how it was loaded").
     //   - An edit that changes nothing returns THE SAME board, which DraftSession takes as no step.
     //
     // PURE: takes a board, returns a board, touches no files.
@@ -114,7 +114,10 @@ namespace Handlers.DataHandling
 
             string wanted = ComponentPaneEdits.Normalised(field, value);
 
-            if (string.Equals(ComponentPaneEdits.ValueOf(row, field), wanted, StringComparison.Ordinal))
+            // Compared as a field is kept (code review, 2026-11-02): C16 251789's R10 holds a line break, and
+            // its box handed back as it was shown read as a change nobody typed - a step and a "Draft" mark
+            // for opening the component and leaving it.
+            if (string.Equals(ComponentPaneEdits.Normalised(field, ComponentPaneEdits.ValueOf(row, field)), wanted, StringComparison.Ordinal))
             {
                 return board;
             }
@@ -522,8 +525,8 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The board with the component's pictures in `region` replaced by `pictures`, where the first
-        // of them stood - its scope baselines and every other row left in place (one list holds both).
+        // The board with the component's pictures in `region` replaced by `pictures`, each in its own
+        // place - its scope baselines and every other row left in place (one list holds both).
         // Each filed under the component's label; a row with nothing in it is left out; every value
         // trimmed, a note keeping its lines. The same board when nothing changed.
         // ###########################################################################################
@@ -687,13 +690,31 @@ namespace Handlers.DataHandling
             first.Count == second.Count && first.Select(key).SequenceEqual(second.Select(key), StringComparer.Ordinal);
 
         // ###########################################################################################
-        // `rows` without the ones `inScope` picks, `replacement` standing where the first of those
-        // stood - or at the end, when there was none.
+        // `rows` with the ones `inScope` picks replaced by `replacement`, in the places they held - or at
+        // the end, when there was none.
+        //
+        // *** EACH IN ITS OWN PLACE (code review, 2026-11-02). *** Shipped chips hold their baselines PAL,
+        // NTSC, PAL, NTSC. All of them put where the first stood, one value corrected regrouped the lot:
+        // "Order of the component pictures changed", to the maintainer and in the History too, regrouped
+        // for good at the publish, and a draft that only "reordered" once the value was typed back.
+        //
+        //   - A row on both sides (by its identity, BoardDraftNaturalKeys) keeps its place, and a place whose
+        //     row went is given to the next row that is new - a value of the key corrected is that row still.
+        //     With nothing to give it to, the place goes: what follows does not move up past another
+        //     region's rows, which would read as a new order too.
+        //   - A row new among them goes just before the row it now stands before; past the last, right after
+        //     the last place.
+        //   - Rows put in ANOTHER ORDER are a reorder, and it is meant: they take the places in turn.
         // ###########################################################################################
         private static List<T> ReplaceInScope<T>(List<T> rows, Func<T, bool> inScope, IReadOnlyList<T> replacement)
+            where T : class
         {
+            (bool[] heldKept, bool[] replacementKept, bool sameOrder) = ComponentPaneEdits.RowsKept(rows.Where(inScope).ToList(), replacement);
+
             var result = new List<T>(rows.Count + replacement.Count);
-            bool placed = false;
+            int place = 0;
+            int next = 0;
+            int afterLastPlace = -1;
 
             foreach (T row in rows)
             {
@@ -703,19 +724,68 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                if (!placed)
+                if (!sameOrder)
                 {
-                    result.AddRange(replacement);
-                    placed = true;
+                    if (next < replacement.Count)
+                    {
+                        result.Add(replacement[next++]);
+                    }
                 }
+                else if (heldKept[place])
+                {
+                    while (!replacementKept[next])
+                    {
+                        result.Add(replacement[next++]);
+                    }
+
+                    result.Add(replacement[next++]);
+                }
+                else if (next < replacement.Count && !replacementKept[next])
+                {
+                    result.Add(replacement[next++]);
+                }
+
+                place++;
+                afterLastPlace = result.Count;
             }
 
-            if (!placed)
-            {
-                result.AddRange(replacement);
-            }
+            result.InsertRange(afterLastPlace < 0 ? result.Count : afterLastPlace, replacement.Skip(next));
 
             return result;
+        }
+
+        // Which rows are on both sides, by identity and once each - two rows of one key pair in order - and
+        // whether those stand in the same order on both.
+        private static (bool[] HeldKept, bool[] ReplacementKept, bool SameOrder) RowsKept<T>(IReadOnlyList<T> held, IReadOnlyList<T> replacement)
+            where T : class
+        {
+            string[] heldKeys = held.Select(BoardDraftNaturalKeys.ForRow).ToArray();
+            string[] replacementKeys = replacement.Select(BoardDraftNaturalKeys.ForRow).ToArray();
+
+            bool[] Kept(string[] keys, string[] others)
+            {
+                var left = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (string key in others)
+                {
+                    left[key] = left.GetValueOrDefault(key) + 1;
+                }
+
+                return keys.Select(key =>
+                {
+                    int count = left.GetValueOrDefault(key);
+                    left[key] = count - 1;
+                    return count > 0;
+                }).ToArray();
+            }
+
+            bool[] heldKept = Kept(heldKeys, replacementKeys);
+            bool[] replacementKept = Kept(replacementKeys, heldKeys);
+
+            bool sameOrder = heldKeys.Where((_, index) => heldKept[index])
+                .SequenceEqual(replacementKeys.Where((_, index) => replacementKept[index]), StringComparer.OrdinalIgnoreCase);
+
+            return (heldKept, replacementKept, sameOrder);
         }
     }
 }

@@ -123,7 +123,7 @@ namespace Handlers.MaintainerHandling
 
             using var content = new StringContent(body, Encoding.UTF8, "application/json");
 
-            return await this
+            ReviewApiResult<ReviewSession> result = await this
                 .SendAsync(
                     () => new HttpRequestMessage(HttpMethod.Post, ReviewApiRoutes.Login(this.thisBaseAddress))
                     {
@@ -133,7 +133,20 @@ namespace Handlers.MaintainerHandling
                     session: null,
                     cancellationToken)
                 .ConfigureAwait(false);
+
+            return result.Failure == ReviewApiFailure.NotSignedIn
+                ? ReviewApiResult<ReviewSession>.Failed(ReviewApiFailure.NotSignedIn, ReviewApiClient.SignInRefused)
+                : result;
         }
+
+        // ###########################################################################################
+        // *** WHAT A LOGIN'S 401 SAYS (code review, 2026-11-02). *** The shared "Sign in to continue."
+        // is about a session that ended, and read in red under a form just filled in it said nothing.
+        // One fixed sentence, naming neither half: the server gives no reason on purpose - an unknown
+        // address, a locked account and a wrong password all answer the same 401 - and this must not
+        // start telling them apart.
+        // ###########################################################################################
+        public const string SignInRefused = "That address and password did not work.";
 
         // ###########################################################################################
         // Asks for a password reset link.
@@ -240,11 +253,20 @@ namespace Handlers.MaintainerHandling
                 // That helper maps a 400 to a generic sentence, which would hide "that code has
                 // expired" behind "something went wrong" - and the difference decides whether the
                 // person asks for a new code or retypes their password.
-                return ReviewApiResult<string>.Failed(
-                    ReviewApiFailure.Refused,
-                    ReviewApiParser.ParseMessage(payload)
-                        ?? ReviewApiParser.ParseFirstError(payload)
-                        ?? "That code was not accepted. Ask for a new one.");
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    return ReviewApiResult<string>.Failed(
+                        ReviewApiFailure.Refused,
+                        ReviewApiParser.ParseMessage(payload)
+                            ?? ReviewApiParser.ParseFirstError(payload)
+                            ?? "That code was not accepted. Ask for a new one.");
+                }
+
+                // *** ONLY A 400 IS ABOUT THE CODE (code review, 2026-11-02): every refusal of it is one
+                // (AccountEndpoints.ResetPasswordAsync). Apache's 502 or 503 during a restart read "That
+                // code was not accepted" while the code was still good.
+                return await ReviewApiClient.StatusFailureAsync<string>(response, cancellationToken).ConfigureAwait(false)
+                    ?? ReviewApiResult<string>.Failed(ReviewApiFailure.ServerError, "The server could not set the password.");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -944,16 +966,18 @@ namespace Handlers.MaintainerHandling
                 cancellationToken);
 
         // `reject`: Beta > Prod's "Reject" (2026-09-28) - the same rollback, its submissions
-        // rejected rather than returned to the queue.
+        // rejected rather than returned to the queue. `expectedBetaContentHash`: what the plan shown
+        // said BETA held - the server refuses when BETA has moved since (code review, 2026-11-02).
         public Task<ReviewApiResult<BetaRollbackResult>> RollBackBetaAsync(
             ReviewSession session,
             string boardId,
             string comment,
             bool reject = false,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            string? expectedBetaContentHash = null) =>
             this.PostProductionAsync(
                 ReviewApiRoutes.BetaRollback(this.thisBaseAddress),
-                new BetaRollbackRequest(boardId, comment, reject),
+                new BetaRollbackRequest(boardId, comment, reject, expectedBetaContentHash),
                 ReviewApiParser.ParseBetaRollback,
                 session,
                 cancellationToken);

@@ -1067,6 +1067,11 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // INVARIANT CULTURE ONLY - see SubmissionValidator: "1,5" is a malformed value, not 1.5.
+        //
+        // *** AND ONLY WHAT A BOARD FILE CAN HOLD (code review, 2026-11-02). *** "NaN", "Infinity" and
+        // "1E12" parse, and pass the area and origin checks below (NaN compares false with everything),
+        // but the writer refuses them - so a hand-made submission reached the queue and every Approve
+        // of it failed. BoardDocumentMapping.FitsWholeNumber is the writer's own rule.
         // ###########################################################################################
         private static bool TryParseCoordinate(string? value, out double result)
         {
@@ -1075,7 +1080,8 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(value))
                 return false;
 
-            return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
+            return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result) &&
+                   BoardDocumentMapping.FitsWholeNumber(result);
         }
 
         // ###########################################################################################
@@ -1158,6 +1164,13 @@ namespace Handlers.DataHandling
                         reference,
                         $"The {description} names [{reference}], which is not {files.Where}.",
                         sheet, index, column);
+                }
+
+                // Only this computer's lookup can say so; the server refuses it by what a manifest
+                // declares, in these words (SubmissionFileRules; owner decision, 2026-11-02).
+                if (found.State == BoardFileState.Empty)
+                {
+                    this.Error(SubmissionFileRules.EmptyFileCode, reference, SubmissionFileRules.EmptyFileMessage(reference), sheet, index, column);
                 }
             }
         }

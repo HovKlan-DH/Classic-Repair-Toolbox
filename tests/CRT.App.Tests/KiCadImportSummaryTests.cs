@@ -44,6 +44,19 @@ public sealed class KiCadImportSummaryTests
         Assert.Equal("Found 1 PCB with 2 components and 2 nets, and 3 schematic sheets.", KiCadImportSummary.Found(root));
     }
 
+    // KiCad files left out as they hold no bytes are named (owner decision, 2026-11-02) - none, none said.
+    [Fact]
+    public void Empty_KiCad_files_left_out_are_named()
+    {
+        Assert.Equal(string.Empty, KiCadImportSummary.EmptyFiles([]));
+        Assert.Equal(
+            "Left out, as it is empty: [a.kicad_sch]. Save it again in KiCad and import the folder again.",
+            KiCadImportSummary.EmptyFiles(["a.kicad_sch"]));
+        Assert.Equal(
+            "Left out, as they are empty: [a.kicad_sch], [b.kicad_pcb]. Save them again in KiCad and import the folder again.",
+            KiCadImportSummary.EmptyFiles(["a.kicad_sch", "b.kicad_pcb"]));
+    }
+
     [Fact]
     public void No_PCB_one_sheet_and_several_PCBs_are_each_said()
     {

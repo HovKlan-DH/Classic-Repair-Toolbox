@@ -898,6 +898,24 @@ namespace CRT.Server.Handlers.Submissions
                     continue;
                 }
 
+                // ###########################################################################################
+                // *** A FILE OF NO BYTES, ON THE BYTES RECEIVED (owner decision, 2026-11-02: "Refuse empty
+                // files"). *** Create refuses one by what the manifest declares (SubmissionFileRules); this
+                // catches one that got past it before the rule existed, a text type too, in the same words.
+                // ###########################################################################################
+                if (blob.Head.Length == 0)
+                {
+                    findings.Add(new ValidationFinding
+                    {
+                        Severity = ValidationSeverity.Error,
+                        Code = SubmissionFileRules.EmptyFileCode,
+                        Subject = file.Path,
+                        Message = SubmissionFileRules.EmptyFileMessage(file.Path)
+                    });
+
+                    continue;
+                }
+
                 // A KiCad schematic's sheets are read from the WHOLE file - a sheet can be named
                 // anywhere in it (security review, 2026-10-11; KiCadSheetReferences).
                 if (!SubmissionContentRules.MatchesWholeFile(file.Path, blob.Head, () => blobs.OpenText(file.Sha256), out string reason))

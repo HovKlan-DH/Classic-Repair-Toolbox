@@ -7,9 +7,10 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // One walk of a folder an import is made from: the files taken (full paths), every other file
-    // (relative to the folder, forward slashes), and which of those an older KiCad wrote.
+    // (relative to the folder, forward slashes), which of those an older KiCad wrote, and the KiCad files
+    // not taken because they hold no bytes (relative too).
     // ###########################################################################################
-    public sealed record KiCadFolderScan(IReadOnlyList<string> Taken, IReadOnlyList<string> LeftOut, IReadOnlyList<string> OlderKiCad);
+    public sealed record KiCadFolderScan(IReadOnlyList<string> Taken, IReadOnlyList<string> LeftOut, IReadOnlyList<string> OlderKiCad, IReadOnlyList<string> Empty);
 
     // What a dropped folder is (KiCadRawFileScanner.Probe): whether it holds a KiCad file CRT reads, and
     // if not its .sch and .brd files and which of them an older KiCad wrote.
@@ -155,17 +156,33 @@ namespace Handlers.DataHandling
         // forward slashes, and which of those are a schematic or board an older KiCad wrote
         // (IsOlderKiCadFile). Walked exactly as Scan walks, so a file in a skipped folder is neither
         // taken nor counted. What a KiCad import's summary says (KiCadImportSummary).
+        //
+        // A KiCad file of no bytes is not taken, and is named: it could never be sent (owner decision,
+        // 2026-11-02: "Refuse empty files"; SubmissionFileRules).
         // ###########################################################################################
         public static KiCadFolderScan ScanSplit(string folder)
         {
             var taken = new List<string>();
             var leftOut = new List<string>();
+            var empty = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
             {
                 KiCadRawFileScanner.Walk(folder, path =>
                 {
-                    (ComponentListBuilder.IsSupportedKiCadRawFile(path) ? taken : leftOut).Add(path);
+                    if (!ComponentListBuilder.IsSupportedKiCadRawFile(path))
+                    {
+                        leftOut.Add(path);
+                    }
+                    else if (SubmissionFileRules.HoldsNoBytes(path))
+                    {
+                        empty.Add(path);
+                    }
+                    else
+                    {
+                        taken.Add(path);
+                    }
+
                     return true;
                 });
             }
@@ -180,7 +197,11 @@ namespace Handlers.DataHandling
             return new KiCadFolderScan(
                 taken,
                 others.Select(file => file.Relative).ToList(),
-                others.Where(file => KiCadRawFileScanner.IsOlderKiCadFile(file.Full)).Select(file => file.Relative).ToList());
+                others.Where(file => KiCadRawFileScanner.IsOlderKiCadFile(file.Full)).Select(file => file.Relative).ToList(),
+                empty
+                    .Select(path => Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/'))
+                    .Order(StringComparer.OrdinalIgnoreCase)
+                    .ToList());
         }
 
         // ###########################################################################################

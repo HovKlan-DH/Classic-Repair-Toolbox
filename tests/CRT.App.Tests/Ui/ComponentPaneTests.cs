@@ -439,6 +439,91 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** LOOKED AT AND LEFT, NOTHING CHANGED (code review, 2026-11-02). *** C16 251789's R10 has a line
+    // break in its description. The box handed it back as it was given and the value is kept on one line,
+    // so committing the unchanged box made a step and a "Draft" mark nobody asked for. A real edit still
+    // goes in as it is kept.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_whose_description_has_a_line_break_is_left_as_it_was_when_nothing_is_typed()
+    {
+        static BoardData WithLineBreak() => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = "R10", Category = "Resistor", Description = "first line\nsecond line" }],
+        };
+
+        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, ComponentPaneTests.BoardKey);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        CachedWorkbooks.Write(boardFile, WithLineBreak());
+        DraftSession session = DraftSession.Open(this.DraftsRoot, ComponentPaneTests.BoardKey)!;
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session, "R10");
+            pane.Show(session, "R10", "PAL", WithLineBreak());
+            Dispatcher.UIThread.RunJobs();
+
+            pane.CommitHeld();
+
+            Assert.False(session.CanUndo);
+            Assert.False(session.HasUnsavedChanges);
+            Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
+            Assert.Equal("first line\nsecond line", session.Content.Board.Components.Single().Description);
+
+            Get<TextBox>(pane, "DescriptionBox").Text = "first line and more";
+            pane.CommitHeld();
+
+            Assert.Equal("first line and more", session.Content.Board.Components.Single().Description);
+            Assert.True(session.CanUndo);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE ANSWER IS REMEMBERED, AND STAYS RIGHT (code review, 2026-11-02). *** Whether the draft changes
+    // the component is asked several times per typing pause, on the UI thread, and took 0.5 s of frozen
+    // window on the larger chips; it is kept while the draft's content, its list of files, the published
+    // board and the label are the same. So it follows each of them: an edit from anywhere, an undo and a
+    // redo of it, another component on the same content, and another published board.
+    // ###########################################################################################
+    [Fact]
+    public void Whether_the_component_is_changed_follows_the_content_the_label_and_the_published_board()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.False(pane.IsComponentChanged);
+
+            // Another editor's change: not the pane's own step, and no box told.
+            session.Apply("Elsewhere", content => content with { Board = ComponentPaneEdits.WithField(content.Board, "U8", "PAL", ComponentField.Description, "Changed elsewhere") });
+            Assert.True(pane.IsComponentChanged);
+
+            session.Undo();
+            Assert.False(pane.IsComponentChanged);
+
+            session.Redo();
+            Assert.True(pane.IsComponentChanged);
+
+            // The same content, another component - which the change is none of.
+            pane.Show(session, "U1", "PAL", Published());
+            Assert.False(pane.IsComponentChanged);
+
+            pane.Show(session, "U8", "PAL", Published());
+            Assert.True(pane.IsComponentChanged);
+
+            // The same content and label, another board published: the draft as published now.
+            pane.Show(session, "U8", "PAL", session.Content.Board);
+            Assert.False(pane.IsComponentChanged);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // A picture replaced under its own name changes the component (code review, 2026-10-26): the pane
     // says so, and "Undo changes to [U8]" puts the published picture back in the draft's list.
     // ###########################################################################################
@@ -892,6 +977,61 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** UNDO BROUGHT A ROW BACK SHOWING ANOTHER PICTURE (code review, 2026-11-02). *** A picture added
+    // under N, its row deleted and saved - so N looked free - and another file picked got N: undone twice,
+    // the first row cited N again and N was the second file, the first one's bytes gone with the save in
+    // between. A name the draft held in memory still remembers is not given out, so the first picture
+    // comes back as it was.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picture_undone_back_shows_its_own_file_though_another_was_added_after_it_went()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+
+        byte[] firstBytes = ComponentPaneTests.Bmp(2, 2);
+        string first = this.Pickable("New.bmp", firstBytes);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(first);
+
+            await pane.AddPictureAsync();
+
+            string name = pane.PicturesForTests[^1].File;
+            Assert.Equal("Component images/New.bmp", name);
+
+            Assert.True(session.Apply("Its row deleted", content => content with
+            {
+                Board = ComponentPaneEdits.WithPictures(
+                    content.Board,
+                    "U8",
+                    "PAL",
+                    ComponentPaneEdits.PicturesOf(content.Board, "U8", "PAL").Where(row => row.File != name).ToList()),
+            }));
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+            Dispatcher.UIThread.RunJobs();
+
+            // Another picture, by the same file name.
+            File.WriteAllBytes(first, ComponentPaneTests.Bmp(4, 2));
+            await pane.AddPictureAsync();
+
+            Assert.NotEqual(name, pane.PicturesForTests[^1].File);
+
+            Assert.True(session.Undo());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+            Assert.True(session.Undo());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+
+            BoardDocument.StoredFileRow listed = BoardFiles.ReadDocument(this.BoardFile)!.Files.Single(file => file.Name == name);
+            Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(firstBytes)), listed.Sha256);
+            Assert.True(File.Exists(Path.Combine(this.DraftFolder, DataTreeLayout.StoredFilePath(listed.Sha256, name).Replace('/', Path.DirectorySeparatorChar))));
+
+            window.Close();
+        });
+    }
+
     // A picked file CRT cannot show is no picture - said, and nothing changes.
     [Fact]
     public async Task A_picked_file_that_is_no_picture_is_refused_and_changes_nothing()
@@ -910,6 +1050,31 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.False(session.CanUndo);
             Assert.True(Get<TextBlock>(pane, "PaneMessageText").IsVisible);
             Assert.Equal(ComponentPaneWording.NotAnImage, Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A PICKED FILE OF NO BYTES IS REFUSED AS IT IS PICKED (owner decision, 2026-11-02: "Refuse empty
+    // files"), *** said for what it is, and nothing changes: no row waiting to be refused at Submit.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picked_file_of_no_bytes_is_said_and_changes_nothing()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+        string picked = this.Pickable("empty.png", []);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
+
+            await pane.AddPictureAsync();
+
+            Assert.Single(pane.PicturesForTests);
+            Assert.False(session.CanUndo);
+            Assert.Equal(ComponentPaneWording.FileEmpty, Get<TextBlock>(pane, "PaneMessageText").Text);
 
             window.Close();
         });
@@ -4453,6 +4618,27 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
+    // Pictures of no bytes get no card either, and are said as empty - not as "open in another program".
+    [Fact]
+    public async Task Pictures_of_no_bytes_get_no_card_and_are_said_as_empty()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+        string side = this.Pickable("Side.png", ComponentPaneTests.Png);
+        string empty = this.Pickable("Empty.png", []);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+
+            Assert.True(await pane.AddPicturesAsync([side, empty]));
+
+            Assert.Equal(["Top", "Bottom", "Side"], session.Content.Board.Schematics.Select(row => row.SchematicName));
+            Assert.Equal(ComponentPaneWording.PicturesAdded(1, notCopied: 0, empty: 1), pane.PicturesNoteForTests);
+
+            window.Close();
+        });
+    }
+
     // ###########################################################################################
     // The Pictures part asks for the board's KiCad views when it opens, and again when the draft's
     // KiCad files change while it is open - a project imported (code review, 2026-10-28: the views
@@ -4770,6 +4956,611 @@ public sealed class ComponentPaneTests : IDisposable
 
             Assert.Equal(["U8"], asked);
             Assert.Equal("Runs the show", U8(session).Description);
+
+            window.Close();
+        });
+    }
+
+    // ------------------------------------------------------------------ What belongs to the component shown (code review, 2026-11-02)
+
+    // ###########################################################################################
+    // A NEW BASELINE STAYS WITH ITS COMPONENT: the page stays as another component is picked, on
+    // purpose, and the half-filled panel on it stayed too - U8's pin, signal and picture, which "Add"
+    // then filed under the next component as "U1_2_PA3". The same component shown again keeps it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_new_baseline_half_filled_goes_as_another_component_is_shown_and_stays_on_a_read_again()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+        string screenshot = this.Pickable("IMG_0042.png", ComponentPaneTests.Png);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(screenshot);
+
+            pane.OpenNewBaseline();
+            Get<TextBox>(pane, "NewBaselinePinBox").Text = "2";
+            Get<TextBox>(pane, "NewBaselineNameBox").Text = "PA3";
+            await pane.ChooseNewBaselineScreenshotAsync();
+
+            pane.Show(session, "U8", "PAL", PublishedWithFiles());
+
+            Assert.True(Get<Border>(pane, "NewBaselinePanel").IsVisible);
+            Assert.Equal(screenshot, pane.NewBaselineSourceForTests);
+
+            pane.Show(session, "U1", "PAL", PublishedWithFiles());
+
+            Assert.False(Get<Border>(pane, "NewBaselinePanel").IsVisible);
+            Assert.True(Get<StackPanel>(pane, "AddBaselineButtons").IsVisible);
+            Assert.Null(pane.NewBaselineSourceForTests);
+
+            // Nothing is left to be filed under the component now shown.
+            await pane.AddNewBaselineAsync();
+            Assert.Empty(ComponentPaneEdits.BaselinesOf(session.Content.Board, "U1", "PAL"));
+
+            window.Close();
+        });
+    }
+
+    // The new-component form is another component too - what is added next must not take the panel over.
+    [Fact]
+    public void A_new_baseline_half_filled_goes_as_the_new_component_form_opens()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.OpenNewBaseline();
+            Get<TextBox>(pane, "NewBaselinePinBox").Text = "2";
+
+            pane.ShowNew(session, "PAL", PublishedWithFiles());
+            Get<TextBox>(pane, "NewLabelBox").Text = "U9";
+            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Assert.True(pane.AddNewComponent());
+
+            Assert.False(Get<Border>(pane, "NewBaselinePanel").IsVisible);
+            Assert.True(Get<StackPanel>(pane, "AddBaselineButtons").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // A capture is held by that panel in the user's own folder until it is added - let go of with it.
+    [Fact]
+    public async Task A_capture_waiting_in_a_new_baseline_is_deleted_as_another_component_is_shown()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.CaptureScopeImage = _ => Task.FromResult<byte[]?>(ComponentPaneTests.Png);
+            pane.ShowScopeConnected(true);
+            pane.OpenNewBaseline();
+
+            await pane.CaptureNewBaselineAsync();
+
+            string waiting = pane.NewBaselineSourceForTests!;
+            Assert.True(File.Exists(waiting));
+
+            // Its thumbnail is read off the UI thread, and on Windows a file being read cannot be deleted.
+            await pane.ThumbnailsLoadedForTests;
+
+            try
+            {
+                pane.Show(session, "U1", "PAL", PublishedWithFiles());
+
+                Assert.Null(pane.NewBaselineSourceForTests);
+                Assert.False(File.Exists(waiting));
+            }
+            finally
+            {
+                File.Delete(waiting);
+                window.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // WHAT THE PANE SAID OF ONE COMPONENT GOES WITH IT: "Moved to NTSC", a "Copy from another board"
+    // result or an "Also on other boards" outcome stayed under the title of the next one. A read-again
+    // of the same component keeps it - what it says may be what that very read-again followed.
+    // ###########################################################################################
+    [Fact]
+    public void What_the_pane_said_of_one_component_goes_as_another_is_shown_and_stays_on_a_read_again()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            TextBlock message = Get<TextBlock>(pane, "PaneMessageText");
+
+            pane.OpenFileOfBoard("Component local files/not there.pdf", "Notes");
+            Assert.True(message.IsVisible);
+
+            pane.Show(session, "U8", "PAL", Published());
+            Assert.True(message.IsVisible);
+
+            pane.Show(session, "U1", "PAL", Published());
+            Assert.False(message.IsVisible);
+
+            pane.OpenFileOfBoard("Component local files/not there.pdf", "Notes");
+            Assert.True(message.IsVisible);
+
+            pane.ShowNew(session, "PAL", Published());
+            Assert.False(message.IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // ------------------------------------------------------------------ Enter on the new-component form (code review, 2026-11-02)
+
+    private static void PressEnter(Window window)
+    {
+        Dispatcher.UIThread.RunJobs();
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, keySymbol: null);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    // The form holding what it can add, as Enter finds it.
+    private static (ComponentPane Pane, Window Window) ShownNewFilledIn(DraftSession session)
+    {
+        (ComponentPane pane, Window window) = ShownNew(session);
+
+        Get<TextBox>(pane, "NewLabelBox").Text = "U9";
+        Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.True(Get<Button>(pane, "AddNewComponentButton").IsEnabled);
+
+        return (pane, window);
+    }
+
+    // ###########################################################################################
+    // ENTER ADDS ONLY FROM THE LABEL AND CATEGORY BOXES: the pane's tunnel handler looked at nothing,
+    // so Enter on a focused Cancel added the component and never reached the button.
+    // ###########################################################################################
+    [Fact]
+    public void Enter_on_the_new_component_forms_Cancel_cancels_and_adds_nothing()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownNewFilledIn(session);
+
+            int closeAsked = 0;
+            pane.CloseRequested += (_, _) => closeAsked++;
+
+            Get<Button>(pane, "CancelNewComponentButton").Focus();
+            PressEnter(window);
+
+            Assert.False(session.CanUndo);
+            Assert.Equal(1, closeAsked);
+
+            window.Close();
+        });
+    }
+
+    // Enter on the open region list picks in it - the component went in, in the region selected before.
+    [Fact]
+    public void Enter_with_the_new_components_region_list_open_adds_nothing()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownNewFilledIn(session);
+
+            ComboBox region = Get<ComboBox>(pane, "NewRegionBox");
+            region.Focus();
+            region.IsDropDownOpen = true;
+            PressEnter(window);
+
+            Assert.False(session.CanUndo);
+            Assert.True(pane.IsNewComponentForm);
+
+            window.Close();
+        });
+    }
+
+    // The category's own list open: Enter picks in the list; the next one adds.
+    [Fact]
+    public void Enter_with_the_new_components_category_list_open_adds_nothing()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownNewFilledIn(session);
+
+            AutoCompleteBox category = Get<AutoCompleteBox>(pane, "NewCategoryBox");
+            category.Focus();
+            category.IsDropDownOpen = true;
+            PressEnter(window);
+
+            Assert.False(session.CanUndo);
+            Assert.True(pane.IsNewComponentForm);
+
+            window.Close();
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Enter_in_the_new_components_label_or_category_box_adds_it(bool inLabel)
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownNewFilledIn(session);
+
+            if (inLabel)
+            {
+                Get<TextBox>(pane, "NewLabelBox").Focus();
+            }
+            else
+            {
+                Get<AutoCompleteBox>(pane, "NewCategoryBox").Focus();
+            }
+
+            PressEnter(window);
+
+            Assert.False(pane.IsNewComponentForm);
+            Assert.Equal("[U9] added", session.UndoDescription);
+
+            window.Close();
+        });
+    }
+
+    // ------------------------------------------------------------------ A rename that is no longer the last word (code review, 2026-11-02)
+
+    // ###########################################################################################
+    // A LABEL GIVEN TO A NEW COMPONENT ENDS WHAT A RENAME RECORDED OF IT: U8 renamed U9, a new U8 added,
+    // U9 deleted - the pane followed the old rename back to U8, a different component, instead of
+    // saying U9 is gone and offering "Bring [U9] back".
+    // ###########################################################################################
+    [Fact]
+    public void A_label_given_to_a_new_component_ends_what_a_rename_recorded_of_it()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U9";
+            pane.CommitHeld();
+            Assert.Equal("U9", pane.Label);
+
+            pane.ShowNew(session, "PAL", Published());
+            Get<TextBox>(pane, "NewLabelBox").Text = "U8";
+            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Assert.True(pane.AddNewComponent());
+
+            pane.Show(session, "U9", "PAL", Published());
+            Assert.True(pane.DeleteComponent());
+
+            Assert.Equal("U9", pane.Label);
+            Assert.True(Get<StackPanel>(pane, "GonePanel").IsVisible);
+            Assert.Equal("Bring [U9] back", Get<Button>(pane, "BringBackButton").Content);
+
+            window.Close();
+        });
+    }
+
+    // Another component renamed to the label is the same thing.
+    [Fact]
+    public void A_label_given_to_another_component_by_a_rename_ends_what_a_rename_recorded_of_it()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U9";
+            pane.CommitHeld();
+
+            pane.Show(session, "U1", "PAL", Published());
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U8";
+            pane.CommitHeld();
+
+            pane.Show(session, "U9", "PAL", Published());
+            Assert.True(pane.DeleteComponent());
+
+            Assert.Equal("U9", pane.Label);
+            Assert.True(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // The rename followed as it always was: back and forth, and renamed back to where it started.
+    [Fact]
+    public void An_undo_of_a_rename_is_still_followed_also_of_one_renamed_back()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            TextBox label = Get<TextBox>(pane, "BoardLabelBox");
+
+            label.Text = "U9";
+            pane.CommitHeld();
+            label.Text = "U8";
+            pane.CommitHeld();
+            Assert.Equal("U8", pane.Label);
+
+            Assert.True(session.Undo());
+            Assert.Equal("U9", pane.Label);
+            Assert.True(session.Undo());
+            Assert.Equal("U8", pane.Label);
+            Assert.True(session.Redo());
+            Assert.Equal("U9", pane.Label);
+            Assert.False(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A COMPONENT RENAMED BACK TO A LABEL IT HAD KEEPS ITS WAY BACK (code review, 2026-11-02). *** What
+    // the pane had recorded of a label was all thrown away when the label came round again, the component's
+    // own renames with it: U8 to U9 to U7 and back to U9, and the third Undo left the draft holding U8 with
+    // the pane saying U9 is gone.
+    // ###########################################################################################
+    [Fact]
+    public void An_undo_finds_a_component_renamed_back_to_a_label_it_had_all_the_way_to_its_first()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            TextBox label = Get<TextBox>(pane, "BoardLabelBox");
+
+            foreach (string name in new[] { "U9", "U7", "U9" })
+            {
+                label.Text = name;
+                pane.CommitHeld();
+            }
+
+            Assert.True(session.Undo());
+            Assert.Equal("U7", pane.Label);
+            Assert.True(session.Undo());
+            Assert.Equal("U9", pane.Label);
+            Assert.True(session.Undo());
+            Assert.Equal("U8", pane.Label);
+            Assert.False(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            Assert.True(session.Redo());
+            Assert.Equal("U9", pane.Label);
+            Assert.False(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // A new component under the old label is another component - until an undo takes it away, and then the
+    // label is the renamed one's again. Which it is, is what each step of the draft says, not a record.
+    [Fact]
+    public void An_undo_of_a_rename_finds_the_component_after_a_new_one_took_its_label_and_went_again()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U9";
+            pane.CommitHeld();
+
+            pane.ShowNew(session, "PAL", Published());
+            Get<TextBox>(pane, "NewLabelBox").Text = "U8";
+            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Assert.True(pane.AddNewComponent());
+
+            pane.Show(session, "U9", "PAL", Published());
+
+            Assert.True(session.Undo());
+            Assert.Equal("U9", pane.Label);
+
+            Assert.True(session.Undo());
+            Assert.Equal("U8", pane.Label);
+            Assert.False(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // Picked again after the rename, or not: an undo is followed either way. And a row per region moves as one.
+    [Fact]
+    public void An_undo_of_a_rename_finds_a_component_with_a_row_per_region_picked_again_since()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session, "U1");
+
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U9";
+            pane.CommitHeld();
+
+            pane.Show(session, "U8", "PAL", Published());
+            pane.Show(session, "U9", "PAL", Published());
+
+            Assert.True(session.Undo());
+
+            Assert.Equal("U1", pane.Label);
+            Assert.False(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // An undo that renames another component is none of this one's: the label on show stays.
+    [Fact]
+    public void An_undo_of_another_components_rename_leaves_the_component_shown_alone()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session, "U1");
+
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U9";
+            pane.CommitHeld();
+
+            pane.Show(session, "U8", "PAL", Published());
+
+            Assert.True(session.Undo());
+
+            Assert.Equal("U8", pane.Label);
+            Assert.False(Get<StackPanel>(pane, "GonePanel").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // ------------------------------------------------------------------ The board's parts (code review, 2026-11-02)
+
+    // ###########################################################################################
+    // A CATEGORY'S NAME STILL IN ITS BOX GOES IN WITH WHAT THE PANE HOLDS: closing CRT with the title
+    // bar moves no focus, and CommitHeld passed the part by - nothing unsaved, nothing asked, the name
+    // gone. A component's label typed the same way went in. As its box's own Enter or leave: a blank
+    // name stays refused, with the reason.
+    // ###########################################################################################
+    [Fact]
+    public void A_category_name_still_in_its_box_goes_in_with_what_the_pane_holds_and_a_blank_one_stays_refused()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Categories);
+            ComponentPaneCategoryRow row = pane.CategoriesForTests.Single(item => item.Name == "IC");
+
+            row.NameDraft = "Chip";
+
+            Assert.True(pane.HasHeldOrUnsavedChanges());
+            Assert.Equal("Chip", U8(session).Category);
+            Assert.Equal(DraftStepWording.CategoryRenamed("IC", "Chip"), session.UndoDescription);
+
+            row = pane.CategoriesForTests.Single(item => item.Name == "Chip");
+            row.NameDraft = "  ";
+            pane.CommitHeld();
+
+            Assert.Equal(ComponentPaneWording.CategoryNameEmpty, row.Problem);
+            Assert.Equal("Chip", U8(session).Category);
+
+            // A box writing nothing at all is a blank name, not a commit that throws as CRT closes.
+            row.NameDraft = null!;
+            pane.CommitHeld();
+            Assert.Equal(ComponentPaneWording.CategoryNameEmpty, row.Problem);
+
+            // Never on a typing pause - the name's own rule (OnAnyTextChanged starts none for it).
+            row.NameDraft = "Part";
+            pane.CommitHeld(fromTyping: true);
+            Assert.Equal("Chip", U8(session).Category);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A CARD WHOSE PICTURE WAS NOT FOUND IS ASKED FOR AGAIN: it stayed marked as asked, so it wanted no
+    // read for as long as the card lived - blank even with the file there - unlike a picture that failed
+    // to decode, whose ask is taken back.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_card_whose_picture_was_not_found_is_read_at_the_next_ask()
+    {
+        // Only "Images/top.png" is stored: "Images/bottom.png" is found nowhere.
+        DraftSession session = this.OpenDraftWithPictures();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            await pane.PreviewsLoadedForTests;
+
+            ComponentPaneBoardPictureRow bottom = pane.BoardPicturesForTests[1];
+            Assert.Null(bottom.Thumbnail);
+            Assert.Equal(bottom.ThumbnailDecodedFor, bottom.ThumbnailAskedFor);
+
+            string arrived = Path.Combine(this.DraftFolder, "Images", "bottom.png");
+            Directory.CreateDirectory(Path.GetDirectoryName(arrived)!);
+            File.WriteAllBytes(arrived, ComponentPaneTests.Png);
+
+            pane.DragPreviewWidthForTests(+1);
+            await pane.PreviewsLoadedForTests;
+
+            Assert.NotNull(bottom.Thumbnail);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE PICTURES PART OPENS FORGETTING EVERY KiCad READ OF THE PART BEFORE: three of the four went, and
+    // the footprints stayed - so on another board with the same view names, until its own read answered,
+    // the cards counted automatic and manual marks by the previous board's footprints.
+    // ###########################################################################################
+    [Fact]
+    public void The_pictures_part_opens_with_nothing_of_the_KiCad_read_before()
+    {
+        DraftSession session = this.OpenDraftWithPictures(withKiCad: true);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+
+            var footprints = new Dictionary<string, KiCadViewFootprints>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["PCB top"] = new KiCadViewFootprints(new Rect(0, 0, 100, 50), new Dictionary<string, Rect>(StringComparer.OrdinalIgnoreCase) { ["U8"] = new Rect(10, 10, 10, 10) }),
+            };
+
+            pane.UseKiCadViews(["PCB top"], viewFootprints: footprints);
+            Assert.Same(footprints, pane.BoardPicturesForTests[0].ViewFootprints);
+
+            pane.ShowBoardPart(session, PaneBoardPart.Pictures, WithBoardParts());
+
+            Assert.Null(pane.BoardPicturesForTests[0].ViewFootprints);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE THUMBNAIL READS DONE ARE LET GO OF: every component shown with rows lacking a thumbnail added
+    // Tasks nothing took away for as long as the tab lived, not even closing the pane - the previews'
+    // list, beside it, has dropped its finished ones since 2026-10-30.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_thumbnail_reads_of_components_shown_before_are_let_go_of()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            for (int shown = 0; shown < 6; shown++)
+            {
+                pane.Show(session, "U8", "PAL", PublishedWithFiles());
+                await pane.ThumbnailsLoadedForTests;
+            }
+
+            // Those of the component shown last at most: its picture and its baseline.
+            Assert.True(pane.PreviewLoadsHeldForTests <= 2, $"{pane.PreviewLoadsHeldForTests} reads held");
 
             window.Close();
         });

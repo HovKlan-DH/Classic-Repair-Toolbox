@@ -159,7 +159,6 @@ namespace CRT
             this.thisBoardPart = part;
             this.CloseCopyPanel();
             this.ForgetKiCadPins();
-            this.thisRelabels.Clear();
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
 
@@ -175,6 +174,10 @@ namespace CRT
                 this.thisCadViewNames = null;
                 this.thisCadBoardSides = null;
                 this.thisCadViewComponents = null;
+
+                // With the others (code review, 2026-11-02): left, a card on another board with the same
+                // view names counted its marks by the previous board's footprints until its read answered.
+                this.thisCadViewFootprints = null;
 
                 // The part opens fresh: no image's traces ticked, none decoded sharp.
                 this.ForgetPreviews();
@@ -449,6 +452,14 @@ namespace CRT
                     }
 
                     this.CommitPictureColours();
+                    break;
+                case PaneBoardPart.Categories:
+                    // A name never on a typing pause, as a picture's.
+                    if (!fromTyping)
+                    {
+                        this.CommitCategoryNames();
+                    }
+
                     break;
             }
         }

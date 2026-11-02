@@ -118,25 +118,8 @@ namespace Handlers.DataHandling
         // Returns empty when the root has not loaded or the path has no folder segments to take -
         // callers must treat that as "no draft available" rather than resolving a bogus path.
         // ###########################################################################################
-        public static string GetBoardFolder(string excelDataFile)
-        {
-            if (string.IsNullOrWhiteSpace(_draftsRoot) || string.IsNullOrWhiteSpace(excelDataFile))
-            {
-                return string.Empty;
-            }
-
-            string[] segments = excelDataFile.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length < 2)
-            {
-                return string.Empty;
-            }
-
-            // All but the last segment (the file name itself) become path segments under the root.
-            string[] folderSegments = new string[segments.Length - 1];
-            Array.Copy(segments, folderSegments, folderSegments.Length);
-
-            return Path.Combine(_draftsRoot, Path.Combine(folderSegments));
-        }
+        public static string GetBoardFolder(string excelDataFile) =>
+            DraftFolderLayout.GetBoardFolder(_draftsRoot, excelDataFile);
 
         // ###########################################################################################
         // The draft folder whose files the SCREEN should show for this board - empty when the
@@ -286,6 +269,14 @@ namespace Handlers.DataHandling
                                 continue;
                             }
 
+                            // Listed, an identity becomes a path everywhere a board is looked for. One
+                            // naming no folder here is no board (DraftFolderLayout.GetBoardFolder says why).
+                            if (GetBoardFolder(registration.ExcelDataFile).Length == 0)
+                            {
+                                Logger.Warning($"The draft in [{boardFolder}] names no folder under the drafts folder - [{registration.ExcelDataFile}] - and is left out");
+                                continue;
+                            }
+
                             result.Add(new HardwareBoardEntry
                             {
                                 HardwareName = registration.HardwareName,
@@ -329,6 +320,17 @@ namespace Handlers.DataHandling
             }
 
             List<KnownDraftBoard> known = (knownBoards ?? []).ToList();
+
+            // A new board's draft whose rename stopped half-way shows under the name its folder has
+            // (code review, 2026-11-02) - never lets an exception out, for the reason below.
+            try
+            {
+                DraftBoardRename.RepairMovedDrafts(_draftsRoot, known.Select(board => board.ExcelDataFile));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Looking for drafts whose rename stopped half-way failed - [{ex.Message}]");
+            }
 
             // What CRT 3.x left - its drafts converted, its "_UserContribution" boards carried in as
             // folders for the import below - first, so all of it is listed on this same launch.
@@ -466,5 +468,13 @@ namespace Handlers.DataHandling
         // or one that could not be made. Nothing may delete such a draft unasked (the retirement).
         public static bool HasUnsavedChanges(string excelDataFile) =>
             Sessions.Find(_draftsRoot, excelDataFile)?.HasUnsavedChanges == true;
+
+        // ###########################################################################################
+        // Whether the draft held in memory has an undone step to redo - its file then says less than the
+        // contributor may still want (the retirement). Asks only a session already open: nothing is read
+        // or opened, and a draft with none answers no, so the next launch judges by the file alone.
+        // ###########################################################################################
+        public static bool CanRedo(string excelDataFile) =>
+            Sessions.Find(_draftsRoot, excelDataFile)?.CanRedo == true;
     }
 }

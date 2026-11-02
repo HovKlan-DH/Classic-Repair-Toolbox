@@ -234,8 +234,10 @@ namespace CRT.Server.Handlers.Submissions
 
             int newVersion = stored.Version;
 
-            // Warnings travel with the submission, as they do from creation.
-            await store.SaveFindingsAsync(submissionId, findings, cancellationToken).ConfigureAwait(false);
+            // Warnings travel with the submission, as they do from creation - cut to what the table
+            // holds, as there (code review, 2026-11-02): a subject is contributed text, and one too long
+            // failed the INSERT after the amendment was committed, a 500 with no audit row.
+            await store.SaveFindingsAsync(submissionId, SubmissionFlows.FitForStorage(findings), cancellationToken).ConfigureAwait(false);
 
             await accounts.WriteAuditAsync(
                 new AuditEntry(

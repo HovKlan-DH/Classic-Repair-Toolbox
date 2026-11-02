@@ -38,6 +38,53 @@ public sealed class DraftFileResolverTests : IDisposable
         Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, null));
     }
 
+    // ###########################################################################################
+    // *** A FILE CELL IS NEVER A PATH TO ANOTHER MACHINE (code review, 2026-11-02), Security. *** Past
+    // the name lookup a cell was joined to a root and asked File.Exists - and a rooted cell REPLACES the
+    // root: "\\host\share\x.png" in a draft folder somebody hands over made CRT contact that machine,
+    // which hands over the Windows sign-in's hash (the KiCad Sheetfile leak of 2026-10-11 again). A real
+    // file named by a rooted cell proves the join is no longer made - nothing here touches a network.
+    // ###########################################################################################
+    [Fact]
+    public void A_rooted_cell_finds_nothing_though_a_file_lies_there()
+    {
+        string elsewhere = Path.Combine(this.thisWorkspace.Root, "Elsewhere", "planted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        File.WriteAllText(elsewhere, "not of this board");
+
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, elsewhere));
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, this.DraftBoardFolder, elsewhere.Replace('\\', '/')));
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, string.Empty, elsewhere));
+    }
+
+    // Nor does a cell climb out of the data root.
+    [Fact]
+    public void A_cell_climbing_out_of_the_data_root_finds_nothing()
+    {
+        File.WriteAllText(Path.Combine(this.thisWorkspace.Root, "outside.png"), "not of this board");
+        Directory.CreateDirectory(this.DataRoot);
+
+        Assert.Null(DraftFileResolver.Resolve(this.DataRoot, string.Empty, "../outside.png"));
+    }
+
+    // The path a caller falls back to when nothing resolved a cell - asked about, drawn or opened next -
+    // holds the same line: a rooted cell's stays under the data root, there or not.
+    [Fact]
+    public void The_path_under_the_data_root_never_leaves_it()
+    {
+        string elsewhere = Path.Combine(this.thisWorkspace.Root, "Elsewhere", "planted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        File.WriteAllText(elsewhere, "not of this board");
+
+        Assert.Equal(Path.Combine(this.DataRoot, "planted.png"), DraftFileResolver.PathUnderDataRoot(this.DataRoot, elsewhere));
+        Assert.Equal(Path.Combine(this.DataRoot, "outside.png"), DraftFileResolver.PathUnderDataRoot(this.DataRoot, "../outside.png"));
+
+        // An Excel-era cell is where it says, there or not.
+        Assert.Equal(
+            Path.Combine(this.DataRoot, "Commodore", "C64", "250407", "U8.pdf"),
+            DraftFileResolver.PathUnderDataRoot(this.DataRoot, "Commodore/C64/250407/U8.pdf"));
+    }
+
     [Fact]
     public void An_official_file_with_no_drafted_copy_is_found_under_the_data_root()
     {

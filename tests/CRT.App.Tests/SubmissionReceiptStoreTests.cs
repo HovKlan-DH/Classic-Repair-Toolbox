@@ -242,6 +242,191 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         Assert.Single(SubmissionReceiptStore.All);
     }
 
+    // ###########################################################################################
+    // *** A FILE THAT COULD NOT BE READ IS NEVER WRITTEN OVER (code review, 2026-11-02). *** A receipt's
+    // token is the only copy - the server stores only its hash - and the next Record saved the new receipt
+    // alone over the unreadable file: every earlier submission gone from "My submissions", the badge,
+    // retirement and "already sent", for good. It is set aside first, where it can still be mended.
+    // ###########################################################################################
+    // ###########################################################################################
+    // What the notice card asks (code review, 2026-11-02): only logged, a broken file left "My
+    // submissions" looking empty with no word why. A file not there at all is a first run, no problem.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_that_could_not_be_read_is_said_until_the_first_write_settles_it()
+    {
+        Assert.Null(SubmissionReceiptStore.UnreadableFile);
+
+        File.WriteAllText(this.thisPath, "{ a receipts file cut short");
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        UnreadableReceiptsFile unreadable = SubmissionReceiptStore.UnreadableFile!;
+        Assert.Equal(this.thisPath, unreadable.Path);
+        Assert.Contains("\"My submissions\"", unreadable.NoticeText, StringComparison.Ordinal);
+        Assert.Contains($"[{this.thisPath}]", unreadable.NoticeText, StringComparison.Ordinal);
+
+        SubmissionReceiptStore.Record(Receipt(1));
+
+        Assert.Null(SubmissionReceiptStore.UnreadableFile);
+    }
+
+    [Fact]
+    public void A_file_read_well_says_nothing()
+    {
+        SubmissionReceiptStore.Record(Receipt(1));
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.Null(SubmissionReceiptStore.UnreadableFile);
+    }
+
+    [Fact]
+    public void An_unreadable_file_is_set_aside_by_the_first_write()
+    {
+        const string Broken = "{ a receipts file cut short";
+        File.WriteAllText(this.thisPath, Broken);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        // Reading it changes nothing.
+        Assert.Equal(Broken, File.ReadAllText(this.thisPath));
+
+        SubmissionReceiptStore.Record(Receipt(1));
+
+        Assert.Equal(Broken, File.ReadAllText(this.thisPath + ".broken"));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal(1, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+    }
+
+    [Fact]
+    public void A_file_set_aside_earlier_is_never_written_over()
+    {
+        File.WriteAllText(this.thisPath + ".broken", "the first");
+        File.WriteAllText(this.thisPath, "{ the second");
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        SubmissionReceiptStore.Record(Receipt(1));
+
+        Assert.Equal("the first", File.ReadAllText(this.thisPath + ".broken"));
+        Assert.Equal("{ the second", File.ReadAllText(this.thisPath + ".broken.2"));
+    }
+
+    // What is remembered of the test instance stays apart from the live service's (ContributionServer).
+    [Fact]
+    public void The_file_of_another_service_is_set_aside_beside_itself()
+    {
+        string path = Path.Combine(this.thisWorkspace.Root, Handlers.Online.ContributionServer.FileNameFor("submissions.json", testServer: true));
+        File.WriteAllText(path, "{ cut short");
+
+        SubmissionReceiptStore.LoadFrom(path);
+        SubmissionReceiptStore.Record(Receipt(1));
+
+        Assert.Equal("{ cut short", File.ReadAllText(path + ".broken"));
+        Assert.False(File.Exists(this.thisPath + ".broken"));
+    }
+
+    // A file nobody could read for a moment (a backup or a virus scanner) is no broken file: read once
+    // the hold ends.
+    [Fact]
+    public void A_file_held_for_a_moment_at_load_is_read()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        var held = new FileStream(this.thisPath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => held.Dispose());
+
+        Assert.Equal(42, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+        Assert.False(File.Exists(this.thisPath + ".broken"));
+    }
+
+    // Held right through the load, it is read at the first write, and nothing of it or of that write is lost.
+    [Fact]
+    public void A_file_held_through_the_load_is_read_at_the_first_write()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        using (new FileStream(this.thisPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { });
+            Assert.Empty(SubmissionReceiptStore.All);
+        }
+
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        Assert.Equal([42, 43], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+        Assert.False(File.Exists(this.thisPath + ".broken"));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal([42, 43], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
+    // Held through that write too: nothing is written over it, and what was recorded waits in memory.
+    [Fact]
+    public void A_file_held_through_a_write_is_not_written_over()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "File locks are only mandatory on Windows.");
+
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        using (new FileStream(this.thisPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { });
+            SubmissionReceiptStore.Record(Receipt(43));
+
+            Assert.Equal(43, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+        }
+
+        SubmissionReceiptStore.Record(Receipt(44));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
+    // ###########################################################################################
+    // *** ACCESS REFUSED IS NOT A BROKEN FILE (code review, 2026-11-02). *** Its contents were never seen.
+    // Counted as broken, a good file was moved aside as ".broken" at the first write, and a new file
+    // started with the one new receipt - every earlier upload token gone until restored by hand, because
+    // a security tool or a permission held the file for a while. As a file held open: nothing is written,
+    // and the next write asks again. By a seam: refusing a read for real takes an operating system's own
+    // permissions, which differ.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_access_is_refused_to_is_never_set_aside_and_is_read_once_it_is_allowed()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        string written = File.ReadAllText(this.thisPath);
+        bool refused = true;
+
+        SubmissionReceiptStore.LoadFrom(
+            this.thisPath,
+            _ => { },
+            path => refused ? throw new UnauthorizedAccessException("Access to the path is denied.") : File.ReadAllText(path));
+
+        Assert.Empty(SubmissionReceiptStore.All);
+        Assert.NotNull(SubmissionReceiptStore.UnreadableFile);
+
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        Assert.False(File.Exists(this.thisPath + ".broken"));
+        Assert.Equal(written, File.ReadAllText(this.thisPath));
+        Assert.Equal(43, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+
+        refused = false;
+        SubmissionReceiptStore.Record(Receipt(44));
+
+        Assert.Null(SubmissionReceiptStore.UnreadableFile);
+        Assert.False(File.Exists(this.thisPath + ".broken"));
+        Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
     [Fact]
     public void A_missing_file_loads_as_empty()
     {
@@ -531,6 +716,105 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         Assert.Equal("rejected", stored.LastKnownState);
         Assert.False(SubmissionReceiptPresenter.HasUnreadDecision(stored));
         Assert.Equal(0, SubmissionReceiptStore.UnreadCommentCount());
+    }
+
+    // ###########################################################################################
+    // *** THE REASONS OF A REFUSAL ARE KEPT (code review, 2026-11-02). *** A refused submission is never
+    // asked about again, so what finalise answered is all there will ever be: once the dialog had closed
+    // the row read "Not accepted" with no reason. They survive a reload, and a state that is no refusal
+    // keeps none.
+    // ###########################################################################################
+    [Fact]
+    public void The_reasons_of_a_refusal_at_finalise_are_kept_and_survive_a_reload()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult
+            {
+                SubmissionId = 42,
+                IsAccepted = false,
+                State = "rejected",
+                Findings = [new ValidationFinding { Severity = ValidationSeverity.Error, Code = "component.no_category", Subject = "U8", Message = "No category." }],
+            },
+            DateTimeOffset.UtcNow);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        ValidationFinding kept = Assert.Single(Assert.Single(SubmissionReceiptStore.All).Findings);
+        Assert.Equal((ValidationSeverity.Error, "component.no_category", "U8", "No category."), (kept.Severity, kept.Code, kept.Subject, kept.Message));
+    }
+
+    // Only what stopped it: a warning beside the error is not why (code review, 2026-11-02).
+    [Fact]
+    public void A_refusal_at_finalise_keeps_its_errors_and_not_the_warnings_beside_them()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult
+            {
+                SubmissionId = 42,
+                IsAccepted = false,
+                State = "rejected",
+                Findings =
+                [
+                    new ValidationFinding { Severity = ValidationSeverity.Warning, Message = "No summary was given." },
+                    new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." },
+                ],
+            },
+            DateTimeOffset.UtcNow);
+
+        Assert.Equal("U8", Assert.Single(Assert.Single(SubmissionReceiptStore.All).Findings).Subject);
+    }
+
+    [Fact]
+    public void A_finalise_answer_that_is_no_refusal_keeps_no_findings()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult
+            {
+                SubmissionId = 42,
+                IsAccepted = true,
+                State = "pending",
+                Findings = [new ValidationFinding { Severity = ValidationSeverity.Warning, Message = "No summary was given." }],
+            },
+            DateTimeOffset.UtcNow);
+
+        Assert.Empty(Assert.Single(SubmissionReceiptStore.All).Findings);
+    }
+
+    // A receipt file from before these existed reads as having none.
+    [Fact]
+    public void A_receipt_written_before_the_new_fields_reads_with_none_of_them()
+    {
+        File.WriteAllText(this.thisPath, """[{"SubmissionId":42,"UploadToken":"tok","SystemId":"Commodore/C64/250407","LastKnownState":"rejected"}]""");
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        SubmissionReceipt read = Assert.Single(SubmissionReceiptStore.All);
+        Assert.Empty(read.Findings);
+        Assert.Null(read.FinaliseSentUtc);
+    }
+
+    // ###########################################################################################
+    // That the finalise request went is what tells a send lost on the way from one whose answer was lost
+    // (SubmissionReceiptPresenter.NeverReachedReview), so it survives a restart.
+    // ###########################################################################################
+    [Fact]
+    public void That_the_finalise_request_went_is_noted_and_survives_a_reload()
+    {
+        var sent = new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero);
+
+        SubmissionReceiptStore.Record(Receipt(42));
+        SubmissionReceiptStore.NoteFinaliseSent(42, sent);
+        SubmissionReceiptStore.NoteFinaliseSent(99, sent);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.Equal(sent, Assert.Single(SubmissionReceiptStore.All).FinaliseSentUtc);
     }
 
     // An answer that names no state (an older server) must not stamp "checked" onto an unknown one.

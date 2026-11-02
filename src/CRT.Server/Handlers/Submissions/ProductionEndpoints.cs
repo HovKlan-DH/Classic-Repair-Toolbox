@@ -236,15 +236,22 @@ namespace CRT.Server.Handlers.Submissions
             if (ProductionEndpoints.RefusalFor(outcome) is IResult problem)
                 return problem;
 
+            return Results.Ok(ProductionEndpoints.RollbackPlanAnswerOf(outcome));
+        }
+
+        // What the confirmation is shown.
+        internal static BetaRollbackPlanAnswer RollbackPlanAnswerOf(BetaRollbackOutcome outcome)
+        {
             BetaRollbackPlanResult plan = outcome.Plan!;
 
-            return Results.Ok(new BetaRollbackPlanAnswer(
+            return new BetaRollbackPlanAnswer(
                 outcome.Board!.BoardId,
                 ProductionEndpoints.KindOf(plan.Kind),
                 plan.Restored,
                 plan.Removed,
                 plan.Returning,
-                plan.SharedRestored));
+                plan.SharedRestored,
+                outcome.Board.ContentHash);
         }
 
         // ###########################################################################################
@@ -270,8 +277,7 @@ namespace CRT.Server.Handlers.Submissions
 
             DateTimeOffset now = DateTimeOffset.UtcNow;
 
-            BetaRollbackOutcome outcome = await flow.RollBackAsync(
-                access, request?.BoardId, request?.Comment, options, now, cancellationToken, reject: request?.Reject == true);
+            BetaRollbackOutcome outcome = await ProductionEndpoints.RollBackAsRequestedAsync(flow, access, request, options, now, cancellationToken);
 
             if (ProductionEndpoints.RefusalFor(outcome) is IResult problem)
                 return problem;
@@ -323,6 +329,24 @@ namespace CRT.Server.Handlers.Submissions
                 plan.Returning.Count,
                 outcome.Rejected));
         }
+
+        // The request as the flow reads it - apart from the route so a test can hold the two together.
+        internal static Task<BetaRollbackOutcome> RollBackAsRequestedAsync(
+            BetaRollbackFlow flow,
+            ReviewAccess? access,
+            BetaRollbackRequest? request,
+            ServerOptions options,
+            DateTimeOffset now,
+            CancellationToken cancellationToken) =>
+            flow.RollBackAsync(
+                access,
+                request?.BoardId,
+                request?.Comment,
+                options,
+                now,
+                cancellationToken,
+                reject: request?.Reject == true,
+                expectedBetaContentHash: request?.ExpectedBetaContentHash);
 
         // The wire's word for each kind, so the Maintainer tab does not parse an enum name.
         private static string KindOf(BetaRollbackKind kind) =>

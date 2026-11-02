@@ -10,7 +10,8 @@ namespace Handlers.DataHandling
     // rows. A 4.0 draft names its files in its board file, each with the checksum of its bytes, so
     // the files merge as the rows do, by name, three ways (BASE as copied, DRAFT now, PUBLISHED now):
     //
-    //   - a file the contributor left as copied follows the update - replaced, added or removed;
+    //   - a file the contributor left as copied follows the update - replaced, added or removed, unless
+    //     a row the merge kept still cites one the update removed;
     //   - a file the contributor replaced (other bytes than the base's) stays theirs;
     //   - a file the update added comes in; one the contributor removed stays removed.
     //
@@ -98,17 +99,25 @@ namespace Handlers.DataHandling
         // The draft's file list after the merge - see the header - and how many entries followed
         // the update. The draft's write then keeps the entries its merged rows cite (DraftFiles).
         // A name in `replaced` is the contributor's whatever the update did.
+        //
+        // `citedByMergedRows`: the names the merged board's rows cite. A file left as copied that the
+        // update removed stays while one cites it (code review, 2026-11-02) - the rows kept against the
+        // update said "Your version is kept", and the file went from under them: a blank picture, and
+        // Submit refusing file.missing. KeptAgainstTheUpdate names them; their bytes are the caller's.
         // ###########################################################################################
         public static List<BoardDocument.StoredFileRow> Merge(
             IReadOnlyList<BoardDocument.StoredFileRow> based,
             IReadOnlyList<BoardDocument.StoredFileRow> draft,
             IReadOnlyList<BoardDocument.StoredFileRow> published,
             IReadOnlySet<string> replaced,
-            out int followed)
+            out int followed,
+            IEnumerable<string>? citedByMergedRows = null)
         {
             Dictionary<string, BoardDocument.StoredFileRow> baseByName = DraftRebaseFiles.ByName(based);
             Dictionary<string, BoardDocument.StoredFileRow> publishedByName = DraftRebaseFiles.ByName(published);
             Dictionary<string, BoardDocument.StoredFileRow> merged = DraftRebaseFiles.ByName(draft);
+
+            var cited = new HashSet<string>((citedByMergedRows ?? []).Select(BoardFileNames.Normalise), StringComparer.OrdinalIgnoreCase);
 
             followed = 0;
 
@@ -140,10 +149,12 @@ namespace Handlers.DataHandling
 
             foreach (BoardDocument.StoredFileRow mine in draft)
             {
-                // Left as copied, and removed by the update.
+                // Left as copied, and removed by the update - unless a row of the merged board still
+                // cites it.
                 if (!replaced.Contains(mine.Name) &&
                     baseByName.ContainsKey(mine.Name) &&
-                    !publishedByName.ContainsKey(mine.Name))
+                    !publishedByName.ContainsKey(mine.Name) &&
+                    !cited.Contains(BoardFileNames.Normalise(mine.Name)))
                 {
                     merged.Remove(mine.Name);
                     followed++;
@@ -155,6 +166,36 @@ namespace Handlers.DataHandling
                 .ThenBy(file => file.Name, StringComparer.Ordinal)
                 .ToList();
         }
+
+        // ###########################################################################################
+        // The entries of a merged list that stayed against the update: left as copied in the draft, and
+        // no longer the published board's. Their bytes lie in the tree's store, which is about to let
+        // them go - see DraftRebaser. What the contributor replaced or added has its bytes in the draft's
+        // own store already.
+        // ###########################################################################################
+        public static List<BoardDocument.StoredFileRow> KeptAgainstTheUpdate(
+            IReadOnlyList<BoardDocument.StoredFileRow> based,
+            IReadOnlyList<BoardDocument.StoredFileRow> merged,
+            IReadOnlyList<BoardDocument.StoredFileRow> published,
+            IReadOnlySet<string> replaced)
+        {
+            Dictionary<string, BoardDocument.StoredFileRow> baseByName = DraftRebaseFiles.ByName(based);
+            Dictionary<string, BoardDocument.StoredFileRow> publishedByName = DraftRebaseFiles.ByName(published);
+
+            return merged
+                .Where(file => !replaced.Contains(file.Name) && baseByName.ContainsKey(file.Name) && !publishedByName.ContainsKey(file.Name))
+                .ToList();
+        }
+
+        // The section of the conflict list that says a kept row's file could not be kept (DraftDriftWording
+        // counts the rows both sides changed apart from it).
+        public const string FilesSection = "Files";
+
+        public static DraftRebaseConflict FileNoLongerHere(string name) => new(
+            DraftRebaseFiles.FilesSection,
+            name,
+            $"The update removed the file [{name}], and a row your draft keeps still names it. " +
+            "The file is no longer on this computer - add it again, or change the row.");
 
         private static Dictionary<string, BoardDocument.StoredFileRow> ByName(IReadOnlyList<BoardDocument.StoredFileRow> files)
         {

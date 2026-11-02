@@ -177,6 +177,84 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** A FILE OF NO BYTES IS REFUSED AT CREATE, WHATEVER ITS TYPE (owner decision, 2026-11-02:
+        // "Refuse empty files"). *** A text type too, whose bytes the content check alone would pass.
+        // Nothing is created and nothing is asked for, so it can never read "has not finished uploading".
+        // A manifest declaring another size for the hash of no bytes goes the same way.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("empty.txt", 0L)]
+        [InlineData("empty.html", 0L)]
+        [InlineData("empty.png", 0L)]
+        [InlineData("empty.txt", 5L)]
+        public async Task A_file_of_no_bytes_is_refused_at_create_whatever_its_type(string name, long declaredSize)
+        {
+            var store = new FakeSubmissionStore();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+            manifest.Files.Add(new SubmissionFile { Path = name, Sha256 = SubmissionFileRules.EmptySha256, SizeBytes = declaredSize });
+            manifest.Rows.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Docs", Name = "Empty", File = name });
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
+                store, this.Blobs(), SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.False(created.IsAccepted);
+            Assert.Empty(store.Created);
+
+            ValidationFinding finding = Assert.Single(created.Findings);
+            Assert.Equal(SubmissionFileRules.EmptyFileCode, finding.Code);
+            Assert.Equal(name, finding.Subject);
+            Assert.Equal(SubmissionFileRules.EmptyFileMessage(name), finding.Message);
+        }
+
+        // ###########################################################################################
+        // And at finalise, on the bytes received, for a submission that got past create before the rule
+        // existed: its own code, for a text type too - "uploaded" and refused, never "has not finished
+        // uploading", which no retry could change. The fake store's file list is what such a row holds.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("empty.txt")]
+        [InlineData("empty.html")]
+        [InlineData("empty.png")]
+        public async Task A_file_of_no_bytes_from_before_the_rule_is_refused_at_finalise_on_the_bytes_received(string name)
+        {
+            var store = new FakeSubmissionStore();
+            BlobStore blobs = this.Blobs();
+
+            SubmissionManifest manifest = SubmissionFlowTests.Manifest();
+
+            SubmissionCreationOutcome created = await SubmissionFlows.CreateAsync(
+                manifest, SubmissionFlowTests.Contributor(), this.BoardFolder(),
+                store, blobs, SubmissionFlowTests.Now, CancellationToken.None, this.Tree());
+
+            Assert.True(created.IsAccepted, string.Join("; ", created.Findings.Select(finding => finding.Code)));
+
+            long id = created.Negotiation!.SubmissionId;
+            store.Files[id].Add(new SubmissionFileRecord(99, name, SubmissionFileRules.EmptySha256, 0, IsUploaded: false));
+
+            await this.UploadAsync(created.Negotiation, manifest.Files[0], "PNGDATA", store, blobs);
+
+            using (var nothing = new MemoryStream())
+            {
+                BlobUploadOutcome uploaded = await SubmissionFlows.UploadChunkAsync(
+                    id, SubmissionFileRules.EmptySha256, 0, nothing, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+                Assert.Equal(BlobUploadStatus.Completed, uploaded.Status);
+            }
+
+            SubmissionResult result = await SubmissionFlows.FinaliseAsync(id, created.Negotiation.UploadToken, store, blobs, SubmissionFlowTests.Now);
+
+            Assert.False(result.IsAccepted);
+            Assert.Equal(SubmissionState.Rejected, result.State);
+
+            ValidationFinding finding = Assert.Single(result.Findings, found => found.Severity == ValidationSeverity.Error);
+            Assert.Equal(SubmissionFileRules.EmptyFileCode, finding.Code);
+            Assert.Equal(name, finding.Subject);
+            Assert.Equal(SubmissionFileRules.EmptyFileMessage(name), finding.Message);
+        }
+
+        // ###########################################################################################
         // *** A NEW BOARD'S NOTES ARE KEPT WITH ITS SUBMISSION (owner request, 2026-10-05). *** What
         // the contributor typed in "Create board" is stored, trimmed, for the maintainer's placement
         // to start with - and from that placement it reaches the main Excel data file. Blank notes

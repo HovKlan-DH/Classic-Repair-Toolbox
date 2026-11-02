@@ -355,7 +355,7 @@ namespace Handlers.DataHandling
         private static int WholeNumber(string? value, ComponentHighlightEntry highlight)
         {
             if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number) &&
-                double.IsFinite(number) && Math.Abs(number) <= int.MaxValue)
+                BoardDocumentMapping.FitsWholeNumber(number))
             {
                 return (int)Math.Round(number, MidpointRounding.AwayFromZero);
             }
@@ -363,5 +363,10 @@ namespace Handlers.DataHandling
             throw new FormatException(
                 $"The highlight of [{highlight.BoardLabel}] on [{highlight.SchematicName}] has the coordinate [{value}], which is not a number.");
         }
+
+        // What a board file can hold as a coordinate - the ONE rule, which BoardDataChecks asks too, so
+        // what the checks let through is what this writes (code review, 2026-11-02).
+        internal static bool FitsWholeNumber(double number) =>
+            double.IsFinite(number) && Math.Abs(number) <= int.MaxValue;
     }
 }

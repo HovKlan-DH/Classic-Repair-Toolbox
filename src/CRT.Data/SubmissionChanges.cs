@@ -32,8 +32,9 @@ namespace Handlers.DataHandling
     // Reordered (2026-10-30): the sheets whose rows it put in another order - order is a change
     // (owner decision). Null in a record from before then, which said nothing about order.
     //
-    // RegionsNow (2026-11-01): what the board says about its regions after it, when it changed that
-    // (ReviewChangeSummary.RegionsNow) - null otherwise, and in a record from before then.
+    // RegionsNow (2026-11-01): what the board says about its regions after it, when it changed that, or
+    // true for a new board that has them (ReviewChangeSummary.RegionsNow) - null otherwise, and in a record
+    // from before then.
     // ###########################################################################################
     public sealed record SubmissionChanges(
         bool IsNewBoard,
@@ -106,13 +107,11 @@ namespace Handlers.DataHandling
                     section.Removed.Count,
                     section.Renamed.Count,
                     SubmissionChangeFacts.First(section.Added.Select(BoardDraftNaturalKeys.Describe)),
-                    section.Changed
+                    SubmissionChangeFacts.ChangedRowsOf(section)
                         .Take(SubmissionChangeFacts.ListedPerKind)
-                        .Select(key => new ChangedRowFact(
-                            BoardDraftNaturalKeys.Describe(key),
-                            section.FieldChanges.TryGetValue(key, out IReadOnlyList<ReviewFieldChange>? fields)
-                                ? fields.Select(field => field.Field).Distinct(StringComparer.Ordinal).ToList()
-                                : []))
+                        .Select(row => new ChangedRowFact(
+                            BoardDraftNaturalKeys.Describe(row.Key),
+                            row.Fields.Select(field => field.Field).Distinct(StringComparer.Ordinal).ToList()))
                         .ToList(),
                     SubmissionChangeFacts.First(section.Removed.Select(BoardDraftNaturalKeys.Describe)),
                     section.Renamed
@@ -128,6 +127,12 @@ namespace Handlers.DataHandling
                 rows.ReorderedSections.Count > 0 ? [.. rows.ReorderedSections] : null,
                 rows.RegionsNow);
         }
+
+        // Each changed row with what moved on it alone, where a key stands more than once - else by its key.
+        private static IEnumerable<ReviewChangedRow> ChangedRowsOf(ReviewSectionChange section) =>
+            section.ChangedRows ?? section.Changed.Select(key => new ReviewChangedRow(
+                key,
+                section.FieldChanges.TryGetValue(key, out IReadOnlyList<ReviewFieldChange>? fields) ? fields : []));
 
         // The file facts alone - each list sorted and without repeats, then cut to ListedPerKind.
         public static FileChanges Files(IEnumerable<string>? added, IEnumerable<string>? replaced, IEnumerable<string>? removed)

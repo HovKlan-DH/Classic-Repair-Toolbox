@@ -313,19 +313,31 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // AFTER NO ANSWER IN TWO MINUTES: the submission a change became, if it arrived - the board's
-        // newest submission with this reason as its description. Its state then says how far it got:
-        // in BETA ("merged", or "published" once it went on to stable), or waiting in the queue.
+        // newest submission with this reason as its description, NEWER THAN ANYTHING THE BOARD HELD
+        // BEFORE SENDING (code review, 2026-11-02: #40 "Typo" published long ago was taken for today's
+        // "Typo" that never arrived, and the table was read again over the typed change). Its state
+        // then says how far it got: in BETA ("merged", or "published" once it went on to stable), or
+        // waiting in the queue.
         // ###########################################################################################
-        public static BoardSubmissionEntry? FindSent(BoardDetailAnswer detail, string reason)
+        public static BoardSubmissionEntry? FindSent(BoardDetailAnswer detail, string reason, long newerThan)
         {
             ArgumentNullException.ThrowIfNull(detail);
 
             string wanted = reason?.Trim() ?? string.Empty;
 
             return detail.Submissions
+                .Where(submission => submission.Id > newerThan)
                 .Where(submission => string.Equals(submission.Summary?.Trim(), wanted, StringComparison.Ordinal))
                 .OrderByDescending(submission => submission.Id)
                 .FirstOrDefault();
+        }
+
+        // The newest submission a board's detail holds - 0 for none.
+        public static long NewestSubmissionId(BoardDetailAnswer detail)
+        {
+            ArgumentNullException.ThrowIfNull(detail);
+
+            return detail.Submissions.Select(submission => submission.Id).DefaultIfEmpty(0).Max();
         }
 
         public static bool ReachedBeta(BoardSubmissionEntry submission)

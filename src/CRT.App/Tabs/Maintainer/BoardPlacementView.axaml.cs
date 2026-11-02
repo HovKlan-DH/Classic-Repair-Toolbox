@@ -23,6 +23,11 @@ namespace CRT
     // called on every check. While the names or the position have been changed and not saved, it
     // leaves the panel alone; otherwise it rebuilds only when the listing for this board changed -
     // the rule the other screens keep ("nothing open is reloaded unless its row changed").
+    //
+    // *** ANOTHER BOARD CHOSEN KEEPS WHAT WAS NOT SAVED (code review, 2026-11-02). *** Names typed and
+    // a place dragged to were gone without a word - leaving a board asks only about its table. It is
+    // simply kept, per board, while CRT runs and until signing out, so it is there on coming back,
+    // still not saved. Asking instead would add a question for what loses nothing by waiting.
     // ###########################################################################################
     public partial class BoardPlacementView : UserControl
     {
@@ -45,6 +50,9 @@ namespace CRT
 
         // The message on show is the names' problem (UpdateState's own), not a save's answer.
         private bool thisShowsNameProblem;
+
+        // What was changed and not saved on boards no longer on show, by board - see the header.
+        private readonly Dictionary<string, BoardPlacement> thisKeptPlacements = new(StringComparer.OrdinalIgnoreCase);
 
         public BoardPlacementView()
         {
@@ -74,6 +82,9 @@ namespace CRT
         {
             this.thisClient = client;
             this.thisSession = session;
+
+            // Handed on every sign-in and on signing out: the next account finds none of them.
+            this.thisKeptPlacements.Clear();
         }
 
         // Told after a placement was saved, so the Boards screen can read the lists again.
@@ -96,6 +107,11 @@ namespace CRT
             if (listing is null || entry is null)
             {
                 this.Hide();
+
+                // Listed by now - placed from another CRT, say: nothing here is a placement any more.
+                if (listing is not null && boardId is not null)
+                    this.thisKeptPlacements.Remove(boardId);
+
                 return;
             }
 
@@ -107,11 +123,13 @@ namespace CRT
             if (sameBoard && entry == this.thisEntry && this.thisListed.SequenceEqual(listing.Rows))
                 return;
 
+            this.KeepWhatIsNotSaved();
             this.Build(entry, listing.Rows, keepMessage: sameBoard);
         }
 
         public void Hide()
         {
+            this.KeepWhatIsNotSaved();
             this.thisDrag.Reset();
             this.thisEntry = null;
             this.thisNewRow = null;
@@ -122,15 +140,33 @@ namespace CRT
             this.IsVisible = false;
         }
 
+        // The panel about to go holds a change not saved: put by for coming back to its board.
+        private void KeepWhatIsNotSaved()
+        {
+            if (this.thisIsDirty && this.BuildRequest() is SetPlacementRequest request && this.thisEntry is UnlistedBoardEntry entry)
+            {
+                this.thisKeptPlacements[entry.BoardId] = new BoardPlacement(
+                    request.HardwareName ?? string.Empty,
+                    request.BoardName ?? string.Empty,
+                    request.Notes ?? string.Empty,
+                    request.AfterExcelDataFile);
+            }
+        }
+
         private void Build(UnlistedBoardEntry entry, IReadOnlyList<BoardListingRow> listed, bool keepMessage)
         {
             this.thisDrag.Reset();
 
             this.thisEntry = entry;
             this.thisListed = listed.ToList();
-            this.thisIsDirty = false;
 
-            BoardPlacement placement = BoardPlacementDisplay.Starting(entry);
+            // What was put by for this board comes back as it was - still not saved - when it is still
+            // this account's to place; otherwise what the server says.
+            bool kept = this.thisKeptPlacements.Remove(entry.BoardId, out BoardPlacement? notSaved) && entry.CanPlace;
+
+            this.thisIsDirty = kept;
+
+            BoardPlacement placement = kept ? notSaved! : BoardPlacementDisplay.Starting(entry);
             int start = BoardPlacementDisplay.StartIndex(this.thisListed, placement.AfterExcelDataFile, out bool afterIsGone);
 
             this.Rows.Clear();
@@ -156,7 +192,7 @@ namespace CRT
 
             this.SetText("ExplanationText", BoardPlacementDisplay.Explanation(entry));
             this.SetText("SavedStateText", entry.CanPlace
-                ? BoardPlacementDisplay.SavedState(entry, afterIsGone)
+                ? BoardPlacementDisplay.SavedState(entry, afterIsGone, notSavedKept: kept)
                 : $"{BoardPlacementDisplay.SavedState(entry, afterIsGone)} {BoardPlacementDisplay.CannotPlaceMessage}");
 
             this.GetControl<TextBlock>("DragHintText").IsVisible = entry.CanPlace;

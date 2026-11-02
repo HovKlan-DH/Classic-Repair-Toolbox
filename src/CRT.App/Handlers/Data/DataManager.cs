@@ -1628,10 +1628,66 @@ namespace Handlers.DataHandling
                 }
             }
 
+            if (!thisTryAddMappedFilesFromDrafts(mappedFiles, dataRootFullPath))
+            {
+                return null;
+            }
+
             Logger.Info(
                 $"Mapped [{mappedFiles.Count}] referenced files from manifest and [{mainExcelRelativePaths.Count}] main data files for orphan cleanup");
 
             return mappedFiles;
+        }
+
+        // ###########################################################################################
+        // *** BYTES A DRAFT STILL LISTS STAY, THOUGH NO PUBLISHED BOARD DOES (code review, 2026-11-02). ***
+        // A draft keeps a published file by its checksum and holds none of its bytes, so an update that
+        // dropped the file left the draft citing bytes only the tree's store has. Deleted here, "Bring my
+        // draft up to date" could only say the file was gone, and the row's picture went blank. They
+        // go at the first cleanup after no draft lists them. A draft's board file that cannot be read
+        // makes the map incomplete, as a published one does: what it lists is unknown, not nothing.
+        // ###########################################################################################
+        private static bool thisTryAddMappedFilesFromDrafts(HashSet<string> mappedFiles, string dataRootFullPath)
+        {
+            string draftsRoot = DraftManager.DraftsRoot;
+
+            if (string.IsNullOrWhiteSpace(draftsRoot) || !Directory.Exists(draftsRoot))
+            {
+                return true;
+            }
+
+            List<string> boardFiles;
+
+            try
+            {
+                boardFiles = Directory.EnumerateFiles(draftsRoot, DataTreeLayout.BoardFileName, SearchOption.AllDirectories).ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning($"The drafts could not be read during orphan cleanup mapping: [{ex.Message}]");
+                return false;
+            }
+
+            foreach (string boardFile in boardFiles)
+            {
+                if (DraftFolderLayout.IsInBookkeepingFolder(Path.GetRelativePath(draftsRoot, boardFile).Replace('\\', '/')))
+                {
+                    continue;
+                }
+
+                if (DraftFiles.ListedIn(boardFile) is not { } listed)
+                {
+                    Logger.Warning($"A draft's board file could not be read during orphan cleanup mapping: [{boardFile}]");
+                    return false;
+                }
+
+                foreach (BoardDocument.StoredFileRow file in listed.Values.Where(file => DataTreeLayout.IsSha256(file.Sha256)))
+                {
+                    thisTryAddMappedRelativePath(mappedFiles, dataRootFullPath, DataTreeLayout.StoredFilePath(file.Sha256, file.Name), "a draft's file");
+                }
+            }
+
+            return true;
         }
 
         // ###########################################################################################

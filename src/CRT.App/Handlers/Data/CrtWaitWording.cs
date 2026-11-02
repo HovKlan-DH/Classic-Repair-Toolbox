@@ -60,6 +60,9 @@ namespace Handlers.DataHandling
         // (DraftChangeSummary) - step 1's last slice, 2026-10-25.
         public const string ReadingChanges = "Reading what your draft changes...";
 
+        // Submit running the board's checks over what it would send (code review, 2026-11-02).
+        public const string CheckingBoard = "Checking the board for anything to fix first...";
+
         // Submit's credit suggestions are worked out against the board as published (code review, 2026-10-26).
         public const string ReadingPublishedBoard = "Reading the board as published...";
 

@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Avalonia.Controls;
 using Handlers.MaintainerHandling;
 using Handlers.DataHandling;
 using CRT;
+using ClassicRepairToolbox.Tests.Maintainer;
 
 namespace ClassicRepairToolbox.Tests.Ui.Maintainer;
 
@@ -716,6 +718,157 @@ public sealed class BoardDetailViewSectionsTests
             Assert.Equal(
                 ["Commodore", "C64", "250407", "Data C64 250407 v2.0.0.xlsx", "manual.pdf", "Shared files"],
                 tree.RowsForTests.Select(row => row.Name));
+        });
+    }
+
+    private static BoardSubmissionEntry Submission(long id, string summary, string state) =>
+        new(id, null, summary, state, DateTimeOffset.UtcNow, null, null);
+
+    // The board's detail as the look after no answer finds it.
+    private static void LookAfterNoAnswerFinds(BoardDetailView view, params BoardSubmissionEntry[] submissions)
+    {
+        var settings = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        ReviewApiContract.ApplyWireSettings(settings);
+
+        string detail = JsonSerializer.Serialize(new BoardDetailAnswer(BoardDetailViewSectionsTests.Board(), [], [], submissions), settings);
+
+        view.Initialize(
+            new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(_ => AnsweringHttpHandler.Json(detail)))),
+            new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+    }
+
+    private static readonly ReviewApiResult<BoardEditResult> NoAnswer =
+        ReviewApiResult<BoardEditResult>.Failed(ReviewApiFailure.TimedOut, WaitWording.NoAnswer);
+
+    // ###########################################################################################
+    // *** NO ANSWER, AND AN OLD SUBMISSION WITH THE SAME REASON (code review, 2026-11-02). *** The
+    // board has #40 "Typo", published long ago; today's Save with the reason "Typo" never arrived.
+    // Taken for this change, CRT said "it did finish" and read the table again - the typed change gone
+    // with no prompt. Fails against a look that goes by the reason alone.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_with_no_answer_is_not_taken_for_an_older_submission_with_the_same_reason()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+            BoardSubmissionEntry old = BoardDetailViewSectionsTests.Submission(40, "Typo", "published");
+
+            view.ShowDetailForTests(new BoardDetailAnswer(BoardDetailViewSectionsTests.Board(), [], [], [old]));
+            view.OpenTableForTests(BoardDetailViewSectionsTests.Table(mayEdit: true));
+            BoardDetailViewSectionsTests.EditFriendlyName(view, "PLA 2");
+
+            Save save = Save.On(view, reason: "Typo", sent: BoardDetailViewSectionsTests.NoAnswer);
+            BoardDetailViewSectionsTests.LookAfterNoAnswerFinds(view, old);
+
+            Assert.False(await view.SendTableAsync());
+
+            Assert.True(view.HasUnsavedTableEdits);
+            Assert.Equal(0, save.Published);
+            Assert.Empty(save.Opened);
+            Assert.Contains("not among the board's submissions", BoardDetailViewSectionsTests.Status(view), StringComparison.Ordinal);
+        });
+    }
+
+    // An old rejected one said it "waits" in the queue, and opened it.
+    [Fact]
+    public async Task A_save_with_no_answer_does_not_open_an_old_rejected_submission_with_the_same_reason()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+            BoardSubmissionEntry old = BoardDetailViewSectionsTests.Submission(40, "Typo", "rejected");
+
+            view.ShowDetailForTests(new BoardDetailAnswer(BoardDetailViewSectionsTests.Board(), [], [], [old]));
+            view.OpenTableForTests(BoardDetailViewSectionsTests.Table(mayEdit: true));
+            BoardDetailViewSectionsTests.EditFriendlyName(view, "PLA 2");
+
+            Save save = Save.On(view, reason: "Typo", sent: BoardDetailViewSectionsTests.NoAnswer);
+            BoardDetailViewSectionsTests.LookAfterNoAnswerFinds(view, old);
+
+            Assert.False(await view.SendTableAsync());
+
+            Assert.True(view.HasUnsavedTableEdits);
+            Assert.Empty(save.Opened);
+        });
+    }
+
+    // One newer than anything the board held IS the change: it arrived, so the table lets it go.
+    [Fact]
+    public async Task A_save_with_no_answer_is_found_by_a_submission_newer_than_the_board_held()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+            BoardSubmissionEntry old = BoardDetailViewSectionsTests.Submission(40, "Typo", "published");
+
+            view.ShowDetailForTests(new BoardDetailAnswer(BoardDetailViewSectionsTests.Board(), [], [], [old]));
+            view.OpenTableForTests(BoardDetailViewSectionsTests.Table(mayEdit: true));
+            BoardDetailViewSectionsTests.EditFriendlyName(view, "PLA 2");
+
+            Save save = Save.On(view, reason: "Typo", sent: BoardDetailViewSectionsTests.NoAnswer);
+            BoardDetailViewSectionsTests.LookAfterNoAnswerFinds(view, old, BoardDetailViewSectionsTests.Submission(41, "Typo", "merged"));
+
+            Assert.True(await view.SendTableAsync());
+
+            Assert.False(view.HasUnsavedTableEdits);
+            Assert.Equal(1, save.Published);
+            Assert.Contains("#41", BoardDetailViewSectionsTests.Status(view), StringComparison.Ordinal);
+        });
+    }
+
+    // A change just published is no longer new, even with the board's detail not read again since: the
+    // next Save under the same reason, with no answer, is not taken for it.
+    [Fact]
+    public async Task A_save_with_no_answer_is_not_taken_for_the_save_before_it_with_the_same_reason()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+
+            view.ShowDetailForTests(BoardDetailViewSectionsTests.Detail());
+            view.OpenTableForTests(BoardDetailViewSectionsTests.Table(mayEdit: true));
+            BoardDetailViewSectionsTests.EditFriendlyName(view, "PLA 2");
+
+            Save save = Save.On(view, reason: "Typo", reread: ReviewApiResult<BoardTableAnswer>.Ok(BoardDetailViewSectionsTests.Table(mayEdit: true)));
+
+            Assert.True(await view.SendTableAsync());
+            Assert.Equal(1, save.Published);
+
+            BoardDetailViewSectionsTests.EditFriendlyName(view, "PLA 3");
+            view.SendOverrideForTests = _ => Task.FromResult(BoardDetailViewSectionsTests.NoAnswer);
+            BoardDetailViewSectionsTests.LookAfterNoAnswerFinds(view, BoardDetailViewSectionsTests.Submission(57, "Typo", "merged"));
+
+            Assert.False(await view.SendTableAsync());
+
+            Assert.True(view.HasUnsavedTableEdits);
+            Assert.Equal(1, save.Published);
+        });
+    }
+
+    // ###########################################################################################
+    // A table can be open with the board's detail never read (its read failed): what is new cannot be
+    // told, so nothing is taken for the change - it stays, and the note says it could not be checked,
+    // never that it did not arrive.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_with_no_answer_on_a_board_whose_detail_was_never_read_keeps_the_change_and_says_it_could_not_be_checked()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+
+            view.OpenTableForTests(BoardDetailViewSectionsTests.Table(mayEdit: true));
+            BoardDetailViewSectionsTests.EditFriendlyName(view, "PLA 2");
+
+            Save save = Save.On(view, reason: "Typo", sent: BoardDetailViewSectionsTests.NoAnswer);
+            BoardDetailViewSectionsTests.LookAfterNoAnswerFinds(view, BoardDetailViewSectionsTests.Submission(40, "Typo", "published"));
+
+            Assert.False(await view.SendTableAsync());
+
+            Assert.True(view.HasUnsavedTableEdits);
+            Assert.Equal(0, save.Published);
+            Assert.Contains("could not be checked", BoardDetailViewSectionsTests.Status(view), StringComparison.Ordinal);
         });
     }
 }

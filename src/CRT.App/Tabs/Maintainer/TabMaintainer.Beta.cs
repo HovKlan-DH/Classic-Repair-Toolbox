@@ -20,6 +20,11 @@ namespace CRT
     // is worked out again: a tick given to other content must not carry over. A board that LEFT the
     // list meanwhile (published or pushed back by somebody else) empties the panel and says so.
     //
+    // *** WHAT THE MAINTAINER ASKS FOR, THOUGH, IS READ AGAIN (code review, 2026-11-02). *** The row
+    // cannot say that a plan which failed, was refused, or whose publish was refused might now go
+    // better. The screen's own button and coming back to the tab read such a plan again - never one
+    // that can be published, whose tick still stands (ProductionDisplay.PlanIsWorthReadingAgain).
+    //
     // A board that waits only for the OTHER approver is dimmed and says so, the queue's way, and is
     // not counted on the BETA button's badge.
     // ###########################################################################################
@@ -36,12 +41,19 @@ namespace CRT
         // True while code - not the maintainer - moves the list's selection.
         private bool thisSuppressBetaSelection;
 
-        private async Task RefreshBetaAsync(bool background)
+        // `readStuckPlan`: the maintainer asked - see the header. A plan the row moved reads again anyway.
+        private async Task RefreshBetaAsync(bool background, bool readStuckPlan = false)
         {
             if (!this.CanAskServer)
                 return;
 
-            ReviewApiResult<ProductionListResponse> result = await this.thisClient!.GetProductionListAsync(this.thisSession!);
+            ReviewSession asked = this.thisSession!;
+
+            ReviewApiResult<ProductionListResponse> result = await this.thisClient!.GetProductionListAsync(asked);
+
+            // A sign-out or another sign-in meanwhile wins (code review, 2026-11-02; RefreshQueueAsync).
+            if (!this.IsSessionInUse(asked))
+                return;
 
             if (!result.IsOk)
             {
@@ -50,14 +62,14 @@ namespace CRT
                 return;
             }
 
-            await this.ApplyBetaListAsync(result.Value!, background);
+            await this.ApplyBetaListAsync(result.Value!, background, readStuckPlan);
         }
 
         // ###########################################################################################
         // Puts the server's list on screen, keeping the chosen board chosen - see the header for
         // what happens to the panel beside it. Internal so a test can hand it an answer.
         // ###########################################################################################
-        internal async Task ApplyBetaListAsync(ProductionListResponse response, bool background)
+        internal async Task ApplyBetaListAsync(ProductionListResponse response, bool background, bool readStuckPlan = false)
         {
             ArgumentNullException.ThrowIfNull(response);
 
@@ -122,8 +134,21 @@ namespace CRT
                 return;
             }
 
-            if (!background || !Equals(before, kept))
+            if (!background || !Equals(before, kept) || (readStuckPlan && this.BetaDetail.PlanIsWorthReadingAgain))
                 await this.BetaDetail.ShowBoardAsync(kept);
+        }
+
+        // Coming back to the tab with this screen on show: the plan on it, when it is worth asking
+        // for again (the header). The screen's own button reads it with the list (ShowModeAsync).
+        private async Task ReadBetaPlanAgainIfStuckAsync()
+        {
+            if (this.thisMode == MaintainerMode.Beta &&
+                this.CanAskServer &&
+                this.SelectedBetaRow is ProductionBoardRow row &&
+                this.BetaDetail.PlanIsWorthReadingAgain)
+            {
+                await this.BetaDetail.ShowBoardAsync(row);
+            }
         }
 
         private async void OnBetaSelectionChanged(object? sender, SelectionChangedEventArgs e) =>

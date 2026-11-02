@@ -176,6 +176,24 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // The KiCad files an import left out as they hold no bytes, by name - "" when none (owner
+        // decision, 2026-11-02: "Refuse empty files"). They could never be sent.
+        // ###########################################################################################
+        public static string EmptyFiles(IReadOnlyList<string> empty)
+        {
+            ArgumentNullException.ThrowIfNull(empty);
+
+            string named = string.Join(", ", empty.Select(file => $"[{file}]"));
+
+            return empty.Count switch
+            {
+                0 => string.Empty,
+                1 => $"Left out, as it is empty: {named}. Save it again in KiCad and import the folder again.",
+                _ => $"Left out, as they are empty: {named}. Save them again in KiCad and import the folder again.",
+            };
+        }
+
+        // ###########################################################################################
         // What of the project CRT cannot read, and what to do about it - none, one or two sentences:
         //
         //   - A schematic (.sch, KiCad 5 or older) or board (.brd, KiCad 4 or older) an OLDER KICAD wrote
@@ -233,6 +251,16 @@ namespace Handlers.DataHandling
             KiCadImportSummary.CannotRead(leftOut, olderKiCad, []) is { Count: > 0 } why
                 ? "No KiCad files CRT can read in that folder. " + string.Join(" ", why)
                 : "No KiCad files in that folder. Only modern .kicad_pcb / .kicad_pro / .kicad_sch files are imported - sub-folders are searched too.";
+
+        // The board's draft has gone from under the panel - nothing to import into, and nothing copied.
+        public const string NoDraftAnyMore =
+            "This board has no draft any more, so nothing was imported. Open the board's \"KiCad: Files\" again to import into a new draft.";
+
+        // Copied in, but no write of the draft has listed them yet (code review, 2026-11-02): they are
+        // shown and drawn, and the next save takes them in - which is not imported.
+        public static string NotTakenIn(int files) =>
+            $"{KiCadImportSummary.Count(files, "KiCad file", "KiCad files")} copied into the draft, but the draft could not be saved, so the board does not list " +
+            (files == 1 ? "it yet. It goes in with the next save." : "them yet. They go in with the next save.");
 
         // ###########################################################################################
         // What is left to do once the KiCad data is in (BoardReadiness.WorkLeftAfterKiCad), in the order

@@ -45,9 +45,10 @@ namespace CRT.Server.Handlers.Submissions
     // "My submissions" shows such a submission as "No longer on the server" - the server answers
     // "not found" - which says it is gone but not why, so the mail is how the contributor learns.
     //
-    // *** NOT DELETED: SHARED FILES. *** Anything outside the board's own folder stays, and is an
-    // unused file for Account > Unused files when nothing else cites it (AutomaticRemovalScope's owner
-    // decision). Nor older main Excel data files, which are frozen - a board one lists is refused.
+    // *** NOT DELETED: BYTES ANOTHER BOARD LISTS. *** In the CRT 4.0 tree a board's own stored files -
+    // those no other board lists - go with it (BoardDeletionFiles, AutomaticRemovalScope), and are in
+    // the counts the confirmation shows. Nor older main Excel data files, which are frozen - a board
+    // one lists is refused.
     // ###########################################################################################
     public sealed class BoardDeletionFlow
     {

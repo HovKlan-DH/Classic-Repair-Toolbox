@@ -118,6 +118,24 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
+        // *** A DRAFT MADE AFTER THE DECIDING SUBMISSION WAS SENT HOLDS NONE OF ITS WORK (code review,
+        // 2026-11-02). *** Equal to the published board proves nothing of it: a draft is a copy of the
+        // published board, so one made later is equal until its first change. Opening "Table view", a
+        // component or "KiCad: Files" makes one to look, and the next status check found it identical -
+        // "published" was about a submission from before it existed - and deleted it under the table,
+        // the pane or the KiCad panel. So such a draft is not the work that was published, the rule the
+        // Drafts row's badge and a discard's report keep (SubmissionReceiptPresenter.LatestForBoard,
+        // DraftDiscardContract). Whoever made it lets it go (TabDrafts.LetGoOfDraftMadeOnlyToLook).
+        //
+        // A marker that does not say when it was made, or a receipt that does not say when it was sent,
+        // tells nothing: judged by what the draft holds, as before.
+        // ###########################################################################################
+        private static bool WasMadeAfter(DraftStatus? status, SubmissionReceipt receipt) =>
+            status?.CreatedUtc is DateTimeOffset created &&
+            receipt.SentUtc != default &&
+            created > receipt.SentUtc;
+
+        // ###########################################################################################
         // Is this draft now a duplicate of the published board, and therefore safe to delete?
         //
         // Returns false for every uncertainty - no draft, no published workbook, an unreadable
@@ -137,8 +155,14 @@ namespace Handlers.DataHandling
         // same name, after submitting had that work deleted without being asked the moment the
         // published rows caught up. All three are now compared, and ALL must match.
         // ###########################################################################################
-        public static bool IsRetirable(DraftStatus? status)
+        public static bool IsRetirable(DraftStatus? status) => DraftRetirement.IsRetirable(status, out _);
+
+        // `bytesToCome`: kept only because a file the published board lists has not reached the tree's
+        // store yet - see StoredFilesMatchPublished, and why FindRetirableDrafts does not remember it.
+        private static bool IsRetirable(DraftStatus? status, out bool bytesToCome)
         {
+            bytesToCome = false;
+
             if (status is null)
             {
                 return false;
@@ -173,7 +197,7 @@ namespace Handlers.DataHandling
             // ###########################################################################################
             if (!File.Exists(status.WorkbookPath))
             {
-                return DraftRetirement.FilesMatchPublished(status, workbookIsGone: true);
+                return DraftRetirement.FilesMatchPublished(status, workbookIsGone: true, out bytesToCome);
             }
 
             BoardData? draft = BoardDataReader.ReadWorkbookUncached(status.WorkbookPath);
@@ -217,7 +241,7 @@ namespace Handlers.DataHandling
             }
 
             // And the bytes of every file the draft folder holds.
-            return DraftRetirement.FilesMatchPublished(status, workbookIsGone: false);
+            return DraftRetirement.FilesMatchPublished(status, workbookIsGone: false, out bytesToCome);
         }
 
         // ###########################################################################################
@@ -261,8 +285,10 @@ namespace Handlers.DataHandling
         // with the published board's own - found by the published WORKBOOK's name, which for a new
         // board differs from the draft's.
         // ###########################################################################################
-        private static bool FilesMatchPublished(DraftStatus status, bool workbookIsGone)
+        private static bool FilesMatchPublished(DraftStatus status, bool workbookIsGone, out bool bytesToCome)
         {
+            bytesToCome = false;
+
             string? draftFolder = Path.GetDirectoryName(status.WorkbookPath);
             string? publishedFolder = Path.GetDirectoryName(status.PublishedWorkbookPath);
 
@@ -274,7 +300,7 @@ namespace Handlers.DataHandling
 
             if (DataTreeLayout.IsBoardFile(status.PublishedWorkbookPath))
             {
-                return DraftRetirement.StoredFilesMatchPublished(status, draftFolder);
+                return DraftRetirement.StoredFilesMatchPublished(status, draftFolder, out bytesToCome);
             }
 
             string draftSidecar = BoardComponentHighlightStorage.GetJsonPath(status.WorkbookPath);
@@ -333,9 +359,23 @@ namespace Handlers.DataHandling
         // row back (DraftFileMemory), and the next run's first save tidies them - a run that ended
         // without one kept a published draft for good. A draft that lost its board file lists
         // nothing, so there every stored file still counts.
+        //
+        // *** AND WHAT IT LISTS MUST BE THE PUBLISHED BOARD'S, NAME AND CHECKSUM (code review, 2026-11-02).
+        // *** The tree's store is every board's, so bytes found there say nothing of THIS board: a KiCad
+        // file imported after the last submission, or a file replaced under its name, with bytes another
+        // board lists, changed no row and "matched" - and the draft holding it was deleted. Only that way
+        // round: a file the published board has and the draft does not is nothing the draft holds (the
+        // list follows the rows, which were compared, and a KiCad file removed goes back to the published
+        // one - DraftWorkbookStore.RemoveFiles).
+        //
+        // `bytesToCome`: the draft is kept only because a file the published board LISTS is not in the
+        // tree's store - a download not finished, or a sync that failed part-way. That ends by itself.
+        // Bytes the published board names nowhere are the contributor's own, and no download brings them.
         // ###########################################################################################
-        private static bool StoredFilesMatchPublished(DraftStatus status, string draftFolder)
+        private static bool StoredFilesMatchPublished(DraftStatus status, string draftFolder, out bool bytesToCome)
         {
+            bytesToCome = false;
+
             string treeRoot = DraftRetirement.TreeRootOf(status);
             IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? published = DraftFiles.ListedIn(status.PublishedWorkbookPath);
 
@@ -350,6 +390,15 @@ namespace Handlers.DataHandling
             {
                 // A board file that cannot be read might list anything. Keep the draft.
                 if (DraftFiles.ListedIn(status.WorkbookPath) is not { } draftFiles)
+                {
+                    return false;
+                }
+
+                bool listsThePublishedFiles = draftFiles.Values.All(file =>
+                    published.TryGetValue(file.Name, out BoardDocument.StoredFileRow? theirs) &&
+                    string.Equals(theirs.Sha256, file.Sha256, StringComparison.OrdinalIgnoreCase));
+
+                if (!listsThePublishedFiles)
                 {
                     return false;
                 }
@@ -380,6 +429,10 @@ namespace Handlers.DataHandling
 
                     if (publishedFile.Length == 0 || !DraftRetirement.SameBytes(draftFile, publishedFile))
                     {
+                        bytesToCome = publishedFile.Length > 0
+                            && !File.Exists(publishedFile)
+                            && DraftFiles.StoredPaths(treeRoot, published.Values).Contains(Path.GetFullPath(publishedFile));
+
                         return false;
                     }
                 }
@@ -645,6 +698,14 @@ namespace Handlers.DataHandling
                 }
 
                 DraftStatus? status = resolveStatus(receipt.BoardId);
+
+                // Asked of the receipt, so never remembered as a "keep" below: a later submission of
+                // this very draft changes the answer with nothing in either folder moved.
+                if (DraftRetirement.WasMadeAfter(status, receipt))
+                {
+                    continue;
+                }
+
                 string folder = Path.GetDirectoryName(status?.WorkbookPath ?? string.Empty) ?? string.Empty;
 
                 // BEFORE the comparison, so an edit made while it runs changes the stamp.
@@ -673,10 +734,21 @@ namespace Handlers.DataHandling
 
                 // Carries the draft's WORKBOOK key, not the receipt's board id: everything that
                 // follows - the unsaved-edits guard, the delete, the cache clear - is keyed by it.
-                if (DraftRetirement.IsRetirable(status))
+                if (DraftRetirement.IsRetirable(status, out bool bytesToCome))
                 {
                     DraftRetirement.KeptVerdicts.TryRemove(folder, out _);
                     retirable.Add(new RetirableDraft(status!.BoardKey, folder, stamp));
+                }
+                else if (bytesToCome)
+                {
+                    // ###########################################################################################
+                    // *** BYTES ON THEIR WAY ARE NO VERDICT (code review, 2026-11-02). *** The tree's store is
+                    // in neither folder stamped above, so when they arrived nothing had moved, and the keep
+                    // held the draft until the next launch - through the check right after the sync too. The
+                    // saving stands: a draft that still differs (rows, order, calibrations, its list) is kept
+                    // before its files are looked at and remembered as ever, and this one ends with the sync.
+                    // ###########################################################################################
+                    DraftRetirement.KeptVerdicts.TryRemove(folder, out _);
                 }
                 else if (folder.Length > 0)
                 {

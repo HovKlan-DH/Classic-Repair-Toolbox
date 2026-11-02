@@ -68,6 +68,11 @@ namespace Handlers.MaintainerHandling
                     if (section.Added.Count > 0 && !ReviewNotInTable.TableSheets.Contains(section.Section))
                         lines.Add(ReviewNoteLine.FromRuns(ReviewNotInTable.DescribeNewBoardSection(section), ReviewNoteKind.Change));
                 }
+
+                // No row says this, an amendment cannot change it, and an approval publishes it (code
+                // review, 2026-11-02).
+                if (changes.RegionsNow == true)
+                    lines.Add(new ReviewNoteLine(BoardRegions.NewBoardLine, ReviewNoteKind.Change));
             }
             else
             {
@@ -127,8 +132,7 @@ namespace Handlers.MaintainerHandling
             List<string> described =
             [
                 .. section.Removed.Select(key => ReviewNotInTable.DescribeRow(section.Section, ReviewChangeKind.Removed, key, fields: null)),
-                .. section.Changed.Select(key => ReviewNotInTable.DescribeRow(
-                    section.Section, ReviewChangeKind.Changed, key, section.FieldChanges.TryGetValue(key, out var fields) ? fields : null)),
+                .. ReviewNotInTable.DescribeChanged(section),
                 .. section.Added.Select(key => ReviewNotInTable.DescribeRow(section.Section, ReviewChangeKind.Added, key, fields: null)),
                 .. section.Renamed.Select(rename => ReviewNotInTable.DescribeRename(section.Section, rename))
             ];
@@ -141,6 +145,17 @@ namespace Handlers.MaintainerHandling
             if (more > 0)
                 yield return ReviewNoteLine.FromRuns(ReviewNotInTable.Counted("and ", more, " more"), ReviewNoteKind.Change, indent: 1);
         }
+
+        // ###########################################################################################
+        // The rows that stayed and changed: each with what moved on it alone when the server says so, which
+        // it does where a key stands more than once (code review, 2026-11-02: one rectangle moved and another
+        // resized both read "Moved and resized") - else by the key's fields, as it always read.
+        // ###########################################################################################
+        private static IEnumerable<string> DescribeChanged(ReviewSectionView section) =>
+            section.ChangedRows is { } rows
+                ? rows.Select(row => ReviewNotInTable.DescribeRow(section.Section, ReviewChangeKind.Changed, row.Key, row.Fields))
+                : section.Changed.Select(key => ReviewNotInTable.DescribeRow(
+                    section.Section, ReviewChangeKind.Changed, key, section.FieldChanges.TryGetValue(key, out var fields) ? fields : null));
 
         // ###########################################################################################
         // One change in words. A highlight's key is its schematic and its component label; a

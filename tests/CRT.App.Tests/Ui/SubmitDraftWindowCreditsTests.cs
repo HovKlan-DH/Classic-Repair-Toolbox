@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using CRT;
 using Handlers.DataHandling;
 
@@ -139,6 +140,60 @@ public sealed class SubmitDraftWindowCreditsTests : IDisposable
             string said = window.GetControl<TextBlock>("OutcomeText").Text ?? string.Empty;
             Assert.DoesNotContain("your draft is unchanged", said, StringComparison.Ordinal);
             Assert.Contains("Your credit is in your draft now", said, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // *** CANCEL WHILE THE CREDIT GOES IN CANCELS (code review, 2026-11-02). *** The progress panel is up
+    // with Cancel live while the credit is saved and the board read again, but the token did not exist
+    // yet: Cancel, Escape or the title bar closed the window and nothing else, and the submission then
+    // went out with no dialog - uploaded, queued, the maintainers mailed. The credit put in stays in the
+    // draft, and nothing is said to have been sent.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Cancel")]
+    [InlineData("Escape")]
+    [InlineData("Title bar")]
+    public async Task Cancelling_while_the_credit_goes_into_the_draft_sends_nothing(string how)
+    {
+        var withCredits = new BoardData { Credits = [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }] };
+        var going = new TaskCompletionSource<(BoardData Board, string Fingerprint)?>();
+        var sent = 0;
+
+        await UiTest.RunAsync(async () =>
+        {
+            SubmitDraftWindow window = this.BuildWindow(new BoardData(), _ => going.Task);
+            window.GetControl<TextBox>("CreditNameTextBox").Text = "Bo";
+            window.SendOverrideForTests = (_, _) =>
+            {
+                sent++;
+                return Task.FromResult(new SubmissionResult { SubmissionId = 1, IsAccepted = true, State = "pending" });
+            };
+
+            window.Show();
+
+            Task submitting = window.SubmitNowAsync();
+            Assert.False(submitting.IsCompleted);
+
+            switch (how)
+            {
+                case "Cancel":
+                    window.GetControl<Button>("CancelButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                    break;
+                case "Escape":
+                    window.KeyPress(Avalonia.Input.Key.Escape, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.Escape, keySymbol: null);
+                    break;
+                default:
+                    window.Close();
+                    break;
+            }
+
+            going.SetResult((withCredits, "after"));
+            await submitting;
+
+            Assert.Equal(0, sent);
+            Assert.Null(window.Result);
+            Assert.False(window.IsVisible);
         });
     }
 

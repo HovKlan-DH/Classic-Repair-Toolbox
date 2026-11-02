@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Handlers.DataHandling;
 using Handlers.MaintainerHandling;
 using CRT;
@@ -55,12 +56,228 @@ public sealed class OscilloscopeModelsViewTests
             Assert.Equal("Voltcraft DOV702", card[0]);
             Assert.Equal(OscilloscopeModelsDisplay.NewModel, card[1]);
             Assert.StartsWith("Sent by Anna (anna@example.com)", card[2]);
-            Assert.Equal(OscilloscopeModelsDisplay.SuitePassed, card[3]);
-            Assert.Equal("Firmware 1.2 - everything but Single works", card[4]);
-            Assert.Contains("Identify | *IDN?", card[5]);
-            Assert.Contains("Screen picture | :DISP:DATA?", card[5]);
-            Assert.Equal("[reason]", card[6]);
-            Assert.Equal("[Publish:Accept] [Reject:Danger]", card[7]);
+            Assert.Equal(OscilloscopeModelsDisplay.SentTypedIn, card[3]);
+            Assert.Equal(OscilloscopeModelsDisplay.SuitePassed, card[4]);
+            Assert.Equal("Firmware 1.2 - everything but Single works", card[5]);
+            Assert.Contains("Identify | *IDN?", card[6]);
+            Assert.Contains("Screen picture | :DISP:DATA?", card[6]);
+            Assert.Equal("[reason]", card[7]);
+            Assert.Equal("[Publish:Accept] [Reject:Danger]", card[8]);
+        });
+    }
+
+    // ###########################################################################################
+    // *** NOTHING A STRANGER CAN TYPE IS DRAWN AS GOOD NEWS (code review, 2026-11-02 - Security). *** A
+    // card reads who sent it from an account, or says the name and address were typed in, in the
+    // warning color. The suite's line was green, on the sender's own word alone, and is plain now.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(false, OscilloscopeModelsDisplay.SentTypedIn, true)]
+    [InlineData(true, OscilloscopeModelsDisplay.SentWithAccount, false)]
+    public async Task A_card_says_who_the_sender_is_and_draws_no_word_of_the_senders_as_good_news(bool signedIn, string line, bool warned)
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new OscilloscopeModelsView { ReadOverrideForTests = () => List(Entry() with { SignedIn = signedIn }) };
+
+            await view.LoadAsync();
+
+            IReadOnlyList<string> card = Assert.Single(view.CardsForTests());
+            Assert.Equal(line, card[3]);
+
+            // Which of the card's two looks each line has: dimmed, or at full strength in the warning color.
+            var body = (Avalonia.Controls.StackPanel)((Avalonia.Controls.Border)view.GetControl<Avalonia.Controls.StackPanel>("ModelsPanel").Children[0]).Child!;
+
+            Assert.Equal(warned ? 1 : 0.8, body.Children[3].Opacity);
+            Assert.Equal(0.8, body.Children[4].Opacity);
+        });
+    }
+
+    // ###########################################################################################
+    // The list follows the count the queue answered, quietly: nothing asked while it agrees, and a
+    // quiet read that fails says nothing over what is on show.
+    // ###########################################################################################
+    [Fact]
+    public async Task Following_the_count_reads_only_when_it_differs_and_fails_without_a_word()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            int reads = 0;
+            bool fails = false;
+
+            var view = new OscilloscopeModelsView
+            {
+                ReadOverrideForTests = () =>
+                {
+                    reads++;
+                    return fails
+                        ? Task.FromResult(ReviewApiResult<OscilloscopeModelQueueAnswer>.Failed(ReviewApiFailure.Unreachable, "Could not reach the server."))
+                        : List(Entry());
+                },
+            };
+
+            await view.LoadAsync();
+            Assert.Equal(1, reads);
+
+            await view.FollowWaitingCountAsync(1, onScreen: false);
+            Assert.Equal(1, reads);
+
+            await view.FollowWaitingCountAsync(2, onScreen: false);
+            Assert.Equal(2, reads);
+
+            fails = true;
+            await view.FollowWaitingCountAsync(2, onScreen: false);
+
+            Assert.Equal(3, reads);
+            Assert.Null(view.MessageForTests);
+            Assert.Single(view.CardsForTests());
+        });
+    }
+
+    // ###########################################################################################
+    // *** ON SCREEN THE LIST IS READ AT EVERY FULL CHECK, NOT ONLY WHEN THE COUNT MOVES (code review,
+    // 2026-11-02). *** A contributor re-sent a corrected model of the same name: the server marks the
+    // pending copy replaced and adds the new one, so the count stayed 1. The card kept the old commands
+    // and the old id, and Publish on it answered "decided meanwhile" until Refresh was pressed. Off screen
+    // the count is still all that is asked: nothing shows the list there, and showing it reads it.
+    // ###########################################################################################
+    [Fact]
+    public async Task On_screen_a_model_replaced_by_a_newer_one_shows_though_the_count_stays()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            OscilloscopeModelQueueEntry waiting = Entry();
+            int reads = 0;
+
+            var view = new OscilloscopeModelsView
+            {
+                ReadOverrideForTests = () =>
+                {
+                    reads++;
+                    return List(waiting);
+                },
+            };
+
+            await view.LoadAsync();
+
+            waiting = Entry(42) with { Message = "Corrected" };
+
+            await view.FollowWaitingCountAsync(1, onScreen: false);
+            Assert.Equal(1, reads);
+            Assert.Equal("Firmware 1.2 - everything but Single works", Assert.Single(view.CardsForTests())[5]);
+
+            await view.FollowWaitingCountAsync(1, onScreen: true);
+            Assert.Equal(2, reads);
+            Assert.Equal("Corrected", Assert.Single(view.CardsForTests())[5]);
+        });
+    }
+
+    // A read showing nothing new makes no card again: a card made again throws away the press going down
+    // on its buttons and moves the focus, and this happens every minute while the screen is open.
+    [Fact]
+    public async Task On_screen_a_read_with_nothing_new_makes_no_card_again()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            int reads = 0;
+            int? counted = null;
+
+            var view = new OscilloscopeModelsView
+            {
+                ReadOverrideForTests = () =>
+                {
+                    reads++;
+                    return List(Entry());
+                },
+            };
+
+            await view.LoadAsync();
+
+            view.ModelsWaitingRead = count => counted = count;
+
+            Avalonia.Controls.Control card = view.GetControl<Avalonia.Controls.StackPanel>("ModelsPanel").Children[0];
+
+            // The queue's answer said 2: what was read is what the badges count, card or no card.
+            await view.FollowWaitingCountAsync(2, onScreen: true);
+
+            Assert.Equal(2, reads);
+            Assert.Same(card, view.GetControl<Avalonia.Controls.StackPanel>("ModelsPanel").Children[0]);
+            Assert.Equal(1, counted);
+        });
+    }
+
+    // Made again, the card would take the box from under the caret - the words survive that, the
+    // typing does not. The next check asks again, once the focus has left it.
+    [Fact]
+    public async Task Following_the_count_waits_while_a_reason_is_being_typed()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            int reads = 0;
+
+            var view = new OscilloscopeModelsView
+            {
+                ReadOverrideForTests = () =>
+                {
+                    reads++;
+                    return List(Entry());
+                },
+            };
+
+            var window = new Avalonia.Controls.Window { Content = view, Width = 900, Height = 700 };
+            window.Show();
+
+            await view.LoadAsync();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Avalonia.Controls.TextBox reason = Avalonia.VisualTree.VisualExtensions
+                .GetVisualDescendants(view.GetControl<Avalonia.Controls.StackPanel>("ModelsPanel"))
+                .OfType<Avalonia.Controls.TextBox>()
+                .Single();
+
+            reason.Focus();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(reason.IsKeyboardFocusWithin);
+
+            await view.FollowWaitingCountAsync(2, onScreen: true);
+            Assert.Equal(1, reads);
+
+            Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view)
+                .OfType<Avalonia.Controls.Button>()
+                .First(button => button.Content is "Publish")
+                .Focus();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.False(reason.IsKeyboardFocusWithin);
+
+            await view.FollowWaitingCountAsync(2, onScreen: true);
+            Assert.Equal(2, reads);
+
+            window.Close();
+        });
+    }
+
+    // Signed out while it was read: nothing of the answer goes on show (the panel's half of the tab's
+    // own rule, TabMaintainerSessionTests).
+    [Fact]
+    public async Task A_quiet_read_landing_after_signing_out_shows_nothing()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var gate = new TaskCompletionSource<ReviewApiResult<OscilloscopeModelQueueAnswer>>();
+            var view = new OscilloscopeModelsView { ReadOverrideForTests = () => gate.Task };
+            var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "a@example.com", "A");
+
+            view.Initialize(null, session);
+
+            Task reading = view.FollowWaitingCountAsync(1, onScreen: false);
+
+            view.Initialize(null, null);
+            view.Clear();
+
+            gate.SetResult(ReviewApiResult<OscilloscopeModelQueueAnswer>.Ok(new OscilloscopeModelQueueAnswer([Entry()])));
+            await reading;
+
+            Assert.Empty(view.CardsForTests());
         });
     }
 
@@ -186,6 +403,100 @@ public sealed class OscilloscopeModelsViewTests
             await view.DecideAsync(41, reason: null);
 
             Assert.Equal("Voltcraft DOV702 is published. The stable source has no main data file.", view.MessageForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A DECISION WITH NO ANSWER IS CHECKED, NOT CALLED A FAILURE (code review, 2026-11-02). *** It
+    // said "The server did not answer within 2 minutes. Try again in a moment." in red, the sentence
+    // for a READ - even when the server had finished, the list read again then showing the card gone
+    // with no word that it was published. Pressed again, a model still listed got "decided meanwhile".
+    // The list read again now says which it is: gone, it finished; there, it has not (yet).
+    // ###########################################################################################
+    private static OscilloscopeModelsView TimedOut(params OscilloscopeModelQueueEntry[] afterwards)
+    {
+        int reads = 0;
+
+        return new OscilloscopeModelsView
+        {
+            ReadOverrideForTests = () => ++reads == 1 ? List(Entry()) : List(afterwards),
+            DecideOverrideForTests = (_, _) => Task.FromResult(
+                ReviewApiResult<OscilloscopeModelDecisionAnswer>.Failed(ReviewApiFailure.TimedOut, WaitWording.NoAnswer)),
+        };
+    }
+
+    [Fact]
+    public async Task A_publish_with_no_answer_whose_model_left_the_list_is_said_to_have_finished()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            OscilloscopeModelsView view = TimedOut();
+
+            await view.LoadAsync();
+            await view.DecideAsync(41, reason: null);
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, but it did finish: Voltcraft DOV702 has left the list - it is published.",
+                view.MessageForTests);
+        });
+    }
+
+    [Fact]
+    public async Task A_reject_with_no_answer_whose_model_left_the_list_is_said_to_have_finished()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            OscilloscopeModelsView view = TimedOut();
+
+            await view.LoadAsync();
+            await view.DecideAsync(41, "Single does not work.");
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, but it did finish: Voltcraft DOV702 has left the list - it will not go in, and the contributor is told why.",
+                view.MessageForTests);
+        });
+    }
+
+    [Fact]
+    public async Task A_decision_with_no_answer_whose_model_is_still_listed_says_so_and_not_to_press_at_once()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            OscilloscopeModelsView view = TimedOut(Entry());
+
+            await view.LoadAsync();
+            await view.DecideAsync(41, reason: null);
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, and Voltcraft DOV702 is still in the list. " +
+                "It may still be working on it - wait a minute and look again before trying again.",
+                view.MessageForTests);
+        });
+    }
+
+    [Fact]
+    public async Task A_decision_with_no_answer_and_no_list_says_it_could_not_be_checked()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            int reads = 0;
+
+            var view = new OscilloscopeModelsView
+            {
+                ReadOverrideForTests = () => ++reads == 1
+                    ? List(Entry())
+                    : Task.FromResult(ReviewApiResult<OscilloscopeModelQueueAnswer>.Failed(ReviewApiFailure.Unreachable, "Could not reach the server.")),
+                DecideOverrideForTests = (_, _) => Task.FromResult(
+                    ReviewApiResult<OscilloscopeModelDecisionAnswer>.Failed(ReviewApiFailure.TimedOut, WaitWording.NoAnswer)),
+            };
+
+            await view.LoadAsync();
+            await view.DecideAsync(41, reason: null);
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, and whether it finished could not be checked. " +
+                "Wait a minute and look again before trying again.",
+                view.MessageForTests);
         });
     }
 }

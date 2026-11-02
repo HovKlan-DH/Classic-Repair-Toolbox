@@ -210,8 +210,9 @@ public sealed class BoardSectionsTests
 
     // ###########################################################################################
     // AFTER NO ANSWER IN TWO MINUTES the board's submissions say what happened: the NEWEST one with
-    // the reason given (a reason used before must not be taken for this one), and whether it reached
-    // BETA - "merged", or "published" once it went on to stable - or waits in the queue.
+    // the reason given, newer than what the board held before sending (see the next test), and
+    // whether it reached BETA - "merged", or "published" once it went on to stable - or waits in the
+    // queue.
     // ###########################################################################################
     [Fact]
     public void After_a_timeout_the_newest_submission_with_the_reason_is_the_change_and_its_state_says_how_far_it_got()
@@ -225,13 +226,37 @@ public sealed class BoardSectionsTests
             board, [], [],
             [Entry(40, "Corrected U8.", "published"), Entry(57, " Corrected U8. ", "merged"), Entry(58, "Something else.", "pending")]);
 
-        BoardSubmissionEntry found = BoardSections.FindSent(detail, "Corrected U8.")!;
+        BoardSubmissionEntry found = BoardSections.FindSent(detail, "Corrected U8.", newerThan: 0)!;
 
         Assert.Equal(57, found.Id);
         Assert.True(BoardSections.ReachedBeta(found));
         Assert.True(BoardSections.ReachedBeta(Entry(1, "x", "published")));
         Assert.False(BoardSections.ReachedBeta(Entry(1, "x", "pending")));
-        Assert.Null(BoardSections.FindSent(detail, "Never sent."));
+        Assert.Null(BoardSections.FindSent(detail, "Never sent.", newerThan: 0));
+    }
+
+    // ###########################################################################################
+    // *** AN OLD SUBMISSION WITH THE SAME REASON IS NOT THIS CHANGE (code review, 2026-11-02). *** The
+    // newest with the reason is not enough: #40 "Typo" was published long ago, today's Save with the
+    // same reason never arrived - and the table was read again over the typed change. Only one newer
+    // than anything the board held before sending can be it.
+    // ###########################################################################################
+    [Fact]
+    public void A_submission_with_the_same_reason_from_before_the_save_is_not_the_change()
+    {
+        static BoardSubmissionEntry Entry(long id, string summary, string state) =>
+            new(id, null, summary, state, DateTimeOffset.UtcNow, null, null);
+
+        BoardOverviewEntry board = new(BoardSectionsTests.BoardId, "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1);
+
+        var before = new BoardDetailAnswer(board, [], [], [Entry(40, "Typo", "published"), Entry(39, "Typo", "rejected")]);
+        var after = new BoardDetailAnswer(board, [], [], [Entry(40, "Typo", "published"), Entry(41, "Typo", "merged")]);
+
+        Assert.Equal(40, BoardSections.NewestSubmissionId(before));
+        Assert.Equal(0, BoardSections.NewestSubmissionId(new BoardDetailAnswer(board, [], [], [])));
+
+        Assert.Null(BoardSections.FindSent(before, "Typo", newerThan: 40));
+        Assert.Equal(41, BoardSections.FindSent(after, "Typo", newerThan: 40)!.Id);
     }
 
     // ###########################################################################################

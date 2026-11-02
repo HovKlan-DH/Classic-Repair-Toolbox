@@ -61,8 +61,17 @@ namespace Handlers.DataHandling
         // Matches NewContributeStrategy.md's stated key for a highlight: schematic + label. A
         // board label can appear on more than one schematic page (e.g. a connector shown on both
         // a main board and a daughterboard page), so schematic name must be part of the key too.
+        //
+        // *** THIS KEY NAMES A COMPONENT ON A SCHEMATIC, NOT ONE RECTANGLE (code review, 2026-11-02). ***
+        // A component can have several on one schematic - 198 such pairs on the shipped boards - so what
+        // tells two rectangles apart is ALL their values (MayRepeat; BoardDataDiffer.LineUpRepeatedRows,
+        // DraftRebase's AllValues). The key stays what names them, to the overlay and to a maintainer.
         public static string ForComponentHighlight(string schematicName, string boardLabel) =>
             Join(schematicName, boardLabel);
+
+        // Whether several rows of this type may share a key by right - where everywhere else it is a data
+        // defect in a hand-edited file, the first of which counts.
+        public static bool MayRepeat(System.Type rowType) => rowType == typeof(ComponentHighlightEntry);
 
         // ###########################################################################################
         // A file or a link is its label or category and its name, PLUS ITS REGION when it has one (owner

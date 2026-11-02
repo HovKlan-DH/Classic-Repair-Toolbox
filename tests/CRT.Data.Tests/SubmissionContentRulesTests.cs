@@ -209,6 +209,29 @@ namespace CRT.Data.Tests
             Assert.Empty(reason);
         }
 
+        // ###########################################################################################
+        // *** A SUBMITTED FILE OF NO BYTES IS REFUSED WHATEVER ITS TYPE (owner decision, 2026-11-02:
+        // "Refuse empty files"). *** What finalise and the publish ask, on the bytes themselves - so a
+        // text type, which Matches passes (An_empty_file_is_text_but_never_an_image: a feedback
+        // attachment), and a KiCad straggler, which skips the type check, are refused too.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("empty.txt")]
+        [InlineData("empty.html")]
+        [InlineData("empty.png")]
+        [InlineData("empty.pdf")]
+        [InlineData("Commodore/C64/250407/KiCad data/root.kicad_sch")]
+        [InlineData("KiCad data/KiCad-traces.json")]
+        public void A_submitted_file_of_no_bytes_is_refused_whatever_its_type(string path)
+        {
+            int opened = 0;
+
+            Assert.False(SubmissionContentRules.MatchesWholeFile(path, [], () => { opened++; return null; }, out string reason));
+
+            Assert.Contains("empty", reason, StringComparison.Ordinal);
+            Assert.Equal(0, opened);
+        }
+
         [Fact]
         public void The_whole_file_check_opens_nothing_when_the_bytes_fail_or_no_rule_reads_further()
         {

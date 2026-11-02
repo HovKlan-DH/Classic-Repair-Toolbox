@@ -30,6 +30,37 @@ public sealed class BoardFileLookupTests
         Assert.Equal("in the submission", lookup.Where);
     }
 
+    // ###########################################################################################
+    // *** A FILE OF NO BYTES IS TOLD APART (owner decision, 2026-11-02: "Refuse empty files"), in the
+    // draft and in the downloaded data, so the table can mark its cell. A good copy put there is
+    // found by the same lookup: an answer that was not "found" is always asked again.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_of_no_bytes_in_a_draft_is_said_empty_until_a_good_copy_is_there()
+    {
+        using var workspace = new TempWorkspace();
+        string file = workspace.WriteFile("Drafts/notes.txt", string.Empty);
+
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), workspace.Path_("Drafts"));
+
+        Assert.Equal(BoardFileState.Empty, lookup.Check("notes.txt").State);
+
+        File.WriteAllText(file, "x");
+
+        Assert.Equal(BoardFileState.Found, lookup.Check("notes.txt").State);
+    }
+
+    [Fact]
+    public void A_file_of_no_bytes_in_the_downloaded_data_is_said_empty()
+    {
+        using var workspace = new TempWorkspace();
+        workspace.WriteFile($"Data/{Board}/empty.png", string.Empty);
+
+        var lookup = new DiskFileLookup(workspace.Path_("Data"), draftBoardFolder: string.Empty);
+
+        Assert.Equal(BoardFileState.Empty, lookup.Check($"{Board}/empty.png").State);
+    }
+
     [Fact]
     public void A_file_in_the_downloaded_data_is_found()
     {

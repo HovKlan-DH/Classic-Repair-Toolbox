@@ -290,6 +290,126 @@ public sealed class ComponentCopyTests
         Assert.Equal(["1|"], copied.ComponentPins.Select(pin => $"{pin.Pin}|{pin.Region}"));
     }
 
+    // ###########################################################################################
+    // *** ...WHEREVER THE TARGET TOLD THEM APART PER REGION TOO (code review, 2026-11-02). *** Copied in
+    // PAL, the rows for every region replaced only what PAL listed, so the old NTSC rows stayed beside
+    // them: NTSC showed pin 1 twice, the new one and its own. "Rows for every region copied replace them
+    // in every region" is the promise; it now holds for the target's rows of one region as well.
+    // ###########################################################################################
+    private static ComponentCopySource ForEveryRegion() => ComponentCopy.Sources(
+        [("Other", new BoardData
+        {
+            Regions = ["PAL", "NTSC"],
+            Components = [new ComponentEntry { BoardLabel = "U7", PartNumber = "906114-01", Category = "IC" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U7", Pin = "1", Name = "New" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "New part" }],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U7", Name = "New link", Url = "https://example.org/new" }],
+        })],
+        "906114-01",
+        "PAL")[0];
+
+    private static BoardData ToldApartPerRegion() => new()
+    {
+        Regions = ["PAL", "NTSC"],
+        Components = [new ComponentEntry { BoardLabel = "U17", Category = "IC" }],
+        ComponentPins =
+        [
+            new ComponentPinEntry { BoardLabel = "U17", Pin = "1", Name = "OldP", Region = "PAL" },
+            new ComponentPinEntry { BoardLabel = "U17", Pin = "1", Name = "OldN", Region = "NTSC" },
+        ],
+        ComponentReplacements =
+        [
+            new ComponentReplacementEntry { BoardLabel = "U17", PartNumber = "OldP", Region = "PAL" },
+            new ComponentReplacementEntry { BoardLabel = "U17", PartNumber = "OldN", Region = "NTSC" },
+        ],
+        ComponentLinks =
+        [
+            new ComponentLinkEntry { BoardLabel = "U17", Name = "OldP", Url = "https://example.org/p", Region = "PAL" },
+            new ComponentLinkEntry { BoardLabel = "U17", Name = "OldN", Url = "https://example.org/n", Region = "NTSC" },
+        ],
+    };
+
+    [Theory]
+    [InlineData("PAL")]
+    [InlineData("NTSC")]
+    public void Rows_for_every_region_copied_replace_the_targets_rows_of_each_region(string shown)
+    {
+        BoardData copied = ComponentCopy.Apply(
+            ToldApartPerRegion(),
+            "U17",
+            shown,
+            ForEveryRegion(),
+            [ComponentCopyPart.Pins, ComponentCopyPart.Replacements, ComponentCopyPart.Links]);
+
+        Assert.Equal(["1:New:"], copied.ComponentPins.Select(pin => $"{pin.Pin}:{pin.Name}:{pin.Region}"));
+        Assert.Equal(["New part:"], copied.ComponentReplacements.Select(row => $"{row.PartNumber}:{row.Region}"));
+        Assert.Equal(["New link:"], copied.ComponentLinks.Select(row => $"{row.Name}:{row.Region}"));
+
+        Assert.Equal(["New"], ComponentPaneEdits.PinsOf(copied, "U17", "PAL").Select(pin => pin.Name));
+        Assert.Equal(["New"], ComponentPaneEdits.PinsOf(copied, "U17", "NTSC").Select(pin => pin.Name));
+    }
+
+    // A second copy changes nothing, so no empty step in the draft's history.
+    [Fact]
+    public void The_same_rows_for_every_region_copied_again_are_no_change()
+    {
+        List<ComponentCopyPart> parts = [ComponentCopyPart.Pins, ComponentCopyPart.Replacements, ComponentCopyPart.Links];
+
+        BoardData copied = ComponentCopy.Apply(ToldApartPerRegion(), "U17", "PAL", ForEveryRegion(), parts);
+
+        Assert.Same(copied, ComponentCopy.Apply(copied, "U17", "PAL", ForEveryRegion(), parts));
+    }
+
+    // Another component's rows of the other region are its own.
+    [Fact]
+    public void Rows_for_every_region_copied_leave_another_components_rows_alone()
+    {
+        BoardData target = ToldApartPerRegion().WithComponentSections(
+            componentPins: [.. ToldApartPerRegion().ComponentPins, new ComponentPinEntry { BoardLabel = "U18", Pin = "1", Name = "Mine", Region = "NTSC" }]);
+
+        BoardData copied = ComponentCopy.Apply(target, "U17", "PAL", ForEveryRegion(), [ComponentCopyPart.Pins]);
+
+        Assert.Contains(copied.ComponentPins, pin => pin is { BoardLabel: "U18", Name: "Mine", Region: "NTSC" });
+    }
+
+    // ###########################################################################################
+    // *** A COMPONENT RENAMED IS THE SAME COMPONENT (code review, 2026-11-02). *** No published row under
+    // its new label, it read as a component the published board lacks: "What you changed here" offered
+    // everything it holds, every part ticked, so pressing the button overwrote other boards' drafts with
+    // parts nobody had touched. Found through its old label; what really changed is still offered.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_only_renamed_has_changed_nothing_the_other_boards_can_take()
+    {
+        BoardData published = Other();
+        BoardData draft = ComponentPaneEdits.WithLabel(published, "U7", "U7X");
+
+        Assert.Empty(ComponentCopy.Changed(draft, published, "U7X", "PAL"));
+    }
+
+    [Fact]
+    public void What_else_changed_of_a_renamed_component_is_offered()
+    {
+        BoardData published = Other();
+        BoardData draft = ComponentPaneEdits.WithLinks(
+            ComponentPaneEdits.WithLabel(published, "U7", "U7X"),
+            "U7X",
+            "",
+            [new ComponentLinkEntry { Name = "Datasheet", Url = "https://example.org/other" }]);
+
+        Assert.Equal([ComponentCopyPart.Links], ComponentCopy.Changed(draft, published, "U7X", "PAL"));
+    }
+
+    // Published with no such label and no rename to find it by: every part it holds, as before.
+    [Fact]
+    public void A_component_the_published_board_lacks_still_offers_all_it_holds()
+    {
+        BoardData draft = ComponentPaneEdits.WithField(
+            ComponentPaneEdits.WithNewComponent(Other(), "U99", "", "IC"), "U99", "", ComponentField.Package, "DIP-8");
+
+        Assert.Equal([ComponentCopyPart.Package], ComponentCopy.Changed(draft, Other(), "U99", "PAL"));
+    }
+
     [Fact]
     public void A_link_of_the_region_shown_added_alone_is_what_changed()
     {

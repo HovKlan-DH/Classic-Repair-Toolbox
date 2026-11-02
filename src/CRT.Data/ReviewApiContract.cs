@@ -247,7 +247,11 @@ namespace Handlers.DataHandling
     // button also - just like the normal queue. Then there is no need to push it back and then reject
     // it"): the same rollback, but the submissions it takes out of BETA are REJECTED with the comment
     // instead of going back to the queue. Optional, so an older CRT Maintainer pushes back as before.
-    public sealed record BetaRollbackRequest(string BoardId, string Comment, bool Reject = false);
+    //
+    // `ExpectedBetaContentHash` (code review, 2026-11-02): BETA's content hash as the plan shown said
+    // it, so a rollback takes out what the confirmation named or nothing - the publish's and a
+    // deletion's own rule. Optional: without it (an older CRT) the server does as it always did.
+    public sealed record BetaRollbackRequest(string BoardId, string Comment, bool Reject = false, string? ExpectedBetaContentHash = null);
 
     // Kind is "restore" (production's bytes go back over BETA) or "remove" (a board never
     // promoted leaves the BETA tree). `Returning` is who goes back to the queue - named, because a
@@ -258,13 +262,17 @@ namespace Handlers.DataHandling
     // why the confirmation names them. Optional, so the plan still reads without them. A shared
     // file they ADDED is never removed by a rollback (BetaRollbackPlan's header), so there is no
     // list of removals - two fields that were always empty were dropped the same day.
+    //
+    // `BetaContentHash` (code review, 2026-11-02): what BETA held when this plan was made - sent back
+    // with the rollback (BetaRollbackRequest.ExpectedBetaContentHash).
     public sealed record BetaRollbackPlanAnswer(
         string BoardId,
         string Kind,
         IReadOnlyList<string> Restored,
         IReadOnlyList<string> Removed,
         IReadOnlyList<CarriedSubmission> Returning,
-        IReadOnlyList<string>? SharedRestored = null);
+        IReadOnlyList<string>? SharedRestored = null,
+        string? BetaContentHash = null);
 
     // `Rejected`: the submissions were rejected rather than returned to the queue - the request's
     // Reject, said back, so the Maintainer tab can tell an older server that ignored it (and pushed back)
@@ -389,8 +397,8 @@ namespace Handlers.DataHandling
     // for whatever he/she has contributed, and which has been accepted and rejected etc."). *** The
     // Maintainer tab's Contributor view. Optional and trailing, so an older Maintainer tab reads
     // this answer unchanged and an older server's answer reads as "not said":
-    //   - SignedIn: whether THIS submission was sent from an account (a verified address) or
-    //     without one (an address anybody could have typed);
+    //   - SignedIn: whether THIS submission was sent from an account whose address is verified, or
+    //     not (an address anybody could have typed - an account nobody verified counts as none);
     //   - AccountCreatedUtc: since when that account exists - null without one;
     //   - Submissions: the OTHER submissions the counts count, newest first - each one's board,
     //     description, state in CRT's words, dates and what the contributor was told.
@@ -1089,6 +1097,10 @@ namespace Handlers.DataHandling
 
     public sealed record OscilloscopeModelQueueAnswer(IReadOnlyList<OscilloscopeModelQueueEntry> Entries);
 
+    // SignedIn (code review, 2026-11-02 - Security): sent with a verified account, whose name and
+    // address these are. False: ContactName and ContactEmail are what the sender typed, and nothing
+    // checked them. FullTestSuitePassed is the sender's CRT's word in either case. Optional, so a
+    // missing one reads as not signed in - the careful side.
     public sealed record OscilloscopeModelQueueEntry(
         long Id,
         DateTimeOffset SubmittedUtc,
@@ -1101,7 +1113,8 @@ namespace Handlers.DataHandling
         bool FullTestSuitePassed,
         string ClientVersion,
         IReadOnlyDictionary<string, string>? PublishedValues = null,
-        bool InBeta = false);
+        bool InBeta = false,
+        bool SignedIn = false);
 
     public sealed record OscilloscopeModelDecisionRequest(long Id, string? Reason);
 

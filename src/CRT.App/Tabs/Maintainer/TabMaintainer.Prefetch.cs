@@ -113,9 +113,14 @@ namespace CRT
                 this.ShowTable(ready.Table, message: null);
             }
 
-            await this.ReadPrefetchedAgainAsync(row, ready.Table.Version, client, session);
+            this.LastPrefetchReReadForTests = this.ReadPrefetchedAgainAsync(row, ready.Table.Version, client, session);
+
+            await this.LastPrefetchReReadForTests;
             return true;
         }
+
+        // The latest quiet re-read, to the end of what it shows - for tests.
+        internal Task? LastPrefetchReReadForTests { get; private set; }
 
         // ###########################################################################################
         // The one quiet re-read after opening from what was read ahead - see the header. An answer
@@ -124,6 +129,8 @@ namespace CRT
         // ###########################################################################################
         private async Task ReadPrefetchedAgainAsync(ReviewQueueRow row, int tableVersion, ReviewApiClient client, ReviewSession session)
         {
+            int decisionsBefore = this.thisDecisionsSent;
+
             try
             {
                 Task<ReviewApiResult<ReviewSubmissionDetail>> detail = client.GetSubmissionAsync(session, row.Id);
@@ -131,16 +138,31 @@ namespace CRT
 
                 await Task.WhenAll(detail, table);
 
-                if (detail.Result.IsOk && this.SelectedQueueRow?.Id == row.Id)
+                // ###########################################################################################
+                // *** AN ANSWER OLDER THAN A DECISION IS NOT SHOWN (code review, 2026-11-02). *** Approve
+                // pressed at once on the entry read ahead, this arriving during or after it with the
+                // submission still selected (a two-person approval): it cleared what the decision said,
+                // put the old approval state back and turned the buttons on under a decision in flight.
+                // The rule ReapplyApprovalGate keeps - and neither for one decided elsewhere.
+                // ###########################################################################################
+                if (detail.Result.IsOk &&
+                    this.SelectedQueueRow?.Id == row.Id &&
+                    !this.thisDecisionInFlight &&
+                    !this.thisDecisionsClosed &&
+                    this.thisDecisionsSent == decisionsBefore)
+                {
                     this.ShowDetail(detail.Result.Value!);
+                }
 
                 // Only over the very table that was read ahead - not one a save has replaced since -
-                // and never over something typed into it.
+                // and never over something typed into it, a cell still in its editor included (code
+                // review, 2026-11-02: that is no unsaved change yet, and it was thrown away).
                 if (table.Result.IsOk &&
                     table.Result.Value!.Version != tableVersion &&
                     this.thisTableRow?.Id == row.Id &&
                     this.thisTable?.Version == tableVersion &&
-                    !this.TableEditor.HasUnsavedChanges)
+                    !this.TableEditor.HasUnsavedChanges &&
+                    !this.TableEditor.IsEditingCell)
                 {
                     this.ShowTable(table.Result.Value!, message: null);
                 }

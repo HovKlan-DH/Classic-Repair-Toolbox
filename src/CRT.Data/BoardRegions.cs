@@ -71,6 +71,9 @@ namespace Handlers.DataHandling
         public static string ChangedLine(bool hasNow) =>
             hasNow ? "This board now comes in PAL and NTSC versions" : "This board no longer comes in PAL and NTSC versions";
 
+        // The same of a new board that has them - the review and the board's history (code review, 2026-11-02).
+        public const string NewBoardLine = "This new board comes in PAL and NTSC versions";
+
         // Whether a word is one of the regions - capitals ignored, as every region is compared.
         public static bool IsRegion(string? region)
         {

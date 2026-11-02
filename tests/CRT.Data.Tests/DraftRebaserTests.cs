@@ -246,6 +246,167 @@ public sealed class DraftRebaserTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** "YOUR VERSION IS KEPT" INCLUDES THE FILE THE ROW NAMES (code review, 2026-11-02). *** The
+    // contributor edits a picture row's note, and the update removes that row and its file. The row
+    // stayed, with a conflict line saying so - while the file went, as one "left as copied, removed by
+    // the update": the picture blank, and Submit refusing file.missing. The bytes lie in the tree's
+    // store, which the next cleanup empties, so they are copied into the draft's own.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_kept_against_the_update_keeps_its_file_after_the_tree_lets_it_go()
+    {
+        this.Publish(Board("2026-09-01", Component("U8", "CPU")), "sheet v1", "u8 v1");
+        this.Seed();
+
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, BoardKey, board => DraftRebaserTests.WithImages(
+            board,
+            [new ComponentImageEntry { BoardLabel = "U8", Pin = "1", Name = "Clock", File = ImageB, Note = "Measured with the lid off" }])));
+
+        this.Publish(DraftRebaserTests.WithImages(Board("2026-10-01", Component("U8", "CPU")), []), "sheet v1", "unused");
+
+        DraftRebaseReport report = DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey);
+
+        Assert.Equal(DraftRebaseOutcome.BroughtUpToDate, report.Outcome);
+        Assert.Contains("Your version is kept", Assert.Single(report.Conflicts).What, StringComparison.Ordinal);
+
+        this.TreeLetsGoOf(ImageB, "u8 v1");
+
+        Assert.Contains(BoardFiles.ReadDocument(this.DraftWorkbook)!.ScopeBaselines, row => row.File == ImageB);
+        Assert.Equal("u8 v1", this.DraftFileText(ImageB));
+    }
+
+    // The same for a row the contributor ADDED citing that file: the base's row was left alone and goes
+    // with the update, but the new one still names the file.
+    [Fact]
+    public void A_row_the_contributor_added_citing_a_file_the_update_removed_keeps_that_file()
+    {
+        this.Publish(Board("2026-09-01", Component("U8", "CPU")), "sheet v1", "u8 v1");
+        this.Seed();
+
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, BoardKey, board => DraftRebaserTests.WithBoardFile(board, ImageB)));
+
+        this.Publish(DraftRebaserTests.WithImages(Board("2026-10-01", Component("U8", "CPU")), []), "sheet v1", "unused");
+
+        DraftRebaseReport report = DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey);
+
+        Assert.Equal(DraftRebaseOutcome.BroughtUpToDate, report.Outcome);
+
+        this.TreeLetsGoOf(ImageB, "u8 v1");
+
+        Assert.Equal("u8 v1", this.DraftFileText(ImageB));
+    }
+
+    // Its bytes gone from the tree already (the cleanup at launch got there first): nothing can keep
+    // them, and the conflict line says so rather than leaving a blank picture to be found at Submit.
+    [Fact]
+    public void A_kept_rows_file_whose_bytes_are_gone_already_is_said()
+    {
+        this.Publish(Board("2026-09-01", Component("U8", "CPU")), "sheet v1", "u8 v1");
+        this.Seed();
+
+        Assert.True(DraftWorkbookStore.Edit(this.DraftsRoot, BoardKey, board => DraftRebaserTests.WithImages(
+            board,
+            [new ComponentImageEntry { BoardLabel = "U8", Pin = "1", Name = "Clock", File = ImageB, Note = "Measured with the lid off" }])));
+
+        this.Publish(DraftRebaserTests.WithImages(Board("2026-10-01", Component("U8", "CPU")), []), "sheet v1", "unused");
+        this.TreeLetsGoOf(ImageB, "u8 v1");
+
+        DraftRebaseReport report = DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey);
+
+        Assert.Equal(DraftRebaseOutcome.BroughtUpToDate, report.Outcome);
+
+        DraftRebaseConflict gone = Assert.Single(report.Conflicts, conflict => conflict.Section == DraftRebaseFiles.FilesSection);
+        Assert.Equal(ImageB, gone.Row);
+        Assert.Contains("no longer on this computer", gone.What, StringComparison.Ordinal);
+
+        // No entry, as for any name a row cites with no file anywhere: the board's checks say it is missing.
+        Assert.DoesNotContain(BoardFiles.ReadDocument(this.DraftWorkbook)!.Files, file => file.Name == ImageB);
+        Assert.Null(this.DraftFilePath(ImageB));
+    }
+
+    // Nothing is copied for a row the contributor left alone: it goes with the update, as before.
+    [Fact]
+    public void A_file_nothing_cites_any_more_is_not_copied_into_the_draft()
+    {
+        this.Publish(Board("2026-09-01", Component("U8", "CPU")), "sheet v1", "u8 v1");
+        this.Seed();
+
+        this.Publish(DraftRebaserTests.WithImages(Board("2026-10-01", Component("U8", "CPU")), []), "sheet v1", "unused");
+
+        Assert.Empty(DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey).Conflicts);
+        Assert.False(Directory.Exists(Path.Combine(this.DraftFolder, DataTreeLayout.FilesFolder)));
+    }
+
+    // ###########################################################################################
+    // *** A NAME IN THE BASE CAN SAY ANYTHING (code review, 2026-11-02), Security. *** ".crt-base.json"
+    // travels with a draft folder somebody hands over, and "is a file of this name lying in the draft?"
+    // asked File.Exists of the name joined to the folder: a rooted name replaces the folder, so a UNC
+    // name made CRT contact that machine - which hands over the Windows sign-in's hash. Such a name is no
+    // file of the draft: its file is not taken for the contributor's replacement.
+    // ###########################################################################################
+    [Fact]
+    public void A_rooted_name_in_the_base_is_never_taken_for_a_file_lying_in_the_draft()
+    {
+        this.Publish(Board("2026-09-01", Component("U8", "CPU")), "sheet v1", "u8 v1");
+        this.Seed();
+
+        string elsewhere = this.thisWorkspace.Path_("Elsewhere", "planted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        File.WriteAllText(elsewhere, "not the draft's");
+
+        BoardDocument.StoredFileRow rooted = StoredFiles.EntryFor(elsewhere.Replace('\\', '/'), "not the draft's");
+        var row = new BoardDocument.BoardFileRow { Category = "Resources", Name = "Planted", File = rooted.Name };
+
+        BoardDocument based = DraftBaseStore.LoadDocument(this.DraftsRoot, BoardKey)!;
+        based.BoardFiles.Add(row);
+        based.Files.Add(rooted);
+        DraftBaseStore.SaveDocument(this.DraftsRoot, BoardKey, based);
+
+        BoardFiles.Change(this.DraftWorkbook, document =>
+        {
+            document.BoardFiles.Add(row);
+            document.Files.Add(rooted);
+        });
+
+        this.Publish(Board("2026-10-01", Component("U8", "CPU"), Component("C1", "Cap")), "sheet v1", "u8 v1");
+
+        Assert.Equal(DraftRebaseOutcome.BroughtUpToDate, DraftRebaser.Rebase(this.DraftsRoot, this.DataRoot, BoardKey).Outcome);
+
+        // Left as copied, and removed by the update: it goes. Taken for a file the contributor replaced,
+        // its row was held as the contributor's work.
+        Assert.DoesNotContain(BoardFiles.ReadDocument(this.DraftWorkbook)!.BoardFiles, file => file.File == rooted.Name);
+    }
+
+    // What the server's tidying does once nothing lists a file: its bytes leave the tree's store.
+    private void TreeLetsGoOf(string name, string content)
+    {
+        BoardDocument.StoredFileRow file = StoredFiles.EntryFor(name, content);
+        File.Delete(Path.Combine(this.DataRoot, DataTreeLayout.StoredFilePath(file.Sha256, name).Replace('/', Path.DirectorySeparatorChar)));
+        BoardDataReader.ClearAllCache();
+    }
+
+    private static BoardData WithImages(BoardData board, List<ComponentImageEntry> images) => new()
+    {
+        RevisionDate = board.RevisionDate,
+        HardwareName = board.HardwareName,
+        BoardName = board.BoardName,
+        Schematics = board.Schematics,
+        Components = board.Components,
+        ComponentImages = images,
+    };
+
+    private static BoardData WithBoardFile(BoardData board, string file) => new()
+    {
+        RevisionDate = board.RevisionDate,
+        HardwareName = board.HardwareName,
+        BoardName = board.BoardName,
+        Schematics = board.Schematics,
+        Components = board.Components,
+        ComponentImages = board.ComponentImages,
+        BoardLocalFiles = [new BoardLocalFileEntry { Category = "Resources", Name = "The same picture", File = file }],
+    };
+
+    // ###########################################################################################
     // *** "I HAVE LOOKED AT THIS" QUIETS A DRAFT JUDGED BY CONTENT TOO (code review, 2026-10-13). ***
     // A draft whose base cannot be used is offered only "I have looked at this" - and the content
     // check never read what it recorded, so the warning could never be dismissed.

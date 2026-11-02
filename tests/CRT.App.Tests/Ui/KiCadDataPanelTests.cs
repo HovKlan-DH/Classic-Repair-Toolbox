@@ -953,6 +953,58 @@ public sealed class KiCadDataPanelTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A KiCad FILE OF NO BYTES IS LEFT OUT OF AN IMPORT, AND NAMED (owner decision, 2026-11-02:
+    // "Refuse empty files"): *** it could never be sent, so it is told here rather than at Submit.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_empty_KiCad_file_is_left_out_of_an_import_and_named()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = this.thisWorkspace.Path_("Project");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "board.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "empty.kicad_sch"), string.Empty);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+            panel.ImportOnceOpen([source]);
+
+            await UntilImported(panel);
+            for (int i = 0; i < 200 && !panel.GetControl<Border>("KiCadSummaryPanel").IsVisible; i++)
+            {
+                await Task.Delay(10);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Equal(["board.kicad_pcb"], panel.KiCadFiles.Select(row => row.RelativePath));
+            Assert.Equal(KiCadImportSummary.EmptyFiles(["empty.kicad_sch"]), TextOf(panel, "KiCadLeftOutText"));
+        });
+    }
+
+    // A folder holding nothing else says the same, and imports nothing.
+    [Fact]
+    public async Task A_folder_of_only_empty_KiCad_files_imports_nothing_and_names_them()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = this.thisWorkspace.Path_("Project");
+        File.WriteAllText(this.thisWorkspace.Path_("Project", "empty.kicad_pcb"), string.Empty);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
+            panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
+
+            await panel.ImportKiCadFolderAsync(source);
+
+            Assert.Empty(panel.KiCadFiles);
+            Assert.Equal(KiCadImportSummary.EmptyFiles(["empty.kicad_pcb"]), panel.StatusTextForTests);
+        });
+    }
+
+    // ###########################################################################################
     // The folder's walk is ONE OF THE PANEL'S CHANGES (code review, 2026-10-28): moved off the UI
     // thread but outside the queue, the panel could be closed while it ran - closing waits only for
     // what is queued - and the import went into the draft after, the board on screen never read again.
@@ -1310,6 +1362,67 @@ public sealed class KiCadDataPanelTests : IDisposable
             ["KiCad data/Pages/b.kicad_sch", "KiCad data/a.kicad_pcb"],
             draft.Files.Where(Handlers.DataHandling.DraftFiles.IsKiCad).Select(file => file.Name).Order(StringComparer.Ordinal));
         Assert.Empty(Handlers.DataHandling.DraftFiles.ArrivedKiCadNames(draftFolder));
+    }
+
+    // ###########################################################################################
+    // *** NO DRAFT ANY MORE, NOTHING IS IMPORTED (code review, 2026-11-02). *** Retirement deleted the
+    // draft under the open panel, and a later import copied into a folder made again with no board file
+    // or marker - taken in by nothing, and the panel said "Imported N KiCad files". Refused, and the
+    // folder is not made again.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_import_with_no_draft_left_copies_nothing_and_says_so()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
+
+        string draftFolder = DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey);
+
+        await UiTest.RunAsync(async () =>
+        {
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
+
+            Directory.Delete(draftFolder, recursive: true);
+
+            await panel.ImportKiCadFolderAsync(source);
+
+            Assert.False(panel.ChangedTheDraft);
+            Assert.Equal(KiCadImportSummary.NoDraftAnyMore, panel.StatusTextForTests);
+            Assert.False(Directory.Exists(draftFolder));
+        });
+    }
+
+    // ###########################################################################################
+    // An import copied in, whose files the draft could not take in - "a write that fails costs nothing"
+    // holds, the next write finds them, but nothing here may call that imported: until then Submit's
+    // list and the board's say another thing than the panel's success line.
+    // ###########################################################################################
+    [Fact]
+    public async Task An_import_the_draft_could_not_take_in_does_not_claim_it_was_imported()
+    {
+        this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
+
+        string source = Path.Combine(this.thisWorkspace.Root, "My KiCad project");
+        Directory.CreateDirectory(source);
+        File.WriteAllText(Path.Combine(source, "a.kicad_pcb"), KiCadDataPanelTests.MinimalPcb);
+
+        string draftFolder = DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey);
+
+        await UiTest.RunAsync(async () =>
+        {
+            KiCadDataPanel panel = this.OpenOnSeededBoard();
+
+            // No write of the draft can be made: its board file can no longer be read.
+            File.WriteAllText(Path.Combine(draftFolder, DataTreeLayout.BoardFileName), "{ not a board file");
+
+            await panel.ImportKiCadFolderAsync(source);
+
+            Assert.Equal(KiCadImportSummary.NotTakenIn(1), panel.StatusTextForTests);
+            Assert.True(File.Exists(Path.Combine(draftFolder, "KiCad data", "a.kicad_pcb")));
+        });
     }
 
     // ###########################################################################################

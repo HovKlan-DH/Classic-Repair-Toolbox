@@ -70,11 +70,14 @@ namespace Handlers.DataHandling
         // Every component row the table opened with, and its label then - so a save can tell a
         // component DELETED here (its row object gone) from one RENAMED here (the same row object,
         // a new label), which the rows alone cannot. See ApplyTo.
-        private IReadOnlyList<(BoardTableRow Row, string Label)> thisOpenedComponents = [];
-
-        // How many highlights each label had when the table opened, for the message a component
-        // delete shows. Case-insensitive, as labels are.
-        private Dictionary<string, int> thisHighlightCounts = new(StringComparer.OrdinalIgnoreCase);
+        //
+        // *** AND EVERY LABEL A ROW HAS BEEN HANDED TO THE DRAFT UNDER (code review, 2026-11-02). *** The
+        // session moves a relabelled component's highlights at the hand-over, so U8 renamed U10 and
+        // then deleted left a rectangle on U10 - the deletion went by "U8". A row can be here several
+        // times: the highlights may be under any of its labels, since a rename they did not follow
+        // (emptied, or changed with another cell - ComponentRelabel) leaves them on the one before.
+        // A label another row carries by then is kept out by LabelsOfDeletedComponents.
+        private List<(BoardTableRow Row, string Label)> thisOpenedComponents = [];
 
         // ###########################################################################################
         // Builds the table for one draft. `published` is null when there is nothing published to
@@ -133,10 +136,9 @@ namespace Handlers.DataHandling
                     .ToList();
             }
 
-            document.thisHighlightCounts = draft.ComponentHighlights
-                .Where(highlight => !string.IsNullOrWhiteSpace(highlight.BoardLabel))
-                .GroupBy(highlight => highlight.BoardLabel.Trim(), StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+            document.thisHighlightsFiledBy = (
+                document.SavedEntriesOf<BoardSchematicEntry>(BoardWorkbookSchema.SheetBoardSchematics),
+                document.SavedEntriesOf<ComponentEntry>(BoardWorkbookSchema.SheetComponents));
 
             // Once, with every sheet built - not after each of the refreshes above.
             document.thisCreating = false;
@@ -262,7 +264,13 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private IBoardFileLookup? thisFiles;
         private IReadOnlyList<ComponentHighlightEntry> thisHighlights = [];
+
+        internal IReadOnlyList<ComponentHighlightEntry> HighlightsHeldForTests => this.thisHighlights;
         private bool thisCreating;
+
+        // The schematics and components thisHighlights are filed by - the rows they were last followed
+        // to, which HighlightsAsSaved compares the rows now with.
+        private (IReadOnlyList<BoardSchematicEntry> Schematics, IReadOnlyList<ComponentEntry> Components) thisHighlightsFiledBy = ([], []);
 
         public IReadOnlyList<BoardDataProblem> Problems { get; private set; } = [];
 
@@ -379,13 +387,14 @@ namespace Handlers.DataHandling
                 entriesBySheet[sheet.Name] = entries;
             }
 
+            List<BoardSchematicEntry> schematics = BoardTableDocument.EntriesOf<BoardSchematicEntry>(entriesBySheet, BoardWorkbookSchema.SheetBoardSchematics);
             List<ComponentEntry> components = BoardTableDocument.EntriesOf<ComponentEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponents);
 
             var checkRows = new BoardCheckRows(
-                BoardTableDocument.EntriesOf<BoardSchematicEntry>(entriesBySheet, BoardWorkbookSchema.SheetBoardSchematics),
+                schematics,
                 components,
                 BoardTableDocument.EntriesOf<ComponentImageEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentImages),
-                this.HighlightsAsSaved(components),
+                this.HighlightsAsSaved(schematics, components),
                 BoardTableDocument.EntriesOf<ComponentLocalFileEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentLocalFiles),
                 BoardTableDocument.EntriesOf<BoardLocalFileEntry>(entriesBySheet, BoardWorkbookSchema.SheetBoardLocalFiles),
                 BoardTableDocument.EntriesOf<ComponentLinkEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentLinks),
@@ -458,10 +467,25 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The highlights a save would keep: the draft's, less those of components deleted in this
-        // table (ApplyTo drops them) - so deleting U8 does not also warn about U8's highlights.
+        // The highlights a save would keep, as the board will hold them: the draft's, less those of
+        // components deleted in this table (ApplyTo drops them) - so deleting U8 does not also warn
+        // about U8's highlights - following the schematics and labels changed here.
+        //
+        // *** THE TABLE MUST NOT CLAIM WHAT THE DRAFT DOES NOT HAVE (code review, 2026-11-02). *** The
+        // highlights stayed as the table opened, so renaming a marked schematic said "A highlight names
+        // schematic [Top], which is not in this submission" and pointed at "Mark components manually",
+        // though the session had moved them; deleting one said it beside "What was drawn on [Top] went
+        // with it", and renaming a component warned twice. The rules are the ones a draft's session
+        // (DraftEditRules) and a maintainer's amendment (SubmissionRowsBoard.WithTableSections) follow.
+        //
+        // *** COMPARED WITH THE ROWS THEY WERE LAST FOLLOWED TO, NOT THE ROWS AS OPENED. *** A session
+        // follows at each hand-over, so a component relabelled and THEN given another name keeps its
+        // rectangles, though from where the table opened it reads as a new component. NoteHandedOver
+        // moves them on; a document, saved all at once, compares with what it opened on, as its save does.
         // ###########################################################################################
-        private IReadOnlyList<ComponentHighlightEntry> HighlightsAsSaved(IReadOnlyList<ComponentEntry> components)
+        private List<ComponentHighlightEntry> HighlightsAsSaved(
+            IReadOnlyList<BoardSchematicEntry> schematics,
+            IReadOnlyList<ComponentEntry> components)
         {
             BoardTableSheet? sheet = this.FindSheet(BoardWorkbookSchema.SheetComponents);
             var live = new HashSet<BoardTableRow>(sheet?.Rows.Where(row => !row.IsDeleted) ?? []);
@@ -475,12 +499,34 @@ namespace Handlers.DataHandling
                 .Select(opened => opened.Label)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            return deleted.Count == 0
+            IEnumerable<ComponentHighlightEntry> kept = deleted.Count == 0
                 ? this.thisHighlights
-                : this.thisHighlights
-                    .Where(highlight => !deleted.Contains((highlight.BoardLabel ?? string.Empty).Trim()))
-                    .ToList();
+                : this.thisHighlights.Where(highlight => !deleted.Contains((highlight.BoardLabel ?? string.Empty).Trim()));
+
+            return ComponentRelabel.FollowHighlights(
+                SchematicRename.FollowHighlights(kept, SubmissionRowsBoard.FollowSchematics(this.thisHighlightsFiledBy.Schematics, schematics)),
+                ComponentRelabel.Between(this.thisHighlightsFiledBy.Components, components));
         }
+
+        // A sheet's rows as a save writes them - live, not blank, and mapped.
+        private List<T> SavedEntriesOf<T>(string sheetName) =>
+            this.FindSheet(sheetName)?.Rows
+                .Where(row => !row.IsDeleted && !row.IsBlank)
+                .SelectMany(row => row.MappedForChecks())
+                .Cast<T>()
+                .ToList() ?? [];
+
+        // ###########################################################################################
+        // How many highlights each label has as the board stands - what a component's delete says went
+        // with it, whatever it was called when the table opened. Case-insensitive, as labels are.
+        // ###########################################################################################
+        internal IReadOnlyDictionary<string, int> HighlightCountsByLabel() =>
+            this.HighlightsAsSaved(
+                    this.SavedEntriesOf<BoardSchematicEntry>(BoardWorkbookSchema.SheetBoardSchematics),
+                    this.SavedEntriesOf<ComponentEntry>(BoardWorkbookSchema.SheetComponents))
+                .Where(highlight => !string.IsNullOrWhiteSpace(highlight.BoardLabel))
+                .GroupBy(highlight => highlight.BoardLabel.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 
         // ###########################################################################################
         // The board to save: `current` - the board as it is on disk right now, handed over by
@@ -520,6 +566,8 @@ namespace Handlers.DataHandling
             Func<BoardData, BoardData> apply = this.TakeSaveSnapshot(changed);
             List<BoardWorkbookSchema.SheetDefinition> compared = changed.Select(sheet => sheet.Definition).ToList();
 
+            this.NoteHandedOver();
+
             return content =>
             {
                 ArgumentNullException.ThrowIfNull(content);
@@ -528,6 +576,49 @@ namespace Handlers.DataHandling
 
                 return BoardTableDocument.HasSameRows(content.Board, board, compared) ? null : content with { Board = board };
             };
+        }
+
+        // ###########################################################################################
+        // What the draft's session holds from here on - it follows what hangs on the rows at every
+        // hand-over, and the table is not built again for its own change: the highlights as they now
+        // are (HighlightsAsSaved), and every label a component row is handed over under, for the
+        // deletion to go by (thisOpenedComponents).
+        //
+        // *** ONLY WHEN ONE OF THE TWO SHEETS THEY ARE FILED BY CHANGED (code review, 2026-11-02). *** Every
+        // settled edit on Credits or Links mapped both sheets and went over every row and rectangle on the
+        // UI thread, for an answer that could not change - the lag TakeSessionEdit's own header is about.
+        // ###########################################################################################
+        private void NoteHandedOver()
+        {
+            bool Changed(string name) => this.FindSheet(name) is BoardTableSheet changed && this.thisChangedSheets.Contains(changed);
+
+            if (!Changed(BoardWorkbookSchema.SheetBoardSchematics) && !Changed(BoardWorkbookSchema.SheetComponents))
+            {
+                return;
+            }
+
+            List<BoardSchematicEntry> schematics = this.SavedEntriesOf<BoardSchematicEntry>(BoardWorkbookSchema.SheetBoardSchematics);
+            List<ComponentEntry> components = this.SavedEntriesOf<ComponentEntry>(BoardWorkbookSchema.SheetComponents);
+
+            this.thisHighlights = this.HighlightsAsSaved(schematics, components);
+            this.thisHighlightsFiledBy = (schematics, components);
+
+            if (!Changed(BoardWorkbookSchema.SheetComponents) || this.FindSheet(BoardWorkbookSchema.SheetComponents) is not BoardTableSheet sheet)
+            {
+                return;
+            }
+
+            var known = new HashSet<(BoardTableRow, string)>(this.thisOpenedComponents);
+
+            foreach (BoardTableRow row in sheet.Rows.Where(row => !row.IsDeleted))
+            {
+                string label = sheet.CellText(row, BoardWorkbookSchema.ColBoardLabel);
+
+                if (label.Length > 0 && known.Add((row, label)))
+                {
+                    this.thisOpenedComponents.Add((row, label));
+                }
+            }
         }
 
         // Every sheet whose rows changed since its last refresh, refreshed - the board checked once.
@@ -631,8 +722,9 @@ namespace Handlers.DataHandling
         //   - Otherwise (a duplicate row deleted): nothing else goes.
         //
         // Labels and regions compare ignoring case, as everywhere else. Null when nothing went.
+        // `highlightCounts`: what each label had before the rows went (HighlightCountsByLabel).
         // ###########################################################################################
-        internal BoardTableDeletedWith? DeleteRowsOfComponent(string label, string region)
+        internal BoardTableDeletedWith? DeleteRowsOfComponent(string label, string region, IReadOnlyDictionary<string, int> highlightCounts)
         {
             if (string.IsNullOrWhiteSpace(label) || this.FindSheet(BoardWorkbookSchema.SheetComponents) is not BoardTableSheet components)
             {
@@ -683,7 +775,7 @@ namespace Handlers.DataHandling
                 }
             }
 
-            int highlights = labelRemains ? 0 : this.thisHighlightCounts.GetValueOrDefault(label.Trim());
+            int highlights = labelRemains ? 0 : highlightCounts.GetValueOrDefault(label.Trim());
 
             return counts.Count == 0 && highlights == 0
                 ? null

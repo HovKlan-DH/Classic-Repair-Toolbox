@@ -85,6 +85,22 @@ public sealed class BoardPlacementDisplayTests
             BoardPlacementDisplayTests.Entry(new BoardPlacement("H", "B", string.Empty, "gone.xlsx")), afterIsGone: true));
     }
 
+    // What the maintainer left here and has not saved is neither a suggestion nor a saved place - and
+    // a row it was left after can have gone too.
+    [Fact]
+    public void A_placement_kept_but_not_saved_says_so_whatever_is_saved()
+    {
+        UnlistedBoardEntry neverPlaced = BoardPlacementDisplayTests.Entry();
+        UnlistedBoardEntry placed = BoardPlacementDisplayTests.Entry(new BoardPlacement("H", "B", string.Empty, C64));
+
+        Assert.StartsWith("Not saved yet", BoardPlacementDisplay.SavedState(neverPlaced, afterIsGone: false, notSavedKept: true), StringComparison.Ordinal);
+        Assert.StartsWith("Not saved yet", BoardPlacementDisplay.SavedState(placed, afterIsGone: false, notSavedKept: true), StringComparison.Ordinal);
+        Assert.Contains("Place it again", BoardPlacementDisplay.SavedState(neverPlaced, afterIsGone: true, notSavedKept: true), StringComparison.Ordinal);
+
+        Assert.Contains("a suggestion", BoardPlacementDisplay.SavedState(neverPlaced, afterIsGone: false), StringComparison.Ordinal);
+        Assert.Equal("Its place is saved.", BoardPlacementDisplay.SavedState(placed, afterIsGone: false));
+    }
+
     [Theory]
     [InlineData(0, null)]
     [InlineData(1, C64)]

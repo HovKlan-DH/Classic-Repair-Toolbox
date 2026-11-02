@@ -5,17 +5,21 @@ using Avalonia.Data.Converters;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.Theming;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 
 namespace CRT
 {
     // ###########################################################################################
     // THE TABLE EDITOR'S COLOUR KEY AS THE FILTER - which kinds of row the picked pills show, the
-    // user's own pick apart from what the grid shows, and the view's filter itself. Split out of
+    // user's own pick apart from what the grid shows, and the rows the grid shows. Split out of
     // BoardTableEditor.axaml.cs (code review, 2026-10-04: the main part had passed the ~1,500-line
     // mark). The file map is in BoardTableEditor.axaml.cs.
     // ###########################################################################################
@@ -30,6 +34,29 @@ namespace CRT
         // change kinds) - and comes back on for the next table that has such rows, rather than
         // staying off because one table without any was looked at in between (2026-09-26).
         private BoardTableRowKinds thisFilterWanted;
+
+        // ###########################################################################################
+        // *** WHAT THE GRID SHOWS IS A LIST OF THE TABLE'S OWN, AND THE VIEW ON IT HAS NO FILTER (code
+        // review, 2026-11-02). *** A filtered DataGridCollectionView takes the row out and puts it back
+        // at every row commit, which leaves the grid with no current cell and no selection: Enter on
+        // the last row shown, Ctrl+D, Ctrl+F, Ctrl+V with a row's edit open all lost the cursor, and
+        // the next text typed went nowhere or, the grid putting the cursor on the first row shown, over
+        // another row's cell. Repairing that after each commit was a repair per way of committing. With
+        // no filter a commit touches no list - as in a table with nothing picked - so there is nothing
+        // to repair: this list is sheet.Rows less what the pills and the search hide, changed one row
+        // at a time as rows come and go (ShowRows), and never under a row being edited.
+        //
+        // *** Do not put a Filter back on the view. *** BoardTableEditorNarrowedTests holds it null.
+        // ###########################################################################################
+        private ShownRowList? thisShownRows;
+
+        // ###########################################################################################
+        // The row the cursor is on, which stays shown until the cursor leaves it, whatever is typed in
+        // it (BoardTableRowFilter's header). A pick or a search keeps nothing (ApplyViewFilter).
+        // ###########################################################################################
+        private BoardTableRow? thisRowInHand;
+
+        private bool thisShowRowsPosted;
 
         // ###########################################################################################
         // *** THE COLOUR KEY IS THE FILTER (owner request, 2026-10-02: the counts clickable, "and
@@ -196,12 +223,17 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // What the pills and the search show has changed: a new question, so the row in hand is kept
+        // only if it is an answer - picking "Errors" hides the row the cursor is on when it has none.
+        // All at once: most rows may come or go, and one at a time a pill took 1-4 seconds on a sheet of
+        // 5,000 rows where a Reset takes about 0.2, as a Filter set on the view did (measured, 2026-11-02).
+        //
         // *** THE GRID MUST BE TOLD THE VIEW'S FILTER IS OURS. *** Its column-filtering model
         // (FilteringModel) owns a view's Filter by default and writes its own - empty - predicate
-        // over it whenever it takes the view or is attached again. So "Show changes only" was lost,
-        // with the box still ticked, first on every sheet switch and then on every switch of the
-        // MAIN tabs (Drafts -> Contribute -> Drafts), both reported. OwnsViewFilter = false makes
-        // it leave the filter alone; the table uses none of its column filtering.
+        // over it whenever it takes the view or is attached again. It lost "Show changes only", with
+        // the box still ticked, on every sheet switch and every switch of the MAIN tabs; today it
+        // would put back a filter, and with it the commit that takes the cursor away (thisShownRows).
+        // OwnsViewFilter = false makes it leave the view alone; the table uses none of its filtering.
         // ###########################################################################################
         private void ApplyViewFilter()
         {
@@ -210,15 +242,149 @@ namespace CRT
                 model.OwnsViewFilter = false;
             }
 
-            if (this.thisView is not null)
-            {
-                BoardTableRowKinds kinds = this.thisFilter;
-                BoardTableSearch search = this.thisSearch;
+            this.thisRowInHand = null;
 
-                // The picked pills and the search box together: a row both show (2026-10-02).
-                this.thisView.Filter = kinds == BoardTableRowKinds.None && !search.IsActive
-                    ? null
-                    : item => item is BoardTableRow row && BoardTableRowFilter.Shows(kinds, row) && search.Shows(row);
+            if (this.thisShownRows is { } shown && this.thisCurrentSheet is { } sheet)
+            {
+                List<BoardTableRow> rows = BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null);
+
+                if (!rows.SequenceEqual(shown))
+                {
+                    shown.ReplaceAll(rows);
+                }
+            }
+
+            this.thisRowInHand = this.CurrentCell?.Row;
+        }
+
+        // ###########################################################################################
+        // The rows the grid shows brought up to date, keeping the row the cursor is on now.
+        //
+        // The cursor on a CELL (CurrentCell, not CurrentRow): the grid sits on the first row's marker
+        // column by itself, in a table nobody has touched, and that is no row anybody is working in -
+        // its last change undone from elsewhere, it goes. So the marker column taken alone says nothing:
+        // the row in hand stays what it was, also when that row's own marker column is clicked.
+        // ###########################################################################################
+        private void ShowRows()
+        {
+            if (this.CurrentCell is { } cell)
+            {
+                this.thisRowInHand = cell.Row;
+            }
+
+            this.SyncShownRows();
+        }
+
+        // ###########################################################################################
+        // One row at a time, so what stays keeps its place, its scroll position and the cursor. With
+        // nothing picked that is all of them.
+        //
+        // Not under a row being edited while narrowed: removing another row resets the grid's current
+        // cell around it. The row's edit ending comes back here (WireShownRows).
+        // ###########################################################################################
+        private void SyncShownRows()
+        {
+            if (this.thisShownRows is not { } shown || this.thisCurrentSheet is not { } sheet)
+            {
+                return;
+            }
+
+            if (this.IsNarrowed && this.thisView?.IsEditingItem == true)
+            {
+                return;
+            }
+
+            BoardTableSheet.SyncRows(shown, BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, this.thisRowInHand));
+        }
+
+        // Soon, once the grid has finished what it is doing - moving its cursor, or ending an edit.
+        private void PostShowRows()
+        {
+            if (!this.IsNarrowed || this.thisShowRowsPosted)
+            {
+                return;
+            }
+
+            this.thisShowRowsPosted = true;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                this.thisShowRowsPosted = false;
+                this.ShowRows();
+            }, DispatcherPriority.Background);
+        }
+
+        // ###########################################################################################
+        // The cursor moved, so the row it left goes if only the cursor kept it. Both events, and the
+        // answer read AFTER them (measured with a probe, 2026-11-02): a click raises SelectedCellsChanged
+        // with the grid's cursor still on the row before, and no CurrentCellChanged at all.
+        // ###########################################################################################
+        private void WireShownRows()
+        {
+            this.TableGrid.CurrentCellChanged += (_, _) => this.PostShowRows();
+            this.TableGrid.SelectedCellsChanged += (_, _) => this.PostShowRows();
+            this.TableGrid.RowEditEnded += (_, _) => this.PostShowRows();
+        }
+
+        // `row`, on a table just built again, stays shown as if the cursor had never left it.
+        private void KeepInHand(BoardTableRow row)
+        {
+            this.thisRowInHand = row;
+            this.SyncShownRows();
+        }
+
+        // ###########################################################################################
+        // A row of the sheet added, removed or moved. With nothing picked the list IS the sheet's, so
+        // the change is made as the sheet made it: the grid sees what it would on the sheet's own rows.
+        // ###########################################################################################
+        private void OnSheetRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (this.IsNarrowed || this.thisShownRows is not { } shown)
+            {
+                this.ShowRows();
+                return;
+            }
+
+            switch (e.Action)
+            {
+                case NotifyCollectionChangedAction.Add:
+                    shown.Insert(e.NewStartingIndex, (BoardTableRow)e.NewItems![0]!);
+                    break;
+
+                case NotifyCollectionChangedAction.Remove:
+                    shown.RemoveAt(e.OldStartingIndex);
+                    break;
+
+                case NotifyCollectionChangedAction.Move:
+                    shown.Move(e.OldStartingIndex, e.NewStartingIndex);
+                    break;
+
+                case NotifyCollectionChangedAction.Replace:
+                    shown[e.NewStartingIndex] = (BoardTableRow)e.NewItems![0]!;
+                    break;
+
+                default:
+                    this.SyncShownRows();
+                    break;
+            }
+        }
+
+        // The rows the grid shows: changed row by row, or all at once with one Reset (ApplyViewFilter).
+        private sealed class ShownRowList(IEnumerable<BoardTableRow> rows) : ObservableCollection<BoardTableRow>(rows)
+        {
+            public void ReplaceAll(IEnumerable<BoardTableRow> rows)
+            {
+                this.CheckReentrancy();
+                this.Items.Clear();
+
+                foreach (BoardTableRow row in rows)
+                {
+                    this.Items.Add(row);
+                }
+
+                this.OnPropertyChanged(new PropertyChangedEventArgs(nameof(this.Count)));
+                this.OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+                this.OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
             }
         }
     }

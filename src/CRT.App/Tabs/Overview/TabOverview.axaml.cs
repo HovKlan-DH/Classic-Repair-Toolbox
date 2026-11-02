@@ -337,7 +337,7 @@ namespace CRT
 
             return resolved is not null
                 ? (resolved.FullPath, resolved.Root)
-                : (Path.Combine(dataRoot, storedFile.Replace('/', Path.DirectorySeparatorChar)), dataRoot);
+                : (DraftFileResolver.PathUnderDataRoot(dataRoot, storedFile), dataRoot);
         }
     }
 

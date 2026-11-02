@@ -124,12 +124,22 @@ namespace Handlers.DataHandling
         // (SubmissionKiCadFiles.IsStraggler) - there is nothing new to check, and the publish never
         // writes it (its bytes are unchanged). Matches alone still refuses the type, for any caller
         // judging a file that is not a submission's.
+        //
+        // *** A FILE OF NO BYTES IS REFUSED FIRST, WHATEVER ITS TYPE (owner decision, 2026-11-02: "Refuse
+        // empty files"; SubmissionFileRules). *** Here, not in Matches: an empty text file is still
+        // text, which is all a feedback attachment needs to be.
         // ###########################################################################################
         public static bool MatchesWholeFile(string? path, ReadOnlySpan<byte> head, Func<TextReader?> openText, out string reason)
         {
             ArgumentNullException.ThrowIfNull(openText);
 
             reason = string.Empty;
+
+            if (head.IsEmpty)
+            {
+                reason = "It is an empty file - it holds no bytes.";
+                return false;
+            }
 
             if (SubmissionKiCadFiles.IsStraggler(path))
                 return true;

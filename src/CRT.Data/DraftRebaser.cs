@@ -104,12 +104,14 @@ namespace Handlers.DataHandling
             BoardContent published = BoardDocumentMapping.ToContent(publishedDocument);
 
             // A file the contributor replaced - in the draft's list, or lying in its folder as a new
-            // file not yet taken in - is theirs, and so are the rows citing it.
+            // file not yet taken in - is theirs, and so are the rows citing it. The base's names can say
+            // anything (code review, 2026-11-02, Security: joined to the folder, a rooted name made CRT
+            // contact another machine) - only what TryArrivedPath finds can be such a file.
             string draftFolder = Path.GetDirectoryName(draftPath)!;
             HashSet<string> replaced = DraftRebaseFiles.Replaced(
                 baseDocument.Files,
                 draftDocument.Files,
-                name => File.Exists(Path.Combine(draftFolder, name.Replace('/', Path.DirectorySeparatorChar))));
+                name => DraftFiles.TryArrivedPath(draftFolder, name, out string arrived) && File.Exists(arrived));
 
             DraftRebaseResult merged = DraftRebase.Merge(
                 DraftRebaseFiles.MarkReplaced(based.Board, replaced),
@@ -124,7 +126,27 @@ namespace Handlers.DataHandling
                 draftDocument.Files,
                 publishedDocument.Files,
                 replaced,
-                out int filesUpdated);
+                out int filesUpdated,
+                DraftFiles.CitedNames(merged.Board));
+
+            // ###########################################################################################
+            // *** "YOUR VERSION IS KEPT" INCLUDES THE FILE IT NAMES (code review, 2026-11-02). *** A row kept
+            // against the update's removal - a note edited, or a row the contributor added citing that
+            // file - keeps its entry (DraftRebaseFiles.Merge), but its bytes lie in the tree's store, and
+            // nothing there lists them any more: the next cleanup takes them. So they go into the draft's
+            // own store now, before the write that lists them. Gone already, the row is still kept, and
+            // the conflict list says the file is not.
+            // ###########################################################################################
+            List<DraftRebaseConflict> conflicts = merged.Conflicts.ToList();
+
+            foreach (BoardDocument.StoredFileRow kept in DraftRebaseFiles.KeptAgainstTheUpdate(baseDocument.Files, files, publishedDocument.Files, replaced))
+            {
+                if (!DraftFiles.KeepInStore(draftFolder, dataRoot, kept))
+                {
+                    files.Remove(kept);
+                    conflicts.Add(DraftRebaseFiles.FileNoLongerHere(kept.Name));
+                }
+            }
 
             // 1. The board, guarded against an edit made while this ran.
             DraftWorkbookEditOutcome written = DraftWorkbookStore.ReplaceIfUnchanged(
@@ -172,20 +194,20 @@ namespace Handlers.DataHandling
                     Outcome = DraftRebaseOutcome.NotNoted,
                     ChangesKept = merged.ChangesKept,
                     FilesUpdated = filesUpdated,
-                    Conflicts = merged.Conflicts,
+                    Conflicts = conflicts,
                 };
             }
 
             CrtLog.Info(
                 $"Brought the draft for [{excelDataFile}] up to date with revision [{publishedDocument.RevisionDate}] - " +
-                $"{merged.ChangesKept} change(s) kept, {merged.Conflicts.Count} conflict(s), {filesUpdated} file(s) updated");
+                $"{merged.ChangesKept} change(s) kept, {conflicts.Count} conflict(s), {filesUpdated} file(s) updated");
 
             return new DraftRebaseReport
             {
                 Outcome = DraftRebaseOutcome.BroughtUpToDate,
                 ChangesKept = merged.ChangesKept,
                 FilesUpdated = filesUpdated,
-                Conflicts = merged.Conflicts,
+                Conflicts = conflicts,
             };
         }
     }

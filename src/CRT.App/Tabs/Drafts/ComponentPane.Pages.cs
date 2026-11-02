@@ -39,8 +39,9 @@ namespace CRT
     {
         private ComponentPage thisPage = ComponentPage.Basics;
 
-        // Every rename made in the pane: an undo takes one back, and the component is found again by it.
-        private readonly List<(string From, string To)> thisRelabels = new();
+        // The draft's component rows as the last change left them - what the next is compared with, for a
+        // rename an undo or a redo took back (FollowRelabelInDraft).
+        private IReadOnlyList<ComponentEntry>? thisRowsFollowed;
 
         // The label as the box last read it - its capitals are a change of their own.
         private string thisLabelShown = string.Empty;
@@ -478,7 +479,6 @@ namespace CRT
 
             // Named before the step: what follows it - the left column, "Draft" - goes by the new label.
             this.thisLabel = typed;
-            this.thisRelabels.Add((from, typed));
 
             this.Apply(DraftStepWording.ComponentRelabelled(from, typed), board => ComponentPaneEdits.WithLabel(board, from, typed));
 
@@ -519,36 +519,23 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The component an undo or a redo of a rename left under another label: the next one it has
-        // been known by that the draft has. Nothing found, it really is gone - and the pane says so.
+        // The component an undo or a redo of a rename left under another label: the step ITSELF says where
+        // it went, by the one rule of what a rename is (ComponentRelabel.Between - a row whose label alone
+        // changed). Nothing renamed, it really is gone - and the pane says so.
+        //
+        // *** NOT A RECORD OF RENAMES (code review, 2026-11-02). *** One was kept here, and no record could
+        // tell the cases apart: U1 renamed U2, a new U1 added, U2 deleted, and it walked back to the new U1,
+        // a different component; told to forget a label given out, it lost the way back of U1 to U2 to U3 to
+        // U2, and of a new U1 undone again. Which component a label means depends on where in its history the
+        // draft stands, and each step says exactly that.
         // ###########################################################################################
-        private void FollowRelabelInDraft(BoardData board)
+        private void FollowRelabelInDraft(IReadOnlyList<ComponentEntry>? before, BoardData board)
         {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { this.thisLabel };
-            var waiting = new Queue<string>(seen);
-
-            while (waiting.Count > 0)
+            if (this.thisLabel.Length > 0 &&
+                ComponentPaneEdits.RowShown(board, this.thisLabel, this.thisRegion) is null &&
+                ComponentRelabel.Between(before, board.Components).TryGetValue(this.thisLabel, out string? now))
             {
-                string label = waiting.Dequeue();
-
-                if (ComponentPaneEdits.RowShown(board, label, this.thisRegion) is not null)
-                {
-                    this.thisLabel = label;
-                    return;
-                }
-
-                foreach ((string from, string to) in this.thisRelabels)
-                {
-                    if (string.Equals(from, label, StringComparison.OrdinalIgnoreCase) && seen.Add(to))
-                    {
-                        waiting.Enqueue(to);
-                    }
-
-                    if (string.Equals(to, label, StringComparison.OrdinalIgnoreCase) && seen.Add(from))
-                    {
-                        waiting.Enqueue(from);
-                    }
-                }
+                this.thisLabel = now;
             }
         }
 

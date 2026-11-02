@@ -93,6 +93,14 @@ namespace Handlers.DataHandling
         //
         // Returns empty rather than a bogus path when either input is unusable; callers must treat
         // that as "no draft folder available" exactly as DraftManager.GetBoardFolder already does.
+        //
+        // *** AN IDENTITY CAN COME OUT OF A FILE SOMEBODY HANDED OVER (code review, 2026-11-02 - Security). ***
+        // A draft folder put into Drafts/ by hand carries a marker naming its board, read at every launch,
+        // and a first segment "\\host\share\x" REPLACES the root in Path.Combine: the Directory.Exists that
+        // follows opens SMB to that machine and hands it the Windows sign-in's NTLM hash, with nothing
+        // pressed. ".." climbs out the same way. So the folders must be shaped as SubmissionPathRules says
+        // a path under a board may be (what DraftFileResolver.PathUnderDataRoot asks of a File cell) - here,
+        // the one place every draft path passes, not at each caller.
         // ###########################################################################################
         public static string GetBoardFolder(string draftsRoot, string excelDataFile)
         {
@@ -109,6 +117,11 @@ namespace Handlers.DataHandling
 
             string[] folderSegments = new string[segments.Length - 1];
             Array.Copy(segments, folderSegments, folderSegments.Length);
+
+            if (!SubmissionPathRules.IsSafelyShaped(string.Join('/', folderSegments), out _))
+            {
+                return string.Empty;
+            }
 
             return Path.Combine(draftsRoot, Path.Combine(folderSegments));
         }

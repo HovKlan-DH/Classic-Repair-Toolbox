@@ -903,8 +903,13 @@ public sealed class WorkbooksDevicesTests : IDisposable
             WorklogManager.AddEntry(repair.Id, "Sheet 1", new Avalonia.Rect(0, 0, 1, 1), "Bad cap", "", "Issue", "Open", Array.Empty<string>());
         }
 
-        string shownPicture = this.Picture("shown.png");
-        var shownBoard = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = shownPicture }] };
+        // The board shown's picture lies under the data root the other board is loaded from below, and
+        // its row names it there, as in CRT (WorkbooksBoardPreviewTests' header).
+        string shownPicture = this.thisWorkspace.Path_("Data", "Shown", "shown.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(shownPicture)!);
+        File.WriteAllBytes(shownPicture, [1, 2, 3]);
+
+        var shownBoard = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "Shown/shown.png" }] };
         var otherBoard = new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "Images/top.png" }] };
 
         try

@@ -329,6 +329,31 @@ namespace CRT.Server.Tests
             Assert.Equal("100", published.X);
         }
 
+        // ###########################################################################################
+        // *** A STOPPED PUBLISH, NOT A CRASH (code review, 2026-11-02). *** The checks refuse such a
+        // coordinate now, but a submission queued before they did still reaches the approval - and
+        // the writer's FormatException was a bare 500 to the maintainer, the board file as it was.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_highlight_the_board_file_cannot_hold_stops_the_publish_with_words()
+        {
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest());
+
+            BoardData board = PublishExecutorTests.Board();
+            board.ComponentHighlights.Add(new ComponentHighlightEntry
+            {
+                SchematicName = "Sheet 1", BoardLabel = "U8", X = "100", Y = "200", Width = "NaN", Height = "20"
+            });
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, board, [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Contains("U8", outcome.Failure, StringComparison.Ordinal);
+            Assert.False(File.Exists(plan.BoardFilePath));
+        }
+
         [Fact]
         public async Task A_KiCad_CALIBRATION_survives_the_publish()
         {
@@ -880,6 +905,29 @@ namespace CRT.Server.Tests
 
             Assert.False(outcome.IsPublished);
             Assert.False(File.Exists(plan.Files[0].AbsolutePath));
+            Assert.False(File.Exists(plan.BoardFilePath));
+        }
+
+        // ###########################################################################################
+        // *** A STORED FILE OF NO BYTES STOPS THE PUBLISH (owner decision, 2026-11-02: "Refuse empty
+        // files"). *** A submission queued before the rule cannot carry one into BETA - a text type
+        // too, whose bytes the check by type passes. Nothing is written, and the file is named.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_stored_file_of_no_bytes_stops_the_publish_before_anything_is_written()
+        {
+            string hash = await this.PutBlobAsync([]);
+
+            FakeSubmissionStore store = PublishExecutorTests.StoreWithBoard();
+            PublishPlanDetail plan = this.Plan(PublishExecutorTests.Manifest(
+                new SubmissionFile { Path = "Board local files/notes.txt", Sha256 = hash, SizeBytes = 0 }));
+
+            PublishOutcome outcome = await this.Executor(store)
+                .ExecuteAsync(plan, PublishExecutorTests.Board(), [], submissionId: 1, PublishExecutorTests.Now);
+
+            Assert.False(outcome.IsPublished);
+            Assert.Contains("[Board local files/notes.txt]", outcome.Failure, StringComparison.Ordinal);
+            Assert.Contains("empty", outcome.Failure, StringComparison.Ordinal);
             Assert.False(File.Exists(plan.BoardFilePath));
         }
     }

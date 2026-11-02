@@ -24,9 +24,10 @@
 		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
 			<TextBlock x:Name="BoardNameText" FontSize="16" FontWeight="Bold" TextWrapping="Wrap" />
 
-			<TextBlock TextWrapping="Wrap"
-					   Margin="0,4,0,0"
-					   Text="What your draft changes, compared with the published data. &quot;Undo changes to&quot; puts one component back as it is published - and &quot;Undo&quot; in the draft's header on the &quot;Contribute&quot; tab takes that back too, while CRT is running." />
+			<!-- Set from code: a new board has nothing published to compare with (Initialize). -->
+			<TextBlock x:Name="IntroText"
+					   TextWrapping="Wrap"
+					   Margin="0,4,0,0" />
 
 			<!-- Why an undo could not be made - set from code. -->
 			<TextBlock x:Name="StatusText"
@@ -43,7 +44,6 @@
 				<TextBlock x:Name="NothingText"
 						   TextWrapping="Wrap"
 						   Opacity="0.8"
-						   Text="Your draft holds no changes from the published data."
 						   IsVisible="False" />
 			</StackPanel>
 		</ScrollViewer>

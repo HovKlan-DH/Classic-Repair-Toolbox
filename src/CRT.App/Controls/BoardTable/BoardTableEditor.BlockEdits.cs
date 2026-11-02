@@ -294,12 +294,13 @@ namespace CRT
             bool everySheet = this.ReplaceEverySheetBox.IsChecked == true;
             BoardTableRowKinds kinds = this.thisFilter;
             BoardTableSearch search = this.thisSearch;
+            BoardTableRow? inHand = this.thisRowInHand;
 
             BoardTableReplaceResult result = document.ReplaceAll(
                 find,
                 this.ReplaceWithBox.Text,
                 everySheet ? document.Sheets : [sheet],
-                row => BoardTableRowFilter.Shows(kinds, row) && search.Shows(row));
+                row => BoardTableRowFilter.Shows(kinds, search, inHand, row));
 
             this.ShowStatus(BoardTableEditWording.Replaced(result, find, everySheet));
             this.UpdateSheetTabs();

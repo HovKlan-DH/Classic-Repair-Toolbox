@@ -1,3 +1,4 @@
+using System.Reflection;
 using Avalonia.LogicalTree;
 using Avalonia.Controls;
 using Handlers.MaintainerHandling;
@@ -447,6 +448,102 @@ public sealed class BetaViewTests
 
             Assert.True(message.IsVisible);
             Assert.DoesNotContain(message, view.FindControl<StackPanel>("ActionPanel")!.GetLogicalDescendants());
+        });
+    }
+
+    // ###########################################################################################
+    // *** PUSH BACK AND REJECT ARE HELD TO WHAT THE CONFIRMATION SHOWED (code review, 2026-11-02). ***
+    // The dialog named Anna's #57 and stayed open; the board was published to stable and Bob's #60
+    // approved meanwhile - and confirming took Bob's work out, with a reason written about Anna's. So
+    // the rollback carries BETA's content hash AS THE PLAN SHOWN SAID IT (not the panel's, which may
+    // be older), and a 409 is said in the server's words with the lists read again.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_rollback_sends_the_state_the_confirmation_showed_and_a_refusal_reads_the_lists_again(bool reject)
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BetaView();
+            string? sent = null;
+
+            var server = new AnsweringHttpHandler(request =>
+            {
+                string path = request.RequestUri!.AbsolutePath;
+
+                if (path.EndsWith("/rollback/plan", StringComparison.Ordinal))
+                {
+                    return AnsweringHttpHandler.Json(
+                        """{"boardId":"Commodore/C64/250407","kind":"restore","restored":[],"removed":[],"returning":[],"betaContentHash":"the-state-the-dialog-showed"}""");
+                }
+
+                if (path.EndsWith("/rollback", StringComparison.Ordinal))
+                {
+                    sent = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.Conflict)
+                    {
+                        Content = new StringContent("""{"error":"BETA has moved since."}""", System.Text.Encoding.UTF8, "application/json")
+                    };
+                }
+
+                return AnsweringHttpHandler.Refused();
+            });
+
+            view.Initialize(
+                new ReviewApiClient("https://review.invalid", new HttpClient(server)),
+                new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            view.ShowPlanForTests(BetaViewTests.Plan(carrying: []), BetaViewTests.Row());
+            view.ConfirmAnswerForTests = (_, _) => "The U8 pinout is wrong.";
+
+            int listsRead = 0;
+            view.AfterChange = () =>
+            {
+                listsRead++;
+                return Task.CompletedTask;
+            };
+
+            await (Task)typeof(BetaView).GetMethod("TakeOutOfBetaAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, [reject])!;
+
+            Assert.Contains("\"expectedBetaContentHash\":\"the-state-the-dialog-showed\"", sent, StringComparison.Ordinal);
+            Assert.Equal(1, listsRead);
+            Assert.Equal("BETA has moved since.", view.FindControl<TextBlock>("MessageText")!.Text);
+            Assert.True(view.FindControl<Button>("RollBackButton")!.IsEnabled);
+        });
+    }
+
+    // Any other refusal changed nothing to read: the lists are left as they are, as before.
+    [Fact]
+    public async Task A_rollback_refused_for_another_reason_reads_nothing_again()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BetaView();
+
+            var server = new AnsweringHttpHandler(request => request.RequestUri!.AbsolutePath.EndsWith("/rollback/plan", StringComparison.Ordinal)
+                ? AnsweringHttpHandler.Json("""{"boardId":"Commodore/C64/250407","kind":"restore"}""")
+                : AnsweringHttpHandler.Refused());
+
+            view.Initialize(
+                new ReviewApiClient("https://review.invalid", new HttpClient(server)),
+                new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            view.ShowPlanForTests(BetaViewTests.Plan(carrying: []), BetaViewTests.Row());
+            view.ConfirmAnswerForTests = (_, _) => "The U8 pinout is wrong.";
+
+            int listsRead = 0;
+            view.AfterChange = () =>
+            {
+                listsRead++;
+                return Task.CompletedTask;
+            };
+
+            await (Task)typeof(BetaView).GetMethod("TakeOutOfBetaAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(view, [false])!;
+
+            Assert.Equal(0, listsRead);
+            Assert.True(view.FindControl<TextBlock>("MessageText")!.IsVisible);
         });
     }
 

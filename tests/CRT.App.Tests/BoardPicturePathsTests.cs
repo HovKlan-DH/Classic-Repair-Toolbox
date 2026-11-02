@@ -51,6 +51,23 @@ public sealed class BoardPicturePathsTests : IDisposable
             BoardPicturePaths.PathOf(dataRoot, string.Empty, "Commodore/Shared files/top.png", Identity));
     }
 
+    // ###########################################################################################
+    // Security (code review, 2026-11-02): a rooted cell, in a draft folder somebody hands over, stays
+    // under the data root too. Joined as it stood it replaced the root, and whoever asked next whether
+    // the file was there contacted the machine a UNC cell names. A real file there proves it is not
+    // reached - nothing here touches a network.
+    // ###########################################################################################
+    [Fact]
+    public void A_rooted_cell_found_nowhere_stays_under_the_data_root()
+    {
+        string dataRoot = this.thisWorkspace.Path_("Data");
+        string elsewhere = this.thisWorkspace.Path_("Elsewhere", "planted.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(elsewhere)!);
+        File.WriteAllText(elsewhere, "not of this board");
+
+        Assert.Equal(Path.Combine(dataRoot, "planted.png"), BoardPicturePaths.PathOf(dataRoot, string.Empty, elsewhere, Identity));
+    }
+
     // Every picture with a file by its name, capitals aside - the first row of a name.
     [Fact]
     public void Every_picture_with_a_file_is_found_by_its_name_the_first_of_a_name()

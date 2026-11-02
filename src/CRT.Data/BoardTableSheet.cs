@@ -393,6 +393,9 @@ namespace Handlers.DataHandling
                 .Select(row => (Label: this.CellText(row, BoardWorkbookSchema.ColBoardLabel), Region: this.CellText(row, BoardWorkbookSchema.ColRegion)))
                 .ToList();
 
+            // Counted while the rows are there: a label typed a moment ago is what they go by now.
+            IReadOnlyDictionary<string, int> highlightCounts = this.thisDocument.HighlightCountsByLabel();
+
             BoardTableHistory history = this.thisDocument.History;
 
             // Several sheets refresh below; the board is checked once, at the end (DeferProblems).
@@ -408,7 +411,7 @@ namespace Handlers.DataHandling
 
                 foreach ((string label, string region) in components)
                 {
-                    if (this.thisDocument.DeleteRowsOfComponent(label, region) is { } part)
+                    if (this.thisDocument.DeleteRowsOfComponent(label, region, highlightCounts) is { } part)
                     {
                         went.Add(part);
                     }
@@ -949,7 +952,7 @@ namespace Handlers.DataHandling
             }
 
             // Live rows only: Refresh places the ghosts again around them.
-            this.SyncRows(snapshot.Rows.Select(entry => entry.Row).ToList());
+            BoardTableSheet.SyncRows(this.Rows, snapshot.Rows.Select(entry => entry.Row).ToList());
             this.Refresh();
         }
 
@@ -1119,7 +1122,7 @@ namespace Handlers.DataHandling
                 }
             }
 
-            this.SyncRows(desired);
+            BoardTableSheet.SyncRows(this.Rows, desired);
 
             return ghosts.Count;
         }
@@ -1130,34 +1133,36 @@ namespace Handlers.DataHandling
         //
         // Stale rows go first, so the live rows (whose relative order never changes here) are
         // already in sequence and the second pass only has to slot ghosts in.
+        //
+        // The editor brings the rows it shows up to date the same way (BoardTableEditor.Filter.cs).
         // ###########################################################################################
-        private void SyncRows(List<BoardTableRow> desired)
+        internal static void SyncRows(ObservableCollection<BoardTableRow> rows, IReadOnlyList<BoardTableRow> desired)
         {
             var wanted = new HashSet<BoardTableRow>(desired, ReferenceEqualityComparer.Instance);
 
-            for (int i = this.Rows.Count - 1; i >= 0; i--)
+            for (int i = rows.Count - 1; i >= 0; i--)
             {
-                if (!wanted.Contains(this.Rows[i]))
+                if (!wanted.Contains(rows[i]))
                 {
-                    this.Rows.RemoveAt(i);
+                    rows.RemoveAt(i);
                 }
             }
 
             for (int i = 0; i < desired.Count; i++)
             {
-                if (i < this.Rows.Count && ReferenceEquals(this.Rows[i], desired[i]))
+                if (i < rows.Count && ReferenceEquals(rows[i], desired[i]))
                 {
                     continue;
                 }
 
-                int existing = BoardTableSheet.IndexOf(this.Rows, desired[i], i + 1);
+                int existing = BoardTableSheet.IndexOf(rows, desired[i], i + 1);
                 if (existing >= 0)
                 {
-                    this.Rows.Move(existing, i);
+                    rows.Move(existing, i);
                 }
                 else
                 {
-                    this.Rows.Insert(i, desired[i]);
+                    rows.Insert(i, desired[i]);
                 }
             }
         }

@@ -545,9 +545,9 @@ namespace CRT
 
             this.CardBackgroundBrush = SubmissionListItem.Theme("Card_Bg", Brushes.WhiteSmoke);
 
-            // Findings are not stored in the receipt - they belong to the server's answer and can
-            // change. An empty list keeps the row's shape honest until a refresh supplies them.
-            this.Findings = [];
+            // Why the server refused it (code review, 2026-11-02), once the Submit dialog that said so
+            // has closed - kept on the receipt, as a refused submission is never asked about again.
+            this.Findings = SubmissionReceiptPresenter.DescribeFindings(receipt);
 
             this.ForgetCommand = new ActionCommand(
                 () => Dispatcher.UIThread.InvokeAsync(() => forget(this)));

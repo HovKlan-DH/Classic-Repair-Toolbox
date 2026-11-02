@@ -198,22 +198,37 @@ namespace CRT
             if (request != this.thisRequest)
                 return;
 
-            if (detail is not null)
-                this.ShowPool(detail);
+            // ###########################################################################################
+            // *** A BOARD THAT CANNOT BE READ TAKES THE LAST ONE'S POOL OFF THE SCREEN (code review,
+            // 2026-11-02). *** The combo says the board just chosen. Left standing, the maintainers of the
+            // one before and their buttons sat under it, and "Remove" - which asks nothing - or "Add as
+            // maintainer" changed that other board. Nothing can be pressed now; the reason is on the
+            // message line (ReadDetailAsync), the next read that works takes it away, and the combo
+            // lets go too, so choosing the same board again reads it again.
+            // ###########################################################################################
+            if (detail is null)
+            {
+                this.ShowPool(null);
+                this.FillBoards(keep: null);
+                return;
+            }
+
+            this.ShowMessage(null, isError: false);
+            this.ShowPool(detail);
         }
 
         // The board's detail - from a test's answer, or the server's under the overlay. Null, with
         // the reason shown, when it cannot be read.
         private async Task<BoardDetailAnswer?> ReadDetailAsync(string boardId, string waiting)
         {
+            ReviewApiResult<BoardDetailAnswer> detail;
+
             if (this.PoolDetailOverrideForTests is not null)
-                return await this.PoolDetailOverrideForTests(boardId);
-
-            if (this.thisClient is not ReviewApiClient client || this.thisSession is not ReviewSession session)
+                detail = await this.PoolDetailOverrideForTests(boardId);
+            else if (this.thisClient is ReviewApiClient client && this.thisSession is ReviewSession session)
+                detail = await ServerWait.CallAsync(this, waiting, token => client.GetBoardDetailAsync(session, boardId, token));
+            else
                 return null;
-
-            ReviewApiResult<BoardDetailAnswer> detail = await ServerWait.CallAsync(
-                this, waiting, token => client.GetBoardDetailAsync(session, boardId, token));
 
             if (!detail.IsOk)
             {
@@ -505,8 +520,8 @@ namespace CRT
         // Answers every change instead of the server, and sees what was sent.
         internal Func<PoolAction, Task<ReviewApiResult<string>>>? PoolActionOverrideForTests { get; set; }
 
-        // Answers every read of a board instead of the server.
-        internal Func<string, Task<BoardDetailAnswer>>? PoolDetailOverrideForTests { get; set; }
+        // Answers every read of a board instead of the server - a refusal or no answer too.
+        internal Func<string, Task<ReviewApiResult<BoardDetailAnswer>>>? PoolDetailOverrideForTests { get; set; }
 
         // The lists as LoadAsync would have read them, and a board as choosing it would show it.
         internal Task UseListsForTests(IReadOnlyList<ReviewBoardRow> boards, IReadOnlyList<ReviewAccountRow> accounts)

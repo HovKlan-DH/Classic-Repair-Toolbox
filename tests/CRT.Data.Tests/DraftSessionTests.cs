@@ -401,6 +401,43 @@ public sealed class DraftSessionTests : IDisposable
         Assert.Equal(published.Sha256, Assert.Single(this.ListedOnDisk()).Sha256);
     }
 
+    // ###########################################################################################
+    // *** A NAME THE DRAFT HELD IN MEMORY REMEMBERS IS NOT FREE (code review, 2026-11-02). *** The history
+    // holds rows, and a row names its file: a second file under a name a removed row had would be the file
+    // that row showed when undone, the first one's bytes tidied away. So the names an editor must not hand
+    // out are the rows', the list's and everything the session has seen listed.
+    // ###########################################################################################
+    [Fact]
+    public void A_name_the_history_can_bring_back_is_not_free_for_another_file()
+    {
+        this.WriteDraft(DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU")));
+        this.PutInDraftFolder("Component images/u1.png", "the first picture");
+        DraftSession session = this.Open();
+
+        session.Apply("Picture of U1", DraftSessionTests.Picture("Component images/u1.png"));
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+
+        session.Apply("No picture of U1", DraftSessionTests.Picture(null));
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+        Assert.Empty(this.ListedOnDisk());
+
+        Assert.Contains("Component images/u1.png", session.FileNamesInUse, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // A row not saved yet holds its name too, and the list's names count while no row cites them.
+    [Fact]
+    public void The_names_in_use_are_the_rows_and_the_list_as_well()
+    {
+        this.WriteDraft(DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU")));
+        BoardFiles.Change(this.BoardFile, document => document.Files.Add(StoredFiles.EntryFor("KiCad data/board.kicad_pcb", "traces")));
+        DraftSession session = this.Open();
+
+        session.Apply("Picture of U1", DraftSessionTests.Picture("Component images/u1.png"));
+
+        Assert.Contains("Component images/u1.png", session.FileNamesInUse);
+        Assert.Contains("KiCad data/board.kicad_pcb", session.FileNamesInUse);
+    }
+
     // What no row cites stays only while this run's history can reach it: the next run's first
     // save tidies its bytes away, as every save did before.
     [Fact]
@@ -614,6 +651,49 @@ public sealed class DraftSessionTests : IDisposable
         Assert.Equal("Top", Assert.Single(session.Content.Calibrations).SchematicName);
     }
 
+    // ###########################################################################################
+    // A picture's name emptied in the table and typed again as a second edit lost its KiCad alignment
+    // without a word, its highlights coming along (code review, 2026-11-02). And it must get through
+    // a save in between, and CRT started again: unfinished work is saved, and the name may wait.
+    // ###########################################################################################
+    [Fact]
+    public void A_schematic_name_emptied_saved_and_typed_again_keeps_its_highlights_and_calibration()
+    {
+        var board = new BoardData
+        {
+            Components = { DraftSessionTests.Component("U1", "CPU") },
+            Schematics = { new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "top.png" } },
+            ComponentHighlights = { new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" } },
+        };
+
+        this.WriteDraft(board, new KiCadCalibrationEntry { SchematicName = "Top", CadName = "PCB Top", ScaleX = 2 });
+        DraftSession session = this.Open();
+
+        session.Apply("Empty the name", content => content with
+        {
+            Board = content.Board.WithSchematics([new BoardSchematicEntry { SchematicName = string.Empty, SchematicImageFile = "top.png" }]),
+        });
+
+        Assert.Equal(string.Empty, Assert.Single(session.Content.Calibrations).SchematicName);
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+
+        DraftSession again = this.Open();
+
+        Assert.Equal(string.Empty, Assert.Single(again.Content.Calibrations).SchematicName);
+
+        again.Apply("Type it again", content => content with
+        {
+            Board = content.Board.WithSchematics([new BoardSchematicEntry { SchematicName = "Top side", SchematicImageFile = "top.png" }]),
+        });
+
+        Assert.Equal("Top side", Assert.Single(again.Content.Board.ComponentHighlights).SchematicName);
+
+        KiCadCalibrationEntry calibration = Assert.Single(again.Content.Calibrations);
+        Assert.Equal("Top side", calibration.SchematicName);
+        Assert.Equal("PCB Top", calibration.CadName);
+        Assert.Equal(2, calibration.ScaleX);
+    }
+
     // ------------------------------------------------------------------ DraftSessions
 
     // A draft made before 4.0 still names a workbook; it is the same draft, so the same session.
@@ -648,6 +728,69 @@ public sealed class DraftSessionTests : IDisposable
         sessions.Close(this.DraftsRoot, DraftSessionTests.BoardKey);
         Assert.Empty(sessions.Open);
         Assert.Null(sessions.Find(this.DraftsRoot, DraftSessionTests.BoardKey));
+    }
+
+    // ###########################################################################################
+    // *** READING A DRAFT HOLDS NOBODY UP (code review, 2026-11-02). *** The first open of a large draft
+    // parsed its board file holding the one lock - and the UI thread's save timer and every refresh ask
+    // for sessions under that lock, so moving the read off the UI thread still froze the window. Every
+    // wait here gives up, so what it proves fails rather than hangs.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_being_read_keeps_nobody_waiting()
+    {
+        this.WriteDraft(DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU")));
+        var sessions = new DraftSessions(() => this.thisNow);
+        bool answered = false;
+
+        sessions.AfterReadForTests = () =>
+            answered = Task.Run(() => sessions.Due(this.thisNow)).Wait(TimeSpan.FromSeconds(5));
+
+        Assert.NotNull(sessions.Get(this.DraftsRoot, DraftSessionTests.BoardKey));
+        Assert.True(answered);
+    }
+
+    // Asked twice at once, it is still one session per draft: the first to arrive is the one.
+    [Fact]
+    public void Two_asking_for_a_draft_at_once_get_its_one_session()
+    {
+        this.WriteDraft(DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU")));
+        var sessions = new DraftSessions(() => this.thisNow);
+        DraftSession? other = null;
+
+        sessions.AfterReadForTests = () =>
+        {
+            sessions.AfterReadForTests = null;
+
+            var asking = Task.Run(() => other = sessions.Get(this.DraftsRoot, DraftSessionTests.BoardKey));
+            Assert.True(asking.Wait(TimeSpan.FromSeconds(5)));
+        };
+
+        DraftSession? first = sessions.Get(this.DraftsRoot, DraftSessionTests.BoardKey);
+
+        Assert.NotNull(first);
+        Assert.Same(other, first);
+        Assert.Same(first, Assert.Single(sessions.Open));
+    }
+
+    // Discarded while it was being read: what was read is of a draft that has gone, and must not stay as
+    // an open session a later Get answers with, and whose next save writes a folder back.
+    [Fact]
+    public void A_draft_closed_while_it_is_read_does_not_come_back()
+    {
+        this.WriteDraft(DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU")));
+        var sessions = new DraftSessions(() => this.thisNow);
+
+        sessions.AfterReadForTests = () =>
+        {
+            sessions.AfterReadForTests = null;
+
+            Directory.Delete(DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftSessionTests.BoardKey), recursive: true);
+            sessions.Close(this.DraftsRoot, DraftSessionTests.BoardKey);
+        };
+
+        Assert.Null(sessions.Get(this.DraftsRoot, DraftSessionTests.BoardKey));
+        Assert.Empty(sessions.Open);
     }
 
     // ------------------------------------------------------------------ Every editor on one draft (2026-10-25)

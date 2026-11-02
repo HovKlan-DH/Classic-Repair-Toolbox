@@ -57,6 +57,7 @@ answer BetaRollbackAnswer | .kind string
 answer BetaRollbackAnswer | .rejected boolean
 answer BetaRollbackAnswer | .submissionsReturned number
 answer BetaRollbackPlanAnswer | (root) object
+answer BetaRollbackPlanAnswer | .betaContentHash string
 answer BetaRollbackPlanAnswer | .boardId string
 answer BetaRollbackPlanAnswer | .kind string
 answer BetaRollbackPlanAnswer | .removed array of string
@@ -471,6 +472,7 @@ answer OscilloscopeModelQueueAnswer | .entries[].inBeta boolean
 answer OscilloscopeModelQueueAnswer | .entries[].message string
 answer OscilloscopeModelQueueAnswer | .entries[].publishedValues map of string
 answer OscilloscopeModelQueueAnswer | .entries[].seriesOrModel string
+answer OscilloscopeModelQueueAnswer | .entries[].signedIn boolean
 answer OscilloscopeModelQueueAnswer | .entries[].submittedUtc string
 answer OscilloscopeModelQueueAnswer | .entries[].values map of string
 answer OscilloscopeModelQueueAnswer | .entries[].vendor string
@@ -807,6 +809,12 @@ answer SubmissionDetailAnswer | .changes object
 answer SubmissionDetailAnswer | .changes.changedSections array of object
 answer SubmissionDetailAnswer | .changes.changedSections[].added array of string
 answer SubmissionDetailAnswer | .changes.changedSections[].changed array of string
+answer SubmissionDetailAnswer | .changes.changedSections[].changedRows array of object
+answer SubmissionDetailAnswer | .changes.changedSections[].changedRows[].fields array of object
+answer SubmissionDetailAnswer | .changes.changedSections[].changedRows[].fields[].after string
+answer SubmissionDetailAnswer | .changes.changedSections[].changedRows[].fields[].before string
+answer SubmissionDetailAnswer | .changes.changedSections[].changedRows[].fields[].field string
+answer SubmissionDetailAnswer | .changes.changedSections[].changedRows[].key string
 answer SubmissionDetailAnswer | .changes.changedSections[].fieldChanges map of array of object
 answer SubmissionDetailAnswer | .changes.changedSections[].fieldChanges{}[].after string
 answer SubmissionDetailAnswer | .changes.changedSections[].fieldChanges{}[].before string
@@ -830,6 +838,12 @@ answer SubmissionDetailAnswer | .changes.revisionDate.field string
 answer SubmissionDetailAnswer | .changes.sections array of object
 answer SubmissionDetailAnswer | .changes.sections[].added array of string
 answer SubmissionDetailAnswer | .changes.sections[].changed array of string
+answer SubmissionDetailAnswer | .changes.sections[].changedRows array of object
+answer SubmissionDetailAnswer | .changes.sections[].changedRows[].fields array of object
+answer SubmissionDetailAnswer | .changes.sections[].changedRows[].fields[].after string
+answer SubmissionDetailAnswer | .changes.sections[].changedRows[].fields[].before string
+answer SubmissionDetailAnswer | .changes.sections[].changedRows[].fields[].field string
+answer SubmissionDetailAnswer | .changes.sections[].changedRows[].key string
 answer SubmissionDetailAnswer | .changes.sections[].fieldChanges map of array of object
 answer SubmissionDetailAnswer | .changes.sections[].fieldChanges{}[].after string
 answer SubmissionDetailAnswer | .changes.sections[].fieldChanges{}[].before string
@@ -1335,6 +1349,7 @@ body POST /api/review/production/publish | .expectedRemovals array of string
 body POST /api/review/production/rollback | (root) object
 body POST /api/review/production/rollback | .boardId string
 body POST /api/review/production/rollback | .comment string
+body POST /api/review/production/rollback | .expectedBetaContentHash string
 body POST /api/review/production/rollback | .reject boolean
 body POST /api/review/production/rollback/plan | (root) object
 body POST /api/review/production/rollback/plan | .boardId string

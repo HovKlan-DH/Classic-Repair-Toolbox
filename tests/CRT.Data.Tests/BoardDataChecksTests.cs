@@ -457,6 +457,47 @@ public sealed class BoardDataChecksTests
         Assert.All(tableErrors, code => Assert.Contains(code, serverErrors));
     }
 
+    // ###########################################################################################
+    // *** AN EMPTY FILE MARKED ON THE TABLE'S CELL IS ONE THE SERVER REFUSES (owner decision, 2026-11-02:
+    // "Refuse empty files"). *** Each side asked for itself - the table of the file on this disk, the
+    // server of the manifest a submit would build - and the code and the words compared: moved on one
+    // side only, this fails. The server's lookup knows names, so the test above never meets this error.
+    // ###########################################################################################
+    [Fact]
+    public void An_empty_file_the_table_marks_is_one_the_server_refuses_in_the_same_words()
+    {
+        using var workspace = new TempWorkspace();
+        string draftFolder = Path.GetDirectoryName(workspace.WriteFile(Path.Combine("Drafts", "notes.txt"), string.Empty))!;
+
+        var rows = new SubmissionRows
+        {
+            BoardLocalFiles = [new BoardLocalFileEntry { Category = "Docs", Name = "Notes", File = "notes.txt" }],
+        };
+
+        BoardDataProblem marked = Assert.Single(
+            BoardDataChecks.Check(BoardCheckRows.From(rows), new DiskFileLookup(workspace.Path_("Data"), draftFolder), BoardCheckScope.Everything),
+            problem => problem.Level == BoardProblemLevel.Error);
+
+        Assert.Equal(BoardWorkbookSchema.SheetBoardLocalFiles, marked.Sheet);
+        Assert.Equal(0, marked.Index);
+        Assert.Equal(BoardWorkbookSchema.ColFile, marked.Column);
+
+        var manifest = new SubmissionManifest
+        {
+            BoardId = Board,
+            Manufacturer = "Commodore",
+            Hardware = "C64",
+            Board = "250407",
+            Rows = rows,
+            Files = [new SubmissionFile { Path = "notes.txt", Sha256 = new string('a', 64), SizeBytes = 0 }],
+        };
+
+        ValidationFinding refused = Assert.Single(SubmissionFileRules.ValidateManifestFiles(manifest, board: null));
+
+        Assert.Equal(refused.Code, marked.Code);
+        Assert.Equal(refused.Message, marked.Message);
+    }
+
     // And the wider scope adds no ERROR the server's own row rules do not have - beyond the file
     // names, which the server checks in another class (the test above holds those).
     [Fact]

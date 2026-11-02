@@ -104,6 +104,29 @@ public sealed class ComponentPaneEditsTests
         Assert.Same(before, ComponentPaneEdits.WithField(before, "U99", "PAL", ComponentField.FriendlyName, "Anything"));
     }
 
+    // ###########################################################################################
+    // *** A VALUE THE BOARD HOLDS ON TWO LINES IS NO EDIT UNTIL SOMEBODY EDITS IT (code review, 2026-11-02).
+    // *** C16 251789's R10 has a line break in its description: the box handed back what it was given, the
+    // value as kept is one line, and that read as a change nobody typed - opening the component and leaving
+    // it made a draft step and a "Draft" mark. So is a space around it. A real edit still goes in as kept.
+    // ###########################################################################################
+    [Fact]
+    public void A_field_set_to_its_own_value_as_the_board_holds_it_returns_the_same_board()
+    {
+        BoardData before = new()
+        {
+            Components = [new ComponentEntry { BoardLabel = "R10", Description = "first line\nsecond line", FriendlyName = " Spaced " }],
+        };
+
+        Assert.Same(before, ComponentPaneEdits.WithField(before, "R10", "PAL", ComponentField.Description, "first line\nsecond line"));
+        Assert.Same(before, ComponentPaneEdits.WithField(before, "R10", "PAL", ComponentField.Description, "first line second line"));
+        Assert.Same(before, ComponentPaneEdits.WithField(before, "R10", "PAL", ComponentField.FriendlyName, " Spaced "));
+
+        Assert.Equal(
+            "first line and more",
+            ComponentPaneEdits.WithField(before, "R10", "PAL", ComponentField.Description, "first line\nand more").Components[0].Description);
+    }
+
     // A field is one line; a note keeps its lines, each ended by "\n" alone.
     [Fact]
     public void One_line_fields_lose_their_line_breaks_and_notes_keep_theirs()
@@ -212,6 +235,115 @@ public sealed class ComponentPaneEditsTests
         Assert.Equal(
             ["U1|PAL|1|D6", "U1|PAL|2|D5", "U8||1|VSS", "U1|NTSC|1|D6 (NTSC)", "U8||40|RES"],
             after.ComponentPins.Select(pin => $"{pin.BoardLabel}|{pin.Region}|{pin.Pin}|{pin.Name}"));
+    }
+
+    // ###########################################################################################
+    // *** A ROW CORRECTED STAYS WHERE IT STOOD (code review, 2026-11-02). *** Shipped chips hold their
+    // baselines PAL, NTSC, PAL, NTSC. Replacing "every row of the region shown where the first stood" made
+    // that P1 P2 N1 N2 at a single value corrected: "Order of the component pictures changed", to the
+    // maintainer and in the History too, a publish regrouping them for good, and a draft only "reordered"
+    // once the value was typed back. Each row now stands in its own place among the other region's.
+    // ###########################################################################################
+    private static ComponentImageEntry RegionalBaseline(string region, string pin, string note = "") =>
+        new() { BoardLabel = "U1", Region = region, Pin = pin, Name = "Clock", File = $"Scope baseline/{region}{pin}.png", TimeDiv = "1uS", Note = note };
+
+    private static BoardData Interleaved() => new()
+    {
+        Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
+        ComponentImages =
+        [
+            RegionalBaseline("PAL", "1"), RegionalBaseline("NTSC", "1"),
+            RegionalBaseline("PAL", "2"), RegionalBaseline("NTSC", "2"),
+            RegionalBaseline("PAL", "3"), RegionalBaseline("NTSC", "3"),
+        ],
+    };
+
+    private static string[] Order(BoardData board) =>
+        board.ComponentImages.Select(row => $"{row.Region[0]}{row.Pin}").ToArray();
+
+    [Fact]
+    public void A_baseline_corrected_stays_where_it_stood_among_the_other_regions()
+    {
+        BoardData before = Interleaved();
+
+        BoardData after = ComponentPaneEdits.WithBaselines(before, "U1", "PAL",
+            [RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "2", note: "Corrected"), RegionalBaseline("PAL", "3")]);
+
+        Assert.Equal(["P1", "N1", "P2", "N2", "P3", "N3"], Order(after));
+        Assert.Equal("Corrected", after.ComponentImages[2].Note);
+        Assert.Empty(BoardRowOrder.ReorderedSheets(before, after));
+        Assert.False(BoardRowOrder.ComponentReordered(before, after, "U1"));
+
+        // Typed back: nothing left of it, no "reordered" draft.
+        BoardData typedBack = ComponentPaneEdits.WithBaselines(after, "U1", "PAL",
+            [RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "2"), RegionalBaseline("PAL", "3")]);
+
+        Assert.Empty(BoardDataDiffer.Compare(before, typedBack));
+        Assert.False(BoardRowOrder.DiffersFrom(before, typedBack));
+    }
+
+    // A key changed too (the pin) is that row still: it takes the place left free between its neighbours.
+    [Fact]
+    public void A_baseline_given_another_pin_stays_where_it_stood()
+    {
+        BoardData after = ComponentPaneEdits.WithBaselines(Interleaved(), "U1", "PAL",
+            [RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "9"), RegionalBaseline("PAL", "3")]);
+
+        Assert.Equal(["P1", "N1", "P9", "N2", "P3", "N3"], Order(after));
+    }
+
+    // Taking one out moves nothing else: the row after it keeps its place, or that too read as a new order.
+    [Fact]
+    public void A_baseline_removed_leaves_the_others_where_they_stood()
+    {
+        BoardData before = Interleaved();
+
+        BoardData after = ComponentPaneEdits.WithBaselines(before, "U1", "PAL", [RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "3")]);
+
+        Assert.Equal(["P1", "N1", "N2", "P3", "N3"], Order(after));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(before, after));
+
+        Assert.Equal(["N1", "N2", "N3"], Order(ComponentPaneEdits.WithBaselines(before, "U1", "PAL", [])));
+    }
+
+    // One added goes after the last of them, the other region's rows staying as they stood.
+    [Fact]
+    public void A_baseline_added_goes_after_the_last_of_the_region()
+    {
+        BoardData before = Interleaved();
+
+        BoardData after = ComponentPaneEdits.WithBaselines(before, "U1", "PAL",
+            [RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "2"), RegionalBaseline("PAL", "3"), RegionalBaseline("PAL", "4")]);
+
+        Assert.Equal(["P1", "N1", "P2", "N2", "P3", "P4", "N3"], Order(after));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(before, after));
+    }
+
+    // Added in the middle (the pins of a case, in number order): before the row it now stands before.
+    [Fact]
+    public void A_row_added_between_two_goes_before_the_later_one()
+    {
+        BoardData before = Interleaved();
+
+        BoardData after = ComponentPaneEdits.WithBaselines(before, "U1", "PAL",
+            [RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "15"), RegionalBaseline("PAL", "2"), RegionalBaseline("PAL", "3")]);
+
+        Assert.Equal(["P1", "N1", "P15", "P2", "N2", "P3", "N3"], Order(after));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(before, after));
+    }
+
+    // A real reorder is one still: the rows take the places in turn, the other region's staying.
+    [Fact]
+    public void Rows_put_in_another_order_take_the_places_in_turn()
+    {
+        BoardData before = Interleaved();
+
+        BoardData after = ComponentPaneEdits.WithBaselines(before, "U1", "PAL",
+            [RegionalBaseline("PAL", "3"), RegionalBaseline("PAL", "1"), RegionalBaseline("PAL", "2")]);
+
+        Assert.Equal(["P3", "N1", "P1", "N2", "P2", "N3"], Order(after));
+        Assert.NotEmpty(BoardRowOrder.ReorderedSheets(before, after));
+        Assert.True(BoardRowOrder.ComponentReordered(before, after, "U1"));
     }
 
     // A pin row with nothing in it is not kept; the same pins are no change.
@@ -409,8 +541,9 @@ public sealed class ComponentPaneEditsTests
         Assert.Equal(["2"], ComponentPaneEdits.BaselinesOf(board, "U1", "NTSC").Select(row => row.Pin));
     }
 
-    // Pictures replace the component's pictures where the first stood - its baselines, the other
-    // components' rows and the order of everything else stay as they were.
+    // Pictures replace the component's pictures each in the place of one - its baselines, the other
+    // components' rows and the order of everything else stay as they were (code review, 2026-11-02: all of
+    // them where the first stood regrouped a chip's rows at a single value corrected).
     [Fact]
     public void Pictures_replace_the_components_pictures_in_place_and_leave_its_baselines()
     {
@@ -424,11 +557,45 @@ public sealed class ComponentPaneEditsTests
         ]);
 
         Assert.Equal(
-            ["U8|Top side", "U8|Bottom", "U8|1", "U1|Top", "U1|2", "U8|2"],
+            ["U8|Top side", "U8|1", "U1|Top", "U1|2", "U8|Bottom", "U8|2"],
             after.ComponentImages.Select(row => $"{row.BoardLabel}|{(ComponentImageKinds.IsScopeBaseline(row) ? row.Pin : row.Name)}"));
-        Assert.Equal("Component images/U8-Bottom.png", after.ComponentImages[1].File);
+        Assert.Equal("Component images/U8-Bottom.png", after.ComponentImages[4].File);
         Assert.Equal("Socketed", after.ComponentImages[0].Note);
         Assert.Same(board.Components, after.Components);
+    }
+
+    // ###########################################################################################
+    // A component whose rows are split up already: no row of it goes where the component had none (code
+    // review, 2026-11-02). A place freed is the component's own, and one more than it has places for stands
+    // right beside its rows - never among another component's.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_picture_of_a_split_up_component_stands_beside_its_own_rows()
+    {
+        BoardData board = BoardWithImages();
+        string[] Rows(BoardData after) => after.ComponentImages.Select(row => $"{row.BoardLabel}|{(ComponentImageKinds.IsScopeBaseline(row) ? row.Pin : row.Name)}").ToArray();
+
+        // Both kept and one added: after the last of them.
+        Assert.Equal(
+            ["U8|Top", "U8|1", "U1|Top", "U1|2", "U8|Pinout", "U8|New", "U8|2"],
+            Rows(ComponentPaneEdits.WithPictures(board, "U8", "PAL", [Picture("U8", "Top"), Picture("U8", "Pinout"), Picture("U8", "New")])));
+
+        // Added between the two: before the later one, as the list has it.
+        Assert.Equal(
+            ["U8|Top", "U8|1", "U1|Top", "U1|2", "U8|New", "U8|Pinout", "U8|2"],
+            Rows(ComponentPaneEdits.WithPictures(board, "U8", "PAL", [Picture("U8", "Top"), Picture("U8", "New"), Picture("U8", "Pinout")])));
+
+        // The second removed and one added: the place it left, still the component's.
+        Assert.Equal(
+            ["U8|Top", "U8|1", "U1|Top", "U1|2", "U8|New", "U8|2"],
+            Rows(ComponentPaneEdits.WithPictures(board, "U8", "PAL", [Picture("U8", "Top"), Picture("U8", "New")])));
+
+        // A component with no picture yet: last, as ever - there is no place of its own to stand in.
+        BoardData none = board.WithComponentSections(componentImages: board.ComponentImages.Where(row => row.BoardLabel != "U8" || ComponentImageKinds.IsScopeBaseline(row)).ToList());
+
+        Assert.Equal(
+            ["U8|1", "U1|Top", "U1|2", "U8|2", "U8|New"],
+            Rows(ComponentPaneEdits.WithPictures(none, "U8", "PAL", [Picture("U8", "New")])));
     }
 
     [Fact]

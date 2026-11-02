@@ -169,6 +169,20 @@ namespace CRT.Server.Tests
             Assert.Contains("My Voltcraft, firmware 1.2", mail.Body);
         }
 
+        // The mail words the suite as the card does: the sender's CRT's word, never CRT's own finding
+        // (code review, 2026-11-02 - Security). Anybody can send anything to this route.
+        [Theory]
+        [InlineData(true, "The sender's CRT reported that its full test suite went through on it - nothing here checked that.")]
+        [InlineData(false, "The sender's CRT did not report that its full test suite went through on it as it was sent.")]
+        public async Task The_administrators_mail_says_the_suite_is_what_the_senders_CRT_reported(bool passed, string line)
+        {
+            await this.Submit(Request(Model("Voltcraft", "DOV702"), passed: passed));
+
+            string body = Assert.Single(this.thisMailer.Sent).Body;
+
+            Assert.Contains(line, System.Net.WebUtility.HtmlDecode(body), StringComparison.Ordinal);
+        }
+
         [Fact]
         public async Task A_model_with_a_problem_is_refused_and_nothing_is_kept()
         {
@@ -367,6 +381,40 @@ namespace CRT.Server.Tests
             Assert.Null(list.Entries[1].PublishedValues);
             Assert.Equal("Dennis", list.Entries[1].ContactName);
             Assert.Equal("dennis@example.com", list.Entries[1].ContactEmail);
+        }
+
+        // ###########################################################################################
+        // *** THE ADMINISTRATOR CAN TELL A KNOWN PERSON FROM ANYBODY WHO TYPED A NAME (code review,
+        // 2026-11-02 - Security). *** The route needs no account and takes any name and address, and
+        // Publish pushes the sender's commands to every CRT. Only an account whose address is verified
+        // counts: anybody can register, sign in unverified and send with a name of their choosing, and
+        // an account no longer there has only what was typed. Checked as the wire says it: CRT reads
+        // this name (ReviewWireContractTests), so a rename on either side alone fails.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_list_says_who_was_signed_in_in_the_answers_own_words()
+        {
+            this.thisAccounts.Accounts[8] = new AccountRecord(
+                8, "unverified@example.com", "unverified@example.com", "hash", "Dennis",
+                IsVerified: false, IsAdministrator: false, IsLocked: false, Now, null);
+            this.thisAccounts.Accounts[9] = new AccountRecord(
+                9, "gone@example.com", "gone@example.com", "hash", "Gone",
+                IsVerified: true, IsAdministrator: false, IsLocked: false, Now, null);
+
+            await this.Submit(Request(Model("Voltcraft", "TYPED")));
+            await this.Submit(Request(Model("Voltcraft", "VERIFIED"), contactEmail: null), account: this.thisAccounts.Accounts[7]);
+            await this.Submit(Request(Model("Voltcraft", "UNVERIFIED"), contactEmail: null), account: this.thisAccounts.Accounts[8]);
+            await this.Submit(Request(Model("Voltcraft", "GONE"), contactEmail: null), account: this.thisAccounts.Accounts[9]);
+            this.thisAccounts.Accounts.Remove(9);
+
+            OscilloscopeModelQueueAnswer list = await OscilloscopeModelFlows.ListAsync(this.thisStore, this.thisAccounts, this.Options());
+
+            Assert.Equal(
+                [("TYPED", false), ("VERIFIED", true), ("UNVERIFIED", false), ("GONE", false)],
+                list.Entries.Select(entry => (entry.SeriesOrModel, entry.SignedIn)));
+
+            string wire = JsonSerializer.Serialize(list.Entries[1], ReviewApiContract.WireSettings);
+            Assert.Contains("\"signedIn\":true", wire, StringComparison.Ordinal);
         }
 
         // ------------------------------------------------------------------ publishing

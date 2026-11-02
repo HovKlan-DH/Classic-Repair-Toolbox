@@ -941,7 +941,7 @@ namespace CRT
                         resolved?.FullPath ??
                             (string.IsNullOrWhiteSpace(file.File)
                                 ? string.Empty
-                                : Path.Combine(dataRoot, file.File.Replace('/', Path.DirectorySeparatorChar))),
+                                : DraftFileResolver.PathUnderDataRoot(dataRoot, file.File)),
                         resolved?.Root);
                 })
                 .ToList();

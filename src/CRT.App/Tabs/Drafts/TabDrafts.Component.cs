@@ -353,18 +353,25 @@ namespace CRT
         // its file changed, the change worked out off the UI thread, and taken back OUT when the save
         // cannot be made: applied straight to the session, a failed save left the step in, and the
         // timer that saves drafts no editor holds could save it after CRT said it had not.
+        //
+        // *** THE COMPONENT IS LOOKED UP BY ITS PUBLISHED LABEL (code review, 2026-11-02): *** that board's
+        // own draft may have renamed or deleted it. Then nothing can change - which is not "it is like that
+        // there already", as a copy that changed nothing was said to be.
         // ###########################################################################################
         private static async Task<string?> CopyPartsToAsync(ComponentCopySource target, ComponentCopySource source, IReadOnlyList<ComponentCopyPart> parts, string fromName)
         {
             string label = target.Row.BoardLabel;
             string region = target.RowsRegion;
             bool changesSomething = false;
+            bool hasComponent = true;
 
             DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
                 target.BoardIdentity,
                 DraftStepWording.ComponentCopied(label, fromName),
                 (BoardData board) =>
                 {
+                    hasComponent = ComponentPaneEdits.RowShown(board, label, region) is not null;
+
                     BoardData copied = ComponentCopy.Apply(board, label, region, source, parts);
                     changesSomething |= !ReferenceEquals(copied, board);
                     return copied;
@@ -372,6 +379,7 @@ namespace CRT
 
             return outcome == DraftWorkbookEditOutcome.NoDraft ? ComponentPaneWording.AlsoNoDraft
                 : outcome != DraftWorkbookEditOutcome.Saved ? ComponentPaneWording.AlsoNotSaved
+                : !hasComponent ? ComponentPaneWording.AlsoComponentNotInDraft
                 : !changesSomething ? ComponentPaneWording.AlsoAlreadySo
                 : null;
         }
@@ -406,7 +414,7 @@ namespace CRT
 
             string folder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, identity);
             string fromFolder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, fromIdentity);
-            List<string> taken = session.ListedFiles.Keys.Concat(DraftFiles.CitedNames(session.Content.Board)).ToList();
+            List<string> taken = session.FileNamesInUse.ToList();
 
             var copies = new List<(string Source, string Name)>();
             var going = new List<(ChangedFileElsewhere File, string Name)>();
@@ -671,6 +679,40 @@ namespace CRT
                 ? KiCadNetNames.Choices(root.Pcb.SelectMany(pcb => pcb.Nets.List).Select(net => (net.Name, net.NormalizedName, net.IsNoNet)))
                 : KiCadNetChoices.None;
 
+        // Told as opening reads the draft - a test asks where that runs.
+        internal Action? DraftReadForTests { get; set; }
+
+        // ###########################################################################################
+        // What opening the pane or the table reads first: the draft's status, its one session - parsed
+        // from its board file the first time - and the board as published. Off the UI thread and under
+        // CRT's "please wait" (code review, 2026-11-02: the first open of a large draft froze the window
+        // with nothing on screen saying so), `wait` being what it says.
+        // ###########################################################################################
+        private Task<(DraftSession? Session, BoardData? Published)> ReadDraftToOpenAsync(HardwareBoardEntry entry, string wait)
+        {
+            string dataRoot = DataManager.DataRoot;
+            string draftsRoot = DraftManager.DraftsRoot;
+            string identity = entry.ExcelDataFile;
+            bool listedAsPublished = entry.IsPublished;
+            Action? reading = this.DraftReadForTests;
+
+            return BusyOverlay.RunLocalAsync<(DraftSession?, BoardData?)>(this, wait, async () =>
+            {
+                (DraftStatus? status, DraftSession? session) = await Task.Run(() =>
+                {
+                    reading?.Invoke();
+
+                    return (DraftStatusReader.Resolve(dataRoot, draftsRoot, identity, listedAsPublished), DraftManager.Sessions.Get(draftsRoot, identity));
+                });
+
+                BoardData? published = this.PublishedBoardOverrideForTests is { } given
+                    ? given(entry)
+                    : await TabDrafts.LoadPublishedBoardAsync(entry, status);
+
+                return (session, published);
+            });
+        }
+
         // ###########################################################################################
         // The pane opened on `entry`'s draft - `show` hands it the session, the board as published and
         // that board's file - the table closed first when it is open (what it holds saved).
@@ -702,15 +744,9 @@ namespace CRT
             // "KiCad data" makes way too, once what it writes has ended (TabDrafts.KiCad.cs).
             await this.CloseKiCadAsync();
 
-            DraftStatus? status = DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile, entry.IsPublished);
-
-            BoardData? published = this.PublishedBoardOverrideForTests is not null
-                ? this.PublishedBoardOverrideForTests(entry)
-                : await BusyOverlay.RunLocalAsync(this, CrtWaitWording.OpeningComponent, () => TabDrafts.LoadPublishedBoardAsync(entry, status));
-
             // The one session of this draft, as the table opens it - something may have written the
             // file meanwhile: read again first, when nothing of the session's waits to be saved.
-            DraftSession? session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, entry.ExcelDataFile);
+            (DraftSession? session, BoardData? published) = await this.ReadDraftToOpenAsync(entry, CrtWaitWording.OpeningComponent);
 
             if (session is null)
             {
@@ -739,6 +775,10 @@ namespace CRT
         // be read again first - the pane's saves left it behind (it catches up only once the pane closes
         // or the tab is left, and a reload drops a selection). The board on screen is handed that reload
         // here, so leaving the tab reads nothing again. Null while no pane is open.
+        //
+        // *** NULL TOO WHEN THE SAVE COULD NOT BE MADE, AND THE PANE SAYS SO (code review, 2026-11-02). ***
+        // The Schematics tab went ahead from a file without the latest changes: a component or a picture
+        // just renamed was not found, and the failed save was named nowhere.
         // ###########################################################################################
         private async Task<bool?> SaveAndHandOverBoardOnScreenAsync()
         {
@@ -747,7 +787,13 @@ namespace CRT
                 return null;
             }
 
-            await this.SaveComponentNowAsync();
+            bool saved = await this.SaveComponentNowAsync();
+            this.ComponentPane.SayIfNotSaved(saved);
+
+            if (!saved)
+            {
+                return null;
+            }
 
             bool readBoardFirst = this.thisBoardOnScreenBehind is not null;
             this.thisBoardOnScreenBehind = null;

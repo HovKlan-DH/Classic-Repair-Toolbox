@@ -14,8 +14,8 @@ public sealed class ReviewTableFilesTests
         new(path, hash, 10, SubmissionFileScope.Own, IsReferenced: true, PublishedSha256: null);
 
     // ###########################################################################################
-    // A file opened from the table is written into the temp folder and handed to the operating
-    // board, so it cannot be deleted while a viewer may still hold it - but nothing deleted them
+    // A file opened from the table is written to disk (OpenedFiles.Root) and handed to the operating
+    // system, so it cannot be deleted while a viewer may still hold it - but nothing deleted them
     // at all, and months of reviewing piled up contributor files there (code review, 2026-09-26).
     // Swept on the next open, a day later.
     // ###########################################################################################

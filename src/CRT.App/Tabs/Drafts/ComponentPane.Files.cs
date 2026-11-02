@@ -70,7 +70,6 @@ namespace CRT
         // Each file's thumbnail by its name in the board - read once while the component is open.
         // Every picture read while the pane is open - thumbnails and the Pictures part's previews alike.
         private readonly PaneImageCache thisImages = new();
-        private readonly List<Task> thisThumbnailLoads = new();
 
         // The new baseline's screenshot until it is added: a file picked, or a capture in the temp folder.
         private string? thisNewBaselineSource;
@@ -95,7 +94,7 @@ namespace CRT
         internal IReadOnlyList<ComponentPaneFileRow> FilesForTests => this.thisFiles;
 
         // Every thumbnail asked for so far, read - for a test.
-        internal Task ThumbnailsLoadedForTests => Task.WhenAll(this.thisThumbnailLoads.ToList());
+        internal Task ThumbnailsLoadedForTests => this.PreviewsLoadedForTests;
 
         // Awaited once a picture is decoded, before it is kept - a test holds a load there.
         internal Func<string, Task>? ImageDecodedForTests { get; set; }
@@ -224,6 +223,18 @@ namespace CRT
             this.thisPictures.Clear();
             this.thisFiles.Clear();
             this.thisImages.Clear();
+            this.LetGoOfWhatIsOfTheComponentShown();
+        }
+
+        // ###########################################################################################
+        // What belongs to the component shown and to no other, gone as the pane moves on (code review,
+        // 2026-11-02). The page stays as another component is picked, on purpose - and a half-filled new
+        // baseline on it stayed too, whose Add then filed U8's pin, signal and picture under U9. A capture
+        // waiting in that panel is deleted with it (ForgetNewBaselineSource). And what the pane said of
+        // it: "Moved to NTSC" stood under the title of the next component.
+        // ###########################################################################################
+        private void LetGoOfWhatIsOfTheComponentShown()
+        {
             this.CloseNewBaseline();
             this.ShowMessage(null);
         }
@@ -336,7 +347,8 @@ namespace CRT
 
                 if (!copies.AnyLying)
                 {
-                    this.ShowMessage(ComponentPaneWording.FileNotCopied);
+                    // Said for what it is: a file of no bytes is not added at all (2026-11-02).
+                    this.ShowMessage(copies.EmptyFiles.Count > 0 ? ComponentPaneWording.FileEmpty : ComponentPaneWording.FileNotCopied);
                     return false;
                 }
 
@@ -372,11 +384,12 @@ namespace CRT
         // ###########################################################################################
         private bool thisFilesArriving;
 
-        // The names the board's files have - none of them is given to a file added here.
+        // The names the board's files have, or an undo can bring back - none of them is given to a file
+        // added here (DraftSession.FileNamesInUse).
         private List<string> TakenNames() =>
             this.thisSession is not { } session
                 ? []
-                : session.ListedFiles.Keys.Concat(DraftFiles.CitedNames(session.Content.Board)).ToList();
+                : session.FileNamesInUse.ToList();
 
         private async Task<string?> PickFileAsync(PaneFileKind kind)
         {
@@ -879,8 +892,7 @@ namespace CRT
             this.thisNewBaselineIsCapture = isCapture;
             this.ShowNewBaselineState();
 
-            Task load = this.LoadNewBaselineThumbnailAsync(path);
-            this.thisThumbnailLoads.Add(load);
+            this.TrackPreviewLoad(this.LoadNewBaselineThumbnailAsync(path));
         }
 
         private async Task LoadNewBaselineThumbnailAsync(string path)
@@ -971,7 +983,7 @@ namespace CRT
 
             foreach (IComponentPaneThumbnailRow row in rows.Where(row => row.Thumbnail is null && row.File.Length > 0))
             {
-                this.thisThumbnailLoads.Add(this.LoadThumbnailAsync(row, dataRoot, draftFolder, identity));
+                this.TrackPreviewLoad(this.LoadThumbnailAsync(row, dataRoot, draftFolder, identity));
             }
         }
 

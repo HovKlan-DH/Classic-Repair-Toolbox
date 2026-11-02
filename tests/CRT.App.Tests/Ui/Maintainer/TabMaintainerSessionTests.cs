@@ -149,6 +149,179 @@ public sealed class TabMaintainerSessionTests
     }
 
     // ###########################################################################################
+    // *** TAKEN OFF THE LAST BOARD, NOTHING IS WAITING (code review, 2026-11-02). *** The queue and BETA
+    // checks answer 403 from then on, every minute; that read as "could not ask" and left the lists
+    // alone, so the tab's badge and the buttons went on saying "2" until signing out, and "hide the tab
+    // while no work is waiting" never hid it. A 403 is not "could not ask": the server has said this
+    // account reviews nothing. The lists go, the server's sentence stays on the line.
+    // ###########################################################################################
+    private static (TabMaintainer Tab, string Words) TakenOffTheLastBoard()
+    {
+        const string words = "This account does not maintain any board.";
+        var tab = new TabMaintainer();
+
+        var server = new AnsweringHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent($"{{\"error\":\"{words}\"}}", System.Text.Encoding.UTF8, "application/json")
+        });
+
+        tab.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+        tab.UseSessionForTests(TabMaintainerSessionTests.Session(DateTimeOffset.UtcNow.AddDays(10)));
+        typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(tab, null);
+
+        tab.ApplyQueueResponse(new ReviewQueueResponse(
+            CanPublish: true,
+            Submissions: [TabMaintainerSessionTests.Row(41) with { BoardId = "Commodore/C64/250407" }, TabMaintainerSessionTests.Row(42) with { BoardId = "Commodore/C128/310378" }],
+            IsAdministrator: false));
+
+        tab.ApplyBetaListAsync(
+            new ProductionListResponse(true, [new ProductionBoardRow("Commodore/C64/250407", "Commodore", "C64", "250407", "2026-September-25", "hash-1", "2026-May-14", null, true)]),
+            background: true).GetAwaiter().GetResult();
+
+        return (tab, words);
+    }
+
+    [Fact]
+    public async Task A_maintainer_taken_off_the_last_board_has_nothing_waiting()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer tab, string words) = TabMaintainerSessionTests.TakenOffTheLastBoard();
+            Assert.Equal(3, tab.TabAttention);
+
+            await (Task)typeof(TabMaintainer).GetMethod("RefreshQueueAsync", Any)!.Invoke(tab, [true])!;
+
+            Assert.Equal(0, tab.TabAttention);
+            Assert.Null(tab.ModeBadgeForTests(MaintainerMode.Review));
+            Assert.Null(tab.ModeBadgeForTests(MaintainerMode.Beta));
+            Assert.Empty(tab.QueueTextsForTests());
+            Assert.Empty(tab.BetaTextsForTests());
+
+            // A real answer, so "hide the tab while no work is waiting" can hide it - and said why.
+            Assert.True(tab.BadgeKnown);
+            Assert.Equal(words, tab.FindControl<TextBlock>("QueueMessageText")!.Text);
+        });
+    }
+
+    // The same refusal under a table with unsaved changes takes nothing away: the lists stay beside the
+    // table, the sentence says it, and the next check asks again.
+    [Fact]
+    public async Task A_maintainer_taken_off_the_last_board_keeps_the_lists_under_unsaved_table_changes()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer tab, string words) = TabMaintainerSessionTests.TakenOffTheLastBoard();
+
+            tab.OpenTableForTests(TabMaintainerSessionTests.Row(41) with { BoardId = "Commodore/C64/250407" }, TabMaintainerSessionTests.Table());
+            BoardTableDocument document = tab.TableEditorForTests.CommitAndGetDocument()!;
+            document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!.Rows.First(row => !row.IsDeleted)
+                .Cells[BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName)].Text = "Changed";
+
+            await (Task)typeof(TabMaintainer).GetMethod("RefreshQueueAsync", Any)!.Invoke(tab, [true])!;
+
+            Assert.Equal(3, tab.TabAttention);
+            Assert.NotEmpty(tab.QueueTextsForTests());
+            Assert.True(tab.IsTableOpen);
+            Assert.True(tab.HasUnsavedTableEdits);
+            Assert.Equal(words, tab.FindControl<TextBlock>("QueueMessageText")!.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** AN ANSWER THAT LANDS AFTER SIGNING OUT BRINGS NOTHING BACK (code review, 2026-11-02). *** The
+    // minute check's reads never looked at the session after their await. Landing after the sign-in
+    // screen they refilled the hidden lists, set "known" and the administrator's flag, and redrew the
+    // tab's badge - and the timer being stopped, the signed-out tab kept the count until the next
+    // sign-in, whose account started with the old queue and the administrator's entries.
+    // ###########################################################################################
+    private static async Task LandsAfterSigningOutAsync(string method, object[] arguments, string answer, Action<TabMaintainer> assertNothingBack)
+    {
+        var tab = new TabMaintainer();
+        var gate = new TaskCompletionSource<string>();
+
+        tab.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(
+            async (_, _) => AnsweringHttpHandler.Json(await gate.Task)))));
+        tab.UseSessionForTests(TabMaintainerSessionTests.Session(DateTimeOffset.UtcNow.AddDays(10)));
+        typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(tab, null);
+
+        Task asked = (Task)typeof(TabMaintainer).GetMethod(method, Any)!.Invoke(tab, arguments)!;
+        Assert.False(asked.IsCompleted);
+
+        typeof(TabMaintainer).GetMethod("ShowSignInPanel", Any)!.Invoke(tab, null);
+
+        gate.SetResult(answer);
+        await asked;
+
+        assertNothingBack(tab);
+        Assert.Equal(0, tab.TabAttention);
+        Assert.Null(tab.ModeBadgeForTests(MaintainerMode.Review));
+        Assert.Null(tab.ModeBadgeForTests(MaintainerMode.Beta));
+        Assert.Null(tab.ModeBadgeForTests(MaintainerMode.Boards));
+    }
+
+    [Fact]
+    public async Task A_queue_answer_landing_after_signing_out_brings_nothing_back()
+    {
+        await UiTest.RunAsync(() => TabMaintainerSessionTests.LandsAfterSigningOutAsync(
+            "RefreshQueueAsync",
+            [true],
+            """{"isAdministrator":true,"oscilloscopeModelsWaiting":3,"submissions":[{"id":41,"boardId":"Commodore/C64/250407","state":"pending","summary":"Corrected U8.","contactEmail":"c@example.com","awaitsYou":true}]}""",
+            tab =>
+            {
+                Assert.Empty(tab.QueueTextsForTests());
+                Assert.Equal(["MyAccountItem", "ServerVersionItem"], tab.AccountEntriesShownForTests);
+                Assert.False((bool)typeof(TabMaintainer).GetField("thisQueueKnown", Any)!.GetValue(tab)!);
+            }));
+    }
+
+    [Fact]
+    public async Task A_BETA_list_landing_after_signing_out_brings_nothing_back()
+    {
+        await UiTest.RunAsync(() => TabMaintainerSessionTests.LandsAfterSigningOutAsync(
+            "RefreshBetaAsync",
+            [true, false],
+            """{"configured":true,"boards":[{"boardId":"Commodore/C64/250407","manufacturer":"Commodore","hardware":"C64","board":"250407","betaRevision":"2026-September-25","betaContentHash":"hash-1","productionRevision":"2026-May-14"}]}""",
+            tab =>
+            {
+                Assert.Empty(tab.BetaTextsForTests());
+                Assert.False((bool)typeof(TabMaintainer).GetField("thisBetaKnown", Any)!.GetValue(tab)!);
+            }));
+    }
+
+    [Fact]
+    public async Task A_boards_list_landing_after_signing_out_brings_nothing_back()
+    {
+        await UiTest.RunAsync(() => TabMaintainerSessionTests.LandsAfterSigningOutAsync(
+            "RefreshBoardsAsync",
+            [true],
+            System.Text.Json.JsonSerializer.Serialize(
+                new BoardOverviewAnswer([new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", true, true, false, true, null, null, null, 1)]),
+                ReviewApiContract.WireSettings),
+            tab =>
+            {
+                Assert.Empty(tab.BoardsTextsForTests());
+                Assert.False((bool)typeof(TabMaintainer).GetField("thisBoardsKnown", Any)!.GetValue(tab)!);
+            }));
+    }
+
+    // The drop-down listing the minute check reads away from the Boards screen is the same read: its
+    // answer turned the Boards button's badge into an attention badge on the signed-out tab.
+    [Fact]
+    public async Task A_listing_landing_after_signing_out_brings_nothing_back()
+    {
+        await UiTest.RunAsync(() => TabMaintainerSessionTests.LandsAfterSigningOutAsync(
+            "RefreshListingAsync",
+            [],
+            System.Text.Json.JsonSerializer.Serialize(
+                new BoardListingAnswer(
+                    true,
+                    [],
+                    [new UnlistedBoardEntry("Commodore/C128/310378 Open128", "Commodore", "C128", "310378 Open128", false, true, null, new BoardPlacement("Commodore 128", "310378 Open128", string.Empty, null))]),
+                ReviewApiContract.WireSettings),
+            tab => Assert.Null(typeof(TabMaintainer).GetField("thisListing", Any)!.GetValue(tab))));
+    }
+
+    // ###########################################################################################
     // *** WHERE A SIGN-IN CANNOT BE REMEMBERED, THE SIGN-IN SCREEN SAYS SO (code review,
     // 2026-10-13). *** Linux and macOS store no token (no DPAPI), and nothing said so - the password
     // asked at every launch read as CRT forgetting. One grey line under "Sign in", off Windows only.

@@ -204,6 +204,52 @@ public sealed class BoardHistoryDisplayTests
         Assert.Equal(["Regions", BoardRegions.ChangedLine(false)], BoardHistoryDisplay.ChangeLines(changes).Select(line => line.Text));
     }
 
+    // ###########################################################################################
+    // One rectangle moved and another resized (code review, 2026-11-02): from the review's own comparison to
+    // the line, each with its own field. A record stored before - both fields on both rows - reads as stored.
+    // ###########################################################################################
+    [Fact]
+    public void One_rectangle_moved_and_another_resized_read_each_with_its_own_field()
+    {
+        static ComponentHighlightEntry At(string x, string width) =>
+            new() { SchematicName = "Top", BoardLabel = "U8", X = x, Y = "2", Width = width, Height = "4" };
+
+        SubmissionChanges changes = SubmissionChangeFacts.Build(ReviewSummary.Compare(
+            new BoardData { ComponentHighlights = [At("1", "3"), At("10", "3")] },
+            new BoardData { ComponentHighlights = [At("5", "3"), At("10", "9")] }));
+
+        string changed = BoardHistoryDisplay.ChangeLines(changes).Select(line => line.Text).Single(text => text.Contains("changed", StringComparison.Ordinal));
+
+        Assert.Contains("Top / U8 (X)", changed, StringComparison.Ordinal);
+        Assert.Contains("Top / U8 (Width)", changed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_record_stored_before_each_rectangle_had_its_own_fields_still_reads()
+    {
+        SubmissionChanges stored = System.Text.Json.JsonSerializer.Deserialize<SubmissionChanges>(
+            """
+            {"IsNewBoard":false,"Sections":[{"Section":"Component highlights","AddedCount":0,"ChangedCount":2,"RemovedCount":0,"RenamedCount":0,
+            "Added":[],"Changed":[{"Row":"Top / U8","Fields":["X","Width"]},{"Row":"Top / U8","Fields":["X","Width"]}],"Removed":[],"Renamed":[]}],
+            "Files":{"AddedCount":0,"ReplacedCount":0,"RemovedCount":0,"Added":[],"Replaced":[],"Removed":[]}}
+            """)!;
+
+        Assert.Equal(
+            ["Component highlights", "[2] changed: Top / U8 (X, Width), Top / U8 (X, Width)"],
+            BoardHistoryDisplay.ChangeLines(stored).Select(line => line.Text));
+    }
+
+    // A new board that has regions: said as what it is - nothing "now" about a board that was not there.
+    [Fact]
+    public void A_new_boards_regions_read_under_their_own_heading()
+    {
+        var changes = new SubmissionChanges(true, [], FileChanges.None, null, RegionsNow: true);
+
+        Assert.Equal(
+            ["A new board.", "Regions", "This new board comes in PAL and NTSC versions"],
+            BoardHistoryDisplay.ChangeLines(changes).Select(line => line.Text));
+    }
+
     [Fact]
     public void A_new_board_is_counted_not_named()
     {

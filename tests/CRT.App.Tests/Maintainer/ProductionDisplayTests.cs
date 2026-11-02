@@ -500,4 +500,80 @@ public sealed class ProductionDisplayTests
         Assert.Equal("1 file to add, 0 files to replace, 2 files to remove, 1,180 already the same", ProductionDisplay.PlanSummary(plan));
         Assert.DoesNotContain("remove", ProductionDisplay.PlanSummary(plan with { Removals = FileRemovalPreview.Nothing }), StringComparison.Ordinal);
     }
+
+    // The datasheet replaced under its own name: its earlier bytes go, under the name the board keeps.
+    private static ProductionPlanView PlanReplacingADatasheet() =>
+        ProductionDisplayTests.Plan(
+            true,
+            new PromotionFile("Files/ab/abab.pdf", new string('a', 64), PromotionChange.Replaced, PromotionStage.Content, IsShared: false, Name: "Datasheets/6526.pdf"))
+            with
+            {
+                Removals = new FileRemovalPreview(
+                    ["Files/cd/cdcd.pdf"],
+                    null,
+                    new Dictionary<string, string> { ["Files/cd/cdcd.pdf"] = "Datasheets/6526.pdf" })
+            };
+
+    // ###########################################################################################
+    // *** A REPLACED FILE IS NOT A FILE REMOVED (code review, 2026-11-02). *** The panel read "1 file
+    // to replace, 1 file to remove" right above "No files are removed from the stable data.", and
+    // the outcome "1 unused file was removed" - while CRT's own rule (FileRemovalWording.Unused) is
+    // that a replaced file's earlier bytes are the replacement, not a file nothing uses.
+    // ###########################################################################################
+    [Fact]
+    public void A_replaced_file_is_counted_once_as_replaced_and_never_as_removed()
+    {
+        ProductionPlanView plan = ProductionDisplayTests.PlanReplacingADatasheet();
+
+        Assert.Equal("0 files to add, 1 file to replace, 1,180 already the same", ProductionDisplay.PlanSummary(plan));
+        Assert.Equal(
+            "No files are removed from the stable data.",
+            FileRemovalWording.Headline(plan.Removals, "the stable data", ProductionDisplay.NamesKept(plan)));
+
+        // A file nothing lists any more beside it is still said, and only that one.
+        ProductionPlanView both = plan with
+        {
+            Removals = new FileRemovalPreview(
+                ["Files/cd/cdcd.pdf", "Files/ef/efef.png"],
+                null,
+                new Dictionary<string, string> { ["Files/cd/cdcd.pdf"] = "Datasheets/6526.pdf", ["Files/ef/efef.png"] = "Images/old.png" })
+        };
+
+        Assert.Equal("0 files to add, 1 file to replace, 1 file to remove, 1,180 already the same", ProductionDisplay.PlanSummary(both));
+    }
+
+    [Fact]
+    public void After_publishing_a_replaced_file_is_not_said_to_be_an_unused_file_removed()
+    {
+        ProductionPlanView plan = ProductionDisplayTests.PlanReplacingADatasheet();
+
+        Assert.Equal(
+            "Commodore / C64 / 250407 is published to the stable source (1 file(s) copied). Everyone gets it the next time their data updates.",
+            ProductionDisplay.PublishedToStable(plan, new ProductionPublishResult("Commodore/C64/250407", "published", FilesCopied: 1, RemovedFiles: ["Datasheets/6526.pdf"])));
+
+        Assert.Contains(
+            " 1 unused file was removed.",
+            ProductionDisplay.PublishedToStable(plan, new ProductionPublishResult("Commodore/C64/250407", "published", FilesCopied: 1, RemovedFiles: ["Datasheets/6526.pdf", "Images/old.png"])),
+            StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // WHICH PLAN IS WORTH READING AGAIN when the maintainer presses the screen's button or comes
+    // back to the tab (code review, 2026-11-02): none held (the read failed), one carrying a refusal
+    // a change elsewhere can lift, or one whose publish was just refused. Never one that can be
+    // published, or the "I have checked this" tick would go - and not the administrators-only
+    // sentence, which is every maintainer's on every board, and which no reading can change.
+    // ###########################################################################################
+    [Fact]
+    public void Only_a_plan_that_is_missing_refused_or_whose_publish_was_refused_is_read_again()
+    {
+        ProductionPlanView publishable = ProductionDisplayTests.Plan();
+
+        Assert.True(ProductionDisplay.PlanIsWorthReadingAgain(null, publishRefused: false));
+        Assert.True(ProductionDisplay.PlanIsWorthReadingAgain(publishable with { CanPublish = false, Refusal = "Place it in the Boards screen first." }, publishRefused: false));
+        Assert.True(ProductionDisplay.PlanIsWorthReadingAgain(publishable, publishRefused: true));
+
+        Assert.False(ProductionDisplay.PlanIsWorthReadingAgain(publishable, publishRefused: false));
+        Assert.False(ProductionDisplay.PlanIsWorthReadingAgain(publishable with { CanPublish = false, Refusal = StablePublishing.AdministratorsOnlyMessage }, publishRefused: false));
+    }
 }

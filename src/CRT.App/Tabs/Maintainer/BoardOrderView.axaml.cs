@@ -141,13 +141,20 @@ namespace CRT
         {
             bool moved = this.IsReordered;
 
-            this.GetControl<Button>("SaveButton").IsEnabled = moved && !this.thisIsSaving;
-            this.GetControl<Button>("UndoButton").IsEnabled = moved && !this.thisIsSaving;
+            this.UpdateButtons();
 
             if (moved)
                 this.ShowMessage(BoardOrderDisplay.Unsaved, isError: false);
             else if (this.FindControl<TextBlock>("MessageText")?.Text == BoardOrderDisplay.Unsaved)
                 this.ShowMessage(null, isError: false);
+        }
+
+        private void UpdateButtons()
+        {
+            bool moved = this.IsReordered;
+
+            this.GetControl<Button>("SaveButton").IsEnabled = moved && !this.thisIsSaving;
+            this.GetControl<Button>("UndoButton").IsEnabled = moved && !this.thisIsSaving;
         }
 
         private void OnUndoClick(object? sender, RoutedEventArgs e) => this.PutBack();
@@ -227,6 +234,16 @@ namespace CRT
             finally
             {
                 this.thisIsSaving = false;
+
+                // ###########################################################################################
+                // *** A SAVE THAT DID NOT GO THROUGH GIVES THE BUTTONS BACK (code review, 2026-11-02). *** A
+                // refusal and no answer return from inside the try, past the UpdateState below - both
+                // stayed grey, and the 409 says to open the item again, which reads nothing under moves
+                // not saved. Only the buttons here: UpdateState would replace the server's words with
+                // "Unsaved". A save that went through has its own UpdateState, once the list is read.
+                // ###########################################################################################
+                if (said is null)
+                    this.UpdateButtons();
             }
 
             if (said is { } line)
@@ -251,6 +268,8 @@ namespace CRT
             this.GetControl<TextBlock>("MessageText") is { IsVisible: true } block ? block.Text ?? string.Empty : string.Empty;
 
         internal bool IsSaveEnabledForTests => this.GetControl<Button>("SaveButton").IsEnabled;
+
+        internal bool IsCancelEnabledForTests => this.GetControl<Button>("UndoButton").IsEnabled;
 
         private void ShowMessage(string? message, bool isError) =>
             WindowMessage.Show(this.FindControl<TextBlock>("MessageText"), message, isError);

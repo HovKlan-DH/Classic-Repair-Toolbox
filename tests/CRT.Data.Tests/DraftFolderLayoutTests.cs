@@ -182,6 +182,38 @@ public sealed class DraftFolderLayoutTests
     }
 
     // ###########################################################################################
+    // *** AN IDENTITY CAN COME OUT OF A FILE SOMEBODY HANDED OVER (code review, 2026-11-02 - Security). ***
+    // A draft folder put into Drafts/ by hand carries a marker naming its board, read at every launch. A
+    // first segment "\\host\share\x" replaced the root in Path.Combine, so Directory.Exists opened SMB to
+    // that machine and handed it the Windows sign-in's NTLM hash, with nothing pressed; ".." climbed out.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("\\\\host\\share\\x/C64/250407/board.json")] // windows-path-literal: a hostile identity, refused on every OS
+    [InlineData("C:\\Windows/C64/250407/board.json")] // windows-path-literal: a hostile identity, refused on every OS
+    [InlineData("C:/Windows/System32/board.json")] // windows-path-literal: a hostile identity, refused on every OS
+    [InlineData("Commodore\\..\\..\\Outside/250407/board.json")] // windows-path-literal: a hostile identity, refused on every OS
+    [InlineData("../../Outside/250407/board.json")]
+    [InlineData("Commodore/../../Outside/board.json")]
+    [InlineData("Commodore/./250407/board.json")]
+    public void An_identity_that_could_lead_out_of_the_drafts_root_resolves_to_EMPTY(string identity)
+    {
+        Assert.Equal(string.Empty, DraftFolderLayout.GetBoardFolder(Root, identity));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetWorkbookPath(Root, identity));
+        Assert.Equal(string.Empty, DraftFolderLayout.GetMarkerPath(Root, identity));
+    }
+
+    // Only the folders are asked about: the file name goes, and any board name a folder can have stays.
+    [Theory]
+    [InlineData("Commodore/C64/250407/Data C64 250407.xlsx")]
+    [InlineData("Commodore/Commodore 64 (PAL)/KU-14194HB/board.json")]
+    [InlineData("Sinclair/ZX Spectrum 48K+/Issue 4B/board.json")]
+    [InlineData("Commodore/C64/250407/C:odd name.xlsx")]
+    public void An_identity_of_ordinary_folders_is_taken_whatever_its_file_is_called(string identity)
+    {
+        Assert.NotEqual(string.Empty, DraftFolderLayout.GetBoardFolder(Root, identity));
+    }
+
+    // ###########################################################################################
     // The marker must never be treated as board content - see DraftFolderLayout's own header for
     // the two independent mechanisms keeping it out of a submission. This is the second one.
     // ###########################################################################################

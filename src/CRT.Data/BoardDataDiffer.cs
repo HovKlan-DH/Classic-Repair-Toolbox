@@ -51,6 +51,11 @@ namespace Handlers.DataHandling
 
         public string NaturalKey { get; init; } = string.Empty;
 
+        // The published row's key, for a row whose identifying cells changed (PairRenamedRows) - empty for
+        // every other. A pin handed from U1 to U2 changes both components (code review, 2026-11-02), and
+        // NaturalKey says only U2.
+        public string PreviousNaturalKey { get; init; } = string.Empty;
+
         // What to actually show. NEVER the natural key: its separator is U+241F, which renders as
         // a box in most fonts.
         public string DisplayLabel { get; init; } = string.Empty;
@@ -69,6 +74,32 @@ namespace Handlers.DataHandling
     // A removed row and the added row it really is, edited - indexes into the two lists handed to
     // BoardDataDiffer.PairRenamedRows.
     public readonly record struct BoardRowRename(int Removed, int Added);
+
+    // ###########################################################################################
+    // A row's place in a comparison: its natural key, and WHICH of the rows sharing that key it is - 0 for
+    // all but a component's further rectangles (BoardDataDiffer.LineUpRepeatedRows). Capitals ignored, as
+    // every key compares (Comparer).
+    //
+    // *** TWO FIELDS, NEVER ONE STRING (code review, 2026-11-02, Security). *** The place was written into the
+    // key, a mark and a number after it: a rectangle labelled "U8" + U+241E + "1" had exactly the key of U8's
+    // second rectangle and overwrote it, so a submission could add one that no count and no maintainer saw;
+    // and taking the mark off again cut a credit named "Anna" + U+241E + "x" to "Anna" in a board's history.
+    // Nothing a contributor types reaches a number held apart from the text.
+    // ###########################################################################################
+    internal readonly record struct ComparedRow(string NaturalKey, int Occurrence)
+    {
+        public static IEqualityComparer<ComparedRow> Comparer { get; } = new IgnoringCapitals();
+
+        private sealed class IgnoringCapitals : IEqualityComparer<ComparedRow>
+        {
+            public bool Equals(ComparedRow first, ComparedRow second) =>
+                first.Occurrence == second.Occurrence &&
+                string.Equals(first.NaturalKey, second.NaturalKey, StringComparison.OrdinalIgnoreCase);
+
+            public int GetHashCode(ComparedRow row) =>
+                HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(row.NaturalKey), row.Occurrence);
+        }
+    }
 
     // ###########################################################################################
     // Compares a drafted BoardData against the published one and reports what a contributor has
@@ -158,6 +189,9 @@ namespace Handlers.DataHandling
         // rows, say). Grouping rather than ToDictionary is deliberate: ToDictionary throws, and an
         // exception here would take down a board load over a data defect the contributor can see
         // and fix in Excel. First-wins also matches what BoardDraftApplier's own merge does.
+        //
+        // *** EXCEPT WHERE ROWS SHARE A KEY BY RIGHT (code review, 2026-11-02): a component's rectangles on
+        // one schematic. *** There every row counts, whichever it is - LineUpRepeatedRows, below.
         // ###########################################################################################
         //
         // *** A ROW WHOSE IDENTIFYING CELLS CHANGED IS STILL ONE ROW (owner decision, 2026-10-04). ***
@@ -172,36 +206,47 @@ namespace Handlers.DataHandling
             IReadOnlyList<T>? draftRows)
             where T : class
         {
-            Dictionary<string, T> publishedByKey = BoardDataDiffer.IndexByKey(publishedRows);
-            Dictionary<string, T> draftByKey = BoardDataDiffer.IndexByKey(draftRows);
+            (Dictionary<ComparedRow, T> publishedByKey, Dictionary<ComparedRow, T> draftByKey) = BoardDraftNaturalKeys.MayRepeat(typeof(T))
+                ? BoardDataDiffer.LineUpRepeatedRows(publishedRows, draftRows)
+                : (BoardDataDiffer.IndexByKey(publishedRows), BoardDataDiffer.IndexByKey(draftRows));
 
             // The rows each side has alone, in their own order - the ones a rename can pair.
-            List<KeyValuePair<string, T>> draftOnly = draftByKey.Where(drafted => !publishedByKey.ContainsKey(drafted.Key)).ToList();
-            List<KeyValuePair<string, T>> publishedOnly = publishedByKey.Where(published => !draftByKey.ContainsKey(published.Key)).ToList();
+            List<KeyValuePair<ComparedRow, T>> draftOnly = draftByKey.Where(drafted => !publishedByKey.ContainsKey(drafted.Key)).ToList();
+            List<KeyValuePair<ComparedRow, T>> publishedOnly = publishedByKey.Where(published => !draftByKey.ContainsKey(published.Key)).ToList();
 
-            var renamedFrom = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+            var renamedFrom = new Dictionary<ComparedRow, KeyValuePair<ComparedRow, T>>(ComparedRow.Comparer);
+            var renamedKeys = new HashSet<ComparedRow>(ComparedRow.Comparer);
 
             foreach (BoardRowRename rename in BoardDataDiffer.PairRenamedRows(
                          publishedOnly.Select(row => (object)row.Value).ToList(),
                          draftOnly.Select(row => (object)row.Value).ToList()))
             {
-                renamedFrom[draftOnly[rename.Added].Key] = publishedOnly[rename.Removed].Value;
+                renamedFrom[draftOnly[rename.Added].Key] = publishedOnly[rename.Removed];
+                renamedKeys.Add(publishedOnly[rename.Removed].Key);
             }
 
-            foreach (KeyValuePair<string, T> drafted in draftByKey)
+            foreach (KeyValuePair<ComparedRow, T> drafted in draftByKey)
             {
-                if (!publishedByKey.TryGetValue(drafted.Key, out T? publishedRow) &&
-                    !renamedFrom.TryGetValue(drafted.Key, out publishedRow))
-                {
-                    changes.Add(new BoardRowChange
-                    {
-                        Section = sectionName,
-                        NaturalKey = drafted.Key,
-                        DisplayLabel = BoardDataDiffer.DescribeRow(drafted.Value, drafted.Key),
-                        Kind = BoardRowChangeKind.Added,
-                    });
+                string naturalKey = drafted.Key.NaturalKey;
+                string previousKey = string.Empty;
 
-                    continue;
+                if (!publishedByKey.TryGetValue(drafted.Key, out T? publishedRow))
+                {
+                    if (!renamedFrom.TryGetValue(drafted.Key, out KeyValuePair<ComparedRow, T> renamed))
+                    {
+                        changes.Add(new BoardRowChange
+                        {
+                            Section = sectionName,
+                            NaturalKey = naturalKey,
+                            DisplayLabel = BoardDataDiffer.DescribeRow(drafted.Value, naturalKey),
+                            Kind = BoardRowChangeKind.Added,
+                        });
+
+                        continue;
+                    }
+
+                    publishedRow = renamed.Value;
+                    previousKey = renamed.Key.NaturalKey;
                 }
 
                 IReadOnlyList<string> differing = BoardDataDiffer.DifferingFields(publishedRow, drafted.Value);
@@ -213,30 +258,122 @@ namespace Handlers.DataHandling
                 changes.Add(new BoardRowChange
                 {
                     Section = sectionName,
-                    NaturalKey = drafted.Key,
-                    DisplayLabel = BoardDataDiffer.DescribeRow(drafted.Value, drafted.Key),
+                    NaturalKey = naturalKey,
+                    PreviousNaturalKey = previousKey,
+                    DisplayLabel = BoardDataDiffer.DescribeRow(drafted.Value, naturalKey),
                     Kind = BoardRowChangeKind.Modified,
                     ChangedFields = differing,
                 });
             }
 
-            var renamedRows = new HashSet<T>(renamedFrom.Values, ReferenceEqualityComparer.Instance);
-
-            foreach (KeyValuePair<string, T> removed in publishedOnly)
+            foreach (KeyValuePair<ComparedRow, T> removed in publishedOnly)
             {
-                if (renamedRows.Contains(removed.Value))
+                if (renamedKeys.Contains(removed.Key))
                 {
                     continue;
                 }
 
+                string naturalKey = removed.Key.NaturalKey;
+
                 changes.Add(new BoardRowChange
                 {
                     Section = sectionName,
-                    NaturalKey = removed.Key,
-                    DisplayLabel = BoardDataDiffer.DescribeRow(removed.Value, removed.Key),
+                    NaturalKey = naturalKey,
+                    DisplayLabel = BoardDataDiffer.DescribeRow(removed.Value, naturalKey),
                     Kind = BoardRowChangeKind.Deleted,
                 });
             }
+        }
+
+        // ###########################################################################################
+        // *** ROWS THAT SHARE A KEY BY RIGHT, LINED UP (code review, 2026-11-02). *** A component can have
+        // several rectangles on one schematic (BoardDraftNaturalKeys.MayRepeat - 198 such pairs on the
+        // shipped boards), and keyed on schematic + label, first wins, only the first was ever compared. The
+        // second one moved, a third added or the second deleted was no change to anybody: a draft holding
+        // nothing else was let go of or retired without a word, could not be sent - and sent with other
+        // work, was published with no maintainer told.
+        //
+        // So every row gets a key of its own, the two sides lined up per natural key, as a multiset of ALL
+        // their values - the identity DraftRebase uses:
+        //
+        //   1. a row with the same values on both sides is the same row, wherever each stands - so their
+        //      order alone is no change, as BoardRowOrder says of highlights;
+        //   2. what is left of a key pairs in order, one row Modified - a rectangle moved, naming X or Y;
+        //   3. what is left after that stands on one side alone: the renames PairRenamedRows can pair (a
+        //      component relabelled, its schematic renamed), else added or deleted.
+        //
+        // Each row's place is its natural key and which of that key's rows it is (ComparedRow), so every
+        // comparison below works as it does for any other section, and every report still names the key
+        // the overlay looks up and a maintainer's lines take apart. Each side's key in its own spelling, as
+        // IndexByKey has it.
+        //
+        // Internal because ReviewSummary lines up the same way: the contributor's count and a maintainer's
+        // summary must agree (BoardDataDifferAgreementTests).
+        // ###########################################################################################
+        internal static (Dictionary<ComparedRow, T> Before, Dictionary<ComparedRow, T> After) LineUpRepeatedRows<T>(
+            IEnumerable<T>? beforeRows,
+            IEnumerable<T>? afterRows)
+            where T : class
+        {
+            List<T> before = (beforeRows ?? []).Where(row => row is not null).ToList();
+            List<T> after = (afterRows ?? []).Where(row => row is not null).ToList();
+
+            ComparedRow[] beforeKeys = new ComparedRow[before.Count];
+            ComparedRow[] afterKeys = new ComparedRow[after.Count];
+
+            ILookup<string, int> beforeOfKey = Enumerable.Range(0, before.Count).ToLookup(index => BoardDraftNaturalKeys.ForRow(before[index]), StringComparer.OrdinalIgnoreCase);
+            ILookup<string, int> afterOfKey = Enumerable.Range(0, after.Count).ToLookup(index => BoardDraftNaturalKeys.ForRow(after[index]), StringComparer.OrdinalIgnoreCase);
+
+            foreach (string key in beforeOfKey.Select(group => group.Key).Union(afterOfKey.Select(group => group.Key), StringComparer.OrdinalIgnoreCase))
+            {
+                List<int> leftBefore = beforeOfKey[key].ToList();
+                List<int> leftAfter = afterOfKey[key].ToList();
+                int occurrence = 0;
+
+                void Name(int? beforeIndex, int? afterIndex)
+                {
+                    if (beforeIndex is int b)
+                        beforeKeys[b] = new ComparedRow(BoardDraftNaturalKeys.ForRow(before[b]), occurrence);
+
+                    if (afterIndex is int a)
+                        afterKeys[a] = new ComparedRow(BoardDraftNaturalKeys.ForRow(after[a]), occurrence);
+
+                    occurrence++;
+                }
+
+                foreach (int beforeIndex in leftBefore.ToList())
+                {
+                    int same = leftAfter.FindIndex(afterIndex => BoardDataDiffer.SameValues(before[beforeIndex], after[afterIndex]));
+
+                    if (same >= 0)
+                    {
+                        Name(beforeIndex, leftAfter[same]);
+                        leftBefore.Remove(beforeIndex);
+                        leftAfter.RemoveAt(same);
+                    }
+                }
+
+                for (int index = 0; index < Math.Max(leftBefore.Count, leftAfter.Count); index++)
+                {
+                    Name(index < leftBefore.Count ? leftBefore[index] : null, index < leftAfter.Count ? leftAfter[index] : null);
+                }
+            }
+
+            return (BoardDataDiffer.ByKey(before, beforeKeys), BoardDataDiffer.ByKey(after, afterKeys));
+        }
+
+        // Each row under its place, in its side's own order.
+        private static Dictionary<ComparedRow, T> ByKey<T>(List<T> rows, ComparedRow[] keys)
+            where T : class
+        {
+            var byKey = new Dictionary<ComparedRow, T>(rows.Count, ComparedRow.Comparer);
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                byKey.Add(keys[index], rows[index]);
+            }
+
+            return byKey;
         }
 
         // ###########################################################################################
@@ -422,10 +559,10 @@ namespace Handlers.DataHandling
         // typed "u8" in Excel is the same row as "U8", and treating them as two rows would report
         // a deletion plus an addition for what is a capitalisation fix at worst.
         // ###########################################################################################
-        private static Dictionary<string, T> IndexByKey<T>(IReadOnlyList<T>? rows)
+        private static Dictionary<ComparedRow, T> IndexByKey<T>(IReadOnlyList<T>? rows)
             where T : class
         {
-            var index = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+            var index = new Dictionary<ComparedRow, T>(ComparedRow.Comparer);
 
             if (rows is null)
             {
@@ -439,13 +576,8 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                string key = BoardDraftNaturalKeys.ForRow(row);
-
                 // First wins - see CompareSection's header.
-                if (!index.ContainsKey(key))
-                {
-                    index[key] = row;
-                }
+                index.TryAdd(new ComparedRow(BoardDraftNaturalKeys.ForRow(row), 0), row);
             }
 
             return index;
@@ -467,6 +599,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static IReadOnlyList<string> DifferingFields(object published, object drafted)
         {
+            // The very same row, which is what most of two boards compared share by now: a draft held in
+            // memory keeps the rows no edit touched (code review, 2026-11-02 - a reflection walk per row, on
+            // the UI thread, at every typing pause).
+            if (ReferenceEquals(published, drafted))
+            {
+                return [];
+            }
+
             var differing = new List<string>();
 
             foreach (PropertyInfo property in BoardDataDiffer.ComparableProperties(drafted.GetType()))

@@ -23,7 +23,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static string PathOf(string dataRoot, string draftBoardFolder, string file, string? boardIdentity, BoardFileListings? listings = null) =>
             DraftFileResolver.ResolveWithSource(dataRoot, draftBoardFolder, file, boardIdentity, listings)?.FullPath
-                ?? Path.Combine(dataRoot, file.Replace('/', Path.DirectorySeparatorChar));
+                ?? DraftFileResolver.PathUnderDataRoot(dataRoot, file);
 
         // A picture of a board, where it lies.
         public sealed record PlacedPicture(string Name, string Path);

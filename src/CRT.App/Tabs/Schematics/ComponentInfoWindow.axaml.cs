@@ -885,7 +885,7 @@ namespace CRT
             return new ComponentLocalFileItem
             {
                 Name = name,
-                FullPath = resolved?.FullPath ?? Path.Combine(dataRoot, file.Replace('/', Path.DirectorySeparatorChar)),
+                FullPath = resolved?.FullPath ?? DraftFileResolver.PathUnderDataRoot(dataRoot, file),
                 SourceRoot = resolved?.Root ?? dataRoot,
             };
         }
@@ -1144,7 +1144,7 @@ namespace CRT
                             // resolved via the same official-first/draft-fallback rule every other
                             // BoardData File value now uses - see DraftFileResolver.
                             var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File, boardIdentity) ??
-                                Path.Combine(dataRoot, entry.File.Replace('/', Path.DirectorySeparatorChar));
+                                DraftFileResolver.PathUnderDataRoot(dataRoot, entry.File);
                             if (File.Exists(fullPath))
                             {
                                 bitmap = new Bitmap(fullPath);

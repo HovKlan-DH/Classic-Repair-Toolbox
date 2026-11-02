@@ -604,4 +604,117 @@ public sealed class SubmissionStatusRefreshTests : IDisposable
         Assert.True(SubmissionStatusRefresh.ApplyAnswer(receipt, new SubmissionStatus { Id = 7, State = "merged" }, Now));
         Assert.Equal("merged", SubmissionReceiptStore.All.Single(r => r.SubmissionId == 7).LastKnownState);
     }
+
+    // ###########################################################################################
+    // *** THE STATUS ANSWER'S REASONS ARE KEPT FOR A REFUSAL (code review, 2026-11-02). *** They were
+    // dropped here, and a refused submission is never asked about again - so this answer is the last
+    // chance. Those of an answer that is no refusal mean nothing to the row.
+    // ###########################################################################################
+    [Fact]
+    public void A_refusal_keeps_the_reasons_the_status_answer_gives()
+    {
+        Record(7, "pending");
+        SubmissionReceipt receipt = SubmissionReceiptStore.All.Single();
+
+        var refused = new SubmissionStatus
+        {
+            Id = 7,
+            State = "rejected",
+            Findings = [new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." }],
+        };
+
+        Assert.True(SubmissionStatusRefresh.ApplyAnswer(receipt, refused, Now));
+
+        Assert.Equal(["U8: No category."], SubmissionReceiptPresenter.DescribeFindings(SubmissionReceiptStore.All.Single()));
+    }
+
+    // Reasons the receipt holds are not wiped by an answer that gives none (finalise said them).
+    [Fact]
+    public void A_refusal_answered_with_no_reasons_keeps_those_finalise_gave()
+    {
+        Record(7, string.Empty);
+        SubmissionReceiptStore.RecordFinalised(
+            new SubmissionResult
+            {
+                SubmissionId = 7,
+                State = "rejected",
+                Findings = [new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." }],
+            },
+            Now);
+
+        Assert.False(SubmissionStatusRefresh.ApplyAnswer(
+            SubmissionReceiptStore.All.Single(),
+            new SubmissionStatus { Id = 7, State = "rejected" },
+            Now.AddDays(1)));
+
+        Assert.Equal(["U8: No category."], SubmissionReceiptPresenter.DescribeFindings(SubmissionReceiptStore.All.Single()));
+    }
+
+    // Other reasons on the same state are something the row shows moving, so they are written.
+    [Fact]
+    public void Other_reasons_on_the_same_refusal_are_a_change()
+    {
+        Record(7, "rejected");
+
+        var refused = new SubmissionStatus
+        {
+            Id = 7,
+            State = "rejected",
+            Findings = [new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." }],
+        };
+
+        Assert.True(SubmissionStatusRefresh.ApplyAnswer(SubmissionReceiptStore.All.Single(), refused, Now));
+        Assert.False(SubmissionStatusRefresh.ApplyAnswer(SubmissionReceiptStore.All.Single(), refused, Now));
+    }
+
+    // ###########################################################################################
+    // *** A MAINTAINER'S REJECT HAS NO REASONS BUT THE COMMENT (code review, 2026-11-02). *** The server
+    // says "rejected" of a refusal at finalise and of a maintainer's Reject alike, and answers every
+    // finding it kept. A queued submission holds warnings at most - a duplicate row, say - so they were
+    // listed under "Wrong board" as if they were why. Only an error stops a submission.
+    // ###########################################################################################
+    [Fact]
+    public void A_maintainers_reject_keeps_no_warnings_as_if_they_were_why()
+    {
+        Record(7, "pending");
+
+        var rejected = new SubmissionStatus
+        {
+            Id = 7,
+            State = "rejected",
+            MaintainerComment = "Wrong board",
+            Findings = [new ValidationFinding { Severity = ValidationSeverity.Warning, Subject = "U8", Message = "Listed twice." }],
+        };
+
+        Assert.True(SubmissionStatusRefresh.ApplyAnswer(SubmissionReceiptStore.All.Single(), rejected, Now));
+
+        SubmissionReceipt receipt = SubmissionReceiptStore.All.Single();
+        Assert.Equal("Wrong board", receipt.MaintainerComment);
+        Assert.Empty(receipt.Findings);
+        Assert.Empty(SubmissionReceiptPresenter.DescribeFindings(receipt));
+    }
+
+    [Fact]
+    public void A_refusal_keeps_its_errors_and_not_the_warnings_beside_them()
+    {
+        Record(7, "pending");
+
+        var refused = new SubmissionStatus
+        {
+            Id = 7,
+            State = "rejected",
+            Findings =
+            [
+                new ValidationFinding { Severity = ValidationSeverity.Warning, Subject = "U1", Message = "Listed twice." },
+                new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." },
+            ],
+        };
+
+        Assert.True(SubmissionStatusRefresh.ApplyAnswer(SubmissionReceiptStore.All.Single(), refused, Now));
+
+        Assert.Equal(["U8: No category."], SubmissionReceiptPresenter.DescribeFindings(SubmissionReceiptStore.All.Single()));
+
+        // Asked again, it is what the receipt already holds.
+        Assert.False(SubmissionStatusRefresh.ApplyAnswer(SubmissionReceiptStore.All.Single(), refused, Now));
+    }
 }

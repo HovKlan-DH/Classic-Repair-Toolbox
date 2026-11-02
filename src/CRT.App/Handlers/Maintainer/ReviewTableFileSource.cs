@@ -72,8 +72,8 @@ namespace Handlers.MaintainerHandling
         }
 
         // ###########################################################################################
-        // Saves the file into a folder of its own under the temp folder and hands it to the operating
-        // board - a PDF opens in the PDF viewer. The name is ReviewTableFiles.TryGetOpenName's: only
+        // Saves the file into a folder of its own (OpenedFiles.Root) and hands it to the operating
+        // system - a PDF opens in the PDF viewer. The name is ReviewTableFiles.TryGetOpenName's: only
         // a type a submission may carry, and a web page as text.
         // ###########################################################################################
         public async Task<string?> OpenAsync(string path, CRT.BoardTableFileSide side)

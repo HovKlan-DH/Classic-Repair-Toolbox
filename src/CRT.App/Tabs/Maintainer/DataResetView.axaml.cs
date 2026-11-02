@@ -15,8 +15,9 @@ namespace CRT
     //
     // *** COUNTS, CONFIRM, RESET - in that order. *** The counts are read when this item is chosen;
     // the button sends back their fingerprint, so the server deletes nothing that arrived after they
-    // were shown (it answers Conflict, and the counts are read again). After a reset - or a timeout,
-    // when nobody knows whether it went through - the counts are read again, which is what shows it.
+    // were shown (it answers Conflict, and the counts are read again). After a reset the counts are
+    // read again - after a timeout too, when they are what says whether it went through
+    // (DataResetWording.HasLanded), the tab then reading its lists again as after any reset.
     //
     // NOTHING IS READ ON THE MINUTE CHECK: the counts are read on choosing this item and after the
     // button, never in the background.
@@ -62,20 +63,32 @@ namespace CRT
             this.thisSession = session;
         }
 
-        // Signed out: nothing of the previous account's counts or result left on screen.
+        // Signed out: nothing of the previous account's counts or result left on screen - nor the
+        // word typed (code review, 2026-11-02: the next administrator on this computer got new counts
+        // with the button already on).
         public void Clear()
         {
+            this.EmptyConfirmBox();
             this.ShowPlan(null);
             this.ShowDone(null);
             this.ShowMessage(null, isError: false);
         }
 
+        private void EmptyConfirmBox()
+        {
+            if (this.FindControl<TextBox>("ConfirmBox") is TextBox box)
+                box.Text = string.Empty;
+        }
+
         // ###########################################################################################
         // Reads the counts, under CRT's overlay. Counts that cannot be read leave the button off, with
-        // the reason - a reset is never offered on counts nobody has seen.
+        // the reason - a reset is never offered on counts nobody has seen. And never on the word typed
+        // for the counts before these: it is typed again for what is shown now (code review, 2026-11-02).
         // ###########################################################################################
         public async Task LoadAsync()
         {
+            this.EmptyConfirmBox();
+
             if (this.thisClient is null || this.thisSession is null)
                 return;
 
@@ -114,7 +127,8 @@ namespace CRT
 
             ReviewApiClient client = this.thisClient;
             ReviewSession session = this.thisSession;
-            string fingerprint = this.thisPlan!.Fingerprint;
+            DataResetPlanAnswer shown = this.thisPlan!;
+            string fingerprint = shown.Fingerprint;
 
             this.ShowDone(null);
             this.ShowMessage(null, isError: false);
@@ -123,9 +137,6 @@ namespace CRT
                 this,
                 MaintainerWaitWording.ResettingData,
                 token => client.ResetDataAsync(session, fingerprint, token));
-
-            if (this.FindControl<TextBox>("ConfirmBox") is TextBox box)
-                box.Text = string.Empty;
 
             await this.LoadAsync();
 
@@ -139,14 +150,24 @@ namespace CRT
                 return;
             }
 
-            this.ShowMessage(
-                result.Failure switch
-                {
-                    ReviewApiFailure.TimedOut => DataResetWording.AfterTimeout,
-                    ReviewApiFailure.Conflict => DataResetWording.Changed,
-                    _ => result.Message
-                },
-                isError: true);
+            // ###########################################################################################
+            // *** NO ANSWER IS JUDGED FROM THE COUNTS JUST READ (code review, 2026-11-02). *** It said "if
+            // they are all zero, it did", which they never are - and left the queue and the boards as they
+            // were until the next minute check, though every submission might have gone.
+            // ###########################################################################################
+            if (result.Failure == ReviewApiFailure.TimedOut)
+            {
+                bool? landed = DataResetWording.HasLanded(shown, this.thisPlan);
+
+                this.ShowMessage(DataResetWording.AfterTimeout(landed), isError: landed != true);
+
+                if (landed == true && this.AfterReset is not null)
+                    await this.AfterReset();
+
+                return;
+            }
+
+            this.ShowMessage(result.Failure == ReviewApiFailure.Conflict ? DataResetWording.Changed : result.Message, isError: true);
         }
 
         private void ShowPlan(DataResetPlanAnswer? plan)

@@ -17,13 +17,12 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // entries in the SELECTED workbook, each drawn with its real entries.
 //
 // COLLECTION NOTE: "HeadlessUi", for the same reason WorkbooksListTests is - constructing a control
-// needs the shared dispatcher thread. This file does NOT touch DataManager's static state (the
-// "DataManager" collection a class can only join one of), because the schematic image path is
-// built as an ABSOLUTE path and handed to BoardSchematicEntry.SchematicImageFile directly.
-// Path.Combine(anything, anAbsolutePath) always returns just the absolute path - a documented BCL
-// contract, not implementation-specific behaviour - so the code under test's
-// Path.Combine(DataManager.DataRoot, schematic.SchematicImageFile) resolves correctly no matter
-// what DataManager.DataRoot currently holds, including a value another parallel test left behind.
+// needs the shared dispatcher thread. Each test points DataManager's data root at its own workspace,
+// where its images lie, and a row NAMES a file under that root, as it does in CRT. It used to hand
+// over an ABSOLUTE path, which Path.Combine took in place of the root - the very hole
+// DraftFileResolver.PathUnderDataRoot closed (code review, 2026-11-02), as a File cell must not reach
+// outside the data root. Collections do not run in parallel (xunit.runner.json), so no other test's
+// data root is in the way.
 //
 // Like WorkbooksListTests, EVERY assertion runs inside UiTest.Run - reading a control's property
 // from the test thread throws even for a plain GetControl, because the name-scope lookup itself
@@ -39,6 +38,7 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
     // when selection was set on an in-memory field and nothing was persisted.
     private readonly string thisBoardKey = "Commodore 64|250469 " + Guid.NewGuid().ToString("N");
 
+    public WorkbooksBoardPreviewTests() => PublishedBoardTree.Unload(this.thisWorkspace.Root);
 
     public void Dispose()
     {
@@ -69,11 +69,11 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         0x42, 0x60, 0x82
     };
 
+    // Writes the image into the data root, and returns what a row holds for it: its name there.
     private string WriteSchematicImage(string fileName)
     {
-        string path = this.thisWorkspace.Path_(fileName);
-        File.WriteAllBytes(path, OnePixelPng);
-        return path;
+        File.WriteAllBytes(this.thisWorkspace.Path_(fileName), OnePixelPng);
+        return fileName;
     }
 
     // A real N x N PNG, unlike OnePixelPng - needed for the positioning test below, where an
@@ -96,7 +96,7 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
             renderTarget.Save(stream, PngBitmapEncoderOptions.Default);
         }
 
-        return path;
+        return fileName;
     }
 
     private static BoardData BuildBoardData(params BoardSchematicEntry[] schematics) =>
@@ -411,7 +411,7 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Missing file", "");
         Assert.NotNull(workbook);
 
-        string missingPath = this.thisWorkspace.Path_("does-not-exist.png");
+        const string missingPath = "does-not-exist.png";
         string realPath = this.WriteSchematicImage("sheet-ok.png");
 
         WorklogManager.AddEntry(workbook!.Id, "Missing Sheet", new Avalonia.Rect(0, 0, 10, 10), "No image", "", "Note", "Open", Array.Empty<string>());
@@ -446,7 +446,7 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         WorklogManager.AddEntry(workbook.Id, "Missing Sheet", new Avalonia.Rect(0, 0, 10, 10), "No image", "", "Note", "Open", Array.Empty<string>());
 
         var boardData = BuildBoardData(
-            new BoardSchematicEntry { SchematicName = "Missing Sheet", SchematicImageFile = this.thisWorkspace.Path_("does-not-exist.png") });
+            new BoardSchematicEntry { SchematicName = "Missing Sheet", SchematicImageFile = "does-not-exist.png" });
 
         UiTest.Run(() =>
         {

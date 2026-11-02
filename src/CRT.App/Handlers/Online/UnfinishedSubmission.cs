@@ -1,3 +1,5 @@
+using Handlers.DataHandling;
+using System;
 using System.Threading;
 
 namespace Handlers.Online
@@ -22,8 +24,20 @@ namespace Handlers.Online
         // The server handed out this submission's id; its receipt is written.
         public void Created(long submissionId) => Interlocked.Exchange(ref this.thisSubmissionId, submissionId);
 
-        // The finalise request is about to go: the receipt is the server's to settle now.
-        public void FinaliseSending() => Interlocked.Exchange(ref this.thisSubmissionId, 0);
+        // ###########################################################################################
+        // The finalise request is about to go: the receipt is the server's to settle now - and says so
+        // (code review, 2026-11-02), so a send lost on the way is told from one whose answer was lost
+        // (SubmissionReceiptPresenter.NeverReachedReview).
+        // ###########################################################################################
+        public void FinaliseSending()
+        {
+            long submissionId = Interlocked.Exchange(ref this.thisSubmissionId, 0);
+
+            if (submissionId > 0)
+            {
+                SubmissionReceiptStore.NoteFinaliseSent(submissionId, DateTimeOffset.UtcNow);
+            }
+        }
 
         // The submission was finalised and its receipt updated.
         public void Finished() => Interlocked.Exchange(ref this.thisSubmissionId, 0);

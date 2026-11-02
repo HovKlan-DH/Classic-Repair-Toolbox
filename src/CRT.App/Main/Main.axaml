@@ -643,6 +643,30 @@
 						</Grid>
 					</Border>
 
+					<!-- The list of what was sent could not be read, so "My submissions" may look empty - and
+					     the file is kept (Main.SettingsNotice.cs). Stays until closed. -->
+					<Border x:Name="ReceiptsUnreadableBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="ReceiptsUnreadableBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="ReceiptsUnreadableBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnReceiptsUnreadableBannerDismiss" />
+						</Grid>
+					</Border>
+
 					<!-- Data that needs a newer CRT, and the server's "update CRT" for submissions - a
 					     paragraph per reason (Main.Updates.cs). -->
 					<Border x:Name="MainExcelRequiresAppUpdateBanner"

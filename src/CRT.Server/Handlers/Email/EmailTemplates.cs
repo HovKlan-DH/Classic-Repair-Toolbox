@@ -588,8 +588,8 @@ namespace CRT.Server.Handlers.Email
                     MailText.Named($"[{modelName}]"),
                     $", for everybody (model #{submissionId}). " +
                     (fullTestSuitePassed
-                        ? "CRT's full test suite went through on it."
-                        : "CRT's full test suite was not run on it as it was sent, or did not go through.") +
+                        ? global::Handlers.DataHandling.OscilloscopeModelRules.SuiteReportedPassed
+                        : global::Handlers.DataHandling.OscilloscopeModelRules.SuiteNotReportedPassed) +
                     " The contributor wrote:")
                 .Quote(contributorMessage, "(no message given)")
                 .Paragraph(

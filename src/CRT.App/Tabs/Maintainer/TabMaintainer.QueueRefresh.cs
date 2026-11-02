@@ -158,6 +158,7 @@ namespace CRT
             {
                 this.SelectOnEntry();
                 await this.ShowFilesViewIfStaleAsync();
+                await this.ReadBetaPlanAgainIfStuckAsync();
             }
         }
 
@@ -211,6 +212,7 @@ namespace CRT
             try
             {
                 await this.RefreshQueueAsync(background: true);
+                await this.FollowOscilloscopeModelsAsync(onScreen: true);
                 await this.RefreshOtherListsAsync(minuteCheck: true);
             }
             finally
@@ -232,6 +234,7 @@ namespace CRT
             try
             {
                 await this.RefreshQueueAsync(background: true);
+                await this.FollowOscilloscopeModelsAsync(onScreen: false);
                 await this.RefreshBetaAsync(background: true);
             }
             finally
@@ -254,6 +257,31 @@ namespace CRT
                 if (this.IsOnScreen)
                     this.SelectOnEntry();
             }
+        }
+
+        // ###########################################################################################
+        // *** THE SERVER SAYS THIS ACCOUNT REVIEWS NOTHING (code review, 2026-11-02). *** A maintainer
+        // taken off the last board is answered 403 by the queue and the BETA list every minute. That
+        // read as "could not ask", which leaves the lists alone, so the tab's badge and the buttons
+        // went on saying "2" until signing out, and "hide the tab while no work is waiting" never hid
+        // it. It is an answer: nothing here waits for this account (and it is no administrator, who
+        // is never refused), so both lists go and the badges say so, as real answers (BadgeKnown).
+        // An open submission closes - a table with unsaved changes keeps all of it (the caller).
+        // ###########################################################################################
+        private void EmptyListsNoLongerAllowed()
+        {
+            this.thisQueue.Clear();
+            this.thisQueueKnown = true;
+            this.thisOscilloscopeModelsWaiting = 0;
+            this.thisListing = null;
+
+            this.SetAdministrator(false);
+            this.ApplyQueue();
+
+            this.ClearBeta();
+            this.thisBetaKnown = true;
+
+            this.UpdateModeBadges();
         }
 
         // The open submission is no longer in the queue - decided by someone else. It stays on

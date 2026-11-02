@@ -61,6 +61,10 @@ namespace CRT.Server.Handlers.Submissions
             "or the stable data folder is not reachable. Nothing was changed: pushing back now would take the " +
             "board out of BETA as if it had never been in the stable source. Check the stable data folder, then try again.";
 
+        public const string MovedSinceShownMessage =
+            "This board's BETA data has changed since this was shown to you, so what would be taken out is no longer " +
+            "what you confirmed. Nothing was changed, and nobody was told. Look at the board again, then decide.";
+
         public const string NotRecordedMessage =
             "BETA WAS rolled back, but recording it failed, so its submissions are not back in the queue yet and " +
             "nobody has been told. Push back again to finish - the files are already in place, so nothing moves twice.";
@@ -119,7 +123,8 @@ namespace CRT.Server.Handlers.Submissions
             ServerOptions options,
             DateTimeOffset nowUtc,
             CancellationToken cancellationToken = default,
-            bool reject = false)
+            bool reject = false,
+            string? expectedBetaContentHash = null)
         {
             (BetaRollbackOutcome? refusal, BoardRecord? board) =
                 await this.CheckAsync(access, boardId, options, cancellationToken);
@@ -152,6 +157,19 @@ namespace CRT.Server.Handlers.Submissions
 
             if (!ProductionPromotionRules.IsAwaitingProduction(current))
                 return BetaRollbackOutcome.Conflict(BetaRollbackFlow.NothingToRollBackMessage);
+
+            // ###########################################################################################
+            // *** A PLAN SHOWN IS A PLAN CARRIED OUT (code review, 2026-11-02). *** Planned again below,
+            // the rollback took out whatever BETA held by then: the confirmation named Anna's #57 and
+            // stayed open, the board went to stable and Bob's #60 was approved - and confirming took out
+            // Bob's work and mailed him a reason written about Anna's. A publish is held to this same
+            // hash, a deletion to a fingerprint. No hash - an older CRT - is what it always was.
+            // ###########################################################################################
+            if (expectedBetaContentHash is not null &&
+                !string.Equals(current.ContentHash, expectedBetaContentHash.Trim(), StringComparison.Ordinal))
+            {
+                return BetaRollbackOutcome.Conflict(BetaRollbackFlow.MovedSinceShownMessage);
+            }
 
             BetaRollbackFilePlan filePlan = await this.BuildPlanAsync(current, options, cancellationToken);
             BetaRollbackPlanResult plan = filePlan.Plan;

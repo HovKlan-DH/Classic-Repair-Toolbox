@@ -28,6 +28,66 @@ public sealed class BoardTableRowFilterTests
         return document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
     }
 
+    // ###########################################################################################
+    // The rows the table shows: what the pills and the search show, in the sheet's order, and the row
+    // the cursor is on even when they no longer show it - the row being worked in stays until the
+    // cursor leaves it (owner's answer, 2026-11-02). Nothing else is kept: no cursor, no exception.
+    // ###########################################################################################
+    [Fact]
+    public void The_rows_shown_are_those_of_the_picked_kinds_and_the_one_the_cursor_is_on()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1", "CPU"), Component("U2"), Component("U3")),
+            Board(Component("U1", "CPU 6510"), Component("U3"), Component("U4"), Component("U4")));
+
+        BoardTableSheet sheet = document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+        List<BoardTableRow> rows = sheet.Rows.ToList();
+        BoardTableRow u1 = Row(sheet, "U1");
+        BoardTableRow u3 = Row(sheet, "U3");
+
+        Assert.Equal(rows, BoardTableRowFilter.RowsShown(rows, BoardTableRowKinds.None, BoardTableSearch.None, rowInHand: null));
+
+        Assert.Equal([u1], BoardTableRowFilter.RowsShown(rows, BoardTableRowKinds.Modified, BoardTableSearch.None, rowInHand: null));
+
+        // In the sheet's order, wherever the kept one stands.
+        Assert.Equal([u1, u3], BoardTableRowFilter.RowsShown(rows, BoardTableRowKinds.Modified, BoardTableSearch.None, rowInHand: u3));
+        Assert.Equal([u1], BoardTableRowFilter.RowsShown(rows, BoardTableRowKinds.Modified, BoardTableSearch.None, rowInHand: u1));
+
+        // A search hides it as a pill does, and it is kept all the same.
+        BoardTableSearch search = BoardTableSearch.For(document, "6510");
+        Assert.Equal([u1], BoardTableRowFilter.RowsShown(rows, BoardTableRowKinds.None, search, rowInHand: null));
+        Assert.Equal([u1, u3], BoardTableRowFilter.RowsShown(rows, BoardTableRowKinds.None, search, rowInHand: u3));
+    }
+
+    // Where the cursor lands when the table is given the focus under a pill: the first cell with a
+    // problem of a picked level on the first row shown (code review, 2026-11-02).
+    [Fact]
+    public void The_cell_to_work_on_next_is_the_first_with_a_problem_of_a_picked_level()
+    {
+        var board = new BoardData
+        {
+            BoardLinks =
+            [
+                new BoardLinkEntry { Category = "Web", Name = "", Url = "" },
+                new BoardLinkEntry { Category = "Docs", Name = "Name", Url = "" },
+                new BoardLinkEntry { Category = "Fine", Name = "Fine", Url = "https://example.org/" },
+            ],
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(null, board);
+        BoardTableSheet links = document.FindSheet(BoardWorkbookSchema.SheetBoardLinks)!;
+        int name = links.Columns.ToList().IndexOf(BoardWorkbookSchema.ColName);
+        int url = links.Columns.ToList().IndexOf(BoardWorkbookSchema.ColUrl);
+
+        Assert.Equal(name, BoardTableRowFilter.FirstProblemCell(BoardTableRowKinds.Errors, Row(links, "Web"))!.ColumnIndex);
+        Assert.Equal(url, BoardTableRowFilter.FirstProblemCell(BoardTableRowKinds.Errors, Row(links, "Docs"))!.ColumnIndex);
+        Assert.Null(BoardTableRowFilter.FirstProblemCell(BoardTableRowKinds.Errors, Row(links, "Fine")));
+
+        // Neither pill picked, and a level that is not picked: nothing to go by.
+        Assert.Null(BoardTableRowFilter.FirstProblemCell(BoardTableRowKinds.Modified, Row(links, "Web")));
+        Assert.Null(BoardTableRowFilter.FirstProblemCell(BoardTableRowKinds.Warnings, Row(links, "Web")));
+    }
+
     [Fact]
     public void A_row_is_every_kind_it_is()
     {

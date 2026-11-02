@@ -28,7 +28,7 @@ namespace CRT
         // Waits between the demo's steps. Tests run it without waiting.
         internal Func<TimeSpan, Task>? NoticeDemoDelayOverrideForTests { get; set; }
 
-        private const int NoticeDemoSteps = 9;
+        private const int NoticeDemoSteps = 10;
 
         internal async Task PlayNoticeDemoAsync()
         {
@@ -118,6 +118,15 @@ namespace CRT
                 await wait(TimeSpan.FromSeconds(5));
 
                 this.NarrateNoticeDemo(9,
+                    "The list of what was sent could not be read, so \"My submissions\" may look empty - and the file " +
+                    "is kept. This card stays until you close it too.");
+                if (!this.ReceiptsUnreadableBanner.IsVisible)
+                {
+                    this.ShowReceiptsUnreadableNotice(new UnreadableReceiptsFile("submissions.json").NoticeText);
+                }
+                await wait(TimeSpan.FromSeconds(5));
+
+                this.NarrateNoticeDemo(10,
                     "That is all of them. A card that has just appeared lets clicks through for half a second, " +
                     "so a click meant for what was under it is not lost. In a small window the cards keep to the " +
                     "right half. Close the rest with their X.");

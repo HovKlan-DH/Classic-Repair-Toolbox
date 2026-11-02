@@ -156,8 +156,11 @@ public sealed class BoardTableEditorTests : IDisposable
 
             Assert.True(grid.Columns[0].IsReadOnly);
 
-            // Through a view (so "Show changes only" can filter it), over the sheet's own rows.
-            Assert.Same(Components(editor).Rows, Assert.IsType<Avalonia.Collections.DataGridCollectionView>(grid.ItemsSource).SourceCollection);
+            // Through a view with no filter, over the rows shown - with nothing picked, the sheet's own
+            // (code review, 2026-11-02: a filtered view takes the cursor away at every commit).
+            var view = Assert.IsType<Avalonia.Collections.DataGridCollectionView>(grid.ItemsSource);
+            Assert.Equal(Components(editor).Rows, view.SourceCollection.Cast<BoardTableRow>());
+            Assert.Null(view.Filter);
         });
     }
 
@@ -997,10 +1000,50 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal("What was drawn on [Top] went with it: 1 highlight. Ctrl+Z brings it back.", Status(editor));
             Assert.Empty(session.Content.Board.ComponentHighlights);
 
+            // And no error beside it about a highlight on [Top] (code review, 2026-11-02).
+            Assert.False(editor.GetControl<TextBlock>("OutsideProblemsText").IsVisible);
+
             editor.Undo();
 
             Assert.Equal("Top", Assert.Single(session.Content.Board.ComponentHighlights).SchematicName);
             Assert.Equal(["Top", "Bottom"], session.Content.Board.Schematics.Select(entry => entry.SchematicName));
+        });
+    }
+
+    // ###########################################################################################
+    // A marked schematic renamed in the table: its highlight is on the new name in the draft, and the
+    // line above the table told the contributor to fix it with "Mark components manually" for as long
+    // as the table stayed open (code review, 2026-11-02).
+    // ###########################################################################################
+    [Fact]
+    public void Renaming_a_marked_schematic_image_says_nothing_about_its_highlights_above_the_table()
+    {
+        UiTest.Run(() =>
+        {
+            this.WriteDraft(new BoardData
+            {
+                Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Commodore/C64/250407/top.png" }],
+                Components = [Component("U1", "CPU")],
+            });
+            BoardSidecarWriter.Write(
+                this.WorkbookPath,
+                [new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" }],
+                [],
+                []);
+
+            DraftSession session = DraftSession.Open(this.DraftsRoot, BoardTableEditorTests.BoardKey, () => this.thisNow)!;
+            var editor = new BoardTableEditor();
+            Assert.True(editor.Load(session, published: null));
+
+            BoardTableSheet schematics = editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+            int nameColumn = schematics.Columns.ToList().IndexOf(BoardWorkbookSchema.ColSchematicName);
+
+            schematics.Rows[0].Cells[nameColumn].Text = "Top side";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("Top side", Assert.Single(session.Content.Board.ComponentHighlights).SchematicName);
+            Assert.False(editor.GetControl<TextBlock>("OutsideProblemsText").IsVisible);
+            Assert.Empty(editor.DocumentForTests!.ProblemsOutsideSheets);
         });
     }
 
@@ -2741,6 +2784,132 @@ public sealed class BoardTableEditorTests : IDisposable
 
             ReleaseAt(window, grip);
             Assert.Equal(afterFirstMove, Labels(editor));
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** CTRL+Z WITH A ROW HELD BY ITS GRIP (code review, 2026-11-02). *** On a document - the
+    // Maintainer tab's table - with the drag as its first change, the undo emptied the history under
+    // the open group, and the next move threw an exception nothing catches: CRT went down with the
+    // unsaved edits. With earlier steps it did not crash, but the later moves joined the older step.
+    // The keys do nothing until the row is let go.
+    // ###########################################################################################
+    private static void PressKey(Window window, Avalonia.Input.Key key, Avalonia.Input.PhysicalKey physical)
+    {
+        window.KeyPress(key, Avalonia.Input.RawInputModifiers.Control, physical, keySymbol: null);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    [Fact]
+    public void Ctrl_Z_and_Ctrl_Y_do_nothing_while_a_row_is_held_as_a_documents_first_change()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1"), Component("U2"), Component("U3"), Component("U4")), published: null);
+            editor.SelectSheet(Components(editor));
+            Window window = Show(editor);
+            editor.GetControl<DataGrid>("TableGrid").Focus();
+
+            Point grip = CentreOf(window, HeaderOf(window, Row(editor, "U1")));
+            Point overU2 = CentreOf(window, CellOnScreen(window, Row(editor, "U2"), Column(BoardWorkbookSchema.ColFriendlyName)));
+            Point overU3 = CentreOf(window, CellOnScreen(window, Row(editor, "U3"), Column(BoardWorkbookSchema.ColFriendlyName)));
+
+            PressAt(window, grip);
+            DragTo(window, overU2);
+            Assert.Equal(["U2", "U1", "U3", "U4"], Labels(editor));
+
+            PressKey(window, Avalonia.Input.Key.Z, Avalonia.Input.PhysicalKey.Z);
+            Assert.Equal(["U2", "U1", "U3", "U4"], Labels(editor));
+
+            PressKey(window, Avalonia.Input.Key.Y, Avalonia.Input.PhysicalKey.Y);
+            Assert.Equal(["U2", "U1", "U3", "U4"], Labels(editor));
+
+            // This move is what threw.
+            DragTo(window, overU3);
+            Assert.Equal(["U2", "U3", "U1", "U4"], Labels(editor));
+
+            ReleaseAt(window, overU3);
+
+            // Let go, the whole drag is one step, and Ctrl+Z takes it back.
+            PressKey(window, Avalonia.Input.Key.Z, Avalonia.Input.PhysicalKey.Z);
+            Assert.Equal(["U1", "U2", "U3", "U4"], Labels(editor));
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Ctrl_Z_while_a_row_is_held_leaves_the_documents_earlier_steps_alone()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = OpenDocument(Board(Component("U1", "CPU"), Component("U2"), Component("U3")), published: null);
+            editor.SelectSheet(Components(editor));
+            Window window = Show(editor);
+            editor.GetControl<DataGrid>("TableGrid").Focus();
+
+            Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
+            editor.RefreshPendingForTests();
+
+            Point grip = CentreOf(window, HeaderOf(window, Row(editor, "U1")));
+            Point overU2 = CentreOf(window, CellOnScreen(window, Row(editor, "U2"), NameColumn));
+            Point overU3 = CentreOf(window, CellOnScreen(window, Row(editor, "U3"), NameColumn));
+
+            PressAt(window, grip);
+            DragTo(window, overU2);
+
+            PressKey(window, Avalonia.Input.Key.Z, Avalonia.Input.PhysicalKey.Z);
+            Assert.Equal("CPU 6510", NameOf(Row(editor, "U1")));
+
+            DragTo(window, overU3);
+            ReleaseAt(window, overU3);
+            Assert.Equal(["U2", "U3", "U1"], Labels(editor));
+
+            // Two steps: the drag first, then the name.
+            PressKey(window, Avalonia.Input.Key.Z, Avalonia.Input.PhysicalKey.Z);
+            Assert.Equal(["U1", "U2", "U3"], Labels(editor));
+            Assert.Equal("CPU 6510", NameOf(Row(editor, "U1")));
+
+            PressKey(window, Avalonia.Input.Key.Z, Avalonia.Input.PhysicalKey.Z);
+            Assert.Equal("CPU", NameOf(Row(editor, "U1")));
+
+            window.Close();
+        });
+    }
+
+    // A draft's undo built the table again under the drag and lost its moves.
+    [Fact]
+    public void Ctrl_Z_while_a_row_is_held_in_a_drafts_table_does_nothing_and_the_drag_goes_on()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(Board(Component("U1", "CPU"), Component("U2"), Component("U3")));
+            Window window = Show(editor);
+            editor.GetControl<DataGrid>("TableGrid").Focus();
+
+            // A step to take back, were the keys let through.
+            Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("CPU 6510", NameInSession(session, "U1"));
+
+            Point grip = CentreOf(window, HeaderOf(window, Row(editor, "U1")));
+            Point overU2 = CentreOf(window, CellOnScreen(window, Row(editor, "U2"), NameColumn));
+
+            PressAt(window, grip);
+            DragTo(window, overU2);
+
+            PressKey(window, Avalonia.Input.Key.Z, Avalonia.Input.PhysicalKey.Z);
+
+            Assert.NotNull(editor.DraggedRowForTests);
+            Assert.Equal("CPU 6510", NameInSession(session, "U1"));
+
+            ReleaseAt(window, overU2);
+
+            // Let go, the next tick of the save timer hands it over.
+            editor.SaveIfDueForTests();
+            Assert.Equal(["U2", "U1", "U3"], session.Content.Board.Components.Select(component => component.BoardLabel));
+
             window.Close();
         });
     }

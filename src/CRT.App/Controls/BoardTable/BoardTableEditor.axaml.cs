@@ -56,7 +56,7 @@ namespace CRT
     // history (BoardTableHistory).
     //
     // FILE MAP: this file (loading, sheets, toolbar, keys, columns),
-    // BoardTableEditor.Filter.cs (the colour key's pills as the filter),
+    // BoardTableEditor.Filter.cs (the colour key's pills as the filter, and the rows the grid shows),
     // BoardTableEditor.CellColours.cs (each cell's background and tooltip - its state's wash and
     // its problem's corner mark),
     // BoardTableEditor.Selection.cs (several rows selected, "Delete row" on all of them),
@@ -91,8 +91,8 @@ namespace CRT
         // Coalesces a burst of cell edits (a paste, a fast typist) into one refresh.
         private bool thisRefreshPosted;
 
-        // What the grid shows: the current sheet's rows through a view, so the colour key's picked
-        // kinds can filter them without touching the sheet's own list.
+        // What the grid is given: a view of the rows the current sheet shows (thisShownRows,
+        // BoardTableEditor.Filter.cs - a view with no filter, which a commit leaves alone).
         private DataGridCollectionView? thisView;
 
         // True while code - not the user - is moving the sheet tabs' selection, so the selection
@@ -132,6 +132,7 @@ namespace CRT
             this.TableGrid.LoadingRow += this.OnLoadingRow;
             this.TableGrid.BeginningEdit += BoardTableEditor.OnBeginningEdit;
             this.WireDraftSession();
+            this.WireShownRows();
             this.TableGrid.CurrentCellChanged += (_, _) => this.UpdateToolbar();
 
             // Several rows selected and deleted at once (BoardTableEditor.Selection.cs), and the
@@ -295,6 +296,10 @@ namespace CRT
             this.thisBaselineLabel = null;
             this.thisExcelDataFile = string.Empty;
 
+            this.thisShownRows = null;
+            this.thisView = null;
+            this.thisRowInHand = null;
+
             this.TableGrid.ItemsSource = Array.Empty<BoardTableRow>();
             this.TableGrid.Columns.Clear();
             this.ClearSheetTabs();
@@ -316,11 +321,20 @@ namespace CRT
             this.EndRowDrag();
             this.HideFilePreview();
 
+            if (this.thisCurrentSheet is { } left)
+            {
+                left.Rows.CollectionChanged -= this.OnSheetRowsChanged;
+            }
+
             this.thisCurrentSheet = sheet;
+            sheet.Rows.CollectionChanged += this.OnSheetRowsChanged;
             this.RebuildColumns();
 
-            // The filter is (re)applied once the grid has the view - see ApplyViewFilter.
-            this.thisView = new DataGridCollectionView(sheet.Rows);
+            // The rows shown, before the grid has them - and the grid told the view's filter is ours
+            // once it has the view (ApplyViewFilter).
+            this.thisRowInHand = null;
+            this.thisShownRows = new ShownRowList(BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null));
+            this.thisView = new DataGridCollectionView(this.thisShownRows);
             this.TableGrid.ItemsSource = this.thisView;
             this.ApplyViewFilter();
 
@@ -637,8 +651,18 @@ namespace CRT
 
         // A draft's undo and redo are its session's, across every editor of it; a document's, the
         // table's own history.
+        //
+        // *** NEITHER WITH A ROW HELD BY ITS GRIP (code review, 2026-11-02). *** The drag is a change not
+        // finished. In a document the undo took its step off with the history's group still open, and
+        // the next move crashed CRT, unsaved edits and all (BoardTableHistory.Undo); in a draft it
+        // built the table again, ending the drag with its moves never handed over.
         internal void Undo()
         {
+            if (this.thisRowDrag is not null)
+            {
+                return;
+            }
+
             if (this.thisDraftSession is not null)
             {
                 this.StepDraftSession(undo: true);
@@ -650,6 +674,11 @@ namespace CRT
 
         internal void Redo()
         {
+            if (this.thisRowDrag is not null)
+            {
+                return;
+            }
+
             if (this.thisDraftSession is not null)
             {
                 this.StepDraftSession(undo: false);
@@ -786,6 +815,11 @@ namespace CRT
             this.EndRowDrag();
             this.HideFilePreview();
 
+            if (this.thisCurrentSheet is { } left)
+            {
+                left.Rows.CollectionChanged -= this.OnSheetRowsChanged;
+            }
+
             if (this.thisDocument is null)
             {
                 return;
@@ -850,9 +884,9 @@ namespace CRT
             // A row whose last change was just reverted - or whose last error was just fixed - drops
             // out of the filter, and a newly changed one joins it: the view only re-reads states
             // when asked.
-            if (this.thisFilter != BoardTableRowKinds.None && this.thisView is not null && !this.thisView.IsEditingItem)
+            if (this.thisFilter != BoardTableRowKinds.None)
             {
-                this.thisView.Refresh();
+                this.ShowRows();
             }
 
             // An edit moves the runs the search found, though not which rows it shows.
@@ -987,12 +1021,15 @@ namespace CRT
 
             if (this.CurrentCell is null)
             {
-                BoardTableRow? first = this.thisCurrentSheet.Rows.FirstOrDefault(row => !row.IsDeleted)
-                    ?? this.thisCurrentSheet.Rows.FirstOrDefault();
+                // Of the rows SHOWN: a row a pill or a search hides cannot be the current one, and the
+                // cursor was left nowhere (code review, 2026-11-02). Under the Errors pill - Submit on a
+                // draft with errors opens the table so - on the row's first error.
+                List<BoardTableRow> shown = this.ShownRows();
+                BoardTableRow? first = shown.FirstOrDefault(row => !row.IsDeleted) ?? shown.FirstOrDefault();
 
                 if (first is not null)
                 {
-                    this.SelectCell(first, 0);
+                    this.SelectCell(first, BoardTableRowFilter.FirstProblemCell(this.thisFilter, first)?.ColumnIndex ?? 0);
                 }
             }
 

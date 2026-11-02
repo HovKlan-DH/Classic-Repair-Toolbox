@@ -41,6 +41,16 @@ namespace Handlers.DataHandling
         public const string NoIdentify = "The model needs its Identify command - CRT connects to the scope with it.";
 
         // ###########################################################################################
+        // WHAT THE SUITE'S ANSWER IS, as the administrator's card and mail say it (code review,
+        // 2026-11-02 - Security): the word of the CRT that sent the model. Anybody can send anything
+        // to the route, so it is never said as CRT's own finding. One wording for the card
+        // (OscilloscopeModelsDisplay) and the mail (EmailTemplates.OscilloscopeModelWaiting).
+        // ###########################################################################################
+        public const string SuiteReportedPassed = "The sender's CRT reported that its full test suite went through on it - nothing here checked that.";
+
+        public const string SuiteNotReportedPassed = "The sender's CRT did not report that its full test suite went through on it as it was sent.";
+
+        // ###########################################################################################
         // WHAT KEEPS A MODEL FROM BEING SENT IN FOR EVERYBODY - CRT asks before it sends, the server
         // when it takes it (OscilloscopeModelSubmissionRequest). Empty when nothing does. A command is
         // one line: CRT sends it with a line ending of its own, so a line break inside it would send

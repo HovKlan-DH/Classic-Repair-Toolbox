@@ -72,7 +72,8 @@ namespace CRT
     //   and days box (ApiUsageView).
     //
     //   "Oscilloscope models" (CRT 4.0 step 5, 2026-10-29) reads the models sent in from CRT and waiting,
-    //   when chosen and on its own Refresh; each is published or turned down there
+    //   when chosen, when Account is shown again with it chosen, on its own Refresh, and when the
+    //   count the queue answers differs from what it shows; each is published or turned down there
     //   (OscilloscopeModelsView).
     //
     //   "Reset contribution data", THE LAST ENTRY (2026-10-04: a clean start at go-live), reads the
@@ -134,7 +135,9 @@ namespace CRT
         }
 
         // On showing Account: the first time, "My account" is chosen; after that, whatever was chosen
-        // stays as it was - see the header. "Server version" is asked again, so a deploy since shows.
+        // stays as it was - see the header. "Server version" is asked again, so a deploy since shows;
+        // "Oscilloscope models" too (code review, 2026-11-02): its badge on the Account button is
+        // why it was pressed, and the panel must not say what it read before that.
         private async Task EnterAccountAsync()
         {
             if (this.FindControl<ListBox>("AccountList") is not ListBox list)
@@ -144,7 +147,21 @@ namespace CRT
                 list.SelectedItem = this.FindControl<ListBoxItem>("MyAccountItem");
             else if (ReferenceEquals(list.SelectedItem, this.FindControl<ListBoxItem>("ServerVersionItem")))
                 await this.ReadServerVersionAsync();
+            else if (ReferenceEquals(list.SelectedItem, this.FindControl<ListBoxItem>("OscilloscopeModelsItem")))
+                await this.OscilloscopeModelsAdmin.LoadAsync();
         }
+
+        // ###########################################################################################
+        // The models on show follow the count the queue just answered, quietly, and at every check while
+        // on screen (code review, 2026-11-02; OscilloscopeModelsView.FollowWaitingCountAsync) - only that
+        // entry on the Account screen. Anywhere else nothing shows them, and showing them reads them.
+        // ###########################################################################################
+        private Task FollowOscilloscopeModelsAsync(bool onScreen) =>
+            this.thisIsAdministrator &&
+            this.thisMode == MaintainerMode.Account &&
+            ReferenceEquals(this.FindControl<ListBox>("AccountList")?.SelectedItem, this.FindControl<ListBoxItem>("OscilloscopeModelsItem"))
+                ? this.OscilloscopeModelsAdmin.FollowWaitingCountAsync(this.thisOscilloscopeModelsWaiting, onScreen)
+                : Task.CompletedTask;
 
         // ###########################################################################################
         // The administrator's entries put in the list or taken out of it - from the server's word on

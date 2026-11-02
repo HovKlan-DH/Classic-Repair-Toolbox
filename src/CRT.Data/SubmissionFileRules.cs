@@ -58,6 +58,46 @@ namespace Handlers.DataHandling
         };
 
         // ###########################################################################################
+        // *** A FILE OF NO BYTES IS REFUSED, WHATEVER ITS TYPE (owner decision, 2026-11-02: "Refuse empty
+        // files"). *** The one rule and the one sentence: the server says it at create and at an amendment
+        // on what a manifest declares (ValidateManifestFiles), and at finalise and the publish on the bytes
+        // it holds (SubmissionFlows.CheckContentAsync, SubmissionContentRules.MatchesWholeFile); CRT says
+        // it before anything is sent (SubmissionClient.HashFilesAsync), on the table's cell
+        // (DiskFileLookup, BoardDataChecks) and when a file is added (DraftPickedFiles,
+        // KiCadRawFileScanner.ScanSplit). No file published anywhere is empty, so nothing is exempted.
+        // ###########################################################################################
+        public const string EmptyFileCode = "file.empty";
+
+        // What SHA-256 gives for no bytes: a manifest declaring it describes an empty file, whatever
+        // size it declares beside it.
+        public const string EmptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+        public static string EmptyFileMessage(string? path) =>
+            $"[{path}] is an empty file - it holds no bytes, so it cannot be submitted. Add a good copy of it, or take it off the board.";
+
+        // Whether a file a manifest declares is empty.
+        public static bool DeclaresNoBytes(SubmissionFile file)
+        {
+            ArgumentNullException.ThrowIfNull(file);
+
+            return file.SizeBytes == 0 || string.Equals(file.Sha256, SubmissionFileRules.EmptySha256, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Whether a file on this disk is there and empty - false for one that is not there, or cannot
+        // be asked about: another rule says what is wrong with those.
+        public static bool HoldsNoBytes(string? path)
+        {
+            try
+            {
+                return !string.IsNullOrWhiteSpace(path) && new FileInfo(path) is { Exists: true, Length: 0 };
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                return false;
+            }
+        }
+
+        // ###########################################################################################
         // Is this name acceptable - allowed type, and nothing hidden anywhere along it?
         //
         // *** A DOT ANYWHERE AT THE START OF A SEGMENT IS REFUSED, not just on the file. *** ".git/x"
@@ -198,6 +238,8 @@ namespace Handlers.DataHandling
 
                 if (!SubmissionFileRules.TryAdmit(manifest, file, referenced, board, out string code, out string reason))
                     findings.Add(SubmissionFileRules.Error(code, file.Path, reason));
+                else if (SubmissionFileRules.DeclaresNoBytes(file))
+                    findings.Add(SubmissionFileRules.Error(SubmissionFileRules.EmptyFileCode, file.Path, SubmissionFileRules.EmptyFileMessage(file.Path)));
             }
 
             // The board's own folder, which a NEW board would create - "commodore/C64/250407" beside

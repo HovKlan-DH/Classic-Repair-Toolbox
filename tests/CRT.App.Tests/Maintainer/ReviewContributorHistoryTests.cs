@@ -30,9 +30,10 @@ public sealed class ReviewContributorHistoryTests
     }
 
     // ###########################################################################################
-    // *** SENT WITHOUT AN ACCOUNT IS SAID PLAINLY. *** Such an address was typed in when sending,
-    // and nothing checked it - so the record under it belongs to whoever uses that address. The one
-    // fact no count gives, and exactly what an honest opinion of a contributor must weigh.
+    // *** SENT WITHOUT A VERIFIED ACCOUNT IS SAID PLAINLY. *** Such an address was typed in, and
+    // nothing checked it - so the record under it belongs to whoever uses that address. The one fact
+    // no count gives, and exactly what an honest opinion of a contributor must weigh. Not "without an
+    // account" since 2026-11-02: an account nobody verified counts as none (ContributorHistory).
     // ###########################################################################################
     [Fact]
     public void The_account_line_says_whether_the_address_was_checked()
@@ -44,7 +45,7 @@ public sealed class ReviewContributorHistoryTests
         Assert.Equal("Sent with an account - the address is verified.", ReviewContributorHistory.AccountLine(Facts(signedIn: true)));
 
         Assert.Equal(
-            "Sent without an account - the address was typed in when sending, and nothing checked it.",
+            "Sent without a verified account - the address was typed in, and nothing checked it.",
             ReviewContributorHistory.AccountLine(Facts(signedIn: false)));
 
         // An older server does not say: no line, never a guess.

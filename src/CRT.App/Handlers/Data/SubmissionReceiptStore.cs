@@ -30,8 +30,19 @@ namespace Handlers.DataHandling
     //
     // FAILURES ARE SOFT THROUGHOUT. A receipts file that will not parse costs a contributor the
     // ability to check status in-app; it must never cost them the ability to run the application
-    // or to submit again. Every failure logs and degrades to an empty list.
+    // or to submit again. Every failure logs and degrades to an empty list - and the file is never
+    // written over (SettleFileNotRead).
     // ###########################################################################################
+    // ###########################################################################################
+    // The list of what was sent, when a load could not read it. The notice card's words
+    // (Main.SettingsNotice.cs). A value in brackets is shown in bold.
+    // ###########################################################################################
+    public sealed record UnreadableReceiptsFile(string Path)
+    {
+        public string NoticeText =>
+            $"The list of what you have sent could not be read, so \"My submissions\" may look empty. Nothing is lost: the file [{this.Path}] is kept, and is never written over.";
+    }
+
     public static class SubmissionReceiptStore
     {
         public const string ReceiptsFileName = "submissions.json";
@@ -94,39 +105,170 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Loads from an explicit path and makes that path the save target - the test seam.
+        // Loads from an explicit path and makes that path the save target - the test seam. `pause` is
+        // how a file held for a moment is waited for, and `readText` how the file is read, for tests.
         // ###########################################################################################
-        internal static void LoadFrom(string receiptsFilePath)
+        internal static void LoadFrom(string receiptsFilePath, Action<TimeSpan>? pause = null, Func<string, string>? readText = null)
         {
             lock (Gate)
+            {
+                _pause = pause ?? System.Threading.Thread.Sleep;
+                _readText = readText ?? File.ReadAllText;
                 LoadFromLocked(receiptsFilePath);
+            }
         }
 
         private static void LoadFromLocked(string receiptsFilePath)
         {
             _path = receiptsFilePath ?? string.Empty;
             _receipts = new List<SubmissionReceipt>();
+            _fileNotRead = false;
 
             if (string.IsNullOrWhiteSpace(_path) || !File.Exists(_path))
                 return;
 
+            if (ReadFile(out List<SubmissionReceipt> read) == FileRead.Read)
+            {
+                _receipts = read;
+                return;
+            }
+
+            _fileNotRead = true;
+            Logger.Warning($"Starting with no submission receipts - [{_path}] could not be read, and is not written over");
+        }
+
+        // ###########################################################################################
+        // *** A FILE THAT COULD NOT BE READ IS NEVER WRITTEN OVER (code review, 2026-11-02). *** A
+        // receipt's token is the only copy - the server stores only its hash - and the next Record saved
+        // the new receipt alone over the file: every earlier submission gone from "My submissions", the
+        // badge, retirement and "already sent", for good. The own-scope-models file has the same rule for
+        // the same reason (OwnOscilloscopeFile). So before the first write:
+        //
+        //   - A FILE THAT CAN BE READ BY NOW was only held, by a backup or a virus scanner, longer than the
+        //     load waited: everything in it comes back, beside what was recorded meanwhile;
+        //   - A FILE THAT IS BROKEN is set aside beside itself - "<file>.broken", never over an earlier one
+        //     - where it can still be mended by hand. ContributionServer.FileNameFor names each service's
+        //     file, so each keeps its own;
+        //   - STILL HELD, ACCESS REFUSED, or not to be moved, nothing is written: what was recorded waits
+        //     in memory, and the next write asks again. Access refused says nothing of what the file holds
+        //     (code review, 2026-11-02: counted as broken, a good file went aside at the first write, every
+        //     earlier token with it, because a security tool had it for a while).
+        // ###########################################################################################
+        private static bool _fileNotRead;
+
+        private static Action<TimeSpan> _pause = System.Threading.Thread.Sleep;
+
+        private static Func<string, string> _readText = File.ReadAllText;
+
+        // ###########################################################################################
+        // The file the last load could not read, until the first write settles it - null while all is
+        // well. For the notice card (Main.SettingsNotice.cs): only logged, it left "My submissions"
+        // looking empty with no word why (code review, 2026-11-02).
+        // ###########################################################################################
+        public static UnreadableReceiptsFile? UnreadableFile
+        {
+            get
+            {
+                lock (Gate)
+                    return _fileNotRead ? new UnreadableReceiptsFile(_path) : null;
+            }
+        }
+
+        private enum FileRead { Read, Broken, Held }
+
+        private static bool SettleFileNotRead()
+        {
+            if (!_fileNotRead)
+                return true;
+
+            if (File.Exists(_path))
+            {
+                switch (ReadFile(out List<SubmissionReceipt> read))
+                {
+                    case FileRead.Read:
+                        _receipts = read
+                            .Where(earlier => _receipts.All(recorded => recorded.SubmissionId != earlier.SubmissionId))
+                            .Concat(_receipts)
+                            .ToList();
+                        break;
+
+                    case FileRead.Broken when SetFileAside():
+                        break;
+
+                    default:
+                        return false;
+                }
+            }
+
+            _fileNotRead = false;
+            return true;
+        }
+
+        private static FileRead ReadFile(out List<SubmissionReceipt> receipts)
+        {
+            receipts = new List<SubmissionReceipt>();
+
+            int attempt = 0;
+
+            while (true)
+            {
+                attempt++;
+
+                try
+                {
+                    string json = _readText(_path);
+
+                    List<SubmissionReceipt>? loaded =
+                        JsonSerializer.Deserialize<List<SubmissionReceipt>>(json, JsonOptions);
+
+                    // A receipt with no token can never be used to ask the server anything, so it is
+                    // dropped rather than shown as a row that silently fails on every refresh.
+                    receipts = loaded?
+                        .Where(receipt => receipt is not null && !string.IsNullOrWhiteSpace(receipt.UploadToken))
+                        .ToList() ?? new List<SubmissionReceipt>();
+
+                    return FileRead.Read;
+                }
+                catch (JsonException ex)
+                {
+                    Logger.Warning($"Failed to read submission receipts [{_path}]: [{ex.Message}]");
+                    return FileRead.Broken;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < FileReplacer.MoveAttempts)
+                {
+                    _pause(FileReplacer.MovePause);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning($"Failed to read submission receipts [{_path}]: [{ex.Message}]");
+                    return FileRead.Held;
+                }
+            }
+        }
+
+        private static bool SetFileAside()
+        {
+            string aside = _path + ".broken";
+            int number = 1;
+
+            while (File.Exists(aside))
+            {
+                number++;
+                aside = $"{_path}.broken.{number}";
+            }
+
             try
             {
-                string json = File.ReadAllText(_path);
+                FileReplacer.MoveOver(_path, aside, (from, to) => File.Move(from, to), _pause);
+                Logger.Warning($"The unreadable submission receipts are kept in [{aside}]");
 
-                List<SubmissionReceipt>? loaded =
-                    JsonSerializer.Deserialize<List<SubmissionReceipt>>(json, JsonOptions);
-
-                // A receipt with no token can never be used to ask the server anything, so it is
-                // dropped rather than shown as a row that silently fails on every refresh.
-                _receipts = loaded?
-                    .Where(receipt => receipt is not null && !string.IsNullOrWhiteSpace(receipt.UploadToken))
-                    .ToList() ?? new List<SubmissionReceipt>();
+                return true;
             }
-            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Logger.Warning($"Failed to read submission receipts [{_path}]: [{ex.Message}] - starting empty");
-                _receipts = new List<SubmissionReceipt>();
+                Logger.Warning($"Could not set the unreadable submission receipts [{_path}] aside: [{ex.Message}]");
+
+                return false;
             }
         }
 
@@ -182,7 +324,9 @@ namespace Handlers.DataHandling
             // lock is re-entrant for this thread, so the two calls take it again freely.)
             lock (Gate)
             {
-                UpdateState(result.SubmissionId, result.State.Trim(), string.Empty, checkedUtc);
+                // Its reasons too (code review, 2026-11-02): a refused submission is never asked about
+                // again, so this answer is all "My submissions" will ever have to say why.
+                UpdateState(result.SubmissionId, result.State.Trim(), string.Empty, checkedUtc, findings: SubmissionReceiptPresenter.ReasonsRefused(result.Findings));
 
                 if (!result.IsAccepted)
                     AcknowledgeComment(result.SubmissionId);
@@ -207,7 +351,11 @@ namespace Handlers.DataHandling
 
             // Whether a maintainer changed it (2026-09-25). Optional and trailing for the same reason
             // as decidedUtc, and kept when omitted for the same reason too.
-            bool? amendedByMaintainer = null)
+            bool? amendedByMaintainer = null,
+
+            // Why the server refused it (code review, 2026-11-02). Optional and trailing for the same
+            // reason, and kept when omitted - but only a refusal keeps any: another state has none.
+            IReadOnlyList<ValidationFinding>? findings = null)
         {
             lock (Gate)
             {
@@ -235,6 +383,7 @@ namespace Handlers.DataHandling
                     // date does not wipe one recorded earlier.
                     DecidedUtc = decidedUtc ?? existing.DecidedUtc,
                     AmendedByMaintainer = amendedByMaintainer ?? existing.AmendedByMaintainer,
+                    Findings = SubmissionReceiptPresenter.IsRefused(state) ? findings ?? existing.Findings : [],
 
                     // The server answered, so it knows the submission again.
                     NotFoundUtc = null
@@ -243,6 +392,17 @@ namespace Handlers.DataHandling
                 Save();
             }
         }
+
+        // ###########################################################################################
+        // The finalise request is about to go (code review, 2026-11-02): from here the server may queue
+        // it, answer or no answer - SubmissionReceiptPresenter.NeverReachedReview tells by this. Does
+        // nothing for an unknown id, so a receipt a cancel has forgotten stays forgotten.
+        // ###########################################################################################
+        public static void NoteFinaliseSent(long submissionId, DateTimeOffset sentUtc) =>
+            SubmissionReceiptStore.Change(
+                [submissionId],
+                _ => true,
+                receipt => receipt with { FinaliseSentUtc = sentUtc });
 
         // ###########################################################################################
         // How stale a receipt's LastCheckedUtc may get before an unchanged answer writes it (code
@@ -493,6 +653,12 @@ namespace Handlers.DataHandling
         {
             if (string.IsNullOrWhiteSpace(_path))
                 return;
+
+            if (!SettleFileNotRead())
+            {
+                Logger.Warning($"Submission receipts not written - [{_path}] could not be read yet, and nothing goes over it");
+                return;
+            }
 
             AtomicJsonFile.Write(_path, _receipts, JsonOptions, "submission receipts");
         }

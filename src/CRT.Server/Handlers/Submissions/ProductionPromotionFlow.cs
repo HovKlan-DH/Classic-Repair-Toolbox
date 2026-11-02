@@ -525,6 +525,17 @@ namespace CRT.Server.Handlers.Submissions
             // still unused now the new workbooks are in place. Never fails the promotion.
             UnusedFileRemoval removal = UnusedFileRemover.Remove(options.ProductionDataTreeRoot!, removals.Files, this.thisLogger);
 
+            // Said by the board's names - a stored file's place is its checksum. And only what nothing uses
+            // any more (code review, 2026-11-02; ApprovePublishFlow's rule): a file replaced under its own
+            // name leaves its earlier bytes to go under that name, and "1 unused file was removed" then
+            // spoke of a file the board still lists - to the maintainer and in the board's History. The
+            // board file is BETA's by now; one that cannot be read names everything, as before.
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? stillListed = PublishedBoardFiles.ByName(options.ProductionDataTreeRoot!, board.BoardId);
+            IReadOnlyList<string> removedNames = removal.Removed
+                .Select(removals.NameOf)
+                .Where(name => stillListed?.ContainsKey(name.Trim()) != true)
+                .ToList();
+
             await this.thisStore.AddProductionApprovalAsync(
                 board.BoardId, board.ContentHash!, approval.YourRole!.Value,
                 access!.Account.Id, ApprovePublishFlow.Label(access), nowUtc, cancellationToken);
@@ -539,7 +550,7 @@ namespace CRT.Server.Handlers.Submissions
                     ProductionPromotionFlow.PublishedAction,
                     board.BoardId,
                     $"revision {board.CurrentRevision}; {copy.FilesCopied} file(s) copied; {plan.UnchangedCount} unchanged; " +
-                    $"{removal.Removed.Count} unused file(s) removed",
+                    $"{removedNames.Count} unused file(s) removed",
                     nowUtc),
                 cancellationToken);
 
@@ -547,10 +558,9 @@ namespace CRT.Server.Handlers.Submissions
                 "{Account} published {BoardId} revision {Revision} to production ({Copied} file(s) copied).",
                 access.Account.Email, board.BoardId, board.CurrentRevision, copy.FilesCopied);
 
-            // Said by the board's names - a stored file's place is its checksum.
             return PromotionOutcome.Published(board, copy.FilesCopied, board.ProductionPublishedUtc) with
             {
-                RemovedFiles = removal.Removed.Select(removals.NameOf).ToList()
+                RemovedFiles = removedNames
             };
         }
 

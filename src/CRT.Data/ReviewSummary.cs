@@ -83,7 +83,22 @@ namespace Handlers.DataHandling
                 ReviewSummary.RevisionDateChange(before, submitted),
                 sections,
                 published is null ? [] : BoardRowOrder.ReorderedSheets(published, submitted),
-                published is not null && BoardRegions.Differ(published, submitted) ? BoardRegions.Has(submitted) : null);
+                ReviewSummary.RegionsNow(published, submitted));
+        }
+
+        // ###########################################################################################
+        // What a maintainer is told of the board's regions, which no sheet of the table shows: a change of
+        // them - and a new board that has them (code review, 2026-11-02: nothing to differ from, nothing
+        // was said, and they reached the published file with an amendment unable to change them).
+        // ###########################################################################################
+        private static bool? RegionsNow(BoardData? published, BoardData submitted)
+        {
+            if (published is null)
+            {
+                return BoardRegions.Has(submitted) ? true : null;
+            }
+
+            return BoardRegions.Differ(published, submitted) ? BoardRegions.Has(submitted) : null;
         }
 
         // ###########################################################################################
@@ -99,8 +114,8 @@ namespace Handlers.DataHandling
             IEnumerable<KiCadCalibrationEntry>? after,
             IEnumerable<SubmissionRename>? renames)
         {
-            Dictionary<string, object> beforeRows = ReviewSummary.KeyCalibrations(before);
-            Dictionary<string, object> afterRows = ReviewSummary.KeyCalibrations(after);
+            Dictionary<ComparedRow, object> beforeRows = ReviewSummary.KeyCalibrations(before);
+            Dictionary<ComparedRow, object> afterRows = ReviewSummary.KeyCalibrations(after);
 
             return ReviewSummary.CompareKeyedRows(
                 ReviewSummary.SectionKiCadCalibrations, beforeRows, afterRows, renames);
@@ -111,9 +126,9 @@ namespace Handlers.DataHandling
         private static string Number(double value) =>
             value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
-        private static Dictionary<string, object> KeyCalibrations(IEnumerable<KiCadCalibrationEntry>? entries)
+        private static Dictionary<ComparedRow, object> KeyCalibrations(IEnumerable<KiCadCalibrationEntry>? entries)
         {
-            var rows = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var rows = new Dictionary<ComparedRow, object>(ComparedRow.Comparer);
 
             foreach (KiCadCalibrationEntry entry in entries ?? [])
             {
@@ -123,7 +138,7 @@ namespace Handlers.DataHandling
                 // said "matching KeyRows" while keeping the LAST) - a duplicate key in contributed
                 // data is the client's problem to report, not a reason to fail the whole summary.
                 if (!string.IsNullOrEmpty(key))
-                    rows.TryAdd(key, entry);
+                    rows.TryAdd(new ComparedRow(key, 0), entry);
             }
 
             return rows;
@@ -143,8 +158,11 @@ namespace Handlers.DataHandling
             BoardData after,
             IEnumerable<SubmissionRename>? renames)
         {
-            Dictionary<string, object> beforeRows = ReviewSummary.KeyRows(section, before);
-            Dictionary<string, object> afterRows = ReviewSummary.KeyRows(section, after);
+            // A component's rectangles share a key by right, and every one of them counts (code review,
+            // 2026-11-02) - lined up as the contributor's count lines them up.
+            (Dictionary<ComparedRow, object> beforeRows, Dictionary<ComparedRow, object> afterRows) = section.Name == ReviewSummary.SectionComponentHighlights
+                ? BoardDataDiffer.LineUpRepeatedRows(section.RowsOf(before), section.RowsOf(after))
+                : (ReviewSummary.KeyRows(section, before), ReviewSummary.KeyRows(section, after));
 
             return ReviewSummary.CompareKeyedRows(section.Name, beforeRows, afterRows, renames);
         }
@@ -159,8 +177,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static ReviewSectionChange CompareKeyedRows(
             string sectionName,
-            Dictionary<string, object> beforeRows,
-            Dictionary<string, object> afterRows,
+            Dictionary<ComparedRow, object> beforeRows,
+            Dictionary<ComparedRow, object> afterRows,
             IEnumerable<SubmissionRename>? renames)
         {
             // Renames declared for THIS section only. A rename in another section must not move a
@@ -171,11 +189,15 @@ namespace Handlers.DataHandling
                 .ToList();
 
             var renamed = new List<ReviewRenamedRow>();
-            var handledBefore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var handledAfter = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var handledBefore = new HashSet<ComparedRow>(ComparedRow.Comparer);
+            var handledAfter = new HashSet<ComparedRow>(ComparedRow.Comparer);
 
             foreach (SubmissionRename rename in sectionRenames)
             {
+                // A rename names a key, so it speaks for the first row of that key.
+                var from = new ComparedRow(rename.From, 0);
+                var to = new ComparedRow(rename.To, 0);
+
                 // *** A DECLARED RENAME IS UNTRUSTED INPUT - it arrives inside the submission. ***
                 // It is honoured only when it actually describes what is there, and that takes
                 // THREE conditions, not two:
@@ -189,9 +211,9 @@ namespace Handlers.DataHandling
                 // absorbed as a rename and never shown to the maintainer as the ADDITION it really
                 // is. Hiding an added row from the person approving it is precisely what this
                 // screen exists to prevent. Caught by its own test.
-                if (!beforeRows.ContainsKey(rename.From) ||
-                    !afterRows.ContainsKey(rename.To) ||
-                    afterRows.ContainsKey(rename.From))
+                if (!beforeRows.ContainsKey(from) ||
+                    !afterRows.ContainsKey(to) ||
+                    afterRows.ContainsKey(from))
                 {
                     continue;
                 }
@@ -208,10 +230,10 @@ namespace Handlers.DataHandling
                 renamed.Add(new ReviewRenamedRow(
                     rename.From,
                     rename.To,
-                    !ReviewSummary.RowsMatchIgnoringKey(beforeRows[rename.From], afterRows[rename.To])));
+                    !ReviewSummary.RowsMatchIgnoringKey(beforeRows[from], afterRows[to])));
 
-                handledBefore.Add(rename.From);
-                handledAfter.Add(rename.To);
+                handledBefore.Add(from);
+                handledAfter.Add(to);
             }
 
             // ###########################################################################################
@@ -225,53 +247,64 @@ namespace Handlers.DataHandling
             // whose drop-by-value cannot line the fields up when the key gains a part (a component
             // given a region).
             // ###########################################################################################
-            List<string> lostKey = [.. beforeRows.Keys.Where(key => !handledBefore.Contains(key) && !afterRows.ContainsKey(key))];
-            List<string> gainedKey = [.. afterRows.Keys.Where(key => !handledAfter.Contains(key) && !beforeRows.ContainsKey(key))];
+            List<ComparedRow> lostKey = [.. beforeRows.Keys.Where(key => !handledBefore.Contains(key) && !afterRows.ContainsKey(key))];
+            List<ComparedRow> gainedKey = [.. afterRows.Keys.Where(key => !handledAfter.Contains(key) && !beforeRows.ContainsKey(key))];
 
             foreach (BoardRowRename pair in BoardDataDiffer.PairRenamedRows(
                          [.. lostKey.Select(key => beforeRows[key])],
                          [.. gainedKey.Select(key => afterRows[key])]))
             {
-                string from = lostKey[pair.Removed];
-                string to = gainedKey[pair.Added];
+                ComparedRow from = lostKey[pair.Removed];
+                ComparedRow to = gainedKey[pair.Added];
 
-                renamed.Add(new ReviewRenamedRow(from, to, AlsoChanged: false));
+                renamed.Add(new ReviewRenamedRow(from.NaturalKey, to.NaturalKey, AlsoChanged: false));
                 handledBefore.Add(from);
                 handledAfter.Add(to);
             }
 
             var added = new List<string>();
-            var changed = new List<string>();
+            var changedRows = new List<ReviewChangedRow>();
             var fieldChanges = new Dictionary<string, IReadOnlyList<ReviewFieldChange>>(StringComparer.OrdinalIgnoreCase);
 
-            foreach ((string key, object row) in afterRows)
+            // Every list names a row by its natural key, once per change: a component's rectangles share
+            // one, so two of them moved are its key twice, and what moved on each comes together under it.
+            foreach ((ComparedRow key, object row) in afterRows)
             {
                 if (handledAfter.Contains(key))
                     continue;
 
                 if (!beforeRows.TryGetValue(key, out object? existing))
                 {
-                    added.Add(key);
+                    added.Add(key.NaturalKey);
                     continue;
                 }
 
                 if (!ReviewSummary.RowsMatch(existing, row))
                 {
-                    changed.Add(key);
-                    fieldChanges[key] = ReviewSummary.FieldChanges(existing, row);
+                    IReadOnlyList<ReviewFieldChange> fields = ReviewSummary.FieldChanges(existing, row);
+
+                    changedRows.Add(new ReviewChangedRow(key.NaturalKey, fields));
+
+                    fieldChanges[key.NaturalKey] = fieldChanges.TryGetValue(key.NaturalKey, out IReadOnlyList<ReviewFieldChange>? earlier)
+                        ? [.. earlier, .. fields]
+                        : fields;
                 }
             }
 
             List<string> removed = [.. beforeRows.Keys
-                .Where(key => !handledBefore.Contains(key) && !afterRows.ContainsKey(key))];
+                .Where(key => !handledBefore.Contains(key) && !afterRows.ContainsKey(key))
+                .Select(key => key.NaturalKey)];
+
+            List<ReviewChangedRow> changed = [.. changedRows.OrderBy(row => row.Key, StringComparer.Ordinal)];
 
             return new ReviewSectionChange(
                 sectionName,
                 [.. added.OrderBy(key => key, StringComparer.Ordinal)],
                 [.. removed.OrderBy(key => key, StringComparer.Ordinal)],
-                [.. changed.OrderBy(key => key, StringComparer.Ordinal)],
+                [.. changed.Select(row => row.Key)],
                 renamed,
-                fieldChanges);
+                fieldChanges,
+                fieldChanges.Count < changed.Count ? changed : null);
         }
 
         // ###########################################################################################
@@ -521,16 +554,16 @@ namespace Handlers.DataHandling
         // in capitals was "0 rows changed" on the contributor's screen (the same key, the second row
         // ignored) and "1 added" in the maintainer's summary and the board's history.
         // BoardDataDifferAgreementTests runs one input through both.
-        private static Dictionary<string, object> KeyRows(ReviewSection section, BoardData data)
+        private static Dictionary<ComparedRow, object> KeyRows(ReviewSection section, BoardData data)
         {
-            var rows = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var rows = new Dictionary<ComparedRow, object>(ComparedRow.Comparer);
 
             foreach (object row in section.RowsOf(data))
             {
                 string key = BoardDraftNaturalKeys.ForRow(row);
 
                 if (!string.IsNullOrEmpty(key))
-                    rows.TryAdd(key, row);
+                    rows.TryAdd(new ComparedRow(key, 0), row);
             }
 
             return rows;
@@ -594,6 +627,12 @@ namespace Handlers.DataHandling
 
     public sealed record ReviewRenamedRow(string From, string To, bool AlsoChanged);
 
+    // One row of `Changed`, with what moved on that row alone.
+    public sealed record ReviewChangedRow(string Key, IReadOnlyList<ReviewFieldChange> Fields);
+
+    // Every list names a row by its natural key, once per change - and a component's rectangles on one
+    // schematic share a key (code review, 2026-11-02), so two of them changed are its key twice in `Changed`,
+    // and `FieldChanges` holds what moved on each under that one key.
     public sealed record ReviewSectionChange(
         string Section,
         IReadOnlyList<string> Added,
@@ -603,7 +642,15 @@ namespace Handlers.DataHandling
 
         // Which FIELDS moved, per changed row key (task 4's field-level diff). Keyed rather than
         // parallel to Changed, so a caller cannot pair them up wrongly by index.
-        IReadOnlyDictionary<string, IReadOnlyList<ReviewFieldChange>> FieldChanges)
+        IReadOnlyDictionary<string, IReadOnlyList<ReviewFieldChange>> FieldChanges,
+
+        // ###########################################################################################
+        // `Changed` row by row, ONLY when a key stands in it more than once (code review, 2026-11-02): one
+        // rectangle moved and another resized both read "Moved and resized" by `FieldChanges`, which holds
+        // a key's fields together. Null otherwise - and from a server before this - and then `FieldChanges`
+        // says it all, as it always did. Each row names its key, for the reason `FieldChanges` is keyed.
+        // ###########################################################################################
+        IReadOnlyList<ReviewChangedRow>? ChangedRows = null)
     {
         public bool HasChanges =>
             this.Added.Count > 0 ||
@@ -625,7 +672,8 @@ namespace Handlers.DataHandling
     // apart from the rows: a moved row is none added, changed or removed. Empty for a new board.
     //
     // RegionsNow (2026-11-01): what the board says about its regions after a submission that changes
-    // it - BoardRegions.Has - and null when it does not, or for a new board.
+    // it - BoardRegions.Has - and null when it does not. For a new board: true when it has them, null when
+    // not (code review, 2026-11-02).
     // ###########################################################################################
     public sealed record ReviewChangeSummary(
         bool IsNewBoard,

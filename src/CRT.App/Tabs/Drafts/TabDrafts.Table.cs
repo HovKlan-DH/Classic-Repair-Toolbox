@@ -137,6 +137,35 @@ namespace CRT
              string.Equals(this.thisComponentEntry.ExcelDataFile, excelDataFile?.Trim(), StringComparison.OrdinalIgnoreCase) &&
              this.ComponentPane.HasUnsavedChanges);
 
+        // ###########################################################################################
+        // *** WHATEVER IS OPEN ON A DRAFT KEEPS IT (code review, 2026-11-02) - asked before it is retired
+        // (Main.RetirePublishedDraftsAsync's isInUse). *** "Nothing unsaved" could not say so: text still
+        // being typed in a cell or a box has not been handed over, so the draft looked identical and went
+        // from under the table, the pane or the KiCad panel. A draft is retired at a later check, once
+        // nothing is open on it. Also what is being opened on it right now (OpeningOn).
+        // ###########################################################################################
+        internal bool IsDraftOpen(string? excelDataFile)
+        {
+            bool IsIt(HardwareBoardEntry? open) =>
+                open is not null && string.Equals(open.ExcelDataFile, excelDataFile?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+            return IsIt(this.thisTableEntry) || IsIt(this.thisComponentEntry) || IsIt(this.thisKiCadEntry) || IsIt(this.thisOpeningOn);
+        }
+
+        // ###########################################################################################
+        // *** THE ONE QUESTION ASKED BEFORE A DRAFT IS RETIRED (code review, 2026-11-02) - Main's isInUse.
+        // *** Anything open on it, a change its file does not have yet, in the table or the pane or held by
+        // the session - or a step the session could redo: the header's Undo, with nothing open, saves a
+        // draft equal to the published board, and retired then, the change undone went with it though the
+        // header still offered Redo. Sessions end with the run, so the next launch retires it as ever.
+        // Here and not in a lambda inside Main.RetirePublishedDraftsAsync, so a test can ask.
+        // ###########################################################################################
+        internal bool IsDraftInUse(string? excelDataFile) =>
+            this.IsDraftOpen(excelDataFile) ||
+            this.HasUnsavedTableEditsFor(excelDataFile) ||
+            (!string.IsNullOrWhiteSpace(excelDataFile) &&
+             (DraftManager.HasUnsavedChanges(excelDataFile) || DraftManager.CanRedo(excelDataFile)));
+
         private bool IsTableOpenFor(HardwareBoardEntry entry) =>
             this.thisTableEntry is not null &&
             string.Equals(this.thisTableEntry.ExcelDataFile, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase);
@@ -209,17 +238,10 @@ namespace CRT
                 await BusyOverlay.RunLocalAsync(this, CrtWaitWording.SavingDraft, () => paneSave);
             }
 
-            DraftStatus? status = DraftStatusReader.Resolve(
-                DataManager.DataRoot,
-                DraftManager.DraftsRoot,
-                entry.ExcelDataFile,
-                entry.IsPublished);
-
             // Reading the published board to colour against is a noticeable wait on a large board,
-            // so it runs under the "please wait" overlay (2026-09-28).
-            BoardData? published = this.PublishedBoardOverrideForTests is not null
-                ? this.PublishedBoardOverrideForTests(entry)
-                : await BusyOverlay.RunLocalAsync(this, CrtWaitWording.OpeningTable, () => TabDrafts.LoadPublishedBoardAsync(entry, status));
+            // so it runs under the "please wait" overlay (2026-09-28) - and the draft's own first read
+            // with it (ReadDraftToOpenAsync).
+            (DraftSession? session, BoardData? published) = await this.ReadDraftToOpenAsync(entry, CrtWaitWording.OpeningTable);
 
             // The published side is named after the source it was downloaded from (owner request,
             // 2026-10-05): a value BETA holds and stable does not yet is otherwise taken for a mistake.
@@ -238,7 +260,6 @@ namespace CRT
             // Ctrl+Z away when it is opened again. Something may have written the file while the
             // table was closed: read again first, when nothing of the session's waits to be saved.
             // ###########################################################################################
-            DraftSession? session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, entry.ExcelDataFile);
             session?.ReadFileIfChanged(DraftSaveWording.ReadAgainStep);
 
             // A new board's credits start with their rows, on this sheet too (TabDrafts.NewBoardCredits.cs).
@@ -311,24 +332,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Closes the table, without asking, if it is open on this board's draft - for a draft that
-        // is about to be deleted by something other than this tab (retirement after publishing).
-        // The caller has already made sure nothing unsaved is lost: see HasUnsavedTableEditsFor.
+        // A draft about to be deleted by something other than this tab (retirement after publishing) is
+        // no longer one made only to look. That is all there is to let go of: nothing can be open on it,
+        // as IsDraftInUse held it back if anything were, with nothing run in between
+        // (PublishedDraftRetirer.Retire).
         // ###########################################################################################
-        internal void CloseTableIfOpenFor(string? excelDataFile)
+        internal void ForgetLookAtDraftGoing(string? excelDataFile)
         {
-            if (this.thisTableEntry is not null &&
-                string.Equals(this.thisTableEntry.ExcelDataFile, excelDataFile?.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(this.thisDraftMadeToLook?.ExcelDataFile, excelDataFile?.Trim(), StringComparison.OrdinalIgnoreCase))
             {
-                this.CloseTableWithoutAsking();
-            }
-
-            // The component pane lets go of it too - nothing may be written into a draft that goes.
-            if (this.thisComponentEntry is not null &&
-                string.Equals(this.thisComponentEntry.ExcelDataFile, excelDataFile?.Trim(), StringComparison.OrdinalIgnoreCase))
-            {
-                this.ForgetComponent();
-                this.ApplyTableMode();
+                this.ForgetDraftMadeToLook();
             }
         }
 
@@ -546,25 +559,45 @@ namespace CRT
         //
         // Runs at the end of every RefreshDrafts. If the open draft is no longer listed (discarded
         // from elsewhere, or published and retired), the table closes: there is nothing left for
-        // it to save into. A draft only looked at so far is not listed, and is there all the same.
+        // it to save into. A draft only looked at so far is not listed, and is there all the same -
+        // while its folder is (code review, 2026-11-02: gone, the pane and the table stayed on it, each
+        // change answered "Could not save", and the KiCad panel's import made its folder again).
         // ###########################################################################################
         private void ApplyTableMode()
         {
-            bool listed = this.thisTableEntry is not null && (this.IsUntouchedLook(this.thisTableEntry.ExcelDataFile) || this.Drafts.Any(item =>
-                string.Equals(item.ExcelDataFile, this.thisTableEntry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)));
+            bool StillThere(HardwareBoardEntry entry) =>
+                this.IsUntouchedLook(entry.ExcelDataFile)
+                    ? DraftBoardSource.HasDraft(DraftManager.DraftsRoot, entry.ExcelDataFile)
+                    : this.Drafts.Any(item => string.Equals(item.ExcelDataFile, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase));
 
-            if (this.thisTableEntry is not null && !listed)
+            // Gone: nothing left of it to let go of later, either.
+            void ForgetLookAt(HardwareBoardEntry entry)
+            {
+                if (this.IsUntouchedLook(entry.ExcelDataFile))
+                {
+                    this.ForgetDraftMadeToLook();
+                }
+            }
+
+            if (this.thisTableEntry is { } tableEntry && !StillThere(tableEntry))
             {
                 this.TableEditor.Clear();
                 this.thisTableEntry = null;
+                ForgetLookAt(tableEntry);
             }
 
             // The component pane's draft too - gone, so nothing is written into it.
-            if (this.thisComponentEntry is { } paneEntry &&
-                !this.IsUntouchedLook(paneEntry.ExcelDataFile) &&
-                !this.Drafts.Any(item => string.Equals(item.ExcelDataFile, paneEntry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)))
+            if (this.thisComponentEntry is { } paneEntry && !StillThere(paneEntry))
             {
                 this.ForgetComponent();
+                ForgetLookAt(paneEntry);
+            }
+
+            // "KiCad data" has its draft's folder to look at, listed or not.
+            if (this.thisKiCadEntry is { } kiCadEntry && !DraftBoardSource.HasDraft(DraftManager.DraftsRoot, kiCadEntry.ExcelDataFile))
+            {
+                ForgetLookAt(kiCadEntry);
+                this.CloseKiCadNow();
             }
 
             this.TableEditor.IsVisible = this.IsTableOpen;

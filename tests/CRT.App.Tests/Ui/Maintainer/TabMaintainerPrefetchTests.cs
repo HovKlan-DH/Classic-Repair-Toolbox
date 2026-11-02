@@ -223,6 +223,201 @@ public sealed class TabMaintainerPrefetchTests
         });
     }
 
+    // ###########################################################################################
+    // The tab with Row(42) read ahead and opened, the quiet re-read's detail held until `release` is
+    // set - and the approval answered as `approve` does.
+    // ###########################################################################################
+    private static async Task<(TabMaintainer Tab, TaskCompletionSource Release)> OpenedWithTheReReadHeldAsync(
+        Func<Task<HttpResponseMessage>> approve,
+        int tableVersionOnReRead = 1)
+    {
+        var release = new TaskCompletionSource();
+        bool hold = false;
+        int tableVersion = 1;
+
+        var server = new AnsweringHttpHandler(async (request, _) =>
+        {
+            string path = request.RequestUri!.AbsolutePath;
+
+            if (path.EndsWith("/approve", StringComparison.Ordinal))
+                return await approve();
+
+            if (path.EndsWith("/table", StringComparison.Ordinal))
+                return AnsweringHttpHandler.Json(TableJson(tableVersion, "CIA 6526"));
+
+            if (path.EndsWith("/submissions/42", StringComparison.Ordinal))
+            {
+                if (hold)
+                {
+                    hold = false;
+                    await release.Task;
+                }
+
+                return AnsweringHttpHandler.Json(
+                    """{"canPublish":true,"submission":{"id":42,"boardId":"Commodore/C64/250407","state":"pending"},"findings":[]}""");
+            }
+
+            return AnsweringHttpHandler.Refused();
+        });
+
+        var tab = new TabMaintainer();
+        MaintainerTabHost.AddOverlay(tab);
+
+        typeof(TabMaintainer).GetField("thisClient", Any)!
+            .SetValue(tab, new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+        typeof(TabMaintainer).GetField("thisSession", Any)!
+            .SetValue(tab, new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+        tab.ApplyQueueResponse(new ReviewQueueResponse(true, [Row(42)], false));
+
+        await tab.PrefetchEntryToOpenForTests();
+
+        hold = true;
+        tableVersion = tableVersionOnReRead;
+
+        tab.SelectOnEntryForTests();
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(42, tab.SelectedQueueRowForTests?.Id);
+        Assert.True(tab.FindControl<StackPanel>("DecisionPanel")!.IsVisible);
+        Assert.NotNull(tab.LastPrefetchReReadForTests);
+
+        return (tab, release);
+    }
+
+    // ###########################################################################################
+    // *** NOR OVER A CELL BEING TYPED IN (code review, 2026-11-02). *** The re-read asked whether the
+    // table held unsaved changes, which a cell still in its editor does not count as yet: a newer table
+    // arriving then built the table again and threw away what was being typed. The same gap as the
+    // Boards screen's quiet read (BoardDetailView.Table.cs).
+    // ###########################################################################################
+    [Fact]
+    public async Task The_re_read_after_opening_leaves_a_cell_being_typed_in_alone()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer tab, TaskCompletionSource release) = await OpenedWithTheReReadHeldAsync(
+                () => Task.FromResult(AnsweringHttpHandler.Refused()),
+                tableVersionOnReRead: 2);
+
+            var window = new Window { Content = tab.Parent, Width = 1400, Height = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            BoardTableEditor editor = tab.TableEditorForTests;
+            DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+            BoardTableSheet components = editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+
+            editor.SelectSheet(components);
+            Dispatcher.UIThread.RunJobs();
+
+            editor.SelectCell(components.Rows.Single(), BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName));
+            grid.Focus();
+            Assert.True(grid.BeginEdit());
+            Dispatcher.UIThread.RunJobs();
+
+            release.SetResult();
+            await tab.LastPrefetchReReadForTests!;
+
+            Assert.True(editor.IsEditingCell);
+            Assert.Equal(1, ShownTableVersion(tab));
+
+            window.Close();
+        });
+    }
+
+    // The first of two approvals: the submission stays selected, with what became of it beside it.
+    private static HttpResponseMessage FirstOfTwoApprovals()
+    {
+        var settings = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        ReviewApiContract.ApplyWireSettings(settings);
+
+        return AnsweringHttpHandler.Json(JsonSerializer.Serialize(
+            new ReviewDecisionAnswer("approved", WaitingFor: [ApproverRole.Administrator]), settings));
+    }
+
+    private static Task Approve(TabMaintainer tab) =>
+        (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(tab, [ReviewDecisionKind.Approve])!;
+
+    // ###########################################################################################
+    // *** THE RE-READ NEVER LANDS ON A DECISION (code review, 2026-11-02). *** Approve pressed at once
+    // on the entry read ahead, the older answer arriving after it with the submission still selected
+    // (a two-person approval): showing it cleared what the decision said and put the old approval
+    // state back. ReapplyApprovalGate has always kept this rule; this path did not.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_re_read_after_opening_leaves_a_decision_made_meanwhile_alone()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer tab, TaskCompletionSource release) =
+                await OpenedWithTheReReadHeldAsync(() => Task.FromResult(FirstOfTwoApprovals()));
+
+            await Approve(tab);
+
+            TextBlock message = tab.FindControl<TextBlock>("DecisionMessageText")!;
+            string said = message.Text!;
+
+            Assert.True(message.IsVisible);
+            Assert.NotEqual(string.Empty, said);
+
+            release.SetResult();
+            await tab.LastPrefetchReReadForTests!;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(message.IsVisible);
+            Assert.Equal(said, message.Text);
+        });
+    }
+
+    // And while the decision is on its way: its buttons stay off, so a second click cannot send it twice.
+    [Fact]
+    public async Task The_re_read_after_opening_does_not_turn_the_buttons_back_on_while_a_decision_is_sent()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var answer = new TaskCompletionSource<HttpResponseMessage>();
+
+            (TabMaintainer tab, TaskCompletionSource release) = await OpenedWithTheReReadHeldAsync(() => answer.Task);
+
+            Task deciding = Approve(tab);
+            Dispatcher.UIThread.RunJobs();
+
+            Button reject = tab.FindControl<Button>("RejectButton")!;
+            Assert.False(reject.IsEnabled);
+
+            release.SetResult();
+            await tab.LastPrefetchReReadForTests!;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(reject.IsEnabled);
+
+            answer.SetResult(FirstOfTwoApprovals());
+            await deciding;
+
+            Assert.True(tab.FindControl<TextBlock>("DecisionMessageText")!.IsVisible);
+        });
+    }
+
+    // With no decision anywhere near it, the re-read is what it always was: what the server says now.
+    [Fact]
+    public async Task The_re_read_after_opening_still_shows_what_the_server_says_now_with_no_decision_made()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer tab, TaskCompletionSource release) =
+                await OpenedWithTheReReadHeldAsync(() => Task.FromResult(FirstOfTwoApprovals()));
+
+            object? shownBefore = typeof(TabMaintainer).GetField("thisShownDetail", Any)!.GetValue(tab);
+
+            release.SetResult();
+            await tab.LastPrefetchReReadForTests!;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.NotSame(shownBefore, typeof(TabMaintainer).GetField("thisShownDetail", Any)!.GetValue(tab));
+        });
+    }
+
     // Signed out - or another account - what was read is gone with the session it was read for.
     [Fact]
     public async Task Signing_out_forgets_what_was_read_ahead()

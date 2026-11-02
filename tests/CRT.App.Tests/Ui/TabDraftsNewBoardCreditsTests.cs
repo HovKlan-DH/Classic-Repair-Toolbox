@@ -235,11 +235,82 @@ public sealed class TabDraftsNewBoardCreditsTests : IDisposable
             TextBlock count = tab.GetControl<TextBlock>("CreditsCountText");
             Assert.Equal(ContributeBoardParts.CountText(0), count.Text);
 
-            await tab.PrepareOtherDraftAsync(TabDraftsNewBoardCreditsTests.Entry, string.Empty, string.Empty);
+            tab.OfferNewBoardCredits(TabDraftsNewBoardCreditsTests.Entry);
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(TabDraftsNewBoardCreditsTests.Wanted, Credits());
             Assert.Equal(ContributeBoardParts.CountText(4), count.Text);
+        });
+    }
+
+    // ###########################################################################################
+    // *** ANOTHER NEW BOARD TICKED IN THE SUBMIT DIALOG IS LEFT AS IT WAS WHEN IT CANNOT GO (code review,
+    // 2026-11-02). *** Its rows were put in, counted as the errors they are on purpose (nobody named), and
+    // the draft reported as not sent - changed, with an Undo step and a marker write, by a dialog about
+    // another board. What the rows would do is worked out on the side, and the name typed never fills
+    // them: who did each part is the contributor's to say, row by row.
+    // ###########################################################################################
+    [Fact]
+    public async Task Another_new_board_that_would_be_refused_is_left_as_it_was()
+    {
+        SeedDraft(newBoard: true);
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = Tab();
+
+            OtherDraftReady ready = await tab.PrepareOtherDraftAsync(TabDraftsNewBoardCreditsTests.Entry, "Bo", "RHD");
+
+            Assert.Null(ready.Target);
+            Assert.EndsWith("to fix first", ready.Reason, StringComparison.Ordinal);
+
+            Assert.Empty(Credits());
+            Assert.False(DraftManager.Sessions.Get(DraftManager.DraftsRoot, TabDraftsNewBoardCreditsTests.Identity)!.CanUndo);
+            Assert.Null(DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, TabDraftsNewBoardCreditsTests.Identity))!.CreditsOffered);
+        });
+    }
+
+    // ###########################################################################################
+    // One whose rows are all named goes - as its offer leaves it: a row nobody named for an image the
+    // board no longer has followed the image away, so it is no error, and neither what is sent nor what
+    // the receipt remembers holds it.
+    // ###########################################################################################
+    [Fact]
+    public async Task Another_new_board_with_every_row_named_goes_as_its_offer_leaves_it()
+    {
+        string marker = DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, TabDraftsNewBoardCreditsTests.Identity);
+        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsNewBoardCreditsTests.Identity);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+
+        CachedWorkbooks.Write(boardFile, new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+            Credits =
+            [
+                new CreditEntry { Category = NewBoardCredits.SchematicImage, SubCategory = "Gone" },
+                new CreditEntry { Category = NewBoardCredits.BoardData, NameOrHandle = "Anna" },
+                new CreditEntry { Category = NewBoardCredits.OscilloscopeBaseline, NameOrHandle = "Anna" },
+            ],
+        });
+
+        DraftMarkerStore.Save(marker, new DraftMarker
+        {
+            BoardKey = TabDraftsNewBoardCreditsTests.Identity,
+            NewBoard = new NewBoardRegistration { ExcelDataFile = TabDraftsNewBoardCreditsTests.Identity, HardwareName = "Commodore 64", BoardName = "999001" },
+            CreditsOffered = [NewBoardCredits.KeyOf(new CreditEntry { Category = NewBoardCredits.SchematicImage, SubCategory = "Gone" })],
+        });
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = Tab();
+
+            OtherDraftReady ready = await tab.PrepareOtherDraftAsync(TabDraftsNewBoardCreditsTests.Entry, string.Empty, string.Empty);
+
+            SubmitDraftTarget target = Assert.IsType<SubmitDraftTarget>(ready.Target);
+
+            Assert.Equal(["Board data|", "Oscilloscope baseline|"], target.Board.Credits.Select(row => $"{row.Category}|{row.SubCategory}"));
+            Assert.Equal(DraftFingerprint.Compute(boardFile, Path.GetDirectoryName(boardFile)!), target.Fingerprint);
+            Assert.False(DraftManager.Sessions.Get(DraftManager.DraftsRoot, TabDraftsNewBoardCreditsTests.Identity)!.HasUnsavedChanges);
         });
     }
 

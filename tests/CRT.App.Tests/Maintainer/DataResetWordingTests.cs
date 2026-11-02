@@ -92,6 +92,42 @@ public sealed class DataResetWordingTests
             DataResetWordingTests.Text(done));
     }
 
+    // ###########################################################################################
+    // *** A RESET WITH NO ANSWER IS JUDGED BY WHAT A RESET LEAVES AT ZERO (code review, 2026-11-02). ***
+    // Submissions, accounts and board records - never every count: a good reset leaves its own history
+    // entry, and API usage and board views grow again by themselves, so "if they are all zero, it did"
+    // could never be true. Counts that had none of the three to begin with cannot tell, and say so.
+    // ###########################################################################################
+    [Fact]
+    public void A_reset_with_no_answer_landed_when_submissions_accounts_and_boards_are_at_zero()
+    {
+        DataResetPlanAnswer before = DataResetWordingTests.Plan();
+
+        // Good, with everything that grows by itself grown.
+        Assert.True(DataResetWording.HasLanded(before, new DataResetPlanAnswer(true, "g", 0, 0, 1, 0, 0, 0, 1, 12, 3)));
+
+        Assert.False(DataResetWording.HasLanded(before, before));
+        Assert.False(DataResetWording.HasLanded(before, new DataResetPlanAnswer(true, "g", 1, 0, 1, 0, 0, 0, 1, 0, 0)));
+        Assert.False(DataResetWording.HasLanded(before, new DataResetPlanAnswer(true, "g", 0, 1, 1, 0, 0, 0, 1, 0, 0)));
+        Assert.False(DataResetWording.HasLanded(before, new DataResetPlanAnswer(true, "g", 0, 0, 1, 0, 0, 1, 1, 0, 0)));
+
+        // The counts could not be read.
+        Assert.Null(DataResetWording.HasLanded(before, null));
+
+        // Nothing of the three there before, so the same counts afterwards say nothing.
+        var nothingToJudge = new DataResetPlanAnswer(true, "f", 0, 0, 1, 0, 0, 0, 40, 500, 60);
+        Assert.Null(DataResetWording.HasLanded(nothingToJudge, nothingToJudge));
+    }
+
+    // Each of the three answers says what is known, in the words every wait of the tab uses.
+    [Fact]
+    public void After_a_reset_with_no_answer_the_sentence_says_what_was_found()
+    {
+        Assert.Contains("but it did finish: the contribution data is reset.", DataResetWording.AfterTimeout(true), StringComparison.Ordinal);
+        Assert.Contains("and the contribution data is still there.", DataResetWording.AfterTimeout(false), StringComparison.Ordinal);
+        Assert.Contains("whether it finished could not be checked", DataResetWording.AfterTimeout(null), StringComparison.Ordinal);
+    }
+
     // The reset never claims to have touched the data trees - the words say they stay.
     [Fact]
     public void The_words_say_the_BETA_and_stable_data_are_not_touched()

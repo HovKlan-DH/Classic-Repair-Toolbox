@@ -266,6 +266,19 @@ namespace Handlers.MaintainerHandling
                 "the files are removed",
                 stillThere == 1 ? "1 of them is still there" : $"{stillThere} of them are still there");
 
+        // ###########################################################################################
+        // Account > "Oscilloscope models" (code review, 2026-11-02): a model decided leaves the list,
+        // so `stillListed` - the list read again, null when that failed - says which it is. One a
+        // publish put into BETA only stays listed, and its card says so.
+        // ###########################################################################################
+        public static string OscilloscopeModelAfterTimeout(bool publishing, string name, bool? stillListed) =>
+            WaitWording.AfterTimeout(
+                stillListed is bool listed ? !listed : null,
+                publishing
+                    ? $"{name} has left the list - it is published"
+                    : $"{name} has left the list - it will not go in, and the contributor is told why",
+                $"{name} is still in the list");
+
         // `stillListed`: whether the boards list, read again, still holds it. A delete that finished
         // part-way leaves it listed too, and says so when Delete is pressed again.
         public static string DeleteAfterTimeout(string boardId, bool? stillListed) =>

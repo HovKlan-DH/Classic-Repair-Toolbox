@@ -375,6 +375,150 @@ public sealed class BoardPlacementViewTests
         });
     }
 
+    // ###########################################################################################
+    // *** A PLACEMENT NOT SAVED SURVIVES ANOTHER BOARD BEING CHOSEN (code review, 2026-11-02). *** The
+    // names typed and the place dragged to went without a word - leaving a board asks only about its
+    // table. Kept per board while CRT runs, so it is there on coming back: names, notes and place,
+    // still counted as not saved, Save ready.
+    // ###########################################################################################
+    [Fact]
+    public void A_placement_not_saved_is_still_there_on_coming_back_to_the_board()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, BoardPlacementView view) = BoardPlacementViewTests.Shown(BoardPlacementViewTests.Listing());
+
+            Point panel = BoardPlacementViewTests.CentreOf(window, BoardPlacementViewTests.RowContainer(view, 3));
+            Point top = BoardPlacementViewTests.CentreOf(window, BoardPlacementViewTests.RowContainer(view, 0)) - new Point(0, 6);
+
+            BoardPlacementViewTests.Press(window, panel);
+            BoardPlacementViewTests.Move(window, top);
+            BoardPlacementViewTests.Release(window, top);
+
+            view.SetNamesForTests("Commodore 128", "Open128", "An open-source replica.");
+            Dispatcher.UIThread.RunJobs();
+
+            // A board the lists carry chosen: no panel...
+            view.Show(BoardPlacementViewTests.Listing(), "Commodore/C64/250407");
+            Assert.False(view.IsVisible);
+
+            // ...and back.
+            view.Show(BoardPlacementViewTests.Listing(), Open128);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(view.IsVisible);
+            Assert.True(view.Rows[0].IsNewBoard);
+            Assert.Equal("Open128", view.Rows[0].BoardName);
+            Assert.Equal("Commodore 128", view.Rows[0].HardwareName);
+            Assert.Equal("An open-source replica.", view.GetControl<TextBox>("NotesBox").Text);
+            Assert.True(view.IsSaveEnabledForTests);
+
+            // Said for what it is - "the one shown is a suggestion" would be untrue now.
+            Assert.StartsWith("Not saved yet", view.TextOfForTests("SavedStateText"), StringComparison.Ordinal);
+
+            // Still not saved: a check does not replace it, and Save sends what is shown.
+            view.Show(BoardPlacementViewTests.ChangedListing(), Open128);
+            Assert.Equal("Open128", view.Rows[0].BoardName);
+            Assert.Null(view.BuildRequest()!.AfterExcelDataFile);
+
+            window.Close();
+        });
+    }
+
+    // Two boards waiting for a place: each keeps its own.
+    [Fact]
+    public void Each_board_keeps_its_own_placement_not_saved()
+    {
+        UiTest.Run(() =>
+        {
+            const string Other = "Commodore/C65/Prototype";
+
+            UnlistedBoardEntry other = new(Other, "Commodore", "C65", "Prototype", false, true, null,
+                new BoardPlacement("Commodore 65", "Prototype", string.Empty, C128Dcr));
+
+            var listing = new BoardListingAnswer(true, BoardPlacementViewTests.Listed, [BoardPlacementViewTests.Entry(), other]);
+
+            (Window window, BoardPlacementView view) = BoardPlacementViewTests.Shown(listing);
+
+            view.SetNamesForTests("Commodore 128", "Open128", string.Empty);
+            Dispatcher.UIThread.RunJobs();
+
+            view.Show(listing, Other);
+            Assert.Equal("Prototype", view.Rows.Single(row => row.IsNewBoard).BoardName);
+
+            view.SetNamesForTests("Commodore 65", "Prototype B", string.Empty);
+            Dispatcher.UIThread.RunJobs();
+
+            view.Show(listing, Open128);
+            Assert.Equal("Open128", view.Rows.Single(row => row.IsNewBoard).BoardName);
+
+            view.Show(listing, Other);
+            Assert.Equal("Prototype B", view.Rows.Single(row => row.IsNewBoard).BoardName);
+
+            window.Close();
+        });
+    }
+
+    // Saved, the server's answer is the placement; signed out, the next account finds nothing of it.
+    [Fact]
+    public async Task A_placement_kept_goes_once_saved_and_with_the_session()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (Window window, BoardPlacementView view) = BoardPlacementViewTests.Shown(BoardPlacementViewTests.Listing());
+            BoardPlacementViewTests.AnswerSaves(view);
+
+            // Typed, then left: kept.
+            view.SetNamesForTests("Commodore 128", "Open128", string.Empty);
+            Dispatcher.UIThread.RunJobs();
+            view.Hide();
+
+            // Back, saved, left and back: the listing's own placement, with nothing kept over it.
+            view.Show(BoardPlacementViewTests.Listing(), Open128);
+            await view.SaveAsync();
+            view.Hide();
+            view.Show(BoardPlacementViewTests.Listing(), Open128);
+            Assert.Equal("310378 Open128", view.Rows.Single(row => row.IsNewBoard).BoardName);
+
+            // Typed and left again, then signed out.
+            view.SetNamesForTests("Commodore 128", "Open128 again", string.Empty);
+            Dispatcher.UIThread.RunJobs();
+            view.Hide();
+            view.Initialize(null, null);
+
+            view.Show(BoardPlacementViewTests.Listing(), Open128);
+            Assert.Equal("310378 Open128", view.Rows.Single(row => row.IsNewBoard).BoardName);
+
+            window.Close();
+        });
+    }
+
+    // Placed by somebody else meanwhile - the board is listed now - what was typed here is no placement any more.
+    [Fact]
+    public void A_placement_kept_goes_once_the_board_is_listed()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, BoardPlacementView view) = BoardPlacementViewTests.Shown(BoardPlacementViewTests.Listing());
+
+            view.SetNamesForTests("Commodore 128", "Open128", string.Empty);
+            Dispatcher.UIThread.RunJobs();
+
+            view.Show(BoardPlacementViewTests.Listing(), "Commodore/C64/250407");
+
+            // Open128 shown again with nothing to place for it: listed.
+            var listedNow = new BoardListingAnswer(true, BoardPlacementViewTests.Listed, []);
+            view.Show(listedNow, Open128);
+            Assert.False(view.IsVisible);
+
+            // Unlisted again later: the listing's own, not what was typed before.
+            view.Show(BoardPlacementViewTests.Listing(), Open128);
+            Assert.Equal("310378 Open128", view.Rows.Single(row => row.IsNewBoard).BoardName);
+
+            window.Close();
+        });
+    }
+
     // A board the lists carry needs no placing - and no listing known is no panel either, never
     // "not in the lists" on the strength of a request that failed.
     [Fact]

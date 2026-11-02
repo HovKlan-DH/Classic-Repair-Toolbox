@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Handlers.DataHandling
 {
@@ -16,8 +17,8 @@ namespace Handlers.DataHandling
     // which is the only way in since Phase 6 retired the delta model (2026-09-23). It is a couple
     // of HashSets, built once per board load alongside a comparison that has already been made.
     //
-    // Deliberately narrow: only the two sections that currently have a UI marker (Components for
-    // the component list chip, ComponentHighlights for the schematic tint). A future section
+    // Deliberately narrow: only what has a UI marker - the component list's chip, for every row that is a
+    // component's (code review, 2026-11-02), and the schematic tint, for its highlights. A future section
     // needing the same treatment adds its own set here rather than this class trying to generalize
     // ahead of a second real need - see BoardDraftApplier's own KeyOf<T> for the shape a fully
     // generic version would have to take, which is more machinery than two sets justify today.
@@ -28,9 +29,9 @@ namespace Handlers.DataHandling
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(StringComparer.OrdinalIgnoreCase));
 
-        // Board labels with a Modified or Added row in the draft's Components section, or with their own
-        // rows in another order - what the component list checks per row to decide whether to show the
-        // "drafted" chip.
+        // Board labels with a Modified or Added row in the draft's Components section, with any row of theirs
+        // changed in the sections they hold beside it (ComponentRowSections), or with their own rows in
+        // another order - what the component list checks per row to decide whether to show the "drafted" chip.
         public IReadOnlySet<string> DraftedComponentBoardLabels { get; }
 
         // "<schematic>␟<label>" keys (BoardDraftNaturalKeys.ForComponentHighlight's own
@@ -64,7 +65,23 @@ namespace Handlers.DataHandling
         // *** DELETED ROWS ARE EXCLUDED, for the same reason FromDraft excludes them: *** a row
         // that is absent from the draft is not ON the rendered board, so there is nothing on
         // screen to mark. Marking it would mean drawing a chip for a component the contributor
-        // has removed.
+        // has removed. That is its row on the Components sheet, and the rectangle a highlight tints.
+        //
+        // *** A COMPONENT'S OTHER ROWS MARK IT, TAKEN OFF IT TOO (code review, 2026-11-02). *** Only its row
+        // on the Components sheet did, so a change of its pins, replacement parts, files, links, pictures,
+        // baselines or rectangles took "Draft" off it as soon as Main showed the board again - and the
+        // Schematics tab's list never had it - while "Review changes" listed it. A pin deleted is a change
+        // of a component still there, and one that went altogether is in no list to mark.
+        //
+        // *** A ROW GIVEN TO ANOTHER COMPONENT MARKS BOTH (code review, 2026-11-02): *** a pin's Board label
+        // changed from U1 to U2 in the table, U1 has its "Undo changes to" and a group "1 pin removed" too -
+        // so a paired row marks the label it had (PreviousNaturalKey) as well as the one it has.
+        //
+        // *** BUT A RECTANGLE THAT ONLY FOLLOWED ITS SCHEMATIC IS THE BOARD'S CHANGE, as ComponentRevert has it
+        // - the image renamed, or removed with what was marked on it. *** Every component marked there would
+        // read "Draft" for it, with nothing of its own to take back. Still tinted while it is on screen. It
+        // followed one only when the board has left that name: a schematic spelt in other capitals in the
+        // rectangle's row alone, or a rectangle handed to a sheet still there, is a change of the component.
         //
         // `reorderedComponents` is what the comparison cannot say (BoardRowOrder.ComponentsReordered): a
         // component whose own rows only moved has no changed row, and says "Draft" all the same.
@@ -76,15 +93,37 @@ namespace Handlers.DataHandling
                 return Empty;
             }
 
+            List<BoardRowChange> rows = changes.Where(change => change is not null).ToList();
+
+            // The names the board no longer has: a schematic removed, or renamed.
+            var schematicNamesLeft = new HashSet<string>(
+                rows.Where(change => string.Equals(change.Section, "Board schematics", StringComparison.Ordinal))
+                    .Select(change => change.Kind == BoardRowChangeKind.Deleted ? change.NaturalKey : change.PreviousNaturalKey)
+                    .Where(name => name.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+
             var draftedComponentBoardLabels = new HashSet<string>(reorderedComponents ?? new HashSet<string>(), StringComparer.OrdinalIgnoreCase);
             var draftedHighlightKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (BoardRowChange change in changes)
+            string PartOf(string? naturalKey, int part)
             {
-                if (change is null || change.Kind == BoardRowChangeKind.Deleted)
+                string[] parts = (naturalKey ?? string.Empty).Split(BoardDraftNaturalKeys.Separator);
+
+                return part < parts.Length ? parts[part].Trim() : string.Empty;
+            }
+
+            void Mark(string? naturalKey, int labelPart)
+            {
+                string label = PartOf(naturalKey, labelPart);
+
+                if (label.Length > 0)
                 {
-                    continue;
+                    draftedComponentBoardLabels.Add(label);
                 }
+            }
+
+            foreach (BoardRowChange change in rows)
+            {
 
                 // Matched on the SECTION NAME the differ emits, which is DraftDriftReport's own
                 // vocabulary - the two were deliberately kept identical so a section cannot be
@@ -95,20 +134,36 @@ namespace Handlers.DataHandling
                     // regionalised component's key is "label U+241F region" since 2026-09-24 (see
                     // BoardDraftNaturalKeys.ForComponent), and the chip marks the component, not
                     // one of its regions.
-                    string label = (change.NaturalKey ?? string.Empty)
-                        .Split(BoardDraftNaturalKeys.Separator)[0]
-                        .Trim();
-
-                    if (label.Length > 0)
+                    if (change.Kind != BoardRowChangeKind.Deleted)
                     {
-                        draftedComponentBoardLabels.Add(label);
+                        Mark(change.NaturalKey, labelPart: 0);
+                        Mark(change.PreviousNaturalKey, labelPart: 0);
                     }
+                }
+                else if (BoardDraftSummary.ComponentRowSections.Contains(change.Section))
+                {
+                    // The label first in each of their keys, as on the Components sheet.
+                    Mark(change.NaturalKey, labelPart: 0);
+                    Mark(change.PreviousNaturalKey, labelPart: 0);
                 }
                 else if (string.Equals(change.Section, "Component highlights", StringComparison.Ordinal))
                 {
-                    // Already "<schematic>U+241F<label>" - BoardDraftNaturalKeys built it, and it is
-                    // the shape the overlay looks up. Carried through verbatim rather than rebuilt.
-                    if (!string.IsNullOrWhiteSpace(change.NaturalKey))
+                    string schematicBefore = PartOf(change.PreviousNaturalKey.Length > 0 ? change.PreviousNaturalKey : change.NaturalKey, 0);
+
+                    bool followedItsSchematic = schematicNamesLeft.Contains(schematicBefore) &&
+                        (change.Kind == BoardRowChangeKind.Deleted ||
+                         (change.ChangedFields.Count > 0 && change.ChangedFields.All(field => field == nameof(ComponentHighlightEntry.SchematicName))));
+
+                    // "<schematic>U+241F<label>": the label second.
+                    if (!followedItsSchematic)
+                    {
+                        Mark(change.NaturalKey, labelPart: 1);
+                        Mark(change.PreviousNaturalKey, labelPart: 1);
+                    }
+
+                    // Already the shape the overlay looks up - BoardDraftNaturalKeys built it. Carried
+                    // through verbatim rather than rebuilt.
+                    if (change.Kind != BoardRowChangeKind.Deleted && !string.IsNullOrWhiteSpace(change.NaturalKey))
                     {
                         draftedHighlightKeys.Add(change.NaturalKey);
                     }
@@ -123,5 +178,16 @@ namespace Handlers.DataHandling
             return new BoardDraftSummary(draftedComponentBoardLabels, draftedHighlightKeys);
         }
 
+        // The sections a component holds beside its row, whose keys start with its label (BoardDraftNaturalKeys) -
+        // the names BoardDataDiffer.Compare gives them. Never Credits or the board's files and links: their
+        // keys start with something else, and would go into a set the component list searches by label.
+        private static readonly HashSet<string> ComponentRowSections = new(StringComparer.Ordinal)
+        {
+            "Component images",
+            "Component local files",
+            "Component links",
+            BoardWorkbookSchema.SheetComponentPins,
+            BoardWorkbookSchema.SheetComponentReplacements,
+        };
     }
 }

@@ -280,6 +280,81 @@ public sealed class ReviewApiClientTests
     }
 
     // ###########################################################################################
+    // *** A WRONG PASSWORD IS NOT "SIGN IN TO CONTINUE" (code review, 2026-11-02). *** The login's 401
+    // went through the shared sentence, which is about a session that ended, so the form just filled
+    // in was told to sign in. One fixed sentence, whatever the body says: the server's 401 gives no
+    // reason (an unknown address, a locked account and a wrong password answer alike), and this must
+    // not start giving one. Every other route's 401 keeps its sentence - the failure kind is what
+    // sends the tab to its sign-in screen.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("")]
+    [InlineData("""{"message":"No such account."}""")]
+    public async Task A_refused_sign_in_says_the_address_and_password_did_not_work(string body)
+    {
+        var handler = new AnsweringHttpHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        });
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        ReviewApiResult<ReviewSession> login = await client.LoginAsync("m@example.com", "wrong");
+
+        Assert.Equal(ReviewApiFailure.NotSignedIn, login.Failure);
+        Assert.Equal("That address and password did not work.", login.Message);
+
+        ReviewApiResult<ReviewQueueResponse> queue = await client.GetQueueAsync(ReviewApiClientTests.Session);
+
+        Assert.Equal(ReviewApiFailure.NotSignedIn, queue.Failure);
+        Assert.Equal("Sign in to continue.", queue.Message);
+    }
+
+    // Too many attempts stays what it is, and a server that is down is not called a wrong password.
+    [Theory]
+    [InlineData(429, ReviewApiFailure.RateLimited, "Too many attempts. Wait a moment and try again.")]
+    [InlineData(502, ReviewApiFailure.ServerError, "The server answered 502.")]
+    public async Task A_sign_in_refused_for_another_reason_says_that_reason(int status, ReviewApiFailure failure, string message)
+    {
+        var handler = new AnsweringHttpHandler(_ => new HttpResponseMessage((System.Net.HttpStatusCode)status));
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        ReviewApiResult<ReviewSession> login = await client.LoginAsync("m@example.com", "secret");
+
+        Assert.Equal(failure, login.Failure);
+        Assert.Equal(message, login.Message);
+    }
+
+    // ###########################################################################################
+    // *** ONLY A 400 IS ABOUT THE CODE (code review, 2026-11-02). *** Every non-2xx became "That code
+    // was not accepted. Ask for a new one." - Apache's 502 or 503 during a restart too, though the
+    // code was still good. What the server answers for a bad code is a 400 (AccountEndpoints
+    // .ResetPasswordAsync, every outcome but success); the rest goes as AcceptInvitationAsync's does.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(400, """{"message":"That link has expired. Ask for a new one."}""", ReviewApiFailure.Refused, "That link has expired. Ask for a new one.")]
+    [InlineData(400, """{"errors":["Too short.","No digit."]}""", ReviewApiFailure.Refused, "Too short. No digit.")]
+    [InlineData(400, "", ReviewApiFailure.Refused, "That code was not accepted. Ask for a new one.")]
+    [InlineData(502, "<html>Bad Gateway</html>", ReviewApiFailure.ServerError, "The server answered 502.")]
+    [InlineData(503, "", ReviewApiFailure.ServerError, "The server answered 503.")]
+    [InlineData(429, "", ReviewApiFailure.RateLimited, "Too many attempts. Wait a moment and try again.")]
+    public async Task Only_a_400_says_the_reset_code_was_not_accepted(int status, string body, ReviewApiFailure failure, string message)
+    {
+        var handler = new AnsweringHttpHandler(_ => new HttpResponseMessage((System.Net.HttpStatusCode)status)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        });
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        ReviewApiResult<string> result = await client.ResetPasswordAsync("code", "a new password");
+
+        Assert.Equal(failure, result.Failure);
+        Assert.Equal(message, result.Message);
+    }
+
+    // ###########################################################################################
     // The deployed server's version (2026-10-04): GET /api/health, and WITHOUT the bearer token -
     // the route is public, and the token is sent nowhere it is not needed.
     // ###########################################################################################

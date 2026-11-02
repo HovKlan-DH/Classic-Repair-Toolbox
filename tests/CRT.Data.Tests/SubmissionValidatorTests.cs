@@ -515,6 +515,49 @@ namespace CRT.Data.Tests
                 finding => finding.Code == "highlight.unparseable");
         }
 
+        // ###########################################################################################
+        // *** A COORDINATE THE BOARD FILE CANNOT HOLD IS NO COORDINATE (code review, 2026-11-02). ***
+        // These parse as numbers, and pass "no area" and "starts outside" (NaN compares false with
+        // everything), but the board file holds whole pixels (BoardDocumentMapping.WholeNumber), so a
+        // hand-made submission reached the queue and every Approve of it then failed.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("NaN", "10")]
+        [InlineData("Infinity", "10")]
+        [InlineData("-Infinity", "10")]
+        [InlineData("1E12", "10")]
+        [InlineData("10", "NaN")]
+        [InlineData("10", "1E12")]
+        public void A_coordinate_the_board_file_cannot_hold_is_an_error(string x, string width)
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Rows.ComponentHighlights[0] = new ComponentHighlightEntry
+            {
+                SchematicName = "Main", BoardLabel = "U8",
+                X = x, Y = "10", Width = width, Height = "10"
+            };
+
+            Assert.Contains(
+                SubmissionValidatorTests.Validate(manifest),
+                finding => finding.Code == "highlight.unparseable");
+        }
+
+        // The other side of the same rule: the largest a board file holds is still taken.
+        [Fact]
+        public void The_largest_coordinate_the_board_file_holds_is_accepted()
+        {
+            SubmissionManifest manifest = SubmissionValidatorTests.Valid();
+            manifest.Rows.ComponentHighlights[0] = new ComponentHighlightEntry
+            {
+                SchematicName = "Main", BoardLabel = "U8",
+                X = "2147483647", Y = "10", Width = "10", Height = "10"
+            };
+
+            Assert.DoesNotContain(
+                SubmissionValidatorTests.Validate(manifest),
+                finding => finding.Code == "highlight.unparseable");
+        }
+
         // -----------------------------------------------------------------------------------
         // Links.
         // -----------------------------------------------------------------------------------

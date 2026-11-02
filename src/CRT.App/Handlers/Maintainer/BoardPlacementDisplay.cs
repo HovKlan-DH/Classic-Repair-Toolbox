@@ -151,15 +151,20 @@ namespace Handlers.MaintainerHandling
         }
 
         // Whether a place is saved yet - the one thing a maintainer coming back needs to know.
-        public static string SavedState(UnlistedBoardEntry entry, bool afterIsGone)
+        // `notSavedKept`: what is shown is what the maintainer left here and has not saved - no suggestion,
+        // and no saved place (BoardPlacementView; code review, 2026-11-02).
+        public static string SavedState(UnlistedBoardEntry entry, bool afterIsGone, bool notSavedKept = false)
         {
             ArgumentNullException.ThrowIfNull(entry);
 
-            if (entry.Placement is null)
+            if (entry.Placement is null && !notSavedKept)
                 return "No place saved yet - the one shown is a suggestion.";
 
-            return afterIsGone
-                ? "The row it was placed after has left the lists, so it is shown at the end. Place it again."
+            if (afterIsGone)
+                return "The row it was placed after has left the lists, so it is shown at the end. Place it again.";
+
+            return notSavedKept
+                ? "Not saved yet - the names and the place shown are what you left here."
                 : "Its place is saved.";
         }
 

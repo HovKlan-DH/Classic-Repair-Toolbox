@@ -417,8 +417,12 @@ namespace CRT.Server.Handlers.Submissions
                 return Task.CompletedTask;
             }).ConfigureAwait(false);
 
-            // Said by the board's names - a stored file's place is its checksum.
-            IReadOnlyList<string> removedNames = removed.Select(removals.NameOf).ToList();
+            // Said by the board's names - a stored file's place is its checksum. And only what nothing
+            // uses any more (code review, 2026-11-02): a file replaced under its own name leaves its
+            // earlier bytes to go under that name, and "1 unused file was removed" then spoke of a file
+            // the board still lists - to the maintainer, on a board edit, and in the board's History.
+            var stillListed = new HashSet<string>(plan.Plan!.FileList.Select(file => file.Name), StringComparer.OrdinalIgnoreCase);
+            IReadOnlyList<string> removedNames = removed.Select(removals.NameOf).Where(name => !stillListed.Contains(name)).ToList();
 
             // The approval that published it, beside any earlier one.
             await this.AfterTheFactAsync(submissionId, "the approval could not be recorded", () => this.thisStore

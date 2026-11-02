@@ -79,10 +79,12 @@ namespace Handlers.MaintainerHandling
         }
 
         // " 2 unused files were removed." - appended to the message after a publish; empty when
-        // nothing was.
-        public static string Done(IReadOnlyList<string>? removed)
+        // nothing was. `kept` - see Unused: the earlier bytes of a file replaced are no unused file.
+        public static string Done(IReadOnlyList<string>? removed, IEnumerable<string>? kept = null)
         {
-            int count = removed?.Count ?? 0;
+            var stays = new HashSet<string>(kept ?? [], StringComparer.OrdinalIgnoreCase);
+
+            int count = removed?.Count(name => !stays.Contains(name)) ?? 0;
 
             return count switch
             {

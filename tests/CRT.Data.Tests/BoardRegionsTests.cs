@@ -162,6 +162,25 @@ public sealed class BoardRegionsTests
         Assert.Null(ReviewSummary.Compare(published, Board(Component("U1"))).RegionsNow);
     }
 
+    // ###########################################################################################
+    // A NEW BOARD SAYS IT TOO (code review, 2026-11-02): nothing to differ from, so nothing was said - and
+    // a new board's "regions" reached the published file with no maintainer told, no sheet of the table
+    // showing it and an amendment unable to change it. One with none says nothing, as nothing is new.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_boards_regions_are_said_to_the_review()
+    {
+        ReviewChangeSummary regional = ReviewSummary.Compare(published: null, BoardRegions.WithRegions(Board(Component("U1")), true));
+
+        Assert.True(regional.RegionsNow);
+        Assert.True(SubmissionChangeFacts.Build(regional).RegionsNow);
+
+        // By the one rule: a row saying PAL or NTSC is a board with regions too.
+        Assert.True(ReviewSummary.Compare(published: null, Board(new ComponentEntry { BoardLabel = "U1", Region = "PAL" })).RegionsNow);
+
+        Assert.Null(ReviewSummary.Compare(published: null, Board(Component("U1"))).RegionsNow);
+    }
+
     [Fact]
     public void Review_changes_says_it()
     {

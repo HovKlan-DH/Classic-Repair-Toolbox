@@ -288,6 +288,28 @@ namespace CRT.Server.Tests
             Assert.Equal($"#{id}", audit.Subject);
         }
 
+        // ###########################################################################################
+        // *** A FINDING IS CUT TO WHAT THE TABLE HOLDS, AS AT CREATION (code review, 2026-11-02). ***
+        // submission_findings.subject is VARCHAR(500) and a warning's subject is contributed text: too
+        // long, the INSERT failed AFTER the amendment was committed - a 500, no audit row, and the
+        // retry answered 409 "changed since".
+        // ###########################################################################################
+        [Fact]
+        public async Task A_warning_too_long_to_store_is_cut_as_it_is_at_creation()
+        {
+            (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
+
+            SubmissionRows rows = await AmendSubmissionFlowTests.EditedRowsAsync(store, id, edit: rows =>
+                rows.ComponentImages.Add(new ComponentImageEntry { BoardLabel = new string('x', 600), Name = "Note", Note = "A note" }));
+
+            AmendOutcome outcome = await this.AmendAsync(store, id, rows);
+
+            Assert.True(outcome.IsAmended, outcome.FullError);
+
+            Assert.Contains(store.Findings[id], finding => finding.Code == "image.orphan");
+            Assert.All(store.Findings[id], finding => Assert.True(finding.Subject.Length <= SubmissionFlows.MaximumFindingSubjectLength));
+        }
+
         // The table does not show highlights, calibrations or the revision date, so its route cannot
         // change them - whatever a hand-made request carries.
         [Fact]

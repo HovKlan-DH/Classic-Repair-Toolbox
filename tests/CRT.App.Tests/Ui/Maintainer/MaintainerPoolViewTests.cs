@@ -54,7 +54,7 @@ public sealed class MaintainerPoolViewTests
             return Task.FromResult(ReviewApiResult<string>.Ok(action.Kind == PoolActionKind.Invite ? "An invitation is on its way to x." : "Done."));
         };
 
-        view.PoolDetailOverrideForTests = id => Task.FromResult(MaintainerPoolViewTests.Detail(id, id == C64 ? maintainers : [], invitations));
+        view.PoolDetailOverrideForTests = id => Task.FromResult(ReviewApiResult<BoardDetailAnswer>.Ok(MaintainerPoolViewTests.Detail(id, id == C64 ? maintainers : [], invitations)));
 
         await view.UseListsForTests(MaintainerPoolViewTests.Boards, MaintainerPoolViewTests.Accounts);
         await view.ChooseBoardForTests(C64);
@@ -265,6 +265,50 @@ public sealed class MaintainerPoolViewTests
             Assert.Equal(["Nobody maintains this board - its submissions go to the administrator."], view.PoolTextsForTests());
             Assert.Empty(MaintainerPoolViewTests.Buttons(view, "RemoveMaintainer"));
             Assert.Equal(3, view.FindControl<ComboBox>("AddAccountCombo")!.ItemCount);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A BOARD THAT CANNOT BE READ LEAVES NOTHING TO PRESS (code review, 2026-11-02). *** Only a
+    // red line appeared: the C64's maintainers and their Remove buttons stayed on screen under a list
+    // saying C128, and "Remove" - which asks nothing - or "Add as maintainer" then changed the C64.
+    // The next read that works takes the red line away with it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_board_that_cannot_be_read_leaves_nothing_of_the_last_one_to_press()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (MaintainerPoolView view, List<PoolAction> sent) = await MaintainerPoolViewTests.ChosenAsync();
+            Assert.Single(MaintainerPoolViewTests.Buttons(view, "RemoveMaintainer"));
+
+            Func<string, Task<ReviewApiResult<BoardDetailAnswer>>> good = view.PoolDetailOverrideForTests!;
+
+            view.PoolDetailOverrideForTests = _ => Task.FromResult(
+                ReviewApiResult<BoardDetailAnswer>.Failed(ReviewApiFailure.Unreachable, "Could not reach the server: it is down."));
+
+            await view.ChooseBoardForTests(C128);
+
+            Assert.Equal("Could not reach the server: it is down.", view.FindControl<TextBlock>("MessageText")!.Text);
+            Assert.Null(view.ShownBoardId);
+            Assert.False(view.FindControl<StackPanel>("PoolPanel")!.IsVisible);
+            Assert.Empty(MaintainerPoolViewTests.Buttons(view, "RemoveMaintainer"));
+
+            // The list lets go too, so choosing the same board again reads it again.
+            Assert.Equal(-1, view.FindControl<ComboBox>("BoardCombo")!.SelectedIndex);
+
+            // What was on show is gone from the buttons below it too: nothing goes to the C64.
+            Assert.Equal(0, view.FindControl<ComboBox>("AddAccountCombo")!.ItemCount);
+            await view.AddChosenAccountAsync();
+            view.FindControl<TextBox>("InviteEmailBox")!.Text = "new@example.com";
+            await view.InviteTypedAddressAsync();
+            Assert.Empty(sent);
+
+            view.PoolDetailOverrideForTests = good;
+            await view.ChooseBoardForTests(C128);
+
+            Assert.Equal(C128, view.ShownBoardId);
+            Assert.False(view.FindControl<TextBlock>("MessageText")!.IsVisible);
         });
     }
 

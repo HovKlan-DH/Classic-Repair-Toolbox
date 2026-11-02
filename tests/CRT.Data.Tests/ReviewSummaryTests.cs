@@ -425,6 +425,177 @@ public sealed class ReviewSummaryTests
         Assert.Single(highlights.Changed);
     }
 
+    // ###########################################################################################
+    // *** SEVERAL RECTANGLES OF ONE COMPONENT ON ONE SCHEMATIC (code review, 2026-11-02). *** Keyed on
+    // schematic + label, first wins, the second one moved, a third added or the second deleted reached the
+    // published board with no maintainer told - the one thing this screen is for. Every rectangle is
+    // compared now, by all its values; the key they are named by stays schematic + label, as every reader
+    // of this section takes it apart into those two.
+    // ###########################################################################################
+    private static ComponentHighlightEntry Rectangle(string x, string label = "U8") =>
+        new() { SchematicName = "Sheet 1", BoardLabel = label, X = x, Y = "20", Width = "30", Height = "40" };
+
+    private static ReviewSectionChange Rectangles(ComponentHighlightEntry[] published, ComponentHighlightEntry[] submitted) =>
+        ReviewSummaryTests.Section(
+            ReviewSummary.Compare(new BoardData { ComponentHighlights = [.. published] }, new BoardData { ComponentHighlights = [.. submitted] }),
+            ReviewSummary.SectionComponentHighlights);
+
+    private static readonly string RectangleKey = BoardDraftNaturalKeys.ForComponentHighlight("Sheet 1", "U8");
+
+    [Fact]
+    public void A_second_rectangle_moved_is_reported_with_the_field_that_moved()
+    {
+        ReviewSectionChange highlights = Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("1"), Rectangle("15")]);
+
+        Assert.Equal([RectangleKey], highlights.Changed);
+        ReviewFieldChange moved = Assert.Single(highlights.FieldChanges[RectangleKey]);
+        Assert.Equal(("X", "10", "15"), (moved.Field, moved.Before, moved.After));
+        Assert.Empty(highlights.Added);
+        Assert.Empty(highlights.Removed);
+    }
+
+    [Fact]
+    public void A_third_rectangle_added_and_a_second_deleted_are_reported()
+    {
+        Assert.Equal([RectangleKey], Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("1"), Rectangle("10"), Rectangle("20")]).Added);
+        Assert.Equal([RectangleKey], Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("10")]).Removed);
+    }
+
+    // One key for two changes: the counts are the whole truth, and every field that moved is listed.
+    [Fact]
+    public void Two_rectangles_moved_are_two_changes_under_the_one_key()
+    {
+        ReviewSectionChange highlights = Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("5"), Rectangle("15")]);
+
+        Assert.Equal([RectangleKey, RectangleKey], highlights.Changed);
+        Assert.Equal(2, highlights.TotalChanges);
+        Assert.Equal(["X", "X"], highlights.FieldChanges[RectangleKey].Select(field => field.Field));
+    }
+
+    [Fact]
+    public void Rectangles_unchanged_or_only_in_another_order_are_no_change_to_a_maintainer()
+    {
+        Assert.False(Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("1"), Rectangle("10")]).HasChanges);
+        Assert.False(Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("10"), Rectangle("1")]).HasChanges);
+
+        Assert.Empty(ReviewSummary.Compare(
+            new BoardData { ComponentHighlights = [Rectangle("1"), Rectangle("10")] },
+            new BoardData { ComponentHighlights = [Rectangle("10"), Rectangle("1")] }).ReorderedSections);
+    }
+
+    // A component relabelled alone: each of its rectangles renamed, named by the two keys - nothing "added".
+    [Fact]
+    public void Every_rectangle_of_a_relabelled_component_is_renamed()
+    {
+        ReviewSectionChange highlights = Rectangles([Rectangle("1"), Rectangle("10")], [Rectangle("1", "U9"), Rectangle("10", "U9")]);
+
+        Assert.Equal(2, highlights.Renamed.Count);
+        Assert.All(highlights.Renamed, renamed =>
+        {
+            Assert.Equal(RectangleKey, renamed.From);
+            Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Sheet 1", "U9"), renamed.To);
+            Assert.False(renamed.AlsoChanged);
+        });
+
+        Assert.Empty(highlights.Added);
+        Assert.Empty(highlights.Removed);
+    }
+
+    // A declared rename still has to describe what is there (A_DECLARED rename's three conditions): the old
+    // key gone, the new one come - and rows beyond the first pair are not hidden by it.
+    [Fact]
+    public void A_declared_rename_of_a_rectangles_key_covers_one_rectangle_and_the_others_still_show()
+    {
+        var rename = new SubmissionRename
+        {
+            Section = ReviewSummary.SectionComponentHighlights,
+            From = RectangleKey,
+            To = BoardDraftNaturalKeys.ForComponentHighlight("Sheet 1", "U9"),
+        };
+
+        ReviewSectionChange highlights = ReviewSummaryTests.Section(
+            ReviewSummary.Compare(
+                new BoardData { ComponentHighlights = [Rectangle("1"), Rectangle("10")] },
+                new BoardData { ComponentHighlights = [Rectangle("1", "U9"), Rectangle("10", "U9"), Rectangle("20", "U9")] },
+                [rename]),
+            ReviewSummary.SectionComponentHighlights);
+
+        Assert.Equal(2, highlights.Renamed.Count);
+        Assert.Equal([BoardDraftNaturalKeys.ForComponentHighlight("Sheet 1", "U9")], highlights.Added);
+    }
+
+    // ###########################################################################################
+    // That character is no part of how a row is keyed any more (code review, 2026-11-02, Security): the board's
+    // History named a credit "Anna" + U+241E + "x" as "Anna", in the words a maintainer reads.
+    // ###########################################################################################
+    [Fact]
+    public void A_name_holding_U241E_reaches_a_maintainer_and_the_history_whole()
+    {
+        var credit = new CreditEntry { Category = "Data", SubCategory = "-", NameOrHandle = "Anna␞x" };
+
+        ReviewChangeSummary summary = ReviewSummary.Compare(new BoardData(), new BoardData { Credits = [credit] });
+
+        Assert.Equal([BoardDraftNaturalKeys.ForRow(credit)], ReviewSummaryTests.Section(summary, BoardWorkbookSchema.SheetCredits).Added);
+        Assert.Contains("Anna␞x", SubmissionChangeFacts.Build(summary).Sections.Single().Added.Single(), StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // *** EACH RECTANGLE'S OWN FIELDS (code review, 2026-11-02). *** One moved and another resized under one
+    // key: `FieldChanges[key]` holds all of it, so each read "Moved and resized". The new optional list says
+    // what moved on each - only where a key stands twice among the changed, so every other answer is as ever.
+    // ###########################################################################################
+    private static ComponentHighlightEntry Resized(string x, string width) =>
+        new() { SchematicName = "Sheet 1", BoardLabel = "U8", X = x, Y = "20", Width = width, Height = "40" };
+
+    [Fact]
+    public void One_rectangle_moved_and_another_resized_keep_their_own_fields_in_the_history()
+    {
+        SubmissionChanges facts = SubmissionChangeFacts.Build(ReviewSummary.Compare(
+            new BoardData { ComponentHighlights = [Resized("1", "30"), Resized("10", "30")] },
+            new BoardData { ComponentHighlights = [Resized("5", "30"), Resized("10", "90")] }));
+
+        SectionChanges section = Assert.Single(facts.Sections);
+
+        Assert.Equal(2, section.ChangedCount);
+        Assert.Equal(["Width", "X"], section.Changed.SelectMany(row => row.Fields).Order());
+        Assert.All(section.Changed, row => Assert.Single(row.Fields));
+    }
+
+    // Row by row only where a key stands twice among the changed - and then each row's own. Everywhere else
+    // the answer is what it always was: `FieldChanges` says it, and the field stays off the wire.
+    [Fact]
+    public void Each_rows_fields_are_listed_only_where_a_key_stands_twice_among_the_changed()
+    {
+        ReviewSectionChange two = Rectangles([Resized("1", "30"), Resized("10", "30")], [Resized("5", "30"), Resized("10", "90")]);
+
+        Assert.NotNull(two.ChangedRows);
+        Assert.Equal(two.Changed, two.ChangedRows.Select(row => row.Key));
+        Assert.Equal(["Width", "X"], two.ChangedRows.Select(row => Assert.Single(row.Fields).Field).Order());
+        Assert.Equal(["Width", "X"], two.FieldChanges[RectangleKey].Select(field => field.Field).Order());
+
+        // One moved, whatever else stands under the key.
+        Assert.Null(Rectangles([Resized("1", "30"), Resized("10", "30")], [Resized("1", "30"), Resized("10", "90")]).ChangedRows);
+
+        // Two changed under two keys, in any section.
+        Assert.Null(Rectangles([Rectangle("1"), Rectangle("1", "U9")], [Rectangle("5"), Rectangle("5", "U9")]).ChangedRows);
+        Assert.Null(ReviewSummaryTests.Components(ReviewSummary.Compare(
+            ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8")),
+            ReviewSummaryTests.Board(ReviewSummaryTests.Component("U8", part: "changed")))).ChangedRows);
+    }
+
+    // The board's history, from this summary: nothing there minds a key named twice.
+    [Fact]
+    public void The_boards_history_counts_every_rectangle()
+    {
+        SubmissionChanges facts = SubmissionChangeFacts.Build(ReviewSummary.Compare(
+            new BoardData { ComponentHighlights = [Rectangle("1"), Rectangle("10")] },
+            new BoardData { ComponentHighlights = [Rectangle("5"), Rectangle("15"), Rectangle("25")] }));
+
+        SectionChanges section = Assert.Single(facts.Sections);
+        Assert.Equal((2, 1), (section.ChangedCount, section.AddedCount));
+        Assert.Equal(["X"], section.Changed[0].Fields);
+    }
+
     // -----------------------------------------------------------------------------------
     // The one-line description
     // -----------------------------------------------------------------------------------

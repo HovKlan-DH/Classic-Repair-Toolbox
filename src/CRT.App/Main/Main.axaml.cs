@@ -484,6 +484,7 @@ namespace CRT
                 // A settings file that could not be read was kept, and CRT started on defaults - said
                 // before anything else (Main.SettingsNotice.cs).
                 this.ShowSettingsUnreadableNoticeIfNeeded();
+                this.ShowReceiptsUnreadableNoticeIfNeeded();
 
                 if (DataManager.DataUpdateRequiresAppUpdate)
                 {
@@ -893,8 +894,12 @@ namespace CRT
         // for a receipt that has said "changes requested" for weeks, bought nothing. The minute
         // check passes whether a receipt moved; retirement itself still runs every time - it
         // depends on a state, not a change (Main.SubmissionChecks.cs).
+        //
+        // `testServer`: for tests, in place of AppConfig.UsesTestServer - with the gate shut no pre-release
+        // and no test ever reached the wiring below, whose first real run would be on users' drafts after
+        // the release (code review, 2026-11-02).
         // ###########################################################################################
-        internal async Task RetirePublishedDraftsAsync(bool refreshDraftsTab = true)
+        internal async Task RetirePublishedDraftsAsync(bool refreshDraftsTab = true, bool? testServer = null)
         {
             // The receipts have just been brought up to date (this runs after every status check),
             // so this is where a submission reaching production is first seen. Before the retiring
@@ -925,33 +930,37 @@ namespace CRT
 
                 // None while CRT talks to the test instance, whose stable data does not last
                 // (ContributionServer.RetiresPublishedDrafts).
-                IReadOnlyList<RetirableDraft> candidates = ContributionServer.RetiresPublishedDrafts(AppConfig.UsesTestServer)
+                IReadOnlyList<RetirableDraft> candidates = ContributionServer.RetiresPublishedDrafts(testServer ?? AppConfig.UsesTestServer)
                     ? await PublishedDraftRetirer.FindAsync(receipts, dataRoot, draftsRoot, excelDataFiles)
                     : [];
 
                 if (candidates.Count > 0)
                 {
-                    // Anything found is a change worth drawing, whatever the caller asked.
-                    refreshDraftsTab = true;
-
                     DraftRetirementOutcome outcome = PublishedDraftRetirer.Retire(
                         candidates,
                         // Each draft is named by its WORKBOOK path (RetirableDraft.ExcelDataFile),
                         // never by the receipt's board id - passing the id here is the mix-up that
                         // kept every published draft on screen until 2026-09-25.
                         // A draft whose change is not in its file yet - the table's, or another
-                        // editor's whose save could not be made - stays (DraftSession).
-                        isInUse: excelDataFile =>
-                            this.TabDrafts.HasUnsavedTableEditsFor(excelDataFile) || DraftManager.HasUnsavedChanges(excelDataFile),
+                        // editor's whose save could not be made - stays (DraftSession). So does one with
+                        // anything open on it (code review, 2026-11-02): text being typed there has not
+                        // been handed over, so nothing says it is unsaved. A later check retires it.
+                        isInUse: this.TabDrafts.IsDraftInUse,
                         discard: excelDataFile =>
                         {
-                            // A table open on this draft with nothing unsaved just closes - it would
-                            // otherwise sit on a folder that no longer exists.
-                            this.TabDrafts.CloseTableIfOpenFor(excelDataFile);
+                            this.TabDrafts.ForgetLookAtDraftGoing(excelDataFile);
 
                             return DraftManager.DiscardDraft(excelDataFile);
                         },
                         afterDiscard: DataManager.ClearBoardCache);
+
+                    // A draft retired, or part-way, is a change worth drawing, whatever the caller asked.
+                    // One found and held is none (code review, 2026-11-02): it stays found at every minute
+                    // check while it is held, and each drew every row again - what the 2026-10-04 rule stopped.
+                    if (outcome.Touched.Count > 0)
+                    {
+                        refreshDraftsTab = true;
+                    }
 
                     // A NEW board's draft retired (2026-09-25): its draft-only entry is gone, and the
                     // published board the master lists takes its place in the lists - the same

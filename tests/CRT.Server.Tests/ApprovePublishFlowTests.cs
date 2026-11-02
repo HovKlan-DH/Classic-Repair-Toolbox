@@ -1176,6 +1176,42 @@ namespace CRT.Server.Tests
             Assert.Equal([ApprovePublishFlowTests.OldManualName], store.Changes[id].Files.Removed);
         }
 
+        // ###########################################################################################
+        // *** A FILE REPLACED UNDER ITS OWN NAME IS NO FILE REMOVED (code review, 2026-11-02). *** Its
+        // earlier bytes do go, under that same name, and the answer said so: the maintainer read "1
+        // unused file was removed" for a manual still there, and the board's History listed it as
+        // removed. RemovedFiles means what nothing uses any more, as the panel before the approval
+        // has always said (FileRemovalWording.Unused).
+        // ###########################################################################################
+        [Fact]
+        public async Task A_file_replaced_under_its_own_name_is_not_said_to_be_removed()
+        {
+            const string Name = "Images/sheet1.png";
+            const string EarlierContent = "the earlier picture";
+
+            this.UseRealTree();
+            DataTreeBuilder.Board(this.thisDataTree, ApprovePublishFlowTests.BoardId, [(Name, EarlierContent)]);
+
+            byte[] image = PublishExecutorTests.Png("THE NEW PICTURE");
+            string hash = await this.PutBlobAsync(image);
+
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(
+                ApprovePublishFlowTests.Manifest(new SubmissionFile { Path = Name, Sha256 = hash, SizeBytes = image.LongLength }));
+
+            string earlier = DataTreeBuilder.Stored(EarlierContent, Name);
+
+            ApproveOutcome outcome = await this.Flow(store).ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now,
+                [earlier], CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+
+            // The earlier bytes really went; they are just not "a file nothing uses".
+            Assert.False(File.Exists(DataTreeBuilder.Full(this.thisDataTree, earlier)));
+            Assert.Empty(outcome.RemovedFiles);
+            Assert.Empty(store.Changes[id].Files.Removed);
+        }
+
         // What is removed is what was on screen. A maintainer shown a different list - here an empty
         // one, because the list changed since they opened it - is refused, and NOTHING is written.
         [Fact]

@@ -26,6 +26,9 @@ public sealed class WorkbooksSearchTests : IDisposable
 
     private readonly string thisBoardKey = "Commodore 64|250469 " + Guid.NewGuid().ToString("N");
 
+    // A row names a file under the data root, as in CRT - see WorkbooksBoardPreviewTests' header.
+    public WorkbooksSearchTests() => PublishedBoardTree.Unload(this.thisWorkspace.Root);
+
     public void Dispose()
     {
         this.LoadWorklog();
@@ -656,14 +659,14 @@ public sealed class WorkbooksSearchTests : IDisposable
     // entries under, without standing up a real board Excel file.
     private BoardData BoardDataWithSchematic(string schematicName)
     {
-        string imagePath = this.thisWorkspace.Path_(schematicName + ".png");
-        File.WriteAllBytes(imagePath, OnePixelPng);
+        string imageName = schematicName + ".png";
+        File.WriteAllBytes(this.thisWorkspace.Path_(imageName), OnePixelPng);
 
         return new BoardData
         {
             Schematics = new List<BoardSchematicEntry>
             {
-                new() { SchematicName = schematicName, SchematicImageFile = imagePath },
+                new() { SchematicName = schematicName, SchematicImageFile = imageName },
             },
         };
     }

@@ -54,7 +54,13 @@ namespace CRT
             if (!this.CanAskServer)
                 return;
 
-            ReviewApiResult<BoardOverviewAnswer> result = await this.thisClient!.GetBoardOverviewAsync(this.thisSession!);
+            ReviewSession asked = this.thisSession!;
+
+            ReviewApiResult<BoardOverviewAnswer> result = await this.thisClient!.GetBoardOverviewAsync(asked);
+
+            // A sign-out or another sign-in meanwhile wins (code review, 2026-11-02; RefreshQueueAsync).
+            if (!this.IsSessionInUse(asked))
+                return;
 
             if (!result.IsOk)
             {
@@ -63,7 +69,10 @@ namespace CRT
                 return;
             }
 
-            ReviewApiResult<BoardListingAnswer> listing = await this.thisClient!.GetBoardListingAsync(this.thisSession!);
+            ReviewApiResult<BoardListingAnswer> listing = await this.thisClient!.GetBoardListingAsync(asked);
+
+            if (!this.IsSessionInUse(asked))
+                return;
 
             await this.ApplyBoardsListAsync(result.Value!, background, listing.IsOk ? listing.Value : null);
         }
@@ -82,7 +91,13 @@ namespace CRT
             if (!this.CanAskServer)
                 return;
 
-            ReviewApiResult<BoardListingAnswer> listing = await this.thisClient!.GetBoardListingAsync(this.thisSession!);
+            ReviewSession asked = this.thisSession!;
+
+            ReviewApiResult<BoardListingAnswer> listing = await this.thisClient!.GetBoardListingAsync(asked);
+
+            // A sign-out or another sign-in meanwhile wins (code review, 2026-11-02; RefreshQueueAsync).
+            if (!this.IsSessionInUse(asked))
+                return;
 
             // Left as it was: "could not ask" must not read as "nothing needs a place".
             if (!listing.IsOk || listing.Value is null)

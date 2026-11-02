@@ -26,6 +26,21 @@ namespace CRT
     {
         private Func<string, Task<(DraftChangeSummary Summary, string? Failure)>>? thisUndoComponent;
 
+        // ###########################################################################################
+        // What the window says it shows (code review, 2026-11-02): a new board has nothing published to
+        // be compared with, and no "Undo changes to" to explain (owner request, 2026-11-02).
+        // ###########################################################################################
+        internal const string IntroPublished =
+            "What your draft changes, compared with the published data. \"Undo changes to\" puts one component back as it is published - " +
+            "and \"Undo\" in the draft's header on the \"Contribute\" tab takes that back too, while CRT is running.";
+
+        internal const string IntroNewBoard =
+            "What your draft holds. This is a new board, so nothing of it is published yet and all of it is new.";
+
+        internal const string NothingPublished = "Your draft holds no changes from the published data.";
+
+        internal const string NothingNewBoard = "Your draft holds nothing yet.";
+
         public ReviewChangesWindow()
         {
             this.InitializeComponent();
@@ -34,15 +49,18 @@ namespace CRT
         }
 
         // `undoComponent` puts one component back and answers the summary afterwards, with why it
-        // could not when it could not. Null offers no undo.
+        // could not when it could not. Null offers no undo. `isNewBoard`: nothing of it is published.
         public void Initialize(
             string boardDisplayName,
             DraftChangeSummary summary,
-            Func<string, Task<(DraftChangeSummary Summary, string? Failure)>>? undoComponent = null)
+            Func<string, Task<(DraftChangeSummary Summary, string? Failure)>>? undoComponent = null,
+            bool isNewBoard = false)
         {
             ArgumentNullException.ThrowIfNull(summary);
 
             this.BoardNameText.Text = boardDisplayName;
+            this.IntroText.Text = isNewBoard ? ReviewChangesWindow.IntroNewBoard : ReviewChangesWindow.IntroPublished;
+            this.NothingText.Text = isNewBoard ? ReviewChangesWindow.NothingNewBoard : ReviewChangesWindow.NothingPublished;
             this.thisUndoComponent = undoComponent;
 
             this.ShowSummary(summary);

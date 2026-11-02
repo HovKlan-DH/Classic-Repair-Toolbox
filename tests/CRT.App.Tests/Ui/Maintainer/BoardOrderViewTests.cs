@@ -188,6 +188,41 @@ public sealed class BoardOrderViewTests
         });
     }
 
+    // ###########################################################################################
+    // *** A SAVE THAT DID NOT GO THROUGH GIVES THE BUTTONS BACK (code review, 2026-11-02). *** Both
+    // stayed grey after a refusal or no answer: the 409 says to open the item again, and an open
+    // cannot read under moves not saved - so with Cancel off only dragging a row got out of it. The
+    // server's words stay; "Unsaved" must not take their place.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(ReviewApiFailure.Conflict, "The list in BETA has changed since you opened it.")]
+    [InlineData(ReviewApiFailure.TimedOut, "The server did not answer.")]
+    public async Task A_save_that_did_not_go_through_turns_Save_and_Cancel_back_on_keeping_what_was_said(ReviewApiFailure failure, string words)
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardOrderView view = BoardOrderViewTests.Shown();
+
+            view.SaveOverrideForTests = _ => Task.FromResult(ReviewApiResult<BoardOrderAnswer>.Failed(failure, words));
+
+            view.MoveForTests(2, 0);
+            await view.SaveAsync();
+
+            Assert.True(view.IsSaveEnabledForTests);
+            Assert.True(view.IsCancelEnabledForTests);
+
+            if (failure == ReviewApiFailure.Conflict)
+                Assert.Equal(words, view.MessageForTests);
+            else
+                Assert.Equal(WaitWording.NoAnswer, view.MessageForTests);
+
+            // And "Cancel" does what the refusal asks for first: the moves gone, the item can be read.
+            view.PutBack();
+
+            Assert.False(view.IsReordered);
+        });
+    }
+
     // No versioned main Excel data file in BETA: said, never an empty box that reads as "no boards".
     [Fact]
     public void Without_a_list_it_says_there_is_none()

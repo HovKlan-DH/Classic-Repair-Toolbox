@@ -59,10 +59,14 @@
 
 		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button Content="Cancel" Click="OnCancelClick" />
+
+			<!-- IsDefault: Enter creates once the form is filled in (code review, 2026-11-02) - never over
+			     the notes box's new line, a focused button, or a suggestion being picked. -->
 			<Button x:Name="CreateButton"
 					Classes="Accept"
 					Content="Create board"
 					IsEnabled="False"
+					IsDefault="True"
 					Click="OnCreateClick" />
 		</StackPanel>
 	</StackPanel>

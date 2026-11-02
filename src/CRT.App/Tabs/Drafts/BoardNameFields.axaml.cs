@@ -28,6 +28,10 @@ namespace CRT
         // DataManager.HardwareBoards by then. Without the board being renamed.
         private readonly HashSet<string> thisTakenIdentities = new(StringComparer.OrdinalIgnoreCase);
 
+        // Every other listed board's FOLDER, "Manufacturer/Hardware/Board", with how the board is listed -
+        // see BuildRegistrationOrNull.
+        private readonly Dictionary<string, string> thisTakenFolders = new(StringComparer.OrdinalIgnoreCase);
+
         // The manufacturers and machines CRT has, for "Did you mean": a machine by its name and by its
         // folder ("C64" is "Commodore 64").
         private List<KnownName> thisKnownManufacturers = [];
@@ -63,6 +67,7 @@ namespace CRT
         {
             this.thisOwnIdentity = ownIdentity?.Trim() ?? string.Empty;
             this.thisTakenIdentities.Clear();
+            this.thisTakenFolders.Clear();
 
             List<HardwareBoardEntry> others = existingBoards
                 .Where(entry => !string.Equals(entry.ExcelDataFile, this.thisOwnIdentity, StringComparison.OrdinalIgnoreCase))
@@ -71,6 +76,7 @@ namespace CRT
             foreach (HardwareBoardEntry entry in others)
             {
                 this.thisTakenIdentities.Add($"{entry.HardwareName}|{entry.BoardName}");
+                this.thisTakenFolders.TryAdd(BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile), $"[{entry.HardwareName}] / [{entry.BoardName}]");
             }
 
             // Offering the manufacturers already in use is what stops a typo ("Comodore") quietly
@@ -213,6 +219,23 @@ namespace CRT
             if (string.IsNullOrWhiteSpace(excelDataFile))
             {
                 validationMessage = "Could not build a folder path from those names.";
+                return null;
+            }
+
+            // ###########################################################################################
+            // *** A LISTED BOARD'S FOLDER IS TAKEN, WHATEVER THE BOARD IS CALLED (code review, 2026-11-02).
+            // *** The check above compares what a board is LISTED as ("Commodore 64" / "250407 (long
+            // board)") and the draft check below only asks for a marker, so Commodore / C64 / 250407 passed
+            // both. A draft made there has no entry of its own - the listed board reads the folder
+            // (DataManager.MergeDraftOnlyBoards) - so the published board opened EMPTY on this machine, and
+            // Submit sent every row as removed under its id. Capitals ignored, as folder names are on
+            // Windows and macOS.
+            // ###########################################################################################
+            string folder = BoardDescriptorRules.BoardIdFromExcelDataFile(excelDataFile);
+
+            if (this.thisTakenFolders.TryGetValue(folder, out string? takenBy))
+            {
+                validationMessage = $"[{folder}] is already the folder of {takenBy}. Pick a different hardware or board name.";
                 return null;
             }
 

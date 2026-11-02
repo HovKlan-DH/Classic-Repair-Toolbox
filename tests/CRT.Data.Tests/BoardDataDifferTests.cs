@@ -273,6 +273,201 @@ public sealed class BoardDataDifferTests
         Assert.Empty(changes);
     }
 
+    // ------------------------------------------------------------------ Several rectangles of one component
+
+    private static ComponentHighlightEntry Rectangle(string x, string label = "U8", string schematic = "Top") =>
+        new() { SchematicName = schematic, BoardLabel = label, X = x, Y = "2", Width = "3", Height = "4" };
+
+    private static BoardData Marks(params ComponentHighlightEntry[] rectangles) => new() { ComponentHighlights = [.. rectangles] };
+
+    // ###########################################################################################
+    // *** A COMPONENT CAN HAVE SEVERAL RECTANGLES ON ONE SCHEMATIC, AND EACH OF THEM IS WORK (code review,
+    // 2026-11-02). *** 198 schematic + label pairs on the shipped boards have two or more. Keyed on
+    // schematic + label, first wins, only the first of them was ever compared: the second moved, a third
+    // added or the second deleted read as nothing at all - so the draft holding it was let go of, retired
+    // as identical, could not be sent, and sent with other work was published unseen. Compared here by all
+    // their values, as a multiset - the identity DraftRebase already uses.
+    // ###########################################################################################
+    [Fact]
+    public void The_second_rectangle_of_a_component_moved_is_one_row_modified_naming_its_coordinate()
+    {
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("1"), Rectangle("20"))));
+
+        Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+        Assert.Equal(["X"], change.ChangedFields);
+        Assert.Equal("Component highlights", change.Section);
+
+        // The key the schematic overlay looks a rectangle up by, whichever rectangle moved.
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", "U8"), change.NaturalKey);
+        Assert.Equal("Top / U8", change.DisplayLabel);
+    }
+
+    [Fact]
+    public void A_third_rectangle_added_is_one_row_added()
+    {
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("1"), Rectangle("10"), Rectangle("20"))));
+
+        Assert.Equal(BoardRowChangeKind.Added, change.Kind);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", "U8"), change.NaturalKey);
+    }
+
+    [Fact]
+    public void One_of_two_rectangles_deleted_is_one_row_deleted()
+    {
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("10"))));
+
+        Assert.Equal(BoardRowChangeKind.Deleted, change.Kind);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", "U8"), change.NaturalKey);
+    }
+
+    // Whichever of them moved, each one that did is counted - no first among them.
+    [Fact]
+    public void Each_rectangle_that_moved_is_counted()
+    {
+        Assert.Single(BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("5"), Rectangle("10"))));
+
+        IReadOnlyList<BoardRowChange> both = BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("5"), Rectangle("15")));
+
+        Assert.Equal(2, both.Count);
+        Assert.All(both, change => Assert.Equal(BoardRowChangeKind.Modified, change.Kind));
+    }
+
+    [Fact]
+    public void Rectangles_unchanged_or_only_in_another_order_are_no_change()
+    {
+        Assert.Empty(BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("1"), Rectangle("10"))));
+
+        // "Whose order nobody sees" (BoardRowOrder) - a rectangle drawn again elsewhere in the list is no work.
+        Assert.Empty(BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("10"), Rectangle("1"))));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("10"), Rectangle("1"))));
+
+        // Spaces around a value are no edit, here as anywhere.
+        Assert.Empty(BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("1"), Rectangle(" 10 "))));
+    }
+
+    // A multiset: the same rectangle twice is two rows, and one of them gone is one row deleted.
+    [Fact]
+    public void The_same_rectangle_twice_is_counted_as_two()
+    {
+        Assert.Equal(
+            BoardRowChangeKind.Deleted,
+            Assert.Single(BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("1")), Marks(Rectangle("1")))).Kind);
+
+        Assert.Equal(
+            BoardRowChangeKind.Added,
+            Assert.Single(BoardDataDiffer.Compare(Marks(Rectangle("1")), Marks(Rectangle("1"), Rectangle("1")))).Kind);
+    }
+
+    // A component relabelled alone, or its schematic renamed: each rectangle one row edited, by the pairing
+    // rule - not a deletion plus an addition, and not only the first of them.
+    [Fact]
+    public void Every_rectangle_of_a_relabelled_component_is_one_row_edited()
+    {
+        IReadOnlyList<BoardRowChange> changes = BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("1", label: "U08"), Rectangle("10", label: "U08")));
+
+        Assert.Equal(2, changes.Count);
+        Assert.All(changes, change =>
+        {
+            Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+            Assert.Equal(["BoardLabel"], change.ChangedFields);
+            Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", "U08"), change.NaturalKey);
+        });
+    }
+
+    // One rectangle moving to another component stays one row: nothing else about it changed.
+    [Fact]
+    public void A_rectangle_given_to_another_component_is_one_row_edited()
+    {
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("1"), Rectangle("10", label: "U9"))));
+
+        Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+        Assert.Equal(["BoardLabel"], change.ChangedFields);
+
+        // Both components it concerns: the key it has, and the key it had.
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", "U9"), change.NaturalKey);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", "U8"), change.PreviousNaturalKey);
+    }
+
+    // Only a row whose key changed has a key it had.
+    [Fact]
+    public void A_row_whose_key_stayed_has_no_previous_key()
+    {
+        Assert.Empty(Assert.Single(BoardDataDiffer.Compare(Board(components: [Component("U8", "CPU")]), Board(components: [Component("U8", "MPU")]))).PreviousNaturalKey);
+        Assert.Empty(Assert.Single(BoardDataDiffer.Compare(Board(components: [Component("U8")]), Board(components: [Component("U8"), Component("U9")]))).PreviousNaturalKey);
+        Assert.Empty(Assert.Single(BoardDataDiffer.Compare(Board(components: [Component("U8"), Component("U9")]), Board(components: [Component("U8")]))).PreviousNaturalKey);
+
+        Assert.Equal("U8", Assert.Single(BoardDataDiffer.Compare(Board(components: [Component("U8", "CPU")]), Board(components: [Component("U08", "CPU")]))).PreviousNaturalKey);
+    }
+
+    // Capitals in a key are the same row and a change of its value, as for every other section.
+    [Fact]
+    public void A_rectangles_label_in_other_capitals_is_one_row_modified()
+    {
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("1"), Rectangle("10", label: "u8"))));
+
+        Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+        Assert.Equal(["BoardLabel"], change.ChangedFields);
+    }
+
+    // ###########################################################################################
+    // *** A KEY NOTHING A CONTRIBUTOR TYPES CAN REACH (code review, 2026-11-02, Security). *** A further
+    // rectangle's key was its natural key plus U+241E and a number, as one string. A row labelled
+    // "U8" + U+241E + "1" had exactly the key of U8's second rectangle, and overwrote it - a rectangle added
+    // that no count and no maintainer saw. Which of a key's rows it is is a field of its own now.
+    // ###########################################################################################
+    [Fact]
+    public void A_rectangle_whose_label_reads_like_another_rectangles_place_is_still_counted()
+    {
+        string crafted = "U8␞1";
+
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(
+            Marks(Rectangle("1"), Rectangle("10")),
+            Marks(Rectangle("99", label: crafted), Rectangle("1"), Rectangle("10"))));
+
+        Assert.Equal(BoardRowChangeKind.Added, change.Kind);
+        Assert.Equal(BoardDraftNaturalKeys.ForComponentHighlight("Top", crafted), change.NaturalKey);
+
+        // In any order, and taken away again.
+        Assert.Equal(
+            BoardRowChangeKind.Added,
+            Assert.Single(BoardDataDiffer.Compare(Marks(Rectangle("1"), Rectangle("10")), Marks(Rectangle("1"), Rectangle("99", label: crafted), Rectangle("10")))).Kind);
+        Assert.Equal(
+            BoardRowChangeKind.Deleted,
+            Assert.Single(BoardDataDiffer.Compare(Marks(Rectangle("99", label: crafted), Rectangle("1"), Rectangle("10")), Marks(Rectangle("1"), Rectangle("10")))).Kind);
+    }
+
+    // No key is cut: that character is nothing but a character in a name, in any section.
+    [Fact]
+    public void A_name_holding_that_character_keeps_it_in_its_key()
+    {
+        var credit = new CreditEntry { Category = "Data", SubCategory = "-", NameOrHandle = "Anna␞x" };
+
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(Board(), Board(credits: [credit])));
+
+        Assert.Equal(BoardDraftNaturalKeys.ForRow(credit), change.NaturalKey);
+        Assert.Contains("␞x", change.DisplayLabel, StringComparison.Ordinal);
+    }
+
+    // What the board parts ask of one section goes the same way.
+    [Fact]
+    public void One_sections_answer_sees_the_second_rectangle_too()
+    {
+        Assert.True(BoardDataDiffer.SectionDiffers<ComponentHighlightEntry>([Rectangle("1"), Rectangle("10")], [Rectangle("1"), Rectangle("20")]));
+        Assert.False(BoardDataDiffer.SectionDiffers<ComponentHighlightEntry>([Rectangle("1"), Rectangle("10")], [Rectangle("10"), Rectangle("1")]));
+    }
+
     [Fact]
     public void Changes_across_DIFFERENT_sections_are_all_reported()
     {

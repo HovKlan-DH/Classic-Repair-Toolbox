@@ -98,6 +98,44 @@ public sealed class ReviewChangesWindowTests
     }
 
     // ###########################################################################################
+    // *** A NEW BOARD HAS NOTHING PUBLISHED TO COMPARE WITH (code review, 2026-11-02). *** Its window
+    // said "compared with the published data" and explained "Undo changes to", which it does not offer
+    // (owner request, 2026-11-02). A board with something published keeps both.
+    // ###########################################################################################
+    private static string IntroOf(ReviewChangesWindow window) => window.GetControl<TextBlock>("IntroText").Text ?? string.Empty;
+
+    private static string NothingOf(ReviewChangesWindow window) => window.GetControl<TextBlock>("NothingText").Text ?? string.Empty;
+
+    [Fact]
+    public void A_new_boards_window_names_nothing_published_and_no_undo_it_does_not_offer()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ReviewChangesWindow();
+            window.Initialize("Commodore 64 - 999001", ReviewChangesWindowTests.TwoComponents(), isNewBoard: true);
+
+            Assert.DoesNotContain("compared with", IntroOf(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("Undo changes to", IntroOf(window), StringComparison.Ordinal);
+            Assert.DoesNotContain("published data", NothingOf(window), StringComparison.Ordinal);
+            Assert.Empty(window.UndoButtonsForTests);
+        });
+    }
+
+    [Fact]
+    public void A_published_boards_window_says_what_it_compares_with_and_explains_the_undo()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ReviewChangesWindow();
+            window.Initialize("Commodore 64 - 250407", ReviewChangesWindowTests.TwoComponents(), _ => Task.FromResult((DraftChangeSummary.Empty, (string?)null)));
+
+            Assert.Contains("compared with the published data", IntroOf(window), StringComparison.Ordinal);
+            Assert.Contains("\"Undo changes to\"", IntroOf(window), StringComparison.Ordinal);
+            Assert.Contains("published data", NothingOf(window), StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
     // Undo changes to [U8]: the host is asked for THAT label, and the summary it answers is shown -
     // U8's group goes, U9's stays.
     // ###########################################################################################

@@ -1,7 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Handlers.DataHandling;
 using System;
 using System.Linq;
@@ -75,6 +77,7 @@ namespace CRT
             this.thisBoardPart = null;
             this.CloseCopyPanel();
             this.ForgetKiCadPins();
+            this.LetGoOfWhatIsOfTheComponentShown();
 
             this.thisShowing = true;
 
@@ -192,7 +195,12 @@ namespace CRT
             return true;
         }
 
-        // Enter in the form's label or category adds what it holds.
+        // ###########################################################################################
+        // Enter in the form's label or category adds what it holds - and only there (code review,
+        // 2026-11-02). This runs on the tunnel route, ahead of whatever has the focus: asking nothing, it
+        // took Enter from a focused Cancel, which then added the component, and from the open region list,
+        // which added it in the region selected before. With a list open, Enter is the list's.
+        // ###########################################################################################
         private bool AddOnEnter(KeyEventArgs e)
         {
             if (!this.thisIsNew || e.Key != Key.Enter)
@@ -200,9 +208,18 @@ namespace CRT
                 return false;
             }
 
-            e.Handled = this.AddNewComponent();
+            if (this.IsInNewComponentBox(e.Source) && !this.NewCategoryBox.IsDropDownOpen && !this.NewRegionBox.IsDropDownOpen)
+            {
+                e.Handled = this.AddNewComponent();
+            }
+
             return true;
         }
+
+        private bool IsInNewComponentBox(object? source) =>
+            source is Visual visual &&
+            (ReferenceEquals(visual, this.NewLabelBox) || this.NewLabelBox.IsVisualAncestorOf(visual) ||
+             ReferenceEquals(visual, this.NewCategoryBox) || this.NewCategoryBox.IsVisualAncestorOf(visual));
 
         // ---- the buttons above the sections ----------------------------------------------------
 

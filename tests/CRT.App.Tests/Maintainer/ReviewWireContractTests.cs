@@ -342,6 +342,36 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
+    // *** A ROLLBACK IS HELD TO THE PLAN SHOWN (code review, 2026-11-02). *** The hash travels the
+    // whole way: out in the plan's answer, through the Maintainer tab's parser, back in its request,
+    // and bound as the server binds it. Each hop renamed alone, the check would quietly compare
+    // nothing - both ends still compile, and the rollback goes ahead on what nobody was shown. And a
+    // request with no hash in it - an older CRT - binds to null: the old behaviour.
+    // ###########################################################################################
+    [Fact]
+    public void The_BETA_state_a_rollback_plan_says_comes_back_with_the_rollback()
+    {
+        BetaRollbackPlanView? plan = ReviewApiParser.ParseBetaRollbackPlan(ReviewWireContractTests.Answer(
+            new BetaRollbackPlanAnswer(
+                "Commodore/C64/250407", "restore", Restored: [], Removed: [], Returning: [], BetaContentHash: "abc")));
+
+        BetaRollbackRequest received = ReviewWireContractTests.Received<BetaRollbackRequest>(
+            new BetaRollbackRequest(plan!.BoardId, "A reason.", Reject: true, ExpectedBetaContentHash: plan.BetaContentHash));
+
+        Assert.Equal("abc", received.ExpectedBetaContentHash);
+        Assert.True(received.Reject);
+
+        BetaRollbackRequest older = JsonSerializer.Deserialize<BetaRollbackRequest>(
+            """{"boardId":"Commodore/C64/250407","comment":"A reason."}""", ReviewWireContractTests.Server)!;
+
+        Assert.Null(older.ExpectedBetaContentHash);
+        Assert.False(older.Reject);
+
+        // A plan from a server that says nothing of it: nothing to hold the rollback to.
+        Assert.Null(ReviewApiParser.ParseBetaRollbackPlan("""{"boardId":"Commodore/C64/250407","kind":"restore"}""")!.BetaContentHash);
+    }
+
+    // ###########################################################################################
     // *** AN UNREADABLE KIND MUST NEVER BE TAKEN AS "remove". *** That one deletes a board from
     // BETA, so the parser defaults to the restore - the safe half - rather than to whichever the
     // enum happens to declare first.
@@ -1625,6 +1655,125 @@ public sealed class ReviewWireContractTests
         Assert.Null(older!.Changes!.RegionsNow);
     }
 
+    // ###########################################################################################
+    // Several rectangles of one component on one schematic (code review, 2026-11-02): the key they share is
+    // named once per change, and the fields of each come together - both ends, through the server's JSON
+    // settings and the real parser. A new board's regions ride on the same field as a change of them.
+    // ###########################################################################################
+    [Fact]
+    public void Two_rectangles_changed_under_one_key_arrive_as_two_changes()
+    {
+        var answer = new SubmissionDetailAnswer(
+            CanPublish: true,
+            Approval: new ApprovalStatus([ApproverRole.Maintainer], [], [ApproverRole.Maintainer], ApproverRole.Maintainer, CanApprove: true, ApprovalPublishes: true),
+            Submission: new ReviewQueueEntry(4, "Commodore/C128/250477", "pending", "Marks.", "c@example.com", "", ReviewWireContractTests.Decided, null, false),
+            Manifest: new SubmissionManifest { BoardId = "Commodore/C128/250477" },
+            Contributor: new ReviewContributorFacts("c@example.com", "C", Published: 0, Waiting: 1, ChangesRequested: 0, Rejected: 0),
+            Findings: [],
+            Changes: ReviewSummary.Compare(
+                new BoardData
+                {
+                    ComponentHighlights =
+                    [
+                        new ComponentHighlightEntry { SchematicName = "Board layout", BoardLabel = "C115", X = "1", Y = "2", Width = "3", Height = "4" },
+                        new ComponentHighlightEntry { SchematicName = "Board layout", BoardLabel = "C115", X = "10", Y = "2", Width = "3", Height = "4" },
+                    ],
+                },
+                new BoardData
+                {
+                    ComponentHighlights =
+                    [
+                        new ComponentHighlightEntry { SchematicName = "Board layout", BoardLabel = "C115", X = "5", Y = "2", Width = "3", Height = "4" },
+                        new ComponentHighlightEntry { SchematicName = "Board layout", BoardLabel = "C115", X = "15", Y = "2", Width = "3", Height = "4" },
+                    ],
+                }),
+            PublishedFiles: [],
+            PublishedHashes: new Dictionary<string, string>(),
+            SchematicImages: new Dictionary<string, string>(),
+            SubmittedFiles: [],
+            Removals: new FileRemovalPreview([], null),
+            Amendment: null);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer));
+
+        ReviewSectionView section = Assert.Single(detail!.Changes!.Sections);
+        string key = BoardDraftNaturalKeys.ForComponentHighlight("Board layout", "C115");
+
+        Assert.Equal(ReviewSummary.SectionComponentHighlights, section.Section);
+        Assert.Equal([key, key], section.Changed);
+        Assert.Equal(["X", "X"], section.FieldChanges[key].Select(field => field.Field));
+        Assert.Equal(2, section.TotalChanges);
+    }
+
+    // ###########################################################################################
+    // *** EACH RECTANGLE'S OWN FIELDS, BOTH ENDS (code review, 2026-11-02). *** One moved and another resized
+    // under one key read "Moved and resized" twice, as `fieldChanges[key]` holds them together. The optional
+    // list carries what moved on each: this fails when the server does not send it, the parser does not read
+    // it or the lines do not use it.
+    // ###########################################################################################
+    private static SubmissionDetailAnswer AnswerWithChanges(ReviewChangeSummary changes) =>
+        new(
+            CanPublish: true,
+            Approval: new ApprovalStatus([ApproverRole.Maintainer], [], [ApproverRole.Maintainer], ApproverRole.Maintainer, CanApprove: true, ApprovalPublishes: true),
+            Submission: new ReviewQueueEntry(4, "Commodore/C128/250477", "pending", "Marks.", "c@example.com", "", ReviewWireContractTests.Decided, null, false),
+            Manifest: new SubmissionManifest { BoardId = "Commodore/C128/250477" },
+            Contributor: new ReviewContributorFacts("c@example.com", "C", Published: 0, Waiting: 1, ChangesRequested: 0, Rejected: 0),
+            Findings: [],
+            Changes: changes,
+            PublishedFiles: [],
+            PublishedHashes: new Dictionary<string, string>(),
+            SchematicImages: new Dictionary<string, string>(),
+            SubmittedFiles: [],
+            Removals: new FileRemovalPreview([], null),
+            Amendment: null);
+
+    private static ComponentHighlightEntry RectangleAt(string x, string width) =>
+        new() { SchematicName = "Board layout", BoardLabel = "C115", X = x, Y = "2", Width = width, Height = "4" };
+
+    [Fact]
+    public void One_rectangle_moved_and_another_resized_each_say_what_happened_to_it()
+    {
+        ReviewChangeSummary changes = ReviewSummary.Compare(
+            new BoardData { ComponentHighlights = [RectangleAt("1", "3"), RectangleAt("10", "3")] },
+            new BoardData { ComponentHighlights = [RectangleAt("5", "3"), RectangleAt("10", "9")] });
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(ReviewWireContractTests.AnswerWithChanges(changes)));
+
+        IReadOnlyList<ReviewNoteLine> lines = ReviewNotInTable.Lines(detail!.Changes, []);
+
+        Assert.Equal("Component highlights have [2] changes:", lines[0].Text);
+        Assert.Equal(
+            ["Moved component [C115] on schematic \"Board layout\"", "Resized component [C115] on schematic \"Board layout\""],
+            lines.Skip(1).Select(line => line.Text).Order());
+    }
+
+    // A server that does not send the list: as it read before, by `fieldChanges` - nothing lost.
+    [Fact]
+    public void A_summary_without_each_rectangles_fields_reads_as_it_did()
+    {
+        string key = BoardDraftNaturalKeys.ForComponentHighlight("Board layout", "C115");
+
+        var older = new ReviewChangeSummary(false, null,
+        [
+            new ReviewSectionChange(
+                ReviewSummary.SectionComponentHighlights,
+                [],
+                [],
+                [key, key],
+                [],
+                new Dictionary<string, IReadOnlyList<ReviewFieldChange>>
+                {
+                    [key] = [new ReviewFieldChange("X", "1", "5"), new ReviewFieldChange("Width", "3", "9")],
+                }),
+        ]);
+
+        ReviewSubmissionDetail? detail = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(ReviewWireContractTests.AnswerWithChanges(older)));
+
+        Assert.Equal(
+            ["Moved and resized component [C115] on schematic \"Board layout\"", "Moved and resized component [C115] on schematic \"Board layout\""],
+            ReviewNotInTable.Lines(detail!.Changes, []).Skip(1).Select(line => line.Text));
+    }
+
     // GET /api/health (2026-10-04): the version Account > "Server version" shows.
     [Fact]
     public void The_health_answer_gives_the_server_version()
@@ -1965,10 +2114,46 @@ public sealed class ReviewWireContractTests
         Assert.True(read.FullTestSuitePassed);
         Assert.Equal("CRT 4.0.0", read.ClientVersion);
 
+        // Sent without an account, unless the server says otherwise.
+        Assert.False(read.SignedIn);
+
         Assert.Equal(41, ReviewWireContractTests.Received<OscilloscopeModelDecisionRequest>(new OscilloscopeModelDecisionRequest(41, "No picture command.")).Id);
         Assert.Equal("No picture command.", ReviewWireContractTests.Received<OscilloscopeModelDecisionRequest>(new OscilloscopeModelDecisionRequest(41, "No picture command.")).Reason);
 
         OscilloscopeModelDecisionAnswer decided = new(true, false, "Rigol DS1000Z is published.", "The stable source has no main data file.");
         Assert.Equal(decided, ReviewApiParser.ParseOscilloscopeModelDecision(ReviewWireContractTests.Answer(decided)));
+    }
+
+    // ###########################################################################################
+    // *** WHETHER THE SENDER IS AN ACCOUNT CROSSES THE WIRE AS "signedIn" (code review, 2026-11-02 -
+    // Security). *** The name is written out here and in the server's own test
+    // (OscilloscopeModelFlowsTests.The_list_says_who_was_signed_in_in_the_answers_own_words), so a side
+    // that renames it fails: the card would read a verified account as typed in, or the other way.
+    // From the server's JSON through the real parser to the words on the card; a server that does not
+    // say it reads as typed in, never as an account.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true, "Sent with an account - the address is verified.")]
+    [InlineData(false, "Sent without a verified account - the name and address were typed in when sending, and nothing checked either.")]
+    public void Whether_a_model_was_sent_with_an_account_reaches_the_card_as_the_server_wrote_it(bool signedIn, string line)
+    {
+        var entry = new OscilloscopeModelQueueEntry(
+            41, ReviewWireContractTests.Decided, "Rigol", "DS1000Z", new Dictionary<string, string>(), "Anna", "anna@example.com", "", false, "CRT 4.0.0", SignedIn: signedIn);
+
+        string answer = ReviewWireContractTests.Answer(new OscilloscopeModelQueueAnswer([entry]));
+
+        Assert.Contains($"\"signedIn\":{(signedIn ? "true" : "false")}", answer, StringComparison.Ordinal);
+        Assert.Equal(line, OscilloscopeModelsDisplay.SenderLine(Assert.Single(ReviewApiParser.ParseOscilloscopeModelQueue(answer)!.Entries)));
+    }
+
+    [Fact]
+    public void A_model_from_a_server_that_does_not_say_reads_as_typed_in()
+    {
+        const string answer =
+            """{"entries":[{"id":41,"submittedUtc":"2026-10-29T12:00:00+00:00","vendor":"Rigol","seriesOrModel":"DS1000Z","values":{},"contactName":"Dennis","contactEmail":"dennis@example.com","message":"","fullTestSuitePassed":true,"clientVersion":"CRT 4.0.0"}]}""";
+
+        OscilloscopeModelQueueEntry read = Assert.Single(ReviewApiParser.ParseOscilloscopeModelQueue(answer)!.Entries);
+
+        Assert.False(read.SignedIn);
     }
 }

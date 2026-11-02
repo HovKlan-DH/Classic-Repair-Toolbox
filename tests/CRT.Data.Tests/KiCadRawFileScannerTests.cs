@@ -294,6 +294,24 @@ public sealed class KiCadRawFileScannerTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A KiCad FILE OF NO BYTES IS NOT TAKEN, AND IS SAID (owner decision, 2026-11-02: "Refuse empty
+    // files"): it could never be sent. Named apart from what CRT does not read at all.
+    // ###########################################################################################
+    [Fact]
+    public void An_empty_KiCad_file_is_not_taken_and_is_named_as_empty()
+    {
+        this.Write("Open128.kicad_pcb", "(kicad_pcb)");
+        this.Write("Pages/vic.kicad_sch", string.Empty);
+        this.Write("Pages/notes.txt", string.Empty);
+
+        KiCadFolderScan scan = KiCadRawFileScanner.ScanSplit(this.Project);
+
+        Assert.Equal([Path.Combine(this.Project, "Open128.kicad_pcb")], scan.Taken);
+        Assert.Equal(["Pages/vic.kicad_sch"], scan.Empty);
+        Assert.Equal(["Pages/notes.txt"], scan.LeftOut);
+    }
+
+    // ###########################################################################################
     // A .sch or .brd is an older KiCad's only when its first line says so - EAGLE uses the same two
     // extensions (code review, 2026-10-28: an EAGLE project was told to open itself in KiCad).
     // ###########################################################################################

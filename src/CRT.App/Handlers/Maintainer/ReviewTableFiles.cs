@@ -63,18 +63,18 @@ namespace Handlers.MaintainerHandling
                 : ("Before (BETA source)", "After (submitted)");
 
         // ###########################################################################################
-        // How long a file opened from the table is left in the temp folder (code review,
-        // 2026-09-26). Each open writes the contributor's bytes into a folder of its own and hands
-        // it to the operating system, so it cannot be deleted while the viewer may still be
-        // reading it - and nothing deleted them at all, so months of reviewing board scans piled up
-        // in the maintainer's temp folder for ever.
+        // How long a file opened from the table is left on disk (code review, 2026-09-26). Each open
+        // writes the contributor's bytes into a folder of its own (OpenedFiles.Root) and hands it to
+        // the operating system, so it cannot be deleted while the viewer may still be reading it -
+        // and nothing deleted them at all, so months of reviewing board scans piled up on the
+        // maintainer's disk for ever.
         //
         // A day is long past any viewer session, and the sweep runs on the NEXT open rather than on
         // a timer, so nothing is deleted while the application is idle with a PDF still on screen.
         // ###########################################################################################
         public static readonly TimeSpan OpenedFileLifetime = TimeSpan.FromDays(1);
 
-        // Which of the temp folders left by earlier opens are old enough to delete: those last
+        // Which of the folders left by earlier opens are old enough to delete: those last
         // written before `now - OpenedFileLifetime`. Pure, so the rule is tested rather than the
         // filesystem.
         public static bool IsStaleOpenedFolder(DateTimeOffset lastWrittenUtc, DateTimeOffset nowUtc) =>

@@ -24,11 +24,15 @@ public sealed class BoardDataDifferAgreementTests
     private static CreditEntry Credit(string name, string contact = "") =>
         new() { Category = "Hardware", SubCategory = "-", NameOrHandle = name, Contact = contact };
 
-    private static BoardData Board(IEnumerable<ComponentEntry>? components = null, IEnumerable<CreditEntry>? credits = null) => new()
+    private static ComponentHighlightEntry Rectangle(string x, string label = "U8") =>
+        new() { SchematicName = "Sheet 1", BoardLabel = label, X = x, Y = "2", Width = "3", Height = "4" };
+
+    private static BoardData Board(IEnumerable<ComponentEntry>? components = null, IEnumerable<CreditEntry>? credits = null, IEnumerable<ComponentHighlightEntry>? rectangles = null) => new()
     {
         Schematics = [new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = "b/Sheet1.png" }],
         Components = (components ?? []).ToList(),
         Credits = (credits ?? []).ToList(),
+        ComponentHighlights = (rectangles ?? []).ToList(),
     };
 
     public static TheoryData<string, BoardData, BoardData> Cases => new()
@@ -47,7 +51,34 @@ public sealed class BoardDataDifferAgreementTests
             Board(credits: [Credit("Dennis", "a@example.org")]),
             Board(credits: [Credit("Dennis", "a@example.org"), Credit("dennis", "b@example.org")])
         },
+
+        // Several rectangles of one component on one schematic (code review, 2026-11-02): only the first
+        // of them was compared, on both sides.
+        { "a second rectangle unchanged", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("1"), Rectangle("10")]) },
+        { "a second rectangle moved", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("1"), Rectangle("20")]) },
+        { "both rectangles moved", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("5"), Rectangle("20")]) },
+        { "a third rectangle added", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("1"), Rectangle("10"), Rectangle("20")]) },
+        { "a second rectangle deleted", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("10")]) },
+        { "two rectangles in another order", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("10"), Rectangle("1")]) },
+        { "a component relabelled with its two rectangles", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("1", "U08"), Rectangle("10", "U08")]) },
+        { "a rectangle whose label reads like the next of a key", Board(rectangles: [Rectangle("1"), Rectangle("10")]), Board(rectangles: [Rectangle("99", "U8␞1"), Rectangle("1"), Rectangle("10")]) },
     };
+
+    // The same row under a plain label and under one holding that character: one change either way, on both
+    // sides - and the very key it has, nothing cut off it (code review, 2026-11-02, Security).
+    [Theory]
+    [InlineData("U9")]
+    [InlineData("U8␞1")]
+    public void A_rectangle_added_is_one_change_on_both_sides_whatever_its_label_holds(string label)
+    {
+        BoardData published = Board(rectangles: [Rectangle("1"), Rectangle("10")]);
+        BoardData submitted = Board(rectangles: [Rectangle("99", label), Rectangle("1"), Rectangle("10")]);
+
+        string key = BoardDraftNaturalKeys.ForComponentHighlight("Sheet 1", label);
+
+        Assert.Equal(key, Assert.Single(BoardDataDiffer.Compare(published, submitted)).NaturalKey);
+        Assert.Equal(key, Assert.Single(ReviewSummary.Compare(published, submitted).Sections.Single(section => section.Section == ReviewSummary.SectionComponentHighlights).Added));
+    }
 
     [Theory]
     [MemberData(nameof(Cases))]

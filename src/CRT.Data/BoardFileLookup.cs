@@ -35,7 +35,11 @@ namespace Handlers.DataHandling
         Missing,
 
         // There, but spelled with different capitalisation - Actual says how.
-        CaseDiffers
+        CaseDiffers,
+
+        // There, and holding no bytes (SubmissionFileRules.EmptyFileMessage). Only this computer's view
+        // can say so: the server's view knows names, and judges sizes in SubmissionFileRules.
+        Empty
     }
 
     public readonly record struct BoardFileLookupResult(BoardFileState State, string Actual = "")
@@ -43,6 +47,8 @@ namespace Handlers.DataHandling
         public static BoardFileLookupResult Found { get; } = new(BoardFileState.Found);
 
         public static BoardFileLookupResult Missing { get; } = new(BoardFileState.Missing);
+
+        public static BoardFileLookupResult Empty { get; } = new(BoardFileState.Empty);
     }
 
     // ###########################################################################################
@@ -171,22 +177,32 @@ namespace Handlers.DataHandling
                 this.thisDataRoot, this.thisDraftBoardFolder, path, out string absolute, out _, this.thisBoardIdentity, this.thisBoardFiles);
 
             if (located && !this.IsUnderDataRoot(absolute))
-                return BoardFileLookupResult.Found;
+                return DiskFileLookup.AnswerFor(absolute);
 
             if (this.thisDataRoot.Length == 0)
-                return located ? BoardFileLookupResult.Found : BoardFileLookupResult.Missing;
+                return located ? DiskFileLookup.AnswerFor(absolute) : BoardFileLookupResult.Missing;
 
             // In the downloaded data - or nowhere, which on a case-sensitive disk can still be a
             // file spelled differently there.
             string? actual = this.ActualSpellingInDataRoot(path, again);
 
             if (actual is null)
-                return located ? BoardFileLookupResult.Found : BoardFileLookupResult.Missing;
+                return located ? DiskFileLookup.AnswerFor(absolute) : BoardFileLookupResult.Missing;
 
-            return string.Equals(actual, path, StringComparison.Ordinal)
-                ? BoardFileLookupResult.Found
-                : new BoardFileLookupResult(BoardFileState.CaseDiffers, actual);
+            if (!string.Equals(actual, path, StringComparison.Ordinal))
+                return new BoardFileLookupResult(BoardFileState.CaseDiffers, actual);
+
+            return located ? DiskFileLookup.AnswerFor(absolute) : BoardFileLookupResult.Found;
         }
+
+        // ###########################################################################################
+        // A file found: Found - or Empty, holding no bytes (owner decision, 2026-11-02: "Refuse empty
+        // files"), for the table to mark its cell. One more look at a file just looked for, once per file:
+        // Found is kept for the life of the lookup, and an Empty answer is asked again, as every answer
+        // that is not Found, so a good copy put there clears the cell.
+        // ###########################################################################################
+        private static BoardFileLookupResult AnswerFor(string absolute) =>
+            SubmissionFileRules.HoldsNoBytes(absolute) ? BoardFileLookupResult.Empty : BoardFileLookupResult.Found;
 
         private bool IsUnderDataRoot(string absolute)
         {

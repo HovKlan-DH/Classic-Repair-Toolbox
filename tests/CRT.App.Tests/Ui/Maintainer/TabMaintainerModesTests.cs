@@ -531,6 +531,228 @@ public sealed class TabMaintainerModesTests
         });
     }
 
+    // ###########################################################################################
+    // The BETA > Stable screen against a fake server: the same one board on the list every time, its
+    // plan answered in turn by `plans` (the last again and again), every read of it counted. The row
+    // never moves - so nothing but the maintainer asking can read the plan again.
+    // ###########################################################################################
+    private static (TabMaintainer Main, BetaView View, Func<int> PlanReads) BetaScreen(params Func<HttpResponseMessage>[] plans)
+    {
+        const string List =
+            """{"configured":true,"boards":[{"boardId":"Commodore/C64/250407","manufacturer":"Commodore","hardware":"C64","board":"250407","betaRevision":"2026-September-25","betaContentHash":"hash-1","productionRevision":"2026-May-14"}]}""";
+
+        int reads = 0;
+
+        var server = new AnsweringHttpHandler(request =>
+        {
+            string path = request.RequestUri!.AbsolutePath;
+
+            if (path.EndsWith("/production/plan", StringComparison.Ordinal))
+                return plans[Math.Min(++reads, plans.Length) - 1]();
+
+            if (path.EndsWith("/production/publish", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(global::System.Net.HttpStatusCode.Conflict)
+                {
+                    Content = new StringContent("""{"error":"Refresh, check the list, then publish."}""", global::System.Text.Encoding.UTF8, "application/json")
+                };
+            }
+
+            return path.EndsWith("/production", StringComparison.Ordinal)
+                ? AnsweringHttpHandler.Json(List)
+                : AnsweringHttpHandler.Refused();
+        });
+
+        var main = new TabMaintainer();
+        var client = new ReviewApiClient("https://review.invalid", new HttpClient(server));
+        var session = new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis");
+
+        main.UseClientForTests(client);
+        main.UseSessionForTests(session);
+
+        BetaView view = main.FindControl<BetaView>("BetaDetailView")!;
+        view.Initialize(client, session);
+
+        return (main, view, () => reads);
+    }
+
+    private static HttpResponseMessage PlanAnswer(bool canPublish = true, string? refusal = null) =>
+        AnsweringHttpHandler.Json(global::System.Text.Json.JsonSerializer.Serialize(new
+        {
+            boardId = "Commodore/C64/250407",
+            betaRevision = "2026-September-25",
+            betaContentHash = "hash-1",
+            canPublish,
+            refusal,
+            unchangedCount = 12,
+            files = Array.Empty<object>(),
+            problems = Array.Empty<object>()
+        }));
+
+    private static HttpResponseMessage NoPlan() => new(global::System.Net.HttpStatusCode.BadGateway);
+
+    // The screen chosen for the first time, and its one board's plan read - well or not.
+    private static async Task FirstLookAsync(TabMaintainer main, BetaView view, Func<int> planReads)
+    {
+        await main.ShowModeAsync(MaintainerMode.Beta);
+
+        for (int tries = 0; tries < 200 && (planReads() == 0 || TabMaintainerModesTests.IsWorkingOutThePlan(view)); tries++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            await Task.Delay(10);
+        }
+
+        Assert.Equal(1, planReads());
+        Assert.False(TabMaintainerModesTests.IsWorkingOutThePlan(view), "The plan was never answered.");
+    }
+
+    private static bool IsWorkingOutThePlan(BetaView view) =>
+        view.FindControl<TextBlock>("PlanSummaryText")!.Text == "Working out what would be copied...";
+
+    // ###########################################################################################
+    // *** A PLAN THAT COULD NOT BE READ IS READ AGAIN WHEN THE MAINTAINER ASKS (code review,
+    // 2026-11-02). *** It failed once - the service restarting - and with the row unchanged, nothing
+    // read it again: Publish, Push back and Reject stayed off, and with one board on the list only a
+    // restart of CRT got out of it. The screen's own button is the way to ask "anything new?".
+    // ###########################################################################################
+    [Fact]
+    public async Task A_plan_that_could_not_be_read_is_read_again_by_the_screens_button()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, BetaView view, Func<int> planReads) =
+                TabMaintainerModesTests.BetaScreen(TabMaintainerModesTests.NoPlan, () => TabMaintainerModesTests.PlanAnswer());
+
+            await TabMaintainerModesTests.FirstLookAsync(main, view, planReads);
+
+            Button pushBack = view.FindControl<Button>("RollBackButton")!;
+            Assert.False(pushBack.IsEnabled);
+
+            await main.ShowModeAsync(MaintainerMode.Beta);
+
+            Assert.Equal(2, planReads());
+            Assert.True(pushBack.IsEnabled);
+        });
+    }
+
+    // Coming back to the tab asks too - and only then, for a plan held off like this.
+    [Fact]
+    public async Task A_plan_that_could_not_be_read_is_read_again_on_coming_back_to_the_tab()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, BetaView view, Func<int> planReads) =
+                TabMaintainerModesTests.BetaScreen(TabMaintainerModesTests.NoPlan, () => TabMaintainerModesTests.PlanAnswer());
+
+            var window = new Window { Content = main, Width = 1100, Height = 720 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            await TabMaintainerModesTests.FirstLookAsync(main, view, planReads);
+
+            await (Task)typeof(TabMaintainer).GetMethod("ComingBackAsync", TabMaintainerModesTests.Any)!.Invoke(main, null)!;
+
+            Assert.Equal(2, planReads());
+            Assert.True(view.FindControl<Button>("RollBackButton")!.IsEnabled);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A refusal a change elsewhere can lift ("Place it in the Boards screen first"): once placed the
+    // row is the same, so the refusal stayed. Read again it goes, and the tick can be given.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_refused_plan_is_read_again_by_the_screens_button()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, BetaView view, Func<int> planReads) = TabMaintainerModesTests.BetaScreen(
+                () => TabMaintainerModesTests.PlanAnswer(canPublish: false, refusal: "Place it in the Boards screen first."),
+                () => TabMaintainerModesTests.PlanAnswer());
+
+            await TabMaintainerModesTests.FirstLookAsync(main, view, planReads);
+
+            Assert.Equal("Place it in the Boards screen first.", view.FindControl<TextBlock>("MessageText")!.Text);
+
+            await main.ShowModeAsync(MaintainerMode.Beta);
+
+            Assert.Equal(2, planReads());
+            Assert.False(view.FindControl<TextBlock>("MessageText")!.IsVisible);
+            Assert.True(view.FindControl<CheckBox>("CheckedInBetaCheckBox")!.IsEnabled);
+        });
+    }
+
+    // A publish refused (409 "Refresh, check the list") has a way to do just that now.
+    [Fact]
+    public async Task A_plan_whose_publish_was_refused_is_read_again_by_the_screens_button()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, BetaView view, Func<int> planReads) =
+                TabMaintainerModesTests.BetaScreen(() => TabMaintainerModesTests.PlanAnswer());
+
+            await TabMaintainerModesTests.FirstLookAsync(main, view, planReads);
+
+            CheckBox tick = view.FindControl<CheckBox>("CheckedInBetaCheckBox")!;
+            tick.IsChecked = true;
+
+            await (Task)typeof(BetaView).GetMethod("PublishAsync", TabMaintainerModesTests.Any)!.Invoke(view, null)!;
+
+            Assert.Equal("Refresh, check the list, then publish.", view.FindControl<TextBlock>("MessageText")!.Text);
+
+            await main.ShowModeAsync(MaintainerMode.Beta);
+
+            Assert.Equal(2, planReads());
+            Assert.False(tick.IsChecked);
+            Assert.False(view.FindControl<TextBlock>("MessageText")!.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE KEEP-THE-TICK RULE STANDS. *** A plan that can be published is not read again by the
+    // button or by coming back - the tick says "I have checked THIS". Nor is the administrators-only
+    // refusal, every maintainer's on every board, which no reading can change.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_plan_that_can_be_published_keeps_its_tick_when_the_screens_button_is_pressed()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, BetaView view, Func<int> planReads) =
+                TabMaintainerModesTests.BetaScreen(() => TabMaintainerModesTests.PlanAnswer());
+
+            await TabMaintainerModesTests.FirstLookAsync(main, view, planReads);
+
+            CheckBox tick = view.FindControl<CheckBox>("CheckedInBetaCheckBox")!;
+            tick.IsChecked = true;
+
+            await main.ShowModeAsync(MaintainerMode.Beta);
+            await (Task)typeof(TabMaintainer).GetMethod("ReadBetaPlanAgainIfStuckAsync", TabMaintainerModesTests.Any)!.Invoke(main, null)!;
+
+            Assert.Equal(1, planReads());
+            Assert.True(tick.IsChecked);
+        });
+    }
+
+    [Fact]
+    public async Task The_administrators_only_refusal_is_not_read_again()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, BetaView view, Func<int> planReads) = TabMaintainerModesTests.BetaScreen(
+                () => TabMaintainerModesTests.PlanAnswer(canPublish: false, refusal: StablePublishing.AdministratorsOnlyMessage));
+
+            await TabMaintainerModesTests.FirstLookAsync(main, view, planReads);
+
+            await main.ShowModeAsync(MaintainerMode.Beta);
+            await (Task)typeof(TabMaintainer).GetMethod("ReadBetaPlanAgainIfStuckAsync", TabMaintainerModesTests.Any)!.Invoke(main, null)!;
+
+            Assert.Equal(1, planReads());
+        });
+    }
+
     // Published or pushed back by somebody else meanwhile: the panel empties and says so.
     [Fact]
     public void A_beta_board_that_left_the_list_meanwhile_says_so()
@@ -863,6 +1085,115 @@ public sealed class TabMaintainerModesTests
             await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
 
             Assert.StartsWith("Server version: the server did not answer\nAPI application version [", main.ServerVersionLineForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE MODELS ON SHOW FOLLOW THE BADGE (code review, 2026-11-02). *** The badge follows the queue
+    // answer every minute; the panel read only when its entry was chosen, on its own Refresh, or after
+    // a decision. So it could say "No oscilloscope model is waiting." beside a badge saying 1, and
+    // pressing the Account button BECAUSE of the badge showed the old "none". Shown again it reads
+    // again, and a count that differs from what it shows reads again; one that does not reads nothing.
+    // A reason typed on a card survives each.
+    // ###########################################################################################
+    private static (TabMaintainer Main, OscilloscopeModelsView Panel, List<OscilloscopeModelQueueEntry> Waiting, Func<int> Reads) WithModelsServer()
+    {
+        var main = new TabMaintainer();
+        var waiting = new List<OscilloscopeModelQueueEntry>();
+        int reads = 0;
+
+        main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(request =>
+        {
+            switch (request.RequestUri!.AbsolutePath)
+            {
+                case "/api/review/queue":
+                    return AnsweringHttpHandler.Json($$"""{"isAdministrator":true,"submissions":[],"oscilloscopeModelsWaiting":{{waiting.Count}}}""");
+
+                case "/api/admin/oscilloscope-models":
+                    reads++;
+                    return AnsweringHttpHandler.Json(global::System.Text.Json.JsonSerializer.Serialize(
+                        new OscilloscopeModelQueueAnswer(waiting.ToList()), ReviewApiContract.WireSettings));
+
+                default:
+                    return AnsweringHttpHandler.Refused();
+            }
+        }))));
+
+        main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(10), 7, "dh@example.com", "Dennis"));
+        TabMaintainerModesTests.Invoke(main, "ShowQueuePanel");
+
+        return (main, main.FindControl<OscilloscopeModelsView>("OscilloscopeModelsAdminView")!, waiting, () => reads);
+    }
+
+    private static OscilloscopeModelQueueEntry WaitingModel(long id) => new(
+        id,
+        DateTimeOffset.UtcNow,
+        "Voltcraft",
+        $"DOV{id}",
+        new Dictionary<string, string> { ["identify"] = "*IDN?" },
+        "Anna",
+        "anna@example.com",
+        string.Empty,
+        false,
+        "CRT 4.0.0");
+
+    private static Task MinuteCheckAsync(TabMaintainer main) =>
+        (Task)typeof(TabMaintainer).GetMethod("RefreshQueueInBackgroundAsync", TabMaintainerModesTests.Any)!.Invoke(main, null)!;
+
+    [Fact]
+    public async Task The_models_on_show_are_read_again_at_every_minute_check_and_what_is_new_shows()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, OscilloscopeModelsView panel, List<OscilloscopeModelQueueEntry> waiting, Func<int> reads) = TabMaintainerModesTests.WithModelsServer();
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: true);
+            await main.ShowModeAsync(MaintainerMode.Account);
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "OscilloscopeModelsItem");
+            Assert.Equal(OscilloscopeModelsDisplay.Empty, panel.NoneWaitingLineForTests);
+            Assert.Equal(1, reads());
+
+            // Nothing new: read all the same, since the count cannot tell (a model replacing another
+            // leaves it standing), and nothing changes on show.
+            await TabMaintainerModesTests.MinuteCheckAsync(main);
+            Assert.Equal(2, reads());
+            Assert.Equal(OscilloscopeModelsDisplay.Empty, panel.NoneWaitingLineForTests);
+
+            waiting.Add(TabMaintainerModesTests.WaitingModel(41));
+            await TabMaintainerModesTests.MinuteCheckAsync(main);
+
+            Assert.Equal(3, reads());
+            Assert.Single(panel.CardsForTests());
+
+            panel.TypeReasonForTests(41, "Single does not work on mine either -");
+            waiting.Add(TabMaintainerModesTests.WaitingModel(42));
+            await TabMaintainerModesTests.MinuteCheckAsync(main);
+
+            Assert.Equal(4, reads());
+            Assert.Equal(2, panel.CardsForTests().Count);
+            Assert.Equal("Single does not work on mine either -", panel.ReasonForTests(41));
+        });
+    }
+
+    [Fact]
+    public async Task Pressing_the_Account_button_reads_the_models_on_show_again()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabMaintainer main, OscilloscopeModelsView panel, List<OscilloscopeModelQueueEntry> waiting, Func<int> reads) = TabMaintainerModesTests.WithModelsServer();
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: true);
+            await main.ShowModeAsync(MaintainerMode.Account);
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "OscilloscopeModelsItem");
+            Assert.Equal(OscilloscopeModelsDisplay.Empty, panel.NoneWaitingLineForTests);
+
+            await main.ShowModeAsync(MaintainerMode.Boards);
+            waiting.Add(TabMaintainerModesTests.WaitingModel(41));
+
+            await main.ShowModeAsync(MaintainerMode.Account);
+
+            Assert.Equal(2, reads());
+            Assert.Single(panel.CardsForTests());
         });
     }
 

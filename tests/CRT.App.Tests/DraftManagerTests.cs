@@ -143,6 +143,16 @@ public sealed class DraftManagerTests : IDisposable
         Assert.Equal(string.Empty, DraftManager.GetBoardFolder("Data.xlsx"));
     }
 
+    // One rule with CRT.Data's: this was a copy of DraftFolderLayout.GetBoardFolder, and a copy would not
+    // have been told about an identity leading out of the drafts root (code review, 2026-11-02 - Security).
+    [Fact]
+    public void GetBoardFolder_refuses_what_the_drafts_layout_refuses()
+    {
+        DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
+
+        Assert.Equal(string.Empty, DraftManager.GetBoardFolder("../../Outside/250407/board.json"));
+    }
+
     // ###########################################################################################
     // *** THE LoadDraftFor TESTS ARE GONE WITH THE METHOD (Phase 6, 2026-09-23). ***
     //
@@ -299,6 +309,42 @@ public sealed class DraftManagerTests : IDisposable
         DraftManager.Sessions.Close(DraftManager.DraftsRoot, excelDataFile);
     }
 
+    // ###########################################################################################
+    // The same question of an undone step (code review, 2026-11-02). It asks only a session already open:
+    // the retirement asks of every draft it found, and neither a board file read nor a session opened may
+    // come of it - and a draft with no session, as at the next launch, answers no.
+    // ###########################################################################################
+    [Fact]
+    public void CanRedo_is_true_only_while_the_drafts_session_has_a_step_to_redo_and_asking_opens_no_session()
+    {
+        DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
+        string excelDataFile = "Commodore/C64/250407/board.json";
+        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, excelDataFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
+        BoardFiles.Write(boardFile, new BoardDocument());
+
+        Assert.False(DraftManager.CanRedo(excelDataFile));
+        Assert.Null(DraftManager.Sessions.Find(DraftManager.DraftsRoot, excelDataFile));
+
+        // Nor for a board with no draft at all.
+        Assert.False(DraftManager.CanRedo("Commodore/C64/none/board.json"));
+
+        DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, excelDataFile)!;
+        Assert.False(DraftManager.CanRedo(excelDataFile));
+
+        Assert.True(session.Apply("A change", content => content with { Board = content.Board.WithRevisionDate("2026-10-25") }));
+        Assert.False(DraftManager.CanRedo(excelDataFile));
+
+        Assert.True(session.Undo());
+        Assert.True(DraftManager.CanRedo(excelDataFile));
+
+        Assert.True(session.Redo());
+        Assert.False(DraftManager.CanRedo(excelDataFile));
+
+        DraftManager.Sessions.Close(DraftManager.DraftsRoot, excelDataFile);
+        Assert.False(DraftManager.CanRedo(excelDataFile));
+    }
+
     [Fact]
     public void DiscardDraft_also_removes_a_file_that_is_not_draft_json_in_the_same_folder()
     {
@@ -415,6 +461,36 @@ public sealed class DraftManagerTests : IDisposable
         Assert.Equal("MyBoard", entry.BoardName);
         Assert.Equal(excelDataFile, entry.ExcelDataFile);
         Assert.Equal("some notes", entry.HardwareNotes);
+    }
+
+    // ###########################################################################################
+    // A marker's identity becomes a board in the drop-down lists, and from there a path everywhere a
+    // board is looked for (code review, 2026-11-02 - Security). One naming no folder under the drafts
+    // root is no board.
+    // ###########################################################################################
+    [Fact]
+    public void EnumerateDraftOnlyBoards_leaves_out_an_identity_that_leads_out_of_the_drafts_root()
+    {
+        DraftManager.LoadFrom(Path.Combine(this.thisWorkspace.Root, "Drafts"));
+        const string Good = "Commodore/C64/MyBoard/board.json";
+        WriteNewBoardMarker("Commodore 64", "MyBoard", Good);
+
+        DraftMarkerStore.Save(
+            Path.Combine(DraftManager.DraftsRoot, "Handed", "Over", "Board", DraftFolderLayout.DraftMarkerFileName),
+            new DraftMarker
+            {
+                BoardKey = "../../Outside/250407/board.json",
+                NewBoard = new NewBoardRegistration
+                {
+                    HardwareName = "Outside",
+                    BoardName = "250407",
+                    ExcelDataFile = "../../Outside/250407/board.json",
+                },
+            });
+
+        HardwareBoardEntry entry = Assert.Single(DraftManager.EnumerateDraftOnlyBoards());
+
+        Assert.Equal(Good, entry.ExcelDataFile);
     }
 
     // The flag every consumer branches on - DataManager's sync bookkeeping and DataValidator both

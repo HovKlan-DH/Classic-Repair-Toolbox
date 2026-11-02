@@ -29,6 +29,7 @@ public sealed class CrtWaitWordingTests
             CrtWaitWording.LookingForPartAndFilesOnOtherBoards,
             CrtWaitWording.ChangingOtherBoards,
             CrtWaitWording.ReadingPublishedBoard,
+            CrtWaitWording.CheckingBoard,
             CrtWaitWording.MakingDraft,
             CrtWaitWording.CheckingDraftsWithServer,
             CrtWaitWording.ComparingWithOfficial,

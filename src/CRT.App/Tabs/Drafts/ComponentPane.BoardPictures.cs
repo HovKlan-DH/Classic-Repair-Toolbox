@@ -59,8 +59,9 @@ namespace CRT
         // Told each preview decode as it starts, by width, on the pool - false makes it fail. For a test.
         internal Func<int, bool>? PreviewDecodeForTests { get; set; }
 
-        // A read of the previews kept until it is done - the ones done well let go of first (code
-        // review, 2026-10-30: every zoom step and tick added one, for as long as the pane was open). One
+        // A read of the previews, or of a row's thumbnail, kept until it is done - the ones done well let
+        // go of first (code review, 2026-10-30: every zoom step and tick added one, for as long as the pane
+        // was open; 2026-11-02: and every component shown its thumbnails, for as long as the tab lived). One
         // that failed stays, so a test waiting for them all still sees it.
         private void TrackPreviewLoad(Task load)
         {
@@ -331,8 +332,11 @@ namespace CRT
                     KeysOf(other => other < decodeWidth), KeysOf(other => other > decodeWidth));
             });
 
+            // Not there, or no picture CRT shows: asked again later, as for one that does not decode (code
+            // review, 2026-11-02: left marked as asked, the card stayed blank until it was made again).
             if (path is null || key is null)
             {
+                ComponentPane.TakeBackPreviewAsk(row, step);
                 return;
             }
 
@@ -369,11 +373,7 @@ namespace CRT
             if (image.Bitmap is null)
             {
                 // Asked again later - the card shows what it showed.
-                if (row.ThumbnailAskedFor == step)
-                {
-                    row.ThumbnailAskedFor = row.ThumbnailDecodedFor;
-                }
-
+                ComponentPane.TakeBackPreviewAsk(row, step);
                 return;
             }
 
@@ -387,6 +387,15 @@ namespace CRT
             row.ImageSize = image.OriginalSize;
             row.Thumbnail = image.Bitmap;
             row.ThumbnailDecodedFor = step;
+        }
+
+        // The read asked for `step` brought nothing - unless a wider one was asked for meanwhile.
+        private static void TakeBackPreviewAsk(ComponentPaneBoardPictureRow row, int step)
+        {
+            if (row.ThumbnailAskedFor == step)
+            {
+                row.ThumbnailAskedFor = row.ThumbnailDecodedFor;
+            }
         }
 
         // ###########################################################################################

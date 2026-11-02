@@ -50,6 +50,69 @@ namespace CRT.Data.Tests
             return new PublishedTreeView(name => hashes.TryGetValue(name, out string? hash) ? hash : null, _ => null);
         }
 
+        // ###########################################################################################
+        // *** A FILE OF NO BYTES IS REFUSED, WHATEVER ITS TYPE (owner decision, 2026-11-02: "Refuse empty
+        // files"). *** On what the manifest declares, so it never starts to upload: its own code, naming
+        // the file - a text type included, whose bytes the content check would otherwise pass.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("Images/empty.png")]
+        [InlineData("Board local files/notes.txt")]
+        [InlineData("Board local files/page.html")]
+        [InlineData("Datasheets/7805.pdf")]
+        public void A_file_declaring_no_bytes_is_refused_whatever_its_type(string name)
+        {
+            SubmissionManifest manifest = SubmissionFileRulesTests.Manifest((name, SubmissionFileRulesTests.Hash('1')));
+            manifest.Files[0].SizeBytes = 0;
+
+            ValidationFinding finding = Assert.Single(SubmissionFileRules.ValidateManifestFiles(manifest, null));
+
+            Assert.Equal(ValidationSeverity.Error, finding.Severity);
+            Assert.Equal(SubmissionFileRules.EmptyFileCode, finding.Code);
+            Assert.Equal(name, finding.Subject);
+            Assert.Equal(SubmissionFileRules.EmptyFileMessage(name), finding.Message);
+        }
+
+        // A board's KiCad data travels by its own rule, and is held to this one too.
+        [Fact]
+        public void A_KiCad_file_declaring_no_bytes_is_refused()
+        {
+            SubmissionManifest manifest = SubmissionFileRulesTests.Manifest();
+            manifest.Files.Add(new SubmissionFile { Path = "KiCad data/board.kicad_sch", Sha256 = SubmissionFileRulesTests.Hash('2'), SizeBytes = 0 });
+
+            Assert.Equal([SubmissionFileRules.EmptyFileCode], SubmissionFileRulesTests.Codes(manifest));
+        }
+
+        // A hand-made manifest cannot get an empty file past this by declaring another size: the hash of
+        // no bytes says what it is.
+        [Fact]
+        public void A_manifest_declaring_a_size_for_the_hash_of_no_bytes_is_refused()
+        {
+            SubmissionManifest manifest = SubmissionFileRulesTests.Manifest(("Board local files/notes.txt", SubmissionFileRules.EmptySha256));
+
+            Assert.Equal(10, manifest.Files[0].SizeBytes);
+            Assert.Equal([SubmissionFileRules.EmptyFileCode], SubmissionFileRulesTests.Codes(manifest));
+        }
+
+        // The hash really is what SHA-256 gives for no bytes.
+        [Fact]
+        public void The_hash_of_no_bytes_is_what_SHA_256_gives_for_none()
+        {
+            Assert.Equal(
+                SubmissionFileRules.EmptySha256,
+                Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(ReadOnlySpan<byte>.Empty)));
+        }
+
+        // One finding per file: a name refused is fixed first, as with every other rule here.
+        [Fact]
+        public void A_name_refused_is_said_alone_though_the_file_is_empty_too()
+        {
+            SubmissionManifest manifest = SubmissionFileRulesTests.Manifest(("Board local files/tool.exe", SubmissionFileRulesTests.Hash('1')));
+            manifest.Files[0].SizeBytes = 0;
+
+            Assert.Equal(["file.type_not_allowed"], SubmissionFileRulesTests.Codes(manifest));
+        }
+
         [Fact]
         public void Files_of_allowed_types_that_rows_use_pass()
         {

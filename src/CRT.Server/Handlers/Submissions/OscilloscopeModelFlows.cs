@@ -275,11 +275,22 @@ namespace CRT.Server.Handlers.Submissions
                     record.FullTestSuitePassed,
                     record.ClientVersion ?? string.Empty,
                     same is null ? null : OscilloscopeModelValues.Of(same),
-                    record.State == OscilloscopeModelStates.InBeta));
+                    record.State == OscilloscopeModelStates.InBeta,
+                    OscilloscopeModelFlows.IsKnownSender(sender)));
             }
 
             return new OscilloscopeModelQueueAnswer(entries);
         }
+
+        // ###########################################################################################
+        // *** WHETHER THE ADMINISTRATOR CAN TELL WHO THIS IS (code review, 2026-11-02 - Security). ***
+        // The route needs no account and takes any name and address, and Publish pushes the sender's
+        // commands to every CRT - so the card must not make a stranger look like a known person. Only
+        // an account still here with its address VERIFIED counts: anybody can register, sign in before
+        // verifying and send under a name of their choosing, and that address is as typed as any.
+        // No migration: `account_id` has always been kept, so every row already answers it.
+        // ###########################################################################################
+        private static bool IsKnownSender(AccountRecord? sender) => sender is { IsVerified: true };
 
         // ###########################################################################################
         // POST /api/admin/oscilloscope-models/publish - see the header.

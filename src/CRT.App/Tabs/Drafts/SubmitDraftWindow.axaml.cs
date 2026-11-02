@@ -521,25 +521,13 @@ namespace CRT
 
             this.ShowProgressPanel();
 
-            // The credits ticked go into the draft first, so they are sent with the work (2026-10-26).
-            try
-            {
-                if (!await this.AddCreditsFirstAsync())
-                {
-                    this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                // Nothing may leave this async void handler (see the catch below).
-                Logger.Critical($"Putting the credits into the draft before submitting failed - [{ex}]");
-                this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
-                return;
-            }
-
             // Disposed in the finally below rather than held for the window's life: a
             // CancellationTokenSource owns a wait handle, and this dialog can be opened repeatedly.
+            //
+            // *** MADE BEFORE THE CREDITS GO IN (code review, 2026-11-02). *** Cancel is live on the
+            // panel just shown, and that step is a save and a read of the board. With no token yet,
+            // Cancel, Escape or the title bar only closed the window, and the send went on with no
+            // dialog: uploaded, queued, the maintainers mailed.
             this.thisCancellation?.Dispose();
             this.thisCancellation = new CancellationTokenSource();
 
@@ -549,6 +537,27 @@ namespace CRT
 
             try
             {
+                // The credits ticked go into the draft first, so they are sent with the work (2026-10-26).
+                try
+                {
+                    if (!await this.AddCreditsFirstAsync())
+                    {
+                        this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Nothing may leave this async void handler (see the catch below).
+                    Logger.Critical($"Putting the credits into the draft before submitting failed - [{ex}]");
+                    this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
+                    return;
+                }
+
+                // Cancelled meanwhile: nothing is sent. A credit already in stays in the draft, one step
+                // of its history - the dialog has closed, so it says nothing about the draft being as it was.
+                token.ThrowIfCancellationRequested();
+
                 this.thisSendingName = others.Count > 0 ? this.thisBoardDisplayName : string.Empty;
 
                 var outcomes = new List<BoardOutcome> { await this.SendOneAsync(this.ThisTarget, progress, token) };
@@ -654,15 +663,16 @@ namespace CRT
                 hashed.Hashes,
                 renames: null,
                 calibrations: target.Calibrations,
-                kiCadFiles: kiCadFiles);
+                kiCadFiles: kiCadFiles,
+                fileProblems: hashed.Problems);
 
             manifest.Manifest.ContactEmail = this.EmailText;
 
-            // A file the data names but that is not on disk stops the submission here, where the
-            // message can name it - rather than at finalise, where the server can only say a file
-            // never arrived.
+            // A file the data names but that is not on disk, or cannot be read, stops the submission
+            // here, where the message can name it and say why - rather than at finalise, where the
+            // server can only say a file never arrived.
             if (!manifest.IsComplete)
-                throw new SubmissionRejectedException(0, SubmitDraftWindow.AsFindings(manifest.Problems), "Some files are missing.");
+                throw new SubmissionRejectedException(0, SubmitDraftWindow.AsFindings(manifest.Problems), "Some files could not be used.");
 
             progress.Report(new SubmissionProgress(SubmissionPhase.Negotiating, 0, 0, 0, 0, null));
 
@@ -905,7 +915,11 @@ namespace CRT
             this.HeaderText.Text = "Contribution not sent";
             this.OutcomeText.Text = message;
 
-            this.ShowFindings(findings, isRefusal: true);
+            // *** NO APOLOGY HERE (code review, 2026-11-02). *** `message` already says what happened, and
+            // with no findings the panel added "The server did not say what was wrong, which is a fault
+            // in CRT" - under "Check your internet connection", a sign-in page, an upload refused or a
+            // credit that could not go in. That sentence is for a result the server refused (ShowOutcome).
+            this.ShowFindings(findings, isRefusal: false);
         }
 
         // ###########################################################################################

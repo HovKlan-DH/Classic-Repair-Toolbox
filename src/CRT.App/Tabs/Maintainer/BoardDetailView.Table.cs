@@ -66,6 +66,10 @@ namespace CRT
         private IReadOnlyCollection<long>? thisTableReadAtMaintainers;
         private IReadOnlyCollection<long>? thisShownMaintainers;
 
+        // The newest submission the board's detail held when last read - null while not read. Noted
+        // before a save is sent, so a look after no answer can tell what is new (BoardSections.FindSent).
+        private long? thisNewestSubmissionShown;
+
         // ###########################################################################################
         // Whether this account may change the board on screen, as last said - by BETA's table or the
         // board's detail, whichever was read last (the read-only panel's own rule); null while
@@ -149,6 +153,17 @@ namespace CRT
             ReviewApiResult<BoardTableAnswer> result = await this.ReadTableAsync(board.BoardId);
 
             if (!this.IsShowing(board))
+                return null;
+
+            // ###########################################################################################
+            // *** A CHANGE MADE WHILE THE ANSWER WAS ON ITS WAY IS NOT THROWN AWAY (code review,
+            // 2026-11-02). *** What a table holds is asked before the request is sent - and a cell typed
+            // in during that second or so was gone once the answer rebuilt the table (or closed it). The
+            // answer is dropped; the table is still behind, so the next check says the change can no
+            // longer go, or reads it again once a cell being typed in is done - as ApplyComparison keeps
+            // it from a comparison.
+            // ###########################################################################################
+            if (this.HoldsTableFor(board.BoardId) && (this.HasUnsavedTableEdits || this.BoardTable.IsEditingCell))
                 return null;
 
             if (!result.IsOk)
@@ -342,6 +357,10 @@ namespace CRT
 
             request = request with { Summary = reason, ExpectedRemovals = removals };
 
+            // Noted now: a minute check reading the board's detail during the wait could move it past
+            // the very submission this becomes.
+            long? newestBefore = this.thisNewestSubmissionShown;
+
             // ---- Published, and the table read again, as one wait.
             ReviewApiResult<BoardEditResult>? result = null;
             string? publishedLine = null;
@@ -366,11 +385,12 @@ namespace CRT
 
             // ###########################################################################################
             // *** NO ANSWER IN TWO MINUTES: THE BOARD'S SUBMISSIONS SAY WHAT HAPPENED. *** A change that
-            // arrived is the newest submission of this board with this reason - in BETA, or waiting in
-            // the queue. Only one that arrived lets the table go: otherwise the change is still only here.
+            // arrived is the newest submission of this board with this reason, newer than any it held
+            // before sending - in BETA, or waiting in the queue. Only one that arrived lets the table
+            // go: otherwise the change is still only here.
             // ###########################################################################################
             if (result!.Failure == ReviewApiFailure.TimedOut)
-                return await this.LookAgainAfterTimeoutAsync(table, reason);
+                return await this.LookAgainAfterTimeoutAsync(table, reason, newestBefore);
 
             if (!result.IsOk)
             {
@@ -379,6 +399,9 @@ namespace CRT
             }
 
             this.thisUnsentReason = null;
+
+            // No longer new, whether or not the board's detail gets read again.
+            this.thisNewestSubmissionShown = result.Value!.SubmissionId;
 
             if (publishedLine is not null)
             {
@@ -462,20 +485,22 @@ namespace CRT
 
         // ###########################################################################################
         // The two-minute limit passed with no answer: the board's detail is read, and its newest
-        // submission with this reason says how far the change got (BoardSections.FindSent).
+        // submission with this reason says how far the change got (BoardSections.FindSent). With the
+        // detail never read before the save (`newestBefore` null - its read failed, say) what is new
+        // cannot be told: nothing is taken for the change, and the note says it could not be checked.
         // ###########################################################################################
-        private async Task<bool> LookAgainAfterTimeoutAsync(BoardTableAnswer table, string reason)
+        private async Task<bool> LookAgainAfterTimeoutAsync(BoardTableAnswer table, string reason, long? newestBefore)
         {
             BoardSubmissionEntry? found = null;
             bool read = false;
 
-            if (this.thisClient is ReviewApiClient client && this.thisSession is ReviewSession session)
+            if (newestBefore is long newest && this.thisClient is ReviewApiClient client && this.thisSession is ReviewSession session)
             {
                 ReviewApiResult<BoardDetailAnswer> detail = await ServerWait.CallAsync(
                     this, WaitWording.Checking, token => client.GetBoardDetailAsync(session, table.BoardId, token));
 
                 read = detail.IsOk;
-                found = read ? BoardSections.FindSent(detail.Value!, reason) : null;
+                found = read ? BoardSections.FindSent(detail.Value!, reason, newest) : null;
             }
 
             string line = MaintainerWaitWording.BoardEditAfterTimeout(read, found);
@@ -487,6 +512,7 @@ namespace CRT
             }
 
             this.thisUnsentReason = null;
+            this.thisNewestSubmissionShown = found.Id;
 
             if (BoardSections.ReachedBeta(found))
             {

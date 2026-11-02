@@ -958,6 +958,36 @@ public sealed class TabDraftsTests : IDisposable
     // send is checked with the table's own rules; with an error, the draft's table opens showing
     // only the rows with errors - on the sheet that has them - and says why nothing was sent.
     // ###########################################################################################
+    // ###########################################################################################
+    // *** THE CHECKS RUN UNDER THE OVERLAY, OFF THE UI THREAD (code review, 2026-11-02). *** Submit ran
+    // them on the UI thread with no wait shown, a file lookup per file the board cites - the other drafts
+    // already went through Task.Run. Back here before it has finished, with the overlay up.
+    // ###########################################################################################
+    [Fact]
+    public async Task Submit_checks_the_board_under_the_overlay_and_leaves_the_UI_thread_free()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            var overlay = new BusyOverlay();
+            var host = new Window { Content = new Grid { Children = { tab, overlay } }, Width = 1300, Height = 600 };
+            host.Show();
+
+            var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U0", Category = "IC" }] };
+            CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA), board);
+
+            Task<bool> stopping = tab.StopForErrorsAsync(EntryA(tab), board);
+
+            Assert.False(stopping.IsCompleted);
+            Assert.True(overlay.IsBusy);
+
+            Assert.False(await stopping);
+            Assert.False(overlay.IsBusy);
+
+            host.Close();
+        });
+    }
+
     [Fact]
     public async Task Submit_with_an_error_opens_the_table_on_it_and_sends_nothing()
     {
@@ -1483,6 +1513,40 @@ public sealed class TabDraftsTests : IDisposable
             Assert.True(await tab.CloseTableAsync());
 
             Assert.Equal([TabDraftsTests.TableBoardA], reloaded);
+        });
+    }
+
+    // ###########################################################################################
+    // DISCARDING WITH THE TABLE OPEN STARTS NO READ OF THE FOLDER THAT IS GOING (code review,
+    // 2026-11-02). The table had saved, so closing it caught the board on screen up - a load from the
+    // draft folder started just before its delete, which does not wait: on Windows a file that load
+    // held stopped the delete part-way, and "could not be deleted" blamed another program. Main reads
+    // the board again once the folder is gone (RefreshHardwareAndBoardSelectionsAfterDraftChange).
+    // ###########################################################################################
+    [Fact]
+    public async Task Discarding_with_the_table_open_starts_no_read_of_the_draft_that_is_going()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            var reloaded = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloaded.Add;
+
+            HardwareBoardEntry entry = EntryA(tab);
+
+            await tab.OpenTableAsync(entry);
+            MakeUnsavedEdit(tab);
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.SaveNow());
+
+            tab.DiscardConfirmed(entry);
+
+            Assert.Empty(reloaded);
+            Assert.False(tab.IsTableOpen);
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA));
+
+            // Nor later, for a draft that is no more.
+            tab.CatchUpBoardOnScreen();
+            Assert.Empty(reloaded);
         });
     }
 

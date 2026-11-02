@@ -189,6 +189,64 @@ public sealed class AsyncVoidHandlersGuardTests
             Environment.NewLine + string.Join(Environment.NewLine, offences));
     }
 
+    // ###########################################################################################
+    // *** A CLICK HANDLER NEVER THROWS AWAY THE TASK IT STARTS (code review, 2026-11-02: "Add a new
+    // board"). *** `_ = DoAsync()` escapes every guard above: nothing logs a failure, and the button seems
+    // to do nothing. RunGuarded, or an async void handler this class's first test holds, says what failed.
+    // ###########################################################################################
+    private static readonly Regex ClickHandler = new(
+        @"\bvoid\s+(On\w*Click)\s*\([^)]*\)\s*\{",
+        RegexOptions.CultureInvariant);
+
+    private static readonly Regex TaskThrownAway = new(
+        @"(?<![\w.])_\s*=\s*(?!=)",
+        RegexOptions.CultureInvariant);
+
+    internal static IReadOnlyList<string> ClickHandlersThrowingTasksAway(string source)
+    {
+        string code = CommentOrLiteral.Replace(source, match => new string(' ', match.Length));
+
+        return ClickHandler.Matches(code)
+            .Where(method =>
+            {
+                int open = method.Index + method.Length - 1;
+                return TaskThrownAway.IsMatch(code[(open + 1)..MatchingBrace(code, open)]);
+            })
+            .Select(method => method.Groups[1].Value)
+            .ToList();
+    }
+
+    [Fact]
+    public void No_click_handler_in_the_covered_areas_throws_away_the_task_it_starts()
+    {
+        string app = ResolveAppFolder();
+
+        var offences = Folders
+            .Select(folder => Path.Combine(app, folder))
+            .Where(Directory.Exists)
+            .SelectMany(folder => Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories))
+            .SelectMany(file => ClickHandlersThrowingTasksAway(File.ReadAllText(file))
+                .Select(name => $"{Path.GetRelativePath(app, file)}: {name}"))
+            .ToList();
+
+        Assert.True(offences.Count == 0,
+            "A click handler that starts a task hands it to RunGuarded, or is a guarded async void:" +
+            Environment.NewLine + string.Join(Environment.NewLine, offences));
+    }
+
+    // That scan, on small pieces of C#.
+    [Theory]
+    [InlineData("void OnAClick(object s) { _ = this.GoAsync(); }", true)]
+    [InlineData("void OnAClick(object s) { if (x) { _ = this.GoAsync(); } }", true)]
+    [InlineData("void OnAClick(object s) { this.RunGuarded(this.GoAsync, \"Go\"); }", false)]
+    [InlineData("void OnAClick(object s) { // _ = this.GoAsync();\n this.Close(); }", false)]
+    [InlineData("void OnAClick(object s) { x_ = 1; y._ = 2; if (a == b) { } }", false)]
+    [InlineData("void Other() { _ = this.GoAsync(); }", false)]
+    public void The_click_handler_scan_tells_a_task_thrown_away_from_anything_else(string source, bool throwsAway)
+    {
+        Assert.Equal(throwsAway, ClickHandlersThrowingTasksAway(source).Count > 0);
+    }
+
     // The scanner itself, on small pieces of C#.
     [Theory]
     [InlineData("async void A() { try { await X(); } catch (Exception ex) { Log(ex); } }", true)]

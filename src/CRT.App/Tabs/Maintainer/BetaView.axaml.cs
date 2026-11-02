@@ -38,6 +38,19 @@ namespace CRT
         private ProductionBoardRow? thisRow;
         private int thisRequest;
 
+        // The publish of the plan on screen was refused - see ProductionDisplay.PlanIsWorthReadingAgain.
+        private bool thisPublishRefused;
+
+        // The request whose plan is on its way, or -1 - a plan being read is no plan missing.
+        private int thisRequestBeingRead = -1;
+
+        // A board is on screen with a plan worth reading again when the maintainer asks: none held, a
+        // refusal, or a publish just refused (code review, 2026-11-02).
+        public bool PlanIsWorthReadingAgain =>
+            this.thisRow is not null &&
+            this.thisRequestBeingRead != this.thisRequest &&
+            ProductionDisplay.PlanIsWorthReadingAgain(this.thisPlan, this.thisPublishRefused);
+
         public BetaView()
         {
             this.InitializeComponent();
@@ -86,11 +99,14 @@ namespace CRT
                 return;
 
             this.SetText("PlanSummaryText", "Working out what would be copied...");
+            this.thisRequestBeingRead = request;
 
             ReviewApiResult<ProductionPlanView> plan = await this.thisClient.GetProductionPlanAsync(this.thisSession, row.BoardId);
 
             if (request != this.thisRequest)
                 return;
+
+            this.thisRequestBeingRead = -1;
 
             if (!plan.IsOk)
             {
@@ -197,6 +213,7 @@ namespace CRT
         {
             this.thisPlan = plan;
             this.thisRow = row;
+            this.thisPublishRefused = false;
 
             var check = this.FindControl<CheckBox>("CheckedInBetaCheckBox");
             var carrying = this.FindControl<StackPanel>("CarryingPanel");
@@ -263,13 +280,7 @@ namespace CRT
                 // What publishing REMOVES from production, FIRST and in red: the least visible change
                 // and the one that cannot be undone (2026-09-25). Said even when it is nothing, so
                 // the maintainer knows it was checked.
-                // What stable lists afterwards: what is copied and what is already the same, by name -
-                // a removal under one of those names is the earlier version of a replaced file.
-                IReadOnlyList<string> kept =
-                [
-                    .. plan.Files.Select(file => file.Name ?? file.Path),
-                    .. (plan.UnchangedFiles ?? []).Select(path => plan.FileNames is not null && plan.FileNames.TryGetValue(path, out string? name) ? name : path)
-                ];
+                IReadOnlyList<string> kept = ProductionDisplay.NamesKept(plan);
 
                 IReadOnlyList<string> unused = FileRemovalWording.Unused(plan.Removals, kept);
                 string? removals = FileRemovalWording.Headline(plan.Removals, "the stable data", kept);
@@ -424,6 +435,10 @@ namespace CRT
                 if (!result.IsOk)
                 {
                     outcome = result.Message;
+
+                    // The screen's button, or coming back to the tab, reads the plan again - as a 409's
+                    // "Refresh, check the list" asks.
+                    this.thisPublishRefused = true;
                     return;
                 }
 
@@ -432,9 +447,7 @@ namespace CRT
                 // The first of two approvals: recorded, nothing copied.
                 outcome = result.Value!.IsAwaitingApproval
                     ? ApprovalWording.Recorded(result.Value.WaitingFor, "the stable source")
-                    : $"{ReviewQueueDisplay.BoardHeading(plan.BoardId)} is published to the stable source ({result.Value.FilesCopied} file(s) copied)." +
-                      FileRemovalWording.Done(result.Value.RemovedFiles) +
-                      " Everyone gets it the next time their data updates.";
+                    : ProductionDisplay.PublishedToStable(plan, result.Value);
                 failed = false;
             });
 
@@ -480,8 +493,10 @@ namespace CRT
         {
             ProductionPlanView? shown = this.thisPlan;
 
+            Window? owner = TopLevel.GetTopLevel(this) as Window;
+
             if (shown is null || this.thisClient is null || this.thisSession is null ||
-                TopLevel.GetTopLevel(this) is not Window owner)
+                (owner is null && this.ConfirmAnswerForTests is null))
             {
                 return;
             }
@@ -510,12 +525,10 @@ namespace CRT
                 return;
             }
 
-            var confirm = new RollBackBetaWindow();
-            confirm.Initialize(planned.Value!, reject);
+            BetaRollbackPlanView confirming = planned.Value!;
+            string? comment = await this.AskConfirmationAsync(confirming, reject, owner);
 
-            await confirm.ShowDialog(owner);
-
-            if (!confirm.WasConfirmed)
+            if (comment is null)
             {
                 this.ShowMessage(null, isError: false);
                 this.UpdateButton();
@@ -532,7 +545,9 @@ namespace CRT
                 ReviewApiResult<BetaRollbackResult> result = await ServerWait.CallAsync(
                     this,
                     waiting,
-                    token => client.RollBackBetaAsync(session, shown.BoardId, confirm.Comment, reject, token));
+                    // Held to the plan the confirmation showed, as a publish is to the panel's
+                    // (code review, 2026-11-02) - the dialog can stay open while BETA moves on.
+                    token => client.RollBackBetaAsync(session, shown.BoardId, comment, reject, token, confirming.BetaContentHash));
 
                 // No answer in two minutes: whether the board left the BETA list says whether it landed.
                 if (result.Failure == ReviewApiFailure.TimedOut)
@@ -550,6 +565,12 @@ namespace CRT
                 if (!result.IsOk)
                 {
                     outcome = result.Message;
+
+                    // BETA moved while the confirmation was open: what it said is out of date, so the
+                    // lists and this plan are read again - and the server's words said after them.
+                    if (result.Failure == ReviewApiFailure.Conflict)
+                        await ServerWait.RunAsync(this, MaintainerWaitWording.ReadingQueue, this.AfterChangeAsync);
+
                     return;
                 }
 
@@ -573,6 +594,24 @@ namespace CRT
             if (failed)
                 this.UpdateButton();
         }
+
+        // The reason typed in the confirmation, or null for Cancel.
+        private async Task<string?> AskConfirmationAsync(BetaRollbackPlanView plan, bool reject, Window? owner)
+        {
+            if (this.ConfirmAnswerForTests is { } answer)
+                return answer(plan, reject);
+
+            var confirm = new RollBackBetaWindow();
+            confirm.Initialize(plan, reject);
+
+            await confirm.ShowDialog(owner!);
+
+            return confirm.WasConfirmed ? confirm.Comment : null;
+        }
+
+        // Answers the confirmation in a headless test, where a dialog cannot be answered: given the
+        // plan it would show, the reason typed - or null for Cancel.
+        internal Func<BetaRollbackPlanView, bool, string?>? ConfirmAnswerForTests { get; set; }
 
         private async Task AfterChangeAsync()
         {

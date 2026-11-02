@@ -1034,7 +1034,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     // *** NOT SHOWN AS A DRAFT UNTIL ITS FIRST CHANGE (owner request, 2026-11-01: "It should not show it as
     // draft until I have done my first edit, whatever that might be"). *** A draft made to open something
     // has no row, so no "Discard draft" and no red tab - yet what was opened stays open on it. Its first
-    // change shows it, at once; undone again, it stays shown until what is open closes.
+    // change shows it, at once; undone again, it stays shown while its Redo can bring the change back.
     // ###########################################################################################
     [Fact]
     public async Task A_draft_made_only_to_look_is_not_shown_until_its_first_change()
@@ -1074,6 +1074,499 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.False(tab.IsDraftOnlyLookedAtForTests(BoardA));
             Assert.True(tab.GetControl<ContentControl>("CurrentDraftRow").IsVisible);
             Assert.True(tab.IsLocalDraftNoticeShownForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A STEP TO REDO IS WORK THAT CAN STILL BE ASKED FOR (2026-11-02). *** A draft made only to look,
+    // changed, undone and closed holds nothing - and was deleted with its Redo, the change gone for good
+    // with the button still there a moment before. It stays while the Redo can bring the change back.
+    // That ends with the run, so as CRT closes it goes, or the next run would show a draft with nothing
+    // in it. Brought back, it is a draft like any other.
+    // ###########################################################################################
+    private static async Task<(TabDrafts Tab, DraftSession Session)> LookChangedAndUndoneAsync()
+    {
+        HardwareBoardEntry entry = Entry("250407", BoardA);
+        TabDrafts tab = Tab(entry);
+        tab.EnsureDraftOverrideForTests = _ =>
+        {
+            WriteDraft(BoardA, new BoardData());
+            return Task.FromResult(true);
+        };
+        tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+        await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+
+        DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+        Assert.True(session.Apply("Credits", content => content with { Board = BoardPartEdits.WithCredits(content.Board, [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }]) }));
+        await session.SaveAsync();
+
+        Assert.True(session.Undo());
+        await session.SaveAsync();
+        Assert.True(session.CanRedo);
+
+        tab.CloseComponent();
+
+        return (tab, session);
+    }
+
+    [Fact]
+    public async Task A_look_changed_and_undone_keeps_its_Redo_until_CRT_closes()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, DraftSession session) = await LookChangedAndUndoneAsync();
+
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+            Assert.Same(session, DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA));
+            Assert.True(session.CanRedo);
+
+            tab.LetGoOfUntouchedDraftOnQuit();
+
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
+    }
+
+    [Fact]
+    public async Task A_look_whose_change_was_brought_back_by_Redo_stays_as_CRT_closes()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, DraftSession session) = await LookChangedAndUndoneAsync();
+
+            Assert.True(session.Redo());
+            await session.SaveAsync();
+
+            tab.LetGoOfUntouchedDraftOnQuit();
+
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // A DRAFT MADE FOR SOMETHING THAT OPENS NOTHING GOES AGAIN (code review, 2026-11-02): a suggestion
+    // used with nothing left to do, a KiCad open called off. Nothing is left to close, so nothing let
+    // go of it: hidden until the next look on another board forgot it, and there it was in "My drafts",
+    // holding nothing. An action that changed something keeps its draft, and shows it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_draft_made_for_an_action_that_opens_nothing_goes_again_unless_it_changed_something()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.EnsureDraftOverrideForTests = board =>
+            {
+                WriteDraft(board.ExcelDataFile, new BoardData());
+                return Task.FromResult(true);
+            };
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            bool hadDraft = false;
+
+            await tab.OnCurrentDraftAsync(_ =>
+            {
+                hadDraft = DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA);
+                return Task.CompletedTask;
+            });
+
+            Assert.True(hadDraft);
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+            Assert.False(tab.IsDraftOnlyLookedAtForTests(BoardA));
+            Assert.Empty(tab.Drafts);
+
+            await tab.OnCurrentDraftAsync(async _ =>
+            {
+                DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardA)!;
+                Assert.True(session.Apply("Credits", content => content with { Board = BoardPartEdits.WithCredits(content.Board, [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }]) }));
+                Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+            });
+
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+            tab.RefreshDrafts();
+            Assert.Single(tab.Drafts);
+        });
+    }
+
+    // What was opened keeps the draft it was made for - the action opened it, and its close lets go.
+    [Fact]
+    public async Task A_draft_made_for_what_stays_open_stays()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.EnsureDraftOverrideForTests = _ =>
+            {
+                WriteDraft(BoardA, new BoardData());
+                return Task.FromResult(true);
+            };
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+
+            Assert.True(tab.IsComponentOpen);
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+            Assert.True(tab.IsDraftOnlyLookedAtForTests(BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // AN EARLIER LOOK HOLDING NOTHING GOES AS THE NEXT LOOK ON ANOTHER BOARD STARTS, and as CRT closes
+    // whichever board is shown then (code review, 2026-11-02). What let go of it never ran - here its
+    // action threw - and forgetting it for the next look made it "My drafts"' with no changes, while
+    // quitting asked only about the board shown, so it outlived the run.
+    // ###########################################################################################
+    private static async Task<(TabDrafts Tab, HardwareBoardEntry First, HardwareBoardEntry Second)> LookLeftBehindOnFirstBoardAsync()
+    {
+        HardwareBoardEntry first = Entry("250407", BoardA);
+        HardwareBoardEntry second = Entry("250425", BoardB);
+        TabDrafts tab = Tab(first, second);
+        tab.EnsureDraftOverrideForTests = board =>
+        {
+            WriteDraft(board.ExcelDataFile, new BoardData());
+            return Task.FromResult(true);
+        };
+        tab.ShowBoard(first, new BoardData(), "PAL", null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => tab.OnCurrentDraftAsync(_ => throw new InvalidOperationException("Opening failed")));
+
+        Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+
+        tab.ShowBoard(second, new BoardData(), "PAL", null);
+
+        return (tab, first, second);
+    }
+
+    [Fact]
+    public async Task An_earlier_look_holding_nothing_goes_as_the_next_look_on_another_board_starts()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _, _) = await LookLeftBehindOnFirstBoardAsync();
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardB));
+            Assert.Empty(tab.Drafts);
+
+            tab.CloseComponent();
+        });
+    }
+
+    [Fact]
+    public async Task A_look_on_a_board_not_shown_any_more_goes_as_CRT_closes()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _, _) = await LookLeftBehindOnFirstBoardAsync();
+
+            tab.LetGoOfUntouchedDraftOnQuit();
+
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // OPENING THE PANE OR THE TABLE READS THE DRAFT OFF THE UI THREAD, UNDER CRT'S "PLEASE WAIT" (code
+    // review, 2026-11-02): the first open of a draft parsed its board file on the UI thread, with
+    // nothing on screen saying so. Told from the read itself, by the dispatcher: never by comparing
+    // thread ids (CLAUDE.md, "Headless UI tests").
+    // ###########################################################################################
+    [Fact]
+    public async Task Opening_the_pane_and_the_table_reads_the_draft_off_the_UI_thread_under_please_wait()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            var overlay = new BusyOverlay();
+            var root = new Grid();
+            root.Children.Add(tab);
+            root.Children.Add(overlay);
+            var window = new Window { Content = root, Width = 1300, Height = 900 };
+            window.Show();
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            var reads = new List<(bool OnUiThread, bool Busy)>();
+            tab.DraftReadForTests = () =>
+            {
+                bool onUiThread = Dispatcher.UIThread.CheckAccess();
+                reads.Add((onUiThread, onUiThread ? overlay.IsBusy : Dispatcher.UIThread.Invoke(() => overlay.IsBusy)));
+            };
+
+            await tab.OpenComponentAsync("U8");
+            Assert.True(tab.IsComponentOpen);
+
+            await tab.OpenTableAsync(entry);
+            Assert.True(tab.IsTableOpen);
+
+            Assert.Equal(2, reads.Count);
+            Assert.All(reads, read => Assert.Equal((false, true), read));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A NAME STILL IN A CATEGORY'S BOX IS WHAT QUITTING ASKS ABOUT (code review, 2026-11-02): the title
+    // bar moves no focus, so it counted as nothing unsaved and CRT closed without a word.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_category_name_still_in_its_box_is_unsaved_as_CRT_closes()
+    {
+        var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }] };
+        WriteDraft(BoardA, board);
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, board, "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Categories);
+
+            Assert.False(tab.CommitCellsAndHasUnsavedTableEdits());
+
+            Assert.Single(tab.ComponentPaneForTests.CategoriesForTests).NameDraft = "Chip";
+
+            Assert.True(tab.CommitCellsAndHasUnsavedTableEdits());
+            Assert.Equal("Chip", DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!.Content.Board.Components.Single().Category);
+
+            Assert.True(await tab.SaveDraftEditorsNowAsync());
+            tab.ComponentPaneForTests.Forget();
+        });
+    }
+
+    // ###########################################################################################
+    // *** WHAT IS OPEN ON A DRAFT KEEPS IT (code review, 2026-11-02). *** Retirement deletes a draft that
+    // says nothing the published board does not, and asked only about unsaved changes - which do not
+    // show text still being typed in a cell or a box, not handed over yet. An open table closed, what was
+    // typed went, and a pane or a KiCad panel was left on a folder that had gone. So anything open on it
+    // is "in use" - what Main.RetirePublishedDraftsAsync's isInUse asks - and the draft waits for a later
+    // check. Another board's draft is not held by it, nor is a draft with nothing open on it.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_table_a_pane_or_a_KiCad_panel_open_on_a_draft_holds_it_as_in_use()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            Assert.False(tab.IsDraftOpen(BoardA));
+
+            await tab.OpenTableAsync(entry);
+            Assert.True(tab.IsDraftOpen(BoardA));
+            Assert.True(tab.IsDraftOpen(BoardA.ToUpperInvariant()));
+            Assert.False(tab.IsDraftOpen(BoardB));
+            Assert.False(tab.IsDraftOpen(null));
+            Assert.True(await tab.CloseTableAsync());
+            Assert.False(tab.IsDraftOpen(BoardA));
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            Assert.True(tab.IsDraftOpen(BoardA));
+            tab.CloseComponent();
+            Assert.False(tab.IsDraftOpen(BoardA));
+
+            await tab.OpenKiCadAsync();
+            Assert.True(tab.IsDraftOpen(BoardA));
+            await tab.CloseKiCadAsync();
+            Assert.False(tab.IsDraftOpen(BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // The one question retirement asks (code review, 2026-11-02), each answer on its own. The opening is
+    // asked from inside it: the published board is read before the table counts as open, so only the
+    // opening itself holds the draft there, and a draft deleted then left the table opening on nothing.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_draft_being_opened_on_is_in_use_before_anything_is_open_on_it()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            Assert.False(tab.IsDraftInUse(BoardA));
+
+            bool? whileOpening = null;
+            bool? anotherWhileOpening = null;
+
+            tab.PublishedBoardOverrideForTests = _ =>
+            {
+                whileOpening = tab.IsDraftInUse(BoardA);
+                anotherWhileOpening = tab.IsDraftInUse(BoardB);
+                return Board();
+            };
+
+            await tab.OpenTableAsync(entry);
+
+            Assert.True(whileOpening);
+            Assert.False(anotherWhileOpening);
+            Assert.True(tab.IsDraftInUse(BoardA));
+
+            Assert.True(await tab.CloseTableAsync());
+            Assert.False(tab.IsDraftInUse(BoardA));
+        });
+    }
+
+    [Fact]
+    public async Task What_the_draft_held_in_memory_has_not_saved_or_could_redo_is_in_use_with_nothing_open()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = Tab(Entry("250407", BoardA));
+
+            // Nothing asked opens a session.
+            Assert.False(tab.IsDraftInUse(BoardA));
+            Assert.Null(DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA));
+            Assert.False(tab.IsDraftInUse(null));
+
+            DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardA)!;
+            Assert.False(tab.IsDraftInUse(BoardA));
+
+            Assert.True(session.Apply("Credits", content => content with { Board = BoardPartEdits.WithCredits(content.Board, [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }]) }));
+            Assert.True(tab.IsDraftInUse(BoardA));
+
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+            Assert.False(tab.IsDraftInUse(BoardA));
+
+            Assert.True(session.Undo());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+            Assert.True(tab.IsDraftInUse(BoardA));
+
+            Assert.True(session.Redo());
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+            Assert.False(tab.IsDraftInUse(BoardA));
+        });
+    }
+
+    // ###########################################################################################
+    // *** A DRAFT GOES BY ITSELF ONLY WITH NOTHING OPEN ON IT (code review, 2026-11-02). *** IsDraftInUse
+    // holds back one with the KiCad panel, the pane or the table open, and PublishedDraftRetirer runs nothing
+    // between asking and deleting, so there is nothing to close - the discard path's closing of each was
+    // dead code. All that is left is that it stops being one made only to look, so nothing discards it twice.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_draft_with_the_KiCad_panel_open_is_in_use_and_going_it_is_forgotten_as_a_look()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            int discarded = 0;
+            tab.DiscardOverrideForTests = _ =>
+            {
+                discarded++;
+                return true;
+            };
+            tab.EnsureDraftOverrideForTests = _ =>
+            {
+                WriteDraft(BoardA, new BoardData());
+                return Task.FromResult(true);
+            };
+            tab.PublishedBoardOverrideForTests = _ => new BoardData();
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenKiCadAsync();
+            Assert.IsType<KiCadDataPanel>(tab.KiCadPanelForTests);
+            Assert.True(tab.IsDraftOnlyLookedAtForTests(BoardA));
+
+            // What retirement asks first, and the panel holds the draft: it is not retired while open.
+            Assert.True(tab.IsDraftInUse(BoardA));
+
+            // Going by itself once nothing holds it, it is no longer one made only to look, and nothing
+            // discards it a second time.
+            tab.ForgetLookAtDraftGoing(BoardA);
+
+            Assert.False(tab.IsDraftOnlyLookedAtForTests(BoardA));
+            Assert.Equal(0, discarded);
+        });
+    }
+
+    // ###########################################################################################
+    // A draft only looked at is not listed, and what was opened stays open on it - while it is THERE
+    // (code review, 2026-11-02). Its folder gone, whatever deleted it, the pane and the table stayed on it,
+    // saving into nothing: "Could not save" at every change, and no way to tell why.
+    // ###########################################################################################
+    [Fact]
+    public async Task What_is_open_on_a_draft_only_looked_at_lets_go_once_its_folder_has_gone()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.EnsureDraftOverrideForTests = _ =>
+            {
+                WriteDraft(BoardA, new BoardData());
+                return Task.FromResult(true);
+            };
+            tab.PublishedBoardOverrideForTests = _ => new BoardData();
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+            Assert.True(tab.ComponentPaneForTests.IsVisible);
+            Assert.True(tab.IsDraftOnlyLookedAtForTests(BoardA));
+
+            DraftManager.Sessions.Close(DraftManager.DraftsRoot, BoardA);
+            Directory.Delete(DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA), recursive: true);
+
+            tab.RefreshDrafts();
+
+            Assert.False(tab.IsComponentOpen);
+            Assert.False(tab.ComponentPaneForTests.IsVisible);
+            Assert.False(tab.IsDraftOnlyLookedAtForTests(BoardA));
+        });
+    }
+
+    // The same for the table and the KiCad panel.
+    [Fact]
+    public async Task A_table_and_a_KiCad_panel_let_go_of_a_draft_only_looked_at_once_its_folder_has_gone()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.EnsureDraftOverrideForTests = _ =>
+            {
+                WriteDraft(BoardA, new BoardData());
+                return Task.FromResult(true);
+            };
+            tab.PublishedBoardOverrideForTests = _ => new BoardData();
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.ToggleTableViewAsync();
+            Assert.True(tab.IsTableOpen);
+
+            DraftManager.Sessions.Close(DraftManager.DraftsRoot, BoardA);
+            Directory.Delete(DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA), recursive: true);
+            tab.RefreshDrafts();
+
+            Assert.False(tab.IsTableOpen);
+
+            await tab.OpenKiCadAsync();
+            Assert.True(tab.IsKiCadOpen);
+
+            DraftManager.Sessions.Close(DraftManager.DraftsRoot, BoardA);
+            Directory.Delete(DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA), recursive: true);
+            tab.RefreshDrafts();
+
+            Assert.False(tab.IsKiCadOpen);
         });
     }
 
@@ -1305,6 +1798,89 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
         {
             DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.xlsx");
         }
+    }
+
+    // ###########################################################################################
+    // *** ...AND ONE WHOSE SECOND RECTANGLE WAS MOVED (code review, 2026-11-02). *** "Mark components
+    // manually", a further rectangle moved or added, "Done", "Board status": the counts compared only the
+    // first rectangle of a component on a schematic, so the draft read as holding nothing and was discarded
+    // with no question, the work with it. Their order alone, though, is nothing - that draft still goes.
+    // ###########################################################################################
+    private async Task WithMarkedBoardAsync(Func<HardwareBoardEntry, TabDrafts, Task> body)
+    {
+        string dataRoot = Path.Combine(this.thisWorkspace.Root, "Data");
+        string published = Path.Combine(dataRoot, DataTreeLayout.BoardFileFor(BoardA).Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(published)!);
+        CachedWorkbooks.Write(published, TabDraftsWorkspaceTests.Marked("1", "10"));
+        DataManager.LoadFrom(dataRoot, "does-not-exist.xlsx");
+
+        try
+        {
+            await UiTest.RunAsync(async () =>
+            {
+                HardwareBoardEntry entry = Entry("250407", BoardA);
+                TabDrafts tab = Tab(entry);
+                tab.PublishedBoardOverrideForTests = _ => TabDraftsWorkspaceTests.Marked("1", "10");
+                tab.EnsureDraftOverrideForTests = _ =>
+                {
+                    WriteDraft(BoardA, TabDraftsWorkspaceTests.Marked("1", "10"));
+                    return Task.FromResult(true);
+                };
+                tab.ShowBoard(entry, TabDraftsWorkspaceTests.Marked("1", "10"), "PAL", null);
+
+                await body(entry, tab);
+            });
+        }
+        finally
+        {
+            DataManager.LoadFrom(this.thisWorkspace.Root, "does-not-exist.xlsx");
+        }
+    }
+
+    private static BoardData Marked(params string[] xs) => new()
+    {
+        Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "top.png" }],
+        Components = [new ComponentEntry { BoardLabel = "C115", Category = "Capacitor", FriendlyName = "Decoupling" }],
+        ComponentHighlights = xs
+            .Select(x => new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "C115", X = x, Y = "2", Width = "3", Height = "4" })
+            .ToList(),
+    };
+
+    [Theory]
+    [InlineData("a second rectangle moved", new[] { "1", "20" })]
+    [InlineData("a third rectangle added", new[] { "1", "10", "20" })]
+    [InlineData("a second rectangle deleted", new[] { "1" })]
+    public async Task A_draft_made_only_to_look_keeps_its_further_rectangles(string because, string[] xs)
+    {
+        await this.WithMarkedBoardAsync(async (_, tab) =>
+        {
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.True(session.Apply(because, content => content with { Board = content.Board.WithComponentHighlights(TabDraftsWorkspaceTests.Marked(xs).ComponentHighlights) }));
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+
+            tab.CloseComponent();
+
+            Assert.True(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
+    }
+
+    [Fact]
+    public async Task A_draft_made_only_to_look_with_its_rectangles_in_another_order_goes_again()
+    {
+        await this.WithMarkedBoardAsync(async (_, tab) =>
+        {
+            await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.True(session.Apply("Order", content => content with { Board = content.Board.WithComponentHighlights(TabDraftsWorkspaceTests.Marked("10", "1").ComponentHighlights) }));
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+
+            tab.CloseComponent();
+
+            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+        });
     }
 
     // ###########################################################################################
@@ -1549,6 +2125,82 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             string said = pane.GetControl<TextBlock>("PaneMessageText").Text ?? string.Empty;
             Assert.Contains($"Changed on 1 board, in its own draft: {other}.", said, StringComparison.Ordinal);
             Assert.Contains($"Not changed on {noDraft} - no draft could be made of it.", said, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THAT BOARD'S OWN DRAFT RENAMED OR DELETED THE COMPONENT (code review, 2026-11-02). *** Looked up by
+    // its published label, the copy found nothing to change and answered the same board - said as "it is
+    // like that there already", which it is not. Said for what it is, and a part that truly is the same
+    // there still says so.
+    // ###########################################################################################
+    [Fact]
+    public async Task Also_on_other_boards_says_when_that_boards_draft_no_longer_has_the_component()
+    {
+        BoardData Cpu(string label, string package = "") => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC", Package = package }],
+        };
+
+        WriteDraft(BoardA, Cpu("U8"));
+        WriteDraft(BoardB, Cpu("U77"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            TabDrafts tab = Tab(entry, other);
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? Cpu("U8") : Cpu("U7");
+            tab.ShowBoard(entry, Cpu("U8"), "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+
+            await pane.OpenAlsoPanelAsync();
+            await pane.ChangeOtherBoardsAsync();
+
+            Assert.Equal(
+                $"Not changed on {other} - that board's draft no longer has this component.",
+                pane.GetControl<TextBlock>("PaneMessageText").Text);
+
+            DraftSession otherDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
+            Assert.Equal("U77", otherDraft.Content.Board.Components.Single().BoardLabel);
+            Assert.False(otherDraft.CanUndo);
+        });
+    }
+
+    [Fact]
+    public async Task Also_on_other_boards_still_says_when_it_is_like_that_there_already()
+    {
+        BoardData Cpu(string label, string package = "") => new()
+        {
+            Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC", Package = package }],
+        };
+
+        WriteDraft(BoardA, Cpu("U8"));
+        WriteDraft(BoardB, Cpu("U7", "DIP-40"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            HardwareBoardEntry other = Entry("250425", BoardB);
+            TabDrafts tab = Tab(entry, other);
+            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? Cpu("U8") : Cpu("U7");
+            tab.ShowBoard(entry, Cpu("U8"), "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.GetControl<AutoCompleteBox>("PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+
+            await pane.OpenAlsoPanelAsync();
+            await pane.ChangeOtherBoardsAsync();
+
+            Assert.Equal(
+                $"Not changed on {other} - it is like that there already.",
+                pane.GetControl<TextBlock>("PaneMessageText").Text);
         });
     }
 
@@ -2954,6 +3606,61 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.Empty(reloads);
 
             window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A SAVE THAT FAILS STOPS "SHOW ON BOARD", LIGHTING A NET AND THE PICTURE TOOLS, AND THE PANE SAYS SO
+    // (code review, 2026-11-02): the result was discarded and the Schematics tab went ahead from a file
+    // without the latest changes - a component or picture just renamed not found, the failed save named
+    // nowhere. Failed here by a change outside: a file merely held open stops no write on Linux, where
+    // GitHub runs this.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_failed_save_stops_Show_on_board_a_net_and_a_picture_tool_and_the_pane_says_so()
+    {
+        WriteDraft(BoardA, Board());
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.PublishedBoardOverrideForTests = _ => Board();
+            tab.ReloadBoardOverrideForTests = _ => { };
+
+            var asked = new List<string>();
+            tab.ShowOnBoardOverrideForTests = (label, _) => asked.Add(label);
+            tab.ShowNetOverrideForTests = (net, _) => asked.Add(net);
+            tab.PictureToolOverrideForTests = (_, picture, _) => asked.Add(picture);
+            tab.ShowBoard(entry, Board(), "PAL", null);
+
+            await tab.OpenComponentAsync("U8");
+
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.AutoSave = false;
+            pane.GetControl<TextBox>("FriendlyNameBox").Text = "Processor";
+            pane.CommitHeld();
+
+            File.AppendAllText(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardA), "\n");
+
+            await tab.ShowComponentOnBoardAsync("U8");
+            await tab.ShowNetOnBoardAsync("CLK");
+            await tab.StartPictureToolAsync(PictureTool.MarkComponents, "Top");
+
+            Assert.Empty(asked);
+
+            TextBlock message = pane.GetControl<TextBlock>("PaneMessageText");
+            Assert.True(message.IsVisible);
+            Assert.Equal(DraftSaveWording.CouldNotSave(DraftWorkbookEditOutcome.ChangedOnDisk), message.Text);
+
+            // Saved after all, it goes ahead - and the line goes.
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save(overwriteOutsideChange: true));
+
+            await tab.ShowComponentOnBoardAsync("U8");
+
+            Assert.Equal(["U8"], asked);
+            Assert.False(message.IsVisible);
         });
     }
 

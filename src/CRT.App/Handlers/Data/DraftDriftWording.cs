@@ -1,4 +1,5 @@
 using Handlers.DataHandling;
+using System.Linq;
 
 namespace Handlers.DataHandling
 {
@@ -95,12 +96,12 @@ namespace Handlers.DataHandling
         // What "Bring my draft up to date" did.
         public static string Outcome(DraftRebaseReport report) => report.Outcome switch
         {
-            DraftRebaseOutcome.BroughtUpToDate when report.Conflicts.Count > 0 =>
+            DraftRebaseOutcome.BroughtUpToDate when RowsBothChanged(report) is var both and > 0 =>
                 $"Your draft now has the published update. {Kept(report.ChangesKept)} " +
-                $"{report.Conflicts.Count} of them {(report.Conflicts.Count == 1 ? "was" : "were")} also changed by the update - " +
-                "your version was kept. Look at the list above before you send.",
+                $"{both} of them {(both == 1 ? "was" : "were")} also changed by the update - " +
+                "your version was kept. Look at the list above before you send." + FilesGone(report),
             DraftRebaseOutcome.BroughtUpToDate =>
-                $"Your draft now has the published update. {Kept(report.ChangesKept)}",
+                $"Your draft now has the published update. {Kept(report.ChangesKept)}" + FilesGone(report),
             DraftRebaseOutcome.AlreadyUpToDate =>
                 "Your draft already has everything that is published.",
             DraftRebaseOutcome.NotNoted =>
@@ -120,6 +121,17 @@ namespace Handlers.DataHandling
 
         public static bool IsSuccess(DraftRebaseReport report) =>
             report.Outcome is DraftRebaseOutcome.BroughtUpToDate or DraftRebaseOutcome.AlreadyUpToDate;
+
+        // The rows both sides changed - the conflict list's other lines are a kept row's file that could
+        // not be kept (DraftRebaseFiles.FileNoLongerHere), said in full here: the list above was made
+        // before the draft was brought up to date, and has no such line.
+        private static int RowsBothChanged(DraftRebaseReport report) =>
+            report.Conflicts.Count(conflict => conflict.Section != DraftRebaseFiles.FilesSection);
+
+        private static string FilesGone(DraftRebaseReport report) =>
+            string.Concat(report.Conflicts
+                .Where(conflict => conflict.Section == DraftRebaseFiles.FilesSection)
+                .Select(conflict => " " + conflict.What));
 
         private static string Kept(int count) => count switch
         {

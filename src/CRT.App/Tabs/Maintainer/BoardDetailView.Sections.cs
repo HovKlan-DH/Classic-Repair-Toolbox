@@ -245,6 +245,7 @@ namespace CRT
             this.ClearFiles();
             this.ForgetStableContent();
             this.thisShownMaintainers = null;
+            this.thisNewestSubmissionShown = null;
             this.thisMayEditSaid = null;
         }
     }

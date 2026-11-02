@@ -235,6 +235,23 @@ namespace CRT
             this.ShowBoardPartChanged();
         }
 
+        // ###########################################################################################
+        // Every name still in its box, as its box's own Enter or leave takes it (code review, 2026-11-02:
+        // closing CRT by the title bar moves no focus, and CommitHeld passed this part by - nothing
+        // unsaved, nothing asked, the name gone). A blank one stays refused, the reason under it. Each row
+        // asked as it now stands: a commit changes the rows in place, and one joining another goes.
+        // ###########################################################################################
+        private void CommitCategoryNames()
+        {
+            foreach (ComponentPaneCategoryRow row in this.thisCategories.ToList())
+            {
+                if (this.thisCategories.Contains(row) && !string.Equals(row.NameDraft.Trim(), row.Name, StringComparison.Ordinal))
+                {
+                    this.CommitCategoryName(row);
+                }
+            }
+        }
+
         private void HoldCategory(DraftSession session, string name)
         {
             if (!this.thisHeldCategories.TryGetValue(session.ExcelDataFile, out List<string>? held))
@@ -379,7 +396,8 @@ namespace CRT
 
         public string Name => this.thisName;
 
-        public string NameDraft { get => this.thisNameDraft; set => this.Set(ref this.thisNameDraft, value); }
+        // Never null, whatever a box bound to it writes: every commit of what the pane holds reads it now.
+        public string NameDraft { get => this.thisNameDraft; set => this.Set(ref this.thisNameDraft, value ?? string.Empty); }
 
         public string CountText => this.Components > 0 ? ComponentPaneWording.CategoryCount(this.Components) : ComponentPaneWording.CategoryUnused;
 

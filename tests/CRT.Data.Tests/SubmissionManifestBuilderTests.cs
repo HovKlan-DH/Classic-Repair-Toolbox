@@ -245,6 +245,32 @@ namespace CRT.Data.Tests
             Assert.Contains("Images/U8-pin3.png", problem, StringComparison.Ordinal);
         }
 
+        // ###########################################################################################
+        // *** A FILE THAT IS THERE BUT CANNOT BE USED IS SAID FOR WHAT IT IS (code review, 2026-11-02). ***
+        // The hashing knows why it has no hash for it ("could not be read", "cannot be used"), and that
+        // sentence goes in place of "could not be found ... moved or deleted". Only for those paths: one
+        // nobody said anything about is still said to be missing.
+        // ###########################################################################################
+        [Fact]
+        public void A_file_with_a_reason_of_its_own_is_said_with_it_and_not_as_missing()
+        {
+            var fileProblems = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["main.png"] = "[main.png] could not be read: it is in use by another program.",
+            };
+
+            SubmissionManifestBuildResult result = SubmissionManifestBuilder.Build(
+                SubmissionManifestBuilderTests.Board(),
+                SubmissionManifestBuilderTests.Identity(),
+                SubmissionManifestBuilderTests.Hashes(),
+                fileProblems: fileProblems);
+
+            Assert.Equal(2, result.Problems.Count);
+            Assert.Contains("[main.png] could not be read: it is in use by another program.", result.Problems);
+            Assert.Contains(result.Problems, problem => problem.Contains("[Images/U8-pin3.png], but that file could not be found", StringComparison.Ordinal));
+            Assert.DoesNotContain(result.Problems, problem => problem.Contains("[main.png], but that file could not be found", StringComparison.Ordinal));
+        }
+
         [Fact]
         public void A_missing_file_does_not_stop_the_others_being_listed()
         {

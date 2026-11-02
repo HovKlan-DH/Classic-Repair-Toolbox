@@ -338,10 +338,15 @@ namespace CRT
         {
             // The draft goes here, so nothing closed on the way lets it go first as one made only to
             // look (code review, 2026-10-30: closing "KiCad data" did - a discard inside the discard).
-            if (string.Equals(this.thisDraftMadeToLook, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase))
+            if (this.thisDraftMadeToLook is { } look && TabDrafts.SameBoard(look, entry))
             {
                 this.ForgetDraftMadeToLook();
             }
+
+            // Nothing starts reading the folder that goes next (code review, 2026-11-02): the table closing
+            // caught the board on screen up, a load the delete below did not wait for - on Windows a file it
+            // held stopped the delete part-way. Main reads the board again once the folder is gone.
+            this.thisBoardOnScreenBehind = null;
 
             // The whole draft is going, so the table's unsaved edits go with it - the discard
             // confirmation above already said everything local is lost. Closed first so the table
@@ -780,11 +785,16 @@ namespace CRT
             return (board, TabDrafts.FingerprintOf(entry, status));
         }
 
-        // What the draft holds, as DraftFingerprint gives it - see that class.
+        // ###########################################################################################
+        // What the draft holds, as DraftFingerprint gives it - see that class - with the notes a new
+        // board's submission carries, as IdentityFor sends them (code review, 2026-11-02). The ONE place
+        // a fingerprint is taken: the receipt's at sending and the row's, so the two always agree.
+        // ###########################################################################################
         private static string FingerprintOf(HardwareBoardEntry entry, DraftStatus status) =>
             DraftFingerprint.Compute(
                 status.WorkbookPath,
-                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
+                DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
+                status.NewBoard?.NotesForSubmission());
 
         // Whether the row's Submit is greyed out because the draft was already sent as it is. The
         // draft is only read when its latest submission remembers what it sent, so a draft never
@@ -802,10 +812,13 @@ namespace CRT
         // True when `board` - what a submit of this draft would send - has errors, which are then
         // shown in the table instead of anything being sent. Apart from SubmitAsync so a test can
         // drive it without the dialog's window.
+        //
+        // Off the UI thread, under the overlay (code review, 2026-11-02): the checks look up every file
+        // the board cites, and Submit was pressed for it.
         // ###########################################################################################
         internal async Task<bool> StopForErrorsAsync(HardwareBoardEntry entry, BoardData board)
         {
-            int errors = TabDrafts.CountErrors(entry, board);
+            int errors = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingBoard, () => Task.Run(() => TabDrafts.CountErrors(entry, board)));
 
             if (errors == 0)
             {
@@ -958,14 +971,14 @@ namespace CRT
         // The same, for the rows' submission badges. null is the shipped path: the real store.
         internal IReadOnlyList<SubmissionReceipt>? ReceiptsOverrideForTests { get; set; }
 
+        // RunGuarded, as every other action on the tab (code review, 2026-11-02): with the task thrown
+        // away a failure was logged nowhere, and the button seemed to do nothing.
         private void OnAddNewBoardClick(object? sender, RoutedEventArgs e)
         {
-            if (this.thisMainWindow == null)
+            if (this.thisMainWindow is { } main)
             {
-                return;
+                this.RunGuarded(main.OpenNewBoardWindowAsync, "Add a new board");
             }
-
-            _ = this.thisMainWindow.OpenNewBoardWindowAsync();
         }
     }
 

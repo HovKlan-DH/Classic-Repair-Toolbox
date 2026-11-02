@@ -74,6 +74,38 @@ public sealed class DraftDriftWordingTests
         Assert.True(DraftDriftWording.IsSuccess(new DraftRebaseReport { Outcome = DraftRebaseOutcome.AlreadyUpToDate }));
     }
 
+    // ###########################################################################################
+    // A row kept against the update whose file is gone from this computer (code review, 2026-11-02): said
+    // in full - and not counted as a row both sides changed, which it is not. The list above the line was
+    // made before the draft was brought up to date, so this is the one place it can be read.
+    // ###########################################################################################
+    [Fact]
+    public void A_kept_rows_file_that_is_gone_is_said_and_not_counted_as_a_row_both_changed()
+    {
+        DraftRebaseConflict gone = DraftRebaseFiles.FileNoLongerHere("Component images/U8.png");
+
+        string alone = DraftDriftWording.Outcome(new DraftRebaseReport
+        {
+            Outcome = DraftRebaseOutcome.BroughtUpToDate,
+            ChangesKept = 1,
+            Conflicts = [gone],
+        });
+
+        Assert.DoesNotContain("also changed by the update", alone);
+        Assert.Contains("[Component images/U8.png]", alone);
+        Assert.Contains("no longer on this computer", alone);
+
+        string withRow = DraftDriftWording.Outcome(new DraftRebaseReport
+        {
+            Outcome = DraftRebaseOutcome.BroughtUpToDate,
+            ChangesKept = 1,
+            Conflicts = [new DraftRebaseConflict("Components", "U8", "both"), gone],
+        });
+
+        Assert.Contains("1 of them was also changed by the update", withRow);
+        Assert.Contains("no longer on this computer", withRow);
+    }
+
     // The draft has the update but could not be noted as up to date (code review, 2026-10-13): not
     // a success - the button stays - and it says pressing it again finishes the job.
     [Fact]

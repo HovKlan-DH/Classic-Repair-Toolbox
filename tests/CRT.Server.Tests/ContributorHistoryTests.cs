@@ -66,6 +66,41 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** "THE ADDRESS IS VERIFIED" IS SAID ONLY OF AN ADDRESS THAT IS (owner decision, 2026-11-02). ***
+        // Anybody can register under anybody's address, and signing in asks nothing of verification
+        // (AccountFlows.LoginAsync), so an account alone proves nothing: the Contributor view read
+        // "the address is verified" over a stranger's typed address, on the record a maintainer
+        // judges a contributor by. An account that has gone can no longer say either.
+        // ###########################################################################################
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        public async Task Only_a_verified_account_counts_as_signed_in(bool isVerified, bool signedIn)
+        {
+            var store = new FakeSubmissionStore();
+            var accounts = new FakeAccountStore();
+
+            store.Submissions[1] = Record(1, email: null, account: 7);
+            accounts.Accounts[7] = ContributorHistoryTests.Account(7, "anna@example.com", "Anna") with { IsVerified = isVerified };
+
+            ReviewContributorFacts facts = await ContributorHistory.BuildAsync(store.Submissions[1], store, accounts);
+
+            Assert.Equal(signedIn, facts.SignedIn);
+        }
+
+        [Fact]
+        public async Task An_account_that_has_gone_does_not_count_as_signed_in()
+        {
+            var store = new FakeSubmissionStore();
+
+            store.Submissions[1] = Record(1, email: "anna@example.com", account: 7);
+
+            ReviewContributorFacts facts = await ContributorHistory.BuildAsync(store.Submissions[1], store, new FakeAccountStore());
+
+            Assert.False(facts.SignedIn);
+        }
+
+        // ###########################################################################################
         // *** THE SAME CONTRIBUTOR AS EVERYWHERE ELSE. *** Through the store: the same email in any
         // case and with stray spaces is one contributor; another address, and a signed-in account's
         // submissions, are not theirs. (SubmissionReplacementRules uses the same rule.)

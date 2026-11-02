@@ -193,7 +193,7 @@
 			<TextBlock TextWrapping="Wrap"
 					   Opacity="0.75"
 					   FontSize="12"
-					   Text="You can keep using CRT while this runs. Cancelling is safe - nothing is published until a maintainer approves it." />
+					   Text="Cancelling is safe - nothing is published until a maintainer approves it." />
 		</StackPanel>
 
 		<!-- ============================ OUTCOME ============================ -->

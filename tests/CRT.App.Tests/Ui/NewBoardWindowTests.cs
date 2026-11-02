@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
 
@@ -324,6 +325,45 @@ public sealed class NewBoardWindowTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A LISTED BOARD'S FOLDER IS TAKEN, WHATEVER THE BOARD IS CALLED (code review, 2026-11-02). ***
+    // The check by name compared display names ("Commodore 64" / "250407 (long board)") and the folder
+    // check asked only for a draft marker, so Commodore / C64 / 250407 passed both. The new draft then
+    // lay in the published board's folder: no entry of its own (the listed one reads the folder), so
+    // the listed C64 250407 opened EMPTY on this machine, and Submit sent every row as removed.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Commodore", "C64", "250407")]
+    [InlineData("commodore", "c64", "250407")]
+    public void A_name_whose_folder_is_a_listed_boards_is_refused_though_its_display_name_differs(string manufacturer, string hardware, string board)
+    {
+        UiTest.Run(() =>
+        {
+            var window = WindowWith(Entry("Commodore 64", "250407 (long board)", "Commodore/C64/250407/board.json"));
+
+            Fill(window, manufacturer, hardware, board);
+
+            Assert.False(CreateEnabled(window));
+            Assert.Null(window.BuildRegistrationOrNull(out _));
+            Assert.Contains("250407 (long board)", window.ValidationTextForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // Another board of the same machine is the ordinary case, however its display names read.
+    [Fact]
+    public void Another_folder_of_a_listed_boards_machine_is_accepted()
+    {
+        UiTest.Run(() =>
+        {
+            var window = WindowWith(Entry("Commodore 64", "250407 (long board)", "Commodore/C64/250407/board.json"));
+
+            Fill(window, "Commodore", "C64", "250425");
+
+            Assert.True(CreateEnabled(window));
+            Assert.Equal(string.Empty, window.ValidationTextForTests);
+        });
+    }
+
     // Correcting the mistake has to clear the complaint and re-enable the button, or the form
     // would look permanently stuck after one bad keystroke.
     [Fact]
@@ -515,6 +555,94 @@ public sealed class NewBoardWindowTests : IDisposable
 
             Assert.NotNull(result);
             Assert.Equal("C64", result!.HardwareName);
+            Assert.False(window.IsVisible);
+        });
+    }
+
+    // ------------------------------------------------------------------ What Enter does
+
+    // ###########################################################################################
+    // *** ENTER PRESSES "CREATE BOARD" AS A DEFAULT BUTTON, NOT FROM THE WINDOW'S OWN HANDLER (code
+    // review, 2026-11-02). *** The window took Enter on the tunnel route, before anything could have
+    // it: the notes box never got a new line once the three names were filled in, and Enter on a focused
+    // Cancel opened the maintainer agreement. Real key presses through the headless input stack, as
+    // SubmitDraftWindowKeyboardTests; the agreement is counted, never answered.
+    // ###########################################################################################
+    private static (NewBoardWindow Window, Func<int> Asked) FilledInAndShown()
+    {
+        int asked = 0;
+
+        NewBoardWindow window = WindowWith();
+        window.Show();
+        window.ConfirmMaintainerRoleOverrideForTests = _ =>
+        {
+            asked++;
+            return Task.FromResult(false);
+        };
+
+        Fill(window, "Commodore", "C64", "250407");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // A disabled default button would make every assertion below pass for the wrong reason.
+        Assert.True(CreateEnabled(window));
+
+        return (window, () => asked);
+    }
+
+    private static void PressEnter(Window window) =>
+        window.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.Enter, keySymbol: null);
+
+    [Fact]
+    public void Enter_in_the_notes_box_starts_a_new_line_and_asks_nothing()
+    {
+        UiTest.Run(() =>
+        {
+            (NewBoardWindow window, Func<int> asked) = FilledInAndShown();
+
+            TextBox notes = FieldsOf(window).GetControl<TextBox>("NotesBox");
+            notes.Text = "First line";
+            notes.Focus();
+            notes.CaretIndex = notes.Text.Length;
+
+            PressEnter(window);
+
+            Assert.Equal(0, asked());
+            Assert.Contains('\n', notes.Text);
+
+            window.Close();
+        });
+    }
+
+    // The other half: without it, the test above would also pass if Enter did nothing anywhere.
+    [Fact]
+    public void Enter_in_a_name_box_presses_Create_once_the_form_is_filled_in()
+    {
+        UiTest.Run(() =>
+        {
+            (NewBoardWindow window, Func<int> asked) = FilledInAndShown();
+
+            FieldsOf(window).GetControl<TextBox>("HardwareBox").Focus();
+
+            PressEnter(window);
+
+            Assert.Equal(1, asked());
+
+            window.Close();
+        });
+    }
+
+    [Fact]
+    public void Enter_on_a_focused_Cancel_cancels_and_asks_nothing()
+    {
+        UiTest.Run(() =>
+        {
+            (NewBoardWindow window, Func<int> asked) = FilledInAndShown();
+
+            window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Cancel")).Focus();
+
+            PressEnter(window);
+
+            Assert.Equal(0, asked());
             Assert.False(window.IsVisible);
         });
     }

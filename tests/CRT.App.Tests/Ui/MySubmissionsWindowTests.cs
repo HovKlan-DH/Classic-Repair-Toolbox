@@ -664,6 +664,61 @@ public sealed class MySubmissionsWindowTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A REFUSED ROW SAYS WHY (code review, 2026-11-02). *** Findings was always empty: "until a
+    // refresh supplies them" never came true, as a refused submission is never asked about again. Once
+    // the Submit dialog had closed the row read "Not accepted" with no reason, and Submit was grey as
+    // already sent. Asserted on the RENDERED card, as the row model would pass with the panel gone.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_refused_at_finalise_says_why_once_the_dialog_has_closed()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceiptStore.Record(Receipt(42));
+            SubmissionReceiptStore.RecordFinalised(
+                new SubmissionResult
+                {
+                    SubmissionId = 42,
+                    IsAccepted = false,
+                    State = "rejected",
+                    Findings = [new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." }],
+                },
+                DateTimeOffset.UtcNow);
+
+            var window = new MySubmissionsWindow();
+            window.Initialize();
+
+            SubmissionListItem row = Assert.Single(window.Submissions);
+
+            Assert.Equal("Not accepted", row.StateText);
+            Assert.True(row.HasFindings);
+            Assert.Contains(MySubmissionsWindowTests.CardTextBlocks(window), block => block.Text == "U8: No category.");
+        });
+    }
+
+    [Fact]
+    public void A_refresh_that_finds_a_refusal_says_why()
+    {
+        UiTest.Run(() =>
+        {
+            SubmissionReceiptStore.Record(Receipt(42, "pending"));
+
+            var window = new MySubmissionsWindow();
+            window.StatusLookupForTests = (id, _, _) => Task.FromResult<SubmissionStatus?>(new SubmissionStatus
+            {
+                Id = id,
+                State = "rejected",
+                Findings = [new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." }],
+            });
+
+            window.Initialize();
+            window.RefreshForTests();
+
+            Assert.Equal(["U8: No category."], Assert.Single(window.Submissions).Findings);
+        });
+    }
+
+    // ###########################################################################################
     // *** "CHECK FOR UPDATES" WAITS UNDER THE OVERLAY, AND GIVES UP AFTER THE LIMIT (2026-09-28). ***
     // The overlay is up while the server is asked; a server that never answers is let go when the
     // two minutes pass (the test's clock), the overlay lifts, and the line says the rows show what

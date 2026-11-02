@@ -653,7 +653,33 @@ namespace Handlers.MaintainerHandling
                 ReviewApiParser.Strings(element, "removed"),
                 ReviewApiParser.Strings(element, "changed"),
                 ReviewApiParser.ParseRenames(element),
-                ReviewApiParser.ParseFieldChanges(element));
+                ReviewApiParser.ParseFieldChanges(element),
+                ReviewApiParser.ParseChangedRows(element));
+        }
+
+        // `Changed` row by row (code review, 2026-11-02) - null when the server does not send it, which
+        // leaves `fieldChanges` to say it, as it always did. A row with no key cannot be matched to a change.
+        private static IReadOnlyList<ReviewChangedRowView>? ParseChangedRows(JsonElement element)
+        {
+            if (!element.TryGetProperty("changedRows", out JsonElement raw) ||
+                raw.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var rows = new List<ReviewChangedRowView>();
+
+            foreach (JsonElement row in raw.EnumerateArray())
+            {
+                if (row.ValueKind == JsonValueKind.Object &&
+                    ReviewApiParser.String(row, "key") is { Length: > 0 } key &&
+                    row.TryGetProperty("fields", out JsonElement fields))
+                {
+                    rows.Add(new ReviewChangedRowView(key, ReviewApiParser.ParseFields(fields)));
+                }
+            }
+
+            return rows;
         }
 
         // ###########################################################################################
@@ -680,34 +706,44 @@ namespace Handlers.MaintainerHandling
                 if (row.Value.ValueKind != JsonValueKind.Array)
                     continue;
 
-                var fields = new List<ReviewFieldChangeView>();
-
-                foreach (JsonElement field in row.Value.EnumerateArray())
-                {
-                    if (field.ValueKind != JsonValueKind.Object)
-                        continue;
-
-                    string? name = ReviewApiParser.String(field, "field");
-
-                    // Without a name there is nothing to label the change with, and "something
-                    // changed to 251715-01" is not a reviewable statement.
-                    if (string.IsNullOrWhiteSpace(name))
-                        continue;
-
-                    fields.Add(new ReviewFieldChangeView(
-                        name,
-
-                        // A CLEARED field arrives as an empty string, which is exactly what should
-                        // be shown - deleting information is a real edit and the hardest to spot.
-                        ReviewApiParser.String(field, "before") ?? string.Empty,
-                        ReviewApiParser.String(field, "after") ?? string.Empty));
-                }
+                List<ReviewFieldChangeView> fields = ReviewApiParser.ParseFields(row.Value);
 
                 if (fields.Count > 0)
                     result[row.Name] = fields;
             }
 
             return result;
+        }
+
+        private static List<ReviewFieldChangeView> ParseFields(JsonElement raw)
+        {
+            var fields = new List<ReviewFieldChangeView>();
+
+            if (raw.ValueKind != JsonValueKind.Array)
+                return fields;
+
+            foreach (JsonElement field in raw.EnumerateArray())
+            {
+                if (field.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string? name = ReviewApiParser.String(field, "field");
+
+                // Without a name there is nothing to label the change with, and "something
+                // changed to 251715-01" is not a reviewable statement.
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+
+                fields.Add(new ReviewFieldChangeView(
+                    name,
+
+                    // A CLEARED field arrives as an empty string, which is exactly what should
+                    // be shown - deleting information is a real edit and the hardest to spot.
+                    ReviewApiParser.String(field, "before") ?? string.Empty,
+                    ReviewApiParser.String(field, "after") ?? string.Empty));
+            }
+
+            return fields;
         }
 
         private static IReadOnlyList<ReviewRenameView> ParseRenames(JsonElement element)

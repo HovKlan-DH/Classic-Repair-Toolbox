@@ -22,7 +22,8 @@ namespace CRT
     //   - SENT FOR REVIEW, it keeps its name while a maintainer has it: the server knows it by the
     //     name, and a submission under a new one would be a second board beside the first. Only once
     //     that is decided against can it change again (SubmissionReceiptPresenter.IsDecidedAgainst) -
-    //     accepted or published is final too, and then the board is a published one.
+    //     accepted or published is final too, and then the board is a published one. A send that never
+    //     finished is with no maintainer, so it holds nothing (NeverReachedReview).
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
@@ -122,7 +123,10 @@ namespace CRT
                 return BoardNameWording.Published;
             }
 
-            return sent.Any(receipt => !SubmissionReceiptPresenter.IsDecidedAgainst(receipt.LastKnownState))
+            // A send that never finished is with nobody (code review, 2026-11-02): "has been sent for
+            // review" was untrue of it, for up to a day until the sweep marked it abandoned. One whose
+            // finalise request went may well be - NeverReachedReview keeps that one.
+            return sent.Any(receipt => !SubmissionReceiptPresenter.IsDecidedAgainst(receipt.LastKnownState) && !SubmissionReceiptPresenter.NeverReachedReview(receipt))
                 ? BoardNameWording.SentForReview
                 : null;
         }

@@ -59,8 +59,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Deletes each candidate that is still safe to delete, on the caller's (UI) thread.
         //
-        //   isInUse      - true when something holds unsaved edits for the board (the Drafts
-        //                  table); such a draft is kept, since those edits exist nowhere on disk.
+        //   isInUse      - true when something is open on the board's draft or holds unsaved edits
+        //                  for it; such a draft is kept, since those edits exist nowhere on disk.
+        //                  A later check retires it.
         //   discard      - deletes the folder; false when it could not finish.
         //   afterDiscard - runs for every board a delete was ATTEMPTED on, finished or not, since
         //                  a partial delete still leaves the board cache describing files that
@@ -83,7 +84,7 @@ namespace Handlers.DataHandling
             {
                 if (isInUse(draft.ExcelDataFile))
                 {
-                    Logger.Info($"Draft for [{draft.ExcelDataFile}] is published but has unsaved edits open - kept.");
+                    Logger.Info($"Draft for [{draft.ExcelDataFile}] is published but is open, or holds unsaved edits - kept.");
                     continue;
                 }
 

@@ -8,7 +8,8 @@
     everybody"). ADMINISTRATOR ONLY, like every padlocked entry on the Account screen.
 
     Each model waiting is a card: its name, whether it is new or replaces the published model of its
-    name, who sent it, whether CRT's full test suite went through on it, the contributor's message,
+    name, who sent it and whether that is a verified account or typed in, what the sender's CRT
+    reported of its full test suite, the contributor's message,
     and every value beside the published model's (the changes marked). Publish writes it into the
     BETA and the stable main files at once; Reject needs a reason, which the contributor is mailed.
     The words are OscilloscopeModelsDisplay's; the server's OscilloscopeModelFlows decides. A

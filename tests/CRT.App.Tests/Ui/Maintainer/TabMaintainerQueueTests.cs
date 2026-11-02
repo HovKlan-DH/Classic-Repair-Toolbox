@@ -398,6 +398,117 @@ public sealed class TabMaintainerQueueTests
         });
     }
 
+    // ###########################################################################################
+    // *** ANOTHER SUBMISSION CHOSEN TAKES THE DECISION BAR AND THE REMOVALS WITH IT, UNTIL ITS OWN
+    // DETAIL ARRIVES (code review, 2026-11-02). *** Only the detail was dropped, so Approve stayed on
+    // for B with A's removal list and A's approval state.
+    // ###########################################################################################
+    [Fact]
+    public void Choosing_another_submission_hides_the_decision_bar_and_the_removals_until_its_detail_arrives()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow first = Row(id: 42);
+            ReviewQueueRow second = Row(id: 43);
+            Button approve = main.FindControl<Button>("ApproveButton")!;
+
+            Queue(main, first, second);
+            Select(main, first);
+            main.ShowDetail(Detail(first) with { Removals = new FileRemovalPreview(["Images/old.png"], null) });
+
+            Assert.True(Shown(main, "DecisionPanel"));
+            Assert.True(approve.IsEnabled);
+            Assert.True(Shown(main, "RemovalStatusText"));
+
+            Select(main, second);
+
+            Assert.False(Shown(main, "DecisionPanel"));
+            Assert.False(approve.IsEnabled);
+            Assert.False(Shown(main, "RemovalStatusText"));
+
+            main.ShowDetail(Detail(second));
+
+            Assert.True(Shown(main, "DecisionPanel"));
+            Assert.True(approve.IsEnabled);
+            Assert.False(Shown(main, "RemovalStatusText"));
+        });
+    }
+
+    // The same submission shown again (a queue read keeping it selected) keeps its bar.
+    [Fact]
+    public void The_same_submission_shown_again_keeps_its_decision_bar()
+    {
+        UiTest.Run(() =>
+        {
+            var main = new TabMaintainer();
+            ReviewQueueRow row = Row(id: 42);
+
+            Queue(main, row);
+            Select(main, row);
+            main.ShowDetail(Detail(row));
+
+            Select(main, row);
+
+            Assert.True(Shown(main, "DecisionPanel"));
+            Assert.True(main.FindControl<Button>("ApproveButton")!.IsEnabled);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A SUBMISSION WHOSE DETAIL NEVER CAME CANNOT BE DECIDED (code review, 2026-11-02). *** A is
+    // open with Approve on; B is chosen and its read fails. Pressing Approve sent the approval for B
+    // with A's removals and no expected version - past the version check and ApprovalGate's reason -
+    // and a publish cannot be undone. The bar goes, and DecideAsync itself refuses too.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_submission_whose_detail_could_not_be_read_cannot_be_approved()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            MaintainerTabHost.AddOverlay(main);
+
+            ReviewQueueRow first = Row(id: 42);
+            ReviewQueueRow second = Row(id: 43);
+            var asked = new List<string>();
+
+            var server = new AnsweringHttpHandler(request =>
+            {
+                asked.Add(request.RequestUri!.AbsolutePath);
+                return AnsweringHttpHandler.Refused();
+            });
+
+            main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            Queue(main, first, second);
+            Select(main, first);
+            main.ShowDetail(Detail(first) with { Removals = new FileRemovalPreview(["Images/old.png"], null) });
+
+            typeof(TabMaintainer).GetMethod("SelectQueueRow", Any)!.Invoke(main, [(long?)43]);
+
+            // Its read has failed: the panel says so.
+            for (int tries = 0; tries < 200 && !Shown(main, "NotInTablePanel"); tries++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.True(Shown(main, "NotInTablePanel"), "The read of the second submission never said it failed.");
+            Assert.Equal(43, main.SelectedQueueRowForTests?.Id);
+
+            Assert.False(Shown(main, "DecisionPanel"));
+            Assert.False(main.FindControl<Button>("ApproveButton")!.IsEnabled);
+
+            asked.Clear();
+
+            await (Task)typeof(TabMaintainer).GetMethod("DecideAsync", Any)!.Invoke(main, [ReviewDecisionKind.Approve])!;
+
+            Assert.Empty(asked);
+        });
+    }
+
     // Opening another submission after that makes its decisions possible again.
     [Fact]
     public void The_next_submission_opened_can_be_decided_again()

@@ -18,14 +18,16 @@ namespace CRT
     // Account > "Oscilloscope models" (CRT 4.0 step 5) - see the markup for what it is;
     // OscilloscopeModelsDisplay words it and CRT.Server's OscilloscopeModelFlows decides.
     //
-    // Read when the entry is chosen, on Refresh, and after each decision - never on the minute check.
-    // A decision is made under CRT's overlay; a publish that got no answer may have happened, so it
-    // is said so and the list read again shows the truth (a model decided is no longer in it). The
+    // Read when the entry is chosen, when Account is shown again with it chosen, on Refresh and after
+    // each decision. On the minute check while on screen, and off screen only when the count the queue
+    // answered differs from what is on show (FollowWaitingCountAsync, code review 2026-11-02: the badge
+    // said 1 beside "No oscilloscope model is waiting"), and then quietly. A decision is made under CRT's overlay; one that got no
+    // answer may have happened, so the list is read again and whether the model is still in it is
+    // said (a model decided is no longer in it - MaintainerWaitWording.OscilloscopeModelAfterTimeout). The
     // cards are made again from each read: nothing is typed into a card but its reason - kept for
     // every model still listed (code review, 2026-10-29: a reason half typed on one card was gone once
-    // another was decided) - and a read only follows a press elsewhere or a decision, never under a
-    // press on a card. A model a publish put into BETA only offers Publish alone: it cannot be
-    // rejected (the server's rule).
+    // another was decided) - and no quiet read lands under a reason being typed. A model a publish put
+    // into BETA only offers Publish alone: it cannot be rejected (the server's rule).
     // ###########################################################################################
     public partial class OscilloscopeModelsView : UserControl
     {
@@ -35,6 +37,9 @@ namespace CRT
 
         // The reason box of each card, by model id.
         private readonly Dictionary<long, TextBox> thisReasons = new();
+
+        // The models on show, as last read - null until a read went well.
+        private IReadOnlyList<OscilloscopeModelQueueEntry>? thisShown;
 
         public OscilloscopeModelsView()
         {
@@ -56,6 +61,7 @@ namespace CRT
         public void Clear()
         {
             this.thisReasons.Clear();
+            this.thisShown = null;
             this.GetControl<StackPanel>("ModelsPanel").Children.Clear();
             this.ShowMessage(null, isError: false);
         }
@@ -74,29 +80,78 @@ namespace CRT
         // Reads the models waiting, under CRT's overlay. An answer that cannot be read leaves what is
         // shown, with the reason.
         // ###########################################################################################
-        public async Task LoadAsync()
+        public Task LoadAsync() => this.ReadAndShowAsync(MaintainerWaitWording.ReadingOscilloscopeModels);
+
+        // The list read and shown, or null when it could not be - the reason then said. A sign-out
+        // or another sign-in meanwhile wins: nothing of this answer goes on show.
+        private async Task<OscilloscopeModelQueueAnswer?> ReadAndShowAsync(string waiting)
         {
-            Func<CancellationToken, Task<ReviewApiResult<OscilloscopeModelQueueAnswer>>>? read =
-                this.ReadOverrideForTests is { } answer
-                    ? _ => answer()
-                    : this.thisClient is ReviewApiClient client && this.thisSession is ReviewSession session
-                        ? token => client.GetOscilloscopeModelsAsync(session, token)
-                        : null;
+            ReviewSession? asked = this.thisSession;
 
-            if (read is null)
-                return;
+            if (this.Reader() is not { } read)
+                return null;
 
-            ReviewApiResult<OscilloscopeModelQueueAnswer> result = await ServerWait.CallAsync(
-                this, MaintainerWaitWording.ReadingOscilloscopeModels, read);
+            ReviewApiResult<OscilloscopeModelQueueAnswer> result = await ServerWait.CallAsync(this, waiting, read);
+
+            if (!ReferenceEquals(asked, this.thisSession))
+                return null;
 
             if (!result.IsOk)
             {
                 this.ShowMessage(result.Message, isError: true);
-                return;
+                return null;
             }
 
             this.ShowModels(result.Value!);
+            return result.Value;
         }
+
+        // The one way the list is read - a test's answer, or the server's. Null when signed out.
+        private Func<CancellationToken, Task<ReviewApiResult<OscilloscopeModelQueueAnswer>>>? Reader() =>
+            this.ReadOverrideForTests is { } answer
+                ? _ => answer()
+                : this.thisClient is ReviewApiClient client && this.thisSession is ReviewSession session
+                    ? token => client.GetOscilloscopeModelsAsync(session, token)
+                    : null;
+
+        // ###########################################################################################
+        // *** THE MODELS ON SHOW FOLLOW THE COUNT THE QUEUE ANSWERED (code review, 2026-11-02). *** The
+        // badge moves every minute with that answer; this list read only when asked, so it could say
+        // "No oscilloscope model is waiting" beside a badge saying 1.
+        //
+        // *** AND ON SCREEN THEY ARE READ AT EVERY FULL CHECK, whatever the count says (the same review). ***
+        // A model re-sent under its name replaces the pending copy, so the count stands still: the card kept
+        // the old commands and the old id, and its Publish answered "decided meanwhile". The other lists are
+        // read that way too. Off screen the count is all that is asked - showing the list reads it.
+        //
+        // QUIET: nobody pressed anything, so no overlay and no word if it fails - the next check asks
+        // again. Never while a decision is on its way (that reads by itself) or while a reason is being
+        // typed: the cards are made again from each read, which keeps the words but takes the box from
+        // under the caret. The next check asks again then too. A read with nothing new makes no card
+        // again, for the same reason and for the press going down on a button.
+        // ###########################################################################################
+        internal async Task FollowWaitingCountAsync(int waiting, bool onScreen)
+        {
+            if ((!onScreen && this.thisShown?.Count == waiting) || this.thisIsDeciding || this.IsTypingReason)
+                return;
+
+            ReviewSession? asked = this.thisSession;
+
+            if (this.Reader() is not { } read)
+                return;
+
+            ReviewApiResult<OscilloscopeModelQueueAnswer> result = await read(CancellationToken.None);
+
+            if (!result.IsOk || !ReferenceEquals(asked, this.thisSession) || this.thisIsDeciding || this.IsTypingReason)
+                return;
+
+            if (OscilloscopeModelsDisplay.SameModels(this.thisShown, result.Value!.Entries))
+                this.ModelsWaitingRead?.Invoke(result.Value.Entries.Count);
+            else
+                this.ShowModels(result.Value);
+        }
+
+        private bool IsTypingReason => this.thisReasons.Values.Any(box => box.IsKeyboardFocusWithin);
 
         private async void OnRefreshClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
@@ -118,6 +173,7 @@ namespace CRT
 
             panel.Children.Clear();
             this.thisReasons.Clear();
+            this.thisShown = answer.Entries;
 
             this.ModelsWaitingRead?.Invoke(answer.Entries.Count);
 
@@ -155,9 +211,11 @@ namespace CRT
             TabMaintainer.ShowCounts(sentBy, OscilloscopeModelsDisplay.SentBy(entry));
             body.Children.Add(sentBy);
 
-            var suite = new TextBlock { Text = OscilloscopeModelsDisplay.SuiteLine(entry), TextWrapping = TextWrapping.Wrap };
-            suite.Bind(TextBlock.ForegroundProperty, suite.GetResourceObservable(entry.FullTestSuitePassed ? "Text_Success_Fg" : "Text_Warning_Fg"));
-            body.Children.Add(suite);
+            // Whether that is a known person, and the suite as what the sender's CRT reported: nothing
+            // a stranger can type is drawn as good news (code review, 2026-11-02 - Security). It was
+            // green.
+            body.Children.Add(OscilloscopeModelsView.Said(OscilloscopeModelsDisplay.SenderLine(entry), warn: !entry.SignedIn));
+            body.Children.Add(OscilloscopeModelsView.Said(OscilloscopeModelsDisplay.SuiteLine(entry), warn: !entry.FullTestSuitePassed));
 
             body.Children.Add(new TextBlock
             {
@@ -210,6 +268,19 @@ namespace CRT
             card.Bind(Border.BorderBrushProperty, card.GetResourceObservable("Panel_Border"));
 
             return card;
+        }
+
+        // A line of the card: in the warning colour when it is something to weigh, else plain and dimmed.
+        private static TextBlock Said(string text, bool warn)
+        {
+            var line = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap };
+
+            if (warn)
+                line.Bind(TextBlock.ForegroundProperty, line.GetResourceObservable("Text_Warning_Fg"));
+            else
+                line.Opacity = 0.8;
+
+            return line;
         }
 
         // Every value: its label, what was sent, and - for an update - what is published now, a
@@ -288,6 +359,12 @@ namespace CRT
 
             this.thisIsDeciding = true;
             (string Text, bool IsError) said;
+            bool timedOut;
+
+            // Named now: a model decided is gone from the list read below.
+            string name = this.thisShown?.FirstOrDefault(entry => entry.Id == id) is { } shown
+                ? OscilloscopeModelsDisplay.Title(shown)
+                : "The model";
 
             try
             {
@@ -296,20 +373,35 @@ namespace CRT
                     reason is null ? MaintainerWaitWording.PublishingOscilloscopeModel : MaintainerWaitWording.RejectingOscilloscopeModel,
                     decide);
 
-                said = result.Failure == ReviewApiFailure.TimedOut
-                    ? (WaitWording.NoAnswer, true)
-                    : !result.IsOk
-                        ? (result.Message ?? "The server refused this.", true)
-                        : result.Value!.Problem is string problem
-                            ? ($"{result.Value.Message} {problem}", true)
-                            : (result.Value.Message, false);
+                timedOut = result.Failure == ReviewApiFailure.TimedOut;
+
+                said = !result.IsOk
+                    ? (result.Message ?? "The server refused this.", true)
+                    : result.Value!.Problem is string problem
+                        ? ($"{result.Value.Message} {problem}", true)
+                        : (result.Value.Message, false);
             }
             finally
             {
                 this.thisIsDeciding = false;
             }
 
-            await this.LoadAsync();
+            OscilloscopeModelQueueAnswer? now = await this.ReadAndShowAsync(
+                timedOut ? WaitWording.Checking : MaintainerWaitWording.ReadingOscilloscopeModels);
+
+            // ###########################################################################################
+            // *** NO ANSWER IS NEVER "TRY AGAIN" (code review, 2026-11-02; CLAUDE.md: "A timeout is never
+            // it failed"). *** The sentence for a read said it, in red, also when the server had finished -
+            // the list then showed the card gone with no word of what became of it, and a model still
+            // listed answered a second press with "decided meanwhile". The list just read says which.
+            // ###########################################################################################
+            if (timedOut)
+            {
+                bool? stillListed = now?.Entries.Any(entry => entry.Id == id);
+
+                said = (MaintainerWaitWording.OscilloscopeModelAfterTimeout(reason is null, name, stillListed), stillListed != false);
+            }
+
             this.ShowMessage(said.Text, said.IsError);
         }
 

@@ -65,7 +65,15 @@ namespace Handlers.DataHandling
             // must be in fileHashes like any referenced file. Optional and trailing, as
             // calibrations are, so every existing caller keeps working.
             // ###########################################################################################
-            IReadOnlyList<string>? kiCadFiles = null)
+            IReadOnlyList<string>? kiCadFiles = null,
+
+            // ###########################################################################################
+            // Why a file has no hash, by its path, when the caller knows (code review, 2026-11-02;
+            // FileHashResult.Problems): "could not be read" or "cannot be used" for a file that is
+            // there. Said in place of "could not be found", which sent the contributor looking for a
+            // file that had not gone anywhere. Optional and trailing, as the two above.
+            // ###########################################################################################
+            IReadOnlyDictionary<string, string>? fileProblems = null)
         {
             ArgumentNullException.ThrowIfNull(merged);
             ArgumentNullException.ThrowIfNull(identity);
@@ -93,8 +101,10 @@ namespace Handlers.DataHandling
                     // Named rather than dropped. A contributor whose schematic image is missing
                     // needs to know which one, not "the submission failed".
                     problems.Add(
-                        $"The data references [{path}], but that file could not be found. " +
-                        "It may have been moved or deleted since it was added.");
+                        fileProblems is not null && fileProblems.TryGetValue(path, out string? why)
+                            ? why
+                            : $"The data references [{path}], but that file could not be found. " +
+                              "It may have been moved or deleted since it was added.");
 
                     continue;
                 }

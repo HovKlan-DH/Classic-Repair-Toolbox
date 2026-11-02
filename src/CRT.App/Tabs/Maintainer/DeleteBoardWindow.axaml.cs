@@ -49,7 +49,7 @@ namespace CRT
 
             this.Title = BoardDeletionWording.ConfirmTitle;
             this.SetText("HeadlineText", BoardDeletionWording.Headline(plan));
-            this.SetText("SharedFilesText", BoardDeletionWording.SharedFilesKept);
+            this.SetText("WhichFilesGoText", BoardDeletionWording.WhichFilesGo);
             this.SetText("CannotBeUndoneText", BoardDeletionWording.CannotBeUndone);
 
             if (this.FindControl<TextBlock>("CannotBeUndoneText") is TextBlock undone)

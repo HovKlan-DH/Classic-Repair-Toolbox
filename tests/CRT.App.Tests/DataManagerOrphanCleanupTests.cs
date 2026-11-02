@@ -498,6 +498,56 @@ public sealed class DataManagerOrphanCleanupTests : IDisposable
             "the cleanup deleted a drafted attachment, which exists in no other copy");
     }
 
+    // ###########################################################################################
+    // *** BYTES A DRAFT STILL LISTS STAY, THOUGH NO PUBLISHED BOARD DOES (code review, 2026-11-02). ***
+    // A draft keeps published files by checksum and holds none of their bytes itself, so an update
+    // dropping a file left the draft citing bytes only the tree's store has. The cleanup took them, and
+    // "Bring my draft up to date" could then only say the file was gone. They go once no draft lists them.
+    // ###########################################################################################
+    [Fact]
+    public async Task Bytes_a_draft_lists_stay_while_bytes_nothing_lists_go()
+    {
+        string dataRoot = this.SetUpDataRootWithBoard();
+        DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
+
+        BoardDocument.StoredFileRow cited = StoredFiles.Put(dataRoot, "old-picture.png", "the picture an update dropped");
+        BoardDocument.StoredFileRow stray = StoredFiles.Put(dataRoot, "stray.png", "listed by nothing at all");
+
+        StoredFiles.WriteBoard(
+            DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFile),
+            new BoardData { Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "old-picture.png" }] },
+            cited);
+
+        DataManager.LoadFrom(dataRoot, MainName);
+
+        await DataManager.DeleteOrphanAndUnusedFilesAsync(new List<DataFileEntry> { ManifestEntry(MainName), ManifestEntry(BoardFile) });
+
+        Assert.True(File.Exists(Path.Combine(dataRoot, DataTreeLayout.StoredFilePath(cited.Sha256, cited.Name).Replace('/', Path.DirectorySeparatorChar))));
+
+        // The cleanup really ran: without this, nothing above would prove anything.
+        Assert.False(File.Exists(Path.Combine(dataRoot, DataTreeLayout.StoredFilePath(stray.Sha256, stray.Name).Replace('/', Path.DirectorySeparatorChar))));
+    }
+
+    // Fail closed, as for a published board file: what the draft lists is unknown, not nothing.
+    [Fact]
+    public async Task A_draft_whose_board_file_cannot_be_read_stops_the_cleanup()
+    {
+        string dataRoot = this.SetUpDataRootWithBoard();
+        DraftManager.LoadFrom(this.thisWorkspace.Path_("Drafts"));
+
+        string draftFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, BoardFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(draftFile)!);
+        File.WriteAllText(draftFile, "{ a board file cut short");
+        File.WriteAllText(Path.Combine(dataRoot, "stray-orphan.txt"), "not referenced by anything");
+
+        DataManager.LoadFrom(dataRoot, MainName);
+
+        int deleted = await DataManager.DeleteOrphanAndUnusedFilesAsync(new List<DataFileEntry> { ManifestEntry(MainName), ManifestEntry(BoardFile) });
+
+        Assert.Equal(0, deleted);
+        Assert.True(File.Exists(Path.Combine(dataRoot, "stray-orphan.txt")));
+    }
+
     // The draft's rows must still read back intact afterwards, not merely have a file left behind:
     // a truncated or rewritten board file would pass a File.Exists check while having lost the work.
     [Fact]

@@ -339,14 +339,29 @@ namespace CRT
             BoardTableDocument document = BoardTableDocument.Create(this.thisPublished, session.Content.Board, this.thisBaselineLabel, this.thisFiles);
             this.Attach(document, session, sheetName);
 
-            if (rowIndex >= 0 && this.thisCurrentSheet is { Rows.Count: > 0 } sheet)
+            if (rowIndex >= 0)
             {
-                BoardTableRow? same = currentValues is null
-                    ? null
-                    : sheet.Rows.FirstOrDefault(candidate =>
-                        !candidate.IsDeleted && candidate.Cells.Select(cell => cell.Text).SequenceEqual(currentValues));
+                // The sheet worked on stays, also when a pill no longer shows anything of it: the
+                // cursor on the "same place" of another sheet is where the next text would go (code
+                // review, 2026-11-02; BoardTableDocument.SheetsShown keeps its tab for the same reason).
+                if (sheetName is not null && document.FindSheet(sheetName) is { } worked && !ReferenceEquals(worked, this.thisCurrentSheet))
+                {
+                    this.SelectSheet(worked);
+                }
 
-                this.SelectCell(same ?? sheet.Rows[Math.Min(rowIndex, sheet.Rows.Count - 1)], Math.Clamp(column, 0, sheet.Columns.Count - 1));
+                if (this.thisCurrentSheet is { Rows.Count: > 0 } sheet)
+                {
+                    BoardTableRow? same = currentValues is null
+                        ? null
+                        : sheet.Rows.FirstOrDefault(candidate =>
+                            !candidate.IsDeleted && candidate.Cells.Select(cell => cell.Text).SequenceEqual(currentValues));
+
+                    BoardTableRow row = same ?? sheet.Rows[Math.Min(rowIndex, sheet.Rows.Count - 1)];
+
+                    // New objects, so nothing keeps it shown yet - and the pill may no longer show it.
+                    this.KeepInHand(row);
+                    this.SelectCell(row, Math.Clamp(column, 0, sheet.Columns.Count - 1));
+                }
             }
         }
 

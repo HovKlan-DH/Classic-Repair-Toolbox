@@ -361,6 +361,121 @@ public sealed class ComponentRevertTests
             ComponentRevert.ReplacedFiles(draft, published, "U08", Files(("Component images/U8-Top.png", 'a')), Files(("Component images/U8-Top.png", 'b'))));
     }
 
+    // ###########################################################################################
+    // *** A FILE ANOTHER COMPONENT CITES TOO IS NOT THIS ONE'S TO TAKE BACK (code review, 2026-11-02). ***
+    // "Undo changes to [U8]" named it, and the draft's list put the published bytes back and deleted the
+    // draft's - under U9 as well, which the row's Undo does not bring back. So no such file is named, and
+    // alone it is no change of U8. The same for a file the board itself lists, and a schematic's picture.
+    // ###########################################################################################
+    [Fact]
+    public void A_replaced_file_another_component_still_cites_is_not_named()
+    {
+        BoardData published = Board(Component("U8"), Component("U9"));
+        published.ComponentLocalFiles.AddRange([
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Datasheets/4164.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Own", File = "Datasheets/u8.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U9", Name = "Datasheet", File = "Datasheets/4164.pdf" }]);
+
+        BoardData draft = Board(Component("U8"), Component("U9"));
+        draft.ComponentLocalFiles.AddRange(published.ComponentLocalFiles);
+
+        var publishedFiles = Files(("Datasheets/4164.pdf", 'a'), ("Datasheets/u8.pdf", 'a'));
+        var draftFiles = Files(("Datasheets/4164.pdf", 'b'), ("Datasheets/u8.pdf", 'b'));
+
+        Assert.Equal(["Datasheets/u8.pdf"], ComponentRevert.ReplacedFiles(draft, published, "U8", publishedFiles, draftFiles));
+        Assert.Empty(ComponentRevert.ReplacedFiles(draft, published, "U9", publishedFiles, draftFiles));
+
+        // Alone it is no change of either.
+        Assert.False(ComponentRevert.HasChanges(draft, published, "U9", publishedFiles, draftFiles));
+
+        // Only U8 citing it in the draft: U8's again - U9's row went, so nothing else needs those bytes.
+        BoardData alone = Board(Component("U8"), Component("U9"));
+        alone.ComponentLocalFiles.AddRange(published.ComponentLocalFiles.Where(row => row.BoardLabel == "U8"));
+
+        Assert.Equal(
+            ["Datasheets/4164.pdf", "Datasheets/u8.pdf"],
+            ComponentRevert.ReplacedFiles(alone, published, "U8", publishedFiles, draftFiles));
+    }
+
+    [Fact]
+    public void A_replaced_file_the_board_itself_cites_is_not_named()
+    {
+        BoardData published = Board(Component("U8"));
+        published.ComponentImages.AddRange([Picture("U8", "Listed"), Picture("U8", "Sheet"), Picture("U8", "Own")]);
+
+        BoardData draft = Board(Component("U8"));
+        draft.ComponentImages.AddRange(published.ComponentImages);
+        draft.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Manuals", Name = "Shared", File = "Component images/U8-Listed.png" });
+        draft.Schematics.Add(new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Component images/U8-Sheet.png" });
+
+        Assert.Equal(
+            ["Component images/U8-Own.png"],
+            ComponentRevert.ReplacedFiles(
+                draft,
+                published,
+                "U8",
+                Files(("Component images/U8-Listed.png", 'a'), ("Component images/U8-Sheet.png", 'a'), ("Component images/U8-Own.png", 'a')),
+                Files(("Component images/U8-Listed.png", 'b'), ("Component images/U8-Sheet.png", 'b'), ("Component images/U8-Own.png", 'b'))));
+    }
+
+    // ------------------------------------------------------------------ Several rectangles of one component
+
+    // ###########################################################################################
+    // *** THE SECOND RECTANGLE OF A COMPONENT IS A CHANGE OF IT (code review, 2026-11-02). *** Compared on
+    // schematic + label, first wins, it was none: no "Draft", no "Undo changes to" - and that undo, asked
+    // anyway, put nothing back. Now every rectangle goes back, whichever moved, and their order alone is
+    // no change of the component.
+    // ###########################################################################################
+    private static BoardData WithMarks(params ComponentHighlightEntry[] marks)
+    {
+        BoardData board = Board(Component("U8"), Component("U9"));
+        board.ComponentHighlights.AddRange(marks);
+        return board;
+    }
+
+    private static string[] Xs(BoardData board) => board.ComponentHighlights.Select(mark => $"{mark.BoardLabel}:{mark.X}").ToArray();
+
+    [Fact]
+    public void A_second_rectangle_moved_is_a_change_and_every_rectangle_goes_back()
+    {
+        BoardData published = WithMarks(Mark("U8", "1"), Mark("U9", "5"), Mark("U8", "10"));
+        BoardData draft = WithMarks(Mark("U8", "1"), Mark("U9", "5"), Mark("U8", "99"));
+
+        Assert.True(ComponentRevert.HasChanges(draft, published, "U8"));
+        Assert.False(ComponentRevert.HasChanges(draft, published, "U9"));
+
+        BoardData? reverted = ComponentRevert.RowsToPublished(draft, published, "U8");
+
+        Assert.NotNull(reverted);
+        Assert.Equal(["U8:1", "U9:5", "U8:10"], Xs(reverted));
+        Assert.False(ComponentRevert.HasChanges(reverted, published, "U8"));
+        Assert.Null(ComponentRevert.RowsToPublished(reverted, published, "U8"));
+    }
+
+    [Fact]
+    public void A_third_rectangle_added_goes_and_a_second_deleted_comes_back()
+    {
+        BoardData published = WithMarks(Mark("U8", "1"), Mark("U8", "10"), Mark("U9", "5"));
+
+        BoardData added = WithMarks(Mark("U8", "1"), Mark("U8", "10"), Mark("U8", "20"), Mark("U9", "5"));
+        Assert.True(ComponentRevert.HasChanges(added, published, "U8"));
+        Assert.Equal(["U8:1", "U8:10", "U9:5"], Xs(ComponentRevert.RowsToPublished(added, published, "U8")!));
+
+        BoardData deleted = WithMarks(Mark("U8", "1"), Mark("U9", "5"));
+        Assert.True(ComponentRevert.HasChanges(deleted, published, "U8"));
+        Assert.Equal(["U8:1", "U8:10", "U9:5"], Xs(ComponentRevert.RowsToPublished(deleted, published, "U8")!));
+    }
+
+    [Fact]
+    public void Rectangles_only_in_another_order_are_no_change_of_the_component()
+    {
+        BoardData published = WithMarks(Mark("U8", "1"), Mark("U8", "10"));
+        BoardData draft = WithMarks(Mark("U8", "10"), Mark("U8", "1"));
+
+        Assert.False(ComponentRevert.HasChanges(draft, published, "U8"));
+        Assert.Null(ComponentRevert.RowsToPublished(draft, published, "U8"));
+    }
+
     // Rows to put back: the reverted board, or null when the rows already read as published.
     [Fact]
     public void Rows_to_put_back_are_none_when_the_rows_are_as_published()

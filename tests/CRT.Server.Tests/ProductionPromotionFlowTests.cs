@@ -687,6 +687,44 @@ namespace CRT.Server.Tests
             Assert.False(this.ProductionStillListsTheOldManual());
         }
 
+        // ###########################################################################################
+        // *** A FILE REPLACED UNDER ITS OWN NAME IS NO UNUSED FILE (code review, 2026-11-02). *** Its earlier
+        // bytes go - that IS the replacing - but the board still lists the name. The answer named it, and
+        // the audit line the board's History shows counted it, as "unused file(s) removed": what an
+        // approval (ApprovePublishFlow) stopped saying the same day.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_file_replaced_under_its_own_name_is_no_unused_file_in_the_answer_or_the_History()
+        {
+            // BETA's sheet is another picture under the name the older stable board has it by.
+            FakeSubmissionStore store = await this.PublishToBetaAsync(marker: "SHEET2");
+            this.ProductionHasTheOlderBoard();
+            var accounts = new FakeAccountStore();
+
+            PromotionPlanOutcome plan = await this.Flow(store, accounts).PlanAsync(
+                ProductionPromotionFlowTests.Admin(), ProductionPromotionFlowTests.BoardId, this.Options());
+
+            Assert.Equal(2, plan.Removals.Files.Count);
+
+            PromotionOutcome outcome = await this.Flow(store, accounts).PromoteAsync(
+                ProductionPromotionFlowTests.Admin(),
+                ProductionPromotionFlowTests.BoardId,
+                ProductionPromotionFlowTests.BetaHashOf(store),
+                this.Options(),
+                ProductionPromotionFlowTests.Now,
+                plan.Removals.Files,
+                CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+            Assert.Equal([ProductionPromotionFlowTests.OldManualName], outcome.RemovedFiles);
+
+            AuditEntry entry = Assert.Single(accounts.Audit, entry => entry.Action == ProductionPromotionFlow.PublishedAction);
+            Assert.EndsWith("1 unused file(s) removed", entry.Detail);
+
+            // Both went from the tree all the same.
+            Assert.All(plan.Removals.Files, stored => Assert.False(File.Exists(this.InProduction(stored))));
+        }
+
         // Nothing is copied and nothing removed when the list the maintainer saw is not the list the
         // promotion would now remove. An EMPTY list is a list: the maintainer was shown nothing.
         [Fact]

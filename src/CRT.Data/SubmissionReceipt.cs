@@ -224,6 +224,22 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public string DraftFingerprint { get; init; } = string.Empty;
 
+        // ###########################################################################################
+        // When this machine sent the FINALISE request - null until it has (code review, 2026-11-02).
+        // From then on the server may queue the submission, answer or no answer, so a receipt with no
+        // state yet may be with a maintainer (SubmissionReceiptPresenter.NeverReachedReview). Absent on
+        // a receipt written before this existed.
+        // ###########################################################################################
+        public DateTimeOffset? FinaliseSentUtc { get; init; }
+
+        // ###########################################################################################
+        // Why the server refused this submission (code review, 2026-11-02) - kept, as a refused
+        // submission is never asked about again: once the Submit dialog had closed, "My submissions"
+        // said "Not accepted" with no reason, and Submit stayed grey as already sent. Filled only in the
+        // state "rejected". None on a receipt written before this existed.
+        // ###########################################################################################
+        public IReadOnlyList<ValidationFinding> Findings { get; init; } = [];
+
         // Never the generated ToString, which would print UploadToken - a secret - into any log line
         // that formats a receipt.
         public override string ToString() => $"Submission #{this.SubmissionId} ({this.BoardId})";
@@ -378,6 +394,10 @@ namespace Handlers.DataHandling
         // the older one on the server (only one still pending and never amended is withdrawn), so the
         // old row kept saying "Changes requested" in orange for good, beside the new one. With a
         // newer submission from this machine, such a row says so and is no longer orange.
+        //
+        // *** A SEND THAT NEVER REACHED ANYBODY ANSWERS NOTHING (code review, 2026-11-02). *** A re-send
+        // that failed offline turned the row neutral: "you sent a newer one on ...", with the request
+        // standing and nothing having reached the maintainer (NeverReachedReview).
         // ###########################################################################################
         public static SubmissionReceipt? NewerForBoard(SubmissionReceipt receipt, IEnumerable<SubmissionReceipt>? all)
         {
@@ -387,7 +407,8 @@ namespace Handlers.DataHandling
                 .Where(other => other is not null &&
                                 other.SubmissionId != receipt.SubmissionId &&
                                 string.Equals(other.BoardId, receipt.BoardId, StringComparison.OrdinalIgnoreCase) &&
-                                other.SentUtc > receipt.SentUtc)
+                                other.SentUtc > receipt.SentUtc &&
+                                !SubmissionReceiptPresenter.NeverReachedReview(other))
                 .OrderByDescending(other => other.SentUtc)
                 .FirstOrDefault();
         }
@@ -825,6 +846,59 @@ namespace Handlers.DataHandling
 
         private static bool NeverFinishedSending(string? state) =>
             (state ?? string.Empty).Trim().ToLowerInvariant() is "" or "uploading" or "abandoned";
+
+        // ###########################################################################################
+        // *** WHETHER NO MAINTAINER CAN HAVE THIS SUBMISSION (code review, 2026-11-02). *** Its send never
+        // finished, and CRT never resumes an old upload, so nothing of it goes on - what "Board: Name" and
+        // NewerForBoard ask. None of these is "a decision against it"; nobody decided anything.
+        //
+        // No state yet and "uploading" are no proof when the FINALISE request went: the server may have
+        // queued it and mailed the maintainers whatever became of the answer (UnfinishedSubmission). So
+        // while nothing has been heard since that request, it may be with them - "uploading" from a check
+        // made before the request says nothing about it, and the next check settles it either way.
+        // "abandoned" is the server's last word, however the send ended.
+        // ###########################################################################################
+        public static bool NeverReachedReview(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            if (!SubmissionReceiptPresenter.NeverFinishedSending(receipt.LastKnownState))
+                return false;
+
+            if (string.Equals(receipt.LastKnownState?.Trim(), "abandoned", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return receipt.FinaliseSentUtc is not DateTimeOffset went || receipt.LastCheckedUtc > went;
+        }
+
+        // Whether the server refused this submission - the one state its reasons are kept for.
+        public static bool IsRefused(string? state) =>
+            string.Equals(state?.Trim(), "rejected", StringComparison.OrdinalIgnoreCase);
+
+        // ###########################################################################################
+        // What of the server's findings says why it refused a submission: its ERRORS (code review,
+        // 2026-11-02). The server says "rejected" of a refusal at finalise and of a maintainer's Reject
+        // alike, and answers every finding it kept - and a queued submission holds warnings at most, which
+        // read as the reason under the maintainer's own comment. A warning stops nothing.
+        // ###########################################################################################
+        public static IReadOnlyList<ValidationFinding> ReasonsRefused(IEnumerable<ValidationFinding>? findings) =>
+            (findings ?? []).Where(finding => finding.Severity == ValidationSeverity.Error).ToList();
+
+        // ###########################################################################################
+        // Why the server refused it, line by line (code review, 2026-11-02), each naming its subject. None
+        // for any other state, or a receipt from before they were kept.
+        // ###########################################################################################
+        public static IReadOnlyList<string> DescribeFindings(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            if (!SubmissionReceiptPresenter.IsRefused(receipt.LastKnownState))
+                return [];
+
+            return SubmissionReceiptPresenter.ReasonsRefused(receipt.Findings)
+                .Select(finding => string.IsNullOrWhiteSpace(finding.Subject) ? finding.Message : $"{finding.Subject}: {finding.Message}")
+                .ToList();
+        }
 
         // The greyed-out Submit button's tooltip (case 1).
         public static string DescribeAlreadySent(SubmissionReceipt receipt)

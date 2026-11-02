@@ -26,9 +26,10 @@ namespace Handlers.MaintainerHandling
         public const string ListHeading = "Delete a board";
 
         public const string Explanation =
-            "Deleting a board removes it from everywhere: its folder in the BETA and the stable data, its row in both " +
-            "drop-down lists, its record in the database with every submission, maintainer and invitation of it, and " +
-            "its view statistics. Shared files it uses are kept. Pressing Delete first shows exactly what would go.";
+            "Deleting a board removes it from everywhere: its folder in the BETA and the stable data, the files only this " +
+            "board lists, its row in both drop-down lists, its record in the database with every submission, maintainer and " +
+            "invitation of it, and its view statistics. Files another board also lists are kept. Pressing \"Delete\" first " +
+            "shows exactly what would go.";
 
         public const string NoBoards = "There are no boards.";
 
@@ -40,8 +41,14 @@ namespace Handlers.MaintainerHandling
 
         public const string CannotBeUndone = "This cannot be undone.";
 
-        public const string SharedFilesKept =
-            "Shared files the board uses are kept. Any that nothing else uses are then listed under \"Unused files\".";
+        // ###########################################################################################
+        // *** WHAT HAPPENS TO THE FILES, AS THE DELETE DOES IT (code review, 2026-11-02). *** The
+        // administrator is confirming something that cannot be undone: in the CRT 4.0 tree the stored
+        // files only this board lists go in the same delete (the server's BoardDeletionFiles) - no
+        // "Unused files" list to look at them under afterwards. The counts in WhatGoes hold them.
+        // ###########################################################################################
+        public const string WhichFilesGo =
+            "The files only this board lists are deleted with it, and are counted above. Files another board also lists stay, for that board.";
 
         public const string ReasonPrompt = "Why? Each contributor above is told this, and nothing else.";
 

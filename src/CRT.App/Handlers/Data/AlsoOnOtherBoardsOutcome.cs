@@ -13,7 +13,8 @@ namespace Handlers.DataHandling
     //   - WHAT WAS NOT CHANGED IS SAID: the board as a whole when nothing on it changed, for one reason
     //     ("Not changed on B - its draft could not be saved"); else each component not changed, by its
     //     label ("[U7] not changed on B - ...") - a part not changed never hides behind a file that went
-    //     in, nor one 4164 behind another.
+    //     in, nor one 4164 behind another. Why is ComponentPaneWording's: its draft could not be saved, it
+    //     is like that there already, or that board's draft no longer has the component.
     //   - EACH FILE NOT PUT ON A BOARD it was ticked for is said by the file.
     // ###########################################################################################
     internal sealed class AlsoOnOtherBoardsOutcome

@@ -91,7 +91,13 @@ namespace Handlers.MaintainerHandling
 
             int added = plan.Files.Count(file => file.Change == PromotionChange.Added);
             int replaced = plan.Files.Count(file => file.Change == PromotionChange.Replaced);
-            int removed = plan.Removals?.Files.Count ?? 0;
+
+            // ###########################################################################################
+            // *** THE SAME COUNT AS THE LINE BELOW IT (code review, 2026-11-02). *** Every removal was
+            // counted here, so a datasheet replaced read "1 file to replace, 1 file to remove" right
+            // above "No files are removed from the stable data." - its earlier bytes ARE the replacing.
+            // ###########################################################################################
+            int removed = FileRemovalWording.Unused(plan.Removals, ProductionDisplay.NamesKept(plan)).Count;
 
             string unchanged = plan.UnchangedCount.ToString("N0", CultureInfo.InvariantCulture);
 
@@ -104,6 +110,53 @@ namespace Handlers.MaintainerHandling
 
             return $"{ProductionDisplay.Count(added, "file", "to add")}, " +
                 $"{ProductionDisplay.Count(replaced, "file", "to replace")}{removing}, {unchanged} already the same";
+        }
+
+        // ###########################################################################################
+        // *** WHICH PLAN THE MAINTAINER'S ASKING READS AGAIN (code review, 2026-11-02). *** The board's
+        // row says when BETA moved, but not when a plan that failed (the service restarting), a refusal
+        // ("Place it in the Boards screen first") or a publish refused (409 "Refresh, check the list")
+        // could now go better - with the row unchanged nothing read those again, and with one board
+        // listed it took a restart of CRT. So the screen's own button and coming back to the tab read
+        // these. NEVER one that can be published: the "I have checked this" tick would go with it (the
+        // header of TabMaintainer.Beta.cs). Nor the administrators-only refusal: it is every maintainer's
+        // on every board, and no reading changes it.
+        // ###########################################################################################
+        public static bool PlanIsWorthReadingAgain(ProductionPlanView? plan, bool publishRefused)
+        {
+            if (plan is null || publishRefused)
+                return true;
+
+            return !string.IsNullOrWhiteSpace(plan.Refusal) &&
+                !string.Equals(plan.Refusal, StablePublishing.AdministratorsOnlyMessage, StringComparison.Ordinal);
+        }
+
+        // The sentence after a publish to the stable source. The earlier bytes of a file it replaced
+        // are no unused file (FileRemovalWording.Unused; code review, 2026-11-02).
+        public static string PublishedToStable(ProductionPlanView plan, ProductionPublishResult result)
+        {
+            ArgumentNullException.ThrowIfNull(plan);
+            ArgumentNullException.ThrowIfNull(result);
+
+            return $"{ReviewQueueDisplay.BoardHeading(plan.BoardId)} is published to the stable source ({result.FilesCopied} file(s) copied)." +
+                FileRemovalWording.Done(result.RemovedFiles, ProductionDisplay.NamesKept(plan)) +
+                " Everyone gets it the next time their data updates.";
+        }
+
+        // ###########################################################################################
+        // What the stable source lists after this publish, by the board's names: what is copied and
+        // what is already the same - a removal under one of those names is the earlier version of a
+        // replaced file (FileRemovalWording.Unused).
+        // ###########################################################################################
+        public static IReadOnlyList<string> NamesKept(ProductionPlanView plan)
+        {
+            ArgumentNullException.ThrowIfNull(plan);
+
+            return
+            [
+                .. plan.Files.Select(file => file.Name ?? file.Path),
+                .. (plan.UnchangedFiles ?? []).Select(path => plan.FileNames is not null && plan.FileNames.TryGetValue(path, out string? name) ? name : path)
+            ];
         }
 
         // ###########################################################################################

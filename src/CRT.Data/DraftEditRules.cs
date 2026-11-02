@@ -82,6 +82,18 @@ namespace Handlers.DataHandling
             HashSet<string> has = DraftEditRules.NamesOf(after);
             List<KiCadCalibrationEntry> filed = calibrations.ToList();
 
+            // ###########################################################################################
+            // *** A NAME EMPTIED IS STILL THE PICTURE (code review, 2026-11-02). *** Emptied and
+            // committed, a picture's calibration follows it to the blank name, as its highlights do.
+            // Typed again as a second edit - or with an edit of something else in between - the blank
+            // name was not one the board "had", so the calibration counted as a stray and went without
+            // a word, while the highlights came along. A blank name counts while a picture has it.
+            // ###########################################################################################
+            if (before.Schematics.Any(entry => string.IsNullOrWhiteSpace(entry.SchematicName)))
+            {
+                had.Add(string.Empty);
+            }
+
             List<KiCadCalibrationEntry> kept = SchematicRename.FollowCalibrations(
                 filed.Where(entry => had.Contains(entry.SchematicName)).OrderBy(entry => entry.SchematicName, StringComparer.OrdinalIgnoreCase),
                 follow);

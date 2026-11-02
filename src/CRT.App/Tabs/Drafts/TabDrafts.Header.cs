@@ -167,8 +167,10 @@ namespace CRT
 
             var window = this.ReviewWindowFactoryForTests?.Invoke() ?? new ReviewChangesWindow();
 
-            // A new board has nothing published to go back to (owner request, 2026-11-02), so no undo.
-            window.Initialize(entry.ToString(), summary, TabDrafts.IsDraftOnly(entry) ? null : label => this.UndoComponentChangesAsync(entry, label));
+            // A new board has nothing published to go back to (owner request, 2026-11-02), so no undo -
+            // and its window says so (code review, 2026-11-02).
+            bool isNewBoard = TabDrafts.IsDraftOnly(entry);
+            window.Initialize(entry.ToString(), summary, isNewBoard ? null : label => this.UndoComponentChangesAsync(entry, label), isNewBoard);
 
             await window.ShowDialog(ownerWindow);
         }

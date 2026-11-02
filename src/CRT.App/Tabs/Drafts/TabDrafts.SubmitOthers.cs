@@ -29,6 +29,14 @@ namespace CRT
         // saved into its file, nothing sent that holds nothing or was just sent as it is, the board
         // read as a submit reads it, its errors counted - and the credit typed in the dialog put into
         // it for its own work (CreditSuggestions), as this board's ticked credits are. Or why not.
+        //
+        // *** A DRAFT THAT WOULD BE REFUSED IS LEFT AS IT WAS (code review, 2026-11-02). *** A new board
+        // goes with its credits' rows, as its own Submit does (TabDrafts.NewBoardCredits.cs) - but nobody
+        // named is an error on purpose, and no table can open from inside the dialog. So they were put
+        // in, counted, and the draft reported as not sent: changed, with an Undo step and a marker write,
+        // by a dialog about another board. The errors are now counted on the board as an offer WOULD
+        // leave it, and the offer made only for a draft that goes. The name typed does not fill the rows:
+        // who did each part is the contributor's to say, row by row, or to delete.
         // ###########################################################################################
         internal async Task<OtherDraftReady> PrepareOtherDraftAsync(HardwareBoardEntry entry, string creditName, string creditContact)
         {
@@ -39,14 +47,9 @@ namespace CRT
                 return OtherDraftReady.NotSent(SubmitDraftsWording.DraftGone);
             }
 
-            // A new board goes with its credits' rows, as its own Submit does (TabDrafts.NewBoardCredits.cs).
-            this.OfferNewBoardCredits(entry);
-
             // No table or pane is open on another board, so only the draft held in memory can hold
             // a change its file lacks - and a submit sends the file.
-            DraftSession? session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile);
-
-            if (session is { HasUnsavedChanges: true } && await session.SaveAsync() != DraftWorkbookEditOutcome.Saved)
+            if (!await TabDrafts.SaveHeldDraftAsync(entry))
             {
                 return OtherDraftReady.NotSent(SubmitDraftsWording.NotSaved);
             }
@@ -73,11 +76,36 @@ namespace CRT
                 return OtherDraftReady.NotSent(SubmitDraftsWording.NotRead);
             }
 
-            int errors = await Task.Run(() => TabDrafts.CountErrors(entry, board));
+            (int errors, bool offerChangesBoard) = await Task.Run(() =>
+            {
+                BoardData offered = TabDrafts.WithNewBoardCreditsOffered(entry, board);
+
+                return (TabDrafts.CountErrors(entry, offered), !ReferenceEquals(offered, board));
+            });
 
             if (errors > 0)
             {
                 return OtherDraftReady.NotSent(SubmitDraftsWording.ErrorsFirst(errors));
+            }
+
+            this.OfferNewBoardCredits(entry);
+
+            // A row nobody named that followed the board away: what goes, and what the receipt
+            // remembers, are the draft as it now is.
+            if (offerChangesBoard)
+            {
+                if (!await TabDrafts.SaveHeldDraftAsync(entry))
+                {
+                    return OtherDraftReady.NotSent(SubmitDraftsWording.NotSaved);
+                }
+
+                if (await TabDrafts.BoardToSendAsync(status) is not { } boardOffered)
+                {
+                    return OtherDraftReady.NotSent(SubmitDraftsWording.NotRead);
+                }
+
+                board = boardOffered;
+                fingerprint = TabDrafts.FingerprintOf(entry, status);
             }
 
             List<CreditEntry> credits = CreditSuggestions.ToAdd(
@@ -105,5 +133,10 @@ namespace CRT
                 fingerprint,
                 Credited: credits.Count > 0));
         }
+
+        // What the draft held in memory has that its file lacks saved - false when that could not be done.
+        private static async Task<bool> SaveHeldDraftAsync(HardwareBoardEntry entry) =>
+            DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile) is not { HasUnsavedChanges: true } session ||
+            await session.SaveAsync() == DraftWorkbookEditOutcome.Saved;
     }
 }

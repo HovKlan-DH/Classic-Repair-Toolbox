@@ -101,7 +101,7 @@ namespace Handlers.MaintainerHandling
             return bytes;
         }
 
-        // Saved into a folder of its own under the temp folder and handed to the operating system,
+        // Saved into a folder of its own (OpenedFiles.Root) and handed to the operating system,
         // as the submission's table does (OpenedFiles).
         public async Task<string?> OpenAsync(string path, CRT.BoardTableFileSide side)
         {

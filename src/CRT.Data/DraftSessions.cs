@@ -22,14 +22,27 @@ namespace Handlers.DataHandling
         private readonly Dictionary<string, DraftSession> thisOpen = new(StringComparer.OrdinalIgnoreCase);
         private readonly Func<DateTimeOffset>? thisClock;
 
+        // How many Close calls there have been - what a read asks to know whether one came while it ran.
+        private long thisCloses;
+
         public DraftSessions(Func<DateTimeOffset>? clock = null)
         {
             this.thisClock = clock;
         }
 
+        // Runs once a draft has been read, before its session is taken in - what a test does meanwhile.
+        internal Action? AfterReadForTests { get; set; }
+
         // ###########################################################################################
         // The session of the draft of `excelDataFile` - the one already open, or a new one read from
         // its board file. Null when there is no such draft.
+        //
+        // *** THE BOARD FILE IS READ OUTSIDE THE LOCK (code review, 2026-11-02). *** Holding it for the
+        // parse, the first open of a large draft froze the window even off the UI thread: the save timer
+        // (Due) and every refresh (Find) wait for this lock on the UI thread. Reading changes nothing, so
+        // two asking at once may both read, and the first to arrive is the one session. A Close meanwhile
+        // read it for a draft that may have gone, so it is read again: taken in, it would be answered for
+        // good, and its next save would write the folder back.
         // ###########################################################################################
         public DraftSession? Get(string draftsRoot, string excelDataFile)
         {
@@ -40,21 +53,43 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            lock (this.thisGate)
+            while (true)
             {
-                if (this.thisOpen.TryGetValue(key, out DraftSession? open))
+                long closes;
+
+                lock (this.thisGate)
                 {
-                    return open;
+                    if (this.thisOpen.TryGetValue(key, out DraftSession? open))
+                    {
+                        return open;
+                    }
+
+                    closes = this.thisCloses;
                 }
 
                 DraftSession? session = DraftSession.Open(draftsRoot, excelDataFile, this.thisClock);
 
-                if (session is not null)
-                {
-                    this.thisOpen[key] = session;
-                }
+                this.AfterReadForTests?.Invoke();
 
-                return session;
+                lock (this.thisGate)
+                {
+                    if (this.thisOpen.TryGetValue(key, out DraftSession? open))
+                    {
+                        return open;
+                    }
+
+                    if (closes != this.thisCloses)
+                    {
+                        continue;
+                    }
+
+                    if (session is not null)
+                    {
+                        this.thisOpen[key] = session;
+                    }
+
+                    return session;
+                }
             }
         }
 
@@ -91,7 +126,10 @@ namespace Handlers.DataHandling
             string key = DraftSessions.KeyOf(draftsRoot, excelDataFile);
 
             lock (this.thisGate)
+            {
                 this.thisOpen.Remove(key);
+                this.thisCloses++;
+            }
         }
 
         private static string KeyOf(string draftsRoot, string excelDataFile)

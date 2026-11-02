@@ -189,6 +189,108 @@ public sealed class BoardDetailViewBetaCatchUpTests
         });
     }
 
+    // A read held open until the test says so: the answer on its way while something is typed.
+    private static TaskCompletionSource<ReviewApiResult<BoardTableAnswer>> HoldTheRead(BoardDetailView view)
+    {
+        var answer = new TaskCompletionSource<ReviewApiResult<BoardTableAnswer>>();
+        view.ReadTableOverrideForTests = _ => answer.Task;
+        return answer;
+    }
+
+    // ###########################################################################################
+    // *** A CHANGE MADE WHILE THE ANSWER IS ON ITS WAY IS NOT THROWN AWAY (code review, 2026-11-02). ***
+    // Whether the table held a change was asked only BEFORE the request; after it only the board was.
+    // So a cell typed in that second or so was discarded when the answer rebuilt the table. The answer
+    // is dropped - the table is still behind, so the next check says the change can no longer go.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_change_made_while_a_quiet_read_is_in_flight_stays_and_the_answer_is_dropped()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (BoardDetailView view, _) = WithTable(Board("aaa"), Before(), After());
+            TaskCompletionSource<ReviewApiResult<BoardTableAnswer>> answer = HoldTheRead(view);
+            int builds = view.TableBuildsForTests;
+
+            Task read = ReadAgain(view, Board("bbb"));
+
+            BoardTableSheet components = view.BoardTableForTests.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+            components.Rows.Single().Cells[BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName)].Text = "Mine";
+
+            answer.SetResult(ReviewApiResult<BoardTableAnswer>.Ok(Table(After())));
+            await read;
+
+            Assert.True(view.HasUnsavedTableEdits);
+            Assert.Equal(builds, view.TableBuildsForTests);
+
+            // Still behind: the next look says so, rather than reading it as if nothing had moved.
+            view.ReadTableOverrideForTests = _ => throw new InvalidOperationException("A table holding a change is never read again.");
+            await ReadAgain(view, Board("bbb"));
+
+            Assert.Equal(BoardSections.BetaMovedUnderChange, Status(view));
+        });
+    }
+
+    // A cell still in its editor is under the maintainer's hands too: not a change yet, and the same rule.
+    [Fact]
+    public async Task A_cell_opened_while_a_quiet_read_is_in_flight_stays_open_with_what_was_typed()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (BoardDetailView view, _) = WithTable(Board("aaa"), Before(), After());
+
+            var window = new Window { Content = view, Width = 1400, Height = 900 };
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            BoardTableEditor editor = view.BoardTableForTests;
+            DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+            BoardTableSheet components = editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+
+            editor.SelectSheet(components);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            TaskCompletionSource<ReviewApiResult<BoardTableAnswer>> answer = HoldTheRead(view);
+            int builds = view.TableBuildsForTests;
+
+            Task read = ReadAgain(view, Board("bbb"));
+
+            editor.SelectCell(components.Rows.Single(), BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName));
+            grid.Focus();
+            Assert.True(grid.BeginEdit());
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            answer.SetResult(ReviewApiResult<BoardTableAnswer>.Ok(Table(After())));
+            await read;
+
+            Assert.True(editor.IsEditingCell);
+            Assert.Equal(builds, view.TableBuildsForTests);
+
+            window.Close();
+        });
+    }
+
+    // A board that has left BETA meanwhile closes the table - never over a change made in the meantime.
+    [Fact]
+    public async Task A_change_made_while_a_read_is_in_flight_stays_when_the_answer_says_BETA_no_longer_holds_the_board()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (BoardDetailView view, _) = WithTable(Board("aaa"), Before(), After());
+            TaskCompletionSource<ReviewApiResult<BoardTableAnswer>> answer = HoldTheRead(view);
+
+            Task read = ReadAgain(view, Board("bbb"));
+
+            BoardTableSheet components = view.BoardTableForTests.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+            components.Rows.Single().Cells[BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName)].Text = "Mine";
+
+            answer.SetResult(ReviewApiResult<BoardTableAnswer>.Failed(ReviewApiFailure.NotFound, "Not in BETA."));
+            await read;
+
+            Assert.True(view.HasUnsavedTableEdits);
+        });
+    }
+
     // ###########################################################################################
     // A table read just after a publish of its own (thisTableReadAt null) takes the next reading as
     // the state it was read at - reading it again would only replace the line saying what the publish

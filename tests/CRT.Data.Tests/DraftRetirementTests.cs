@@ -179,6 +179,50 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
     }
 
+    // ###########################################################################################
+    // *** THE SECOND RECTANGLE OF A COMPONENT IS WORK (code review, 2026-11-02). *** Compared on schematic
+    // + label, first wins, a draft that moved it read as identical to the published board and was deleted
+    // here, the rectangle with it. Their order alone is no work, and that draft goes.
+    // ###########################################################################################
+    private static BoardData BoardMarked(params string[] xs)
+    {
+        BoardData board = DraftRetirementTests.BoardWith("CPU");
+        board.Schematics.Add(new BoardSchematicEntry { SchematicName = "Sheet 1" });
+        board.ComponentHighlights.AddRange(xs.Select(x =>
+            new ComponentHighlightEntry { SchematicName = "Sheet 1", BoardLabel = "U8", X = x, Y = "2", Width = "3", Height = "4" }));
+        return board;
+    }
+
+    [Fact]
+    public void A_draft_that_moved_a_second_rectangle_is_NOT_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardMarked("1", "10"));
+        this.WriteDraft(DraftRetirementTests.BoardMarked("1", "20"));
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    [Fact]
+    public void A_draft_that_added_a_third_rectangle_or_deleted_a_second_is_NOT_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardMarked("1", "10"));
+
+        this.WriteDraft(DraftRetirementTests.BoardMarked("1", "10", "20"));
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+
+        this.WriteDraft(DraftRetirementTests.BoardMarked("1"));
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    [Fact]
+    public void A_draft_holding_the_same_rectangles_in_another_order_is_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardMarked("1", "10"));
+        this.WriteDraft(DraftRetirementTests.BoardMarked("10", "1"));
+
+        Assert.True(DraftRetirement.IsRetirable(this.Status()));
+    }
+
     [Fact]
     public void A_draft_with_an_EXTRA_row_is_NOT_retirable()
     {
@@ -366,6 +410,52 @@ public sealed class DraftRetirementTests : IDisposable
         this.ListInDraft(StoredFiles.Put(this.DraftFolder, "Component images/7408.jpg", "new"));
 
         Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // ###########################################################################################
+    // *** BYTES THE TREE'S STORE HOLDS ARE NOT THIS BOARD'S FILE (code review, 2026-11-02). *** The
+    // store is shared by every board, so "the tree has these bytes" says nothing of this board: a KiCad
+    // file imported after the last submission, or a file replaced under its name, with bytes ANOTHER
+    // board lists had its rows and bytes all "match", and the draft was deleted though its list was not
+    // this board's. Each file the draft lists must be the published board's, name and checksum.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_imported_with_bytes_only_another_board_lists_is_NOT_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        StoredFiles.Put(this.DataRoot, "KiCad data/other board.kicad_pcb", "traces");
+        this.ListInDraft(StoredFiles.Put(this.DraftFolder, "KiCad data/board.kicad_pcb", "traces"));
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    [Fact]
+    public void A_file_replaced_under_its_name_with_bytes_another_board_lists_is_NOT_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.Publish("Images/Sheet1.png", "the published scan");
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        StoredFiles.Put(this.DataRoot, "Images/Other board.png", "a corrected scan");
+        this.ListInDraft(StoredFiles.Put(this.DraftFolder, "Images/Sheet1.png", "a corrected scan"));
+
+        Assert.False(DraftRetirement.IsRetirable(this.Status()));
+    }
+
+    // The anti-vacuity partner: the same name and bytes as published, its checksum in other capitals.
+    [Fact]
+    public void A_file_the_draft_lists_as_the_published_board_does_is_retirable()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.Publish("Images/Sheet1.png", "the published scan");
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+
+        BoardDocument.StoredFileRow listed = StoredFiles.EntryFor("Images/Sheet1.png", "the published scan");
+        this.ListInDraft(new BoardDocument.StoredFileRow { Name = listed.Name, Sha256 = listed.Sha256.ToUpperInvariant(), Size = listed.Size });
+
+        Assert.True(DraftRetirement.IsRetirable(this.Status()));
     }
 
     // ###########################################################################################
@@ -648,6 +738,20 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.Equal(DraftRetirementTests.NewDraftKey, found.ExcelDataFile);
     }
 
+    // Made before it was sent, as every new board's draft is: the time the marker keeps never holds it
+    // back (code review, 2026-11-02).
+    [Fact]
+    public void A_NEW_boards_draft_sent_after_it_was_made_is_retired_as_ever()
+    {
+        this.WriteNewBoard(DraftRetirementTests.BoardWith("CPU"), published: DraftRetirementTests.BoardWith("CPU"));
+
+        Assert.Single(DraftRetirement.FindRetirableDrafts(
+            [DraftRetirementTests.Receipt(1, "Retro/Home Computer/Rev A", "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) }],
+            this.DataRoot,
+            this.DraftsRoot,
+            [DraftRetirementTests.NewPublishedKey]));
+    }
+
     // Changed after it was sent, or changed by a maintainer before publishing: the draft still holds
     // something the published board does not say.
     [Fact]
@@ -889,6 +993,179 @@ public sealed class DraftRetirementTests : IDisposable
         Assert.True(DraftRetirement.ComparisonsForTests > compared);
     }
 
+    // ###########################################################################################
+    // *** A DRAFT MADE AFTER THE DECIDING SUBMISSION WAS SENT HOLDS NONE OF ITS WORK (code review,
+    // 2026-11-02). *** Equality with the published board was all this asked - and a draft made later
+    // equals the published board until its first change. The contributor opens "Table view" on a board
+    // whose last submission is published, which makes a draft to look at; a minute later the status
+    // check found it identical, and it was deleted under the open table.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_made_after_the_published_submission_was_sent_is_kept()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"), createdUtc: "2026-10-10T00:00:00Z");
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) }],
+            this.ResolveStatus));
+    }
+
+    // The rule that must hold: the draft the work was sent from IS retired once it reached stable.
+    [Fact]
+    public void A_draft_made_before_the_published_submission_was_sent_is_retired()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"), createdUtc: "2026-10-01T00:00:00Z");
+
+        Assert.Single(DraftRetirement.FindRetirableBoards(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) }],
+            this.ResolveStatus));
+    }
+
+    // A marker that does not say when it was made, or says something CRT cannot read, is judged as
+    // before: by what it holds. So is a receipt that does not say when it was sent.
+    [Theory]
+    [InlineData("")]
+    [InlineData("not a date")]
+    public void A_marker_that_does_not_say_when_it_was_made_is_judged_by_what_the_draft_holds(string createdUtc)
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"), createdUtc);
+
+        Assert.Single(DraftRetirement.FindRetirableBoards(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) }],
+            this.ResolveStatus));
+    }
+
+    [Fact]
+    public void A_receipt_that_does_not_say_when_it_was_sent_is_judged_by_what_the_draft_holds()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"), createdUtc: "2026-10-10T00:00:00Z");
+
+        Assert.Single(DraftRetirement.FindRetirableBoards(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published")],
+            this.ResolveStatus));
+    }
+
+    // ###########################################################################################
+    // A "keep" for being made later is about the RECEIPT, which is no part of the stamps a kept verdict
+    // is remembered against: remembered, the draft's own later submission reaching stable - with
+    // nothing in either folder moved since - would have kept it for good.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_kept_for_being_made_later_is_retired_once_a_later_submission_of_it_is_published()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"), createdUtc: "2026-10-10T00:00:00Z");
+
+        // Written a while ago, so a verdict could be remembered (StampSettling).
+        foreach (string file in Directory.EnumerateFiles(this.thisWorkspace.Root, "*", SearchOption.AllDirectories))
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-5));
+
+        SubmissionReceipt earlier = DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) };
+        SubmissionReceipt later = DraftRetirementTests.Receipt(2, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 15, 0, 0, 0, TimeSpan.Zero) };
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards([earlier], this.ResolveStatus));
+        Assert.Single(DraftRetirement.FindRetirableBoards([earlier, later], this.ResolveStatus));
+    }
+
+    // And the new condition costs no comparison: it is read off the marker.
+    [Fact]
+    public void A_draft_made_later_is_kept_without_comparing_anything()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"), createdUtc: "2026-10-10T00:00:00Z");
+
+        int compared = DraftRetirement.ComparisonsForTests;
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(
+            [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published") with { SentUtc = new DateTimeOffset(2026, 10, 5, 0, 0, 0, TimeSpan.Zero) }],
+            this.ResolveStatus));
+
+        Assert.Equal(compared, DraftRetirement.ComparisonsForTests);
+    }
+
+    // ###########################################################################################
+    // *** A KEEP FOR BYTES ON THEIR WAY IS NOT REMEMBERED (code review, 2026-11-02). *** A check runs
+    // mid-download, or after a sync that failed part-way: the board file lists a file whose bytes have
+    // not reached the tree's store, so the draft is kept. The store is in neither folder a verdict is
+    // stamped by, so when the bytes arrived nothing "moved", and every later check that run reused the
+    // keep - the one right after the sync included.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_kept_because_the_published_files_bytes_have_not_arrived_is_retired_once_they_have()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        BoardFiles.Change(this.PublishedWorkbook, document => document.Files.Add(StoredFiles.EntryFor("Images/Sheet1.png", "the new scan")));
+        BoardDataReader.ClearCache(this.PublishedWorkbook);
+
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU"));
+        this.ListInDraft(StoredFiles.Put(this.DraftFolder, "Images/Sheet1.png", "the new scan"));
+
+        // Written a while ago, so a verdict could be remembered (StampSettling).
+        foreach (string file in Directory.EnumerateFiles(this.thisWorkspace.Root, "*", SearchOption.AllDirectories))
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-5));
+
+        SubmissionReceipt[] receipts = [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published")];
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+
+        // The download finishes: only the tree's store moved.
+        StoredFiles.Put(this.DataRoot, "Images/Sheet1.png", "the new scan");
+
+        Assert.Single(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+    }
+
+    // ###########################################################################################
+    // The saving a remembered keep exists for stands. Bytes in the draft that the published board names
+    // nowhere are the contributor's own and nothing is on its way: such a keep is remembered - a draft
+    // that lost its board file here, where the file list cannot say so first. And the partner of the
+    // first half: a keep for a difference in the rows, whose stored file is absent from the tree too, is
+    // remembered as well - it is no download that would end it.
+    // ###########################################################################################
+    [Fact]
+    public void A_keep_for_bytes_the_published_board_does_not_name_is_remembered()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        this.WriteDraftThatLostItsWorkbook();
+        StoredFiles.Put(this.DraftFolder, "Issue 4.B.png", "the contributor's own scan");
+
+        foreach (string file in Directory.EnumerateFiles(this.thisWorkspace.Root, "*", SearchOption.AllDirectories))
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-5));
+
+        SubmissionReceipt[] receipts = [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published")];
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        int compared = DraftRetirement.ComparisonsForTests;
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        Assert.Equal(compared, DraftRetirement.ComparisonsForTests);
+    }
+
+    [Fact]
+    public void A_keep_for_a_changed_row_is_remembered_though_a_stored_file_is_not_in_the_tree_yet()
+    {
+        this.WritePublished(DraftRetirementTests.BoardWith("CPU"));
+        BoardFiles.Change(this.PublishedWorkbook, document => document.Files.Add(StoredFiles.EntryFor("Images/Sheet1.png", "the new scan")));
+        BoardDataReader.ClearCache(this.PublishedWorkbook);
+
+        this.WriteDraft(DraftRetirementTests.BoardWith("CPU, edited after sending"));
+        this.ListInDraft(StoredFiles.Put(this.DraftFolder, "Images/Sheet1.png", "the new scan"));
+
+        foreach (string file in Directory.EnumerateFiles(this.thisWorkspace.Root, "*", SearchOption.AllDirectories))
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(-5));
+
+        SubmissionReceipt[] receipts = [DraftRetirementTests.Receipt(1, DraftRetirementTests.BoardId, "published")];
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        int compared = DraftRetirement.ComparisonsForTests;
+
+        Assert.Empty(DraftRetirement.FindRetirableBoards(receipts, this.ResolveStatus));
+        Assert.Equal(compared, DraftRetirement.ComparisonsForTests);
+    }
+
     [Fact]
     public void An_absent_receipt_list_names_nothing_rather_than_throwing()
     {
@@ -972,7 +1249,7 @@ public sealed class DraftRetirementTests : IDisposable
 
     // Writes the draft workbook AND the marker that makes the folder a draft - a workbook alone is
     // not a draft, which is the rule DraftBoardSource exists to enforce.
-    private void WriteDraft(BoardData board)
+    private void WriteDraft(BoardData board, string createdUtc = "2026-09-23T00:00:00Z")
     {
         string path = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftRetirementTests.BoardKey);
 
@@ -987,7 +1264,7 @@ public sealed class DraftRetirementTests : IDisposable
                 BoardKey = DraftRetirementTests.BoardKey,
                 BaseRevision = "2026-09-01",
                 NewBoard = null,
-                CreatedUtc = "2026-09-23T00:00:00Z",
+                CreatedUtc = createdUtc,
             });
     }
 

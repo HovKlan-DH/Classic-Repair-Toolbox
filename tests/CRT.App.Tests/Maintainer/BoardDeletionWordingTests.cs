@@ -125,6 +125,26 @@ public sealed class BoardDeletionWordingTests
     }
 
     // ###########################################################################################
+    // *** THE CONFIRMATION SAYS WHAT REALLY HAPPENS TO THE FILES (code review, 2026-11-02). *** In
+    // the CRT 4.0 tree the stored files only this board lists are deleted in the same delete
+    // (BoardDeletionFiles, BoardDeletionFlowTests) - and the administrator confirming something that
+    // cannot be undone was told they could be looked at afterwards under "Unused files".
+    // ###########################################################################################
+    [Fact]
+    public void The_confirmation_says_files_only_this_board_lists_go_with_it_and_those_another_board_lists_stay()
+    {
+        foreach (string sentence in new[] { BoardDeletionWording.WhichFilesGo, BoardDeletionWording.Explanation })
+        {
+            Assert.DoesNotContain("Unused files", sentence, StringComparison.Ordinal);
+            Assert.DoesNotContain("Shared files", sentence, StringComparison.Ordinal);
+            Assert.Contains("only this board lists", sentence, StringComparison.Ordinal);
+            Assert.Contains("another board also lists", sentence, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("counted above", BoardDeletionWording.WhichFilesGo, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
     // No user-visible sentence calls a contributor "their", "them" or "they" (owner request,
     // 2026-10-01), and no button label carries "..." (owner rule, 2026-10-03).
     // ###########################################################################################
@@ -136,7 +156,7 @@ public sealed class BoardDeletionWordingTests
         IEnumerable<string> texts =
         [
             BoardDeletionWording.Explanation,
-            BoardDeletionWording.SharedFilesKept,
+            BoardDeletionWording.WhichFilesGo,
             BoardDeletionWording.ReasonPrompt,
             BoardDeletionWording.CannotBeUndone,
             BoardDeletionWording.OpenHeading(plan)!,

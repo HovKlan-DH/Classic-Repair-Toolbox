@@ -179,9 +179,48 @@ namespace CRT
 
         // The same, whether or not anything is published: a new board's component is all work of its own -
         // no mark and no undo say so, while "Also on other boards" offers it (code review, 2026-11-02).
-        private bool HoldsWorkOfItsOwn =>
-            this.thisSession is { } session &&
-            ComponentRevert.HasChanges(session.Content.Board, this.thisPublished, this.thisLabel, DraftFiles.ListedIn(this.thisPublishedBoardFile), session.ListedFiles);
+        //
+        // *** REMEMBERED WHILE ALL IT DEPENDS ON STANDS (code review, 2026-11-02). *** A commit asks this up
+        // to three times on the UI thread, and once more after the save, and each read the whole board:
+        // about half a second of frozen window per typing pause on the C128's larger chips. The content
+        // and the lists are replaced, never changed, so the very same ones are the same answer.
+        private bool HoldsWorkOfItsOwn
+        {
+            get
+            {
+                if (this.thisSession is not { } session)
+                {
+                    return false;
+                }
+
+                BoardContent content = session.Content;
+                IReadOnlyDictionary<string, BoardDocument.StoredFileRow> listed = session.ListedFiles;
+                IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? publishedFiles = DraftFiles.ListedIn(this.thisPublishedBoardFile);
+
+                if (this.thisWorkOfItsOwn is { } known &&
+                    ReferenceEquals(known.Content, content) &&
+                    ReferenceEquals(known.Listed, listed) &&
+                    ReferenceEquals(known.PublishedFiles, publishedFiles) &&
+                    ReferenceEquals(known.Published, this.thisPublished) &&
+                    string.Equals(known.Label, this.thisLabel, StringComparison.Ordinal))
+                {
+                    return known.Answer;
+                }
+
+                bool answer = ComponentRevert.HasChanges(content.Board, this.thisPublished, this.thisLabel, publishedFiles, listed);
+
+                this.thisWorkOfItsOwn = (content, listed, publishedFiles, this.thisPublished, this.thisLabel, answer);
+
+                return answer;
+            }
+        }
+
+        private (BoardContent Content,
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow> Listed,
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? PublishedFiles,
+            BoardData? Published,
+            string Label,
+            bool Answer)? thisWorkOfItsOwn;
 
         internal bool HasUnsavedChanges => this.thisSession?.HasUnsavedChanges == true;
 
@@ -218,7 +257,16 @@ namespace CRT
 
             this.UseSession(session);
 
-            this.thisLabel = label?.Trim() ?? string.Empty;
+            string shown = label?.Trim() ?? string.Empty;
+
+            // Another component, not the same one read again (code review, 2026-11-02) - asked after what
+            // the pane held went in, which may have renamed the one it was on.
+            if (!string.Equals(shown, this.thisLabel, StringComparison.OrdinalIgnoreCase))
+            {
+                this.LetGoOfWhatIsOfTheComponentShown();
+            }
+
+            this.thisLabel = shown;
             this.thisRegion = region?.Trim() ?? string.Empty;
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
@@ -273,7 +321,6 @@ namespace CRT
             this.ForgetImagesAndFiles();
             this.ResetRowDrags();
             this.thisCategories.Clear();
-            this.thisRelabels.Clear();
             this.thisBoardFiles.Clear();
             this.thisBoardLinks.Clear();
             this.thisCredits.Clear();
@@ -308,6 +355,13 @@ namespace CRT
             return await save == DraftWorkbookEditOutcome.Saved;
         }
 
+        // ###########################################################################################
+        // Whether the save something waited for was made, said under the title: what it was for has
+        // not gone ahead (code review, 2026-11-02). Saved, a line from an earlier try goes.
+        // ###########################################################################################
+        internal void SayIfNotSaved(bool saved) =>
+            this.ShowMessage(saved ? null : DraftSaveWording.CouldNotSave(this.SaveFailure));
+
         // The draft's changes that could not be saved thrown away - the file read again, one
         // undoable step. False when the file could not be read either.
         internal bool DiscardUnsavedChanges() =>
@@ -328,6 +382,7 @@ namespace CRT
             }
 
             this.thisSession = session;
+            this.thisRowsFollowed = session?.Content.Board.Components;
 
             if (session is not null)
             {
@@ -370,9 +425,6 @@ namespace CRT
             }
 
             BoardData board = session.Content.Board;
-
-            // An undo or a redo of a rename left the component under another label.
-            this.FollowRelabelInDraft(board);
 
             ComponentEntry? row = ComponentPaneEdits.RowShown(board, this.thisLabel, this.thisRegion);
 
@@ -713,8 +765,21 @@ namespace CRT
                 return;
             }
 
-            if (ReferenceEquals(sender, this.thisSession) && !this.IsOwnEdit(change))
+            if (!ReferenceEquals(sender, this.thisSession) || this.thisSession is not { } session)
             {
+                return;
+            }
+
+            // Every change, the pane's own too: what the next is compared with is the rows as this one left them.
+            BoardData board = session.Content.Board;
+            IReadOnlyList<ComponentEntry>? before = this.thisRowsFollowed;
+            this.thisRowsFollowed = board.Components;
+
+            if (!this.IsOwnEdit(change))
+            {
+                // An undo or a redo of a rename left the component under another label.
+                this.FollowRelabelInDraft(before, board);
+
                 this.ShowComponent();
                 this.FollowKiCadFiles();
             }

@@ -280,6 +280,45 @@ namespace Handlers.DataHandling
             return new BoardDocument.StoredFileRow { Name = name, Sha256 = sha, Size = size };
         }
 
+        // ###########################################################################################
+        // The bytes of `file` in the draft's own store, copied from the tree's when they lie only there -
+        // for a file the tree is about to let go of, which a row of the draft still cites (DraftRebaser).
+        // False when neither has them, or the copy could not be made. Moved into place as Arrived does,
+        // so a stored file is never half-written under its checksum.
+        // ###########################################################################################
+        public static bool KeepInStore(string draftFolder, string dataRoot, BoardDocument.StoredFileRow file)
+        {
+            if (!DataTreeLayout.IsSha256(file.Sha256))
+                return false;
+
+            string relative = DataTreeLayout.StoredFilePath(file.Sha256, file.Name).Replace('/', Path.DirectorySeparatorChar);
+            string stored = Path.Combine(draftFolder, relative);
+
+            if (File.Exists(stored))
+                return true;
+
+            string fromTree = Path.Combine(dataRoot, relative);
+
+            if (!File.Exists(fromTree))
+                return false;
+
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(stored)!);
+
+                string temporary = stored + DraftFolderLayout.BookkeepingPrefix + "copying";
+                File.Copy(fromTree, temporary, overwrite: true);
+                File.Move(temporary, stored, overwrite: true);
+
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Warning($"Could not copy [{file.Name}] into the draft's store - [{ex.Message}]");
+                return false;
+            }
+        }
+
         // The store, the board file, and CRT's ".crt-" bookkeeping are never a contributor's file.
         private static bool IsReserved(string name)
         {
@@ -408,6 +447,16 @@ namespace Handlers.DataHandling
         {
             lock (this.thisGate)
                 this.thisFiles.Clear();
+        }
+
+        // The names it remembers - see DraftSession.FileNamesInUse.
+        public IReadOnlyCollection<string> Names
+        {
+            get
+            {
+                lock (this.thisGate)
+                    return this.thisFiles.Keys.ToList();
+            }
         }
     }
 }

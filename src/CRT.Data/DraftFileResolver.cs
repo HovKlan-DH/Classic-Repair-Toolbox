@@ -141,6 +141,20 @@ namespace Handlers.DataHandling
                 return named;
             }
 
+            // ###########################################################################################
+            // *** PAST THE NAME LOOKUP A CELL IS JOINED TO A ROOT, SO IT MUST BE SHAPED AS A RELATIVE PATH
+            // (code review, 2026-11-02), Security. *** Path.Combine lets a rooted cell REPLACE the root, and
+            // File.Exists then goes wherever it says: "\\host\share\x.png" in a draft folder somebody hands
+            // over made CRT contact that machine, which hands over the Windows sign-in's hash (the KiCad
+            // Sheetfile leak of 2026-10-11 again). The server refuses such a name, so no published board
+            // holds one (BoardDataChecks.CheckFileReference). A backslash alone is no refusal here - it is
+            // read as a separator, as the join below does on Windows - so an Excel-era cell still resolves.
+            // ###########################################################################################
+            if (!SubmissionPathRules.IsSafelyShaped(trimmed.Replace('\\', '/'), out _))
+            {
+                return null;
+            }
+
             string normalizedRelative = trimmed.Replace('/', Path.DirectorySeparatorChar);
 
             // ###########################################################################################
@@ -192,6 +206,22 @@ namespace Handlers.DataHandling
             }
 
             return null;
+        }
+
+        // ###########################################################################################
+        // Where an Excel-era row puts `relativeFile` under the data root, there or not - what a caller
+        // asks about, draws or offers to open when nothing resolved the cell. It never leaves the data
+        // root (code review, 2026-11-02, Security): a cell shaped as anything but a relative path is taken
+        // by its file name alone, or the resolver's refusal above would only move the leak to the caller's
+        // File.Exists.
+        // ###########################################################################################
+        public static string PathUnderDataRoot(string dataRoot, string? relativeFile)
+        {
+            string trimmed = relativeFile?.Trim() ?? string.Empty;
+
+            return SubmissionPathRules.IsSafelyShaped(trimmed.Replace('\\', '/'), out _)
+                ? Path.Combine(dataRoot, trimmed.Replace('/', Path.DirectorySeparatorChar))
+                : Path.Combine(dataRoot, Path.GetFileName(trimmed.Replace('\\', '/')));
         }
 
         // ###########################################################################################

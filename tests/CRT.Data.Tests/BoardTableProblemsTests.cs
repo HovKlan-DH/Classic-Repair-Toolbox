@@ -146,11 +146,14 @@ public sealed class BoardTableProblemsTests
     }
 
     // ###########################################################################################
-    // RENAMING A SCHEMATIC IN THE TABLE leaves its highlights naming the old name - which the
-    // server refuses. So the rename is an error at once, kept apart since highlights are in no row.
+    // *** THE TABLE SAYS WHAT THE BOARD WILL HOLD (code review, 2026-11-02). *** Renaming a schematic
+    // used to be an error at once, "which the server refuses" - but the highlights follow it now, in
+    // a draft's session (DraftEditRules) and in a maintainer's amendment (WithTableSections), so the
+    // table told the contributor to fix what was not broken, in words pointing at "Mark components
+    // manually". The checks see the highlights as the rename leaves them.
     // ###########################################################################################
     [Fact]
-    public void Renaming_a_schematic_its_highlights_are_on_is_an_error()
+    public void Renaming_a_schematic_its_highlights_are_on_is_no_problem_as_they_follow_it()
     {
         BoardData board = new() { Schematics = [Main], Components = [Component("U1")], ComponentHighlights = [Highlight("Main", "U1")] };
 
@@ -161,7 +164,142 @@ public sealed class BoardTableProblemsTests
         schematics.Rows[0].Cells[Column(schematics, BoardWorkbookSchema.ColSchematicName)].Text = "Main board";
         schematics.Refresh();
 
-        Assert.Equal("highlight.unknown_schematic", Assert.Single(document.ProblemsOutsideSheets).Code);
+        Assert.Empty(document.ProblemsOutsideSheets);
+        Assert.Equal(0, document.ErrorCount);
+    }
+
+    // A marked schematic deleted takes what was drawn on it - said beside the table - so no error
+    // about a highlight on it, and the component marked nowhere now is a warning that is true.
+    [Fact]
+    public void Deleting_a_schematic_its_highlights_are_on_takes_them_along()
+    {
+        BoardData board = new() { Schematics = [Main], Components = [Component("U1")], ComponentHighlights = [Highlight("Main", "U1")] };
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet schematics = document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+
+        schematics.DeleteRow(schematics.Rows[0]);
+
+        Assert.Empty(document.ProblemsOutsideSheets);
+        Assert.Equal(0, document.ErrorCount);
+        Assert.Equal("component.no_highlight", Assert.Single(document.Problems).Code);
+    }
+
+    // A component renamed: neither "a highlight for a component that is not there" above the table
+    // nor "not marked on any schematic" on its row.
+    [Fact]
+    public void Renaming_a_component_its_highlights_follow_it_says_nothing_about_them()
+    {
+        BoardData board = new() { Schematics = [Main], Components = [Component("U1")], ComponentHighlights = [Highlight("Main", "U1")] };
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+
+        Row(components, "U1").Cells[Column(components, BoardWorkbookSchema.ColBoardLabel)].Text = "U01";
+        components.Refresh();
+
+        Assert.Empty(document.Problems);
+    }
+
+    // What holds a highlight back from following is said as before: a label AND another cell changed
+    // at once is a new component and a deleted one (ComponentRelabel), so the rectangle has no owner -
+    // as the draft will find too (below) - and a highlight on a name nothing was renamed from stays.
+    [Fact]
+    public void A_relabel_the_rules_do_not_follow_still_says_the_highlight_has_no_component()
+    {
+        BoardData board = new() { Schematics = [Main], Components = [Component("U1")], ComponentHighlights = [Highlight("Main", "U1")] };
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+        BoardTableRow row = Row(components, "U1");
+
+        row.Cells[Column(components, BoardWorkbookSchema.ColBoardLabel)].Text = "U01";
+        row.Cells[Column(components, BoardWorkbookSchema.ColFriendlyName)].Text = "Another name";
+        components.Refresh();
+
+        Assert.Contains(document.ProblemsOutsideSheets, problem => problem.Code == "highlight.orphan");
+    }
+
+    // ###########################################################################################
+    // *** STEP BY STEP, AS THE DRAFT HOLDS IT. *** A draft's session follows each hand-over in turn, so
+    // a component relabelled and THEN given another name keeps its rectangles - though the rows as
+    // opened against the rows now look like a new component. After every step of a sitting the table
+    // and the checks on the board the session holds must say the same of the highlights.
+    // ###########################################################################################
+    [Fact]
+    public void The_table_and_the_drafts_own_board_agree_on_the_highlights_after_every_hand_over()
+    {
+        BoardData board = new()
+        {
+            Schematics = [Main, new BoardSchematicEntry { SchematicName = "Back", SchematicImageFile = $"{Board}/back.png" }],
+            Components = [Component("U1"), Component("U2")],
+            ComponentHighlights = [Highlight("Main", "U1"), Highlight("Back", "U1"), Highlight("Main", "U2")]
+        };
+
+        var content = new BoardContent(board, [], []);
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet components = document.FindSheet(BoardWorkbookSchema.SheetComponents)!;
+        BoardTableSheet schematics = document.FindSheet(BoardWorkbookSchema.SheetBoardSchematics)!;
+        int label = Column(components, BoardWorkbookSchema.ColBoardLabel);
+        int friendly = Column(components, BoardWorkbookSchema.ColFriendlyName);
+        int name = Column(schematics, BoardWorkbookSchema.ColSchematicName);
+
+        void Step(BoardTableSheet sheet, Action change)
+        {
+            change();
+            sheet.Refresh();
+
+            content = HandOver(document, content);
+
+            List<string> onBoard = BoardDataChecks.Check(BoardCheckRows.From(content.Board), null, BoardCheckScope.Everything)
+                .Where(problem => problem.Code is "highlight.unknown_schematic" or "highlight.orphan" or "component.no_highlight")
+                .Select(problem => $"{problem.Code} {problem.Subject}")
+                .Order()
+                .ToList();
+
+            List<string> inTable = document.Problems
+                .Where(problem => problem.Code is "highlight.unknown_schematic" or "highlight.orphan" or "component.no_highlight")
+                .Select(problem => $"{problem.Code} {problem.Subject}")
+                .Order()
+                .ToList();
+
+            Assert.Equal(onBoard, inTable);
+        }
+
+        Step(components, () => Row(components, "U1").Cells[label].Text = "U01");
+        Assert.Equal(["U01", "U01", "U2"], content.Board.ComponentHighlights.Select(highlight => highlight.BoardLabel));
+
+        Step(components, () => Row(components, "U01").Cells[friendly].Text = "Another name");
+        Assert.Empty(document.ProblemsOutsideSheets);
+
+        Step(schematics, () => schematics.Rows[0].Cells[name].Text = "Main board");
+        Step(schematics, () => schematics.Rows[0].Cells[name].Text = "Top");
+        Assert.Equal(["Top", "Back", "Top"], content.Board.ComponentHighlights.Select(highlight => highlight.SchematicName));
+        Assert.Empty(document.ProblemsOutsideSheets);
+
+        // A label and another cell at once: nothing followed, and both sides say so.
+        Step(components, () =>
+        {
+            Row(components, "U2").Cells[label].Text = "U02";
+            Row(components, "U02").Cells[friendly].Text = "Yet another";
+        });
+        Assert.Contains(document.ProblemsOutsideSheets, problem => problem.Code == "highlight.orphan");
+
+        Step(schematics, () => schematics.DeleteRow(schematics.Rows[1]));
+        Assert.Equal(["Top", "Top"], content.Board.ComponentHighlights.Select(highlight => highlight.SchematicName));
+
+        Step(components, () => components.DeleteRow(Row(components, "U01")));
+        Assert.Equal(["U2"], content.Board.ComponentHighlights.Select(highlight => highlight.BoardLabel));
+    }
+
+    // The table's change put into the board as a draft's session does it, what follows included.
+    private static BoardContent HandOver(BoardTableDocument document, BoardContent content)
+    {
+        Func<BoardContent, BoardContent?> edit = document.TakeSessionEdit();
+        DraftPreparedEdit? prepared = DraftSession.Prepare(content, before => (edit(before), null));
+        document.MarkSaved();
+
+        return prepared?.After ?? content;
     }
 
     // Deleting a component in the table drops its highlights at save - so they are not reported

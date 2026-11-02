@@ -568,14 +568,25 @@ namespace CRT
                 if (sourceFiles.Count == 0)
                 {
                     // Said for what it is - an older KiCad's or another program's project is told how
-                    // to bring it in.
-                    this.ShowStatus(KiCadImportSummary.NothingToImport(scan.LeftOut, scan.OlderKiCad), isError: true);
+                    // to bring it in, and KiCad files that hold no bytes are named (2026-11-02).
+                    this.ShowStatus(
+                        scan.Empty.Count > 0 ? KiCadImportSummary.EmptyFiles(scan.Empty) : KiCadImportSummary.NothingToImport(scan.LeftOut, scan.OlderKiCad),
+                        isError: true);
+
                     return;
                 }
 
                 // Re-importing OVERWRITES files a report may still be reading - the same sharing
                 // violation a Remove would hit, so the same wait (see thisPendingReport).
                 await this.WaitForPendingReportAsync();
+
+                // A draft gone from under the panel: the copy would make its folder again, with no board
+                // file or marker, for nothing to take in (code review, 2026-11-02).
+                if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile))
+                {
+                    this.ShowStatus(KiCadImportSummary.NoDraftAnyMore, isError: true);
+                    return;
+                }
 
                 (int copied, bool complete) = await this.WriteDraftAsync(
                     CrtWaitWording.ImportingKiCad,
@@ -596,10 +607,18 @@ namespace CRT
                 // else changed takes what was copied into the draft's list (DraftFiles), so everything
                 // that reads the list - Submit, the Drafts row - agrees with the Schematics tab. Through
                 // the draft held in memory when one is open (DraftEdits.TakeInNewFilesAsync). A write that
-                // fails costs nothing: the files stay where they were copied, found and taken in by the
-                // next write, and Submit carries them meanwhile (SubmissionKiCadFiles.Collect).
+                // fails loses nothing while there is a draft: the files stay where they were copied, found
+                // and taken in by the next write, and Submit carries them meanwhile
+                // (SubmissionKiCadFiles.Collect). But it is said (code review, 2026-11-02): "Imported N KiCad
+                // files" stood over a draft that had not taken them, or was no longer there at all.
                 // ###########################################################################################
-                await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ImportingKiCad, () => DraftEdits.TakeInNewFilesAsync(excelDataFile));
+                bool takenIn = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ImportingKiCad, () => DraftEdits.TakeInNewFilesAsync(excelDataFile));
+
+                if (!takenIn && !DraftBoardSource.HasDraft(DraftManager.DraftsRoot, excelDataFile))
+                {
+                    this.ShowStatus(KiCadImportSummary.NoDraftAnyMore, isError: true);
+                    return;
+                }
 
                 // ###########################################################################################
                 // *** EVEN A COPY THAT STOPPED PART-WAY CHANGED THE DRAFT (code review, 2026-10-10). ***
@@ -617,7 +636,11 @@ namespace CRT
                 string imported = sourceFiles.Count == 1 ? "Imported 1 KiCad file" : $"Imported {sourceFiles.Count} KiCad files";
                 string checking = sourceFiles.Count == 1 ? $"{imported}. Checking what it lines up with..." : $"{imported}. Checking what they line up with...";
 
-                if (complete)
+                if (!takenIn)
+                {
+                    this.ShowStatus(KiCadImportSummary.NotTakenIn(copied), isError: true);
+                }
+                else if (complete)
                 {
                     this.ShowStatus(checking);
                 }
@@ -752,7 +775,10 @@ namespace CRT
             this.KiCadFilesText.IsVisible = files.Length > 0;
             this.KiCadFoundText.Text = found;
 
-            string leftOut = this.thisLastImport is { } import ? KiCadImportSummary.LeftOut(import.LeftOut, import.OlderKiCad) : string.Empty;
+            string leftOut = this.thisLastImport is { } import
+                ? string.Join(" ", new[] { KiCadImportSummary.LeftOut(import.LeftOut, import.OlderKiCad), KiCadImportSummary.EmptyFiles(import.Empty) }.Where(line => line.Length > 0))
+                : string.Empty;
+
             this.KiCadLeftOutText.Text = leftOut;
             this.KiCadLeftOutText.IsVisible = leftOut.Length > 0;
 

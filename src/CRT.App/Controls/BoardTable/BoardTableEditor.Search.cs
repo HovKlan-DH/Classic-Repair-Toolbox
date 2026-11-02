@@ -16,7 +16,7 @@ namespace CRT
     // as we have in the "Workbooks" tab, where it highlights what I search for").
     //
     // Which rows show is BoardTableSearch's (CRT.Data) - the Workbooks tab's own grammar; this part
-    // only wires the box, filters the view and paints the marks. Typing waits a moment before it
+    // only wires the box, narrows the rows shown and paints the marks. Typing waits a moment before it
     // applies, as the Workbooks tab's box does, so a word is one refilter rather than one per key.
     //
     // *** WHEN IT IS EMPTIED (agreed case D). *** It stays across sheet tabs, across CRT's own tabs

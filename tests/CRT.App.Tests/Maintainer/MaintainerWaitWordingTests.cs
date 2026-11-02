@@ -26,6 +26,24 @@ public sealed class MaintainerWaitWordingTests
         Assert.Contains(expected, MaintainerWaitWording.DecisionAfterTimeout(kind, before, now), StringComparison.Ordinal);
     }
 
+    // An oscilloscope model decided leaves the list, so the list read again says which it is - and
+    // never "try again" (code review, 2026-11-02).
+    [Theory]
+    [InlineData(true, false, "but it did finish: Rigol DS1000Z has left the list - it is published.")]
+    [InlineData(false, false, "but it did finish: Rigol DS1000Z has left the list - it will not go in, and the contributor is told why.")]
+    [InlineData(true, true, "and Rigol DS1000Z is still in the list. It may still be working on it")]
+    [InlineData(false, true, "and Rigol DS1000Z is still in the list. It may still be working on it")]
+    public void A_decision_on_an_oscilloscope_model_is_judged_by_the_list(bool publishing, bool stillListed, string expected)
+    {
+        Assert.Contains(expected, MaintainerWaitWording.OscilloscopeModelAfterTimeout(publishing, "Rigol DS1000Z", stillListed), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_decision_on_an_oscilloscope_model_with_no_list_could_not_be_checked()
+    {
+        Assert.Contains("could not be checked", MaintainerWaitWording.OscilloscopeModelAfterTimeout(true, "Rigol DS1000Z", null), StringComparison.Ordinal);
+    }
+
     // ###########################################################################################
     // *** THE FIRST OF TWO APPROVALS ALREADY GIVEN IS NOT "RECORDED" AGAIN. *** A submission that
     // was already "approved" (by the other approver) and still is has NOT moved - this approval did

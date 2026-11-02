@@ -333,7 +333,7 @@ public sealed class TabMaintainerSubmissionViewsTests
             Assert.Equal(
                 [
                     "Dennis (dh@example.com)",
-                    "Sent without an account - the address was typed in when sending, and nothing checked it.",
+                    "Sent without a verified account - the address was typed in, and nothing checked it.",
                     "[2] submissions in total whereof [1] published to BETA and [1] rejected",
                     "Other submissions, newest first",
                     "Wrong board",

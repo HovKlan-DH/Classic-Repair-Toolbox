@@ -271,6 +271,20 @@ namespace CRT.Server.Handlers.Submissions
                     "The board file in the BETA data could not be read in full - it may have been written by a newer " +
                     "CRT, or edited by hand - so it was not written over. The board is as it was; the server's log says more.");
             }
+            catch (FormatException ex)
+            {
+                // ###########################################################################################
+                // *** A VALUE THE BOARD FILE CANNOT HOLD IS A STOPPED PUBLISH, NOT A 500 (code review,
+                // 2026-11-02). *** BoardDocumentMapping refuses a coordinate that is no whole number. The
+                // checks refuse one too now, but a submission queued before they did still gets here, and
+                // nothing in it can be mended from the table: highlights are not in it. The stored files
+                // of step 1 are new bytes nothing points at, as above. The message names the row and the
+                // value, both the contributor's - no server path.
+                // ###########################################################################################
+                this.thisLogger.LogError(ex, "Publish of {BoardId} stopped: a value in the rows cannot go into the board file.", plan.BoardId);
+
+                return PublishOutcome.Failed($"{ex.Message} The board is as it was; this submission cannot be published as it stands.");
+            }
 
             // ---- 3. A NEW board's row in the main file (owner request, 2026-09-27) ----------------
             //

@@ -166,7 +166,7 @@ namespace CRT
         // draft held in memory takes a change (thisDraftChangedSinceLook, by its Changed event - and by
         // its files, for a write the session does not see).
         // ###########################################################################################
-        private string? thisDraftMadeToLook;
+        private HardwareBoardEntry? thisDraftMadeToLook;
 
         private bool thisDraftChangedSinceLook;
 
@@ -175,7 +175,7 @@ namespace CRT
         internal bool IsDraftOnlyLookedAtForTests(string identity) => this.IsUntouchedLook(identity);
 
         private bool IsUntouchedLook(string identity) =>
-            !this.thisDraftChangedSinceLook && string.Equals(this.thisDraftMadeToLook, identity, StringComparison.OrdinalIgnoreCase);
+            !this.thisDraftChangedSinceLook && string.Equals(this.thisDraftMadeToLook?.ExcelDataFile, identity, StringComparison.OrdinalIgnoreCase);
 
         private void ForgetDraftMadeToLook()
         {
@@ -259,14 +259,13 @@ namespace CRT
         // ###########################################################################################
         // Quitting with a draft only looked at still open on the right: gone with the run, or the next
         // run would show it as a draft of the contributor's. Only by its files - CRT is closing, and shows
-        // nothing again.
+        // nothing again. Whichever board it is: another may be shown by now (code review, 2026-11-02).
         // ###########################################################################################
         internal void LetGoOfUntouchedDraftOnQuit()
         {
-            if (this.thisCurrentEntry is { } entry && this.IsUntouchedLook(entry.ExcelDataFile) && TabDrafts.HoldsNothing(entry))
+            foreach (HardwareBoardEntry entry in this.LooksHoldingNothing())
             {
                 Logger.Info($"The draft of [{entry.ExcelDataFile}] was only looked at - let go of as CRT closes");
-                this.ForgetDraftMadeToLook();
                 _ = this.DiscardOverrideForTests?.Invoke(entry.ExcelDataFile) ?? DraftManager.DiscardDraft(entry.ExcelDataFile);
             }
         }
@@ -278,11 +277,38 @@ namespace CRT
         // ###########################################################################################
         internal void LetGoOfUntouchedDraftBeforeRestart()
         {
-            if (this.thisCurrentEntry is { } entry && this.IsUntouchedLook(entry.ExcelDataFile) && TabDrafts.HoldsNothing(entry))
+            foreach (HardwareBoardEntry entry in this.LooksHoldingNothing())
             {
                 Logger.Info($"The draft of [{entry.ExcelDataFile}] was only looked at - let go of before the restart");
                 this.DiscardConfirmed(entry);
             }
+        }
+
+        // ###########################################################################################
+        // *** A STEP TO REDO IS WORK THAT CAN STILL BE ASKED FOR (2026-11-02). *** A draft made only to
+        // look, changed, undone and closed holds nothing - and was deleted, its Redo with it, so a change
+        // undone a moment ago was gone for good. It stays while the Redo can bring the change back
+        // (LetGoOfDraftMadeOnlyToLook). That ends with the run, so as CRT closes or restarts it goes -
+        // left, the next run would show a draft with nothing in it. Brought back, it holds something, and
+        // is a draft like any other.
+        // ###########################################################################################
+        private readonly List<HardwareBoardEntry> thisLooksKeptForRedo = [];
+
+        // The drafts made only to look that hold nothing, marked or kept for their Redo, each once - told
+        // now, as letting go of one forgets the marker and this list stays as it is for the caller.
+        private List<HardwareBoardEntry> LooksHoldingNothing()
+        {
+            List<HardwareBoardEntry> looks = [.. this.thisLooksKeptForRedo];
+
+            if (this.thisDraftMadeToLook is { } marked && !looks.Exists(look => TabDrafts.SameBoard(look, marked)))
+            {
+                looks.Add(marked);
+            }
+
+            this.thisLooksKeptForRedo.Clear();
+            this.ForgetDraftMadeToLook();
+
+            return looks.Where(TabDrafts.HoldsNothing).ToList();
         }
 
         // ###########################################################################################
@@ -308,7 +334,7 @@ namespace CRT
 
         private void LetGoOfDraftMadeOnlyToLook(HardwareBoardEntry entry)
         {
-            if (!string.Equals(this.thisDraftMadeToLook, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase) ||
+            if (this.thisDraftMadeToLook is not { } look || !TabDrafts.SameBoard(look, entry) ||
                 this.IsTableOpenFor(entry) || this.IsComponentOpenFor(entry) || this.IsKiCadOpenFor(entry) ||
                 (this.thisOpeningOn is { } opening && TabDrafts.SameBoard(opening, entry)))
             {
@@ -319,6 +345,18 @@ namespace CRT
 
             if (!TabDrafts.HoldsNothing(entry))
             {
+                return;
+            }
+
+            if (DraftManager.CanRedo(entry.ExcelDataFile))
+            {
+                Logger.Info($"The draft of [{entry.ExcelDataFile}] holds nothing but a step to redo - kept while CRT runs");
+
+                if (!this.thisLooksKeptForRedo.Exists(look => TabDrafts.SameBoard(look, entry)))
+                {
+                    this.thisLooksKeptForRedo.Add(entry);
+                }
+
                 return;
             }
 
@@ -866,6 +904,11 @@ namespace CRT
         // `action` on the draft of the board shown - made first when it has none (Main.EnsureDraftAsync:
         // the published file copied, the board read again). Nothing when no draft could be made; Main
         // says why on the tab's own line.
+        //
+        // *** A DRAFT THE ACTION OPENED NOTHING ON GOES AGAIN (code review, 2026-11-02). *** "Use" with
+        // nothing left to take, a KiCad open called off: nothing is left to close, so nothing let go of
+        // it. Hidden until the next look forgot it, it then stood in "My drafts" with no changes - so that
+        // look lets go of an earlier one too, should something still have left it behind.
         // ###########################################################################################
         internal async Task OnCurrentDraftAsync(Func<HardwareBoardEntry, Task> action)
         {
@@ -876,11 +919,16 @@ namespace CRT
 
             if (!DraftBoardSource.HasDraft(DraftManager.DraftsRoot, entry.ExcelDataFile))
             {
+                if (this.thisDraftMadeToLook is { } earlier)
+                {
+                    this.LetGoOfDraftMadeOnlyToLook(earlier);
+                }
+
                 // Let go of again should what is opened close with nothing in it (LetGoOfDraftMadeOnlyToLook),
                 // and shown as a draft only from its first change - said before it is made, as making it
                 // reads the list again.
                 this.ForgetDraftMadeToLook();
-                this.thisDraftMadeToLook = entry.ExcelDataFile;
+                this.thisDraftMadeToLook = entry;
 
                 bool made = this.EnsureDraftOverrideForTests is { } ensure
                     ? await ensure(entry)
@@ -897,6 +945,9 @@ namespace CRT
             }
 
             await action(entry);
+
+            // Asks nothing of a draft that was there before, or while what the action opened is open.
+            this.LetGoOfDraftMadeOnlyToLook(entry);
         }
 
         // The table view on one of its sheets - a board part the plan's screens are not built for yet.

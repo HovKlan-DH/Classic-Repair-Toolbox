@@ -429,8 +429,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   one card's text between flows), added to `NoticeNames` and to the demo (`--demo-notices`; its test
   fails on a card it never shows). **A card stays when there is something to do or somebody asked,
   and otherwise goes by itself** (`HideNoticeLater`): the data check's "all up to date" goes, its
-  "please refresh board" stays (`DataCheckNotice`). One exception: "your settings could not be read"
-  stays until closed (2026-10-13, `Main.SettingsNotice.cs` says why). The launch check MUST say something - silence
+  "please refresh board" stays (`DataCheckNotice`). Two exceptions, for the same reasons: "your settings could
+  not be read" (2026-10-13) and "the list of what you have sent could not be read" (2026-11-02) stay until
+  closed (`Main.SettingsNotice.cs` says why). The launch check MUST say something - silence
   was reported as a bug. The stack is at most half the tabs' width (`NoticeStackGeometry`), and a
   card that has just appeared lets clicks through for half a second, the tooltip lesson again.
   **The data check's card says the file downloaded on a line of its own, never wrapped**
@@ -598,7 +599,7 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   is picked.** Its **label is a box under Basics** (owner report, 2026-11-01: "unable to rename"; there was none):
   renamed on Enter or when left, never on a typing pause, every row moving with it (`ComponentPaneEdits.WithLabel`,
   rectangles too - `DraftEditRules` follows only a row whose other cells stayed); a label another component has stays
-  in its box with the reason; an undo of it finds the component again (`FollowRelabelInDraft`); the rows are not read again
+  in its box with the reason; an undo of it finds the component again (`FollowRelabelInDraft`, below); the rows are not read again
   (`ShowRelabelled` - a pin just added and a baseline held back went with them, code review 2026-11-01). Worklogs on this
   machine keep the old label, as for a rename in the table.
 - **REGIONS** (owner decisions, 2026-11-01: PAL and NTSC or none, stored and published, on a page of their own;
@@ -1016,6 +1017,22 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   `ComponentDraftWriter`'s rows, `ContributionFileLocations.ForBoard`/`CheckNewFileLocation`,
   `ContributionPackaging.BuildDeleteComponentSummary`, `DraftStepWording.ComponentSaved`.
 
+- **What belongs to the component shown goes as another is shown** (code review, 2026-11-02;
+  `LetGoOfWhatIsOfTheComponentShown`): the new baseline being filled in, a capture with it, the pane's
+  message line; the same component read again keeps them. **A pane edit keeps each row in its own place**
+  (`ComponentPaneEdits.ReplaceInScope`): kept rows stay, freed places go to new rows, and a real reorder
+  takes the places in turn - shipped chips alternate PAL and NTSC rows. **Enter on the new-component form
+  adds only from its label and category boxes, never with a drop-down list open** (`AddOnEnter`). **An undo
+  or a redo of a rename is followed by what that very step renamed, never by a record of renames**
+  (`FollowRelabelInDraft`, `ComponentRelabel.Between`; code review, 2026-11-02): which component a label means
+  depends on where in its history the draft stands, and no record could tell a new U1 from the old U1 undone
+  back. **A pane save that fails stops "Show on board", lighting a net and the picture tools, and the pane says so**
+  (`SaveAndHandOverBoardOnScreenAsync`). **Opening the pane or the table reads the draft off the UI thread,
+  under the BusyOverlay** (`ReadDraftToOpenAsync`). **A draft made only to look whose action opened nothing
+  goes as that action ends** (`OnCurrentDraftAsync`); an earlier one left behind goes as the next look
+  starts, and as CRT closes whichever board is shown. **One holding nothing but a step to redo stays
+  while CRT runs, and goes as it closes** (owner request, 2026-11-02; `thisLooksKeptForRedo`): the Redo can
+  still bring the change back, and it ends with the run.
 - **No action asks whether to make a draft - it is made** (`Main.EnsureDraftAsync`, `Main.FirstDraft.cs`;
   "Edit board as draft" and `DraftExistsWindow` are gone): seeded from the published FILE
   (`DraftSeeder.SeedFromPublishedFile`) under the BusyOverlay, after the API revision is asked
@@ -1366,6 +1383,15 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   number as "My submissions". Sent submissions are asked about at launch and every minute while the
   window is not minimised and something is open; each check is followed by the launch path (retire
   drafts, then `ApplyContributeTabState`) on `onFinished`, never `onChanged`.
+- **A send that never reached a maintainer frees a new board's name** (code review, 2026-11-02;
+  `SubmissionReceiptPresenter.NeverReachedReview`: no state yet or "uploading", unless the finalise request
+  went and nothing has been heard since - `SubmissionReceipt.FinaliseSentUtc`), and answers no change
+  request (`NewerForBoard`). **A listed board's FOLDER is taken whatever the board is called**
+  (`BoardNameFields`). **A refusal's reasons are kept on the receipt** (`SubmissionReceipt.Findings`, state
+  "rejected" only, its ERRORS only - `ReasonsRefused`: "rejected" is a maintainer's Reject too, and the server
+  answers the warnings a queued submission held), which "My submissions" shows. **A receipts file that could
+  not be read is never written over**: read again at the first write, set aside as `<file>.broken` only when
+  its contents are broken, nothing written while it is held or access to it is refused. **The fingerprint holds a new board's notes as sent** (`TabDrafts.FingerprintOf`).
 - **What was just sent cannot be sent again**: the receipt keeps CRT.Data's `DraftFingerprint` (the
   workbook's VALUES, the sidecar's bytes, every draft file by path and content). While the draft
   matches its LATEST submission, Submit is greyed out with the reason - unless that submission never
@@ -1479,7 +1505,14 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
 - **Retiring a published draft** (`PublishedDraftRetirer`, CRT.Data's `DraftRetirement`): a draft whose
   work reached the STABLE source is deleted (BETA alone is not enough - a push-back can undo it), after
   every launch status check and when "My submissions" closes; never one holding a change not saved
-  yet (`TabDrafts.HasUnsavedTableEditsFor`, `DraftManager.HasUnsavedChanges`).
+  yet (`TabDrafts.HasUnsavedTableEditsFor`, `DraftManager.HasUnsavedChanges`). **Nor one made after the
+  board's deciding submission was sent** - it holds none of that work (code review, 2026-11-02;
+  `DraftRetirement.WasMadeAfter`; a marker or receipt with no time is judged by what the draft holds).
+  **What holds a draft is one question, `TabDrafts.IsDraftInUse`** - anything open or opening on it, a
+  change not saved, a step to redo - and a later check retires it; `MainRetirePublishedDraftsTests` drives
+  the whole step with the test-server gate passed in. **Every file a draft lists must be the published
+  board's, name and checksum**: bytes in the tree's store say nothing of this board. A keep caused by
+  bytes on their way to the tree's store is not remembered (the store is in neither stamp).
   **A receipt names its board by ID; the drafts flow is keyed by WORKBOOK path** -
   `DraftStatusReader.ResolveForBoard` maps one to the other. A new board's draft is retired once its
   published board is on the machine. A user on the BETA source is told once, when their work reaches
@@ -1498,7 +1531,15 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   `DraftSession`, `BoardTableClipboard`, `BoardTableHistory`, `BoardTableRowDrag`,
   `BoardTableSearch`, `BoardTableRowFilter`), because the Maintainer tab shows the same table.
 - **Pairing is `BoardDataDiffer`'s rule** (`BoardDraftNaturalKeys`; keys case-insensitive, values
-  trimmed + ordinal, first row per key wins), so the tabs' counts equal the draft row's "N rows
+  trimmed + ordinal, first row per key wins - **except a component's rectangles on one schematic, which
+  all count**: a highlight's key names a component on a schematic, not a rectangle, so every comparison
+  lines them up by all their values, each row's place held as `ComparedRow`, a natural key and an
+  occurrence number, never one string; their order alone is no change. A key can stand several times in
+  a section's lists: `FieldChanges[key]` holds the fields together, and the optional `ChangedRows` says
+  what moved on each, only when a key repeats. A rectangle that only followed its schematic, renamed or
+  removed, is the board's change: no group, no undo and no "Draft" mark. A row whose key changed carries
+  `BoardRowChange.PreviousNaturalKey`, and both labels get the mark (code review, 2026-11-02;
+  `BoardDraftNaturalKeys.MayRepeat`, `BoardDataDiffer.LineUpRepeatedRows`, `ReviewSummary` too)), so the tabs' counts equal the draft row's "N rows
   changed". **A key edit with nothing else changed is ONE row modified** (`BoardDataDiffer.PairRenamedRows`,
   owner decision 2026-10-04 - used by the table, the differ and the server's `ReviewSummary`); a key
   AND another cell changed is an add plus a deleted ghost. **A component's identity is its label
@@ -1556,6 +1597,19 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   tab (`Main.ShouldReturnFocusToComponentSearch`), and `TabDrafts.FocusTableIfOpen` puts focus in the grid.
   Tab/Shift+Tab move along and wrap (tunnel route); Enter moves down. Buttons hand focus back to the
   grid (`ThenFocusGrid`) - a disabled focused button drops focus to nothing.
+- **The grid's view has no filter** (code review, 2026-11-02): a filtered `DataGridCollectionView` removes
+  and re-adds the row at every row commit, leaving no current cell and no selection, so what was typed
+  next landed on another row. The grid shows `thisShownRows`, which is `sheet.Rows` less what the pills
+  and the search hide. A pick or a search replaces it with one Reset; anything else changes it row by
+  row, never under a row being edited. `FilteringModel.OwnsViewFilter = false` stays, or the grid's model
+  would put a filter back. **The row the cursor is on stays shown until the cursor leaves it**
+  (`BoardTableRowFilter.RowsShown`), so a pill can read 0 with one row showing; a row with no cursor still
+  drops out, and a pick or a new search keeps nothing. The cursor counts only on a data cell. A click raises
+  no `CurrentCellChanged`, and `SelectedCellsChanged` comes before the cursor has moved, so the update is
+  posted and reads the cursor afterwards. **Neither undo nor redo runs with a row held by its grip**
+  (`BoardTableEditor.Undo`; `BoardTableHistory.Apply` returns null while a group is open). **The checks see
+  the highlights as the board will hold them** (`HighlightsAsSaved`, against the rows they were last
+  followed to: a session follows at each hand-over, a document at Save).
 - **Undo/redo (Ctrl+Z / Ctrl+Y)**: a draft's are its session's (above); a document's live in the model
   (`BoardTableHistory`): each step is a snapshot of one sheet's live rows taken just before the change,
   back to the last save. **A new kind of change records `History.Record` before it mutates** - a
@@ -1854,6 +1908,16 @@ the rows the panel had; the gear shows only while a row does - every row is a Ki
   once (`OscilloscopeModelsView.ModelsWaitingRead`). One rule: `UpdateModeBadges` calls
   `MaintainerModes.TabAttention`. Which screen the tab OPENS on is the two queues' alone
   (`QueueAttention`). No tooltips on it. A 401 clears what it counts.
+- **Another submission chosen takes the decision bar and the removals with it, until its own detail
+  arrives** (code review, 2026-11-02; `ShowSubmission`), and `DecideAsync` refuses without a detail of the
+  submission selected: the removal list, the version and the approval state all come from it.
+- **A 403 on the queue is an answer, not "could not ask"** (code review, 2026-11-02;
+  `EmptyListsNoLongerAllowed`): the queue and BETA lists empty and the badges count nothing, unless a
+  table holds unsaved changes. **Every read drops an answer for a session no longer in use**
+  (`IsSessionInUse`). **The BETA screen's plan is read again when the maintainer asks** - the screen's
+  button or coming back to the tab - when none is held, it carries a refusal, or a publish was just
+  refused (`ProductionDisplay.PlanIsWorthReadingAgain`); never one that can be published, or its tick would
+  go, nor for the administrators-only refusal alone.
 - **The minute check** (`QueueRefreshRules.MinuteCheck`): everything while on screen with CRT in
   front; otherwise only the queue and the BETA list while the badge can be seen. Every request slides
   the 30-day session (accepted with the request). Nothing open is reloaded unless its row changed.
@@ -2013,7 +2077,22 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   hand-placed Excel-era draft find 3.x's shared files while it is converted). The manifest is
   `app-data-v4`'s. The launch syncs the main file, then the listed board files; everything else (the
   store, the MiniPro tests) syncs in the background (`DataManager.IsListFile`). The orphan cleanup maps
-  the main file, its boards and the stored files they name - and fails closed as before.
+  the main file, its boards and the stored files they name, and **the stored files any draft lists**
+  (2026-11-02: a draft keeps a published file by checksum and holds none of its bytes) - and fails closed
+  as before, on a draft's board file too.
+- **A File cell is joined to a root only when shaped as a relative path** (code review, 2026-11-02:
+  `Path.Combine` lets a rooted or UNC cell replace the root, and `File.Exists` on a UNC path can leak the
+  NTLM hash). Every fallback is `DraftFileResolver.PathUnderDataRoot`, never `Path.Combine(dataRoot, cell)` -
+  so a test's picture row names a file under a data root it set, never an absolute path. **A draft's identity
+  is held to the same shape** (`DraftFolderLayout.GetBoardFolder`, empty when `SubmissionPathRules.IsSafelyShaped`
+  refuses its folders - the one place every draft path passes): a marker in a folder somebody handed over is
+  read at every launch, so it reached `Directory.Exists` with nothing pressed. `DraftManager.GetBoardFolder`
+  is that one rule, and a marker's board naming no folder here is not listed. **A name the
+  session has seen listed is not free for another file** (`DraftSession.FileNamesInUse`: its history holds
+  rows, and a row names its file). **"Bring my draft up to date" keeps a file a kept row cites**, its bytes
+  copied into the draft's store (`DraftFiles.KeepInStore`); gone already, the conflict list says so. **A
+  rename stopped between its move and its marker is repaired at launch** (`DraftBoardRename.RepairMovedDrafts`),
+  unless the folder would collide with another.
 - **A row names a file of its board; `DraftFileResolver` finds it** - a new file lying in the draft
   folder under its name, then the draft's board file (its store, then the tree's), then the published
   board file (pass the board identity), then an Excel-era data-root path. Every caller that opens what
@@ -2158,7 +2237,8 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   and calls `Save` off the UI thread; "saved" is by content, so undoing back to the file's is Saved; a
   file changed outside is never written over unasked (`ChangedOnDisk`, then `ReloadFromFile` - an
   undoable step - or `Save(overwriteOutsideChange)`); a change made during a save stays pending. One
-  per draft FOLDER (`DraftSessions`). What follows an edit is `DraftEditRules`, shared with
+  per draft FOLDER (`DraftSessions`), its board file read OUTSIDE the lock - the UI thread's save timer waits
+  on it, code review 2026-11-02 - and read again when a `Close` came meanwhile. What follows an edit is `DraftEditRules`, shared with
   `DraftWorkbookStore.EditCore` - never a second copy; an edit that knows its schematic renames only
   once it sees the draft hands them in with it (`ApplyWithFollow`). **`ChangeComing` is raised before
   every change, on the UI thread** (an edit, undo, redo, take-back, the file read again,
@@ -2292,7 +2372,12 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   every plausible clock-pulse shape, and in every order of one vector's pin changes; the T48's "C" is
   played as high-then-low, the only shape the manufacturer's own 74193 test in minipro's DB agrees with.
 - `Security/ExternalTargetLauncher` - **the only sanctioned way to open an external link or local
-  file**: HTTP/HTTPS/mailto, or a local path inside the data root with an allowlisted extension.
+  file**: HTTP/HTTPS/mailto, or a local path inside the data root with an allowlisted extension. The
+  Maintainer tab's saved files open through it too, rooted at `OpenedFiles.Root`
+  (`AppConfig.MaintainerOpenedFilesFolder`, the user's own app data folder, never temp; `OpenedFilesTests`
+  holds the two lists together, and a `.kicad_pro` opens as JSON). What an earlier CRT left under
+  `<temp>/CRT/Maintainer` goes at each open (`OpenedFiles.SweepEarlierRoot`) - through no linked folder and
+  only folders named by a GUID, that place being possibly another account's.
 - **QuestPDF**: used under its Community licence (free under $1M revenue - a condition on any fork).
   `WorkbookPdfExporter.ConfigureQuestPdf()` (called at launch, and by the tests) sets the licence and
   flips 2026.9.0's font defaults back (`UseSystemFonts` on, no throwing on missing glyphs or families,
@@ -2352,6 +2437,9 @@ Load-bearing, and easy to undo by accident:
 - **One submission in BETA per board** (owner decision): an approval is refused while the board
   waits for stable (`OneSubmissionInBeta`), on only when stable publishing is configured. A board
   copied to stable BY HAND is recognised and recorded (`RecordIfProductionAlreadyHoldsAsync`).
+- **Push back and Reject are held to what the confirmation showed** (code review, 2026-11-02):
+  `BetaRollbackRequest.ExpectedBetaContentHash`, from the rollback plan's own `BetaContentHash`. Optional,
+  so an older CRT gets the old behaviour; BETA moved answers 409, and the tab reads the lists again.
 - **"Push back to queue" rolls BETA back to stable's state** (`BetaRollbackFlow`), per board - it
   returns EVERY submission merged since the last promotion to the queue, so its confirmation names
   them all; "Reject" on that screen is the same rollback. It works because merged submissions keep
@@ -2375,6 +2463,16 @@ Load-bearing, and easy to undo by accident:
 - **The revision date and the "# Hardware:"/"# Board:" caption are the SERVER's** at both stages
   (`PublishMerge`); `BoardDataCaptionTests` fails on a `new BoardData { ... }` naming neither. Do not
   make the client stamp a date.
+- **A file of no bytes is refused, whatever its type** (owner decision, 2026-11-02: "Refuse empty files";
+  `SubmissionFileRules`, code `file.empty`, one sentence on every side): at create and at an amendment on
+  what a manifest declares (size 0 or the hash of no bytes), at finalise and the publish on the bytes
+  (`MatchesWholeFile`; `Matches` still takes an empty text file, for a feedback attachment). CRT says it per
+  file before anything is sent (`HashFilesAsync`), on the table's cell (`BoardFileState.Empty`), and as a
+  file is added (`DraftPickedFiles.EmptyFiles`, `KiCadFolderScan.Empty`). No published file is empty, so
+  nothing is exempted.
+- **"The address is verified" is said only of an address that is** (owner decision, 2026-11-02):
+  `ReviewContributorFacts.SignedIn` is a verified account found (`ContributorHistory`), as a model's is.
+  Anybody can register under anybody's address, and `LoginAsync` asks nothing of verification.
 - **WHICH files a submission may carry is `SubmissionFileRules`**, run at create AND in `PublishPlan`;
   `SubmissionRulesShippedDataTests` runs every rule and the publish plan over every shipped board as
   the 4.0 converter writes it - do not loosen a rule to pass it. KiCad data travels by `SubmissionKiCadFiles` (in 4.0: the names under "KiCad data/" a
@@ -2397,6 +2495,12 @@ Load-bearing, and easy to undo by accident:
   the invitation that would is refused for it); an unverified or locked account is left alone. The approver is named on the pool row and the audit, and
   told the outcome (`ReviewDecisionAnswer.MaintainerNote`). It runs after the publish and never fails
   it. "Create board"'s `NewBoardMaintainerWindow` is the agreement this acts on.
+- **A model's queue entry says `SignedIn` only for a verified account found** (code review, 2026-11-02):
+  the card says so or says the name and address were typed in, and words the test suite as what the
+  sender's CRT reported (`OscilloscopeModelRules.SuiteReportedPassed`, shared with the mail), never green.
+  The models on show follow the queue's count quietly, and on screen are read at every full check whatever
+  it says - a model replacing another leaves it standing (`FollowWaitingCountAsync`; no card made again for a
+  read with nothing new, `OscilloscopeModelsDisplay.SameModels`) - never under a reason being typed.
 - **Oscilloscope models sent in** (server 4.2.0, migration 0024, 2026-10-29; `OscilloscopeModelFlows`,
   `OscilloscopeModelEndpoints`, `AdminEndpoints.OscilloscopeModels.cs`): a NEW KIND of submission with a
   table of its own (`oscilloscope_submissions`) - nothing of the board pipeline applies. Sending needs no

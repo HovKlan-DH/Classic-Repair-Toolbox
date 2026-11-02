@@ -1407,6 +1407,135 @@ public sealed class SubmissionReceiptPresenterTests
     }
 
     // ###########################################################################################
+    // *** A NEWER SEND THAT NEVER FINISHED ANSWERS NOTHING (code review, 2026-11-02). *** A re-send
+    // failed offline, and the old row turned from orange to "Changes requested - you sent a newer one
+    // on ...", though nothing had reached the maintainer: the request still stood, and nothing said so.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("")]
+    [InlineData("uploading")]
+    [InlineData("abandoned")]
+    public void A_newer_send_that_never_finished_does_not_answer_a_request(string state)
+    {
+        var asked = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            BoardId = "Commodore/C64/250407",
+            SentUtc = new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero),
+            LastKnownState = "changes_requested",
+        };
+
+        var failed = asked with { SubmissionId = 2, SentUtc = new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero), LastKnownState = state };
+
+        Assert.Null(SubmissionReceiptPresenter.NewerForBoard(asked, [asked, failed]));
+    }
+
+    // A finalise whose answer was lost may well be queued, so it does answer the request.
+    [Fact]
+    public void A_newer_send_whose_finalise_went_does_answer_a_request()
+    {
+        var asked = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            BoardId = "Commodore/C64/250407",
+            SentUtc = new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero),
+            LastKnownState = "changes_requested",
+        };
+
+        var sent = asked with
+        {
+            SubmissionId = 2,
+            SentUtc = new DateTimeOffset(2026, 10, 5, 9, 0, 0, TimeSpan.Zero),
+            LastKnownState = string.Empty,
+            FinaliseSentUtc = new DateTimeOffset(2026, 10, 5, 9, 1, 0, TimeSpan.Zero),
+        };
+
+        Assert.Same(sent, SubmissionReceiptPresenter.NewerForBoard(asked, [asked, sent]));
+    }
+
+    // ###########################################################################################
+    // Whether a submission can be with a maintainer at all - what "Board: Name" and the row above ask.
+    // The receipt is written before the upload, and its state is the server's last word, so what it says
+    // while no state has come is told by whether the finalise request went (UnfinishedSubmission).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("", false, false, true)]
+    [InlineData("uploading", false, false, true)]
+    [InlineData("abandoned", false, false, true)]
+    [InlineData(" Uploading ", false, false, true)]
+    // The finalise request went, nothing heard since: it may be queued.
+    [InlineData("", true, false, false)]
+    [InlineData("uploading", true, false, false)]
+    // Heard since, and the server says it never finished.
+    [InlineData("uploading", true, true, true)]
+    // "abandoned" is the server's last word, however it got there.
+    [InlineData("abandoned", true, false, true)]
+    // A state the server queued it under, or decided.
+    [InlineData("pending", false, false, false)]
+    [InlineData("rejected", false, false, false)]
+    [InlineData("merged", false, false, false)]
+    [InlineData("changes_requested", false, false, false)]
+    [InlineData("published", false, false, false)]
+    public void A_send_never_reached_review_only_when_nothing_of_it_can_be_queued(string state, bool finaliseWent, bool heardSince, bool never)
+    {
+        DateTimeOffset went = new(2026, 11, 2, 10, 0, 0, TimeSpan.Zero);
+
+        var receipt = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            LastKnownState = state,
+            FinaliseSentUtc = finaliseWent ? went : null,
+            LastCheckedUtc = heardSince ? went.AddMinutes(1) : went.AddMinutes(-1),
+        };
+
+        Assert.Equal(never, SubmissionReceiptPresenter.NeverReachedReview(receipt));
+    }
+
+    // ###########################################################################################
+    // *** WHY THE SERVER REFUSED IT, AS "MY SUBMISSIONS" SHOWS IT (code review, 2026-11-02). *** Its errors,
+    // each naming its subject - and only for a refusal. A warning stopped nothing, so it is no reason: under
+    // a maintainer's Reject, which the server words the same, warnings read as why it was turned down.
+    // ###########################################################################################
+    [Fact]
+    public void A_refused_submission_says_why_by_its_errors_alone()
+    {
+        var receipt = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            LastKnownState = "rejected",
+            Findings =
+            [
+                new ValidationFinding { Severity = ValidationSeverity.Warning, Message = "No summary was given." },
+                new ValidationFinding { Severity = ValidationSeverity.Error, Subject = "U8", Message = "No category." },
+            ],
+        };
+
+        Assert.Equal(["U8: No category."], SubmissionReceiptPresenter.DescribeFindings(receipt));
+    }
+
+    [Theory]
+    [InlineData("pending")]
+    [InlineData("merged")]
+    [InlineData("uploading")]
+    public void Anything_but_a_refusal_lists_no_reasons(string state)
+    {
+        var receipt = new SubmissionReceipt
+        {
+            SubmissionId = 1,
+            LastKnownState = state,
+            Findings = [new ValidationFinding { Severity = ValidationSeverity.Warning, Message = "A warning kept by mistake." }],
+        };
+
+        Assert.Empty(SubmissionReceiptPresenter.DescribeFindings(receipt));
+    }
+
+    [Fact]
+    public void A_receipt_from_before_they_were_kept_lists_none()
+    {
+        Assert.Empty(SubmissionReceiptPresenter.DescribeFindings(new SubmissionReceipt { SubmissionId = 1, LastKnownState = "rejected" }));
+    }
+
+    // ###########################################################################################
     // *** A STATE WORD A NEWER SERVER ADDED IS ASKED ABOUT SLOWLY (code review, 2026-10-13). *** It
     // is "still open" (the safe answer), but asked every minute for ever by every installed CRT it
     // would never stop; it now follows "merged"'s schedule: often at first, then weekly.

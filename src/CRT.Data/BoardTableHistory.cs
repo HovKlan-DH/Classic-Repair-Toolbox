@@ -126,6 +126,12 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Takes back the latest change and says where it was, so the UI can show that sheet and put
         // the cursor on that row. Null when there is nothing to undo.
+        //
+        // *** NOTHING WHILE A GROUP IS OPEN (code review, 2026-11-02). *** A row held by its grip is a
+        // gesture not finished. An undo took its step off with the group still open, and the next move
+        // asked for the group's step (Record): on a table whose first change the drag was, an empty
+        // list and an exception that took CRT down with the unsaved edits; with earlier steps, the
+        // later moves joined the older one. Null, whoever asks; the editor ignores the keys too.
         // ###########################################################################################
         public BoardTableHistoryResult? Undo() => this.Apply(this.thisUndo, this.thisRedo);
 
@@ -188,7 +194,7 @@ namespace Handlers.DataHandling
 
         private BoardTableHistoryResult? Apply(List<Step> from, List<Step> to)
         {
-            if (from.Count == 0)
+            if (from.Count == 0 || this.thisGrouping)
             {
                 return null;
             }

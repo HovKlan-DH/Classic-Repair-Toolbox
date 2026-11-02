@@ -215,7 +215,8 @@ namespace Handlers.MaintainerHandling
                 ReviewApiParser.Strings(root, "restored"),
                 ReviewApiParser.Strings(root, "removed"),
                 ReviewApiParser.ParseCarryingFrom(root, "returning"),
-                ReviewApiParser.Strings(root, "sharedRestored"));
+                ReviewApiParser.Strings(root, "sharedRestored"),
+                ReviewApiParser.String(root, "betaContentHash"));
         }
 
         public static BetaRollbackResult? ParseBetaRollback(string? json)

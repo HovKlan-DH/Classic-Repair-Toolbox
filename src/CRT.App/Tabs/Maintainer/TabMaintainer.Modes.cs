@@ -126,7 +126,7 @@ namespace CRT
                     break;
 
                 case MaintainerMode.Beta:
-                    await this.RefreshBetaAsync(background: true);
+                    await this.RefreshBetaAsync(background: true, readStuckPlan: true);
                     this.SelectOnEntry();
                     break;
 

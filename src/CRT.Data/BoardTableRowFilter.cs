@@ -19,10 +19,17 @@ namespace Handlers.DataHandling
     // a choice remembered with "Flagged" in it reads as Warnings (Parse), and its number, 8, is
     // left unused rather than given to anything else.
     //
-    // *** A NEW ROW STILL BEING FILLED IN IS ALWAYS SHOWN. *** It is the contributor's own work in
-    // progress - just inserted, not typed in yet, or not yet complete enough to be saved - and a
-    // filter hiding it the moment it appeared would read as the insert having failed. "Show changes
-    // only" showed it for the same reason.
+    // *** A NEW ROW WITH NOTHING TYPED IN IT IS ALWAYS SHOWN. *** It is the contributor's own work in
+    // progress, and a filter hiding it the moment it appeared would read as the insert having failed.
+    // "Show changes only" showed it for the same reason.
+    //
+    // *** AND SO IS THE ROW THE CURSOR IS ON, UNTIL THE CURSOR LEAVES IT (owner's answer, 2026-11-02).
+    // *** What the person is working in may stop being of a picked kind with the very text just typed:
+    // a new row no longer blank under the Modified pill, a value typed back to the published one, a
+    // row's last error fixed under the Errors pill. Taken away there and then, the cursor had to land
+    // on another row, and the next text typed overwrote that row's cell. A row with no cursor in it
+    // still goes at once. A pick or a search, being a new question, keeps nothing (the editor's
+    // thisRowInHand, BoardTableEditor.Filter.cs).
     // ###########################################################################################
     [Flags]
     public enum BoardTableRowKinds
@@ -77,6 +84,44 @@ namespace Handlers.DataHandling
                 return true;
 
             return (BoardTableRowFilter.KindsOf(row) & kinds) != BoardTableRowKinds.None;
+        }
+
+        // Whether the table shows `row`: the row the cursor is on (see the header), or one both the
+        // picked pills and the search show.
+        public static bool Shows(BoardTableRowKinds kinds, BoardTableSearch search, BoardTableRow? rowInHand, BoardTableRow row)
+        {
+            ArgumentNullException.ThrowIfNull(search);
+
+            return ReferenceEquals(row, rowInHand) || (BoardTableRowFilter.Shows(kinds, row) && search.Shows(row));
+        }
+
+        // The rows of a sheet the table shows, in the sheet's order.
+        public static List<BoardTableRow> RowsShown(IEnumerable<BoardTableRow> rows, BoardTableRowKinds kinds, BoardTableSearch search, BoardTableRow? rowInHand)
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+
+            return rows.Where(row => BoardTableRowFilter.Shows(kinds, search, rowInHand, row)).ToList();
+        }
+
+        // ###########################################################################################
+        // The cell of `row` to work on next when the Errors or Warnings pill is what brought it into
+        // view: its first with a problem of a picked level. Null for a row with none, and with neither
+        // pill picked - a warning means nothing to someone going through the rows Modified shows.
+        //
+        // Where the cursor starts when the table is given the focus under the pill (code review,
+        // 2026-11-02): Submit on a draft with errors opens it so, and what is typed then goes where
+        // something is wrong anyway.
+        // ###########################################################################################
+        public static BoardTableCell? FirstProblemCell(BoardTableRowKinds kinds, BoardTableRow row)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            bool errors = kinds.HasFlag(BoardTableRowKinds.Errors);
+            bool warnings = kinds.HasFlag(BoardTableRowKinds.Warnings);
+
+            return row.Cells.FirstOrDefault(cell => cell.Problems.Any(problem =>
+                (errors && problem.Level == BoardProblemLevel.Error) ||
+                (warnings && problem.Level == BoardProblemLevel.Warning)));
         }
 
         // ###########################################################################################

@@ -37,7 +37,7 @@ namespace CRT
     {
         private sealed record CreditsFollowedBoard(IReadOnlyList<string> OfferedBefore, IReadOnlyList<string> OfferedAfter);
 
-        private void OfferNewBoardCredits(HardwareBoardEntry entry, DraftSession? held = null)
+        internal void OfferNewBoardCredits(HardwareBoardEntry entry, DraftSession? held = null)
         {
             if (!entry.IsDraftOnly ||
                 (held ?? DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile) ?? DraftManager.Sessions.Get(DraftManager.DraftsRoot, entry.ExcelDataFile)) is not { } session)
@@ -108,6 +108,15 @@ namespace CRT
             DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(session.DraftsRoot, session.ExcelDataFile)) is { IsNewBoard: true } marker
                 ? NewBoardCredits.RowsToAdd(session.Content.Board, marker.CreditsOffered)
                 : 0;
+
+        // `board` as an offer would leave it, with the draft left as it is - the same board when there is
+        // nothing to offer. What another draft's errors are counted on before it is sent
+        // (TabDrafts.SubmitOthers.cs). Off the UI thread: the marker is read for it.
+        private static BoardData WithNewBoardCreditsOffered(HardwareBoardEntry entry, BoardData board) =>
+            entry.IsDraftOnly &&
+            DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, entry.ExcelDataFile)) is { IsNewBoard: true } marker
+                ? NewBoardCredits.Offer(board, marker.CreditsOffered).Board
+                : board;
 
         private void OnCreditsStepMoved(object? sender, DraftSessionChange change)
         {

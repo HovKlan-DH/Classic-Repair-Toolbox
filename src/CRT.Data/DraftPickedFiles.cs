@@ -35,6 +35,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public IReadOnlyList<string> Copied => this.thisCopied;
 
+        // The RelativeFile of every file left out because it holds no bytes - said for what it is.
+        public IReadOnlyList<string> EmptyFiles => this.thisEmpty;
+
+        private readonly List<string> thisEmpty = new();
+
         private DraftPickedFiles(string draftFolder)
         {
             this.thisDraftFolder = draftFolder;
@@ -44,7 +49,9 @@ namespace Handlers.DataHandling
         // Copies each picked file (`Source`) to where the draft takes in `RelativeFile`
         // (DraftFileResolver.BuildDraftFileDestination). A picked file that is gone, or that lies
         // where it would be copied to, is skipped; so is one whose copy or set-aside fails - logged,
-        // as a copy that failed always was, and with nothing replaced that could not be put back.
+        // as a copy that failed always was, and with nothing replaced that could not be put back. So is
+        // one of no bytes, which could never be sent, said in EmptyFiles (owner decision, 2026-11-02:
+        // "Refuse empty files"; SubmissionFileRules).
         // ###########################################################################################
         public static DraftPickedFiles CopyInto(string draftFolder, IReadOnlyList<(string Source, string RelativeFile)> files)
         {
@@ -60,6 +67,12 @@ namespace Handlers.DataHandling
                 if (!File.Exists(source) ||
                     string.Equals(Path.GetFullPath(source), destination, StringComparison.OrdinalIgnoreCase))
                 {
+                    continue;
+                }
+
+                if (SubmissionFileRules.HoldsNoBytes(source))
+                {
+                    copies.thisEmpty.Add(relativeFile);
                     continue;
                 }
 

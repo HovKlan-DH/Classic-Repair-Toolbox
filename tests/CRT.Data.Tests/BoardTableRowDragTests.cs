@@ -61,6 +61,62 @@ public sealed class BoardTableRowDragTests
         drag.Finish();
     }
 
+    // ###########################################################################################
+    // *** NO UNDO WHILE A ROW IS HELD (code review, 2026-11-02). *** An undo took the drag's own step
+    // off with the group still open, and the next move then asked for the group's step: on a table
+    // whose first change the drag was, an empty list and an exception nothing catches (CRT went down
+    // with the Maintainer tab's unsaved edits); with earlier steps, the later moves joined the older
+    // one. The history refuses, whoever asks.
+    // ###########################################################################################
+    [Fact]
+    public void Undo_and_redo_do_nothing_while_a_row_is_held_as_the_tables_first_change()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(null, Board("U1", "U2", "U3"));
+        BoardTableSheet sheet = Components(document);
+
+        BoardTableRowDrag drag = sheet.BeginRowDrag(Row(sheet, "U1"))!;
+        Assert.True(drag.MoveOnto(Row(sheet, "U2")));
+
+        Assert.Null(document.History.Undo());
+        Assert.Null(document.History.Redo());
+        Assert.Equal(["U2", "U1", "U3"], Order(sheet));
+
+        Assert.True(drag.MoveOnto(Row(sheet, "U3")));
+        Assert.True(drag.Finish());
+        Assert.Equal(["U2", "U3", "U1"], Order(sheet));
+
+        // The whole drag, one step.
+        Assert.Equal(1, document.History.UndoCount);
+        Assert.NotNull(document.History.Undo());
+        Assert.Equal(["U1", "U2", "U3"], Order(sheet));
+    }
+
+    [Fact]
+    public void Undo_while_a_row_is_held_leaves_the_steps_before_the_drag_alone()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(null, Board("U1", "U2", "U3"));
+        BoardTableSheet sheet = Components(document);
+
+        Row(sheet, "U3").Cells[LabelColumn].Text = "U9";
+        sheet.Refresh();
+
+        BoardTableRowDrag drag = sheet.BeginRowDrag(Row(sheet, "U1"))!;
+        Assert.True(drag.MoveOnto(Row(sheet, "U2")));
+
+        Assert.Null(document.History.Undo());
+
+        Assert.True(drag.MoveOnto(Row(sheet, "U9")));
+        Assert.True(drag.Finish());
+        Assert.Equal(["U2", "U9", "U1"], Order(sheet));
+        Assert.Equal(2, document.History.UndoCount);
+
+        Assert.NotNull(document.History.Undo());
+        Assert.Equal(["U1", "U2", "U9"], Order(sheet));
+
+        Assert.NotNull(document.History.Undo());
+        Assert.Equal(["U1", "U2", "U3"], Order(sheet));
+    }
+
     [Fact]
     public void Hovering_the_dragged_row_itself_changes_nothing()
     {

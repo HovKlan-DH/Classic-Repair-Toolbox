@@ -24,7 +24,8 @@ namespace Handlers.DataHandling
     //     (cases 3 and 4 agreed with the project owner);
     //   - the JSON beside it (highlights, KiCad calibrations), by its bytes - only CRT writes it;
     //   - every other file in the draft's own folder, by path and bytes: pictures, documents and
-    //     the KiCad data. A picture replaced under its own name is a change (case 5).
+    //     the KiCad data. A picture replaced under its own name is a change (case 5);
+    //   - a new board's notes, handed in by whoever asks (the overload that takes them).
     //
     // *** WHAT IS LEFT OUT, and why each matters. *** Files the draft uses from CRT's DOWNLOADED
     // data are not the contributor's change - a data sync replacing one must not bring the button
@@ -48,6 +49,24 @@ namespace Handlers.DataHandling
         private static readonly ConcurrentDictionary<string, CachedHash> FileHashes = new(StringComparer.OrdinalIgnoreCase);
 
         private static readonly ConcurrentDictionary<string, CachedHash> WorkbookHashes = new(StringComparer.OrdinalIgnoreCase);
+
+        // ###########################################################################################
+        // *** AND THE NOTES A NEW BOARD'S SUBMISSION CARRIES (code review, 2026-11-02). *** They live in
+        // the draft's marker, which is bookkeeping below - so notes changed after a rejection said
+        // "Saved." and left Submit grey with "Change something to send it again". Added only when there
+        // are any, so a draft with none gives what it always gave; a fingerprint a receipt already keeps
+        // can then only differ, which only brings Submit back. `notesSent` is
+        // NewBoardRegistration.NotesForSubmission, what the manifest would say.
+        // ###########################################################################################
+        public static string Compute(string workbookPath, string draftBoardFolder, string? notesSent)
+        {
+            string fingerprint = DraftFingerprint.Compute(workbookPath, draftBoardFolder);
+            string notes = notesSent?.Trim() ?? string.Empty;
+
+            return fingerprint.Length == 0 || notes.Length == 0
+                ? fingerprint
+                : $"{fingerprint}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(notes)))}";
+        }
 
         public static string Compute(string workbookPath, string draftBoardFolder)
         {

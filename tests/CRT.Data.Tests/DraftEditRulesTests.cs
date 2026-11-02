@@ -85,6 +85,78 @@ public sealed class DraftEditRulesTests
     }
 
     // ###########################################################################################
+    // *** A NAME EMPTIED IS STILL THE PICTURE (code review, 2026-11-02). *** Emptied and committed, a
+    // picture's highlights and calibration follow it to the blank name; typed again as a second edit,
+    // the highlights came along and the KiCad alignment was gone, with nothing said: a blank name was
+    // not one "the board had", so the calibration filed under it counted as a stray.
+    // ###########################################################################################
+    [Fact]
+    public void A_schematic_name_emptied_and_typed_again_keeps_its_calibration()
+    {
+        BoardData top = Board([Schematic("Top", "top.png")], Highlight("Top", "U1"));
+
+        (BoardData emptied, List<KiCadCalibrationEntry> blank) = DraftEditRules.Follow(top, top.WithSchematics([Schematic("", "top.png")]), [Calibration("Top")]);
+
+        Assert.Equal("", Assert.Single(blank).SchematicName);
+
+        (BoardData typed, List<KiCadCalibrationEntry> calibrations) = DraftEditRules.Follow(emptied, emptied.WithSchematics([Schematic("Top side", "top.png")]), blank);
+
+        Assert.Equal("Top side", Assert.Single(typed.ComponentHighlights).SchematicName);
+        Assert.Equal("Top side", Assert.Single(calibrations).SchematicName);
+        Assert.Equal(2, calibrations[0].ScaleX);
+    }
+
+    // The same with another edit in between, which hands over no schematics at all - so no rename is
+    // worked out while the name is blank, and the calibration must wait under it all the same.
+    [Fact]
+    public void A_calibration_under_an_emptied_name_waits_through_an_edit_of_something_else()
+    {
+        BoardData top = Board([Schematic("Top", "top.png")], Highlight("Top", "U1"));
+
+        (BoardData emptied, List<KiCadCalibrationEntry> blank) = DraftEditRules.Follow(top, top.WithSchematics([Schematic("", "top.png")]), [Calibration("Top")]);
+
+        var somethingElse = new BoardData
+        {
+            Components = { new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU 6510", TechnicalNameOrValue = "6510" } },
+            Schematics = emptied.Schematics,
+            ComponentHighlights = emptied.ComponentHighlights,
+        };
+
+        (BoardData still, List<KiCadCalibrationEntry> waiting) = DraftEditRules.Follow(emptied, somethingElse, blank);
+
+        Assert.Equal("", Assert.Single(waiting).SchematicName);
+
+        (_, List<KiCadCalibrationEntry> calibrations) = DraftEditRules.Follow(still, still.WithSchematics([Schematic("Top side", "top.png")]), waiting);
+
+        Assert.Equal("Top side", Assert.Single(calibrations).SchematicName);
+    }
+
+    // A blank name counts only while a picture has it: its row deleted, the calibration goes with it,
+    // and one under a blank name with no such row is a stray like any other.
+    [Fact]
+    public void A_calibration_under_a_blank_name_goes_with_its_row_and_without_one_is_a_stray()
+    {
+        BoardData blankRow = Board([Schematic("", "top.png"), Schematic("Bottom", "bottom.png")], Highlight("", "U1"));
+
+        (BoardData deleted, List<KiCadCalibrationEntry> afterDelete) = DraftEditRules.Follow(
+            blankRow,
+            blankRow.WithSchematics([Schematic("Bottom", "bottom.png")]),
+            [Calibration(""), Calibration("Bottom")]);
+
+        Assert.Empty(deleted.ComponentHighlights);
+        Assert.Equal("Bottom", Assert.Single(afterDelete).SchematicName);
+
+        BoardData noBlankRow = Board([Schematic("Bottom", "bottom.png")]);
+
+        (_, List<KiCadCalibrationEntry> strays) = DraftEditRules.Follow(
+            noBlankRow,
+            noBlankRow.WithSchematics([Schematic("Back", "bottom.png")]),
+            [Calibration(""), Calibration("Bottom")]);
+
+        Assert.Equal("Back", Assert.Single(strays).SchematicName);
+    }
+
+    // ###########################################################################################
     // What an edit took off the board with the schematic images it removed - said to the
     // contributor afterwards, with Ctrl+Z to bring it back (2026-10-25). A rename is no removal.
     // ###########################################################################################

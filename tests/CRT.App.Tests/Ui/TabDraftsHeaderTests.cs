@@ -366,6 +366,9 @@ public sealed class TabDraftsHeaderTests : IDisposable
             Assert.True(shown.IsVisible, "The window never opened.");
             Assert.Equal(undoButtons, shown.UndoButtonsForTests.Count);
 
+            // And its words say the same (code review, 2026-11-02).
+            Assert.Equal(!draftOnly, (shown.GetControl<TextBlock>("IntroText").Text ?? string.Empty).Contains("compared with the published data", StringComparison.Ordinal));
+
             shown.Close();
             await review;
             window.Close();

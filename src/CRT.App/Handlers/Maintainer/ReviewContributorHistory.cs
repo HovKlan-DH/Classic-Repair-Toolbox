@@ -26,10 +26,11 @@ namespace Handlers.MaintainerHandling
     // words are CRT's own (SubmissionReceiptPresenter), so a submission reads the same here, on the
     // Boards screen and in the contributor's own Drafts tab. Pure, so the view is tested.
     //
-    // *** THE ACCOUNT LINE IS THE ONE FACT NO COUNT GIVES. *** A submission sent without an account
-    // carries an address somebody TYPED - anybody could have typed it - so its record belongs to
-    // whoever uses that address, not provably to one person. Said plainly, since it is exactly what
-    // an "honest opinion" of a contributor must weigh.
+    // *** THE ACCOUNT LINE IS THE ONE FACT NO COUNT GIVES. *** A submission sent without a verified
+    // account carries an address somebody TYPED - anybody could have typed it - so its record belongs
+    // to whoever uses that address, not provably to one person. Said plainly, since it is exactly what
+    // an "honest opinion" of a contributor must weigh. An account nobody verified counts as none: the
+    // server's SignedIn is false for it (owner decision, 2026-11-02).
     // ###########################################################################################
     public static class ReviewContributorHistory
     {
@@ -50,7 +51,7 @@ namespace Handlers.MaintainerHandling
                 true when facts.AccountCreatedUtc is DateTimeOffset since =>
                     $"Sent with an account made {SubmissionReceiptPresenter.FormatDate(since)} - the address is verified.",
                 true => "Sent with an account - the address is verified.",
-                false => "Sent without an account - the address was typed in when sending, and nothing checked it.",
+                false => "Sent without a verified account - the address was typed in, and nothing checked it.",
                 _ => null
             };
         }

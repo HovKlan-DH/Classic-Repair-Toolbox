@@ -190,9 +190,23 @@ namespace Handlers.Online
 
             bool knownAgain = receipt.NotFoundUtc is not null;
 
+            // ###########################################################################################
+            // *** WHY IT WAS REFUSED IS KEPT (code review, 2026-11-02). *** Dropped here, "My submissions"
+            // could never say: a refused submission is not asked about again. An answer naming none
+            // leaves what the receipt holds - finalise said them - rather than wiping it. Its errors only:
+            // a maintainer's Reject answers the warnings a queued submission held (ReasonsRefused).
+            // ###########################################################################################
+            IReadOnlyList<ValidationFinding>? findings =
+                SubmissionReceiptPresenter.IsRefused(status.State) && SubmissionReceiptPresenter.ReasonsRefused(status.Findings) is { Count: > 0 } reasons
+                    ? reasons
+                    : null;
+
+            bool findingsMoved = findings is not null && !SubmissionStatusRefresh.SameFindings(receipt.Findings, findings);
+
             bool rowMoved = stateMoved || commentMoved ||
                 (status.DecidedUtc is not null && status.DecidedUtc != receipt.DecidedUtc) ||
                 status.AmendedByMaintainer != receipt.AmendedByMaintainer ||
+                findingsMoved ||
                 knownAgain;
 
             if (rowMoved)
@@ -203,7 +217,8 @@ namespace Handlers.Online
                     status.MaintainerComment ?? string.Empty,
                     now,
                     status.DecidedUtc,
-                    status.AmendedByMaintainer);
+                    status.AmendedByMaintainer,
+                    findings);
             }
             else
             {
@@ -211,8 +226,12 @@ namespace Handlers.Online
             }
 
             // Known again after "not found" is a change too: the row stops saying so.
-            return stateMoved || commentMoved || knownAgain;
+            return stateMoved || commentMoved || findingsMoved || knownAgain;
         }
+
+        private static bool SameFindings(IReadOnlyList<ValidationFinding> kept, IReadOnlyList<ValidationFinding> said) =>
+            kept.Select(finding => (finding.Severity, finding.Code, finding.Subject, finding.Message))
+                .SequenceEqual(said.Select(finding => (finding.Severity, finding.Code, finding.Subject, finding.Message)));
 
         // The sentence CRT shows when the server answered "update CRT": the server's own words, said
         // to be about the submissions' status, so it is clear what could not be done.

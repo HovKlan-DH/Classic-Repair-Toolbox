@@ -35,6 +35,64 @@ public sealed class ReviewNotInTableTests
         Assert.Empty(ReviewNotInTable.Lines(new ReviewChangeSummaryView(false, []), []));
     }
 
+    // ###########################################################################################
+    // A NEW BOARD'S TOO (code review, 2026-11-02): what it says of its regions goes into the published file,
+    // no sheet of the table shows it and an amendment cannot change it - so it is said, once. One with no
+    // regions has nothing to say.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_board_that_has_regions_says_so_above_the_table()
+    {
+        ReviewNoteLine line = Assert.Single(ReviewNotInTable.Lines(new ReviewChangeSummaryView(true, [], null, RegionsNow: true), []));
+
+        Assert.Equal("This new board comes in PAL and NTSC versions", line.Text);
+        Assert.Equal(ReviewNoteKind.Change, line.Kind);
+
+        Assert.Empty(ReviewNotInTable.Lines(new ReviewChangeSummaryView(true, []), []));
+    }
+
+    // End to end, from the two boards: the summary the server makes through what this reads.
+    [Fact]
+    public void A_new_boards_regions_reach_the_line_from_the_summary_itself()
+    {
+        ReviewChangeSummary summary = ReviewSummary.Compare(published: null, BoardRegions.WithRegions(new BoardData(), true));
+
+        var view = new ReviewChangeSummaryView(summary.IsNewBoard, [], summary.ReorderedSections, summary.RegionsNow);
+
+        Assert.Equal("This new board comes in PAL and NTSC versions", Assert.Single(ReviewNotInTable.Lines(view, [])).Text);
+    }
+
+    // ###########################################################################################
+    // Several rectangles of one component on one schematic (code review, 2026-11-02): each is a change, each
+    // said, under the key they share. Whichever field moved on any of them is what the lines say.
+    // ###########################################################################################
+    [Fact]
+    public void Two_rectangles_of_one_component_are_two_changes_above_the_table()
+    {
+        var view = new ReviewChangeSummaryView(false,
+        [
+            new ReviewSectionView(
+                ReviewSummary.SectionComponentHighlights,
+                Added: [Key("Board layout", "C115")],
+                Removed: [],
+                Changed: [Key("Board layout", "C115"), Key("Board layout", "C115")],
+                Renamed: [],
+                FieldChanges: new Dictionary<string, IReadOnlyList<ReviewFieldChangeView>>
+                {
+                    [Key("Board layout", "C115")] = [new("X", "1", "2"), new("X", "5", "6")],
+                })
+        ]);
+
+        Assert.Equal(
+            [
+                "Component highlights have [3] changes:",
+                "Moved component [C115] on schematic \"Board layout\"",
+                "Moved component [C115] on schematic \"Board layout\"",
+                "Added component [C115] to schematic \"Board layout\"",
+            ],
+            Texts(ReviewNotInTable.Lines(view, [])));
+    }
+
     // Every sheet the table shows is left out - it is already in front of the maintainer, coloured.
     [Fact]
     public void Changes_to_the_tables_own_sheets_are_not_repeated()

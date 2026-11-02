@@ -438,6 +438,173 @@ public sealed class TabDraftsBoardNameTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** A SEND THAT NEVER FINISHED LEAVES THE NAME FREE (code review, 2026-11-02). *** A dropped
+    // connection leaves the receipt with no state and then "uploading": no maintainer has it, yet the
+    // page said "has been sent for review ... until the maintainer has decided" - for up to a day, until
+    // the sweep marked it abandoned. CRT never resumes an old upload, so nothing of it goes on.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("")]
+    [InlineData("uploading")]
+    public async Task A_send_that_never_finished_leaves_the_name_free(string state)
+    {
+        SeedNewBoard();
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = NewEntry();
+            TabDrafts tab = Tab(entry);
+            tab.ReceiptsOverrideForTests = [new SubmissionReceipt { SubmissionId = 7, BoardId = "Comodore/C64/999001", LastKnownState = state }];
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardNameAsync();
+
+            Assert.False(tab.BoardNamePanelForTests.GetControl<Border>("WhyNotPanel").IsVisible);
+            Assert.True(tab.BoardNamePanelForTests.GetControl<StackPanel>("SavePanel").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // A finalise request that went IS with the server, whatever became of its answer (UnfinishedSubmission):
+    // the submission may be queued and the maintainers mailed. With nothing heard since, the name stays -
+    // "uploading" from a check made BEFORE the request says nothing about it. A check after it does.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("uploading", false)]
+    [InlineData("uploading", true)]
+    public async Task A_finalise_whose_answer_was_lost_keeps_the_name_until_the_server_has_said(string state, bool askedSince)
+    {
+        SeedNewBoard();
+
+        await UiTest.RunAsync(async () =>
+        {
+            DateTimeOffset sent = DateTimeOffset.UtcNow;
+
+            HardwareBoardEntry entry = NewEntry();
+            TabDrafts tab = Tab(entry);
+            tab.ReceiptsOverrideForTests =
+            [
+                new SubmissionReceipt
+                {
+                    SubmissionId = 7,
+                    BoardId = "Comodore/C64/999001",
+                    LastKnownState = state,
+                    FinaliseSentUtc = sent,
+                    LastCheckedUtc = sent.AddMinutes(askedSince ? 1 : -5),
+                }
+            ];
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardNameAsync();
+
+            Assert.Equal(askedSince, tab.BoardNamePanelForTests.GetControl<StackPanel>("SavePanel").IsVisible);
+
+            if (!askedSince)
+            {
+                Assert.Equal(BoardNameWording.SentForReview, tab.BoardNamePanelForTests.GetControl<TextBlock>("WhyNotText").Text);
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** A NEW BOARD'S NOTES ARE PART OF WHAT IT SENDS (code review, 2026-11-02). *** They live in the
+    // marker, which the fingerprint skips as bookkeeping - so notes changed after a rejection said
+    // "Saved." and Submit stayed grey with "Change something to send it again". Taken from
+    // PrepareOtherDraftAsync (what a receipt remembers) and read back through the row, so the two
+    // places a fingerprint is taken must agree: changed back, the row greys out again.
+    // ###########################################################################################
+    [Fact]
+    public async Task Notes_changed_after_a_rejection_bring_Submit_back()
+    {
+        SeedNewBoard(notes: "First notes");
+
+        // The names it was made with - a save of the page writes them into the board file, so a fixture
+        // without them would change the file and bring Submit back by itself.
+        CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, NewBoard), new BoardData
+        {
+            HardwareName = "C64",
+            BoardName = "999001",
+            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
+            Credits =
+            [
+                new CreditEntry { Category = NewBoardCredits.BoardData, NameOrHandle = "Anna" },
+                new CreditEntry { Category = NewBoardCredits.OscilloscopeBaseline, NameOrHandle = "Anna" },
+            ],
+        });
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = NewEntry();
+            TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+            tab.BoardRenamedOverrideForTests = (_, _) => tab.RefreshDrafts();
+
+            OtherDraftReady ready = await tab.PrepareOtherDraftAsync(entry, string.Empty, string.Empty);
+            SubmitDraftTarget target = Assert.IsType<SubmitDraftTarget>(ready.Target);
+
+            tab.ReceiptsOverrideForTests =
+            [
+                new SubmissionReceipt
+                {
+                    SubmissionId = 7,
+                    BoardId = "Comodore/C64/999001",
+                    SentUtc = DateTimeOffset.UtcNow.AddMinutes(1),
+                    LastKnownState = "rejected",
+                    DraftFingerprint = target.Fingerprint,
+                }
+            ];
+
+            tab.RefreshDrafts();
+            Assert.False(Assert.Single(tab.Drafts).CanSubmit);
+
+            await tab.OpenBoardNameAsync();
+            FieldsOf(tab).GetControl<TextBox>("NotesBox").Text = "Better notes";
+            tab.BoardNamePanelForTests.RefreshForTests();
+            await tab.BoardNamePanelForTests.SaveAsync();
+
+            Assert.True(Assert.Single(tab.Drafts).CanSubmit);
+
+            FieldsOf(tab).GetControl<TextBox>("NotesBox").Text = "First notes";
+            tab.BoardNamePanelForTests.RefreshForTests();
+            await tab.BoardNamePanelForTests.SaveAsync();
+
+            Assert.False(Assert.Single(tab.Drafts).CanSubmit);
+        });
+    }
+
+    // ###########################################################################################
+    // A new name can land on a listed board's folder as a new board's can (code review, 2026-11-02):
+    // the fields' one rule, on this page too.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_new_name_landing_on_a_listed_boards_folder_is_refused()
+    {
+        SeedNewBoard();
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = NewEntry();
+            var listed = new HardwareBoardEntry
+            {
+                HardwareName = "Commodore 64",
+                BoardName = "250407 (long board)",
+                ExcelDataFile = "Commodore/C64/250407/board.json",
+            };
+
+            TabDrafts tab = Tab(entry, listed);
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            await tab.OpenBoardNameAsync();
+
+            Fill(tab, "Commodore", "C64", "250407");
+
+            Assert.False(tab.BoardNamePanelForTests.CanSaveForTests);
+            Assert.Contains("250407 (long board)", tab.BoardNamePanelForTests.GetControl<TextBlock>("ValidationText").Text, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
     // The list read again - every window activation - with this page open works nothing out behind it
     // (code review, 2026-11-01): Board status came back for a moment, opened the draft's session, ran
     // every check and read the KiCad data, each time.

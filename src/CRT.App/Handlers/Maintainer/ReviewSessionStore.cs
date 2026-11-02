@@ -212,10 +212,26 @@ namespace Handlers.MaintainerHandling
             if (string.IsNullOrWhiteSpace(ReviewSessionStore._path) || !File.Exists(ReviewSessionStore._path))
                 return null;
 
+            string json;
+
+            // ###########################################################################################
+            // *** A FILE HELD FOR A MOMENT IS "NOT THIS TIME", NOT A BROKEN FILE (code review, 2026-11-02). ***
+            // A virus scanner or a second CRT holding it made this read throw, the catch below called
+            // Forget, and a token still good was deleted - a sign-in asked for again, for nothing. What
+            // could not be READ says nothing about what is in it, so it stays for the next launch.
+            // ###########################################################################################
             try
             {
-                StoredSession? stored = JsonSerializer.Deserialize<StoredSession>(
-                    File.ReadAllText(ReviewSessionStore._path));
+                json = File.ReadAllText(ReviewSessionStore._path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+
+            try
+            {
+                StoredSession? stored = JsonSerializer.Deserialize<StoredSession>(json);
 
                 if (stored is null || string.IsNullOrWhiteSpace(stored.ProtectedToken))
                     return null;

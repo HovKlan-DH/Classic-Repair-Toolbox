@@ -79,7 +79,7 @@ namespace Handlers.Online
             ArgumentNullException.ThrowIfNull(relativePaths);
 
             var hashes = new Dictionary<string, SubmissionFileInfo>(StringComparer.Ordinal);
-            var problems = new List<string>();
+            var problems = new Dictionary<string, string>(StringComparer.Ordinal);
 
             int done = 0;
 
@@ -101,7 +101,7 @@ namespace Handlers.Online
                 if (!SubmissionFileLocator.TryLocate(
                         dataRoot, draftBoardFolder, relative, out string absolute, out string reason, boardIdentity))
                 {
-                    problems.Add($"[{relative}] cannot be used: {reason}");
+                    problems[relative] = $"[{relative}] cannot be used: {reason}";
                     done++;
                     continue;
                 }
@@ -109,6 +109,18 @@ namespace Handlers.Online
                 try
                 {
                     var info = new FileInfo(absolute);
+
+                    // ###########################################################################################
+                    // *** A FILE OF NO BYTES STOPS HERE (owner decision, 2026-11-02: "Refuse empty files"). ***
+                    // Said per file in the Submit dialog, in the server's words (SubmissionFileRules), before
+                    // anything is sent - never as a refusal after an upload began.
+                    // ###########################################################################################
+                    if (info.Length == 0)
+                    {
+                        problems[relative] = SubmissionFileRules.EmptyFileMessage(relative);
+                        done++;
+                        continue;
+                    }
 
                     // *** REMEMBERED BY LENGTH AND WRITE TIME (code review, 2026-10-13). *** A re-send
                     // of a large board re-read every published picture to learn hashes that had not
@@ -122,7 +134,7 @@ namespace Handlers.Online
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    problems.Add($"[{relative}] could not be read: {ex.Message}");
+                    problems[relative] = $"[{relative}] could not be read: {ex.Message}";
                 }
 
                 done++;
@@ -348,10 +360,35 @@ namespace Handlers.Online
         {
             using HttpClient http = SubmissionClient.CreateHttpClient(AppConfig.SubmissionUploadTimeout);
 
+            await this.UploadBlobAsync(http, submissionId, uploadToken, hash, absolutePath, progress, overall, cancellationToken);
+        }
+
+        // The same over the client given - a test's answers in memory (test rule 6).
+        internal async Task UploadBlobAsync(
+            HttpClient http,
+            long submissionId,
+            string uploadToken,
+            string hash,
+            string absolutePath,
+            IProgress<SubmissionProgress>? progress = null,
+            SubmissionProgress? overall = null,
+            CancellationToken cancellationToken = default)
+        {
             long offset = await this.GetResumeOffsetAsync(http, submissionId, uploadToken, hash, cancellationToken);
 
             await using FileStream source = new(
                 absolutePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
+
+            // ###########################################################################################
+            // *** EMPTIED SINCE IT WAS HASHED (owner decision, 2026-11-02: "Refuse empty files"). *** A
+            // file of no bytes never gets this far (HashFilesAsync), so one that does has just lost its
+            // bytes. Said for what it is: with nothing sent, finalise answered "has not finished
+            // uploading" on every retry.
+            // ###########################################################################################
+            if (source.Length == 0)
+            {
+                throw new SubmissionRejectedException(0, [], SubmissionFileRules.EmptyFileMessage(Path.GetFileName(absolutePath)));
+            }
 
             if (offset > 0 && offset <= source.Length)
                 source.Seek(offset, SeekOrigin.Begin);
@@ -730,12 +767,13 @@ namespace Handlers.Online
     public sealed record OscilloscopeModelSendOutcome(OscilloscopeModelSubmissionAnswer? Answer, IReadOnlyList<string> Problems);
 
     // ###########################################################################################
-    // The hashes, plus anything that could not be hashed. Problems name the file, because one
-    // unreadable file out of 1100 must produce a message the contributor can act on.
+    // The hashes, plus anything that could not be hashed - by the path it is about, each sentence
+    // naming the file, because one unreadable file out of 1100 must produce a message the
+    // contributor can act on.
     // ###########################################################################################
     public sealed record FileHashResult(
         IReadOnlyDictionary<string, SubmissionFileInfo> Hashes,
-        IReadOnlyList<string> Problems);
+        IReadOnlyDictionary<string, string> Problems);
 
     // ###########################################################################################
     // The server refused something. Findings are present when the refusal was about the data

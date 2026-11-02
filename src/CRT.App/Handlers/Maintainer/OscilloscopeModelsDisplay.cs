@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json;
 using Handlers.DataHandling;
 using Handlers.Oscilloscope;
 
@@ -12,7 +13,8 @@ namespace Handlers.MaintainerHandling
 
     // ###########################################################################################
     // THE WORDS OF ACCOUNT > "OSCILLOSCOPE MODELS" (CRT 4.0 step 5): the models sent in from CRT's
-    // Oscilloscope tab, each with who sent it, whether CRT's full test suite went through on it, the
+    // Oscilloscope tab, each with who sent it and whether that is an account, what the sender's CRT
+    // reported of its full test suite, the
     // contributor's message and every value - by the labels the Oscilloscope tab's editor shows
     // (ScopeModelFields), beside the published model's when it replaces one, the changes marked.
     // ###########################################################################################
@@ -27,6 +29,11 @@ namespace Handlers.MaintainerHandling
 
         public const string Empty = "No oscilloscope model is waiting.";
 
+        // Whether a read shows what is on show already - everything on the entries, every value of each
+        // and whether it is in BETA, so a card is made again only for something it would say differently.
+        public static bool SameModels(IReadOnlyList<OscilloscopeModelQueueEntry>? shown, IReadOnlyList<OscilloscopeModelQueueEntry> read) =>
+            shown is not null && JsonSerializer.Serialize(shown) == JsonSerializer.Serialize(read);
+
         public const string NewModel = "A new model.";
 
         public const string Update = "Replaces the published model of this name - what it changes is marked.";
@@ -37,9 +44,13 @@ namespace Handlers.MaintainerHandling
             "In BETA already - the stable source could not take it when it was published. Put that right, then press " +
             "Publish again to finish it. It cannot be rejected now.";
 
-        public const string SuitePassed = "CRT's full test suite went through on it.";
+        public const string SuitePassed = OscilloscopeModelRules.SuiteReportedPassed;
 
-        public const string SuiteNotPassed = "CRT's full test suite was not run on it as it was sent, or did not go through.";
+        public const string SuiteNotPassed = OscilloscopeModelRules.SuiteNotReportedPassed;
+
+        public const string SentWithAccount = "Sent with an account - the address is verified.";
+
+        public const string SentTypedIn = "Sent without a verified account - the name and address were typed in when sending, and nothing checked either.";
 
         public const string NoMessage = "(no message)";
 
@@ -71,6 +82,16 @@ namespace Handlers.MaintainerHandling
 
             return runs;
         }
+
+        // ###########################################################################################
+        // *** WHO THE LINE ABOVE IS WORTH (code review, 2026-11-02 - Security). *** Sending a model needs
+        // no account and takes any name, so "Sent by **Dennis**" could be anybody - in the bold every
+        // person on this tab has (owner request, 2026-10-09) - while Publish pushes the sender's
+        // commands to every CRT. Said as the Contributor view says it of a board's submission
+        // (ReviewContributorHistory.AccountLine), on the card the decision is made from.
+        // ###########################################################################################
+        public static string SenderLine(OscilloscopeModelQueueEntry entry) =>
+            entry.SignedIn ? OscilloscopeModelsDisplay.SentWithAccount : OscilloscopeModelsDisplay.SentTypedIn;
 
         public static string SuiteLine(OscilloscopeModelQueueEntry entry) =>
             entry.FullTestSuitePassed ? OscilloscopeModelsDisplay.SuitePassed : OscilloscopeModelsDisplay.SuiteNotPassed;

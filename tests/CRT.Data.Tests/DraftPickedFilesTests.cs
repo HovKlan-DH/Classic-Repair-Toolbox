@@ -47,6 +47,33 @@ public sealed class DraftPickedFilesTests : IDisposable
         Assert.Equal(["Top.png", "Bottom.png"], copies.Copied);
     }
 
+    // ###########################################################################################
+    // *** A FILE OF NO BYTES IS NOT ADDED, AND IS SAID (owner decision, 2026-11-02: "Refuse empty
+    // files"). *** It could never be sent, so a row citing it would only wait to be refused at Submit.
+    // Every add of the pane comes through here.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_of_no_bytes_is_left_out_and_said_while_the_others_are_copied()
+    {
+        DraftPickedFiles copies = DraftPickedFiles.CopyInto(
+            this.DraftFolder,
+            [(this.Picked("top"), "Top.png"), (this.Picked(string.Empty), "Empty.png"), (this.Picked("bottom"), "Bottom.png")]);
+
+        Assert.Equal(["Top.png", "Bottom.png"], copies.Copied);
+        Assert.Equal(["Empty.png"], copies.EmptyFiles);
+        Assert.False(File.Exists(this.InDraft("Empty.png")));
+    }
+
+    [Fact]
+    public void A_file_of_no_bytes_alone_leaves_nothing_lying()
+    {
+        DraftPickedFiles copies = DraftPickedFiles.CopyInto(this.DraftFolder, [(this.Picked(string.Empty), "Empty.png")]);
+
+        Assert.False(copies.AnyLying);
+        Assert.Empty(copies.Copied);
+        Assert.Equal(["Empty.png"], copies.EmptyFiles);
+    }
+
     [Fact]
     public void Taken_back_the_copy_goes_and_nothing_is_left_in_the_draft()
     {

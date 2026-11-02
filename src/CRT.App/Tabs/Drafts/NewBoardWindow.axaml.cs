@@ -22,9 +22,11 @@ namespace CRT
     // The fields and every rule about them are BoardNameFields' - the Contribute tab's "Board name"
     // shows the same (2026-11-01).
     //
-    // Enter confirms and Escape cancels, the ordinary modal treatment. Deliberately NOT the
-    // Tunnel-both-cancel handling DiscardDraftWindow and DeleteWorkbookWindow use: that exists
-    // because their submit button performs a permanent delete, and this one creates something.
+    // Escape cancels. Enter presses "Create board", the DEFAULT button, once the form is filled in - an
+    // Enter nobody else handled: in the notes box it starts a new line, on a focused button it presses
+    // that one, and on a suggestion of the manufacturer box it picks it (code review, 2026-11-02: the
+    // window took Enter itself on the tunnel route, before any of them could have it, as
+    // SubmitDraftWindow did until 2026-10-13). A disabled default button does nothing.
     //
     // *** CREATING REQUIRES ACCEPTING THE MAINTAINER ROLE (owner request, 2026-09-24). ***
     // "Create board" first shows NewBoardMaintainerWindow, and the registration is handed back
@@ -110,15 +112,6 @@ namespace CRT
             {
                 this.Close(null);
                 e.Handled = true;
-                return;
-            }
-
-            // Enter confirms, but only from a state that could be confirmed by clicking - the same
-            // rule the button itself follows.
-            if (e.Key == Key.Enter && this.CreateButton.IsEnabled)
-            {
-                this.OnCreateClick(sender, e);
-                e.Handled = true;
             }
         }
 
@@ -148,8 +141,8 @@ namespace CRT
             var registration = this.BuildRegistrationOrNull(out _);
             if (registration == null)
             {
-                // Unreachable through the UI (the button is disabled and Enter checks the same
-                // flag), but a create with invalid input must never fall through to the caller.
+                // Unreachable through the UI (the button is disabled, and a disabled default button
+                // takes no Enter), but a create with invalid input must never fall through to the caller.
                 return null;
             }
 

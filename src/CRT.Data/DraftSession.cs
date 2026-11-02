@@ -155,6 +155,19 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public IReadOnlyDictionary<string, BoardDocument.StoredFileRow> ListedFiles => this.thisFiles.Listed;
 
+        // ###########################################################################################
+        // *** THE NAMES NO NEW FILE MAY TAKE (code review, 2026-11-02): what the rows cite, what the board
+        // file lists, and what this session has seen listed. *** Its history holds rows, and a row names
+        // its file: picked under a name a removed row had, a second file was the file that row showed when
+        // undone - and the first one's bytes went at the next save, the memory holding one entry per name.
+        // So one name is one file for as long as the history can reach it.
+        // ###########################################################################################
+        public IReadOnlyCollection<string> FileNamesInUse =>
+            this.thisFiles.Listed.Keys
+                .Concat(this.thisFiles.Names)
+                .Concat(DraftFiles.CitedNames(this.Content.Board))
+                .ToList();
+
         // Raised on the UI thread after the content changed - an edit, an undo, a redo, the file read
         // again - saying what and by whom (`Origin`, the editor that made an edit, so it can skip
         // re-reading its own change).

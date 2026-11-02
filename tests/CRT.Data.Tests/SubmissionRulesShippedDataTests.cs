@@ -130,6 +130,56 @@ namespace CRT.Data.Tests
         }
 
         // ###########################################################################################
+        // *** AND BY THE ROW RULES (code review, 2026-11-02). *** The test above builds partial rows
+        // and runs the path, file and plan rules, so a new BoardDataChecks error that a shipped row
+        // breaks would have refused every submission of that board with no test failing - this
+        // pipeline's old mistake again. Here every row of every section goes through the validator the
+        // server runs at create and finalise, its files supplied as the board lists them.
+        // ###########################################################################################
+        [Fact]
+        public void No_converted_shipped_board_is_refused_by_the_row_rules()
+        {
+            DataTreeConversionPlan plan = ClassicRepairToolbox.Tests.DataTreeConversionShippedDataTests.Planned.Value;
+            var refusals = new List<string>();
+            SubmissionManifest? last = null;
+
+            Assert.Empty(plan.Problems);
+
+            foreach (ConvertedBoard converted in plan.Boards)
+            {
+                string[] parts = converted.BoardId.Split('/');
+
+                last = new SubmissionManifest
+                {
+                    BoardId = converted.BoardId,
+                    Manufacturer = parts[0],
+                    Hardware = parts[1],
+                    Board = parts[2],
+                    Rows = SubmissionRowsBoard.FromBoard(BoardDocumentMapping.ToContent(converted.Document).Board)
+                };
+
+                string[] supplied = [.. converted.Document.Files.Select(file => file.Name)];
+
+                refusals.AddRange(SubmissionValidator.Validate(last, supplied)
+                    .Where(finding => finding.Severity == ValidationSeverity.Error)
+                    .Select(finding => $"{converted.BoardId}: {finding.Code} {finding.Subject} - {finding.Message}"));
+            }
+
+            // Anti-vacuity: an empty plan would pass, and so would rows the rules never looked at.
+            Assert.True(plan.Boards.Count >= 10, $"Only {plan.Boards.Count} shipped boards were converted.");
+            Assert.Empty(refusals);
+
+            last!.Rows.ComponentHighlights[0] = new ComponentHighlightEntry
+            {
+                SchematicName = last.Rows.ComponentHighlights[0].SchematicName,
+                BoardLabel = last.Rows.ComponentHighlights[0].BoardLabel,
+                X = "not a number", Y = "1", Width = "1", Height = "1"
+            };
+
+            Assert.Contains(SubmissionValidator.Validate(last, []), finding => finding.Code == "highlight.unparseable");
+        }
+
+        // ###########################################################################################
         // *** EVERY PUBLISHED BOARD'S NAME PASSES THE IDENTITY RULES (code review, 2026-09-25). ***
         // A submission names its board by the folder names, and SubmissionValidator refuses parts
         // that are not canonical (identity.parts_not_canonical - no doubled, leading or trailing

@@ -580,6 +580,7 @@ public sealed class MainWindowTests : IDisposable
     private static readonly string[] NoticeNames =
     {
         "SettingsUnreadableBanner",
+        "ReceiptsUnreadableBanner",
         "MainExcelRequiresAppUpdateBanner",
         "UpdateBanner",
         "DataCheckBanner",
@@ -1186,6 +1187,51 @@ public sealed class MainWindowTests : IDisposable
 
             Assert.False(card.IsVisible);
         });
+    }
+
+    // ###########################################################################################
+    // The list of what was sent could not be read (code review, 2026-11-02): "My submissions" then looks
+    // empty, and only the log said why. On its own card, naming the file, until closed - the settings
+    // card's reasons hold for it. A list read well, or not there yet, shows nothing.
+    // ###########################################################################################
+    [Fact]
+    public void An_unreadable_list_of_what_was_sent_is_said_on_its_own_card_until_closed()
+    {
+        this.RedirectWorklogToTemp();
+        string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json");
+
+        try
+        {
+            UiTest.Run(() =>
+            {
+                SubmissionReceiptStore.LoadFrom(string.Empty);
+
+                var main = new CRT.Main();
+                var timers = new NoticeTimers();
+                main.ScheduleNoticeTimerOverrideForTests = timers.Schedule;
+                var card = main.GetControl<Border>("ReceiptsUnreadableBanner");
+
+                main.ShowReceiptsUnreadableNoticeIfNeeded();
+                Assert.False(card.IsVisible);
+
+                File.WriteAllText(path, "{ a receipts file cut short");
+                SubmissionReceiptStore.LoadFrom(path);
+
+                main.ShowReceiptsUnreadableNoticeIfNeeded();
+
+                Assert.True(card.IsVisible);
+                Assert.Equal(0, timers.HideCount);
+                Assert.Contains(path, NoticeEmphasis.TextOf(main.GetControl<TextBlock>("ReceiptsUnreadableBannerText")), StringComparison.Ordinal);
+
+                RaiseClick(main.GetControl<Button>("ReceiptsUnreadableBannerDismissButton"));
+
+                Assert.False(card.IsVisible);
+            });
+        }
+        finally
+        {
+            SubmissionReceiptStore.LoadFrom(string.Empty);
+        }
     }
 
     // ###########################################################################################

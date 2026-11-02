@@ -88,7 +88,10 @@ namespace CRT.Server.Handlers.Submissions
 
             return ContributorHistory.Facts(submission, all, account) with
             {
-                SignedIn = submission.AccountId is not null,
+                // Only a VERIFIED account (owner decision, 2026-11-02): anybody can register under
+                // anybody's address and sign in before verifying, so an account alone proves nothing,
+                // and this is what the Maintainer tab's "the address is verified" says.
+                SignedIn = account is { IsVerified: true },
                 AccountCreatedUtc = account?.CreatedUtc,
                 Submissions = ContributorHistory.Entries(listed, productionPublished, returns),
                 PublishedToStable = ContributorHistory.PublishedToStable(submission, all, productionPublished)

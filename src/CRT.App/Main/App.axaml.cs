@@ -106,6 +106,16 @@ namespace CRT
             AppFolderName,
             "Scope captures waiting");
 
+        // Where the Maintainer tab saves a file from the server to open it - in the user's OWN app
+        // data folder, for the same reason (code review, 2026-11-02: under the shared /tmp another
+        // account could make the folder first, read a contributor's files there, or swap one between
+        // the write and the launch).
+        // Used by: OpenedFiles
+        public static string MaintainerOpenedFilesFolder => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            AppFolderName,
+            "Maintainer opened files");
+
         // Name of the folder oscilloscope captures are saved in until the user picks another one on
         // the Oscilloscope tab. Beside "Workbooks" and "Drafts", NOT inside "Data": until 2026-10-13
         // the default was the data folder itself, which "Allow deletion of orphan and non-used

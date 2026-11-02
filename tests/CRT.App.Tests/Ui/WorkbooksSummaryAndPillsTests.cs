@@ -36,6 +36,9 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
 
     private readonly string thisBoardKey = "Commodore 64|250469 " + Guid.NewGuid().ToString("N");
 
+    // A row names a file under the data root, as in CRT - see WorkbooksBoardPreviewTests' header.
+    public WorkbooksSummaryAndPillsTests() => PublishedBoardTree.Unload(this.thisWorkspace.Root);
+
     public void Dispose()
     {
         this.LoadWorklog();
@@ -74,11 +77,11 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
         0x42, 0x60, 0x82
     };
 
+    // Writes the image into the data root, and returns what a row holds for it: its name there.
     private string WriteSchematicImage(string fileName)
     {
-        string path = this.thisWorkspace.Path_(fileName);
-        File.WriteAllBytes(path, OnePixelPng);
-        return path;
+        File.WriteAllBytes(this.thisWorkspace.Path_(fileName), OnePixelPng);
+        return fileName;
     }
 
     private static TabWorkbooks BuildTab(string boardKey, BoardData boardData, int selectedWorkbookId)
@@ -830,8 +833,8 @@ public sealed class WorkbooksSummaryAndPillsTests : IDisposable
     {
         this.LoadWorklog();
         int entryId = this.CreateWorkbookWithEntry("Sheet 1", "Issue", "Closed", out int workbookId);
-        string imagePath = this.WriteSchematicImage("sheet1.png");
-        var boardData = BuildBoardData("Sheet 1", imagePath);
+        var boardData = BuildBoardData("Sheet 1", this.WriteSchematicImage("sheet1.png"));
+        string imagePath = this.thisWorkspace.Path_("sheet1.png");
 
         await UiTest.RunAsync(async () =>
         {

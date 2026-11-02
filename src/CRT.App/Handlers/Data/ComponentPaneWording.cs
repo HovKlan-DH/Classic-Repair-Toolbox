@@ -441,6 +441,9 @@ namespace Handlers.DataHandling
 
         public const string AlsoNotSaved = "its draft could not be saved";
 
+        // That board's own draft renamed or deleted the component (code review, 2026-11-02).
+        public const string AlsoComponentNotInDraft = "that board's draft no longer has this component";
+
         // Why a file was not put on a board (ChangedFiles.CanPut, and the copy itself).
         public const string AlsoFileNoLongerThere = "that board's draft no longer has it";
 
@@ -463,18 +466,30 @@ namespace Handlers.DataHandling
         public const string FileNotCopied =
             "The file could not be copied into your draft - see the log for why.";
 
+        // A file of no bytes is never added (owner decision, 2026-11-02: "Refuse empty files").
+        public const string FileEmpty =
+            "That file is empty - it holds no bytes, so it was not added. Pick a good copy of it.";
+
         // ---- the board's schematic images (step 3 - the "Schematic images" window, moved inline) ----
 
-        // `notCopied`: images picked that could not be copied in - said, for they got no card.
-        public static string PicturesAdded(int count, int notCopied = 0)
+        // `notCopied`: images picked that could not be copied in - said, for they got no card. `empty`:
+        // those left out as they hold no bytes (owner decision, 2026-11-02), said for what they are.
+        public static string PicturesAdded(int count, int notCopied = 0, int empty = 0)
         {
             string added = count == 1 ? "Added 1 schematic image." : $"Added {count.ToString(CultureInfo.InvariantCulture)} schematic images.";
 
-            return notCopied switch
+            string copied = notCopied switch
             {
                 <= 0 => added,
                 1 => $"{added} 1 could not be copied - it is open in another program, or no longer where it was picked.",
                 _ => $"{added} {notCopied.ToString(CultureInfo.InvariantCulture)} could not be copied - they are open in another program, or no longer where they were picked.",
+            };
+
+            return empty switch
+            {
+                <= 0 => copied,
+                1 => $"{copied} 1 was left out as it is empty.",
+                _ => $"{copied} {empty.ToString(CultureInfo.InvariantCulture)} were left out as they are empty.",
             };
         }
 

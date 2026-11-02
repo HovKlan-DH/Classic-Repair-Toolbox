@@ -113,6 +113,234 @@ public sealed class DraftChangeSummaryTests
     }
 
     // ###########################################################################################
+    // *** RENAMED IN THE PANE, EVERY ROW OF IT MOVES (code review, 2026-11-02; ComponentPaneEdits.WithLabel) -
+    // and a rename alone is all there is to say. *** Only its row and its marks were filed under the new
+    // label, so it read "U08: Relabelled from [U8], 3 pictures added, 2 pins added" beside a group
+    // "U8: 3 pictures removed, 2 pins removed", whose "Undo changes to [U8]" brought U8 back beside U08.
+    // ###########################################################################################
+    private static BoardData WithEverythingOf(string label)
+    {
+        BoardData board = Board(Component(label, "CPU"));
+        board.ComponentImages.AddRange([Picture(label, "Top", "Component images/a.png"), Picture(label, "Bottom", "Component images/b.png"), Baseline(label, "6")]);
+        board.ComponentHighlights.Add(Mark("Top", label));
+        board.ComponentLocalFiles.Add(new ComponentLocalFileEntry { BoardLabel = label, Name = "Datasheet", File = "Datasheets/d.pdf" });
+        board.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = label, Name = "Article", Url = "https://example.org/a" });
+        board.ComponentPins.AddRange([new ComponentPinEntry { BoardLabel = label, Pin = "1", Name = "VSS" }, new ComponentPinEntry { BoardLabel = label, Pin = "2", Name = "VCC" }]);
+        board.ComponentReplacements.Add(new ComponentReplacementEntry { BoardLabel = label, PartNumber = "6510" });
+        return board;
+    }
+
+    [Fact]
+    public void A_component_renamed_in_the_pane_says_only_that_with_no_group_under_its_old_label()
+    {
+        BoardData published = WithEverythingOf("U8");
+        BoardData draft = ComponentPaneEdits.WithLabel(published, "U8", "U08");
+
+        DraftChangeGroup group = Assert.Single(DraftChangeSummary.Build(Content(published), Content(draft)).Groups);
+
+        Assert.Equal("U08", group.Label);
+        Assert.Equal(DraftComponentChange.Changed, group.Change);
+        Assert.Equal(["Relabelled from [U8]"], group.Lines);
+    }
+
+    // What else changed of it is still said - under its one group.
+    [Fact]
+    public void A_component_renamed_in_the_pane_and_given_another_pin_says_that_too()
+    {
+        BoardData published = WithEverythingOf("U8");
+        BoardData draft = ComponentPaneEdits.WithLabel(published, "U8", "U08");
+        draft.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U08", Pin = "3", Name = "D0" });
+
+        DraftChangeGroup group = Assert.Single(DraftChangeSummary.Build(Content(published), Content(draft)).Groups);
+
+        Assert.Equal(["Relabelled from [U8]", "1 pin added"], group.Lines);
+    }
+
+    // The table renames the component's own row and no other: those rows stay on the old label, compared
+    // there - no change - and the rename alone is said, as before.
+    [Fact]
+    public void A_component_renamed_in_the_table_keeps_its_other_rows_on_the_old_label()
+    {
+        BoardData published = WithEverythingOf("U8");
+
+        BoardData draft = WithEverythingOf("U8");
+        draft = draft.WithComponentSections(components: [Component("U08", "CPU")]);
+
+        DraftChangeGroup group = Assert.Single(DraftChangeSummary.Build(Content(published), Content(draft)).Groups);
+
+        Assert.Equal("U08", group.Label);
+        Assert.Equal(["Relabelled from [U8]"], group.Lines);
+    }
+
+    // Undoing the pane's rename from its one group brings it back whole, nothing beside it.
+    [Fact]
+    public void Undoing_the_one_group_of_a_component_renamed_in_the_pane_brings_it_back_whole()
+    {
+        BoardData published = WithEverythingOf("U8");
+        BoardData draft = ComponentPaneEdits.WithLabel(published, "U8", "U08");
+
+        BoardData reverted = ComponentRevert.ToPublished(draft, published, "U08");
+
+        Assert.True(DraftChangeSummary.Build(Content(published), Content(reverted)).IsEmpty);
+    }
+
+    // ###########################################################################################
+    // A second rectangle of a component on a schematic is work (code review, 2026-11-02): only the first
+    // of them was compared. Their order alone is none.
+    // ###########################################################################################
+    [Fact]
+    public void Every_rectangle_of_a_component_is_said_and_their_order_is_not()
+    {
+        static ComponentHighlightEntry Rectangle(string x) =>
+            new() { SchematicName = "Top", BoardLabel = "U8", X = x, Y = "2", Width = "3", Height = "4" };
+
+        BoardData Marked(params string[] xs)
+        {
+            BoardData board = Board(Component("U8", "CPU"));
+            board.ComponentHighlights.AddRange(xs.Select(Rectangle));
+            return board;
+        }
+
+        string[] Lines(BoardData draft) =>
+            DraftChangeSummary.Build(Content(Marked("1", "10")), Content(draft)).Groups.SelectMany(group => group.Lines).ToArray();
+
+        Assert.Equal(["1 mark on the schematics changed"], Lines(Marked("1", "20")));
+        Assert.Equal(["2 marks on the schematics changed"], Lines(Marked("5", "20")));
+        Assert.Equal(["1 mark on the schematics added"], Lines(Marked("1", "10", "20")));
+        Assert.Equal(["1 mark on the schematics removed"], Lines(Marked("10")));
+        Assert.Empty(Lines(Marked("10", "1")));
+    }
+
+    // ###########################################################################################
+    // *** A RECTANGLE THAT ONLY FOLLOWED ITS SCHEMATIC IS THE BOARD'S CHANGE (code review, 2026-11-02). ***
+    // A schematic renamed or deleted read "U8: 2 marks on the schematics changed" (or "removed") with a red
+    // "Undo changes to [U8]" that did nothing and said nothing: ComponentRevert and BoardDraftSummary hold
+    // it to be no change of U8. Said once, for the board - and every group left has something to undo.
+    // ###########################################################################################
+    private static ComponentHighlightEntry Rectangle(string schematic, string label, string x) =>
+        new() { SchematicName = schematic, BoardLabel = label, X = x, Y = "2", Width = "3", Height = "4" };
+
+    private static BoardData TopAndBack() => new()
+    {
+        HardwareName = "Commodore 64",
+        BoardName = "250407",
+        Schematics =
+        [
+            new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "top.png" },
+            new BoardSchematicEntry { SchematicName = "Back", SchematicImageFile = "back.png" },
+        ],
+        Components = [Component("U8", "CPU"), Component("U9", "SID")],
+        ComponentHighlights = [Rectangle("Top", "U8", "1"), Rectangle("Top", "U8", "10"), Rectangle("Top", "U9", "5")],
+    };
+
+    private static void Every_component_group_has_something_to_undo(BoardData published, BoardData draft, DraftChangeSummary summary)
+    {
+        foreach (DraftChangeGroup group in summary.Groups.Where(group => group.IsComponent))
+        {
+            Assert.True(ComponentRevert.HasChanges(draft, published, group.Label), $"[{group.Label}] offers an undo with nothing to take back");
+            Assert.NotNull(ComponentRevert.RowsToPublished(draft, published, group.Label));
+        }
+    }
+
+    [Fact]
+    public void A_schematic_renamed_is_said_once_and_no_component_has_a_change_to_undo()
+    {
+        BoardData published = TopAndBack();
+        BoardData draft = TopAndBack()
+            .WithSchematics(
+            [
+                new BoardSchematicEntry { SchematicName = "Front", SchematicImageFile = "top.png" },
+                new BoardSchematicEntry { SchematicName = "Back", SchematicImageFile = "back.png" },
+            ])
+            .WithComponentHighlights([Rectangle("Front", "U8", "1"), Rectangle("Front", "U8", "10"), Rectangle("Front", "U9", "5")]);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(published), Content(draft));
+
+        DraftChangeGroup board = Assert.Single(summary.Groups);
+        Assert.False(board.IsComponent);
+        Assert.Equal(["Schematic image [Top] renamed [Front]"], board.Lines);
+    }
+
+    [Fact]
+    public void A_schematic_deleted_is_said_once_and_no_component_has_a_change_to_undo()
+    {
+        BoardData published = TopAndBack();
+        BoardData draft = TopAndBack()
+            .WithSchematics([new BoardSchematicEntry { SchematicName = "Back", SchematicImageFile = "back.png" }])
+            .WithComponentHighlights([]);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(published), Content(draft));
+
+        DraftChangeGroup board = Assert.Single(summary.Groups);
+        Assert.False(board.IsComponent);
+        Assert.Equal(["Schematic image [Top] deleted"], board.Lines);
+    }
+
+    // A rectangle really moved on the renamed schematic is its component's, and has its undo.
+    [Fact]
+    public void A_rectangle_moved_on_a_renamed_schematic_is_still_a_change_of_its_component()
+    {
+        BoardData published = TopAndBack();
+        BoardData draft = TopAndBack()
+            .WithSchematics(
+            [
+                new BoardSchematicEntry { SchematicName = "Front", SchematicImageFile = "top.png" },
+                new BoardSchematicEntry { SchematicName = "Back", SchematicImageFile = "back.png" },
+            ])
+            .WithComponentHighlights([Rectangle("Front", "U8", "1"), Rectangle("Front", "U8", "99"), Rectangle("Front", "U9", "5")]);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(published), Content(draft));
+
+        Assert.Equal(["Schematic image [Top] renamed [Front]"], summary.Groups[0].Lines);
+        Assert.Equal(["1 mark on the schematics changed"], Single(summary, "U8").Lines);
+        Assert.DoesNotContain(summary.Groups, group => group.Label == "U9");
+
+        Every_component_group_has_something_to_undo(published, draft, summary);
+    }
+
+    // On the schematic left, deleted with another, a rectangle added elsewhere is still said - nothing hides.
+    [Fact]
+    public void A_rectangle_added_beside_a_schematic_deleted_is_still_a_change_of_its_component()
+    {
+        BoardData published = TopAndBack();
+        BoardData draft = TopAndBack()
+            .WithSchematics([new BoardSchematicEntry { SchematicName = "Back", SchematicImageFile = "back.png" }])
+            .WithComponentHighlights([Rectangle("Back", "U9", "7")]);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(published), Content(draft));
+
+        Assert.Equal(["1 mark on the schematics added"], Single(summary, "U9").Lines);
+        Assert.DoesNotContain(summary.Groups, group => group.Label == "U8");
+
+        Every_component_group_has_something_to_undo(published, draft, summary);
+    }
+
+    // ###########################################################################################
+    // A file two components cite, or the board too, is the board's to say (code review, 2026-11-02): under a
+    // component it had an "Undo changes to" that cannot take it back while the other still cites it.
+    // ###########################################################################################
+    [Fact]
+    public void A_replaced_file_more_than_one_component_cites_is_said_for_the_board()
+    {
+        BoardData board = Board(Component("U8", "RAM"), Component("U9", "RAM"), Component("U10", "ROM"));
+        board.ComponentLocalFiles.AddRange([
+            new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Datasheets/4164.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U9", Name = "Datasheet", File = "Datasheets/4164.pdf" },
+            new ComponentLocalFileEntry { BoardLabel = "U10", Name = "Datasheet", File = "Datasheets/rom.pdf" }]);
+
+        static BoardDocument.StoredFileRow File(string name, char sha) => new() { Name = name, Sha256 = new string(sha, 64), Size = 1 };
+
+        var publishedFiles = new[] { File("Datasheets/4164.pdf", 'a'), File("Datasheets/rom.pdf", 'a') }.ToDictionary(file => file.Name, StringComparer.OrdinalIgnoreCase);
+        var draftFiles = new[] { File("Datasheets/4164.pdf", 'b'), File("Datasheets/rom.pdf", 'b') }.ToDictionary(file => file.Name, StringComparer.OrdinalIgnoreCase);
+
+        DraftChangeSummary summary = DraftChangeSummary.Build(Content(board), Content(board), publishedFiles, draftFiles);
+
+        Assert.Equal(["File [Datasheets/4164.pdf] replaced"], Single(summary, string.Empty).Lines);
+        Assert.Equal(["File [Datasheets/rom.pdf] replaced"], Single(summary, "U10").Lines);
+        Assert.DoesNotContain(summary.Groups, group => group.Label is "U8" or "U9");
+    }
+
+    // ###########################################################################################
     // The board's own parts: a renamed schematic is said once (its calibration follows it, so that
     // is no change), a calibration changed is said, and credits, files and signals are named.
     // ###########################################################################################

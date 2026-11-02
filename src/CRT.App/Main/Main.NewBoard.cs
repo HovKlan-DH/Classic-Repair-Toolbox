@@ -57,7 +57,7 @@ namespace CRT
                 return;
             }
 
-            if (!TryCreateNewBoard(registration))
+            if (!this.TryCreateNewBoard(registration))
             {
                 return;
             }
@@ -156,6 +156,10 @@ namespace CRT
         // logs when anything fails - a half-created board is worse than none, so the caller stops
         // rather than navigating to something that may not load.
         //
+        // *** AND SAYS WHY (code review, 2026-11-02). *** The dialog has closed by now, so with only a
+        // log line nothing appeared, nothing was said and the names typed were gone. On the tab's
+        // problem line, as a board's first draft says it (Main.FirstDraft.cs).
+        //
         // *** IT IS A BOARD FOLDER NOW, NOT A Files/ FOLDER PLUS draft.json (Phase 6, 2026-09-23).
         // *** This used to create the folder, an empty Files/ subfolder for images to land in, and
         // a draft.json holding a registration and eleven empty sections. The contributor opening it
@@ -170,7 +174,7 @@ namespace CRT
         // an EMPTY placeholder sitting alongside draft.json - two mechanisms for one job. This
         // replaces draft.json rather than joining it; see DraftSeeder's own header.
         // ###########################################################################################
-        private static bool TryCreateNewBoard(NewBoardRegistration registration)
+        internal bool TryCreateNewBoard(NewBoardRegistration registration)
         {
             DraftSeedResult result = DraftSeeder.CreateNewBoard(DraftManager.DraftsRoot, registration);
 
@@ -178,6 +182,8 @@ namespace CRT
             {
                 Logger.Warning(
                     $"Could not create the new board [{registration.ExcelDataFile}] - [{result.Reason}]");
+
+                this.TabDrafts.ShowDraftProblem($"[{registration.HardwareName}] / [{registration.BoardName}] was not created. {result.Reason}");
 
                 return false;
             }

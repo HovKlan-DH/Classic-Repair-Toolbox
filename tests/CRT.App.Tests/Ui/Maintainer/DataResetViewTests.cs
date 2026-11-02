@@ -177,4 +177,144 @@ public sealed class DataResetViewTests
             Assert.Equal(3, server.Calls.Count);
         });
     }
+
+    // ###########################################################################################
+    // *** A TIMED-OUT RESET IS JUDGED FROM THE COUNTS READ AGAIN (code review, 2026-11-02). *** It said
+    // "if they are all zero, it did" - which can never be: the reset's own history entry is one, and
+    // API usage and board views grow again by themselves. And the queue and the boards stayed as they
+    // were until the next minute check, as AfterReset was skipped. The submissions, the accounts and
+    // the board records at zero say it: `landed` is whether the reset the server never answered went.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_reset_with_no_answer_that_landed_is_said_and_the_tab_reads_its_lists_again()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (DataResetView view, List<int> afterResets) = await DataResetViewTests.TimedOutAsync(landed: true);
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, but it did finish: the contribution data is reset.",
+                view.MessageForTests);
+            Assert.Single(afterResets);
+            Assert.StartsWith("[0] submissions", view.CountLinesForTests()[0], StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task A_reset_with_no_answer_that_did_not_land_says_what_is_still_there()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (DataResetView view, List<int> afterResets) = await DataResetViewTests.TimedOutAsync(landed: false);
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, and the contribution data is still there. " +
+                "It may still be working on it - wait a minute and look again before trying again.",
+                view.MessageForTests);
+            Assert.Empty(afterResets);
+        });
+    }
+
+    // The counts could not be read either: nothing is known, and it says so.
+    [Fact]
+    public async Task A_reset_with_no_answer_and_no_counts_says_it_could_not_be_checked()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            (DataResetView view, List<int> afterResets) = await DataResetViewTests.TimedOutAsync(landed: false, countsRead: false);
+
+            Assert.Equal(
+                "The server did not answer within 2 minutes, and whether it finished could not be checked. " +
+                "Wait a minute and look again before trying again.",
+                view.MessageForTests);
+            Assert.Empty(afterResets);
+        });
+    }
+
+    // The reset's request never answers and its wait runs out at once (the test's clock, not two real
+    // minutes), the view hosted with an overlay as CRT's window hosts it.
+    private static async Task<(DataResetView View, List<int> AfterResets)> TimedOutAsync(bool landed, bool countsRead = true)
+    {
+        var afterResets = new List<int>();
+        bool posted = false;
+
+        var client = new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler((request, token) =>
+        {
+            if (request.Method != HttpMethod.Get)
+            {
+                posted = true;
+                return AnsweringHttpHandler.NeverAsync(token);
+            }
+
+            if (posted && !countsRead)
+                return Task.FromResult(AnsweringHttpHandler.Refused());
+
+            return Task.FromResult(AnsweringHttpHandler.Json(
+                DataResetViewTests.Json(DataResetViewTests.Plan(enabled: true, empty: posted && landed))));
+        })));
+
+        var view = new DataResetView();
+        var overlay = new BusyOverlay();
+        _ = new Avalonia.Controls.Grid { Children = { view, overlay } };
+
+        view.Initialize(client, DataResetViewTests.Session);
+        view.AfterReset = () =>
+        {
+            afterResets.Add(1);
+            return Task.CompletedTask;
+        };
+
+        await view.LoadAsync();
+
+        int limits = 0;
+        overlay.LimitOverrideForTests = token => ++limits == 1 ? Task.CompletedTask : Task.Delay(Timeout.Infinite, token);
+
+        view.ConfirmBoxForTests.Text = DataResetWording.ConfirmWord;
+        await view.ResetAsync();
+
+        return (view, afterResets);
+    }
+
+    // ###########################################################################################
+    // *** THE WORD TYPED DOES NOT WAIT FOR THE NEXT ONE (code review, 2026-11-02). *** Signing out and
+    // leaving the entry kept RESET in the box, so the next administrator on this computer - or the
+    // same one coming back - got new counts with the button already on and nothing typed.
+    // ###########################################################################################
+    [Fact]
+    public async Task Signing_out_empties_the_confirmation_word()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            Server server = DataResetViewTests.Open(enabled: true);
+
+            await server.View.LoadAsync();
+            server.View.ConfirmBoxForTests.Text = DataResetWording.ConfirmWord;
+
+            server.View.Clear();
+
+            Assert.True(string.IsNullOrEmpty(server.View.ConfirmBoxForTests.Text));
+
+            await server.View.LoadAsync();
+
+            Assert.False(server.View.ResetButtonForTests.IsEnabled);
+        });
+    }
+
+    [Fact]
+    public async Task Coming_back_to_the_entry_shows_new_counts_with_the_word_to_type_again()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            Server server = DataResetViewTests.Open(enabled: true);
+
+            await server.View.LoadAsync();
+            server.View.ConfirmBoxForTests.Text = DataResetWording.ConfirmWord;
+            Assert.True(server.View.ResetButtonForTests.IsEnabled);
+
+            await server.View.LoadAsync();
+
+            Assert.True(string.IsNullOrEmpty(server.View.ConfirmBoxForTests.Text));
+            Assert.False(server.View.ResetButtonForTests.IsEnabled);
+        });
+    }
 }

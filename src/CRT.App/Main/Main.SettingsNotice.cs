@@ -17,6 +17,10 @@ namespace CRT
     // said; and when the file could not be moved aside, settings changed in this session are not
     // saved - something to know for as long as CRT runs. One of the cards in NoticeStack; see
     // Main.axaml.cs for the file map.
+    //
+    // *** AND "THE LIST OF WHAT YOU HAVE SENT COULD NOT BE READ" (code review, 2026-11-02), a card of its
+    // own, until closed for the same reasons. *** SubmissionReceiptStore never writes over such a file,
+    // but only the log said so, and "My submissions" simply looked empty.
     // ###########################################################################################
     public partial class Main
     {
@@ -43,6 +47,29 @@ namespace CRT
         private void OnSettingsUnreadableBannerDismiss(object? sender, RoutedEventArgs e)
         {
             this.SettingsUnreadableBanner.IsVisible = false;
+        }
+
+        // ###########################################################################################
+        // Shows the card when the receipts load at launch found the file unreadable. Called from
+        // StartAsync - tests construct Main without it, and call this themselves.
+        // ###########################################################################################
+        internal void ShowReceiptsUnreadableNoticeIfNeeded()
+        {
+            if (SubmissionReceiptStore.UnreadableFile is { } unreadable)
+            {
+                this.ShowReceiptsUnreadableNotice(unreadable.NoticeText);
+            }
+        }
+
+        private void ShowReceiptsUnreadableNotice(string text)
+        {
+            NoticeEmphasis.Show(this.ReceiptsUnreadableBannerText, text);
+            this.ReceiptsUnreadableBanner.IsVisible = true;
+        }
+
+        private void OnReceiptsUnreadableBannerDismiss(object? sender, RoutedEventArgs e)
+        {
+            this.ReceiptsUnreadableBanner.IsVisible = false;
         }
     }
 }

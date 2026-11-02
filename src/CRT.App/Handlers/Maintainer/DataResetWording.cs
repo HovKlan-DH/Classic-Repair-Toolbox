@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using CRT;
 using Handlers.DataHandling;
 
 namespace Handlers.MaintainerHandling
@@ -35,9 +36,27 @@ namespace Handlers.MaintainerHandling
 
         public const string ResetButton = "Reset contribution data";
 
-        public const string AfterTimeout =
-            "The server did not answer in time, so it is not known whether the reset went through. The counts " +
-            "below were read again - if they are all zero, it did.";
+        // ###########################################################################################
+        // WHETHER A RESET THE SERVER NEVER ANSWERED WENT THROUGH (code review, 2026-11-02), judged from
+        // `now`, the counts read again - null when they could not be read: the submissions, the accounts
+        // and the board records all at zero. Never every count: the reset's own history entry is one,
+        // and the API usage and the board views grow again by themselves. Counts that had none of
+        // those three to begin with (`before`, those the reset was sent for) cannot tell.
+        // ###########################################################################################
+        public static bool? HasLanded(DataResetPlanAnswer before, DataResetPlanAnswer? now)
+        {
+            ArgumentNullException.ThrowIfNull(before);
+
+            return now is null || DataResetWording.HoldsNoneOfWhatIsJudged(before)
+                ? null
+                : DataResetWording.HoldsNoneOfWhatIsJudged(now);
+        }
+
+        private static bool HoldsNoneOfWhatIsJudged(DataResetPlanAnswer plan) =>
+            plan is { Submissions: 0, Accounts: 0, Boards: 0 };
+
+        public static string AfterTimeout(bool? landed) =>
+            WaitWording.AfterTimeout(landed, "the contribution data is reset", "the contribution data is still there");
 
         public const string Changed =
             "Something arrived or went since the counts were shown - they were read again. Look at them and confirm again.";

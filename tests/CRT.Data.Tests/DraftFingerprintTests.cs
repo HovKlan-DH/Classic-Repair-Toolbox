@@ -213,4 +213,41 @@ public sealed class DraftFingerprintTests : IDisposable
     {
         Assert.NotEqual(string.Empty, this.SentDraft());
     }
+
+    // ###########################################################################################
+    // *** A NEW BOARD'S NOTES ARE SENT, SO THEY COUNT (code review, 2026-11-02). *** They live in the
+    // draft's marker, which is bookkeeping here - so notes changed after a rejection left Submit grey
+    // as "already sent", with the change it asks for just made.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_boards_notes_as_sent_are_part_of_what_it_holds()
+    {
+        this.SentDraft();
+
+        string withNotes = DraftFingerprint.Compute(this.Workbook, this.Folder, "First notes");
+
+        Assert.NotEqual(this.Fingerprint(), withNotes);
+        Assert.Equal(withNotes, DraftFingerprint.Compute(this.Workbook, this.Folder, "First notes"));
+        Assert.NotEqual(withNotes, DraftFingerprint.Compute(this.Workbook, this.Folder, "Second notes"));
+    }
+
+    // The direction that must not move: every receipt already kept was taken without notes, so a draft
+    // with none gives what it always gave and nothing comes back for no reason.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_draft_with_no_notes_gives_the_fingerprint_it_always_gave(string? notes)
+    {
+        string sent = this.SentDraft();
+
+        Assert.Equal(sent, DraftFingerprint.Compute(this.Workbook, this.Folder, notes));
+    }
+
+    // Unknown never greys Submit out (the header), notes or no notes.
+    [Fact]
+    public void A_draft_that_cannot_be_read_stays_unknown_whatever_its_notes()
+    {
+        Assert.Equal(string.Empty, DraftFingerprint.Compute(this.Workbook, this.Folder, "First notes"));
+    }
 }

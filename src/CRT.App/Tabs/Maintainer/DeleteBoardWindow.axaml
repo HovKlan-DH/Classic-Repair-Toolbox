@@ -28,7 +28,7 @@
         <!-- What goes, one line per place. -->
         <StackPanel x:Name="WhatGoesPanel" Spacing="2" />
 
-        <TextBlock x:Name="SharedFilesText"
+        <TextBlock x:Name="WhichFilesGoText"
                    TextWrapping="Wrap"
                    Opacity="0.75" />
 

@@ -245,6 +245,84 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
+        // *** A ROLLBACK IS HELD TO WHAT THE CONFIRMATION SHOWED (code review, 2026-11-02). *** The
+        // server planned again under its lock without comparing: the dialog named Anna's #57 and stayed
+        // open, the board went to stable and Bob's #60 was approved - and confirming took out Bob's
+        // work, mailing him a reason written about Anna's. Publish and delete are held to a hash or a
+        // fingerprint; this now is too. Nothing moves: not the tree, not a submission, no mail.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_rollback_held_to_a_BETA_state_that_has_moved_on_changes_nothing_and_says_so()
+        {
+            FakeSubmissionStore store = this.StoreAheadOfProduction();
+            long id = await this.MergedSubmissionAsync(store);
+            this.BetaAheadOfProduction(withNewImage: true);
+
+            BetaRollbackOutcome outcome = await ProductionEndpoints.RollBackAsRequestedAsync(
+                this.Flow(store),
+                BetaRollbackFlowTests.Admin(),
+                new BetaRollbackRequest(BetaRollbackFlowTests.BoardId, "The U8 pinout is wrong.", ExpectedBetaContentHash: "what-the-dialog-showed"),
+                this.Options(),
+                BetaRollbackFlowTests.Now,
+                CancellationToken.None);
+
+            Assert.True(outcome.IsConflict);
+            Assert.False(outcome.IsDone);
+            Assert.Equal(BetaRollbackFlow.MovedSinceShownMessage, outcome.Error);
+
+            Assert.Equal("SUBMITTED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
+            Assert.Equal("ONLY IN BETA", this.BetaHolds(BetaRollbackFlowTests.NewImage));
+            Assert.Equal(SubmissionState.Merged, (await store.FindAsync(id, CancellationToken.None))!.State);
+            Assert.Empty(store.BetaReturns);
+        }
+
+        // The hash the plan's own answer says, sent back: BETA is as shown, and the rollback goes ahead.
+        [Fact]
+        public async Task A_rollback_held_to_the_state_its_plan_said_goes_ahead_while_BETA_is_still_so()
+        {
+            FakeSubmissionStore store = this.StoreAheadOfProduction();
+            await this.MergedSubmissionAsync(store);
+            this.BetaAheadOfProduction();
+
+            BetaRollbackFlow flow = this.Flow(store);
+
+            BetaRollbackPlanAnswer plan = ProductionEndpoints.RollbackPlanAnswerOf(
+                await flow.PlanAsync(BetaRollbackFlowTests.Admin(), BetaRollbackFlowTests.BoardId, this.Options()));
+
+            Assert.Equal("beta-hash", plan.BetaContentHash);
+
+            BetaRollbackOutcome outcome = await ProductionEndpoints.RollBackAsRequestedAsync(
+                flow,
+                BetaRollbackFlowTests.Admin(),
+                new BetaRollbackRequest(BetaRollbackFlowTests.BoardId, "The U8 pinout is wrong.", ExpectedBetaContentHash: plan.BetaContentHash),
+                this.Options(),
+                BetaRollbackFlowTests.Now,
+                CancellationToken.None);
+
+            Assert.True(outcome.IsDone, outcome.Error);
+            Assert.Equal("PUBLISHED", this.BetaHolds(BetaRollbackFlowTests.Sheet));
+        }
+
+        // An older CRT names no state, and is served as it always was ("Installed CRTs keep working").
+        [Fact]
+        public async Task A_rollback_naming_no_state_goes_ahead_as_it_always_did()
+        {
+            FakeSubmissionStore store = this.StoreAheadOfProduction();
+            await this.MergedSubmissionAsync(store);
+            this.BetaAheadOfProduction();
+
+            BetaRollbackOutcome outcome = await ProductionEndpoints.RollBackAsRequestedAsync(
+                this.Flow(store),
+                BetaRollbackFlowTests.Admin(),
+                new BetaRollbackRequest(BetaRollbackFlowTests.BoardId, "The U8 pinout is wrong."),
+                this.Options(),
+                BetaRollbackFlowTests.Now,
+                CancellationToken.None);
+
+            Assert.True(outcome.IsDone, outcome.Error);
+        }
+
+        // ###########################################################################################
         // *** "REJECT" ON BETA > PROD IS THE SAME ROLLBACK (owner request, 2026-09-28: "a direct
         // 'Reject' button also - just like the normal queue"). *** BETA moves exactly as for a
         // push-back; every merged submission is REJECTED with the reason instead of returning to the

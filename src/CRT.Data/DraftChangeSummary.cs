@@ -98,25 +98,28 @@ namespace Handlers.DataHandling
             List<string> boardLines = DraftChangeSummary.BoardLines(before, after, published?.Calibrations ?? [], draft.Calibrations);
             boardLines.AddRange(DraftChangeSummary.KiCadLines(publishedFiles, draftFiles));
 
-            // A replaced file cited by no component row is the board's.
-            var citedByComponents = new HashSet<string>(
-                DraftChangeSummary.ComponentFileNames(after).Select(cited => cited.Name),
-                StringComparer.OrdinalIgnoreCase);
+            // ###########################################################################################
+            // A replaced file is one component's when that component alone cites it, and otherwise the
+            // board's: no component row cites it - or two do, or the board too (code review, 2026-11-02).
+            // "Undo changes to" cannot take such a file back from under the others (ComponentRevert
+            // .ReplacedFiles), so it has no such button beside it.
+            // ###########################################################################################
+            HashSet<string> ofOneComponent = DraftChangeSummary.FilesOfOneComponent(after);
 
             boardLines.AddRange(replaced
-                .Where(name => !citedByComponents.Contains(name) && !SubmissionKiCadFiles.IsInKiCadFolder(name))
+                .Where(name => !ofOneComponent.Contains(name) && !SubmissionKiCadFiles.IsInKiCadFolder(name))
                 .Select(name => $"File [{name}] replaced"));
 
             if (boardLines.Count > 0)
                 groups.Add(new DraftChangeGroup(string.Empty, DraftChangeSummary.BoardTitle, DraftComponentChange.Changed, boardLines));
 
             ILookup<string, (string Name, string Label)> replacedByLabel = DraftChangeSummary.ComponentFileNames(after)
-                .Where(cited => replaced.Contains(cited.Name, StringComparer.OrdinalIgnoreCase))
+                .Where(cited => ofOneComponent.Contains(cited.Name) && replaced.Contains(cited.Name, StringComparer.OrdinalIgnoreCase))
                 .Distinct()
                 .ToLookup(cited => cited.Label, StringComparer.OrdinalIgnoreCase);
 
-            ComponentRows beforeRows = ComponentRows.Of(before, relabelled);
-            ComponentRows afterRows = ComponentRows.Of(after, relabels: null);
+            ComponentRows beforeRows = ComponentRows.Of(before, relabelled, after);
+            ComponentRows afterRows = ComponentRows.Of(after);
 
             IEnumerable<string> labels = beforeRows.Labels
                 .Concat(afterRows.Labels)
@@ -475,6 +478,24 @@ namespace Handlers.DataHandling
                 .Where(cited => !string.IsNullOrWhiteSpace(cited.File) && !string.IsNullOrWhiteSpace(cited.BoardLabel))
                 .Select(cited => (BoardFileNames.Normalise(cited.File), cited.BoardLabel.Trim()));
 
+        // The files one component alone cites - no other component, no row of the board's own.
+        private static HashSet<string> FilesOfOneComponent(BoardData board)
+        {
+            var citedByBoard = new HashSet<string>(
+                board.BoardLocalFiles.Select(row => row.File)
+                    .Concat(board.Schematics.Select(row => row.SchematicImageFile))
+                    .Select(BoardFileNames.Normalise),
+                StringComparer.OrdinalIgnoreCase);
+
+            return new HashSet<string>(
+                DraftChangeSummary.ComponentFileNames(board)
+                    .GroupBy(cited => cited.Name, StringComparer.OrdinalIgnoreCase)
+                    .Where(file => !citedByBoard.Contains(file.Key) &&
+                                   file.Select(cited => cited.Label).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1)
+                    .Select(file => file.Key),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
         // ---- boards of one section ----------------------------------------------------------------
 
         private static BoardData NoBoard() => new() { HardwareName = string.Empty, BoardName = string.Empty };
@@ -532,8 +553,20 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // A board's component rows by label (trimmed, capitals ignored) - so each component is
-        // compared on its own. `relabels` (old -> new) files a relabelled component's rows and
-        // highlights under its new label, as the draft holds them.
+        // compared on its own. `relabels` (old -> new) files a relabelled component's rows under its new
+        // label, as `draft` holds them.
+        //
+        // *** PER SECTION, BY WHERE THE DRAFT'S ROWS STAND (code review, 2026-11-02). *** Renamed in the
+        // pane, every row of a component moves (ComponentPaneEdits.WithLabel), and only its own row and its
+        // marks were followed: "U08: Relabelled from [U8], 3 pictures added, 40 pins added" beside a group
+        // "U8: 3 pictures removed, 40 pins removed", whose "Undo changes to [U8]" brought U8 back beside
+        // U08. Renamed in the table, its pictures stay on the old label - compared there, no change.
+        //
+        // *** A RECTANGLE THAT ONLY FOLLOWED ITS SCHEMATIC IS THE BOARD'S CHANGE (code review, 2026-11-02). ***
+        // `draft`'s schematic names go on the rectangles before they are compared, by the rule every draft
+        // edit follows (SubmissionRowsBoard.FollowSchematics) and ComponentRevert compares by: a schematic
+        // renamed or deleted read "U8: 2 marks on the schematics changed" with an "Undo changes to" that had
+        // nothing to take back. The board's group says it, once. One really moved there is still a change.
         // ###########################################################################################
         private sealed class ComponentRows
         {
@@ -544,41 +577,53 @@ namespace Handlers.DataHandling
             public BoardData For(string label) =>
                 this.thisByLabel.TryGetValue(label, out BoardData? rows) ? rows : DraftChangeSummary.NoBoard();
 
-            public static ComponentRows Of(BoardData board, IReadOnlyDictionary<string, string>? relabels)
+            public static ComponentRows Of(BoardData board, IReadOnlyDictionary<string, string>? relabels = null, BoardData? draft = null)
             {
                 var rows = new ComponentRows();
 
-                string LabelOf(string? label)
-                {
-                    string trimmed = (label ?? string.Empty).Trim();
-                    return relabels is not null && relabels.TryGetValue(trimmed, out string? to) ? to : trimmed;
-                }
-
-                foreach (ComponentEntry row in board.Components)
-                    rows.Get(LabelOf(row.BoardLabel)).Components.Add(row);
-
-                foreach (ComponentImageEntry row in board.ComponentImages)
-                    rows.Get((row.BoardLabel ?? string.Empty).Trim()).ComponentImages.Add(row);
-
-                foreach (ComponentHighlightEntry row in board.ComponentHighlights)
-                    rows.Get(LabelOf(row.BoardLabel)).ComponentHighlights.Add(relabels is not null && LabelOf(row.BoardLabel) != (row.BoardLabel ?? string.Empty).Trim()
-                        ? row.WithBoardLabel(LabelOf(row.BoardLabel))
-                        : row);
-
-                foreach (ComponentLocalFileEntry row in board.ComponentLocalFiles)
-                    rows.Get((row.BoardLabel ?? string.Empty).Trim()).ComponentLocalFiles.Add(row);
-
-                foreach (ComponentLinkEntry row in board.ComponentLinks)
-                    rows.Get((row.BoardLabel ?? string.Empty).Trim()).ComponentLinks.Add(row);
-
-                foreach (ComponentPinEntry row in board.ComponentPins)
-                    rows.Get((row.BoardLabel ?? string.Empty).Trim()).ComponentPins.Add(row);
-
-                foreach (ComponentReplacementEntry row in board.ComponentReplacements)
-                    rows.Get((row.BoardLabel ?? string.Empty).Trim()).ComponentReplacements.Add(row);
+                rows.File(board.Components, draft?.Components, relabels, row => row.BoardLabel, (row, to) => row.WithBoardLabel(to), own => own.Components);
+                rows.File(board.ComponentImages, draft?.ComponentImages, relabels, row => row.BoardLabel, (row, to) => row.WithBoardLabel(to), own => own.ComponentImages);
+                rows.File(
+                    draft is null ? board.ComponentHighlights : SchematicRename.FollowHighlights(board.ComponentHighlights, SubmissionRowsBoard.FollowSchematics(board.Schematics, draft.Schematics)),
+                    draft?.ComponentHighlights,
+                    relabels,
+                    row => row.BoardLabel,
+                    (row, to) => row.WithBoardLabel(to),
+                    own => own.ComponentHighlights);
+                rows.File(board.ComponentLocalFiles, draft?.ComponentLocalFiles, relabels, row => row.BoardLabel, (row, to) => row.WithBoardLabel(to), own => own.ComponentLocalFiles);
+                rows.File(board.ComponentLinks, draft?.ComponentLinks, relabels, row => row.BoardLabel, (row, to) => row.WithBoardLabel(to), own => own.ComponentLinks);
+                rows.File(board.ComponentPins, draft?.ComponentPins, relabels, row => row.BoardLabel, (row, to) => row.WithBoardLabel(to), own => own.ComponentPins);
+                rows.File(board.ComponentReplacements, draft?.ComponentReplacements, relabels, row => row.BoardLabel, (row, to) => row.WithBoardLabel(to), own => own.ComponentReplacements);
 
                 rows.thisByLabel.Remove(string.Empty);
                 return rows;
+            }
+
+            // One section's rows: under their own label - a relabel's new one, while the draft has no row of
+            // this section left under its old one.
+            private void File<T>(
+                IEnumerable<T> rows,
+                IEnumerable<T>? draftRows,
+                IReadOnlyDictionary<string, string>? relabels,
+                Func<T, string?> labelOf,
+                Func<T, string, T> withLabel,
+                Func<BoardData, List<T>> section)
+            {
+                static string Trimmed(string? label) => (label ?? string.Empty).Trim();
+
+                var stayed = relabels is { Count: > 0 } && draftRows is not null
+                    ? new HashSet<string>(draftRows.Select(row => Trimmed(labelOf(row))), StringComparer.OrdinalIgnoreCase)
+                    : null;
+
+                foreach (T row in rows)
+                {
+                    string own = Trimmed(labelOf(row));
+
+                    if (stayed is not null && !stayed.Contains(own) && relabels!.TryGetValue(own, out string? to))
+                        section(this.Get(to)).Add(withLabel(row, to));
+                    else
+                        section(this.Get(own)).Add(row);
+                }
             }
 
             private BoardData Get(string label)

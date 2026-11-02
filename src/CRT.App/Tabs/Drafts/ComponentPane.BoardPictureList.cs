@@ -229,6 +229,9 @@ namespace CRT
             List<string> names = BoardPictureEdits.NamesFor(accepted, session.Content.Board.Schematics.Select(row => row.SchematicName));
             List<(string Name, string File)> pictures = names.Zip(files, (name, file) => (name, file.Name)).ToList();
 
+            // Those of no bytes are left out by the copy (DraftPickedFiles), and said apart (2026-11-02).
+            int empty = accepted.Count(SubmissionFileRules.HoldsNoBytes);
+
             return await this.AddToDraftAsync(files, copied =>
             {
                 // Only the pictures copied get a row - one locked by another program, or gone since it
@@ -239,7 +242,7 @@ namespace CRT
 
                 this.ApplyBoardPart(DraftStepWording.SchematicsAdded(added.Count), board => BoardPictureEdits.WithAdded(board, added));
                 this.ShowPicturesAgain();
-                this.ShowPicturesNote(ComponentPaneWording.PicturesAdded(added.Count, notCopied: pictures.Count - added.Count));
+                this.ShowPicturesNote(ComponentPaneWording.PicturesAdded(added.Count, notCopied: pictures.Count - added.Count - empty, empty: empty));
             });
         }
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace Handlers.DataHandling
 {
@@ -86,6 +87,11 @@ namespace Handlers.DataHandling
         // it put the rows back and left the replaced bytes in the draft and its next submission. Put
         // back by the draft's file list (DraftWorkbookStore.RemoveFiles: a name the published board
         // has goes back to the published one). None without both lists or a published board.
+        //
+        // *** ONLY WHAT IS THIS COMPONENT'S ALONE (code review, 2026-11-02). *** A file U9's rows or the
+        // board's own still cite in the draft stays out of it: put back, U9's copy went with U8's - the
+        // draft's bytes deleted, and no Undo brings a write of the file list back. So it is no change of
+        // U8 either; "Review changes" says it for the board (DraftChangeSummary).
         // ###########################################################################################
         public static List<string> ReplacedFiles(
             BoardData draft,
@@ -104,10 +110,19 @@ namespace Handlers.DataHandling
             HashSet<string> labels = ComponentRevert.LabelsOf(draft, published, wanted);
             bool Of(string? rowLabel) => labels.Contains((rowLabel ?? string.Empty).Trim());
 
+            var citedElsewhere = new HashSet<string>(
+                draft.ComponentImages.Where(row => !Of(row.BoardLabel)).Select(row => row.File)
+                    .Concat(draft.ComponentLocalFiles.Where(row => !Of(row.BoardLabel)).Select(row => row.File))
+                    .Concat(draft.BoardLocalFiles.Select(row => row.File))
+                    .Concat(draft.Schematics.Select(row => row.SchematicImageFile))
+                    .Select(BoardFileNames.Normalise),
+                StringComparer.OrdinalIgnoreCase);
+
             return published.ComponentImages.Where(row => Of(row.BoardLabel)).Select(row => row.File)
                 .Concat(published.ComponentLocalFiles.Where(row => Of(row.BoardLabel)).Select(row => row.File))
                 .Select(BoardFileNames.Normalise)
                 .Where(name => name.Length > 0 &&
+                               !citedElsewhere.Contains(name) &&
                                publishedFiles.TryGetValue(name, out BoardDocument.StoredFileRow? theirs) &&
                                draftFiles.TryGetValue(name, out BoardDocument.StoredFileRow? mine) &&
                                !string.Equals(theirs.Sha256, mine.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -210,6 +225,10 @@ namespace Handlers.DataHandling
         // component dragged elsewhere kept that place: "Order of the components changed" stayed, with nothing
         // to take it back. But what the published board does not have - a row the draft added or relabelled -
         // that stood in front of the component stays in front of it: nothing else moves.
+        //
+        // *** WHERE EACH ROW STANDS IS WORKED OUT ONCE (code review, 2026-11-02). *** It was worked out per
+        // row put back, from the keys of the whole section: 98 rows on the C128's U21 were a good 150 ms, on
+        // the UI thread, several times per typing pause. Each insert only moves what stands after it.
         // ###########################################################################################
         private static List<T> Restore<T>(List<T> draftRows, List<T> publishedRows, Func<T, bool> ofComponent)
             where T : class
@@ -217,9 +236,22 @@ namespace Handlers.DataHandling
             int firstOwn = draftRows.FindIndex(row => ofComponent(row));
             int keptInFront = firstOwn < 0 ? 0 : draftRows.Take(firstOwn).Count(row => !ofComponent(row));
 
-            var published = new HashSet<string>(publishedRows.Select(BoardDraftNaturalKeys.ForRow), StringComparer.OrdinalIgnoreCase);
-
             List<T> rows = draftRows.Where(row => !ofComponent(row)).ToList();
+
+            if (!publishedRows.Any(ofComponent))
+                return rows;
+
+            string[] publishedKeys = publishedRows.Select(BoardDraftNaturalKeys.ForRow).ToArray();
+            var published = new HashSet<string>(publishedKeys, StringComparer.OrdinalIgnoreCase);
+
+            // The last row of each key, as `rows` changes.
+            var positions = new Dictionary<string, StrongBox<int>>(rows.Count, StringComparer.OrdinalIgnoreCase);
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                ComponentRevert.NotePosition(positions, BoardDraftNaturalKeys.ForRow(rows[index]), index);
+            }
+
             bool first = true;
 
             for (int publishedIndex = 0; publishedIndex < publishedRows.Count; publishedIndex++)
@@ -227,7 +259,7 @@ namespace Handlers.DataHandling
                 if (!ofComponent(publishedRows[publishedIndex]))
                     continue;
 
-                int at = ComponentRevert.AfterTheRowBefore(rows, publishedRows, publishedIndex);
+                int at = ComponentRevert.AfterTheRowBefore(positions, publishedKeys, publishedIndex);
 
                 while (first && at < keptInFront && !published.Contains(BoardDraftNaturalKeys.ForRow(rows[at])))
                 {
@@ -235,26 +267,36 @@ namespace Handlers.DataHandling
                 }
 
                 rows.Insert(at, publishedRows[publishedIndex]);
+
+                foreach (StrongBox<int> position in positions.Values)
+                {
+                    if (position.Value >= at)
+                        position.Value++;
+                }
+
+                ComponentRevert.NotePosition(positions, publishedKeys[publishedIndex], at);
                 first = false;
             }
 
             return rows;
         }
 
-        // Where a published row goes in `rows`: after the nearest row before it in the published section
-        // that `rows` holds - else first.
-        private static int AfterTheRowBefore<T>(List<T> rows, List<T> publishedRows, int publishedIndex)
-            where T : class
+        private static void NotePosition(Dictionary<string, StrongBox<int>> positions, string key, int index)
         {
-            var positions = rows
-                .Select((row, index) => (Key: BoardDraftNaturalKeys.ForRow(row), Index: index))
-                .GroupBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Last().Index, StringComparer.OrdinalIgnoreCase);
+            if (positions.TryGetValue(key, out StrongBox<int>? known))
+                known.Value = Math.Max(known.Value, index);
+            else
+                positions[key] = new StrongBox<int>(index);
+        }
 
+        // Where a published row goes: after the nearest row before it in the published section that the
+        // rows hold - else first.
+        private static int AfterTheRowBefore(Dictionary<string, StrongBox<int>> positions, string[] publishedKeys, int publishedIndex)
+        {
             for (int index = publishedIndex - 1; index >= 0; index--)
             {
-                if (positions.TryGetValue(BoardDraftNaturalKeys.ForRow(publishedRows[index]), out int position))
-                    return position + 1;
+                if (positions.TryGetValue(publishedKeys[index], out StrongBox<int>? position))
+                    return position.Value + 1;
             }
 
             return 0;

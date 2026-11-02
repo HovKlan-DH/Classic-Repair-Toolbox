@@ -26,6 +26,23 @@ public sealed class OscilloscopeModelsDisplayTests
         "CRT 4.0.0",
         published);
 
+    // What decides whether the cards are made again: anything a card says, nothing else.
+    [Fact]
+    public void Two_reads_are_the_same_only_when_every_entry_says_the_same()
+    {
+        OscilloscopeModelQueueEntry entry = Entry();
+
+        Assert.True(OscilloscopeModelsDisplay.SameModels([entry], [Entry()]));
+        Assert.True(OscilloscopeModelsDisplay.SameModels([], []));
+
+        Assert.False(OscilloscopeModelsDisplay.SameModels(null, []));
+        Assert.False(OscilloscopeModelsDisplay.SameModels([entry], []));
+        Assert.False(OscilloscopeModelsDisplay.SameModels([entry], [entry with { Id = 42 }]));
+        Assert.False(OscilloscopeModelsDisplay.SameModels([entry], [entry with { InBeta = true }]));
+        Assert.False(OscilloscopeModelsDisplay.SameModels([entry], [entry with { Values = new Dictionary<string, string> { ["identify"] = "*IDN? " } }]));
+        Assert.False(OscilloscopeModelsDisplay.SameModels([entry], [Entry(new Dictionary<string, string> { ["identify"] = "*IDN?" })]));
+    }
+
     [Fact]
     public void Every_value_is_listed_in_the_editor_s_words_and_order()
     {
@@ -88,5 +105,32 @@ public sealed class OscilloscopeModelsDisplayTests
         Assert.Equal(OscilloscopeModelsDisplay.SuitePassed, OscilloscopeModelsDisplay.SuiteLine(Entry()));
         Assert.Equal(OscilloscopeModelsDisplay.SuiteNotPassed, OscilloscopeModelsDisplay.SuiteLine(Entry(passed: false)));
         Assert.Equal(OscilloscopeModelsDisplay.NoMessage, OscilloscopeModelsDisplay.Message(Entry()));
+    }
+
+    // ###########################################################################################
+    // *** ANYBODY CAN TYPE ANY NAME (code review, 2026-11-02 - Security). *** Sending a model needs no
+    // account, so "Sent by Dennis" could be anybody, and Publish pushes the sender's commands to every
+    // CRT. Each card says which it is, in the Contributor view's words for a board's submission: a
+    // verified account, or a name and address nothing checked. The answer of a server that does not
+    // say reads as typed in - the careful side.
+    // ###########################################################################################
+    [Fact]
+    public void A_card_says_whether_the_sender_is_a_verified_account_or_typed_in()
+    {
+        Assert.Equal(
+            "Sent without a verified account - the name and address were typed in when sending, and nothing checked either.",
+            OscilloscopeModelsDisplay.SenderLine(Entry()));
+        Assert.Equal(
+            "Sent with an account - the address is verified.",
+            OscilloscopeModelsDisplay.SenderLine(Entry() with { SignedIn = true }));
+    }
+
+    // The suite line is the sender's CRT's word for it, which nothing here checked - never CRT's own
+    // statement that it went through.
+    [Fact]
+    public void The_suite_line_says_it_is_what_the_senders_CRT_reported()
+    {
+        Assert.Equal("The sender's CRT reported that its full test suite went through on it - nothing here checked that.", OscilloscopeModelsDisplay.SuiteLine(Entry()));
+        Assert.Equal("The sender's CRT did not report that its full test suite went through on it as it was sent.", OscilloscopeModelsDisplay.SuiteLine(Entry(passed: false)));
     }
 }

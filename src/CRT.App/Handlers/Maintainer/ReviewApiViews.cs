@@ -115,13 +115,18 @@ namespace Handlers.MaintainerHandling
     // back to production's bytes. Every board citing a shared file sees it, so the confirmation
     // names them. Empty from a server that does not send them. A rollback never removes a shared
     // file, so there is nothing else to name.
+    //
+    // BetaContentHash (code review, 2026-11-02): what BETA held when the plan was made - sent back
+    // with the rollback, so it takes out what the confirmation named or nothing. Null from a server
+    // that does not send it.
     public sealed record BetaRollbackPlanView(
         string BoardId,
         BetaRollbackKind Kind,
         IReadOnlyList<string> Restored,
         IReadOnlyList<string> Removed,
         IReadOnlyList<CarriedSubmission> Returning,
-        IReadOnlyList<string>? SharedRestored = null);
+        IReadOnlyList<string>? SharedRestored = null,
+        string? BetaContentHash = null);
 
     // Rejected (2026-09-28): the submissions were rejected rather than returned to the queue - false
     // from a server older than Beta > Prod's "Reject", which pushes back instead.
@@ -257,11 +262,17 @@ namespace Handlers.MaintainerHandling
         IReadOnlyList<string> Removed,
         IReadOnlyList<string> Changed,
         IReadOnlyList<ReviewRenameView> Renamed,
-        IReadOnlyDictionary<string, IReadOnlyList<ReviewFieldChangeView>> FieldChanges)
+        IReadOnlyDictionary<string, IReadOnlyList<ReviewFieldChangeView>> FieldChanges,
+
+        // `Changed` row by row, when a key stands in it more than once (ReviewSectionChange.ChangedRows, code
+        // review 2026-11-02); null otherwise, and from a server that does not send it.
+        IReadOnlyList<ReviewChangedRowView>? ChangedRows = null)
     {
         public int TotalChanges =>
             this.Added.Count + this.Removed.Count + this.Changed.Count + this.Renamed.Count;
     }
+
+    public sealed record ReviewChangedRowView(string Key, IReadOnlyList<ReviewFieldChangeView> Fields);
 
     public sealed record ReviewRenameView(string From, string To, bool AlsoChanged);
 

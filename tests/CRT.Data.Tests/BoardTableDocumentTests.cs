@@ -2162,6 +2162,184 @@ public sealed class BoardTableDocumentTests
         Assert.Same(edited.Board.Components, again.Board.Components);
     }
 
+    // ###########################################################################################
+    // *** HANDING OVER A SHEET NO HIGHLIGHT HANGS ON FOLLOWS NOTHING (code review, 2026-11-02). *** Every
+    // settled edit on Credits or Links mapped the Schematics and Components sheets and went over every row
+    // and rectangle on the UI thread, for an answer that could not change: the lag TakeSessionEdit's
+    // "only the sheets changed" was written to end. Only those two sheets move what the highlights are
+    // filed by; seen here by the highlights not being worked out again.
+    // ###########################################################################################
+    [Fact]
+    public void Handing_over_a_sheet_no_highlight_hangs_on_leaves_the_highlights_as_they_were()
+    {
+        BoardData draft = Board(Component("U1", "CPU")).WithComponentHighlights([HighlightOf("U1")]);
+        draft.Credits.Add(new CreditEntry { Category = "Data", NameOrHandle = "Anna" });
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        IReadOnlyList<ComponentHighlightEntry> held = document.HighlightsHeldForTests;
+
+        BoardTableSheet credits = document.Sheets.Single(sheet => sheet.Name == BoardWorkbookSchema.SheetCredits);
+        Cell(credits.Rows.First(row => !row.IsDeleted), BoardWorkbookSchema.ColNameOrHandle).Text = "Anna K";
+        document.TakeSessionEdit();
+
+        Assert.Same(held, document.HighlightsHeldForTests);
+
+        // The Components sheet is what moves them.
+        Cell(Row(Components(document), "U1"), BoardWorkbookSchema.ColBoardLabel).Text = "U2";
+        document.TakeSessionEdit();
+
+        Assert.Equal("U2", Assert.Single(document.HighlightsHeldForTests).BoardLabel);
+
+        // And so is the Schematics sheet, by itself.
+        document.MarkSaved();
+        held = document.HighlightsHeldForTests;
+
+        BoardTableSheet schematics = document.Sheets.Single(sheet => sheet.Name == BoardWorkbookSchema.SheetBoardSchematics);
+        document.NoteSheetChanged(schematics);
+        document.TakeSessionEdit();
+
+        Assert.NotSame(held, document.HighlightsHeldForTests);
+    }
+
+    // ###########################################################################################
+    // *** RENAMED, HANDED OVER, THEN DELETED (code review, 2026-11-02). *** The session moves U8's
+    // highlights to U10 at the hand-over. Deleting the row went by the label it OPENED with, so the
+    // draft kept a rectangle for a component it no longer has, and nothing was said.
+    // ###########################################################################################
+    private static BoardContent HandOver(BoardTableDocument document, BoardContent content)
+    {
+        Func<BoardContent, BoardContent?> edit = document.TakeSessionEdit();
+        DraftPreparedEdit? prepared = DraftSession.Prepare(content, before => (edit(before), null));
+        document.MarkSaved();
+
+        return prepared?.After ?? content;
+    }
+
+    private static ComponentHighlightEntry HighlightOf(string label) =>
+        new() { SchematicName = "Top", BoardLabel = label, X = "1", Y = "2", Width = "3", Height = "4" };
+
+    [Fact]
+    public void A_component_renamed_and_then_deleted_in_one_sitting_takes_its_highlights_along()
+    {
+        BoardData draft = Board(Component("U8", "VIC"), Component("U9", "SID")).WithComponentHighlights([HighlightOf("U8"), HighlightOf("U9")]);
+        var content = new BoardContent(draft, [], []);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet sheet = Components(document);
+
+        Cell(Row(sheet, "U8"), BoardWorkbookSchema.ColBoardLabel).Text = "U10";
+        sheet.Refresh();
+        content = HandOver(document, content);
+
+        Assert.Equal(["U10", "U9"], content.Board.ComponentHighlights.Select(highlight => highlight.BoardLabel));
+
+        Assert.True(sheet.DeleteRow(Row(sheet, "U10"), out BoardTableDeletedWith? deletedWith));
+        content = HandOver(document, content);
+
+        Assert.Equal(["U9"], content.Board.Components.Select(component => component.BoardLabel));
+        Assert.Equal("U9", Assert.Single(content.Board.ComponentHighlights).BoardLabel);
+
+        // And it is said - the count went by the labels as the table opened too.
+        Assert.Equal(1, deletedWith!.Highlights);
+    }
+
+    [Fact]
+    public void A_component_renamed_twice_and_then_deleted_takes_its_highlights_along()
+    {
+        BoardData draft = Board(Component("U8", "VIC"), Component("U9", "SID")).WithComponentHighlights([HighlightOf("U8"), HighlightOf("U9")]);
+        var content = new BoardContent(draft, [], []);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet sheet = Components(document);
+
+        Cell(Row(sheet, "U8"), BoardWorkbookSchema.ColBoardLabel).Text = "U10";
+        sheet.Refresh();
+        content = HandOver(document, content);
+
+        Cell(Row(sheet, "U10"), BoardWorkbookSchema.ColBoardLabel).Text = "U11";
+        sheet.Refresh();
+        content = HandOver(document, content);
+
+        Assert.True(sheet.DeleteRow(Row(sheet, "U11"), out BoardTableDeletedWith? deletedWith));
+        content = HandOver(document, content);
+
+        Assert.Equal("U9", Assert.Single(content.Board.ComponentHighlights).BoardLabel);
+        Assert.Equal(1, deletedWith!.Highlights);
+    }
+
+    // A label handed over that the highlights did NOT follow - emptied, or changed with another cell
+    // (ComponentRelabel) - leaves them on the old label, and that is what the row takes when it goes.
+    [Theory]
+    [InlineData("")]
+    [InlineData("U10")]
+    public void A_component_whose_rename_its_highlights_did_not_follow_still_takes_them_when_deleted(string newLabel)
+    {
+        BoardData draft = Board(Component("U8", "VIC"), Component("U9", "SID")).WithComponentHighlights([HighlightOf("U8"), HighlightOf("U9")]);
+        var content = new BoardContent(draft, [], []);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet sheet = Components(document);
+        BoardTableRow row = Row(sheet, "U8");
+
+        Cell(row, BoardWorkbookSchema.ColBoardLabel).Text = newLabel;
+        Cell(row, BoardWorkbookSchema.ColFriendlyName).Text = "Another name";
+        sheet.Refresh();
+        content = HandOver(document, content);
+
+        Assert.Equal(["U8", "U9"], content.Board.ComponentHighlights.Select(highlight => highlight.BoardLabel));
+
+        Assert.True(sheet.DeleteRow(row));
+        content = HandOver(document, content);
+
+        Assert.Equal("U9", Assert.Single(content.Board.ComponentHighlights).BoardLabel);
+    }
+
+    // The label a row left behind, taken by another component meanwhile, keeps that one's highlights.
+    [Fact]
+    public void Deleting_a_renamed_component_leaves_the_highlights_of_whoever_has_its_old_label_now()
+    {
+        BoardData draft = Board(Component("U8", "VIC"), Component("U9", "SID")).WithComponentHighlights([HighlightOf("U8")]);
+        var content = new BoardContent(draft, [], []);
+
+        BoardTableDocument document = BoardTableDocument.Create(null, draft);
+        BoardTableSheet sheet = Components(document);
+
+        Cell(Row(sheet, "U8"), BoardWorkbookSchema.ColBoardLabel).Text = "U10";
+        sheet.Refresh();
+        content = HandOver(document, content);
+
+        Cell(Row(sheet, "U9"), BoardWorkbookSchema.ColBoardLabel).Text = "U8";
+        sheet.Refresh();
+        content = HandOver(document, content);
+
+        Assert.Equal("U10", Assert.Single(content.Board.ComponentHighlights).BoardLabel);
+
+        Assert.True(sheet.DeleteRow(Row(sheet, "U10")));
+        content = HandOver(document, content);
+
+        Assert.Equal(["U8"], content.Board.Components.Select(component => component.BoardLabel));
+        Assert.Empty(content.Board.ComponentHighlights);
+    }
+
+    // A maintainer's table hands nothing over until Save: the board it saves into still has them on
+    // U8, which is what the row opened with - and "Also deleted" counts them all the same.
+    [Fact]
+    public void In_a_document_a_component_renamed_and_then_deleted_takes_its_highlights_along()
+    {
+        BoardData board = Board(Component("U8", "VIC"), Component("U9", "SID")).WithComponentHighlights([HighlightOf("U8"), HighlightOf("U9")]);
+
+        BoardTableDocument document = BoardTableDocument.Create(board, board);
+        BoardTableSheet sheet = Components(document);
+
+        Cell(Row(sheet, "U8"), BoardWorkbookSchema.ColBoardLabel).Text = "U10";
+        sheet.Refresh();
+
+        Assert.True(sheet.DeleteRow(Row(sheet, "U10"), out BoardTableDeletedWith? deletedWith));
+
+        Assert.Equal("U9", Assert.Single(document.ApplyTo(board).ComponentHighlights).BoardLabel);
+        Assert.Equal(1, deletedWith!.Highlights);
+    }
+
     // A regional variant deleted beside its twin takes its region's files and links too, now each can
     // be of one region (owner request, 2026-11-02) - those for every region still belong to the twin.
     [Fact]

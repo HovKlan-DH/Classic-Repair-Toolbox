@@ -272,6 +272,34 @@ public sealed class ReviewSessionStoreTests : IDisposable
         Assert.False(File.Exists(this.FilePath));
     }
 
+    // ###########################################################################################
+    // *** A FILE HELD FOR A MOMENT IS NOT A BROKEN ONE (code review, 2026-11-02). *** A virus scanner
+    // or a second CRT holding the file made the read throw, the catch-all called Forget, and a token
+    // that was still good was deleted. The holder here lets others delete, as a scanner does, which
+    // is what made the delete go through. "Not this time": nothing recalled, the file kept for the
+    // next launch.
+    // ###########################################################################################
+    [Fact]
+    public void A_session_file_held_by_another_program_is_not_this_time_and_is_kept()
+    {
+        ReviewSessionStore.Remember(ReviewSessionStoreTests.Session());
+
+        if (!ReviewSessionStore.IsSupported)
+        {
+            // Off Windows nothing is stored, deliberately. See the class header.
+            Assert.False(File.Exists(this.FilePath));
+            return;
+        }
+
+        using (new FileStream(this.FilePath, FileMode.Open, FileAccess.ReadWrite, FileShare.Delete))
+        {
+            Assert.Null(ReviewSessionStore.Recall(ReviewSessionStoreTests.Now));
+        }
+
+        Assert.True(File.Exists(this.FilePath));
+        Assert.Equal("a-very-secret-bearer-token", ReviewSessionStore.Recall(ReviewSessionStoreTests.Now)?.BearerToken);
+    }
+
     [Fact]
     public void A_file_whose_CIPHERTEXT_is_not_ours_yields_nothing()
     {

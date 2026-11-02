@@ -133,7 +133,8 @@ public sealed class DataManagerDraftImportTests : IDisposable
     }
 
     // The other half: a draft of a board that IS published, identical to it and published, goes -
-    // the Excel files its conversion set aside notwithstanding.
+    // the Excel files its conversion set aside notwithstanding. Sent after the folder was taken in, as
+    // this draft's work is (code review, 2026-11-02: the marker's time decides - next test).
     [Fact]
     public async Task A_draft_of_a_really_published_board_is_still_retired_once_it_matches()
     {
@@ -144,12 +145,34 @@ public sealed class DataManagerDraftImportTests : IDisposable
         DataManager.LoadFrom(this.DataRoot, main);
 
         IReadOnlyList<RetirableDraft> retirable = await PublishedDraftRetirer.FindAsync(
-            [Published(C64.BoardId)],
+            [Published(C64.BoardId) with { SentUtc = DateTimeOffset.UtcNow.AddMinutes(3) }],
             DataManager.DataRoot,
             DraftManager.DraftsRoot,
             DataManager.PublishedExcelDataFiles());
 
         Assert.Single(retirable);
+    }
+
+    // ###########################################################################################
+    // A folder put into Drafts/ AFTER the board's last submission was sent is not that submission's work,
+    // however alike they read (code review, 2026-11-02; DraftRetirement.WasMadeAfter): it was put there on
+    // purpose, and deleting it a minute later is the deletion of a draft made to look over again. The
+    // import's marker says when it was taken in, so it counts as made then.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_folder_put_in_after_the_boards_last_submission_was_sent_is_kept()
+    {
+        string main = MainFiles.Write(this.DataRoot, C64);
+        this.WritePublishedBoard(C64.Identity, components: 3);
+        this.WriteHandPlacedWorkbook(C64.BoardId + "/Data C64 250407 v3.0.0.xlsx", components: 3);
+
+        DataManager.LoadFrom(this.DataRoot, main);
+
+        Assert.Empty(await PublishedDraftRetirer.FindAsync(
+            [Published(C64.BoardId)],
+            DataManager.DataRoot,
+            DraftManager.DraftsRoot,
+            DataManager.PublishedExcelDataFiles()));
     }
 
     // ###########################################################################################
