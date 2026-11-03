@@ -1682,6 +1682,44 @@ public sealed class BoardTableDocumentTests
         Assert.True(document.HasUnsavedChanges);
     }
 
+    // ###########################################################################################
+    // Rows changing as one say so once, as they end (code review, 2026-11-03): the table under a pill went
+    // over the whole sheet per row, thousands of times over. Every change comes inside it, the red rows
+    // placed by the refresh too, so a listener waiting for the end misses none.
+    // ###########################################################################################
+    [Fact]
+    public void Rows_deleted_together_say_so_once_when_every_change_is_made()
+    {
+        BoardTableDocument document = BoardTableDocument.Create(
+            Board(Component("U1"), Component("U2"), Component("U3")),
+            Board(Component("U1"), Component("U2"), Component("U3"), Component("U4")));
+        BoardTableSheet sheet = Components(document);
+
+        int ends = 0;
+        int changesOutside = 0;
+        int changesInside = 0;
+
+        sheet.RowsChangedTogether += (_, _) => ends++;
+        sheet.Rows.CollectionChanged += (_, _) =>
+        {
+            if (sheet.RowsAreChangingTogether)
+            {
+                changesInside++;
+            }
+            else
+            {
+                changesOutside++;
+            }
+        };
+
+        sheet.DeleteRows([Row(sheet, "U1"), Row(sheet, "U3"), Row(sheet, "U4")], out _);
+
+        Assert.Equal(1, ends);
+        Assert.Equal(0, changesOutside);
+        Assert.True(changesInside >= 3, $"{changesInside} changes");
+        Assert.False(sheet.RowsAreChangingTogether);
+    }
+
     // Case 4: red rows among the selection are skipped - already deleted - and a selection of only
     // red rows deletes nothing and leaves no undo step behind.
     [Fact]

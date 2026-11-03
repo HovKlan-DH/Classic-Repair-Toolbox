@@ -1390,8 +1390,11 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   (`BoardNameFields`). **A refusal's reasons are kept on the receipt** (`SubmissionReceipt.Findings`, state
   "rejected" only, its ERRORS only - `ReasonsRefused`: "rejected" is a maintainer's Reject too, and the server
   answers the warnings a queued submission held), which "My submissions" shows. **A receipts file that could
-  not be read is never written over**: read again at the first write, set aside as `<file>.broken` only when
-  its contents are broken, nothing written while it is held or access to it is refused. **The fingerprint holds a new board's notes as sent** (`TabDrafts.FingerprintOf`).
+  not be read is never written over**: read again at the first write, and while only held at each minute's check and as
+  "My submissions" opens (`SubmissionReceiptStore.ReadAgainIfHeld`, its card going once it is back - never from `All`, which
+  every refresh reads); set aside as `<file>.broken` only when its contents are broken; while it is held or access to it is
+  refused, what is recorded waits beside it in `<file>.waiting` (a token's only copy, code review 2026-11-03), which the next
+  read that works takes in. **The fingerprint holds a new board's notes as sent** (`TabDrafts.FingerprintOf`).
 - **What was just sent cannot be sent again**: the receipt keeps CRT.Data's `DraftFingerprint` (the
   workbook's VALUES, the sidecar's bytes, every draft file by path and content). While the draft
   matches its LATEST submission, Submit is greyed out with the reason - unless that submission never
@@ -1606,7 +1609,9 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   (`BoardTableRowFilter.RowsShown`), so a pill can read 0 with one row showing; a row with no cursor still
   drops out, and a pick or a new search keeps nothing. The cursor counts only on a data cell. A click raises
   no `CurrentCellChanged`, and `SelectedCellsChanged` comes before the cursor has moved, so the update is
-  posted and reads the cursor afterwards. **Neither undo nor redo runs with a row held by its grip**
+  posted and reads the cursor afterwards. **Under a pill, many rows changing as one are gone over once, as they end**
+  (`BoardTableSheet.RowsTogether`, `RowsChangedTogether`; code review, 2026-11-03) - a new change of many rows says it is one.
+  **Neither undo nor redo runs with a row held by its grip**
   (`BoardTableEditor.Undo`; `BoardTableHistory.Apply` returns null while a group is open). **The checks see
   the highlights as the board will hold them** (`HighlightsAsSaved`, against the rows they were last
   followed to: a session follows at each hand-over, a document at Save).
@@ -2092,7 +2097,8 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   rows, and a row names its file). **"Bring my draft up to date" keeps a file a kept row cites**, its bytes
   copied into the draft's store (`DraftFiles.KeepInStore`); gone already, the conflict list says so. **A
   rename stopped between its move and its marker is repaired at launch** (`DraftBoardRename.RepairMovedDrafts`),
-  unless the folder would collide with another.
+  unless the folder would collide with another; one stopped between a change of capitals' two moves goes back to where its
+  marker says (2026-11-03).
 - **A row names a file of its board; `DraftFileResolver` finds it** - a new file lying in the draft
   folder under its name, then the draft's board file (its store, then the tree's), then the published
   board file (pass the board identity), then an Excel-era data-root path. Every caller that opens what

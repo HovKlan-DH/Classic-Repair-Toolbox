@@ -324,10 +324,12 @@ namespace CRT
             if (this.thisCurrentSheet is { } left)
             {
                 left.Rows.CollectionChanged -= this.OnSheetRowsChanged;
+                left.RowsChangedTogether -= this.OnSheetRowsChangedTogether;
             }
 
             this.thisCurrentSheet = sheet;
             sheet.Rows.CollectionChanged += this.OnSheetRowsChanged;
+            sheet.RowsChangedTogether += this.OnSheetRowsChangedTogether;
             this.RebuildColumns();
 
             // The rows shown, before the grid has them - and the grid told the view's filter is ours
@@ -818,6 +820,7 @@ namespace CRT
             if (this.thisCurrentSheet is { } left)
             {
                 left.Rows.CollectionChanged -= this.OnSheetRowsChanged;
+                left.RowsChangedTogether -= this.OnSheetRowsChangedTogether;
             }
 
             if (this.thisDocument is null)

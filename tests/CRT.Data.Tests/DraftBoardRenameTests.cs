@@ -62,6 +62,10 @@ public sealed class DraftBoardRenameTests : IDisposable
         DraftRenameResult result = DraftBoardRename.Run(this.DraftsRoot, Old, wanted, _ => held.Dispose());
 
         Assert.True(result.Renamed, result.Reason);
+
+        // Linux moves a folder with a file open in it, so no pause came to let go of it there,
+        // and .NET's own lock would refuse the read below.
+        held.Dispose();
         Assert.Equal("picked", File.ReadAllText(Path.Combine(DraftFolderLayout.GetBoardFolder(this.DraftsRoot, wanted.ExcelDataFile), "picked.png")));
     }
 
@@ -403,14 +407,46 @@ public sealed class DraftBoardRenameTests : IDisposable
         Assert.Equal(Old, DraftMarkerStore.Load(Path.Combine(moved, DraftFolderLayout.DraftMarkerFileName))!.BoardKey);
     }
 
-    // The name in between a change of capitals is no board's: a crash there leaves the folder for the
-    // contributor to look at, and its marker saying where it belongs.
+    // ###########################################################################################
+    // *** A CHANGE OF CAPITALS STOPPED BETWEEN ITS TWO MOVES GOES BACK (code review, 2026-11-03). *** Left
+    // under the name in between, the board was listed with no folder: it opened blank, every save answered
+    // NoDraft, and nothing said the folder had to be moved by hand. Its marker says where it belongs, and
+    // nothing else of the rename had happened yet.
+    // ###########################################################################################
     [Fact]
-    public void A_folder_stopped_in_the_middle_of_a_rename_of_capitals_is_left_alone()
+    public void A_folder_stopped_in_the_middle_of_a_rename_of_capitals_goes_back_to_where_its_marker_says()
     {
         string moved = this.MovedWithoutItsMarker("Comodore/C64/250407.crt-renaming/board.json");
+        string back = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, Old);
+
+        Assert.Equal([Old], DraftBoardRename.RepairMovedDrafts(this.DraftsRoot, []));
+
+        Assert.False(Directory.Exists(moved));
+        Assert.Equal(Old, DraftMarkerStore.Load(Path.Combine(back, DraftFolderLayout.DraftMarkerFileName))!.BoardKey);
+        Assert.Equal("C64", BoardFiles.ReadDocument(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, Old))!.HardwareName);
+    }
+
+    // Never over anything: the name taken, it stays where it is for the contributor to look at.
+    [Fact]
+    public void A_folder_stopped_in_the_middle_of_a_rename_of_capitals_stays_while_its_name_is_taken()
+    {
+        string moved = this.MovedWithoutItsMarker("Comodore/C64/250407.crt-renaming/board.json");
+        this.Seed();
 
         Assert.Empty(DraftBoardRename.RepairMovedDrafts(this.DraftsRoot, []));
+
+        Assert.True(Directory.Exists(moved));
+    }
+
+    // The name in between is no board's, and one its marker does not name came from no rename stopped here.
+    [Fact]
+    public void A_folder_under_a_name_in_between_its_marker_does_not_name_is_left_alone()
+    {
+        string moved = this.MovedWithoutItsMarker("Other/C64/250407.crt-renaming/board.json");
+
+        Assert.Empty(DraftBoardRename.RepairMovedDrafts(this.DraftsRoot, []));
+
+        Assert.True(Directory.Exists(moved));
         Assert.Equal(Old, DraftMarkerStore.Load(Path.Combine(moved, DraftFolderLayout.DraftMarkerFileName))!.BoardKey);
     }
 

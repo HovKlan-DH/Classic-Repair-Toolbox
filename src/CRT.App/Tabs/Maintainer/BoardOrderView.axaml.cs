@@ -186,7 +186,11 @@ namespace CRT
         // ###########################################################################################
         // Sends the order, says what the server did, and reads the list again - so what is on screen
         // is the list as BETA now holds it. A refusal keeps the moves on screen with the server's
-        // words; no answer in two minutes is said, and the next look at the item reads the truth.
+        // words.
+        //
+        // *** NO ANSWER IN TWO MINUTES IS NOT "TRY AGAIN" (code review, 2026-11-03). *** The server
+        // carries on past the window's wait, so BETA's list, read again, says whether the order landed:
+        // landed, it goes as a save that was answered; otherwise the moves stay (OrderLandedAsync).
         // ###########################################################################################
         internal async Task SaveAsync()
         {
@@ -218,17 +222,27 @@ namespace CRT
 
                 if (result.Failure == ReviewApiFailure.TimedOut)
                 {
-                    this.ShowMessage(WaitWording.NoAnswer, isError: true);
-                    return;
-                }
+                    bool? landed = await this.OrderLandedAsync(order);
+                    string found = MaintainerWaitWording.BoardOrderAfterTimeout(landed);
 
-                if (!result.IsOk)
+                    if (landed != true)
+                    {
+                        this.ShowMessage(found, isError: true);
+                        return;
+                    }
+
+                    said = (found, false);
+                }
+                else if (!result.IsOk)
                 {
                     this.ShowMessage(result.Message, isError: true);
                     return;
                 }
+                else
+                {
+                    said = BoardOrderDisplay.Saved(result.Value!);
+                }
 
-                said = BoardOrderDisplay.Saved(result.Value!);
                 this.ShowMessage(said.Value.Text, said.Value.IsError);
             }
             finally
@@ -261,8 +275,26 @@ namespace CRT
             this.UpdateState();
         }
 
+        // Whether BETA's list stands in the order sent - null when that could not be read.
+        private async Task<bool?> OrderLandedAsync(IReadOnlyList<string> order)
+        {
+            if (this.ListingOverrideForTests is { } listing)
+                return BoardOrderDisplay.HasLanded(order, await listing());
+
+            if (this.thisClient is not ReviewApiClient client || this.thisSession is not ReviewSession session)
+                return null;
+
+            ReviewApiResult<BoardListingAnswer> now = await ServerWait.CallAsync(
+                this, WaitWording.Checking, token => client.GetBoardListingAsync(session, token));
+
+            return now.IsOk ? BoardOrderDisplay.HasLanded(order, now.Value!) : null;
+        }
+
         // Answers Save without a server - for tests; sees the order sent.
         internal Func<IReadOnlyList<string>, Task<ReviewApiResult<BoardOrderAnswer>>>? SaveOverrideForTests { get; set; }
+
+        // Answers the look at the list after a timeout, instead of the server - for tests.
+        internal Func<Task<BoardListingAnswer>>? ListingOverrideForTests { get; set; }
 
         internal string MessageForTests =>
             this.GetControl<TextBlock>("MessageText") is { IsVisible: true } block ? block.Text ?? string.Empty : string.Empty;

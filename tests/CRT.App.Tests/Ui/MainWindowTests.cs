@@ -1235,6 +1235,63 @@ public sealed class MainWindowTests : IDisposable
     }
 
     // ###########################################################################################
+    // Only held at launch, the list comes back at the next minute's check and its card goes (code review,
+    // 2026-11-03): until the first send nothing read it, and "My submissions" looked empty for the whole run.
+    // A submission already decided, so the check itself asks no server.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_list_of_what_was_sent_held_at_launch_comes_back_at_the_next_check_and_its_card_goes()
+    {
+        this.RedirectWorklogToTemp();
+        string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json");
+
+        try
+        {
+            await UiTest.RunAsync(async () =>
+            {
+                SubmissionReceiptStore.LoadFrom(path);
+                SubmissionReceiptStore.Record(new SubmissionReceipt
+                {
+                    SubmissionId = 42,
+                    UploadToken = "tok",
+                    BoardId = "Commodore/C64/250407/board.json",
+                    LastKnownState = "published",
+                    AcknowledgedState = "published",
+                });
+
+                bool refused = true;
+
+                SubmissionReceiptStore.LoadFrom(
+                    path,
+                    _ => { },
+                    file => refused ? throw new UnauthorizedAccessException("Access to the path is denied.") : File.ReadAllText(file));
+
+                var main = new CRT.Main();
+                main.ScheduleNoticeTimerOverrideForTests = new NoticeTimers().Schedule;
+                var card = main.GetControl<Border>("ReceiptsUnreadableBanner");
+
+                main.ShowReceiptsUnreadableNoticeIfNeeded();
+                Assert.True(card.IsVisible);
+
+                await main.CheckSubmissionsAsync();
+
+                Assert.True(card.IsVisible);
+                Assert.Empty(SubmissionReceiptStore.All);
+
+                refused = false;
+                await main.CheckSubmissionsAsync();
+
+                Assert.False(card.IsVisible);
+                Assert.Equal(42, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+            });
+        }
+        finally
+        {
+            SubmissionReceiptStore.LoadFrom(string.Empty);
+        }
+    }
+
+    // ###########################################################################################
     // The Configuration tab's catalogue tree is built when the tab is first SHOWN, not at launch
     // (code review, 2026-10-13): building it read every board workbook while CRT started, for a tab
     // most launches never open.

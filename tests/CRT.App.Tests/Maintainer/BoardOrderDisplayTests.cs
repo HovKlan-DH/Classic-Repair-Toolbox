@@ -32,6 +32,20 @@ public sealed class BoardOrderDisplayTests
             BoardOrderDisplay.OrderToSend(["A/B/2", "A/B/1", "a/b/2", "A/B/3", "A/B/1"]));
     }
 
+    // ###########################################################################################
+    // A save with no answer: the list read again says whether it landed - each board where it first
+    // stands, as it was sent, in any case (code review, 2026-11-03).
+    // ###########################################################################################
+    [Fact]
+    public void A_save_has_landed_once_the_list_stands_in_the_order_sent()
+    {
+        static BoardListingAnswer Listing(params string[] ids) =>
+            new(true, [.. ids.Select(id => new BoardListingRow(id, "Hardware", "Board", id + "/board.json"))], []);
+
+        Assert.True(BoardOrderDisplay.HasLanded(["A/B/2", "A/B/1"], Listing("a/b/2", "A/B/1", "A/B/2")));
+        Assert.False(BoardOrderDisplay.HasLanded(["A/B/2", "A/B/1"], Listing("A/B/1", "A/B/2")));
+    }
+
     [Theory]
     [InlineData(true, true, null, "Saved. CRT's drop-down lists in BETA and the stable source are in the new order.", false)]
     [InlineData(true, null, null, "Saved. CRT's drop-down list in BETA is in the new order (this server has no stable source).", false)]

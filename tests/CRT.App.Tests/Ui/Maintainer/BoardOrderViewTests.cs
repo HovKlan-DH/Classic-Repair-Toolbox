@@ -214,12 +214,62 @@ public sealed class BoardOrderViewTests
             if (failure == ReviewApiFailure.Conflict)
                 Assert.Equal(words, view.MessageForTests);
             else
-                Assert.Equal(WaitWording.NoAnswer, view.MessageForTests);
+                Assert.Equal(MaintainerWaitWording.BoardOrderAfterTimeout(null), view.MessageForTests);
 
             // And "Cancel" does what the refusal asks for first: the moves gone, the item can be read.
             view.PutBack();
 
             Assert.False(view.IsReordered);
+        });
+    }
+
+    // ###########################################################################################
+    // *** NO ANSWER IS NOT "TRY AGAIN" (code review, 2026-11-03; CLAUDE.md: "A timeout is never 'it
+    // failed'"). *** It said "Try again in a moment" with the moves still waiting, though the order had
+    // often been saved: BETA's list, read again, says which it is. Saved, nothing waits to be saved any
+    // more - Save pressed again answered that the list had changed.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_save_with_no_answer_that_landed_says_so_and_leaves_nothing_to_save()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardOrderView view = BoardOrderViewTests.Shown();
+
+            view.SaveOverrideForTests = _ => Task.FromResult(ReviewApiResult<BoardOrderAnswer>.Failed(ReviewApiFailure.TimedOut, WaitWording.NoAnswer));
+            view.ListingOverrideForTests = () =>
+            {
+                BoardListingAnswer listing = BoardOrderViewTests.Listing();
+
+                return Task.FromResult(new BoardListingAnswer(true, [listing.Rows[2], listing.Rows[0], listing.Rows[1]], []));
+            };
+
+            view.MoveForTests(2, 0);
+            await view.SaveAsync();
+
+            Assert.Equal(MaintainerWaitWording.BoardOrderAfterTimeout(true), view.MessageForTests);
+            Assert.False(view.IsReordered);
+            Assert.False(view.IsSaveEnabledForTests);
+        });
+    }
+
+    // The list read again still in the old order: the moves stay, and so does the way to send them.
+    [Fact]
+    public async Task A_save_with_no_answer_that_has_not_landed_keeps_the_moves_and_says_so()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            BoardOrderView view = BoardOrderViewTests.Shown();
+
+            view.SaveOverrideForTests = _ => Task.FromResult(ReviewApiResult<BoardOrderAnswer>.Failed(ReviewApiFailure.TimedOut, WaitWording.NoAnswer));
+            view.ListingOverrideForTests = () => Task.FromResult(BoardOrderViewTests.Listing());
+
+            view.MoveForTests(2, 0);
+            await view.SaveAsync();
+
+            Assert.Equal(MaintainerWaitWording.BoardOrderAfterTimeout(false), view.MessageForTests);
+            Assert.True(view.IsReordered);
+            Assert.True(view.IsSaveEnabledForTests);
         });
     }
 

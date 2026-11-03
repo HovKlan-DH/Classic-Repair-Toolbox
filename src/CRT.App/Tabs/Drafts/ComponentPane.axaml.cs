@@ -195,7 +195,7 @@ namespace CRT
 
                 BoardContent content = session.Content;
                 IReadOnlyDictionary<string, BoardDocument.StoredFileRow> listed = session.ListedFiles;
-                IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? publishedFiles = DraftFiles.ListedIn(this.thisPublishedBoardFile);
+                IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? publishedFiles = this.PublishedFiles;
 
                 if (this.thisWorkOfItsOwn is { } known &&
                     ReferenceEquals(known.Content, content) &&
@@ -903,7 +903,7 @@ namespace CRT
 
             // Asked before the rows go back: a relabelled component's files are its old label's.
             List<string> replaced = ComponentRevert.ReplacedFiles(
-                session.Content.Board, published, label, DraftFiles.ListedIn(this.thisPublishedBoardFile), session.ListedFiles);
+                session.Content.Board, published, label, this.PublishedFiles, session.ListedFiles);
 
             // Not the pane's own step: the pane reads the component back afterwards.
             session.Apply(

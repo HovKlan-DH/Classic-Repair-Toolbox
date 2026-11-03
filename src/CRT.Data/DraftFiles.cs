@@ -268,23 +268,27 @@ namespace Handlers.DataHandling
 
             if (!File.Exists(stored))
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(stored)!);
-
-                // Copied under a temporary name and moved into place, so a stored file is never
-                // half-written under its checksum.
-                string temporary = stored + DraftFolderLayout.BookkeepingPrefix + "copying";
-                File.Copy(path, temporary, overwrite: true);
-                File.Move(temporary, stored, overwrite: true);
+                DraftFiles.CopyIntoStore(path, stored);
             }
 
             return new BoardDocument.StoredFileRow { Name = name, Sha256 = sha, Size = size };
         }
 
+        // Copied under a temporary name and moved into place, so a stored file is never half-written
+        // under its checksum.
+        private static void CopyIntoStore(string source, string stored)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(stored)!);
+
+            string temporary = stored + DraftFolderLayout.BookkeepingPrefix + "copying";
+            File.Copy(source, temporary, overwrite: true);
+            File.Move(temporary, stored, overwrite: true);
+        }
+
         // ###########################################################################################
         // The bytes of `file` in the draft's own store, copied from the tree's when they lie only there -
         // for a file the tree is about to let go of, which a row of the draft still cites (DraftRebaser).
-        // False when neither has them, or the copy could not be made. Moved into place as Arrived does,
-        // so a stored file is never half-written under its checksum.
+        // False when neither has them, or the copy could not be made.
         // ###########################################################################################
         public static bool KeepInStore(string draftFolder, string dataRoot, BoardDocument.StoredFileRow file)
         {
@@ -304,11 +308,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(stored)!);
-
-                string temporary = stored + DraftFolderLayout.BookkeepingPrefix + "copying";
-                File.Copy(fromTree, temporary, overwrite: true);
-                File.Move(temporary, stored, overwrite: true);
+                DraftFiles.CopyIntoStore(fromTree, stored);
 
                 return true;
             }

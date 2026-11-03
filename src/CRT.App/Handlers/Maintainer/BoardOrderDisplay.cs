@@ -68,6 +68,16 @@ namespace Handlers.MaintainerHandling
             return onScreen.Where(sent.Add).ToList();
         }
 
+        // Whether BETA's list, read again, stands in the order a save sent (OrderToSend) - what says a
+        // save the server never answered landed (code review, 2026-11-03).
+        public static bool HasLanded(IReadOnlyList<string> sent, BoardListingAnswer listing)
+        {
+            ArgumentNullException.ThrowIfNull(sent);
+            ArgumentNullException.ThrowIfNull(listing);
+
+            return BoardOrderDisplay.OrderToSend(listing.Rows.Select(row => row.BoardId)).SequenceEqual(sent, StringComparer.OrdinalIgnoreCase);
+        }
+
         // ###########################################################################################
         // What a save did, and whether that is all good. BETA first: it is the list dragged. The
         // stable source is named only when the server has one; a list already in this order says

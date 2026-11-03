@@ -1139,6 +1139,64 @@ public sealed class TabMaintainerQueueTests
     }
 
     // ###########################################################################################
+    // *** A DETAIL THAT COULD NOT BE READ IS READ AGAIN BY THE NEXT CHECK (code review, 2026-11-03). ***
+    // The decision bar goes with the detail it was shown from, and only a detail brings it back. A
+    // submission whose read failed - the service restarting - has a row that does not change, so
+    // nothing read it again: with one submission in the queue there is no other to click and back,
+    // and it could not be decided until CRT restarted. Once it is held, an unchanged row is left alone.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_submission_whose_detail_could_not_be_read_is_read_again_by_the_next_check()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var created = new DateTimeOffset(2026, 10, 12, 8, 0, 0, TimeSpan.Zero);
+
+            var main = new TabMaintainer();
+            var seen = new ReviewQueueRow(42, "Commodore/C64/250407", "pending", "Corrected U8.", "c@example.com", created, false, false, true, null, AmendmentVersion: 0);
+
+            Queue(main, seen);
+            Select(main, seen);
+            MaintainerTabHost.AddOverlay(main);
+
+            Assert.False(Shown(main, "DecisionPanel"));
+
+            int detailReads = 0;
+            string row = "{\"id\":42,\"boardId\":\"Commodore/C64/250407\",\"state\":\"pending\",\"summary\":\"Corrected U8.\"," +
+                "\"contactEmail\":\"c@example.com\",\"createdUtc\":\"2026-10-12T08:00:00+00:00\",\"touchesSharedFiles\":false," +
+                "\"isNewBoard\":false,\"awaitsYou\":true,\"amendmentVersion\":0}";
+
+            var server = new AnsweringHttpHandler(request =>
+            {
+                string path = request.RequestUri!.AbsolutePath;
+
+                if (path.EndsWith("/review/queue", StringComparison.Ordinal))
+                    return AnsweringHttpHandler.Json("{\"canPublish\":true,\"isAdministrator\":true,\"count\":1,\"submissions\":[" + row + "]}");
+
+                if (request.Method == HttpMethod.Get && path.EndsWith("/submissions/42", StringComparison.Ordinal))
+                {
+                    detailReads++;
+                    return AnsweringHttpHandler.Json("{\"canPublish\":true,\"submission\":" + row + ",\"findings\":[]}");
+                }
+
+                return AnsweringHttpHandler.Refused();
+            });
+
+            main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(server)));
+            main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            await (Task)typeof(TabMaintainer).GetMethod("RefreshQueueAsync", Any)!.Invoke(main, [true])!;
+
+            Assert.Equal(1, detailReads);
+            Assert.True(Shown(main, "DecisionPanel"));
+
+            await (Task)typeof(TabMaintainer).GetMethod("RefreshQueueAsync", Any)!.Invoke(main, [true])!;
+
+            Assert.Equal(1, detailReads);
+        });
+    }
+
+    // ###########################################################################################
     // *** MADE FROM OLDER DATA THAN BETA HAS NOW (code review, 2026-10-13). *** Said in the amber
     // panel of what to settle before approving, whichever view is open.
     // ###########################################################################################

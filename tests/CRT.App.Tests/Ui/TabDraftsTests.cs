@@ -1550,6 +1550,34 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // Another board's draft going says nothing of the board on screen (code review, 2026-11-03): what the
+    // table saved was still to be read, and with this forgotten nothing asked for it until the next load.
+    // ###########################################################################################
+    [Fact]
+    public async Task Discarding_another_boards_draft_leaves_the_board_on_screen_to_catch_up()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = TabWithTwoDrafts();
+            var reloaded = new List<string>();
+            tab.ReloadBoardOverrideForTests = reloaded.Add;
+
+            await tab.OpenTableAsync(EntryA(tab));
+            MakeUnsavedEdit(tab);
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, tab.TableEditor.SaveNow());
+
+            tab.DiscardConfirmed(tab.HardwareBoardsOverrideForTests!.First(entry => entry.ExcelDataFile == TabDraftsTests.TableBoardB));
+
+            Assert.True(tab.IsTableOpen);
+            Assert.Empty(reloaded);
+
+            tab.CatchUpBoardOnScreen();
+
+            Assert.Equal([TabDraftsTests.TableBoardA], reloaded);
+        });
+    }
+
     [Fact]
     public async Task A_table_whose_draft_disappears_closes_on_the_next_refresh()
     {

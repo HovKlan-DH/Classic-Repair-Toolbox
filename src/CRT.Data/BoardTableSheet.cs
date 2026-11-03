@@ -383,6 +383,8 @@ namespace Handlers.DataHandling
                 return 0;
             }
 
+            using IDisposable together = this.RowsTogether();
+
             if (!string.Equals(this.Name, BoardWorkbookSchema.SheetComponents, StringComparison.Ordinal))
             {
                 this.RemoveLiveRows(live);
@@ -440,6 +442,8 @@ namespace Handlers.DataHandling
 
             this.thisDocument.History.Record(this, rows[0], this.Rows.IndexOf(rows[0]), -1);
 
+            using IDisposable together = this.RowsTogether();
+
             foreach (BoardTableRow row in rows)
             {
                 this.Rows.Remove(row);
@@ -447,6 +451,46 @@ namespace Handlers.DataHandling
 
             this.thisDocument.MarkDirty(this);
             this.Refresh();
+        }
+
+        // ###########################################################################################
+        // SEVERAL ROWS CHANGING AS ONE (code review, 2026-11-03). Rows says each change by itself - what
+        // the grid needs, and too often for whoever goes over the whole sheet after each one: the table
+        // under a pill did so per row deleted, selected rows x sheet rows on the UI thread. So a change of
+        // many rows says it is one, and RowsChangedTogether says it has ended, every row in its place.
+        // Nested, the outermost ends it.
+        // ###########################################################################################
+        internal bool RowsAreChangingTogether => this.thisRowsChangingTogether > 0;
+
+        internal event EventHandler? RowsChangedTogether;
+
+        private int thisRowsChangingTogether;
+
+        private IDisposable RowsTogether()
+        {
+            this.thisRowsChangingTogether++;
+            return new RowsChangingTogether(this);
+        }
+
+        private sealed class RowsChangingTogether(BoardTableSheet sheet) : IDisposable
+        {
+            private bool thisEnded;
+
+            public void Dispose()
+            {
+                if (this.thisEnded)
+                {
+                    return;
+                }
+
+                this.thisEnded = true;
+                sheet.thisRowsChangingTogether--;
+
+                if (sheet.thisRowsChangingTogether == 0)
+                {
+                    sheet.RowsChangedTogether?.Invoke(sheet, EventArgs.Empty);
+                }
+            }
         }
 
         // A cell's text by COLUMN NAME, trimmed - "" when the sheet has no such column.
@@ -710,6 +754,7 @@ namespace Handlers.DataHandling
 
             try
             {
+                using (this.RowsTogether())
                 using (this.thisDocument.DeferProblems())
                 {
                     changed = edits();
@@ -951,6 +996,8 @@ namespace Handlers.DataHandling
                 entry.Row.IsPlacedByUser = entry.IsPlacedByUser;
             }
 
+            using IDisposable together = this.RowsTogether();
+
             // Live rows only: Refresh places the ghosts again around them.
             BoardTableSheet.SyncRows(this.Rows, snapshot.Rows.Select(entry => entry.Row).ToList());
             this.Refresh();
@@ -1122,7 +1169,10 @@ namespace Handlers.DataHandling
                 }
             }
 
-            BoardTableSheet.SyncRows(this.Rows, desired);
+            using (this.RowsTogether())
+            {
+                BoardTableSheet.SyncRows(this.Rows, desired);
+            }
 
             return ghosts.Count;
         }

@@ -265,6 +265,10 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         Assert.Contains("\"My submissions\"", unreadable.NoticeText, StringComparison.Ordinal);
         Assert.Contains($"[{this.thisPath}]", unreadable.NoticeText, StringComparison.Ordinal);
 
+        // Where it goes at the first write, whoever goes looking for it (code review, 2026-11-03): the
+        // card stays until closed, and by then the file named holds the new list.
+        Assert.Contains($"[{this.thisPath}.broken]", unreadable.NoticeText, StringComparison.Ordinal);
+
         SubmissionReceiptStore.Record(Receipt(1));
 
         Assert.Null(SubmissionReceiptStore.UnreadableFile);
@@ -421,10 +425,198 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
 
         Assert.Null(SubmissionReceiptStore.UnreadableFile);
         Assert.False(File.Exists(this.thisPath + ".broken"));
+        Assert.False(File.Exists(this.thisPath + ".waiting"));
         Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
 
         SubmissionReceiptStore.LoadFrom(this.thisPath);
         Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
+    // ###########################################################################################
+    // *** HELD LONGER THAN THE LOAD WAITED, IT IS ASKED AGAIN (code review, 2026-11-03). *** Until the first
+    // write nothing read it: "My submissions" looked empty and nothing was asked about for the whole run,
+    // because a virus scanner had the file for a quarter of a second at launch. Asked with no wait, as it is
+    // asked on the UI thread, and it writes nothing it was not handed.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_refused_at_the_load_comes_back_when_asked_again_once_it_is_allowed()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        string written = File.ReadAllText(this.thisPath);
+        bool refused = true;
+        int pauses = 0;
+
+        SubmissionReceiptStore.LoadFrom(
+            this.thisPath,
+            _ => pauses++,
+            path => refused ? throw new UnauthorizedAccessException("Access to the path is denied.") : File.ReadAllText(path));
+
+        int pausesAtLoad = pauses;
+
+        Assert.False(SubmissionReceiptStore.ReadAgainIfHeld());
+        Assert.Empty(SubmissionReceiptStore.All);
+        Assert.NotNull(SubmissionReceiptStore.UnreadableFile);
+        Assert.Equal(pausesAtLoad, pauses);
+
+        refused = false;
+
+        Assert.True(SubmissionReceiptStore.ReadAgainIfHeld());
+        Assert.Equal(42, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+        Assert.Null(SubmissionReceiptStore.UnreadableFile);
+        Assert.Equal(written, File.ReadAllText(this.thisPath));
+
+        Assert.False(SubmissionReceiptStore.ReadAgainIfHeld());
+    }
+
+    // A broken file reads no better for being asked again: it stays as it is for the first write.
+    [Fact]
+    public void A_broken_file_is_not_asked_again()
+    {
+        File.WriteAllText(this.thisPath, "{ a receipts file cut short");
+        int reads = 0;
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, path =>
+        {
+            reads++;
+            return File.ReadAllText(path);
+        });
+
+        Assert.False(SubmissionReceiptStore.ReadAgainIfHeld());
+
+        Assert.Equal(1, reads);
+        Assert.NotNull(SubmissionReceiptStore.UnreadableFile);
+        Assert.False(File.Exists(this.thisPath + ".broken"));
+    }
+
+    // ###########################################################################################
+    // *** WHAT IS RECORDED WHILE THE FILE IS REFUSED SURVIVES QUITTING CRT (code review, 2026-11-03). ***
+    // Kept in memory only, a send's token - the only copy there is - went when CRT closed, access still
+    // refused. So it waits beside the file, which is still never written over, and the next start that can
+    // read the file takes it in.
+    // ###########################################################################################
+    [Fact]
+    public void What_is_recorded_while_the_file_is_refused_survives_quitting_and_goes_into_it_once_allowed()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        string written = File.ReadAllText(this.thisPath);
+        bool refused = true;
+
+        string Read(string path) =>
+            refused && path == this.thisPath ? throw new UnauthorizedAccessException("Access to the path is denied.") : File.ReadAllText(path);
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, Read);
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        Assert.Equal(written, File.ReadAllText(this.thisPath));
+        Assert.True(File.Exists(this.thisPath + ".waiting"));
+
+        // CRT closed and started, still refused: it is there, and so it is after another send.
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, Read);
+
+        Assert.Equal(43, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+        Assert.NotNull(SubmissionReceiptStore.UnreadableFile);
+
+        SubmissionReceiptStore.Record(Receipt(44));
+
+        Assert.Equal(written, File.ReadAllText(this.thisPath));
+
+        // Allowed at last: everything in the one file, and nothing left waiting.
+        refused = false;
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+        Assert.Null(SubmissionReceiptStore.UnreadableFile);
+        Assert.False(File.Exists(this.thisPath + ".waiting"));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal([42, 43, 44], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
+    // What waited is newer than what the file says of the same submission.
+    [Fact]
+    public void What_waited_wins_over_the_file_for_the_same_submission()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, _ => throw new UnauthorizedAccessException("Access to the path is denied."));
+        SubmissionReceiptStore.Record(Receipt(42) with { LastKnownState = "published" });
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.Equal("published", Assert.Single(SubmissionReceiptStore.All).LastKnownState);
+    }
+
+    // The file gone meanwhile: what waited is all there is, and becomes the list.
+    [Fact]
+    public void What_waited_becomes_the_list_when_the_file_has_gone()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, _ => throw new UnauthorizedAccessException("Access to the path is denied."));
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        File.Delete(this.thisPath);
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+
+        Assert.Equal(43, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+        Assert.True(File.Exists(this.thisPath));
+        Assert.False(File.Exists(this.thisPath + ".waiting"));
+    }
+
+    // Asked again and read: what waited goes in, as at a start.
+    [Fact]
+    public void What_waited_goes_into_the_file_when_it_comes_back_during_the_run()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        bool refused = true;
+
+        SubmissionReceiptStore.LoadFrom(
+            this.thisPath,
+            _ => { },
+            path => refused ? throw new UnauthorizedAccessException("Access to the path is denied.") : File.ReadAllText(path));
+
+        SubmissionReceiptStore.Record(Receipt(43));
+        refused = false;
+
+        Assert.True(SubmissionReceiptStore.ReadAgainIfHeld());
+        Assert.False(File.Exists(this.thisPath + ".waiting"));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal([42, 43], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
+    // The same rule as the file's: broken, it is kept beside itself at the first write, never written over.
+    [Fact]
+    public void A_broken_waiting_file_is_set_aside_by_the_first_write()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+        File.WriteAllText(this.thisPath + ".waiting", "{ cut short");
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath);
+        Assert.Equal(42, Assert.Single(SubmissionReceiptStore.All).SubmissionId);
+        Assert.Equal("{ cut short", File.ReadAllText(this.thisPath + ".waiting"));
+
+        SubmissionReceiptStore.Record(Receipt(43));
+
+        Assert.Equal("{ cut short", File.ReadAllText(this.thisPath + ".waiting.broken"));
+        Assert.False(File.Exists(this.thisPath + ".waiting"));
+        Assert.Equal([42, 43], SubmissionReceiptStore.All.Select(receipt => receipt.SubmissionId).Order());
+    }
+
+    // One that cannot be read either holds the only copy of what it holds: nothing goes over it.
+    [Fact]
+    public void A_waiting_file_refused_too_is_not_written_over()
+    {
+        SubmissionReceiptStore.Record(Receipt(42));
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, _ => throw new UnauthorizedAccessException("Access to the path is denied."));
+        SubmissionReceiptStore.Record(Receipt(43));
+        string waiting = File.ReadAllText(this.thisPath + ".waiting");
+
+        SubmissionReceiptStore.LoadFrom(this.thisPath, _ => { }, _ => throw new UnauthorizedAccessException("Access to the path is denied."));
+        SubmissionReceiptStore.Record(Receipt(44));
+
+        Assert.Equal(waiting, File.ReadAllText(this.thisPath + ".waiting"));
     }
 
     [Fact]
@@ -815,6 +1007,29 @@ public sealed class SubmissionReceiptStoreTests : IDisposable
         SubmissionReceiptStore.LoadFrom(this.thisPath);
 
         Assert.Equal(sent, Assert.Single(SubmissionReceiptStore.All).FinaliseSentUtc);
+    }
+
+    // ###########################################################################################
+    // *** THE FIRST ANSWER AFTER THE FINALISE REQUEST IS NOTED, THOUGH IT CHANGES NOTHING (code review,
+    // 2026-11-03). *** A long upload's minute check had read "uploading" already, so the answer after a
+    // finalise request that got lost was no news, and only a stale date is written (CheckedSaveInterval).
+    // NeverReachedReview goes by a check newer than that request: for 12 hours the new board could not
+    // be renamed, and the row spoke of a newer submission that never reached anybody.
+    // ###########################################################################################
+    [Fact]
+    public void The_first_unchanged_answer_after_the_finalise_request_settles_that_it_never_arrived()
+    {
+        var checkedDuringUpload = new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero);
+
+        SubmissionReceiptStore.Record(Receipt(42));
+        SubmissionReceiptStore.UpdateState(42, "uploading", string.Empty, checkedDuringUpload);
+        SubmissionReceiptStore.NoteFinaliseSent(42, checkedDuringUpload.AddMinutes(1));
+
+        Assert.False(SubmissionReceiptPresenter.NeverReachedReview(Assert.Single(SubmissionReceiptStore.All)));
+
+        SubmissionReceiptStore.NoteChecked(42, checkedDuringUpload.AddMinutes(2));
+
+        Assert.True(SubmissionReceiptPresenter.NeverReachedReview(Assert.Single(SubmissionReceiptStore.All)));
     }
 
     // An answer that names no state (an older server) must not stamp "checked" onto an unknown one.

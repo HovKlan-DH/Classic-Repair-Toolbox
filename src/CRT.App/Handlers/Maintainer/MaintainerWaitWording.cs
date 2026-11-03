@@ -290,6 +290,10 @@ namespace Handlers.MaintainerHandling
         public static string PlacementAfterTimeout(string boardId, bool? saved) =>
             WaitWording.AfterTimeout(saved, $"the place of {Board(boardId)} is saved", $"the place of {Board(boardId)} is not saved yet");
 
+        // Account > "Order of boards": `saved` - whether BETA's list, read again, stands in the order sent.
+        public static string BoardOrderAfterTimeout(bool? saved) =>
+            WaitWording.AfterTimeout(saved, "the new order of the boards is saved", "the order of the boards is not saved yet");
+
         // ###########################################################################################
         // *** A REBUILD THAT TIMED OUT IS NOT "TRY AGAIN" WITHOUT A WORD (code review, 2026-10-01).
         // *** It WRITES both manifests, and the server carries on past the two minutes - it may be

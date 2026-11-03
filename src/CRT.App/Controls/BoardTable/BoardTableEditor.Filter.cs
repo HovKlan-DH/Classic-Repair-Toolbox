@@ -58,6 +58,8 @@ namespace CRT
 
         private bool thisShowRowsPosted;
 
+        private bool thisRowsChangedTogether;
+
         // ###########################################################################################
         // *** THE COLOUR KEY IS THE FILTER (owner request, 2026-10-02: the counts clickable, "and
         // even do remove the "Show changes only" so it works in the same unified way"). *** Each
@@ -294,8 +296,13 @@ namespace CRT
                 return;
             }
 
+            this.RowsShownAskedForTests++;
+
             BoardTableSheet.SyncRows(shown, BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, this.thisRowInHand));
         }
+
+        // How many times the sheet has been gone over for the rows to show - for tests.
+        internal int RowsShownAskedForTests { get; private set; }
 
         // Soon, once the grid has finished what it is doing - moving its cursor, or ending an edit.
         private void PostShowRows()
@@ -341,6 +348,14 @@ namespace CRT
         {
             if (this.IsNarrowed || this.thisShownRows is not { } shown)
             {
+                // Many rows changing as one are gone over once, as they end (code review, 2026-11-03): per
+                // row, deleting thousands under a pill cost selected rows x sheet rows on the UI thread.
+                if (this.thisCurrentSheet?.RowsAreChangingTogether == true)
+                {
+                    this.thisRowsChangedTogether = true;
+                    return;
+                }
+
                 this.ShowRows();
                 return;
             }
@@ -366,6 +381,15 @@ namespace CRT
                 default:
                     this.SyncShownRows();
                     break;
+            }
+        }
+
+        private void OnSheetRowsChangedTogether(object? sender, EventArgs e)
+        {
+            if (this.thisRowsChangedTogether)
+            {
+                this.thisRowsChangedTogether = false;
+                this.ShowRows();
             }
         }
 

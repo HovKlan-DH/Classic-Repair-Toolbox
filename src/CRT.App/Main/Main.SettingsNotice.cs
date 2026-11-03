@@ -71,5 +71,21 @@ namespace CRT
         {
             this.ReceiptsUnreadableBanner.IsVisible = false;
         }
+
+        // ###########################################################################################
+        // A list only held for longer than the load waited is asked for again (code review, 2026-11-03;
+        // SubmissionReceiptStore.ReadAgainIfHeld) - at each minute's check, and as "My submissions" opens.
+        // Back, the card has nothing left to say, and the tab's badge and the next check have the list.
+        // ###########################################################################################
+        internal void ReadReceiptsAgainIfHeld()
+        {
+            if (!SubmissionReceiptStore.ReadAgainIfHeld())
+            {
+                return;
+            }
+
+            this.ReceiptsUnreadableBanner.IsVisible = false;
+            this.ApplyContributeTabState();
+        }
     }
 }

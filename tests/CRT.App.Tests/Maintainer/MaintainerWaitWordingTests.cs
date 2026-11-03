@@ -26,6 +26,16 @@ public sealed class MaintainerWaitWordingTests
         Assert.Contains(expected, MaintainerWaitWording.DecisionAfterTimeout(kind, before, now), StringComparison.Ordinal);
     }
 
+    // The order of boards read back from the list, and never "try again" (code review, 2026-11-03).
+    [Theory]
+    [InlineData(true, "but it did finish: the new order of the boards is saved.")]
+    [InlineData(false, "and the order of the boards is not saved yet. It may still be working on it")]
+    [InlineData(null, "whether it finished could not be checked.")]
+    public void A_save_of_the_order_of_boards_is_judged_by_the_list(bool? saved, string expected)
+    {
+        Assert.Contains(expected, MaintainerWaitWording.BoardOrderAfterTimeout(saved), StringComparison.Ordinal);
+    }
+
     // An oscilloscope model decided leaves the list, so the list read again says which it is - and
     // never "try again" (code review, 2026-11-02).
     [Theory]

@@ -113,6 +113,43 @@ public sealed class BoardTableEditorNarrowedTests : IDisposable
         Dispatcher.UIThread.RunJobs();
     }
 
+    // ###########################################################################################
+    // Rows going together under a pill are looked at together (code review, 2026-11-03): each went over the
+    // whole sheet again, so thousands selected on a long sheet held the UI thread for selected x sheet rows.
+    // The document's own changes go over it too, so what is held is that the count does not grow with the rows.
+    // ###########################################################################################
+    [Fact]
+    public void Rows_deleted_together_under_a_pill_do_not_go_over_the_sheet_per_row()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, _, Window window) = this.OpenLinks(Enumerable.Range(1, 40).Select(number => Link($"Category {number}")).ToArray());
+            Pick(editor, BoardTableRowKinds.Errors);
+            Assert.Equal(40, Shown(editor).Count);
+
+            BoardTableSheet sheet = editor.CurrentSheet!;
+
+            int TimesGoneOverDeleting(int rows)
+            {
+                int before = editor.RowsShownAskedForTests;
+
+                sheet.DeleteRows(sheet.Rows.Take(rows).ToList(), out _);
+                Dispatcher.UIThread.RunJobs();
+
+                return editor.RowsShownAskedForTests - before;
+            }
+
+            int forTwo = TimesGoneOverDeleting(2);
+            int forThirty = TimesGoneOverDeleting(30);
+
+            Assert.Equal(forTwo, forThirty);
+            Assert.Equal(sheet.Rows, Shown(editor));
+            Assert.Equal(8, Shown(editor).Count);
+
+            window.Close();
+        });
+    }
+
     // The finding, on each place a row can have among those shown: type the name, Tab, type the address.
     [Theory]
     [InlineData("Web")]

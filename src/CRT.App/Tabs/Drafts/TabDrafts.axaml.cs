@@ -345,8 +345,12 @@ namespace CRT
 
             // Nothing starts reading the folder that goes next (code review, 2026-11-02): the table closing
             // caught the board on screen up, a load the delete below did not wait for - on Windows a file it
-            // held stopped the delete part-way. Main reads the board again once the folder is gone.
-            this.thisBoardOnScreenBehind = null;
+            // held stopped the delete part-way. Main reads the board again once the folder is gone. Only this
+            // board's: another board's draft going says nothing of the board on screen (code review, 2026-11-03).
+            if (string.Equals(this.thisBoardOnScreenBehind, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase))
+            {
+                this.thisBoardOnScreenBehind = null;
+            }
 
             // The whole draft is going, so the table's unsaved edits go with it - the discard
             // confirmation above already said everything local is lost. Closed first so the table
@@ -899,6 +903,8 @@ namespace CRT
                 {
                     return;
                 }
+
+                this.thisMainWindow?.ReadReceiptsAgainIfHeld();
 
                 var window = new MySubmissionsWindow();
                 window.Initialize();

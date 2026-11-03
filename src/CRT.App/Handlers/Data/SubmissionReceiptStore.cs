@@ -39,8 +39,10 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public sealed record UnreadableReceiptsFile(string Path)
     {
+        // Where it goes too (code review, 2026-11-03): this stays until closed, and once something is
+        // sent the file named holds the new list - a broken one has moved (SetFileAside).
         public string NoticeText =>
-            $"The list of what you have sent could not be read, so \"My submissions\" may look empty. Nothing is lost: the file [{this.Path}] is kept, and is never written over.";
+            $"The list of what you have sent could not be read, so \"My submissions\" may look empty. Nothing is lost: [{this.Path}] is never written over - if it is broken, it moves to [{this.Path}.broken] the next time you send something.";
     }
 
     public static class SubmissionReceiptStore
@@ -123,18 +125,40 @@ namespace Handlers.DataHandling
             _path = receiptsFilePath ?? string.Empty;
             _receipts = new List<SubmissionReceipt>();
             _fileNotRead = false;
+            _fileHeld = false;
+            _waitingNotRead = false;
 
-            if (string.IsNullOrWhiteSpace(_path) || !File.Exists(_path))
+            if (string.IsNullOrWhiteSpace(_path))
                 return;
 
-            if (ReadFile(out List<SubmissionReceipt> read) == FileRead.Read)
+            // What an earlier run could not write into the file, read first: it is newer (TakeIn).
+            bool waited = File.Exists(WaitingPath);
+
+            if (waited)
             {
-                _receipts = read;
-                return;
+                if (ReadFile(WaitingPath, out List<SubmissionReceipt> waiting) == FileRead.Read)
+                    _receipts = waiting;
+                else
+                    _waitingNotRead = true;
             }
 
-            _fileNotRead = true;
-            Logger.Warning($"Starting with no submission receipts - [{_path}] could not be read, and is not written over");
+            if (File.Exists(_path))
+            {
+                FileRead outcome = ReadFile(_path, out List<SubmissionReceipt> read);
+
+                if (outcome != FileRead.Read)
+                {
+                    _fileNotRead = true;
+                    _fileHeld = outcome == FileRead.Held;
+                    Logger.Warning($"Starting with no submission receipts - [{_path}] could not be read, and is not written over");
+                    return;
+                }
+
+                TakeIn(read);
+            }
+
+            if (waited && !_waitingNotRead)
+                Save();
         }
 
         // ###########################################################################################
@@ -149,12 +173,26 @@ namespace Handlers.DataHandling
         //   - A FILE THAT IS BROKEN is set aside beside itself - "<file>.broken", never over an earlier one
         //     - where it can still be mended by hand. ContributionServer.FileNameFor names each service's
         //     file, so each keeps its own;
-        //   - STILL HELD, ACCESS REFUSED, or not to be moved, nothing is written: what was recorded waits
-        //     in memory, and the next write asks again. Access refused says nothing of what the file holds
-        //     (code review, 2026-11-02: counted as broken, a good file went aside at the first write, every
-        //     earlier token with it, because a security tool had it for a while).
+        //   - STILL HELD, ACCESS REFUSED, or not to be moved, nothing goes over it: what was recorded waits
+        //     beside it (WaitingPath), and the next write asks again. Access refused says nothing of what
+        //     the file holds (code review, 2026-11-02: counted as broken, a good file went aside at the
+        //     first write, every earlier token with it, because a security tool had it for a while).
         // ###########################################################################################
         private static bool _fileNotRead;
+
+        // Why: held or refused, so worth asking again before the first write (ReadAgainIfHeld).
+        private static bool _fileHeld;
+
+        // ###########################################################################################
+        // *** WHAT IS RECORDED WHILE THE FILE IS HELD WAITS ON DISK, BESIDE IT (code review, 2026-11-03). ***
+        // In memory alone, a send's token - the only copy there is - went when CRT closed with access still
+        // refused. The next load, or the next write, that can read the file takes it in and deletes this.
+        // ContributionServer.FileNameFor names each service's file, so each keeps its own. It is held to the
+        // file's own rules: broken it goes aside at the first write, and unread nothing goes over it.
+        // ###########################################################################################
+        private static string WaitingPath => _path + ".waiting";
+
+        private static bool _waitingNotRead;
 
         private static Action<TimeSpan> _pause = System.Threading.Thread.Sleep;
 
@@ -174,25 +212,63 @@ namespace Handlers.DataHandling
             }
         }
 
+        // ###########################################################################################
+        // *** A FILE ONLY HELD IS ASKED AGAIN, BEFORE THE FIRST WRITE (code review, 2026-11-03). *** Nothing
+        // else reads it until then: "My submissions" looked empty and nothing was asked about for the whole
+        // run, because a virus scanner had the file a little longer than the load waited. NEVER FROM `All`,
+        // which every refresh reads: Main asks, at each minute's check and as "My submissions" opens. One
+        // try and no wait, on the UI thread. A broken file reads no better for being asked again. True when
+        // the list came back.
+        // ###########################################################################################
+        public static bool ReadAgainIfHeld()
+        {
+            lock (Gate)
+            {
+                if (!_fileNotRead || !_fileHeld)
+                    return false;
+
+                if (File.Exists(_path))
+                {
+                    switch (ReadFile(_path, out List<SubmissionReceipt> read, waitForHold: false))
+                    {
+                        case FileRead.Read:
+                            TakeIn(read);
+                            break;
+
+                        case FileRead.Broken:
+                            _fileHeld = false;
+                            return false;
+
+                        default:
+                            return false;
+                    }
+                }
+
+                _fileNotRead = false;
+
+                if (File.Exists(WaitingPath))
+                    Save();
+
+                return true;
+            }
+        }
+
         private enum FileRead { Read, Broken, Held }
 
-        private static bool SettleFileNotRead()
+        private static bool Settle(string path, ref bool notRead)
         {
-            if (!_fileNotRead)
+            if (!notRead)
                 return true;
 
-            if (File.Exists(_path))
+            if (File.Exists(path))
             {
-                switch (ReadFile(out List<SubmissionReceipt> read))
+                switch (ReadFile(path, out List<SubmissionReceipt> read))
                 {
                     case FileRead.Read:
-                        _receipts = read
-                            .Where(earlier => _receipts.All(recorded => recorded.SubmissionId != earlier.SubmissionId))
-                            .Concat(_receipts)
-                            .ToList();
+                        TakeIn(read);
                         break;
 
-                    case FileRead.Broken when SetFileAside():
+                    case FileRead.Broken when SetFileAside(path):
                         break;
 
                     default:
@@ -200,11 +276,18 @@ namespace Handlers.DataHandling
                 }
             }
 
-            _fileNotRead = false;
+            notRead = false;
             return true;
         }
 
-        private static FileRead ReadFile(out List<SubmissionReceipt> receipts)
+        // What a file holds beside what is held already, which is newer: recorded meanwhile, or waited.
+        private static void TakeIn(List<SubmissionReceipt> read) =>
+            _receipts = read
+                .Where(earlier => _receipts.All(recorded => recorded.SubmissionId != earlier.SubmissionId))
+                .Concat(_receipts)
+                .ToList();
+
+        private static FileRead ReadFile(string path, out List<SubmissionReceipt> receipts, bool waitForHold = true)
         {
             receipts = new List<SubmissionReceipt>();
 
@@ -216,7 +299,7 @@ namespace Handlers.DataHandling
 
                 try
                 {
-                    string json = _readText(_path);
+                    string json = _readText(path);
 
                     List<SubmissionReceipt>? loaded =
                         JsonSerializer.Deserialize<List<SubmissionReceipt>>(json, JsonOptions);
@@ -231,8 +314,12 @@ namespace Handlers.DataHandling
                 }
                 catch (JsonException ex)
                 {
-                    Logger.Warning($"Failed to read submission receipts [{_path}]: [{ex.Message}]");
+                    Logger.Warning($"Failed to read submission receipts [{path}]: [{ex.Message}]");
                     return FileRead.Broken;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && !waitForHold)
+                {
+                    return FileRead.Held;
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < FileReplacer.MoveAttempts)
                 {
@@ -240,33 +327,33 @@ namespace Handlers.DataHandling
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    Logger.Warning($"Failed to read submission receipts [{_path}]: [{ex.Message}]");
+                    Logger.Warning($"Failed to read submission receipts [{path}]: [{ex.Message}]");
                     return FileRead.Held;
                 }
             }
         }
 
-        private static bool SetFileAside()
+        private static bool SetFileAside(string path)
         {
-            string aside = _path + ".broken";
+            string aside = path + ".broken";
             int number = 1;
 
             while (File.Exists(aside))
             {
                 number++;
-                aside = $"{_path}.broken.{number}";
+                aside = $"{path}.broken.{number}";
             }
 
             try
             {
-                FileReplacer.MoveOver(_path, aside, (from, to) => File.Move(from, to), _pause);
+                FileReplacer.MoveOver(path, aside, (from, to) => File.Move(from, to), _pause);
                 Logger.Warning($"The unreadable submission receipts are kept in [{aside}]");
 
                 return true;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Logger.Warning($"Could not set the unreadable submission receipts [{_path}] aside: [{ex.Message}]");
+                Logger.Warning($"Could not set the unreadable submission receipts [{path}] aside: [{ex.Message}]");
 
                 return false;
             }
@@ -417,6 +504,11 @@ namespace Handlers.DataHandling
         // stored one is missing or older than CheckedSaveInterval, so an unchanged answer costs no
         // write at all most of the time. An answer that clears a "not found" is news, and is
         // written by UpdateState instead.
+        //
+        // *** THE FIRST ANSWER AFTER THE FINALISE REQUEST IS WRITTEN, WHATEVER THE DATE (code review,
+        // 2026-11-03). *** "Uploading" is no change to a receipt a long upload's minute check saw it on,
+        // and SubmissionReceiptPresenter.NeverReachedReview goes by a check newer than that request: for
+        // up to CheckedSaveInterval a send lost on its way was taken to be with a maintainer.
         // ###########################################################################################
         public static void NoteChecked(long submissionId, DateTimeOffset checkedUtc)
         {
@@ -428,8 +520,12 @@ namespace Handlers.DataHandling
 
                 SubmissionReceipt existing = _receipts[index];
 
-                if (existing.LastCheckedUtc is DateTimeOffset last && checkedUtc - last < CheckedSaveInterval)
+                if (existing.LastCheckedUtc is DateTimeOffset last &&
+                    checkedUtc - last < CheckedSaveInterval &&
+                    !(existing.FinaliseSentUtc is DateTimeOffset went && last <= went))
+                {
                     return;
+                }
 
                 _receipts[index] = existing with { LastCheckedUtc = checkedUtc };
                 Save();
@@ -654,13 +750,33 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(_path))
                 return;
 
-            if (!SettleFileNotRead())
+            bool waitingRead = Settle(WaitingPath, ref _waitingNotRead);
+
+            if (!Settle(_path, ref _fileNotRead))
             {
                 Logger.Warning($"Submission receipts not written - [{_path}] could not be read yet, and nothing goes over it");
+
+                if (waitingRead)
+                    AtomicJsonFile.Write(WaitingPath, _receipts, JsonOptions, "the submission receipts waiting");
+
                 return;
             }
 
-            AtomicJsonFile.Write(_path, _receipts, JsonOptions, "submission receipts");
+            if (AtomicJsonFile.Write(_path, _receipts, JsonOptions, "submission receipts") && waitingRead)
+                DeleteWaiting();
+        }
+
+        // In the file now. Left behind, the next load takes it in again, which only costs that write.
+        private static void DeleteWaiting()
+        {
+            try
+            {
+                File.Delete(WaitingPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning($"Could not delete [{WaitingPath}]: [{ex.Message}]");
+            }
         }
     }
 }

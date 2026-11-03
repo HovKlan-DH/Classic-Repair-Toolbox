@@ -98,8 +98,11 @@ namespace CRT
             this.thisSubmissionCheckTimer.Start();
         }
 
-        private async System.Threading.Tasks.Task CheckSubmissionsAsync()
+        internal async System.Threading.Tasks.Task CheckSubmissionsAsync()
         {
+            // Before anything asks what is open: with the list not read, nothing is.
+            this.ReadReceiptsAgainIfHeld();
+
             if (this.thisSubmissionCheckRunning ||
                 this.SubmissionChecksStopped ||
                 !SubmissionStatusRefresh.ChecksPeriodically(

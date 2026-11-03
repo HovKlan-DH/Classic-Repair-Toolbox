@@ -122,13 +122,15 @@ namespace Handlers.DataHandling
         // scanner hold one that way for a moment - FileReplacer's rule for a rename, with its tries. A hold
         // that lasts is refused as before.
         // ###########################################################################################
+        private const string NameInBetween = DraftFolderLayout.BookkeepingPrefix + "renaming";
+
         private static void Move(string from, string to, bool capitalsOnly, Action<TimeSpan> pause)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(to))!);
 
             if (capitalsOnly)
             {
-                string between = from + ".crt-renaming";
+                string between = from + DraftBoardRename.NameInBetween;
                 FileReplacer.MoveOver(from, between, Directory.Move, pause);
 
                 try
@@ -201,8 +203,14 @@ namespace Handlers.DataHandling
         //   - the folder its marker names is there: a copy made by hand, which is not that draft and not
         //     this code's to decide about (or this very folder, in other capitals on a disk that ignores them);
         //   - a published board is listed under the folder's names, or another folder has them in other capitals;
-        //   - the name in between a change of capitals (Move): no board's name;
+        //   - the name in between a change of capitals (Move): no board's name - see below;
         //   - a draft of a published board, never renamed: its marker names the board.
+        //
+        // *** A CHANGE OF CAPITALS STOPPED BETWEEN ITS TWO MOVES GOES BACK (code review, 2026-11-03). *** Left
+        // under the name in between, the board was listed with no folder: it opened blank and every save
+        // answered NoDraft, until the folder was moved by hand. The marker names the place it left, and
+        // nothing else of the rename had happened yet, so that is where it goes - never over anything. Under
+        // that name with a marker naming any other place it came from no rename here, and is left alone.
         //
         // The identities repaired, for the log. A failure costs this one folder, logged, and is tried at the
         // next start.
@@ -232,6 +240,18 @@ namespace Handlers.DataHandling
                     BoardDescriptorRules.BoardIdFromExcelDataFile(marker.BoardKey) is not { Length: > 0 } named ||
                     string.Equals(named, id, StringComparison.Ordinal))
                 {
+                    continue;
+                }
+
+                if (string.Equals(id, named + DraftBoardRename.NameInBetween, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (DraftBoardRename.GoBackFromBetween(draftsRoot, folders[index], marker.BoardKey, named, ids) is { } back)
+                    {
+                        folders[index] = back;
+                        ids[index] = named;
+                        repaired.Add(marker.BoardKey);
+                    }
+
                     continue;
                 }
 
@@ -281,6 +301,31 @@ namespace Handlers.DataHandling
             }
 
             return repaired;
+        }
+
+        // The folder a change of capitals stopped in the middle of moved back to - null when it stays.
+        private static string? GoBackFromBetween(string draftsRoot, string folder, string identity, string named, IReadOnlyList<string> ids)
+        {
+            string target = DraftFolderLayout.GetBoardFolder(draftsRoot, identity);
+
+            if (target.Length == 0 || Directory.Exists(target) || ids.Contains(named, StringComparer.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            try
+            {
+                FileReplacer.MoveOver(folder, target, Directory.Move, Thread.Sleep);
+                CrtLog.Info($"The draft in [{folder}] was stopped in the middle of a rename - it is back at [{target}]");
+
+                return target;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Warning($"Could not move the draft in [{folder}] back to [{target}] - [{ex.Message}]");
+
+                return null;
+            }
         }
 
         // "<Manufacturer>/<Hardware>/<Board>" of a board folder three levels under the drafts root.

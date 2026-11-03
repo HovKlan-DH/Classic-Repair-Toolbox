@@ -562,8 +562,11 @@ namespace CRT
 
             if (background)
             {
-                // Its detail only, and only when its row changed - never its table.
-                if (!Equals(before, kept))
+                // Its detail only, and only when its row changed - never its table. Or when no detail of
+                // it is held (code review, 2026-11-03): a read that failed left no decision bar, and with
+                // the row as it was nothing read it again - one submission in the queue has no other to
+                // click and back, so it could not be decided until CRT restarted.
+                if (!Equals(before, kept) || this.thisShownDetail?.Submission.Id != kept.Id)
                     await this.LoadSubmissionAsync(kept);
 
                 return;
