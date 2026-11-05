@@ -120,7 +120,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // *** A DRAFT MADE AFTER THE DECIDING SUBMISSION WAS SENT HOLDS NONE OF ITS WORK (code review,
         // 2026-11-02). *** Equal to the published board proves nothing of it: a draft is a copy of the
-        // published board, so one made later is equal until its first change. Opening "Table view", a
+        // published board, so one made later is equal until its first change. Opening a table, a
         // component or "KiCad: Files" makes one to look, and the next status check found it identical -
         // "published" was about a submission from before it existed - and deleted it under the table,
         // the pane or the KiCad panel. So such a draft is not the work that was published, the rule the

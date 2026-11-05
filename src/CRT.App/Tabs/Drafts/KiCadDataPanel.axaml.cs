@@ -39,7 +39,7 @@ namespace CRT
     // not once it closes, since it can stay open while the contributor looks elsewhere.
     //
     // FILE MAP:
-    //   KiCadDataPanel.axaml.cs          - opening, files dropped on the Contribute tab, closing
+    //   KiCadDataPanel.axaml.cs          - opening, an import asked for as it opens, closing
     //   KiCadDataPanel.KiCad.cs          - the KiCad files, their import and removal, the report and
     //                                        the import's summary
     //   KiCadDataPanel.DraftChanges.cs   - every change to the draft: queued, off the UI thread,
@@ -109,33 +109,6 @@ namespace CRT
         // Completes when everything the panel reads on opening is in - for tests, which wait for it
         // as the user does.
         internal Task Opening { get; private set; } = Task.CompletedTask;
-
-        // ###########################################################################################
-        // A KiCad project folder dropped on the Contribute tab (CRT 4.0 step 3, slice 3e -
-        // TabDrafts.Drop.cs): imported once the panel has read what it opens on, exactly as its own
-        // drop target imports it - its summary and all. DroppedImport completes when done.
-        // ###########################################################################################
-        internal void ImportOnceOpen(IReadOnlyList<string> paths) => this.DroppedImport = this.ImportOnceOpenAsync(paths);
-
-        internal Task DroppedImport { get; private set; } = Task.CompletedTask;
-
-        private async Task ImportOnceOpenAsync(IReadOnlyList<string> paths)
-        {
-            try
-            {
-                await this.Opening;
-
-                if (!this.thisClosed && paths.Count > 0)
-                {
-                    await this.ImportKiCadFolderAsync(paths[0]);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Started without an awaiting caller: nothing may escape it.
-                Logger.Critical($"Importing the KiCad folder dropped on the Contribute tab failed - [{ex}]");
-            }
-        }
 
         // ###########################################################################################
         // Whether anything in this panel changed the draft - KiCad files imported or removed. The

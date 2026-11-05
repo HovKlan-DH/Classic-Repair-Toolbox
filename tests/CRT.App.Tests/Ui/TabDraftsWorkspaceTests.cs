@@ -88,6 +88,25 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
         return tab;
     }
 
+    // ###########################################################################################
+    // The list on the far left that Main has for the tab (Main.ContributeLists.cs): showing the tab's collection,
+    // one component at a time. MainContributeListsTests holds Main's own half.
+    // ###########################################################################################
+    private static ListBox ListFor(TabDrafts tab)
+    {
+        var list = new ListBox { SelectionMode = SelectionMode.Single, ItemsSource = tab.ComponentItems };
+        tab.UseComponentList(list);
+        return list;
+    }
+
+    // The list on the far left and the tab beside it, as in CRT's window.
+    private static Grid BesideTheList(TabDrafts tab, ListBox list)
+    {
+        var both = new Grid { ColumnDefinitions = new ColumnDefinitions("200,*"), Children = { list, tab } };
+        Grid.SetColumn(tab, 1);
+        return both;
+    }
+
     private static string Text(TabDrafts tab, string name) => tab.GetControl<TextBlock>(name).Text ?? string.Empty;
 
     // ###########################################################################################
@@ -107,10 +126,9 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
 
             // Files and links an entry each (2026-10-29); the components as the list shows them in
             // the region shown - U2 is NTSC only.
-            Assert.Equal("none", Text(tab, "FilesCountText"));
+            Assert.Equal("0", Text(tab, "FilesCountText"));
             Assert.Equal("1", Text(tab, "LinksCountText"));
-            Assert.Equal("none", Text(tab, "CreditsCountText"));
-            Assert.Equal("2", Text(tab, "ComponentsCountText"));
+            Assert.Equal("0", Text(tab, "CreditsCountText"));
 
             Assert.Equal(["U1", "U8"], tab.ComponentsShownForTests.Select(item => item.BoardLabel));
             Assert.True(tab.ComponentsShownForTests.Single(item => item.BoardLabel == "U8").IsDrafted);
@@ -119,28 +137,79 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
         });
     }
 
-    // The search box narrows the list by its words; one that matches nothing says so.
+    // ###########################################################################################
+    // THE LIST STANDS OUTSIDE THE TAB, so "CRT has to be updated" over the tab does not cover it: a pick
+    // there opens nothing, and the list lets go of it again.
+    // ###########################################################################################
     [Fact]
-    public void The_search_narrows_the_components_and_says_when_nothing_matches()
+    public void A_pick_in_the_list_opens_nothing_while_the_tab_is_covered()
+    {
+        WriteDraft(BoardA, Board());
+
+        UiTest.Run(() =>
+        {
+            HardwareBoardEntry entry = Entry("250407", BoardA);
+            TabDrafts tab = Tab(entry);
+            tab.ShowBoard(entry, Board(), "PAL", null);
+            ListBox list = ListFor(tab);
+
+            tab.ShowUpdateRequired(Handlers.Online.AppUpdateRequiredWording.For(Handlers.Online.AppUpdateArea.Drafts, "Please update CRT.", null));
+
+            tab.PickComponentForTests("U8");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(tab.IsComponentOpen);
+            Assert.Null(list.SelectedItem);
+        });
+    }
+
+    // What Main hands over from the lists on the left: the words narrow the list, and so do the categories
+    // unticked - the board's categories are listed whatever narrows.
+    [Fact]
+    public void The_words_and_the_categories_unticked_narrow_the_components()
     {
         UiTest.Run(() =>
         {
             TabDrafts tab = Tab();
             tab.ShowBoard(Entry("250407", BoardA), Board(), "PAL", null);
 
-            TextBox search = tab.GetControl<TextBox>("ComponentSearchBox");
-
-            // TextChanged is raised through the dispatcher.
-            search.Text = "cpu";
-            Dispatcher.UIThread.RunJobs();
+            tab.UseComponentFilter([], "cpu");
             Assert.Equal(["U8"], tab.ComponentsShownForTests.Select(item => item.BoardLabel));
-            Assert.False(tab.GetControl<TextBlock>("NoComponentsText").IsVisible);
 
-            search.Text = "zilog";
-            Dispatcher.UIThread.RunJobs();
+            tab.UseComponentFilter([], "zilog");
             Assert.Empty(tab.ComponentsShownForTests);
-            Assert.True(tab.GetControl<TextBlock>("NoComponentsText").IsVisible);
-            Assert.Equal("No component matches the search.", Text(tab, "NoComponentsText"));
+
+            tab.UseComponentFilter([], string.Empty);
+            Assert.Equal(["U1", "U8"], tab.ComponentsShownForTests.Select(item => item.BoardLabel));
+
+            tab.UseComponentFilter(["IC"], string.Empty);
+            Assert.Empty(tab.ComponentsShownForTests);
+            Assert.Equal(["IC"], tab.CategoryItems);
+
+            // A category nobody has: nothing unticked of what there is.
+            tab.UseComponentFilter(["No such category"], string.Empty);
+            Assert.Equal(["U1", "U8"], tab.ComponentsShownForTests.Select(item => item.BoardLabel));
+        });
+    }
+
+    // ###########################################################################################
+    // A COMPONENT WITH NO CATEGORY HAS NO TICK TO HIDE IT BY, and it is the one to find: Submit refuses it,
+    // and the way to fix it is to pick it.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_with_no_category_stays_listed_whatever_is_unticked()
+    {
+        UiTest.Run(() =>
+        {
+            BoardData board = Board();
+            board.Components.Add(new ComponentEntry { BoardLabel = "X1", FriendlyName = "Unknown" });
+
+            TabDrafts tab = Tab();
+            tab.ShowBoard(Entry("250407", BoardA), board, "PAL", null);
+
+            tab.UseComponentFilter(["IC"], string.Empty);
+
+            Assert.Equal(["X1"], tab.ComponentsShownForTests.Select(item => item.BoardLabel));
         });
     }
 
@@ -159,7 +228,8 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.False(tab.GetControl<Button>("AddComponentButton").IsEffectivelyEnabled);
             Assert.False(tab.GetControl<Button>("TableViewButton").IsEffectivelyEnabled);
             Assert.True(tab.GetControl<Button>("AddNewBoardButton").IsEffectivelyEnabled);
-            Assert.Equal(ContributeBoardParts.NoDraftLine(hasBoard: false), Text(tab, "NoDraftText"));
+            Assert.True(tab.GetControl<TextBlock>("NoBoardText").IsVisible);
+            Assert.Equal(ContributeBoardParts.NoBoardLine, Text(tab, "NoBoardText"));
         });
     }
 
@@ -173,7 +243,6 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
 
             Assert.Contains("Accept", tab.GetControl<Button>("AddComponentButton").Classes);
             Assert.Contains("Accept", tab.GetControl<Button>("AddNewBoardButton").Classes);
-            Assert.DoesNotContain("Accept", tab.GetControl<Button>("TableViewButton").Classes);
         });
     }
 
@@ -225,7 +294,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
 
     // ###########################################################################################
     // "KiCad data" IN THE LEFT COLUMN COUNTS THE BOARD'S KiCad FILES (owner request, 2026-10-30) - the
-    // published board's list for a board with no draft, read off the UI thread; "none" without any.
+    // published board's list for a board with no draft, read off the UI thread; "0" without any.
     // ###########################################################################################
     [Fact]
     public async Task KiCad_data_in_the_left_column_counts_the_boards_KiCad_files()
@@ -262,13 +331,13 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             // A board with a draft counts the draft's own list - none here.
             tab.ShowBoard(draftWithout, Board(), "PAL", null);
 
-            for (int i = 0; i < 200 && tab.KiCadCountForTests != "none"; i++)
+            for (int i = 0; i < 200 && tab.KiCadCountForTests != "0"; i++)
             {
                 await Task.Delay(10);
                 Dispatcher.UIThread.RunJobs();
             }
 
-            Assert.Equal("none", tab.KiCadCountForTests);
+            Assert.Equal("0", tab.KiCadCountForTests);
         });
     }
 
@@ -291,13 +360,13 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardA);
             tab.ShowBoard(entry, Board(), "PAL", null);
 
-            for (int i = 0; i < 200 && tab.KiCadCountForTests != "none"; i++)
+            for (int i = 0; i < 200 && tab.KiCadCountForTests != "0"; i++)
             {
                 await Task.Delay(10);
                 Dispatcher.UIThread.RunJobs();
             }
 
-            Assert.Equal("none", tab.KiCadCountForTests);
+            Assert.Equal("0", tab.KiCadCountForTests);
             int counted = tab.KiCadCountsForTests;
 
             tab.RefreshDrafts();
@@ -356,9 +425,9 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
                 Dispatcher.UIThread.RunJobs();
             }
 
-            // The first component, once "KiCad: Files" has made way - no entry of the board's is selected.
+            // The first component, once "KiCad: Files" has made way - on its first page, no entry of the board's.
             Assert.True(tab.IsComponentOpen);
-            Assert.Null(tab.SelectedNavEntryForTests);
+            Assert.Equal("BasicsNavButton", tab.SelectedNavEntryForTests);
 
             window.Close();
         });
@@ -476,7 +545,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.Equal("StatusNavButton", tab.SelectedNavEntryForTests);
 
             await tab.OpenComponentAsync("U8");
-            Assert.Null(tab.SelectedNavEntryForTests);
+            Assert.Equal("BasicsNavButton", tab.SelectedNavEntryForTests);
 
             await tab.ShowBoardStatusAsync();
             Assert.False(tab.IsComponentOpen);
@@ -485,8 +554,9 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
-    // THE LEFT COLUMN IS THE BOARD'S TREE (owner request, 2026-11-01: "a disabled 'Board' ... and then
-    // indent the things below those"): its headings no entries, "Overview" first.
+    // THE LEFT COLUMN IS THE BOARD'S TREE (owner requests, 2026-11-01: "a disabled 'Board' ... and then
+    // indent the things below those"; 2026-11-03: "the 'Overview' menu item as the very first entry -
+    // before the 'Board' one", and the component's pages after "Credits"): its headings no entries.
     // ###########################################################################################
     [Fact]
     public void The_left_column_reads_as_the_tree_the_owner_asked_for()
@@ -507,21 +577,24 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             };
 
             Assert.Equal(
-                ["Board", "Overview", "Name", "Regions", "KiCad", "Files", "Important signals", "Schematic images", "Categories", "Files", "Links", "Credits"],
+                ["Overview", "Board", "Name", "Regions", "KiCad", "Files", "Important signals", "Schematic images", "Categories", "Files", "Links", "Credits",
+                 "Components", "Basics", "Replacement parts", "Pinout", "Pictures", "Oscilloscope baseline", "Files", "Links"],
                 entries.Children.Select(NameOf));
 
-            // "Board" and "KiCad" open nothing.
-            Assert.All(entries.Children.OfType<TextBlock>(), heading => Assert.Contains(heading.Text, new[] { "Board", "KiCad" }));
+            // "Board", "KiCad" and "Components" open nothing.
+            Assert.All(entries.Children.OfType<TextBlock>(), heading => Assert.Contains(heading.Text, new[] { "Board", "KiCad", "Components" }));
 
             Assert.Contains("NestedTwice", tab.GetControl<Button>("KiCadNavButton").Classes);
             Assert.Contains("NestedTwice", tab.GetControl<Button>("SignalsNavButton").Classes);
-            Assert.Contains("Nested", tab.GetControl<Button>("StatusNavButton").Classes);
+            Assert.DoesNotContain("Nested", tab.GetControl<Button>("StatusNavButton").Classes);
+            Assert.Contains("Nested", tab.GetControl<Button>("NameNavButton").Classes);
+            Assert.Contains("Nested", tab.GetControl<Button>("BasicsNavButton").Classes);
         });
     }
 
-    // However low the window, the list keeps room for a few rows: the board's entries scroll instead.
+    // However low the window, "Add component" stays in reach: the board's entries scroll instead.
     [Fact]
-    public void A_low_window_leaves_the_component_list_its_room_and_scrolls_the_boards_entries()
+    public void A_low_window_keeps_Add_component_in_reach_and_scrolls_the_boards_entries()
     {
         UiTest.Run(() =>
         {
@@ -529,24 +602,27 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             TabDrafts tab = Tab(entry);
             tab.ShowBoard(entry, Board(), "PAL", null);
 
-            var window = new Window { Content = tab, Width = 1300, Height = 620 };
+            var window = new Window { Content = tab, Width = 1300, Height = 420 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(tab.GetControl<Border>("ComponentsListPanel").Bounds.Height >= TabDrafts.ComponentListKeepsAtLeast - 40);
-            Assert.True(tab.GetControl<Button>("AddComponentButton").IsEffectivelyVisible);
+            Button add = tab.GetControl<Button>("AddComponentButton");
+            Grid column = tab.GetControl<Grid>("WorkspaceNav");
+
+            Assert.True(add.IsEffectivelyVisible);
+            Assert.True(add.Bounds.Bottom <= column.Bounds.Height, $"{add.Bounds} in {column.Bounds}");
 
             window.Close();
         });
     }
 
     // ###########################################################################################
-    // THE TWO SWITCHES ARE ONE (owner decision, 2026-11-01): picked on top of a component's pages, all of
-    // CRT is asked to show it and the list here follows; picked under the component list, the list and
-    // what is open here follow. They read the region as something opened until then.
+    // THE REGION IS CRT'S (owner request, 2026-11-03: "use the regions from the left-side instead of adding
+    // new region buttons in the component pages"): picked under the component list, the list here and what
+    // is open follow. They read the region as something opened until 2026-11-01.
     // ###########################################################################################
     [Fact]
-    public async Task The_region_picked_on_either_switch_shows_on_both_and_in_the_list()
+    public async Task The_region_picked_under_the_component_list_shows_in_the_list_and_on_what_is_open()
     {
         var board = new BoardData
         {
@@ -566,31 +642,22 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             tab.PublishedBoardOverrideForTests = _ => board;
             tab.ShowBoard(entry, board, "PAL", null);
 
-            var picked = new List<string>();
-            tab.PickRegionOverrideForTests = picked.Add;
-
             await tab.OpenComponentAsync("U1");
 
             string Shown() => Assert.Single(tab.ComponentsShownForTests).DisplayText;
-            Button pal = tab.ComponentPaneForTests.GetControl<PaneRegionSwitch>("BasicsRegionSwitch").PalButton;
-            Button ntsc = tab.ComponentPaneForTests.GetControl<PaneRegionSwitch>("BasicsRegionSwitch").NtscButton;
 
             Assert.Contains("6569", Shown(), StringComparison.Ordinal);
 
-            ntsc.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            // Main's PickRegion, from the buttons under the component list.
+            tab.UseRegion("NTSC");
 
-            Assert.Equal(["NTSC"], picked);
             Assert.Contains("6567", Shown(), StringComparison.Ordinal);
-            Assert.Contains("active", ntsc.Classes);
+            Assert.Equal("Component: U1 | VIC | 6567", tab.ComponentPaneForTests.GetControl<TextBlock>("TitleText").Text);
 
-            // From the switch under the component list - Main's PickRegion.
             tab.UseRegion("PAL");
 
-            Assert.Single(picked);
             Assert.Contains("6569", Shown(), StringComparison.Ordinal);
-            Assert.Contains("active", pal.Classes);
-            Assert.DoesNotContain("active", ntsc.Classes);
-            Assert.Equal("Component: U1 - VIC | 6569", tab.ComponentPaneForTests.GetControl<TextBlock>("TitleText").Text);
+            Assert.Equal("Component: U1 | VIC | 6569", tab.ComponentPaneForTests.GetControl<TextBlock>("TitleText").Text);
         });
     }
 
@@ -635,11 +702,11 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
-    // The header: a board with a draft shows the draft's row; one with none says what it is, and
-    // that the first change makes the draft.
+    // The header: a board with a draft shows the draft's row; one with none shows nothing there (owner
+    // request, 2026-11-05: the top line says what a change does), and the top line names the board shown.
     // ###########################################################################################
     [Fact]
-    public void The_header_is_the_drafts_row_or_says_the_board_has_no_draft_yet()
+    public void The_header_is_the_drafts_row_and_the_top_line_names_the_board_shown()
     {
         WriteDraft(BoardA);
 
@@ -654,15 +721,14 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             ContentControl header = tab.GetControl<ContentControl>("CurrentDraftRow");
             Assert.True(header.IsVisible);
             Assert.Equal(BoardA, Assert.IsType<DraftListItem>(header.Content).ExcelDataFile);
-            Assert.False(tab.GetControl<Border>("NoDraftPanel").IsVisible);
+            Assert.False(tab.GetControl<TextBlock>("NoBoardText").IsVisible);
+            Assert.StartsWith($"Improve data for the [{withDraft.HardwareName}] hardware and [250407] board. ", tab.TopLineForTests, StringComparison.Ordinal);
 
             tab.ShowBoard(withoutDraft, Board(), "PAL", null);
 
             Assert.False(header.IsVisible);
-            Assert.True(tab.GetControl<Border>("NoDraftPanel").IsVisible);
-            // No board name (2026-10-30) - the drop-down lists say which board.
-            Assert.Null(tab.FindControl<TextBlock>("NoDraftBoardText"));
-            Assert.Equal(ContributeBoardParts.NoDraftLine(hasBoard: true), Text(tab, "NoDraftText"));
+            Assert.False(tab.GetControl<TextBlock>("NoBoardText").IsVisible);
+            Assert.StartsWith($"Improve data for the [{withoutDraft.HardwareName}] hardware and [250425] board. ", tab.TopLineForTests, StringComparison.Ordinal);
         });
     }
 
@@ -796,7 +862,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             tab.PublishedBoardOverrideForTests = _ => Board();
             tab.ShowBoard(entry, Board(), "PAL", null);
 
-            ListBox list = tab.GetControl<ListBox>("ComponentsListBox");
+            ListBox list = ListFor(tab);
             Assert.Equal("StatusNavButton", tab.SelectedNavEntryForTests);
 
             // Files and links an entry each.
@@ -806,14 +872,15 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.Equal("FilesNavButton", tab.SelectedNavEntryForTests);
             Assert.Equal(PaneBoardPart.Files, tab.ComponentPaneForTests.BoardPart);
 
-            // A component opened from elsewhere - "Edit this component" on a right-click - shows in the list.
+            // A component opened from elsewhere - "Edit component" on its popup - shows in the list.
             await tab.OpenComponentAsync("U8");
-            Assert.Null(tab.SelectedNavEntryForTests);
+            Assert.Equal("BasicsNavButton", tab.SelectedNavEntryForTests);
             Assert.Equal("U8", (list.SelectedItem as ComponentListItem)?.BoardLabel);
 
+            // It stays picked beside a board part (owner request, 2026-11-03).
             await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
             Assert.Equal("PicturesNavButton", tab.SelectedNavEntryForTests);
-            Assert.Null(list.SelectedItem);
+            Assert.Equal("U8", (list.SelectedItem as ComponentListItem)?.BoardLabel);
         });
     }
 
@@ -839,13 +906,12 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
-    // THE COMPONENTS ARE A PANEL OF THEIR OWN BELOW THE BOARD'S ENTRIES (owner request, 2026-10-29: "it is
-    // not clear then the other menuitems gets pushed down in the list"), and always there since a
-    // component's pages went to tabs on the right (owner decision, 2026-11-01): every entry stays in the
-    // first panel, and the search, the list and "Add component" are in the second.
+    // THE COMPONENTS ARE PICKED IN CRT'S OWN LISTS, SO "Add component" IS ALL THE COLUMN HAS OF THEM (owner
+    // request, 2026-11-03: "That would then make 'Add component' the last button, sitting just below the
+    // 'Board' panel"): every entry in the panel, the button right under it, and no list of its own.
     // ###########################################################################################
     [Fact]
-    public void The_components_and_Add_component_are_a_panel_below_the_boards_entries_and_always_there()
+    public void Add_component_sits_just_below_the_boards_entries_and_the_tab_has_no_list_of_its_own()
     {
         UiTest.Run(() =>
         {
@@ -857,37 +923,32 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            Border components = tab.GetControl<Border>("ComponentsListPanel");
             Border parts = tab.GetControl<Button>("CreditsNavButton").GetVisualAncestors().OfType<Border>()
                 .First(border => border.Classes.Contains("WorkspaceNavPanel"));
-            Assert.NotSame(components, parts);
 
-            // Every part in the first panel, the components' things in the second.
             foreach (string name in new[] { "StatusNavButton", "NameNavButton", "RegionsNavButton", "KiCadNavButton", "SignalsNavButton", "PicturesNavButton", "CategoriesNavButton", "FilesNavButton", "LinksNavButton", "CreditsNavButton" })
             {
                 Assert.Contains(parts, tab.GetControl<Button>(name).GetVisualAncestors());
             }
 
-            foreach (Control inside in new Control[] { tab.GetControl<Button>("AddComponentButton"), tab.GetControl<TextBox>("ComponentSearchBox"), tab.GetControl<ListBox>("ComponentsListBox") })
-            {
-                Assert.Contains(components, inside.GetVisualAncestors());
-            }
+            Button add = tab.GetControl<Button>("AddComponentButton");
 
-            Assert.Equal(1, Grid.GetRow(components));
-            Assert.True(tab.GetControl<Button>("AddComponentButton").IsEffectivelyVisible);
+            Assert.DoesNotContain(parts, add.GetVisualAncestors());
+            Assert.True(add.IsEffectivelyVisible);
+            Assert.InRange(add.Bounds.Top - parts.Bounds.Bottom, 0, 12);
+
+            Assert.Empty(tab.GetControl<Grid>("WorkspaceNav").GetVisualDescendants().OfType<ListBox>());
 
             window.Close();
         });
     }
 
     // ###########################################################################################
-    // THE TABLE TAKES THE WHOLE WORKSPACE (owner request, 2026-10-29: "I see no reason to still see
-    // the Board data editable selections, as then the table view has taken over"): the left column and
-    // its splitter go while it is open, and come back at the width they had; "Table view" is in the
-    // header, so it is there to close the table again.
+    // THE TABLE SHOWS BESIDE THE LEFT COLUMN, WHICH PICKS IT (owner request, 2026-11-03: "the table will show
+    // in the content area of the left-side ... panel"; the table took the whole workspace from 2026-10-29).
     // ###########################################################################################
     [Fact]
-    public async Task The_table_hides_the_left_column_and_gives_it_back_at_its_width()
+    public async Task The_table_leaves_the_left_column_where_it_is()
     {
         WriteDraft(BoardA);
 
@@ -898,22 +959,10 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             tab.ShowBoard(entry, Board(), "PAL", null);
             tab.DragNavWidthForTests(330);
 
-            Button tableView = tab.GetControl<Button>("TableViewButton");
-            Assert.DoesNotContain(tab.GetControl<Grid>("WorkspaceNav"), tableView.GetVisualAncestors());
-            Assert.True(tab.IsNavShownForTests);
-
-            await tab.ToggleTableViewAsync();
+            await tab.ShowViewAsync(table: true);
+            await tab.ShowEntryAsync(ContributeEntry.Files);
 
             Assert.True(tab.IsTableOpen);
-            Assert.False(tab.IsNavShownForTests);
-            Assert.False(tab.GetControl<GridSplitter>("WorkspaceSplitter").IsVisible);
-            Assert.Equal(0, tab.NavWidthForTests);
-            Assert.True(tableView.IsEffectivelyVisible);
-            Assert.Equal("Close table view", tableView.Content);
-
-            await tab.ToggleTableViewAsync();
-
-            Assert.False(tab.IsTableOpen);
             Assert.True(tab.IsNavShownForTests);
             Assert.True(tab.GetControl<GridSplitter>("WorkspaceSplitter").IsVisible);
             Assert.Equal(330, tab.NavWidthForTests);
@@ -986,7 +1035,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             ComponentPaneBoardPictureRow top = tab.ComponentPaneForTests.BoardPicturesForTests.Single();
             await Until(() => top.CadNameChoices.Count == 3);
 
-            Assert.Equal(["", "PCB top", "PCB bottom"], top.CadNameChoices.Select(item => item.CadName));
+            Assert.Equal(["", "PCB bottom", "PCB top"], top.CadNameChoices.Select(item => item.CadName));
             Assert.True(top.ShowsCadNames);
         });
     }
@@ -1056,7 +1105,6 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.True(tab.IsDraftOnlyLookedAtForTests(BoardA));
             Assert.Empty(tab.Drafts);
             Assert.False(tab.GetControl<ContentControl>("CurrentDraftRow").IsVisible);
-            Assert.True(tab.GetControl<Border>("NoDraftPanel").IsVisible);
             Assert.False(tab.IsLocalDraftNoticeShownForTests);
 
             // What was opened stays open, though the draft is not listed.
@@ -1550,7 +1598,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             tab.PublishedBoardOverrideForTests = _ => new BoardData();
             tab.ShowBoard(entry, new BoardData(), "PAL", null);
 
-            await tab.ToggleTableViewAsync();
+            await tab.OnCurrentDraftAsync(tab.ShowTableAsync);
             Assert.True(tab.IsTableOpen);
 
             DraftManager.Sessions.Close(DraftManager.DraftsRoot, BoardA);
@@ -2051,11 +2099,11 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
-    // "Copy from another board" (slice 5) looks only at the OTHER boards - never the one the pane is
-    // open on - and offers their components with the same part number.
+    // "Clone component from another board" offers only the OTHER published boards - never the one the
+    // pane is open on, nor one that is only a draft - starts on the hardware shown, and reads the board picked.
     // ###########################################################################################
     [Fact]
-    public async Task Copy_from_another_board_looks_at_the_other_boards_only()
+    public async Task Cloning_offers_the_other_published_boards_only_and_reads_the_one_picked()
     {
         WriteDraft(BoardA, Board());
 
@@ -2063,24 +2111,34 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
         {
             HardwareBoardEntry entry = Entry("250407", BoardA);
             HardwareBoardEntry other = Entry("250425", BoardB);
-            TabDrafts tab = Tab(entry, other);
+            HardwareBoardEntry draftOnly = new() { HardwareName = "Commodore 64", BoardName = "mine", ExcelDataFile = "Commodore/C64/mine/board.json", IsDraftOnly = true };
+            TabDrafts tab = Tab(entry, other, draftOnly);
 
-            // Both boards have a 6510 - only the other one's may be offered.
-            BoardData WithCpu(string label) => new()
+            tab.PublishedBoardOverrideForTests = board => new BoardData
             {
-                Components = [new ComponentEntry { BoardLabel = label, FriendlyName = "CPU", PartNumber = "6510", Category = "IC", Package = "DIP-40" }],
+                HardwareName = "Commodore 64",
+                Components = [new ComponentEntry { BoardLabel = board.ExcelDataFile == BoardA ? "U8" : "U7", FriendlyName = "CPU", Category = "IC", Package = "DIP-40" }],
             };
-
-            tab.PublishedBoardOverrideForTests = board => board.ExcelDataFile == BoardA ? WithCpu("U8") : WithCpu("U7");
             tab.ShowBoard(entry, Board(), "PAL", null);
 
             await tab.OpenComponentAsync("U8");
-            tab.ComponentPaneForTests.GetControl<TextBox>("PartNumberBox").Text = "6510";
-            await tab.ComponentPaneForTests.OpenCopyPanelAsync();
 
-            ComponentCopySource offered = Assert.Single(tab.ComponentPaneForTests.GetControl<ComboBox>("CopySourceBox").Items.OfType<ComponentCopySource>());
-            Assert.Equal(other.ToString(), offered.BoardName);
-            Assert.Equal("U7", offered.Row.BoardLabel);
+            ComponentPane pane = tab.ComponentPaneForTests;
+            pane.OpenClonePanel();
+
+            Assert.Equal(["250425"], pane.GetControl<ComboBox>("CloneBoardBox").Items.OfType<string>());
+
+            pane.GetControl<ComboBox>("CloneBoardBox").SelectedItem = "250425";
+            await pane.CloneReadForTests;
+
+            ComponentCloneChoice offered = Assert.Single(pane.GetControl<ComboBox>("CloneComponentBox").Items.OfType<ComponentCloneChoice>());
+            Assert.Equal("U7", offered.Label);
+
+            pane.GetControl<ComboBox>("CloneComponentBox").SelectedItem = offered;
+            Assert.True(await pane.ClonePickedAsync());
+
+            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+            Assert.Equal("DIP-40", ComponentPaneEdits.RowShown(session.Content.Board, "U8", "PAL")!.Package);
         });
     }
 
@@ -2282,7 +2340,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             // A component added is shown too - and its pins asked for.
             await tab.AddComponentAsync();
             tab.ComponentPaneForTests.GetControl<TextBox>("NewLabelBox").Text = "U12";
-            tab.ComponentPaneForTests.GetControl<AutoCompleteBox>("NewCategoryBox").Text = "IC";
+            tab.ComponentPaneForTests.GetControl<ComboBox>("NewCategoryBox").SelectedItem = "IC";
             Assert.True(tab.ComponentPaneForTests.AddNewComponent());
             Dispatcher.UIThread.RunJobs();
 
@@ -2719,7 +2777,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             // B has the new file under a name of its own, its row pointed at it as ONE step named after
             // this board, saved; C keeps its own version.
             DraftSession bDraft = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardB)!;
-            Assert.Equal("Component local files/6510 rev B.pdf", Assert.Single(ComponentPaneEdits.FilesOf(bDraft.Content.Board, "U7", "PAL")).File);
+            Assert.Equal("Component local files/6510 rev B.pdf", Assert.Single(ComponentPaneEdits.AllFilesOf(bDraft.Content.Board, "U7")).File);
             Assert.Equal(Sha(mine), bDraft.ListedFiles["Component local files/6510 rev B.pdf"].Sha256);
             Assert.Equal($"[Datasheet] copied from {a}", bDraft.UndoDescription);
             Assert.False(bDraft.HasUnsavedChanges);
@@ -2811,12 +2869,14 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
 
             Assert.True(tab.IsTableOpen);
             Assert.Equal(BoardWorkbookSchema.SheetCredits, tab.TableEditor.CurrentSheet!.Name);
-            Assert.Equal("Close table view", tab.GetControl<Button>("TableViewButton").Content);
+            Assert.Contains("Selected", tab.GetControl<Button>("TableViewButton").Classes);
+            Assert.Equal("CreditsNavButton", tab.SelectedNavEntryForTests);
 
-            await tab.ToggleTableViewAsync();
+            await tab.ShowViewAsync(table: false);
 
             Assert.False(tab.IsTableOpen);
-            Assert.Equal("Table view", tab.GetControl<Button>("TableViewButton").Content);
+            Assert.Contains("Selected", tab.GetControl<Button>("UiViewButton").Classes);
+            Assert.Equal("CreditsNavButton", tab.SelectedNavEntryForTests);
         });
     }
 
@@ -2837,7 +2897,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             TabDrafts tab = Tab(first, second);
             tab.ShowBoard(first, Board(), "PAL", null);
 
-            await tab.ToggleTableViewAsync();
+            await tab.OnCurrentDraftAsync(tab.ShowTableAsync);
             Assert.True(tab.IsTableOpen);
 
             tab.ShowBoard(second, Board(), "PAL", null);
@@ -2882,7 +2942,9 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             TabDrafts tab = Tab(entry);
             tab.ShowBoard(entry, Board(), "PAL", null);
 
-            var window = new Window { Content = tab, Width = 1300, Height = 900 };
+            ListBox list = ListFor(tab);
+
+            var window = new Window { Content = BesideTheList(tab, list), Width = 1300, Height = 900 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
@@ -2895,7 +2957,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.False(tab.GetControl<StackPanel>("StartPanel").IsVisible);
 
             // The component open is the one the list shows selected.
-            Assert.Equal("U8", (tab.GetControl<ListBox>("ComponentsListBox").SelectedItem as ComponentListItem)?.BoardLabel);
+            Assert.Equal("U8", (list.SelectedItem as ComponentListItem)?.BoardLabel);
 
             window.Close();
         });
@@ -2923,11 +2985,12 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             TabDrafts tab = Tab(entry);
             tab.ShowBoard(entry, board, "PAL", null);
 
-            var window = new Window { Content = tab, Width = 1300, Height = 900 };
+            ListBox list = ListFor(tab);
+
+            var window = new Window { Content = BesideTheList(tab, list), Width = 1300, Height = 900 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
-            ListBox list = tab.GetControl<ListBox>("ComponentsListBox");
             List<string> labels = list.Items.Cast<ComponentListItem>().Select(item => item.BoardLabel).ToList();
             Assert.True(labels.Count >= 4, string.Join(", ", labels));
 
@@ -2987,14 +3050,15 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             TabDrafts tab = Tab(entry);
             tab.ShowBoard(entry, Board(), "PAL", null);
 
-            var window = new Window { Content = tab, Width = 1300, Height = 900 };
+            ListBox list = ListFor(tab);
+
+            var window = new Window { Content = BesideTheList(tab, list), Width = 1300, Height = 900 };
             window.Show();
             Dispatcher.UIThread.RunJobs();
 
             tab.PickComponentForTests("U1");
             await Until(() => tab.IsComponentOpen);
 
-            ListBox list = tab.GetControl<ListBox>("ComponentsListBox");
             ComponentListItem before = Assert.IsType<ComponentListItem>(list.SelectedItem);
 
             tab.ComponentPaneForTests.GetControl<TextBox>("FriendlyNameBox").Text = "VIC-II";
@@ -3077,7 +3141,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             await tab.OpenComponentAsync("U8");
             tab.ComponentPaneForTests.GetControl<TextBox>("FriendlyNameBox").Text = "Processor";
 
-            await tab.ToggleTableViewAsync();
+            await tab.OnCurrentDraftAsync(tab.ShowTableAsync);
             Dispatcher.UIThread.RunJobs();
 
             Assert.True(tab.IsTableOpen);
@@ -3121,7 +3185,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             elsewhere.Components.Add(new ComponentEntry { BoardLabel = "U9", Category = "IC", FriendlyName = "Added elsewhere" });
             WriteDraft(BoardB, elsewhere);
 
-            await tab.ToggleTableViewAsync();
+            await tab.OnCurrentDraftAsync(tab.ShowTableAsync);
             Assert.True(tab.IsTableOpen);
 
             Assert.True(await tab.CloseTableAsync());
@@ -3154,7 +3218,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             tab.UnsavedTableEditsAnswerForTests = _ => { asked = true; return UnsavedTableEditsChoice.Cancel; };
             tab.ShowBoard(entryA, Board(), "PAL", null);
 
-            await tab.ToggleTableViewAsync();
+            await tab.OnCurrentDraftAsync(tab.ShowTableAsync);
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
             session.Apply("Typed in the table", content => content with { Board = ComponentPaneEdits.WithField(content.Board, "U8", "PAL", ComponentField.PartNumber, "906122") });
 
@@ -3257,7 +3321,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             var save = new TaskCompletionSource();
             tab.ComponentPaneForTests.UseLastSaveForTests(save.Task);
 
-            Task opening = tab.ToggleTableViewAsync();
+            Task opening = tab.OnCurrentDraftAsync(tab.ShowTableAsync);
             Dispatcher.UIThread.RunJobs();
 
             Assert.True(overlay.IsBusy);
@@ -3556,7 +3620,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Assert.True(tab.ComponentPaneForTests.IsNewComponentForm);
 
             tab.ComponentPaneForTests.GetControl<TextBox>("NewLabelBox").Text = "U9";
-            tab.ComponentPaneForTests.GetControl<AutoCompleteBox>("NewCategoryBox").Text = "IC";
+            tab.ComponentPaneForTests.GetControl<ComboBox>("NewCategoryBox").SelectedItem = "IC";
             Assert.True(tab.ComponentPaneForTests.AddNewComponent());
 
             ComponentListItem added = tab.ComponentsShownForTests.Single(item => item.BoardLabel == "U9");

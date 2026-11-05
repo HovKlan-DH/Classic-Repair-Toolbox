@@ -242,9 +242,9 @@ namespace Handlers.DataHandling
         [JsonPropertyName("schematicsLabelSelectedOnly")] public bool SchematicsLabelSelectedOnly { get; set; } = false;
         [JsonPropertyName("schematicsLabelsPanelExpanded")] public bool SchematicsLabelsPanelExpanded { get; set; } = true;
         [JsonPropertyName("schematicsBoardSettingsPanelExpanded")] public bool SchematicsBoardSettingsPanelExpanded { get; set; } = true;
+        [JsonPropertyName("schematicsGlobalSettingsPanelExpanded")] public bool SchematicsGlobalSettingsPanelExpanded { get; set; } = true;
         // The Schematics view's one-time tip on moving and zooming the picture, seen and put away
-        // (CRT 4.0 step 5). "Global settings" is a gear button since then - its old "expanded" key
-        // in a settings file is left unread.
+        // (CRT 4.0 step 5).
         [JsonPropertyName("schematicsPanHintSeen")] public bool SchematicsPanHintSeen { get; set; }
 
         // When each of the user's own oscilloscope models was last sent in (CRT 4.0 step 5, "Submit
@@ -647,6 +647,12 @@ namespace Handlers.DataHandling
         {
             get => _data.SchematicsBoardSettingsPanelExpanded;
             set { _data.SchematicsBoardSettingsPanelExpanded = value; Save(); }
+        }
+
+        public static bool SchematicsGlobalSettingsPanelExpanded
+        {
+            get => _data.SchematicsGlobalSettingsPanelExpanded;
+            set { _data.SchematicsGlobalSettingsPanelExpanded = value; Save(); }
         }
 
         public static bool SchematicsPanHintSeen
@@ -1858,6 +1864,7 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [Region] [{Region}]");
                 Logger.Info($"        [SchematicsLabelsPanelExpanded] [{SchematicsLabelsPanelExpanded}]");
                 Logger.Info($"        [SchematicsBoardSettingsPanelExpanded] [{SchematicsBoardSettingsPanelExpanded}]");
+                Logger.Info($"        [SchematicsGlobalSettingsPanelExpanded] [{SchematicsGlobalSettingsPanelExpanded}]");
                 Logger.Info($"        [SchematicsPanHintSeen] [{SchematicsPanHintSeen}]");
                 Logger.Info($"        [SchematicsShowTracesOnComponentSelect] [{SchematicsShowTracesOnComponentSelect}]");
                 Logger.Info($"        [SchematicsNetConnectionsPanelExpanded] [{SchematicsNetConnectionsPanelExpanded}]");

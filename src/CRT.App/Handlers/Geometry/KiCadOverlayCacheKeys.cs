@@ -59,6 +59,8 @@ namespace Handlers.Geometry
                 state.OppositeTraceColor.ToString(),
                 KiCadOverlayCacheKeys.Number(state.TranslatedOpacity),
                 KiCadOverlayCacheKeys.Number(state.OppositeTranslatedOpacity),
+                state.ThisSideOpacityGiven.ToString(),
+                state.OtherSideOpacityGiven.ToString(),
                 state.ShowOppositeSideTraces.ToString(),
                 state.ShowZones.ToString(),
                 state.IsCalibrationMode.ToString(),
@@ -152,6 +154,11 @@ namespace Handlers.Geometry
 
         // The other side's traces at an opacity of their own (2026-10-30, TraceColours).
         public double OppositeTranslatedOpacity { get; init; }
+
+        // Whether the picture's row gives them - the same opacity worked out or given draws a net under the
+        // pointer differently (TraceColours; code review, 2026-11-04).
+        public bool ThisSideOpacityGiven { get; init; }
+        public bool OtherSideOpacityGiven { get; init; }
         public bool ShowOppositeSideTraces { get; init; }
         public bool ShowZones { get; init; }
         public bool IsCalibrationMode { get; init; }

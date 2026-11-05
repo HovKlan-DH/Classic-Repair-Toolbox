@@ -113,15 +113,15 @@ public sealed class BoardTableEditorTests : IDisposable
                 Board(Component("U1", "CPU 6510"), Component("U2")),
                 published: Board(Component("U1", "CPU")));
 
-            var tabs = SheetTabs(editor).Items.OfType<TabItem>().ToList();
+            var tabs = SheetTabs(editor).Items.OfType<TabItem>().Where(tab => tab.Tag is BoardTableSheetTab).ToList();
 
-            Assert.Equal(BoardWorkbookSchema.AllSheets.Count, tabs.Count);
-            Assert.Contains(tabs, tab => tab.Header?.ToString() == "Components (2)");
+            Assert.Equal(BoardTableTabs.All.Count, tabs.Count);
+            Assert.Contains(tabs, tab => tab.Header?.ToString() == "Basics (2)");
             Assert.Contains(tabs, tab => tab.Header?.ToString() == "Credits");
 
             // The shown sheet's tab is the selected one, and the tabs carry no content of their
             // own - the one grid below shows the selected sheet.
-            Assert.Same(SheetTab(editor, "Components (2)"), SheetTabs(editor).SelectedItem);
+            Assert.Same(SheetTab(editor, "Basics (2)"), SheetTabs(editor).SelectedItem);
             Assert.All(tabs, tab => Assert.Null(tab.Content));
         });
     }
@@ -133,12 +133,12 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1", "CPU")), published: Board(Component("U1", "CPU")));
 
-            Assert.NotNull(SheetTab(editor, "Components"));
+            Assert.NotNull(SheetTab(editor, "Basics"));
 
             Row(editor, "U1").Cells[Column(BoardWorkbookSchema.ColFriendlyName)].Text = "CPU 6510";
             editor.RefreshPendingForTests();
 
-            Assert.NotNull(SheetTab(editor, "Components (1)"));
+            Assert.NotNull(SheetTab(editor, "Basics (1)"));
         });
     }
 
@@ -817,6 +817,9 @@ public sealed class BoardTableEditorTests : IDisposable
 
             Assert.Equal(DraftSaveWording.Saved, SaveState(editor));
 
+            // That it saved goes without saying (owner request, 2026-11-04) - the state is read, not shown.
+            Assert.False(editor.GetControl<TextBlock>("SaveStateText").IsVisible);
+
             Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
             Dispatcher.UIThread.RunJobs();
 
@@ -1068,6 +1071,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, editor.SaveNow());
 
             Assert.Equal(DraftSaveWording.CouldNotSave(DraftWorkbookEditOutcome.ChangedOnDisk), SaveState(editor));
+            Assert.True(editor.GetControl<TextBlock>("SaveStateText").IsVisible);
             Assert.True(editor.GetControl<Border>("ChangedOnDiskBar").IsVisible);
             Assert.Equal(DraftSaveWording.ChangedOutside, editor.GetControl<TextBlock>("ChangedOnDiskText").Text);
             Assert.False(editor.GetControl<Button>("TryAgainButton").IsVisible);
@@ -1811,10 +1815,10 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal(["U1"], ShownLabels(editor));
 
             SheetTabs(editor).SelectedItem = SheetTabs(editor).Items.OfType<TabItem>()
-                .First(tab => tab.Tag is BoardTableSheet { Name: BoardWorkbookSchema.SheetBoardSchematics });
+                .First(tab => tab.Tag is BoardTableSheetTab { Sheet.Name: BoardWorkbookSchema.SheetBoardSchematics });
             Dispatcher.UIThread.RunJobs();
             SheetTabs(editor).SelectedItem = SheetTabs(editor).Items.OfType<TabItem>()
-                .First(tab => ReferenceEquals(tab.Tag, Components(editor)));
+                .First(tab => tab.Tag is BoardTableSheetTab shown && ReferenceEquals(shown.Sheet, Components(editor)));
             Dispatcher.UIThread.RunJobs();
 
             Assert.Same(Components(editor), editor.CurrentSheet);
@@ -1907,7 +1911,7 @@ public sealed class BoardTableEditorTests : IDisposable
             Assert.Equal("1", editor.GetControl<TextBlock>("AddedCountText").Text);
 
             // The tab says one change (U9), exactly as the draft row's own count does.
-            Assert.Equal("Components (1)", SheetTab(editor, "Components (1)").Header?.ToString());
+            Assert.Equal("Basics (1)", SheetTab(editor, "Basics (1)").Header?.ToString());
 
             // And the Errors pill shows it - it is the contributor's to look at.
             editor.Filter = BoardTableRowKinds.Errors;
@@ -2299,7 +2303,10 @@ public sealed class BoardTableEditorTests : IDisposable
     private static List<string> ShownSheetTabs(BoardTableEditor editor) =>
         SheetTabs(editor).Items.OfType<TabItem>()
             .Where(tab => tab.IsVisible)
-            .Select(tab => ((BoardTableSheet)tab.Tag!).Name)
+            .Select(tab => tab.Tag)
+            .OfType<BoardTableSheetTab>()
+            .Select(tab => tab.Sheet.Name)
+            .Distinct()
             .ToList();
 
     // Components changed; every other sheet has nothing the filter shows.
@@ -2355,16 +2362,16 @@ public sealed class BoardTableEditorTests : IDisposable
             Window window = Show(editor);
 
             TabItem Tab(string sheet) =>
-                SheetTabs(editor).Items.OfType<TabItem>().Single(tab => ((BoardTableSheet)tab.Tag!).Name == sheet);
+                SheetTabs(editor).Items.OfType<TabItem>().First(tab => tab.Tag is BoardTableSheetTab shown && shown.Sheet.Name == sheet);
 
             TabItem components = Tab(BoardWorkbookSchema.SheetComponents);
 
             // Both U1 rows carry the error (every row of a duplicate since 2026-10-03) - or a tab
             // without a pill would prove nothing.
-            Assert.Equal(2, ((BoardTableSheet)components.Tag!).ErrorRowCount);
+            Assert.Equal(2, ((BoardTableSheetTab)components.Tag!).Sheet.ErrorRowCount);
 
-            Assert.Equal("Components (1)", components.Header?.ToString());
-            Assert.Equal(["Components (1)"], components.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
+            Assert.Equal("Basics (1)", components.Header?.ToString());
+            Assert.Equal(["Basics (1)"], components.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
 
             window.Close();
         });
@@ -2680,17 +2687,192 @@ public sealed class BoardTableEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // THE TABS STAND UNDER THEIR GROUP'S HEADING, "COMPONENT IMAGES" TWO OF THEM (owner request, 2026-11-05: "group
+    // and order into what is logical for the new setup. E.g. the 'Component images' have been split into two").
+    // A heading is no tab: it cannot be picked, and it goes when nothing under it is left to show.
+    // ###########################################################################################
     [Fact]
-    public void The_sheet_tabs_follow_the_workbook_with_Credits_last()
+    public void The_sheet_tabs_stand_under_the_headings_of_the_Contribute_tabs_left_column()
     {
-        // Reported: "Important signals" came last, but every published workbook ends in "Credits".
         UiTest.Run(() =>
         {
             BoardTableEditor editor = this.OpenEditor(Board(Component("U1")), published: null);
-            List<string> headers = SheetTabs(editor).Items.OfType<TabItem>().Select(tab => tab.Header!.ToString()!).ToList();
+            List<TabItem> items = SheetTabs(editor).Items.OfType<TabItem>().ToList();
 
-            Assert.Equal(BoardWorkbookSchema.SheetCredits, headers[^1]);
-            Assert.Equal(BoardWorkbookSchema.SheetKiCadImportantSignals, headers[^2]);
+            Assert.Equal(
+                [
+                    "Board", "Schematic images", "Files", "Links", "Credits",
+                    "KiCad", "Important signals",
+                    "Components", "Basics", "Replacement parts", "Pinout", "Pictures", "Oscilloscope baseline", "Files", "Links",
+                ],
+                items.Select(item => item.Header!.ToString()!));
+
+            Assert.All(items.Where(item => item.Tag is null), heading => Assert.False(heading.IsEnabled));
+        });
+    }
+
+    // Picking either tab of "Component images" shows its rows and columns, the sheet staying one sheet.
+    [Fact]
+    public void The_two_tabs_of_Component_images_each_show_their_own_rows()
+    {
+        UiTest.Run(() =>
+        {
+            BoardData board = Board(Component("U1"));
+
+            board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Name = "Photo", File = "Images/photo.png" });
+            board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Pin = "2", Name = "PHI2", File = "Scope/phi2.png" });
+
+            BoardTableEditor editor = this.OpenEditor(board, published: null);
+
+            TabItem Tab(string name) => SheetTabs(editor).Items.OfType<TabItem>().Single(tab => tab.Tag is BoardTableSheetTab shown && shown.Tab.Name == name);
+
+            List<string> Names() =>
+                ((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<BoardTableRow>()
+                    .Select(row => row.Sheet.CellText(row, BoardWorkbookSchema.ColName))
+                    .ToList();
+
+            SheetTabs(editor).SelectedItem = Tab("Pictures");
+            Assert.Equal(BoardWorkbookSchema.SheetComponentImages, editor.CurrentSheet!.Name);
+            Assert.Equal(BoardTableSheetPart.Pictures, editor.SheetPart);
+            Assert.Equal(["Photo"], Names());
+
+            SheetTabs(editor).SelectedItem = Tab("Oscilloscope baseline");
+            Assert.Equal(BoardWorkbookSchema.SheetComponentImages, editor.CurrentSheet!.Name);
+            Assert.Equal(BoardTableSheetPart.Baselines, editor.SheetPart);
+            Assert.Equal(["PHI2"], Names());
+            Assert.Same(Tab("Oscilloscope baseline"), SheetTabs(editor).SelectedItem);
+        });
+    }
+
+    // Each of the two counts its own changes, and a pill leaves only the one that has its rows.
+    [Fact]
+    public void Each_tab_of_Component_images_counts_its_own_changes_and_a_pill_hides_the_other()
+    {
+        UiTest.Run(() =>
+        {
+            BoardData published = Board(Component("U1"));
+            published.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Name = "Photo", File = "Images/photo.png" });
+
+            BoardData draft = Board(Component("U1"));
+            draft.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Name = "Photo", File = "Images/photo.png" });
+            draft.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Pin = "2", Name = "PHI2", File = "Scope/phi2.png" });
+
+            var editor = new BoardTableEditor();
+            editor.Open(BoardTableDocument.Create(published, draft));
+
+            List<string> Shown() => SheetTabs(editor).Items.OfType<TabItem>()
+                .Where(tab => tab.IsVisible && tab.Tag is BoardTableSheetTab)
+                .Select(tab => tab.Header!.ToString()!)
+                .ToList();
+
+            Assert.Contains("Oscilloscope baseline (1)", Shown());
+            Assert.Contains("Pictures", Shown());
+
+            // Opened on what changed, whichever of the two holds it.
+            Assert.Equal(BoardTableSheetPart.Baselines, editor.SheetPart);
+
+            editor.Filter = BoardTableRowFilter.Changes;
+
+            Assert.Equal(["Oscilloscope baseline (1)"], Shown());
+
+            // The heading of every group left with nothing goes too.
+            Assert.Equal(
+                ["Components"],
+                SheetTabs(editor).Items.OfType<TabItem>().Where(tab => tab.IsVisible && tab.Tag is null).Select(tab => tab.Header!.ToString()!));
+        });
+    }
+
+    // ###########################################################################################
+    // Ctrl+Z goes to its change on a document too - the Maintainer tab's table, which has these two tabs (code
+    // review, 2026-11-05: a row of the other tab, or a column this one leaves out, and the cursor went nowhere,
+    // the change taken back out of sight).
+    // ###########################################################################################
+    [Fact]
+    public void Undo_on_a_document_goes_to_the_tab_of_Component_images_holding_its_change()
+    {
+        UiTest.Run(() =>
+        {
+            BoardData board = Board(Component("U1"));
+
+            board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Name = "Photo", File = "Images/photo.png" });
+            board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Pin = "2", Name = "PHI2", File = "Scope/phi2.png" });
+
+            var editor = new BoardTableEditor();
+            editor.Open(BoardTableDocument.Create(board, board));
+            Window window = Show(editor);
+
+            TabItem Tab(string name) => SheetTabs(editor).Items.OfType<TabItem>().Single(tab => tab.Tag is BoardTableSheetTab shown && shown.Tab.Name == name);
+
+            SheetTabs(editor).SelectedItem = Tab("Oscilloscope baseline");
+
+            BoardTableSheet images = editor.CurrentSheet!;
+            int timeDiv = images.Columns.ToList().IndexOf(BoardWorkbookSchema.ColTimeDiv);
+            BoardTableRow baseline = images.Rows.Single(row => images.CellText(row, BoardWorkbookSchema.ColPin) == "2");
+
+            baseline.Cells[timeDiv].Text = "1ms";
+            editor.RefreshPendingForTests();
+
+            SheetTabs(editor).SelectedItem = Tab("Pictures");
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(BoardTableSheetPart.Pictures, editor.SheetPart);
+
+            editor.Undo();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableSheetPart.Baselines, editor.SheetPart);
+            Assert.Same(Tab("Oscilloscope baseline"), SheetTabs(editor).SelectedItem);
+            Assert.Equal(string.Empty, images.Rows.Single(row => images.CellText(row, BoardWorkbookSchema.ColPin) == "2").Cells[timeDiv].Text);
+            Assert.Equal("2", editor.CurrentRow is { } row ? images.CellText(row, BoardWorkbookSchema.ColPin) : null);
+
+            window.Close();
+        });
+    }
+
+    // A row just inserted keeps its sheet's tab under a pill, as the document says (SheetsShown): gone, the insert
+    // reads as having failed, and only the sheet in two has to tell its parts apart (code review, 2026-11-05).
+    [Fact]
+    public void A_new_row_keeps_the_tab_of_its_sheet_under_a_pill()
+    {
+        UiTest.Run(() =>
+        {
+            var editor = new BoardTableEditor();
+            editor.Open(ComponentsChanged());
+            Window window = Show(editor);
+
+            editor.ShowSheetPart(BoardWorkbookSchema.SheetCredits, BoardTableSheetPart.Whole);
+            editor.InsertRowBelow();
+            editor.ShowSheetPart(BoardWorkbookSchema.SheetComponents, BoardTableSheetPart.Whole);
+            editor.TogglePill(BoardTableRowKinds.Modified);
+
+            Assert.Equal([BoardWorkbookSchema.SheetCredits, BoardWorkbookSchema.SheetComponents], ShownSheetTabs(editor));
+
+            window.Close();
+        });
+    }
+
+    // The host's own column picks the sheets: no strip is kept up to date behind it at every change, and the host
+    // still hears that what shows has changed (code review, 2026-11-05).
+    [Fact]
+    public void A_table_whose_sheets_are_picked_elsewhere_keeps_no_tabs_and_still_says_what_changed()
+    {
+        UiTest.Run(() =>
+        {
+            int told = 0;
+
+            var editor = new BoardTableEditor { SheetsPickedElsewhere = true };
+            editor.SheetsShownChanged += (_, _) => told++;
+            editor.Open(ComponentsChanged());
+
+            Assert.Empty(SheetTabs(editor).Items);
+            Assert.True(told > 0);
+
+            told = 0;
+            editor.TogglePill(BoardTableRowKinds.Modified);
+
+            Assert.True(told > 0);
+            Assert.True(editor.WhatShows()(BoardWorkbookSchema.SheetComponents, BoardTableSheetPart.Whole));
+            Assert.False(editor.WhatShows()(BoardWorkbookSchema.SheetCredits, BoardTableSheetPart.Whole));
         });
     }
 

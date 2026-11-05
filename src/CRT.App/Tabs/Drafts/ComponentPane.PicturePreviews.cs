@@ -163,16 +163,25 @@ namespace CRT
                 return;
             }
 
-            this.thisPreviewDrag = (e.GetPosition(this).X, this.thisPreviewWidth);
+            this.BeginPreviewDrag(e.GetPosition(this).X);
             e.Pointer.Capture(handle);
             e.Handled = true;
         }
 
-        private void OnPreviewHandleMoved(object? sender, PointerEventArgs e)
+        private void OnPreviewHandleMoved(object? sender, PointerEventArgs e) => this.FollowPreviewDrag(e.GetPosition(this).X);
+
+        // ###########################################################################################
+        // From the width SHOWN, under the pointer (code review, 2026-11-04). From the width chosen, wider than the
+        // cards have room for, nothing moved until the pointer had covered the difference.
+        // ###########################################################################################
+        private void BeginPreviewDrag(double fromX) =>
+            this.thisPreviewDrag = (fromX, ContributeWidths.PreviewShown(this.thisPreviewWidth, this.thisCardsWidth));
+
+        private void FollowPreviewDrag(double toX)
         {
             if (this.thisPreviewDrag is { } drag)
             {
-                this.PreviewWidth = drag.Width + (e.GetPosition(this).X - drag.FromX);
+                this.PreviewWidth = ContributeWidths.PreviewDragged(drag.Width, drag.FromX, toX);
             }
         }
 
@@ -201,11 +210,11 @@ namespace CRT
             this.LoadPreviews();
         }
 
-        // A drag of the previews' handle by `by`, start to end - for a test.
+        // A drag of the previews' handle making them `by` wider, start to end, as the pointer's handlers drag.
         internal void DragPreviewWidthForTests(double by)
         {
-            this.thisPreviewDrag = (0, this.thisPreviewWidth);
-            this.PreviewWidth = this.thisPreviewWidth + by;
+            this.BeginPreviewDrag(0);
+            this.FollowPreviewDrag(-by);
             this.EndPreviewDrag();
         }
 

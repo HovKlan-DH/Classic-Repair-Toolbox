@@ -90,8 +90,9 @@ namespace Handlers.DataHandling
     public static class ChangedFiles
     {
         // ###########################################################################################
-        // The component `label`'s files and pictures (in `region`) the draft replaced - against the
-        // published board and its file list. Nothing without the published board or either list.
+        // The component `label`'s files and pictures the draft replaced - against the published board and
+        // its file list. Nothing without the published board or either list. Its files whatever their
+        // region, as its "Files" page lists them all (owner request, 2026-11-03), its pictures in `region`.
         // ###########################################################################################
         public static List<ChangedFile> OfComponent(
             BoardData draft,
@@ -108,8 +109,8 @@ namespace Handlers.DataHandling
 
             IEnumerable<ChangedFile> files = ChangedFiles.Pair(
                 ChangedFileKind.ComponentFile,
-                ComponentPaneEdits.FilesOf(published, label, region).Select(row => (row.Name, row.Region, row.File)),
-                ComponentPaneEdits.FilesOf(draft, label, region).Select(row => (row.Name, row.Region, row.File)),
+                ComponentPaneEdits.AllFilesOf(published, label).Select(row => (row.Name, row.Region, row.File)),
+                ComponentPaneEdits.AllFilesOf(draft, label).Select(row => (row.Name, row.Region, row.File)),
                 publishedFiles,
                 draftFiles);
 

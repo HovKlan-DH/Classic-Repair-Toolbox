@@ -145,14 +145,17 @@ namespace Handlers.DataHandling
 
         // This row of a relabelled component, every other value as it was. BoardSchematicEntryTests
         // compares every property by reflection.
-        public ComponentImageEntry WithBoardLabel(string boardLabel) => new()
+        public ComponentImageEntry WithBoardLabel(string boardLabel) => this.FiledAs(boardLabel, this.Region, this.File);
+
+        // This row under another label and region, citing another file (ComponentClone).
+        public ComponentImageEntry FiledAs(string boardLabel, string region, string file) => new()
         {
             BoardLabel = boardLabel,
-            Region = this.Region,
+            Region = region,
             Pin = this.Pin,
             Name = this.Name,
             ExpectedOscilloscopeReading = this.ExpectedOscilloscopeReading,
-            File = this.File,
+            File = file,
             Note = this.Note,
             TimeDiv = this.TimeDiv,
             VoltsDiv = this.VoltsDiv,
@@ -205,10 +208,13 @@ namespace Handlers.DataHandling
         public string Note { get; init; } = string.Empty;
 
         // This part of a relabelled component, every other value as it was.
-        public ComponentReplacementEntry WithBoardLabel(string boardLabel) => new()
+        public ComponentReplacementEntry WithBoardLabel(string boardLabel) => this.FiledAs(boardLabel, this.Region);
+
+        // This part under another label and region (ComponentClone).
+        public ComponentReplacementEntry FiledAs(string boardLabel, string region) => new()
         {
             BoardLabel = boardLabel,
-            Region = this.Region,
+            Region = region,
             PartNumber = this.PartNumber,
             Kind = this.Kind,
             Note = this.Note,
@@ -274,7 +280,10 @@ namespace Handlers.DataHandling
         public string Region { get; init; } = string.Empty;
 
         // This file of a relabelled component, every other value as it was.
-        public ComponentLocalFileEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, File = this.File, Region = this.Region };
+        public ComponentLocalFileEntry WithBoardLabel(string boardLabel) => this.FiledAs(boardLabel, this.Region, this.File);
+
+        // This file under another label and region, citing another file (ComponentClone).
+        public ComponentLocalFileEntry FiledAs(string boardLabel, string region, string file) => new() { BoardLabel = boardLabel, Name = this.Name, File = file, Region = region };
     }
 
     public class ComponentLinkEntry
@@ -285,7 +294,10 @@ namespace Handlers.DataHandling
         public string Region { get; init; } = string.Empty;
 
         // This link of a relabelled component, every other value as it was.
-        public ComponentLinkEntry WithBoardLabel(string boardLabel) => new() { BoardLabel = boardLabel, Name = this.Name, Url = this.Url, Region = this.Region };
+        public ComponentLinkEntry WithBoardLabel(string boardLabel) => this.FiledAs(boardLabel, this.Region);
+
+        // This link under another label and region (ComponentClone).
+        public ComponentLinkEntry FiledAs(string boardLabel, string region) => new() { BoardLabel = boardLabel, Name = this.Name, Url = this.Url, Region = region };
     }
 
     public class BoardLocalFileEntry
@@ -310,6 +322,9 @@ namespace Handlers.DataHandling
         public string SubCategory { get; init; } = string.Empty;
         public string NameOrHandle { get; init; } = string.Empty;
         public string Contact { get; init; } = string.Empty;
+
+        // This credit for what is now called `subCategory` - a schematic image renamed (SchematicRename).
+        public CreditEntry WithSubCategory(string subCategory) => new() { Category = this.Category, SubCategory = subCategory, NameOrHandle = this.NameOrHandle, Contact = this.Contact };
     }
 
     public class KiCadImportantSignalEntry

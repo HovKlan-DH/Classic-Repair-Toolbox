@@ -303,6 +303,10 @@ namespace Handlers.DataHandling
         // automatic one.
         internal bool IsPlacedByUser { get; set; }
 
+        // Worked on while a sheet's "Oscilloscope baseline" part was shown: it stays there, where its pin can
+        // be typed, for as long as this table stands (BoardTableSheetParts).
+        internal bool StaysWithBaselines { get; set; }
+
         public BoardTableRowState State
         {
             get => this.thisState;

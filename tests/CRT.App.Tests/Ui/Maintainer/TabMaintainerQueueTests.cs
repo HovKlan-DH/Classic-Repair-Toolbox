@@ -72,6 +72,139 @@ public sealed class TabMaintainerQueueTests
     private static bool Shown(TabMaintainer main, string name) => main.FindControl<Control>(name)!.IsVisible;
 
     // ###########################################################################################
+    // A SUBMISSION'S NEW BOARD WITH NO PLACE YET (owner report, 2026-11-05: "where can I set this?"): the panel saying
+    // why Approve is off has the way there - the Boards screen, this board chosen, its Maintainer view with the
+    // place. An account that may not place it is not sent where nothing can be saved, and once a place is
+    // saved there is nothing to go to.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_queues_panel_takes_a_new_board_with_no_place_straight_to_its_place()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string boardId = "Commodore/C128/310378 Open128";
+
+            static BoardListingAnswer Listing(bool canPlace, BoardPlacement? saved)
+            {
+                var suggested = new BoardPlacement("Commodore 128", "310378 Open128", string.Empty, null);
+
+                return new BoardListingAnswer(true, [], [new UnlistedBoardEntry(boardId, "Commodore", "C128", "310378 Open128", false, canPlace, saved, suggested)]);
+            }
+
+            var main = new TabMaintainer();
+            var board = new BoardOverviewEntry(boardId, "Commodore", "C128", "310378 Open128", false, null, false, true, null, null, null, 0);
+
+            await main.ApplyBoardsListAsync(new BoardOverviewAnswer([board]), background: true, Listing(canPlace: true, saved: null));
+
+            ReviewQueueRow open = Row(id: 42, isNewBoard: true, boardId: boardId);
+
+            Queue(main, open);
+            Select(main, open);
+            main.ShowDetail(Detail(open, isNewBoard: true));
+
+            Button button = main.FindControl<Button>("GoToPlacementButton")!;
+
+            Assert.True(Shown(main, "BeforeApprovingNotice"));
+            Assert.True(button.IsVisible);
+            Assert.Equal(BoardPlacementDisplay.Heading, button.Content);
+
+            await main.GoToPlacementAsync();
+
+            Assert.Equal(boardId, main.SelectedBoardForTests?.BoardId);
+            Assert.Equal(BoardSection.Maintainer, main.BoardDetailForTests.ShownSection);
+
+            await main.ApplyBoardsListAsync(new BoardOverviewAnswer([board]), background: true, Listing(canPlace: false, saved: null));
+            main.ShowDetail(Detail(open, isNewBoard: true));
+            Assert.False(button.IsVisible);
+
+            await main.ApplyBoardsListAsync(new BoardOverviewAnswer([board]), background: true, Listing(canPlace: true, new BoardPlacement("Commodore 128", "310378 Open128", string.Empty, null)));
+            main.ShowDetail(Detail(open, isNewBoard: true));
+            Assert.False(button.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // The list on the Boards screen without the board - its read failed, or the board has gone meanwhile: the
+    // screen shows, and no OTHER board's Maintainer view opens in its name, where a place would be looked for and
+    // not found (code review, 2026-11-05).
+    // ###########################################################################################
+    [Fact]
+    public async Task The_way_to_a_place_opens_no_other_boards_view()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string boardId = "Commodore/C128/310378 Open128";
+
+            var suggested = new BoardPlacement("Commodore 128", "310378 Open128", string.Empty, null);
+            var listing = new BoardListingAnswer(true, [], [new UnlistedBoardEntry(boardId, "Commodore", "C128", "310378 Open128", false, true, null, suggested)]);
+
+            var main = new TabMaintainer();
+            var other = new BoardOverviewEntry("Commodore/C64/250407", "Commodore", "C64", "250407", false, null, false, true, null, null, null, 0);
+
+            await main.ApplyBoardsListAsync(new BoardOverviewAnswer([other]), background: true, listing);
+
+            main.FindControl<ListBox>("BoardsList")!.SelectedIndex = 0;
+            Assert.Equal(other.BoardId, main.SelectedBoardForTests?.BoardId);
+
+            ReviewQueueRow open = Row(id: 42, isNewBoard: true, boardId: boardId);
+
+            Queue(main, open);
+            Select(main, open);
+            main.ShowDetail(Detail(open, isNewBoard: true));
+
+            await main.GoToPlacementAsync();
+
+            Assert.Equal(other.BoardId, main.SelectedBoardForTests?.BoardId);
+            Assert.NotEqual(BoardSection.Maintainer, main.BoardDetailForTests.ShownSection);
+        });
+    }
+
+    // ###########################################################################################
+    // THE WAY TO A PLACE WITH A CHANGE NOT SENT IN ANOTHER BOARD'S TABLE (code review, 2026-11-05): it asks first, as
+    // choosing that board by hand does. Cancel stays on the board and in the view it was on - the Maintainer view was
+    // opened all the same, of the very board the maintainer had just chosen to stay in the table of. Discard goes on.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(UnsavedTableEditsChoice.Cancel)]
+    [InlineData(UnsavedTableEditsChoice.Discard)]
+    public async Task The_way_to_a_place_asks_about_a_table_holding_a_change_and_goes_as_it_is_answered(UnsavedTableEditsChoice answer)
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            const string first = "Commodore/C64/250407";
+            const string second = "Commodore/C128/310378";
+
+            (TabMaintainer main, _) = TabMaintainerBoardTableTests.WithChangedTable();
+            BoardDetailView view = main.BoardDetailForTests;
+            BoardSection before = view.ShownSection;
+
+            view.UnsavedTableEditsAnswerForTests = _ => answer;
+
+            ReviewQueueRow open = Row(id: 42, isNewBoard: true, boardId: second);
+
+            Queue(main, open);
+            Select(main, open);
+            main.ShowDetail(Detail(open, isNewBoard: true));
+
+            await main.GoToPlacementAsync();
+
+            if (answer == UnsavedTableEditsChoice.Cancel)
+            {
+                Assert.Equal(first, view.ShownBoard?.BoardId);
+                Assert.Equal(first, main.SelectedBoardForTests?.BoardId);
+                Assert.Equal(before, view.ShownSection);
+                Assert.True(view.HasUnsavedTableEdits);
+            }
+            else
+            {
+                Assert.Equal(second, view.ShownBoard?.BoardId);
+                Assert.Equal(second, main.SelectedBoardForTests?.BoardId);
+                Assert.Equal(BoardSection.Maintainer, view.ShownSection);
+            }
+        });
+    }
+
+    // ###########################################################################################
     // *** THE QUEUE GROUPED BY BOARD (owner request, 2026-09-26). *** Each board once, as a
     // heading; its submissions under it as their comment and one grey line. "New board" is on the
     // heading of a board with nothing published; a published board carries no badge. The queue's

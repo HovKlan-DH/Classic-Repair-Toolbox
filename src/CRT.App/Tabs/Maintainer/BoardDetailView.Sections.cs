@@ -87,6 +87,9 @@ namespace CRT
 
             // The BETA / Stable switch shows with Board data and Files (BoardDetailView.Stable.cs).
             this.ApplyTree();
+
+            // The way to a board's place in the drop-down lists goes once there.
+            this.ShowPlacementNotice();
         }
 
         // ###########################################################################################

@@ -98,39 +98,11 @@
 			<Setter Property="Margin" Value="0,0,0,12" />
 		</Style>
 
-		<!-- The region shown, under a component's "different per region" ticks (owner request, 2026-11-01) -
-		     the buttons under the component list and on the popup, in their colors. -->
-		<Style Selector="Button.PaneRegion.active">
-			<Setter Property="BorderThickness" Value="2" />
-		</Style>
-		<Style Selector="Button.PaneRegion.pal.active">
-			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-		</Style>
-		<Style Selector="Button.PaneRegion.pal.active /template/ ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-		</Style>
-		<Style Selector="Button.PaneRegion.ntsc.active">
-			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-		</Style>
-		<Style Selector="Button.PaneRegion.ntsc.active /template/ ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-		</Style>
-
-		<!-- A tab whose page holds something that stops the draft being submitted. -->
-		<Style Selector="TextBlock.ScreenTabLabel.error">
-			<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
-			<Setter Property="Opacity" Value="1" />
-		</Style>
-
 		<!-- A field a row of the board's lists needs, left empty (BoardRowRequired - owner request,
 		     2026-11-01: "highlight the problematic cell with a helper what is missing"): a red frame on
 		     its box - at rest, under the pointer and with the keyboard in it - and the helper under it.
 		     It was a line under the whole row until then, which was easily missed. -->
-		<Style Selector="TextBox.Missing, AutoCompleteBox.Missing">
+		<Style Selector="TextBox.Missing, AutoCompleteBox.Missing, ComboBox.Missing">
 			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
 		</Style>
 		<Style Selector="TextBox.Missing /template/ Border#PART_BorderElement">
@@ -148,11 +120,11 @@
 		</Style>
 	</UserControl.Styles>
 
-	<Grid RowDefinitions="Auto,Auto,*">
+	<Grid RowDefinitions="Auto,*">
 
+		<StackPanel Grid.Row="0">
 		<!-- What is open, whether the draft changed it, and the ways out. -->
-		<Border Grid.Row="0"
-				x:Name="PaneHeader"
+		<Border x:Name="PaneHeader"
 				BorderBrush="{DynamicResource Table_BorderRowLine}"
 				BorderThickness="0,0,0,1"
 				Padding="4,0,0,8">
@@ -198,12 +170,12 @@
 								Margin="0,0,6,4"
 								ToolTip.ShowOnDisabled="True"
 								Click="OnShowOnBoardClick" />
-						<!-- The same part's data from another board on this machine (slice 5). -->
-						<Button x:Name="CopyFromOtherBoardButton"
-								Content="Copy from another board"
+						<!-- Everything of a component on another board, picked there (owner request, 2026-11-04). -->
+						<Button x:Name="CloneFromOtherBoardButton"
+								Content="Clone component from another board"
 								Margin="0,0,6,4"
-								ToolTip.Tip="Take the package, short description, pins, replacement parts or links from the same part - the same part number - on another board"
-								Click="OnCopyFromOtherBoardClick" />
+								ToolTip.Tip="Pick a hardware, a board and a component - this component takes over everything it has but the board label"
+								Click="OnCloneFromOtherBoardClick" />
 						<!-- What this draft changed of the part, on the same part of the other boards (slice 5). -->
 						<Button x:Name="AlsoOnOtherBoardsButton"
 								Content="Also on other boards"
@@ -213,7 +185,7 @@
 								Click="OnAlsoOnOtherBoardsClick" />
 						<!-- The popup as it will look once the draft is published - from the draft, now. -->
 						<Button x:Name="PreviewPopupButton"
-								Content="Preview popup"
+								Content="Preview component info popup"
 								Margin="0,0,6,4"
 								ToolTip.Tip="Open the popup this component gets when it is pointed at on the board - as your draft has it now, which is what will be published"
 								Click="OnPreviewPopupClick" />
@@ -237,23 +209,12 @@
 			</Grid>
 		</Border>
 
-		<!-- A COMPONENT'S PAGES, AS TABS (owner decision, 2026-11-01: "too massive, if all data is filled") -
-		     App.axaml's tab strip, so they read as the Maintainer tab's screens do. One page shows at a time,
-		     and stays as another component is picked: walking a board's chips keeps to one page. -->
-		<Border Grid.Row="1" x:Name="PageTabs" Classes="ScreenTabStrip" Margin="4,0,0,0" IsVisible="False">
-			<WrapPanel Orientation="Horizontal">
-				<Button x:Name="BasicsPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="BasicsPageLabel" Classes="ScreenTabLabel" /></Button>
-				<Button x:Name="ReplacementsPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="ReplacementsPageLabel" Classes="ScreenTabLabel" /></Button>
-				<Button x:Name="PinoutPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="PinoutPageLabel" Classes="ScreenTabLabel" /></Button>
-				<Button x:Name="PicturesPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="PicturesPageLabel" Classes="ScreenTabLabel" /></Button>
-				<Button x:Name="BaselinesPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="BaselinesPageLabel" Classes="ScreenTabLabel" /></Button>
-				<Button x:Name="FilesPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="FilesPageLabel" Classes="ScreenTabLabel" /></Button>
-				<Button x:Name="LinksPageButton" Classes="ScreenTab" Click="OnPageClick"><TextBlock x:Name="LinksPageLabel" Classes="ScreenTabLabel" /></Button>
-			</WrapPanel>
-		</Border>
+		<!-- What the checks found on this page, under its headline (TabDrafts.Problems.cs). -->
+		<Decorator x:Name="ProblemsHost" />
+		</StackPanel>
 
 		<!-- The component is gone from the draft - deleted, or an undo took away the change that added it. -->
-		<StackPanel Grid.Row="2" x:Name="GonePanel" IsVisible="False" Margin="4,12,0,0" Spacing="6">
+		<StackPanel Grid.Row="1" x:Name="GonePanel" IsVisible="False" Margin="4,12,0,0" Spacing="6">
 			<TextBlock x:Name="GoneText" TextWrapping="Wrap" />
 			<!-- Offered while the step that deleted it is the latest one - Undo of that step. -->
 			<Button x:Name="BringBackButton"
@@ -265,7 +226,7 @@
 
 		<!-- A NEW COMPONENT (slice 3c): named first - its label is what every other row of it is filed
 		     under - and added to the draft as one step; then the pane shows it like any other. -->
-		<ScrollViewer Grid.Row="2" x:Name="NewComponentPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer Grid.Row="1" x:Name="NewComponentPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
 			<StackPanel Margin="4,12,12,12" MaxWidth="560" HorizontalAlignment="Left">
 				<TextBlock Classes="PaneIntro"
 						   Text="Name the component as it is printed on the board - its label. Everything else is filled in once it is added, and &quot;Undo&quot; takes it away again." />
@@ -280,17 +241,15 @@
 
 				<!-- Only on a board with components of their own per region. -->
 				<StackPanel x:Name="NewRegionPanel">
-					<TextBlock Classes="FieldLabel" Text="Region" />
+					<TextBlock Classes="FieldLabel" Text="Applies to" />
 					<ComboBox x:Name="NewRegionBox" Width="200" />
 				</StackPanel>
 
 				<TextBlock Classes="FieldLabel" Text="Category" />
-				<AutoCompleteBox x:Name="NewCategoryBox"
-								 FilterMode="Contains"
-								 MinimumPrefixLength="0"
-								 IsTextCompletionEnabled="False"
-								 PlaceholderText="Capacitor, IC, Resistor"
-								 HorizontalAlignment="Stretch" />
+				<!-- Picked, never typed: "Board: Categories" is where one is made (owner request, 2026-11-03). -->
+				<ComboBox x:Name="NewCategoryBox"
+						  PlaceholderText="Pick a category"
+						  HorizontalAlignment="Stretch" />
 				<TextBlock x:Name="NewCategoryNoteText"
 						   Classes="EmptyLine"
 						   Margin="0,4,0,0"
@@ -321,7 +280,7 @@
 
 		<!-- The sections take the room there is, up to a readable width, from the left: a star column
 		     with a MaxWidth (a left-aligned panel would shrink to its widest content). -->
-		<ScrollViewer Grid.Row="2" x:Name="SectionsScrollViewer" HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer Grid.Row="1" x:Name="SectionsScrollViewer" HorizontalScrollBarVisibility="Disabled">
 			<Grid>
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="*" MaxWidth="980" />
@@ -329,33 +288,59 @@
 				</Grid.ColumnDefinitions>
 			<StackPanel x:Name="SectionsPanel" Grid.Column="0" Spacing="18" Margin="4,12,12,12">
 
-				<!-- ==== Copy from another board (slice 5) - open while picking ==== -->
-				<Border x:Name="CopyPanel"
+				<!-- Which region the page shows, on a page that depends on it (ShowRegionShown). -->
+				<TextBlock x:Name="RegionShownText" Classes="EmptyLine" IsVisible="False" TextWrapping="Wrap" />
+
+				<!-- ==== Clone component from another board - open while picking (owner request, 2026-11-04) ==== -->
+				<Border x:Name="ClonePanel"
 						IsVisible="False"
 						BorderBrush="{DynamicResource Form_Border}"
 						BorderThickness="1"
 						CornerRadius="3"
 						Padding="12,10">
 					<StackPanel Spacing="6">
-						<TextBlock Classes="PaneHeading" Text="Copy from another board" />
-						<TextBlock x:Name="CopyIntroText" Classes="PaneIntro" />
-						<ComboBox x:Name="CopySourceBox"
-								  HorizontalAlignment="Stretch"
-								  SelectionChanged="OnCopySourceChanged" />
-						<StackPanel x:Name="CopyPartsPanel" Spacing="2" />
-						<TextBlock x:Name="CopyNothingText"
-								   Classes="EmptyLine"
-								   IsVisible="False"
-								   Text="That component has nothing to copy - no package, short description, pins, replacement parts or links." />
+						<TextBlock Classes="PaneHeading" Text="Clone component from another board" />
+						<TextBlock x:Name="CloneIntroText" Classes="PaneIntro" />
+						<Grid ColumnDefinitions="*,8,*,8,*">
+							<StackPanel Grid.Column="0">
+								<TextBlock Classes="FieldLabel" Text="Hardware" />
+								<ComboBox x:Name="CloneHardwareBox"
+										  PlaceholderText="Pick a hardware"
+										  HorizontalAlignment="Stretch"
+										  SelectionChanged="OnCloneHardwareChanged" />
+							</StackPanel>
+							<StackPanel Grid.Column="2">
+								<TextBlock Classes="FieldLabel" Text="Board" />
+								<ComboBox x:Name="CloneBoardBox"
+										  PlaceholderText="Pick a board"
+										  HorizontalAlignment="Stretch"
+										  SelectionChanged="OnCloneBoardChanged" />
+							</StackPanel>
+							<StackPanel Grid.Column="4">
+								<TextBlock Classes="FieldLabel" Text="Component" />
+								<ComboBox x:Name="CloneComponentBox"
+										  PlaceholderText="Pick a component"
+										  MaxDropDownHeight="420"
+										  HorizontalAlignment="Stretch"
+										  SelectionChanged="OnCloneComponentChanged" />
+							</StackPanel>
+						</Grid>
+						<TextBlock x:Name="CloneNoteText" Classes="EmptyLine" IsVisible="False" />
+						<!-- What the component picked is - the lines ComponentPaneWording.CloneFacts says. -->
+						<Border x:Name="CloneFactsPanel" Classes="PaneEntry" IsVisible="False" Margin="0">
+							<StackPanel x:Name="CloneFactsLines" Spacing="2" />
+						</Border>
 						<StackPanel Orientation="Horizontal" Spacing="6">
-							<Button x:Name="CopyButton"
+							<Button x:Name="CloneButton"
 									Classes="Accept"
-									Content="Copy"
-									ToolTip.Tip="Put what is ticked into this component - one step, so &quot;Undo&quot; takes it back"
-									Click="OnCopyClick" />
-							<Button x:Name="CancelCopyButton"
+									Content="Clone"
+									IsEnabled="False"
+									ToolTip.ShowOnDisabled="True"
+									ToolTip.Tip="This component takes over everything the one picked has, but its board label - one step, so &quot;Undo&quot; takes it back"
+									Click="OnCloneClick" />
+							<Button x:Name="CancelCloneButton"
 									Content="Cancel"
-									Click="OnCancelCopyClick" />
+									Click="OnCancelCloneClick" />
 						</StackPanel>
 					</StackPanel>
 				</Border>
@@ -409,10 +394,8 @@
 							  ToolTip.Tip="The component is another part in each region, so each has these fields of its own. Off, one set of fields is for every region."
 							  Click="OnBasicsRegionalClick" />
 
-					<!-- Which region these fields are of - the switch under the component list, again: picking here
-					     picks there. Under the tick and only while it is ticked (owner request, 2026-11-01). -->
-					<local:PaneRegionSwitch x:Name="BasicsRegionSwitch" />
-
+					<!-- The order is the owner's (2026-11-04): what names the component down the left, what sorts
+					     it on the right, and every box one column wide. -->
 					<Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto,Auto,Auto">
 						<!-- Its label renames it on Enter or when left, never on a pause in typing: every row
 						     of the component moves with it (owner report, 2026-11-01: "unable to rename"). -->
@@ -427,17 +410,21 @@
 									   Margin="0,4,0,0"
 									   Foreground="{DynamicResource Text_Warning_Fg}"
 									   TextWrapping="Wrap" />
+							<!-- Told apart per region, the label still is not (owner report, 2026-11-04: it read as
+							     if the region switch had lost what was typed - ShowRegionChoices). -->
+							<TextBlock x:Name="BoardLabelOneText"
+									   Classes="EmptyLine"
+									   IsVisible="False"
+									   Margin="2,2,0,0" />
 						</StackPanel>
 						<StackPanel Grid.Row="0" Grid.Column="2">
 							<TextBlock Classes="FieldLabel" Text="Category" />
-							<!-- The board's own categories as you type - the component list groups by the exact
-							     word, so "Capacitors" beside "Capacitor" would split one group in two. -->
-							<AutoCompleteBox x:Name="CategoryBox"
-											 FilterMode="Contains"
-											 MinimumPrefixLength="0"
-											 IsTextCompletionEnabled="False"
-											 PlaceholderText="Capacitor, IC, Resistor"
-											 HorizontalAlignment="Stretch" />
+							<!-- Picked from the board's own categories, never typed (owner request, 2026-11-03: "Only in
+							     the 'Board: Category' we should allow for an input field") - the component list groups by
+							     the exact word, so "Capacitors" beside "Capacitor" would split one group in two. -->
+							<ComboBox x:Name="CategoryBox"
+									  PlaceholderText="Pick a category"
+									  HorizontalAlignment="Stretch" />
 							<TextBlock x:Name="CategoryRequiredText" Classes="Required" IsVisible="False" />
 						</StackPanel>
 						<StackPanel Grid.Row="1" Grid.Column="0">
@@ -445,18 +432,31 @@
 							<TextBox x:Name="FriendlyNameBox" Watermark="What will people also know this as" />
 						</StackPanel>
 						<StackPanel Grid.Row="1" Grid.Column="2">
-							<TextBlock Classes="FieldLabel" Text="Technical name or value" />
-							<TextBox x:Name="TechnicalNameBox" Watermark="Details printed on the component or its value" />
-						</StackPanel>
-						<StackPanel Grid.Row="2" Grid.Column="0">
 							<TextBlock Classes="FieldLabel" Text="Part number" />
 							<TextBox x:Name="PartNumberBox" Watermark="Orderable part number from the manufacturer" />
 						</StackPanel>
-						<StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3">
+						<StackPanel Grid.Row="2" Grid.Column="0">
+							<TextBlock Classes="FieldLabel" Text="Technical name or value" />
+							<TextBox x:Name="TechnicalNameBox" Watermark="Details printed on the component or its value" />
+						</StackPanel>
+						<StackPanel Grid.Row="3" Grid.Column="0">
 							<TextBlock Classes="FieldLabel" Text="Short description" />
 							<TextBox x:Name="DescriptionBox"
 									 Watermark="Other relevant details" />
-							<TextBlock x:Name="DescriptionCounter" Classes="Counter" />
+							<!-- Said in words as well as by the counter's color (owner report, 2026-11-03: "I cannot
+							     see any warning anywhere for this?") - a warning, never a refusal (BoardDataChecks).
+							     Right under the box, the counter beside it: on a line of its own the counter left
+							     what read as an empty line between them (owner request, 2026-11-04). -->
+							<Grid ColumnDefinitions="*,Auto">
+								<TextBlock x:Name="DescriptionTooLongText"
+										   Grid.Column="0"
+										   IsVisible="False"
+										   Margin="2,2,8,0"
+										   FontSize="11"
+										   Foreground="{DynamicResource Text_Warning_Fg}"
+										   TextWrapping="Wrap" />
+								<TextBlock x:Name="DescriptionCounter" Grid.Column="1" Classes="Counter" Margin="0,2,0,0" />
+							</Grid>
 						</StackPanel>
 					</Grid>
 				</StackPanel>
@@ -494,15 +494,13 @@
 							  ToolTip.Tip="The pins are not the same in each region, so each has a set of its own. Off, one set of pins is for every region."
 							  Click="OnPinsRegionalClick" />
 
-					<!-- Which region these fields are of - the switch under the component list, again: picking here
-					     picks there. Under the tick and only while it is ticked (owner request, 2026-11-01). -->
-					<local:PaneRegionSwitch x:Name="PinsRegionSwitch" />
-
 					<StackPanel Orientation="Horizontal" Spacing="8">
 						<StackPanel Width="200">
 							<TextBlock Classes="FieldLabel" Text="Package" />
+							<!-- Its list opens with the focus, every case in it, and narrows as it is typed in
+							     (owner request, 2026-11-03; ComponentPane.Pages.cs, PackageShowsAll). -->
 							<AutoCompleteBox x:Name="PackageBox"
-											 FilterMode="Contains"
+											 FilterMode="Custom"
 											 MinimumPrefixLength="0"
 											 IsTextCompletionEnabled="False"
 											 PlaceholderText="DIP-40, TO-92"
@@ -519,7 +517,7 @@
 						     while it has any (ComponentPane.KiCadPins.cs). -->
 						<Button x:Name="FillFromKiCadButton"
 								Classes="Accept"
-								Content="Fill from KiCad"
+								Content="Fill pins from KiCad"
 								VerticalAlignment="Bottom"
 								IsVisible="False"
 								ToolTip.ShowOnDisabled="True"
@@ -620,8 +618,6 @@
 				<StackPanel x:Name="BaselinesSection" Spacing="4">
 					<TextBlock Classes="PaneIntro"
 							   Text="What a working board shows on the oscilloscope at each pin - the image and how the oscilloscope was set, so the next person can compare theirs." />
-
-					<local:PaneRegionSwitch x:Name="BaselinesRegionSwitch" />
 
 					<!-- How the board's baselines were measured: its "Scope measurements" files (owner decision,
 					     2026-10-26 - ScopeMeasurementFiles), each a link that opens it. -->
@@ -846,8 +842,6 @@
 					<TextBlock Classes="PaneIntro"
 							   Text="Photos and drawings of the component - its markings, its pinout, where it sits on the board." />
 
-					<local:PaneRegionSwitch x:Name="PicturesRegionSwitch" />
-
 					<TextBlock x:Name="NoPicturesText" Classes="EmptyLine" Text="No pictures yet." />
 
 					<ItemsControl x:Name="PicturesItemsControl">
@@ -916,8 +910,6 @@
 					<TextBlock Classes="PaneIntro"
 							   Text="Parts that can stand in for this one - and what has to change for one that does not simply drop in." />
 
-					<local:PaneRegionSwitch x:Name="ReplacementsRegionSwitch" />
-
 					<TextBlock x:Name="NoReplacementsText" Classes="EmptyLine" Text="No replacement parts yet." />
 
 					<ItemsControl x:Name="ReplacementsItemsControl">
@@ -971,8 +963,6 @@
 				<StackPanel x:Name="FilesSection" Spacing="4" Grid.IsSharedSizeScope="True">
 					<TextBlock Classes="PaneIntro"
 							   Text="Documents kept with the board about this component - a datasheet, a service note, a ROM dump. Drag a file by its handle to move it up or down." />
-
-					<local:PaneRegionSwitch x:Name="FilesRegionSwitch" />
 
 					<TextBlock x:Name="NoFilesText" Classes="EmptyLine" Text="No files yet." />
 
@@ -1069,8 +1059,6 @@
 					<TextBlock Classes="PaneIntro"
 							   Text="Pages about this component - a datasheet online, a forum thread, a video. Drag a link by its handle to move it up or down." />
 
-					<local:PaneRegionSwitch x:Name="LinksRegionSwitch" />
-
 					<TextBlock x:Name="NoLinksText" Classes="EmptyLine" Text="No links yet." />
 
 					<Grid x:Name="LinksHeading">
@@ -1160,7 +1148,7 @@
 		<!-- THE BOARD'S OWN LISTS (slice 4a - the plan: "Board > Files and links, grouped by category ...
 		     Board > Credits ... Board > Important signals"): one at a time, in place of a component
 		     (ComponentPane.Board.cs). Every change goes into the draft as the component's do. -->
-		<ScrollViewer Grid.Row="2" x:Name="BoardPartPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
+		<ScrollViewer Grid.Row="1" x:Name="BoardPartPanel" IsVisible="False" HorizontalScrollBarVisibility="Disabled">
 			<Grid>
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="*" MaxWidth="980" />
@@ -1171,8 +1159,7 @@
 				<!-- ==== Board: Regions (owner decisions, 2026-11-01: "PAL and NTSC, or none", stored and
 				     published; ComponentPane.RegionsAndCategories.cs) ==== -->
 				<StackPanel x:Name="RegionsPart" Spacing="6">
-					<TextBlock Classes="PaneIntro"
-							   Text="Whether this board came in a PAL and an NTSC version. Ticked, the PAL and NTSC buttons show under the component list and on a component's popup, and what a component has can apply to one region or to all of them." />
+					<TextBlock Classes="PaneIntro"><Run Text="Whether the board comes in a " /><Run Text="PAL" FontWeight="Bold" /><Run Text=" and " /><Run Text="NTSC" FontWeight="Bold" /><Run Text=" version." /><LineBreak /><LineBreak /><Run Text="When checked, the &quot;PAL&quot; and &quot;NTSC&quot; buttons show under the component list and on a component's popup." /><LineBreak /><Run Text="Also, some component information can differ, depending on region or it can apply to all of them." /></TextBlock>
 					<CheckBox x:Name="RegionsCheckBox" Click="OnRegionsCheckClick" />
 					<TextBlock x:Name="RegionsInUseText" Classes="EmptyLine" IsVisible="False" />
 				</StackPanel>
@@ -1275,13 +1262,13 @@
 				     (ComponentPane.BoardPictures.cs, .BoardPictureList.cs, .PicturePreviews.cs) ==== -->
 				<StackPanel x:Name="PicturesPart" Spacing="4">
 					<TextBlock Classes="PaneIntro"
-							   Text="Photos of the board's sides and its schematic sheets - everything else is marked on them. Name each one, say which KiCad view it shows, put them in order, and choose how a selected component is drawn on it." />
+							   Text="Images of the board's sides and its schematic sheets - everything else is marked on them. Name each one, say which KiCad view it shows, put them in order, and choose how a selected component is drawn on it. Add images with the button below, or drag the image files onto this page." />
 					<Button x:Name="AddPicturesButton"
 							Classes="Accept"
 							Content="Add schematic image(s)"
 							HorizontalAlignment="Left"
 							Margin="0,0,0,8"
-							ToolTip.Tip="Pick photos of the board's sides, or its schematic sheets - each is copied into your draft, your own file left where it is. They can be dragged onto the tab too."
+							ToolTip.Tip="Pick images of the board's sides, or its schematic sheets - each is copied into your draft, your own file left where it is. They can be dragged onto this page too."
 							Click="OnAddPicturesClick" />
 
 					<!-- What "Mark all automatically" did, or why it could not (step 3, slice 3c). -->
@@ -1299,12 +1286,13 @@
 										CornerRadius="4"
 										Padding="12"
 										Margin="0,0,0,12">
-									<Grid ColumnDefinitions="Auto,14,*">
-										<!-- THE PREVIEWS (2026-10-29): the image with its selected components and,
-										     ticked, the other side's traces - it zooms - and under it the image as
-										     its thumbnail draws it. As wide as last dragged at the handle beside
-										     them, the same on every card (ComponentPane.PicturePreviews.cs). -->
-										<StackPanel Grid.Column="0" Width="{Binding PreviewWidth}" Spacing="4" VerticalAlignment="Top">
+									<Grid ColumnDefinitions="*,14,Auto">
+										<!-- THE PREVIEWS (2026-10-29), ON THE CARD'S RIGHT (owner request, 2026-11-03): the
+										     image with its selected components and, ticked, the other side's traces - it
+										     zooms - and under it the image as its thumbnail draws it. As wide as last
+										     dragged at the handle beside them, the same on every card
+										     (ComponentPane.PicturePreviews.cs). -->
+										<StackPanel Grid.Column="2" Width="{Binding PreviewWidth}" Spacing="4" VerticalAlignment="Top">
 											<Border Height="{Binding PreviewHeight}" Background="{DynamicResource Card_Bg}">
 												<local:PicturePreview Source="{Binding ShownThumbnail}"
 																	  ImageSize="{Binding ImageSize}"
@@ -1364,7 +1352,7 @@
 													Background="{DynamicResource Splitter}" />
 										</Border>
 
-										<StackPanel Grid.Column="2" Spacing="6">
+										<StackPanel Grid.Column="0" Spacing="6">
 											<!-- The name, saved on Enter or leaving the box (Escape puts it back) - said
 											     above it what it is (owner request, 2026-10-29). -->
 											<StackPanel Spacing="0">
@@ -1405,7 +1393,10 @@
 											<Grid ColumnDefinitions="Auto,8,Auto,12,*,8,40" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 												<TextBlock Grid.Row="0" Grid.Column="0" Text="Schematic image" VerticalAlignment="Center"
 														   ToolTip.Tip="How a selected component is drawn on the image" />
+												<!-- Each color's list has the dropper too, to take one already on the screen
+												     (owner request, 2026-11-03; ColorPickerDropper). -->
 												<ColorPicker Grid.Row="0" Grid.Column="2" Color="{Binding HighlightColor, Mode=TwoWay}" />
+
 												<Slider Grid.Row="0" Grid.Column="4" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
 														Value="{Binding HighlightOpacity, Mode=TwoWay}"
 														ToolTip.Tip="How strongly a selected component shows on the image" />
@@ -1413,6 +1404,7 @@
 
 												<TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,0,0" Text="Thumbnail" VerticalAlignment="Center" />
 												<ColorPicker Grid.Row="1" Grid.Column="2" Margin="0,6,0,0" Color="{Binding ThumbnailColor, Mode=TwoWay}" />
+
 												<Slider Grid.Row="1" Grid.Column="4" Margin="0,6,0,0" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
 														Value="{Binding ThumbnailOpacity, Mode=TwoWay}"
 														ToolTip.Tip="How strongly a selected component shows on the image's thumbnail" />
@@ -1424,9 +1416,10 @@
 														   IsVisible="{Binding HasKiCadData}"
 														   ToolTip.Tip="{Binding ThisSideTraceColourTip}" />
 												<ColorPicker Grid.Row="2" Grid.Column="2" Margin="0,6,0,0"
-															 Color="{Binding ThisSideTraceColor, Mode=TwoWay}"
 															 IsVisible="{Binding HasKiCadData}"
+															 Color="{Binding ThisSideTraceColor, Mode=TwoWay}"
 															 ToolTip.Tip="{Binding ThisSideTraceColourTip}" />
+
 												<Slider Grid.Row="2" Grid.Column="4" Margin="0,6,0,0" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
 														Value="{Binding ThisSideTraceOpacity, Mode=TwoWay}"
 														IsVisible="{Binding HasKiCadData}"
@@ -1438,9 +1431,10 @@
 														   IsVisible="{Binding HasKiCadData}"
 														   ToolTip.Tip="{Binding TraceColourTip}" />
 												<ColorPicker Grid.Row="3" Grid.Column="2" Margin="0,6,0,0"
-															 Color="{Binding OppositeTraceColor, Mode=TwoWay}"
 															 IsVisible="{Binding HasKiCadData}"
+															 Color="{Binding OppositeTraceColor, Mode=TwoWay}"
 															 ToolTip.Tip="{Binding TraceColourTip}" />
+
 												<Slider Grid.Row="3" Grid.Column="4" Margin="0,6,0,0" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
 														Value="{Binding OppositeTraceOpacity, Mode=TwoWay}"
 														IsVisible="{Binding HasKiCadData}"
@@ -1474,13 +1468,6 @@
 														   IsVisible="{Binding HasTracesNote}" />
 											</Grid>
 
-											<Button Classes="Accept"
-													Content="Use colors for all schematic images"
-													Tag="{Binding}"
-													HorizontalAlignment="Left"
-													ToolTip.Tip="Give every schematic image of the board these colors"
-													Click="OnUseColoursForAllClick" />
-
 											<!-- The picture's tools on the Schematics tab, with a bar and Done (slice 6 - contributor
 											     mode went). ALIGNING COMES FIRST, MARKING BY HAND ON A ROW OF ITS OWN (owner request,
 											     2026-11-01: "the user most likely will NOT manually mark components when KiCad data is
@@ -1510,6 +1497,14 @@
 														ToolTip.Tip="Opens the &quot;Schematics&quot; tab on this image, to draw a rectangle around each component"
 														Click="OnMarkComponentsClick" />
 											</WrapPanel>
+
+											<!-- Right under "Mark components manually" (owner request, 2026-11-03). -->
+											<Button Classes="Accept"
+													Content="Use colors for all schematic images"
+													Tag="{Binding}"
+													HorizontalAlignment="Left"
+													ToolTip.Tip="Give every schematic image of the board these colors"
+													Click="OnUseColoursForAllClick" />
 
 											<!-- The image's place among the board's images, and deleting it (step 3 - the
 											     "Schematic images" window's, moved here). Deleting since 2026-10-29: the image

@@ -129,11 +129,43 @@ namespace CRT
         // ###########################################################################################
         public bool CloseOnDeactivate { get; set; }
 
+        // What "Edit component" does - null on a popup that does not offer it (the Contribute tab's preview).
+        private Action<string>? _editComponent;
+
+        // ###########################################################################################
+        // "Edit component" offered - with the board shown in CRT, which is the one it opens the component
+        // on. A popup stays open as another board is shown, and that board may have the same label.
+        // ###########################################################################################
+        internal void OfferEdit(Action<string>? edit, string boardShown)
+        {
+            this._editComponent = edit;
+            this.FollowBoardShown(boardShown);
+        }
+
+        internal void FollowBoardShown(string boardShown)
+        {
+            this.EditComponentButton.IsVisible =
+                this._editComponent is not null &&
+                string.Equals(this._boardIdentity, boardShown, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // The popup goes first: it stands over CRT's window, and would hide the page opened.
+        private void OnEditComponentClick(object? sender, RoutedEventArgs e)
+        {
+            Action<string>? edit = this._editComponent;
+            string label = this._boardLabel;
+
+            this.Close();
+            edit?.Invoke(label);
+        }
+
         public ComponentInfoWindow()
         {
             this.InitializeComponent();
 
             this.InfoPinsItemsControl.ItemsSource = this._pinRows;
+            this.EditComponentButton.Content = PictureToolWording.EditComponent;
+            ToolTip.SetTip(this.EditComponentButton, PictureToolWording.EditComponentTip);
 
             // Aggressively steal focus from the Main window's TextBox when interacting with this window
             this.PointerPressed += (_, _) => this.Focus();
@@ -1384,19 +1416,9 @@ namespace CRT
             var entry = ComponentImageQueries.PickComponentEntry(this._allComponentEntries, this._localRegion);
 
             // Title: BoardLabel | FriendlyName | TechnicalNameOrValue (non-empty parts joined)
-            var titleParts = new List<string>(3);
-            if (!string.IsNullOrWhiteSpace(this._boardLabel))
-                titleParts.Add(this._boardLabel.Trim());
-            if (!string.IsNullOrWhiteSpace(entry?.FriendlyName))
-                titleParts.Add(entry.FriendlyName.Trim());
-            if (!string.IsNullOrWhiteSpace(entry?.TechnicalNameOrValue))
-                titleParts.Add(entry.TechnicalNameOrValue.Trim());
+            string titleText = ComponentPopupContent.TitleOf(this._boardLabel, entry);
 
-            string titleText = titleParts.Count > 0
-                ? string.Join(" | ", titleParts)
-                : this._displayTextFallback;
-
-            this.TitleText.Text = titleText;
+            this.TitleText.Text = titleText.Length > 0 ? titleText : this._displayTextFallback;
             this.ApplyOscilloscopeSessionTitleState();
 
             // Category | Part-number | Package (CRT 4.0)

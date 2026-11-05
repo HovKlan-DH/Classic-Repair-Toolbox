@@ -88,4 +88,15 @@ public sealed class ContributeWidthsTests
     {
         Assert.Equal(shown, ContributeWidths.PreviewShown(wanted, cardsWidth), 3);
     }
+
+    // The previews stand on the card's right since 2026-11-03, their handle at their left edge: dragged
+    // left it widens them, as a window's edge does.
+    [Theory]
+    [InlineData(320, 500, 400, 420)]
+    [InlineData(320, 500, 600, 220)]
+    [InlineData(320, 500, 500, 320)]
+    public void Dragging_the_previews_handle_to_the_left_widens_them(double start, double fromX, double toX, double width)
+    {
+        Assert.Equal(width, ContributeWidths.PreviewDragged(start, fromX, toX), 3);
+    }
 }

@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 
@@ -14,13 +16,53 @@ namespace Handlers.DataHandling
     // (BuildComponentItems below takes the drafted-labels set as a parameter) rather than by this
     // class reaching for BoardDraftSummary itself, so ComponentListBuilder stays usable with no
     // draft in play at all - most boards have none.
+    //
+    // Problems (owner request, 2026-11-04) is what the draft's checks found on the component, said on its row
+    // while the list is the Contribute tab's. Changed on the row as it stands: a row made again lets go of
+    // the selection, and the list scrolls back to it - the panes' every save would do that.
     // ###########################################################################################
-    public sealed class ComponentListItem
+    public sealed class ComponentListItem : INotifyPropertyChanged
     {
+        private BoardProblemCounts thisProblems;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public string DisplayText { get; init; } = string.Empty;
         public string BoardLabel { get; init; } = string.Empty;
         public string SelectionKey { get; init; } = string.Empty;
         public bool IsDrafted { get; init; }
+
+        public BoardProblemCounts Problems
+        {
+            get => this.thisProblems;
+            set
+            {
+                if (this.thisProblems == value)
+                {
+                    return;
+                }
+
+                this.thisProblems = value;
+
+                foreach (string shown in (string[])[nameof(this.HasErrors), nameof(this.ErrorsText), nameof(this.ErrorsTip), nameof(this.HasWarnings), nameof(this.WarningsText), nameof(this.WarningsTip)])
+                {
+                    this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(shown));
+                }
+            }
+        }
+
+        public bool HasErrors => this.thisProblems.Errors > 0;
+
+        public string ErrorsText => this.thisProblems.Errors.ToString(CultureInfo.InvariantCulture);
+
+        public string ErrorsTip => this.thisProblems.Errors == 1 ? "1 error on this component" : $"{this.ErrorsText} errors on this component";
+
+        public bool HasWarnings => this.thisProblems.Warnings > 0;
+
+        public string WarningsText => this.thisProblems.Warnings.ToString(CultureInfo.InvariantCulture);
+
+        public string WarningsTip => this.thisProblems.Warnings == 1 ? "1 warning on this component" : $"{this.WarningsText} warnings on this component";
+
         public override string ToString() => this.DisplayText;
     }
 

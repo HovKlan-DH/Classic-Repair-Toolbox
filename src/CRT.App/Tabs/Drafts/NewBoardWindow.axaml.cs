@@ -96,8 +96,15 @@ namespace CRT
 
             this.PreviewText.Text = registration == null
                 ? "Fill in the manufacturer, hardware and board above."
-                : $"{registration.HardwareName} - {registration.BoardName}\n{registration.ExcelDataFile}";
+                : NewBoardWindow.PreviewOf(registration);
         }
+
+        // What "This will create" says (owner request, 2026-11-03): where the board will be seen, and the
+        // file it will be - from the top of the data, so "/" leads.
+        internal static string PreviewOf(NewBoardRegistration registration) =>
+            $"Hardware drop-down will show: {registration.HardwareName}\n" +
+            $"Board drop-down will show: {registration.BoardName}\n" +
+            $"Path and datafile will be: /{registration.ExcelDataFile}";
 
         // Exposed for the headless tests, which cannot read a TextBlock's enabled state meaningfully
         // without also knowing what the window thinks the identity is.

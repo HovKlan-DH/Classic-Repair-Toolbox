@@ -27,9 +27,13 @@ namespace CRT
         // ###########################################################################################
         private void OnClearComponentsClick(object? sender, RoutedEventArgs e)
         {
-            this._suppressComponentSearchRefresh = true;
-            this.ComponentSearchTextBox.Text = string.Empty;
-            this._suppressComponentSearchRefresh = false;
+            if (this._contributeListsShown)
+            {
+                this.ClearContributeLists();
+                return;
+            }
+
+            this.ShowComponentSearchText(string.Empty);
 
             if (this.TabSchematicsControl.IsLabelEditorActive)
             {
@@ -46,10 +50,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Selects all available items currently populated within the Component filter list box.
+        // Selects all available items currently populated within the Component filter list box - none
+        // while a board is being read, when the rows on screen are about to go (code review, 2026-11-05).
         // ###########################################################################################
         private void OnMarkAllComponentsClick(object? sender, RoutedEventArgs e)
         {
+            if (this._currentBoardData is null)
+            {
+                return;
+            }
+
             try
             {
                 this.ComponentFilterListBox.SelectAll();
@@ -83,8 +93,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The region CRT shows - from the buttons under the component list, and from the same switch on
-        // top of a component's pages on the Contribute tab (2026-11-01) - each follows the other.
+        // The region CRT shows, from the buttons under the component list - the Contribute tab's too.
         // ###########################################################################################
         internal void PickRegion(string region)
         {
@@ -111,7 +120,8 @@ namespace CRT
             this._suppressRegionToggle = true;
             bool isNtsc = string.Equals(this._localRegion, "NTSC", StringComparison.OrdinalIgnoreCase);
 
-            this.RegionButtonsGrid.IsVisible = BoardRegions.Has(this._currentBoardData);
+            // On the Contribute tab, by what it reads: the board as the draft now has it.
+            this.RegionButtonsGrid.IsVisible = BoardRegions.Has(this._contributeListsShown ? this.TabDrafts.BoardForList() ?? this._currentBoardData : this._currentBoardData);
 
             this.NtscRegionButton.Classes.Set("active", isNtsc);
             this.PalRegionButton.Classes.Set("active", !isNtsc);
@@ -185,8 +195,32 @@ namespace CRT
             // The board whose published file lists the names a row cites (DraftFileResolver).
             string boardIdentity = this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty;
 
-            this.ShowComponentInfoPopup(this._currentBoardData, boardLabel, displayText, draftBoardFolder, boardIdentity);
+            this.ShowComponentInfoPopup(this._currentBoardData, boardLabel, displayText, draftBoardFolder, boardIdentity, offersEdit: true);
         }
+
+        // ###########################################################################################
+        // "Edit component" on a popup. The popup has closed itself; CRT's window comes to the front.
+        // ###########################################################################################
+        private void EditComponentFromPopup(string boardLabel)
+        {
+            this.Activate();
+            _ = this.EditComponentAsync(boardLabel);
+        }
+
+        // Another board chosen: a popup still open is of the board before, and offers no editing of this one.
+        private void FollowBoardInPopups()
+        {
+            string boardShown = this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty;
+
+            this._singleComponentInfoWindow?.FollowBoardShown(boardShown);
+
+            foreach (ComponentInfoWindow popup in this._componentInfoWindowsByKey.Values)
+            {
+                popup.FollowBoardShown(boardShown);
+            }
+        }
+
+        internal ComponentInfoWindow? SingleComponentInfoWindowForTests => this._singleComponentInfoWindow;
 
         // ###########################################################################################
         // The Contribute tab's "Preview popup" (CRT 4.0 step 2, slice 3c - the plan: "Preview popup
@@ -205,15 +239,19 @@ namespace CRT
                     .Select(part => part?.Trim() ?? string.Empty)
                     .Where(part => part.Length > 0));
 
-            this.ShowComponentInfoPopup(board, boardLabel, displayText, draftBoardFolder, boardIdentity);
+            // What will be published, seen from the pane the component is open in: nothing to go and edit.
+            this.ShowComponentInfoPopup(board, boardLabel, displayText, draftBoardFolder, boardIdentity, offersEdit: false);
         }
 
         // ###########################################################################################
         // The popup of `boardLabel` on `boardData`, according to the user's settings - one popup
         // reused, or one per component.
         // ###########################################################################################
-        private void ShowComponentInfoPopup(BoardData? boardData, string boardLabel, string displayText, string draftBoardFolder, string boardIdentity)
+        private void ShowComponentInfoPopup(BoardData? boardData, string boardLabel, string displayText, string draftBoardFolder, string boardIdentity, bool offersEdit)
         {
+            Action<string>? edit = offersEdit ? this.EditComponentFromPopup : null;
+            string boardShown = this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty;
+
             string componentKey = $"{boardLabel}\u001F{displayText}";
             bool hasExplicitRegionComponents = BoardRegions.Has(boardData);
             var images = boardData?.ComponentImages ?? new List<ComponentImageEntry>();
@@ -262,6 +300,8 @@ namespace CRT
                     boardFiles,
                     pinNets);
 
+                popup.OfferEdit(edit, boardShown);
+
                 popup.UpdateOscilloscopeSessionTitleState(
                     this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
                     this.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState());
@@ -304,6 +344,8 @@ namespace CRT
                 replacements,
                 boardFiles,
                 pinNets);
+
+            this._singleComponentInfoWindow.OfferEdit(edit, boardShown);
 
             this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
                 this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -471,6 +513,10 @@ namespace CRT
         // ###########################################################################################
         private void OnMainKeyDownCloseSinglePopup(object? sender, KeyEventArgs e)
         {
+            // A color dropper on: the key is its own (2026-11-03).
+            if (ColorDropperButton.IsAnyPicking)
+                return;
+
             // Not over the Maintainer tab (2026-09-29): F11 opens the SCHEMATICS fullscreen, which has
             // nothing to do with reviewing, over a window whose sidebar that tab has collapsed.
             if (e.Key == Key.F11 && !ReferenceEquals(this.MainTabControl?.SelectedItem, this.MaintainerTabItem))
@@ -538,16 +584,28 @@ namespace CRT
         // ###########################################################################################
         private async Task ApplyRegionFilterAsync()
         {
-            if (this._currentBoardData == null)
+            if (this._currentBoardData is not { } board)
                 return;
 
-            this.SetComponentHighlightRects(await Task.Run(() =>
-                HighlightRectBuilder.BuildHighlightRects(this._currentBoardData, this._localRegion)));
+            string region = this._localRegion;
 
-            var previouslySelectedKeys = new HashSet<string>(
-                this.ComponentFilterListBox.SelectedItems?.Cast<ComponentListItem>()
-                    .Select(i => i.SelectionKey) ?? Enumerable.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
+            var highlightRects = await Task.Run(() => HighlightRectBuilder.BuildHighlightRects(board, region));
+
+            // A load began or ended meanwhile, or another region was picked: the rectangles are that one's to set
+            // (code review, 2026-11-05: the board's field read on the pool, and these put in before asking).
+            if (!ReferenceEquals(board, this._currentBoardData) || !string.Equals(region, this._localRegion, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            this.SetComponentHighlightRects(highlightRects);
+
+            // What is held rather than what the list has selected now, as a load has it: a row of one region has a
+            // key of its own, so switching there and back on the Contribute tab would leave nothing to select.
+            var previouslySelectedKeys = this.IsSelectionHeld
+                ? this._selectionToKeep!.Value.ComponentKeys
+                : new HashSet<string>(
+                    this.ComponentFilterListBox.SelectedItems?.Cast<ComponentListItem>()
+                        .Select(i => i.SelectionKey) ?? Enumerable.Empty<string>(),
+                    StringComparer.OrdinalIgnoreCase);
 
             var activeCategories = new HashSet<string>(
                 this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? Enumerable.Empty<string>(),
@@ -557,10 +615,14 @@ namespace CRT
             var componentItems = ComponentListBuilder.BuildComponentItems(
                 this._currentBoardData, this._localRegion, activeCategories, searchTerm, this._currentBoardDraftSummary.DraftedComponentBoardLabels);
 
+            // A word selects all it finds - but for what is held, as a load has it (ShowListsOfBoard): the region
+            // can be switched on the Contribute tab, and what the other tabs had selected is waiting there.
+            bool selectsAllItFinds = !string.IsNullOrWhiteSpace(searchTerm) && !this.IsSelectionHeld;
+
             this._suppressComponentHighlightUpdate = true;
             this.ComponentFilterListBox.ItemsSource = componentItems;
 
-            if (!string.IsNullOrWhiteSpace(searchTerm))
+            if (selectsAllItFinds)
             {
                 // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
                 // selection model has not yet caught up with the new item count.
@@ -568,11 +630,7 @@ namespace CRT
             }
             else
             {
-                for (int i = 0; i < componentItems.Count; i++)
-                {
-                    if (previouslySelectedKeys.Contains(componentItems[i].SelectionKey))
-                        this.ComponentFilterListBox.Selection.Select(i);
-                }
+                this.SelectInComponentList(componentItems, previouslySelectedKeys);
             }
             this._suppressComponentHighlightUpdate = false;
 
@@ -582,7 +640,7 @@ namespace CRT
                 .Where(l => !string.IsNullOrEmpty(l))
                 .ToList();
 
-            if (!string.IsNullOrWhiteSpace(searchTerm))
+            if (selectsAllItFinds)
             {
                 survivingLabels = componentItems
                     .Select(item => item.BoardLabel)
@@ -600,10 +658,37 @@ namespace CRT
 
         private DispatcherTimer? _componentSearchDebounceTimer;
 
-        internal bool IsComponentSearchPendingForTests => this._componentSearchDebounceTimer?.IsEnabled == true;
+        internal bool IsComponentSearchPendingForTests =>
+            this._componentSearchDebounceTimer?.IsEnabled == true || this._contributeSearchTimer?.IsEnabled == true;
 
-        // Applies a waiting filter at once, as its timer would.
-        internal void FlushComponentSearchForTests() => this.ApplyComponentSearchNow();
+        // Applies a waiting filter of the box shown at once, as its timer would.
+        internal void FlushComponentSearchForTests()
+        {
+            if (this._contributeListsShown)
+            {
+                this.ApplyContributeSearchNow();
+            }
+            else
+            {
+                this.ApplyComponentSearchNow();
+            }
+        }
+
+        // The words the lists show now. Null: not known, so whatever the box says next is applied.
+        private string? _componentSearchInEffect = string.Empty;
+
+        // ###########################################################################################
+        // *** THE BOX'S WORDS SET BY CRT, THE LISTS ALREADY SHOWING THEM (code review, 2026-11-04; measured).
+        // *** Avalonia POSTS TextChanged, so a flag set around the assignment had long been lifted when it
+        // came: 200 ms later the filter ran on lists nobody had touched, replaced them, let go of the selection
+        // and took its highlights. So what the lists show is remembered, and a TextChanged saying the same is
+        // nothing to do - every place setting the box goes through here.
+        // ###########################################################################################
+        private void ShowComponentSearchText(string text)
+        {
+            this._componentSearchInEffect = text;
+            this.ComponentSearchTextBox.Text = text;
+        }
 
         // ###########################################################################################
         // The search box's TextChanged: the filter runs 200 ms after the LAST keystroke (code review,
@@ -613,12 +698,16 @@ namespace CRT
         // ###########################################################################################
         public void OnComponentSearchTextChanged(object? sender, global::Avalonia.Controls.TextChangedEventArgs e)
         {
-            if (this._suppressComponentSearchRefresh)
-                return;
-
             if (sender == null)
             {
                 this.ApplyComponentSearchNow();
+                return;
+            }
+
+            // What the lists show already - set by CRT, or typed and taken back before the filter ran.
+            if (string.Equals(this.ComponentSearchTextBox.Text ?? string.Empty, this._componentSearchInEffect, StringComparison.Ordinal))
+            {
+                this._componentSearchDebounceTimer?.Stop();
                 return;
             }
 
@@ -640,10 +729,15 @@ namespace CRT
         {
             this._componentSearchDebounceTimer?.Stop();
 
-            if (this._suppressComponentSearchRefresh || this._currentBoardData == null || this._suppressCategoryFilterSave)
+            if (this._currentBoardData == null || this._suppressCategoryFilterSave)
+            {
+                this._componentSearchInEffect = null;
                 return;
+            }
 
             string searchTerm = this.ComponentSearchTextBox?.Text ?? string.Empty;
+
+            this._componentSearchInEffect = searchTerm;
 
             if (this.TabSchematicsControl.IsLabelEditorActive)
             {
@@ -659,12 +753,23 @@ namespace CRT
         // ###########################################################################################
         private void ApplyNormalComponentSearchFilter(string searchTerm)
         {
+            // Somebody's choice, as a selection made is: nothing held comes back in its place at the next load.
+            this._selectionToKeep = null;
+
+            // *** NO BOARD READ, NOTHING TO FILTER (code review, 2026-11-05). *** "Clear" comes here without
+            // ApplyComponentSearchNow's check, while a board loads or when one could not be read, and an
+            // exception in a click handler ends CRT. A load in progress reads the box itself (ShowListsOfBoard).
+            if (this._currentBoardData is not { } board)
+            {
+                return;
+            }
+
             var activeCategories = new HashSet<string>(
                 this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? Enumerable.Empty<string>(),
                 StringComparer.OrdinalIgnoreCase);
 
             var componentItems = ComponentListBuilder.BuildComponentItems(
-                this._currentBoardData!, this._localRegion, activeCategories, searchTerm, this._currentBoardDraftSummary.DraftedComponentBoardLabels);
+                board, this._localRegion, activeCategories, searchTerm, this._currentBoardDraftSummary.DraftedComponentBoardLabels);
 
             this._suppressComponentHighlightUpdate = true;
             this.ComponentFilterListBox.ItemsSource = componentItems;
@@ -723,9 +828,9 @@ namespace CRT
         // ###########################################################################################
         internal void ShowComponentOnBoard(string boardLabel, bool readBoardFirst)
         {
+            this.SwitchToSchematicsTab();
             this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyComponent(boardLabel));
             this.OfferBackToContribute(PictureToolWording.ComponentShown(boardLabel));
-            this.SwitchToSchematicsTab();
         }
 
         // ###########################################################################################
@@ -735,9 +840,9 @@ namespace CRT
         // ###########################################################################################
         internal void ShowNetOnBoard(string netName, bool readBoardFirst)
         {
+            this.SwitchToSchematicsTab();
             this.OnBoardShownUpToDate(readBoardFirst, this.TabSchematicsControl.GetCurrentSchematicName(), () => this.TabSchematicsControl.ShowOnlyNet(netName));
             this.OfferBackToContribute(PictureToolWording.NetShown(netName));
-            this.SwitchToSchematicsTab();
         }
 
         // ###########################################################################################
@@ -813,84 +918,6 @@ namespace CRT
 
             // The Contribute tab's component pane offers "Capture from my oscilloscope" while it can.
             this.TabDrafts.ShowScopeConnected(hasActiveOscilloscopeSession);
-        }
-
-        // ###########################################################################################
-        // Rebuilds runtime component lists and highlight caches after the schematic label editor
-        // has modified the in-memory board data for the current session.
-        // ###########################################################################################
-        internal void RefreshRuntimeBoardStateAfterLabelEditorApply()
-        {
-            if (this._currentBoardData == null)
-            {
-                return;
-            }
-
-            var previouslySelectedKeys = new HashSet<string>(
-                this.ComponentFilterListBox.SelectedItems?.Cast<ComponentListItem>()
-                    .Select(i => i.SelectionKey) ?? Enumerable.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
-
-            var activeCategories = new HashSet<string>(
-                this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? Enumerable.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
-
-            string searchTerm = this.ComponentSearchTextBox?.Text ?? string.Empty;
-
-            this.SetComponentHighlightRects(
-                HighlightRectBuilder.BuildHighlightRects(this._currentBoardData, this._localRegion));
-
-            var componentItems = ComponentListBuilder.BuildComponentItems(
-                this._currentBoardData, this._localRegion, activeCategories, searchTerm, this._currentBoardDraftSummary.DraftedComponentBoardLabels);
-
-            this._suppressComponentHighlightUpdate = true;
-            this.ComponentFilterListBox.ItemsSource = componentItems;
-
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-            {
-                // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
-                // selection model has not yet caught up with the new item count.
-                try
-                {
-                    this.ComponentFilterListBox.SelectAll();
-                }
-                catch
-                {
-                }
-            }
-            else
-            {
-                for (int i = 0; i < componentItems.Count; i++)
-                {
-                    if (previouslySelectedKeys.Contains(componentItems[i].SelectionKey))
-                    {
-                        this.ComponentFilterListBox.Selection.Select(i);
-                    }
-                }
-            }
-
-            this._suppressComponentHighlightUpdate = false;
-
-            var survivingLabels = componentItems
-                .Where(item => previouslySelectedKeys.Contains(item.SelectionKey))
-                .Select(item => item.BoardLabel)
-                .Where(label => !string.IsNullOrWhiteSpace(label))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-            {
-                survivingLabels = componentItems
-                    .Select(item => item.BoardLabel)
-                    .Where(label => !string.IsNullOrWhiteSpace(label))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
-
-            this.TabSchematicsControl.UpdateHighlightsForComponents(survivingLabels);
-            this.TabSchematicsControl.UpdateComponentLabels();
-            this.TabOverview.LoadData(this._currentBoardData);
-            this.ShowBoardInContributeTab(this.GetCurrentBoardEntry());
         }
     }
 }

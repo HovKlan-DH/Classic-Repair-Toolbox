@@ -26,9 +26,17 @@ namespace Handlers.DataHandling
     //     every one of them is a DIP of that many, set where the component has none. Anything else
     //     gets its pins and leaves the package to be picked - an RF modulator's eight are no DIP-8.
     //
+    // THE WHOLE BOARD TAKES ITS KiCad DATA TOO (owner request, 2026-11-03: "it only fills in details on
+    // ICs. I do think it should fill in details for all components having KiCad data, and ideally guess
+    // their 'package'"): after the baselines, every component the KiCad data has gets the pins it lacks and
+    // the names and directions still empty ("Fill pins from KiCad"'s rule), and the package its footprint
+    // says where it has none (KiCadBoardComponents.PackageOf).
+    //
     // PURE: takes a board, returns a board. BaselinePinMigrationTests fails a release version while this
     // class still exists, which stops the release workflow - see .claude/CLAUDE.md, "Not done yet".
     // ###########################################################################################
+    public sealed record KiCadPinoutSource(IReadOnlyList<KiCadBoardComponent> Components, Func<string, IReadOnlyList<KiCadPin>> PinsOf);
+
     public static class BaselinePinMigration
     {
         private const string IcCategory = "IC";
@@ -78,14 +86,14 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Every component of the board with a baseline, as one change - `components` says how many
-        // changed.
+        // Every component of the board with a baseline, and every one `kiCad` has, as one change -
+        // `components` says how many changed.
         // ###########################################################################################
-        public static BoardData ApplyToBoard(BoardData board, out int components)
+        public static BoardData ApplyToBoard(BoardData board, out int components, KiCadPinoutSource? kiCad = null)
         {
             ArgumentNullException.ThrowIfNull(board);
 
-            components = 0;
+            var changed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             BoardData result = board;
 
             foreach (string label in board.ComponentImages
@@ -99,8 +107,68 @@ namespace Handlers.DataHandling
 
                 if (!ReferenceEquals(next, result))
                 {
-                    components++;
+                    changed.Add(label);
                     result = next;
+                }
+            }
+
+            foreach (KiCadBoardComponent component in kiCad?.Components ?? [])
+            {
+                BoardData next = BaselinePinMigration.ApplyKiCad(result, component, kiCad!.PinsOf(component.Label));
+
+                if (!ReferenceEquals(next, result))
+                {
+                    changed.Add(component.Label);
+                    result = next;
+                }
+            }
+
+            components = changed.Count;
+
+            return result;
+        }
+
+        // ###########################################################################################
+        // One component with what the KiCad data has for it: the pins it lacks and the names and directions
+        // still empty, in the set they belong to - each region's while its pins are told apart, else the
+        // one set - and the package its footprint says, on each row with none. The same board when the
+        // component is not on the board or nothing would change.
+        // ###########################################################################################
+        private static BoardData ApplyKiCad(BoardData board, KiCadBoardComponent component, IReadOnlyList<KiCadPin> pins)
+        {
+            string label = component.Label;
+            List<ComponentEntry> rows = board.Components.Where(row => BaselinePinMigration.SameLabel(row.BoardLabel, label)).ToList();
+
+            if (rows.Count == 0)
+            {
+                return board;
+            }
+
+            IEnumerable<string> regions = ComponentPaneEdits.PinsAreRegional(board, label)
+                ? board.ComponentPins
+                    .Where(row => BaselinePinMigration.SameLabel(row.BoardLabel, label) && !string.IsNullOrWhiteSpace(row.Region))
+                    .Select(row => row.Region.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : [rows.Count == 1 ? rows[0].Region?.Trim() ?? string.Empty : string.Empty];
+
+            BoardData result = board;
+
+            foreach (string region in regions)
+            {
+                List<ComponentPinEntry> filled = KiCadComponentPins.Fill(ComponentPaneEdits.PinsOf(result, label, region), pins, region, out int added, out int named);
+
+                if (added + named > 0)
+                {
+                    result = ComponentPaneEdits.WithPins(result, label, region, filled);
+                }
+            }
+
+            if (component.Package.Length > 0)
+            {
+                foreach (ComponentEntry row in rows.Where(row => string.IsNullOrWhiteSpace(row.Package)))
+                {
+                    result = ComponentPaneEdits.WithField(result, label, row.Region?.Trim() ?? string.Empty, ComponentField.Package, component.Package);
                 }
             }
 

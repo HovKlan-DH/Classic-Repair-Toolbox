@@ -14,8 +14,8 @@ public sealed class ComponentVocabularyTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("Drop-in")]
-    [InlineData("  needs CHANGES ")]
+    [InlineData("Drop-in replacement")]
+    [InlineData("  needs MODIFICATION ")]
     public void Empty_or_a_known_word_in_any_capitals_is_known(string? value)
     {
         Assert.True(ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, value));
@@ -23,7 +23,7 @@ public sealed class ComponentVocabularyTests
 
     [Theory]
     [InlineData("My cousin")]
-    [InlineData("Drop-ins")]
+    [InlineData("Drop-in")]
     public void Anything_else_is_not(string value)
     {
         Assert.False(ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, value));
@@ -34,7 +34,7 @@ public sealed class ComponentVocabularyTests
     [Fact]
     public void The_lists_hold_the_plans_words()
     {
-        Assert.Equal(["Drop-in", "Needs changes", "Improvement"], ComponentVocabulary.ReplacementKinds);
+        Assert.Equal(["Drop-in replacement", "Needs modification", "Improvement"], ComponentVocabulary.ReplacementKinds);
         // "Unknown" last (owner request, 2026-11-01).
         Assert.Equal("Unknown", ComponentVocabulary.PinDirections[^1]);
         Assert.Equal("Other", ComponentVocabulary.Packages[^1]);

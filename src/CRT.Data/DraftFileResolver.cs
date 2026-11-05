@@ -19,7 +19,7 @@ namespace Handlers.DataHandling
     // freely overwritten - so a second root has to exist and every consumer has to know to try it.
     //
     // This is that second root, and the one place "where do a drafted attachment's bytes go" is
-    // decided: ComponentDraftWriter copies a picked file's bytes here at save time (import-by-copy,
+    // decided: a picked file's bytes are copied here at save time (import-by-copy,
     // the same "copy into the app's own tree" pattern WorklogAttachmentWriter already uses for
     // worklog photos), under the SAME relative path the entry's own File value names - so nothing
     // about the stored entry needs to be draft-aware, only how it is opened does.
@@ -228,7 +228,7 @@ namespace Handlers.DataHandling
         // The absolute path a NEWLY attached file's bytes should be copied to, given the relative
         // path (FileLocation + file name, "/"-separated) the drafted entry is about to store. Does
         // not create the file or its directory - the caller copies the bytes and is the one place
-        // that should decide when directory creation happens (see ComponentDraftWriter).
+        // that should decide when directory creation happens (DraftPickedFiles).
         //
         // A file of the board's OWN folder goes to the draft folder with the board's prefix
         // stripped; a file filed in a SHARED folder (or anywhere else outside the board) goes to

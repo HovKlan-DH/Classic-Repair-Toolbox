@@ -150,7 +150,12 @@ public sealed class NewBoardWindowTests : IDisposable
 
             Fill(window, "Commodore", "C64", "250407");
 
-            Assert.Contains("Commodore/C64/250407/board.json", window.PreviewTextForTests);
+            // Where the board will be seen, and its file from the top of the data (owner request, 2026-11-03).
+            Assert.Equal(
+                "Hardware drop-down will show: C64\n" +
+                "Board drop-down will show: 250407\n" +
+                "Path and datafile will be: /Commodore/C64/250407/board.json",
+                window.PreviewTextForTests);
         });
     }
 
@@ -678,7 +683,7 @@ public sealed class NewBoardWindowTests : IDisposable
             Assert.Equal("Commodore 64", FieldsOf(window).GetControl<TextBox>("HardwareBox").Text);
             Assert.Null(window.ManufacturerOfferedForTests);
             Assert.Null(window.HardwareOfferedForTests);
-            Assert.StartsWith("Commodore 64 - 999001", window.PreviewTextForTests, StringComparison.Ordinal);
+            Assert.StartsWith("Hardware drop-down will show: Commodore 64\nBoard drop-down will show: 999001\n", window.PreviewTextForTests, StringComparison.Ordinal);
         });
     }
 

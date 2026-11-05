@@ -777,6 +777,102 @@
 			<Setter Property="Opacity" Value="1" />
 		</Style>
 
+		<!--
+		A JOINED SWITCH (2026-10-01): a submission's views and a board's on the Maintainer tab, and "UI" or
+		"Table" on the Contribute tab (owner request, 2026-11-04: "a button-group instead, as those circles
+		looks just wrong"). Square inner corners, rounded outer ones, neighbours sharing one border line (each
+		after the first pulled 1px left); the chosen one is filled and outlined in front of its neighbours,
+		and stays so under the pointer.
+		-->
+		<Style Selector="Button.Segment">
+			<Setter Property="Padding" Value="12,4" />
+			<Setter Property="CornerRadius" Value="0" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="Margin" Value="-1,0,0,0" />
+		</Style>
+
+		<Style Selector="Button.Segment.First">
+			<Setter Property="CornerRadius" Value="4,0,0,4" />
+			<Setter Property="Margin" Value="0" />
+		</Style>
+
+		<Style Selector="Button.Segment.Last">
+			<Setter Property="CornerRadius" Value="0,4,4,0" />
+		</Style>
+
+		<Style Selector="Button.Segment.Selected">
+			<Setter Property="ZIndex" Value="1" />
+		</Style>
+
+		<Style Selector="Button.Segment.Selected /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Mode_Selected_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Mode_Selected_Border}" />
+		</Style>
+
+		<!-- A draft's errors and warnings on the Contribute tab (TabDrafts.Problems.cs): on an entry of its left
+		     column, on a component in the list on the far left, and the word on a line of the panel over a
+		     page. In the colours of the table's pills, so the views read alike. -->
+		<Style Selector="Border.NavBadge">
+			<Setter Property="CornerRadius" Value="9" />
+			<Setter Property="Padding" Value="6,0" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+		<Style Selector="Border.NavBadge TextBlock">
+			<Setter Property="FontSize" Value="10" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+		</Style>
+		<Style Selector="Border.NavBadge.error">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Error_Mark}" />
+		</Style>
+		<Style Selector="Border.NavBadge.error TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource BoardTable_Error_Fg}" />
+		</Style>
+		<Style Selector="Border.NavBadge.warning">
+			<Setter Property="Background" Value="{DynamicResource BoardTable_Warning_Mark}" />
+		</Style>
+		<Style Selector="Border.NavBadge.warning TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource BoardTable_Warning_Fg}" />
+		</Style>
+
+		<!-- The color dropper and its lens (Controls/ColorDropperButton.cs) - in a color picker's list
+		     (ColorPickerDropper), and beside the "Draw trace" palette's colors. A subclass, so :is() - a
+		     style names an exact type. -->
+		<Style Selector=":is(Button).ColorDropper">
+			<Setter Property="HorizontalContentAlignment" Value="Center" />
+			<Setter Property="VerticalContentAlignment" Value="Center" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector=":is(Button).ColorDropper.InColorList">
+			<Setter Property="HorizontalAlignment" Value="Stretch" />
+			<Setter Property="Margin" Value="8" />
+		</Style>
+
+		<!-- Font Awesome's eye-dropper - by a class of its own: a style on the button's TextBlocks reached
+		     its tooltip too, which is a child of the button, and read as symbols (owner report, 2026-11-03). -->
+		<Style Selector="TextBlock.ColorDropperIcon">
+			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+			<Setter Property="FontSize" Value="14" />
+			<Setter Property="Padding" Value="0,1,0,0" />
+		</Style>
+
+		<Style Selector="Border.ColorDropperLens">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="4" />
+			<Setter Property="Padding" Value="8,6" />
+			<Setter Property="BoxShadow" Value="0 4 10 0 #40000000" />
+		</Style>
+
+		<Style Selector="Border.ColorDropperSwatch">
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="3" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
 		<Style Selector="Button.LearnMore">
 			<Setter Property="Background" Value="Transparent" />
 			<Setter Property="BorderThickness" Value="0" />

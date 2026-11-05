@@ -97,7 +97,10 @@ public sealed class BoardTableEditorSearchTests : IDisposable
     private static List<string> ShownSheetTabs(BoardTableEditor editor) =>
         editor.GetControl<TabControl>("SheetTabs").Items.OfType<TabItem>()
             .Where(tab => tab.IsVisible)
-            .Select(tab => ((BoardTableSheet)tab.Tag!).Name)
+            .Select(tab => tab.Tag)
+            .OfType<BoardTableSheetTab>()
+            .Select(tab => tab.Sheet.Name)
+            .Distinct()
             .ToList();
 
     private static int ColumnOf(BoardTableEditor editor, string column) =>
@@ -342,16 +345,17 @@ public sealed class BoardTableEditorSearchTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            (Window window, BoardTableEditor editor) = Shown(Board(), Board());
+            // A sheet shown whole: "Component images" is in two since 2026-11-05, whose rows never move by their grip.
+            (Window window, BoardTableEditor editor) = Shown(Board(), Board(), BoardWorkbookSchema.SheetComponents);
             DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
             Assert.Contains("RowsDraggable", grid.Classes);
 
-            Search(window, editor, "pinout");
+            Search(window, editor, "ram");
             Assert.DoesNotContain("RowsDraggable", grid.Classes);
 
-            editor.SelectCell(Row(editor, "CR13"), 0);
+            editor.SelectCell(Row(editor, "U8"), 0);
             editor.MoveRowDown();
-            Assert.Equal(["CR13", "CR17", "R307", "U8"], editor.CurrentSheet!.Rows.Select(Label));
+            Assert.Equal(["U8", "U9"], editor.CurrentSheet!.Rows.Select(Label));
 
             Search(window, editor, "");
             Assert.Contains("RowsDraggable", grid.Classes);

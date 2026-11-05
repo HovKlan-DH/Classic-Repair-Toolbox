@@ -112,7 +112,9 @@ namespace Tabs.TabSchematics
                         Kind = KiCadOverlayPrimitiveKind.Geometry,
                         BlinkPhase = KiCadBlinkPhase.OffPhase,
                         Geometry = primitive.Geometry,
-                        Fill = new SolidColorBrush(zoneFill.Color, ZoneFillFloor),
+                        // Never stronger than the zone is when the blink shows it (owner report,
+                        // 2026-11-03: a picture's traces at 5% blinked brighter in the hidden phase).
+                        Fill = new SolidColorBrush(zoneFill.Color, Math.Min(ZoneFillFloor, zoneFill.Opacity)),
                     });
                 }
             }

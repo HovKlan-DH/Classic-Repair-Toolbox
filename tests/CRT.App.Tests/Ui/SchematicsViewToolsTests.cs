@@ -15,7 +15,8 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // ###########################################################################################
 // The Schematics view's small tools (TabSchematics.ViewTools.cs - CRT 4.0 step 5, the plan's
 // "Smaller items"): a right OR middle drag pans, with a one-time tip saying so; traces are drawn
-// and changed only with "Draw trace" on; "Global settings" sit behind a gear button. Driven through
+// and changed only with "Draw trace" on; "Global settings" is a panel beside the other two (a gear
+// button's popover until 2026-11-05), shown while it has a row to show. Driven through
 // a shown Main, the mouse in its window - the trace tool is made by Main's Initialize. StartAsync
 // is never called (MainWindowTests' header).
 // ###########################################################################################
@@ -583,11 +584,12 @@ public sealed class SchematicsViewToolsTests : IDisposable
     }
 
     // ###########################################################################################
-    // The gear shows only while its popover has a setting to show: every row is a KiCad one, so a
-    // picture of a board without KiCad data has none - an empty popover is no setting.
+    // A RIGHT-CLICK ON A COMPONENT TURNS ITS HIGHLIGHT ON OR OFF, AND THAT IS ALL (owner request, 2026-11-05: "I
+    // want its old behaviour where it just highlights the component" - a menu from CRT 4.0 until then). A
+    // real press and release, as nothing else proves where it lands.
     // ###########################################################################################
     [Fact]
-    public void The_gear_is_hidden_while_no_setting_applies()
+    public void A_right_click_on_a_component_turns_its_highlight_on_and_off()
     {
         UiTest.Run(() =>
         {
@@ -595,8 +597,36 @@ public sealed class SchematicsViewToolsTests : IDisposable
 
             try
             {
-                Assert.All(tab.GlobalSettingsListPanel.Children, row => Assert.False(row.IsVisible));
-                Assert.False(tab.GlobalSettingsButton.IsVisible);
+                main.UseBoardForTests(
+                    new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" },
+                    new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", Category = "IC" }] });
+
+                // The whole picture is the component's rectangle, so any point on it is on the component.
+                tab.highlightRectsBySchematicAndLabel = new(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Picture"] = new(StringComparer.OrdinalIgnoreCase) { ["U8"] = [new Rect(0, 0, 1200, 900)] },
+                };
+
+                main.UpdateLayout();
+                Dispatcher.UIThread.RunJobs();
+
+                Point onComponent = At(main, tab, 250, 300);
+
+                void RightClick()
+                {
+                    main.MouseMove(onComponent);
+                    main.MouseDown(onComponent, MouseButton.Right);
+                    main.MouseUp(onComponent, MouseButton.Right);
+                    Dispatcher.UIThread.RunJobs();
+                }
+
+                Assert.False(tab.IsComponentSelectedForTests("U8"));
+
+                RightClick();
+                Assert.True(tab.IsComponentSelectedForTests("U8"));
+
+                RightClick();
+                Assert.False(tab.IsComponentSelectedForTests("U8"));
             }
             finally
             {
@@ -606,22 +636,70 @@ public sealed class SchematicsViewToolsTests : IDisposable
     }
 
     // ###########################################################################################
-    // "Global settings" are behind a gear button: its popover holds the rows the panel held (the
-    // plan: "Global settings become a gear button that opens a popover").
+    // "Global settings" shows only while it has a setting to show: every row is a KiCad one, so a
+    // picture of a board without KiCad data has none - a headline over nothing is no setting.
     // ###########################################################################################
     [Fact]
-    public void Global_settings_are_in_the_gear_buttons_popover()
+    public void Global_settings_are_hidden_while_no_setting_applies()
     {
         UiTest.Run(() =>
         {
-            var tab = new TabSchematics();
+            (CRT.Main main, TabSchematics tab) = ShowWithPicture();
 
-            Flyout popover = Assert.IsType<Flyout>(tab.GlobalSettingsButton.Flyout);
-            StackPanel content = Assert.IsType<StackPanel>(popover.Content);
+            try
+            {
+                Assert.All(tab.GlobalSettingsListPanel.Children, row => Assert.False(row.IsVisible));
+                Assert.False(tab.GlobalSettingsPanel.IsVisible);
+            }
+            finally
+            {
+                Close(main);
+            }
+        });
+    }
 
-            Assert.Contains(tab.GlobalSettingsListPanel, content.Children);
+    // ###########################################################################################
+    // "Global settings" IS A PANEL AS THE TWO BESIDE IT (owner request, 2026-11-05: "please use that name
+    // again instead of the gear icon, and make sure its size and behaviour is identical to the other two
+    // panels next to it"): the same frame and padding, its name and "Collapse", which hides its rows and
+    // says "Expand" - and which is remembered, here and for the next CRT.
+    // ###########################################################################################
+    [Fact]
+    public void Global_settings_are_a_panel_as_the_two_beside_it_and_remember_being_collapsed()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = new CRT.Main().TabSchematicsControl;
+
+            Border panel = tab.GlobalSettingsPanel;
+
+            Assert.Equal(tab.LabelsPanel.Padding, panel.Padding);
+            Assert.Equal(tab.LabelsPanel.BorderThickness, panel.BorderThickness);
+            Assert.Equal(tab.LabelsPanel.CornerRadius, panel.CornerRadius);
+            Assert.Equal(tab.LabelsPanel.VerticalAlignment, panel.VerticalAlignment);
+
             Assert.Contains(tab.GlobalHoverHighlightsTracesRow, tab.GlobalSettingsListPanel.Children);
-            Assert.Equal("Global settings", ToolTip.GetTip(tab.GlobalSettingsButton));
+            Assert.True(tab.GlobalSettingsListPanel.IsVisible);
+            Assert.Equal("Collapse", tab.ToggleGlobalSettingsPanelButton.Content);
+            Assert.Equal(tab.ToggleLabelsPanelButton.Padding, tab.ToggleGlobalSettingsPanelButton.Padding);
+            Assert.Equal(tab.ToggleLabelsPanelButton.FontSize, tab.ToggleGlobalSettingsPanelButton.FontSize);
+
+            tab.ToggleGlobalSettingsPanelButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.False(tab.GlobalSettingsListPanel.IsVisible);
+            Assert.Equal("Expand", tab.ToggleGlobalSettingsPanelButton.Content);
+            Assert.False(UserSettings.SchematicsGlobalSettingsPanelExpanded);
+
+            // The next CRT opens it as it was left.
+            TabSchematics next = new CRT.Main().TabSchematicsControl;
+
+            Assert.False(next.GlobalSettingsListPanel.IsVisible);
+            Assert.Equal("Expand", next.ToggleGlobalSettingsPanelButton.Content);
+
+            tab.ToggleGlobalSettingsPanelButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.True(tab.GlobalSettingsListPanel.IsVisible);
+            Assert.True(UserSettings.SchematicsGlobalSettingsPanelExpanded);
         });
     }
 }

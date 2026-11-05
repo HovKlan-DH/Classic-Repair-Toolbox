@@ -13,7 +13,7 @@ namespace CRT
 {
     // ###########################################################################################
     // THE "KiCad data" HALF OF THE PANEL: the board's KiCad files listed with their sizes, a project
-    // folder imported (picked, dropped here, or dropped on the Contribute tab), a file removed, the
+    // folder imported (picked or dropped here), a file removed, the
     // report of what the KiCad data lines up with, and the summary of what an import found, left out
     // and leaves to do (CRT 4.0 step 3, slice 3e - KiCadImportSummary). Moved out of
     // KiCadDataPanel.axaml.cs as it passed the size the project keeps a file under (code review,
@@ -293,8 +293,8 @@ namespace CRT
         // *** AN IMPORT ADDS THE KiCad BOARD'S COMPONENTS (owner request, 2026-11-01: "I instead do
         // think it should add all components when importing the KiCad data. Then you can delete this
         // option from 'Board status' ... Have checkbox if it should add all data automatically also?").
-        // *** While "Add the KiCad components to the board" is ticked - remembered, ticked until
-        // unticked - an import adds every component of the KiCad board the board does not have, by the
+        // *** While "Add the KiCad components automatically to the board" is ticked - remembered, ticked
+        // until unticked - an import adds every component of the KiCad board the board does not have, by the
         // Contribute tab's one rule (TabDrafts.AddFromKiCadToAsync: ONE step, pins and datasheet links,
         // saved at once), handed in as AddKiCadComponents. What came of it is said in the summary, and
         // the components still missing - imported unticked, or deleted since - are one button away
@@ -329,7 +329,7 @@ namespace CRT
         // What the last add said (BoardReadiness.AddedFromKiCad) - shown in the summary.
         private string? thisComponentsAddedNote;
 
-        internal string? ComponentsAddedNoteForTests => this.KiCadComponentsAddedText.IsVisible ? this.KiCadComponentsAddedText.Text : null;
+        internal string? ComponentsAddedNoteForTests => this.KiCadComponentsAddedText.IsVisible ? Handlers.Theming.BoldRuns.TextOf(this.KiCadComponentsAddedText) : null;
 
         private void OnAddComponentsCheckedChanged(object? sender, RoutedEventArgs e)
         {
@@ -737,10 +737,10 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // THE SUMMARY (CRT 4.0 step 3, slice 3e - KiCadImportSummary): what the KiCad data holds, what
-        // the import made in this panel left out - and why, for a project from an older KiCad - and
-        // what is left to do, by BoardReadiness' rules on the draft held in memory - none said for a
-        // draft that cannot be opened. The counts are worked out off the UI thread.
+        // THE SUMMARY (CRT 4.0 step 3, slice 3e - KiCadImportSummary): what the KiCad data holds, and what
+        // the import made in this panel left out - and why, for a project from an older KiCad. What is
+        // left to do on the board is "Board status"'s to say (owner request, 2026-11-03). The counts are
+        // worked out off the UI thread.
         // ###########################################################################################
         private async Task ShowSummaryAsync(KiCadProjectRoot root)
         {
@@ -749,21 +749,22 @@ namespace CRT
 
             string draftFolder = this.thisDraftFolder;
 
-            (string found, List<string> toDo, bool known, string files, int notOnBoard) = await Task.Run(() =>
+            (string found, string files, int notOnBoard) = await Task.Run(() =>
             {
                 string foundLine = KiCadImportSummary.Found(root);
                 DraftSession? session = DraftManager.Sessions.Find(draftsRoot, identity) ?? DraftManager.Sessions.Get(draftsRoot, identity);
                 BoardContent? content = session?.Content;
 
-                KiCadWorkLeft? left = content is null ? null : BoardReadiness.WorkLeftAfterKiCad(content, BoardKiCadFacts.Of(root));
+                // The KiCad components the board still lacks - the summary's button adds them, by the
+                // very rule it counts them with.
+                int missing = content is null ? 0 : KiCadBoardComponents.NotOn(content.Board, KiCadComponentTable.Of(root)).Count;
 
                 // The names the left column counts: the draft's list, and a file copied in and not
                 // listed yet (TabDrafts.KiCadFileNamesOf's rule).
                 IEnumerable<string> names = (session?.ListedFiles.Keys ?? Enumerable.Empty<string>())
                     .Concat(string.IsNullOrWhiteSpace(draftFolder) ? [] : DraftFiles.ArrivedKiCadNames(draftFolder));
 
-                // NotOnBoard: the KiCad components the board still lacks - the summary's button adds them.
-                return (foundLine, left is null ? [] : KiCadImportSummary.LeftToDo(left), left is not null, KiCadImportSummary.Files(names), left?.NotOnBoard ?? 0);
+                return (foundLine, KiCadImportSummary.Files(names), missing);
             });
 
             if (this.thisClosed)
@@ -771,7 +772,7 @@ namespace CRT
                 return;
             }
 
-            this.KiCadFilesText.Text = files;
+            Handlers.Theming.BoldRuns.ShowMarked(this.KiCadFilesText, files);
             this.KiCadFilesText.IsVisible = files.Length > 0;
             this.KiCadFoundText.Text = found;
 
@@ -789,13 +790,8 @@ namespace CRT
             this.KiCadOlderText.Text = cannotRead;
             this.KiCadOlderText.IsVisible = cannotRead.Length > 0;
 
-            this.KiCadLeftToDoPanel.IsVisible = known;
-            this.KiCadLeftToDoText.Text = toDo.Count == 0
-                ? KiCadImportSummary.NothingLeftToDo
-                : string.Join("\n", toDo.Select(line => "- " + line));
-
             // What the import's "Add the KiCad components" did, and the rest one button away (2026-11-01).
-            this.KiCadComponentsAddedText.Text = this.thisComponentsAddedNote;
+            Handlers.Theming.BoldRuns.ShowMarked(this.KiCadComponentsAddedText, this.thisComponentsAddedNote);
             this.KiCadComponentsAddedText.IsVisible = !string.IsNullOrWhiteSpace(this.thisComponentsAddedNote);
             this.AddKiCadComponentsButton.Content = KiCadImportSummary.AddComponentsButton(notOnBoard);
             this.AddKiCadComponentsButton.IsVisible = notOnBoard > 0 && this.AddKiCadComponents is not null;

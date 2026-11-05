@@ -1491,6 +1491,21 @@ public sealed class SubmissionReceiptPresenterTests
         Assert.Equal(never, SubmissionReceiptPresenter.NeverReachedReview(receipt));
     }
 
+    // What "Board: Name" and "Review changes" both ask of a new board's receipts: one rule, so they cannot
+    // disagree about whether it was sent (code review, 2026-11-04).
+    [Theory]
+    [InlineData("pending", true)]
+    [InlineData("merged", true)]
+    [InlineData("published", true)]
+    [InlineData("rejected", false)]
+    [InlineData("withdrawn", false)]
+    [InlineData("abandoned", false)]
+    [InlineData("uploading", false)]
+    public void What_was_sent_still_stands_until_it_is_decided_against_or_never_reached_anybody(string state, bool stands)
+    {
+        Assert.Equal(stands, SubmissionReceiptPresenter.StillStands(new SubmissionReceipt { SubmissionId = 1, LastKnownState = state }));
+    }
+
     // ###########################################################################################
     // *** WHY THE SERVER REFUSED IT, AS "MY SUBMISSIONS" SHOWS IT (code review, 2026-11-02). *** Its errors,
     // each naming its subject - and only for a refusal. A warning stopped nothing, so it is no reason: under

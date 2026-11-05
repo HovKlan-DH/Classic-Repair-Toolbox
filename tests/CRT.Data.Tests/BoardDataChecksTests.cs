@@ -1006,8 +1006,8 @@ public sealed class BoardDataChecksTests
             ],
             replacements:
             [
-                new ComponentReplacementEntry { BoardLabel = "U99", PartNumber = "6526A", Kind = "Drop-in" },
-                new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "", Kind = "Drop-in" },
+                new ComponentReplacementEntry { BoardLabel = "U99", PartNumber = "6526A", Kind = "Drop-in replacement" },
+                new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "", Kind = "Drop-in replacement" },
                 new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "8521", Kind = "Better" },
             ]);
 
@@ -1107,4 +1107,48 @@ public sealed class BoardDataChecksTests
             BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Everything),
             problem => problem.Message.Contains("Name and Region", StringComparison.Ordinal));
     }
+
+    // ###########################################################################################
+    // ONE PHYSICAL COMPONENT, ONE WARNING (owner decision, 2026-11-04: "it should only be reported once as it
+    // is ONE physical component only"). A component different per region is a row per region, and a mark
+    // belongs to its label, so marking it once clears both: told once, on its first row. Capitals aside, as
+    // the marks are looked up.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_with_a_row_per_region_is_told_once_that_it_is_marked_nowhere()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U19", Region = "PAL", Category = "IC" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor" },
+                new ComponentEntry { BoardLabel = "u19", Region = "NTSC", Category = "IC" },
+            ],
+        };
+
+        List<BoardDataProblem> unmarked = BoardDataChecks
+            .Check(BoardCheckRows.From(board), files: null, BoardCheckScope.Everything)
+            .Where(problem => problem.Code == "component.no_highlight")
+            .ToList();
+
+        Assert.Equal(["U19", "C1"], unmarked.Select(problem => problem.Subject));
+        Assert.Equal([0, 1], unmarked.Select(problem => problem.Index));
+    }
+
+    // A field is named as it reads on the screen, in quotes (owner request, 2026-11-04): "Name or handle" is
+    // one field, and 'has no Name or handle' read as two things it could have.
+    [Fact]
+    public void A_field_a_row_needs_is_named_in_quotes()
+    {
+        BoardDataProblem problem = Assert.Single(
+            BoardDataChecks.Check(
+                BoardCheckRows.From(new BoardData { Credits = [new CreditEntry { Category = "Schematic image", SubCategory = "Top" }] }),
+                files: null,
+                BoardCheckScope.Everything),
+            found => found.Code == "row.required_empty");
+
+        Assert.StartsWith("This credit has no \"Name or handle\".", problem.Message, StringComparison.Ordinal);
+    }
+
 }

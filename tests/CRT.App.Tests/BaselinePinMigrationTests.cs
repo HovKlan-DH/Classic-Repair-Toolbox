@@ -42,6 +42,66 @@ public sealed class BaselinePinMigrationTests
             Baseline("U1", "NTSC", pin.ToString(), $"P{pin}"),
         });
 
+    // ###########################################################################################
+    // THE WHOLE BOARD TAKES ITS KiCad DATA TOO (owner request, 2026-11-03: "it only fills in details on
+    // ICs. I do think it should fill in details for all components having KiCad data, and ideally guess
+    // their 'package'"): a resistor with no baseline gets its pins and its package, what is typed stays, a
+    // component the board does not have is left out, and a second run has nothing to do.
+    // ###########################################################################################
+    private static KiCadPinoutSource KiCadWith(params (string Label, string Package)[] components) => new(
+        components.Select(component => new KiCadBoardComponent(component.Label, string.Empty, "Misc", component.Package, string.Empty)).ToList(),
+        _ => [new KiCadPin("1", "A", "Passive", "NET1"), new KiCadPin("2", "B", "Passive", "NET2")]);
+
+    [Fact]
+    public void The_whole_board_fills_in_every_component_the_KiCad_data_has_and_guesses_its_package()
+    {
+        BoardData board = new()
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "R1", Category = "Resistor" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor", Package = "Radial" },
+            ],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "C1", Pin = "1", Name = "Typed" }],
+        };
+
+        BoardData made = BaselinePinMigration.ApplyToBoard(board, out int components, KiCadWith(("R1", "Axial"), ("C1", "Disc"), ("X9", "HC-49")));
+
+        Assert.Equal(2, components);
+
+        Assert.Equal("Axial", made.Components.Single(row => row.BoardLabel == "R1").Package);
+        Assert.Equal(["1|A", "2|B"], made.ComponentPins.Where(pin => pin.BoardLabel == "R1").Select(pin => $"{pin.Pin}|{pin.Name}"));
+
+        // What it had stays - the case chosen and the name typed - and what it lacked is added.
+        Assert.Equal("Radial", made.Components.Single(row => row.BoardLabel == "C1").Package);
+        Assert.Equal(["1|Typed", "2|B"], made.ComponentPins.Where(pin => pin.BoardLabel == "C1").Select(pin => $"{pin.Pin}|{pin.Name}"));
+
+        Assert.DoesNotContain(made.Components, row => row.BoardLabel == "X9");
+
+        Assert.Same(made, BaselinePinMigration.ApplyToBoard(made, out int again, KiCadWith(("R1", "Axial"), ("C1", "Disc"), ("X9", "HC-49"))));
+        Assert.Equal(0, again);
+    }
+
+    // A component whose pins are told apart per region gets the KiCad pins in each of its regions.
+    [Fact]
+    public void Pins_told_apart_per_region_are_filled_in_each_region()
+    {
+        BoardData board = new()
+        {
+            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
+            ComponentPins =
+            [
+                new ComponentPinEntry { BoardLabel = "U1", Region = "PAL", Pin = "1", Name = "P" },
+                new ComponentPinEntry { BoardLabel = "U1", Region = "NTSC", Pin = "1", Name = "N" },
+            ],
+        };
+
+        BoardData made = BaselinePinMigration.ApplyToBoard(board, out _, KiCadWith(("U1", string.Empty)));
+
+        Assert.Equal(["PAL|1|P", "PAL|2|B"], made.ComponentPins.Where(pin => pin.Region == "PAL").Select(pin => $"{pin.Region}|{pin.Pin}|{pin.Name}"));
+        Assert.Equal(["NTSC|1|N", "NTSC|2|B"], made.ComponentPins.Where(pin => pin.Region == "NTSC").Select(pin => $"{pin.Region}|{pin.Pin}|{pin.Name}"));
+    }
+
     // 323 of the 329 components with baselines of both regions, on the 14 boards.
     [Fact]
     public void The_same_pins_in_every_region_are_one_set_for_every_region()

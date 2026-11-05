@@ -495,10 +495,10 @@ public class ComponentInfoWindowTests : IDisposable
             SetComponent(
                 window,
                 new[] { Component() },
-                replacements: [new ComponentReplacementEntry { BoardLabel = BoardLabel, PartNumber = "PLAnkton", Kind = "Drop-in" }]);
+                replacements: [new ComponentReplacementEntry { BoardLabel = BoardLabel, PartNumber = "PLAnkton", Kind = "Drop-in replacement" }]);
 
             Assert.True(ControlOf<Control>(window, "ReplacementsSection").IsVisible);
-            Assert.Equal("PLAnkton - Drop-in", Assert.Single(ItemsOf<ComponentPopupReplacement>(window, "InfoReplacementsItemsControl")).Title);
+            Assert.Equal("PLAnkton - Drop-in replacement", Assert.Single(ItemsOf<ComponentPopupReplacement>(window, "InfoReplacementsItemsControl")).Title);
         });
     }
 

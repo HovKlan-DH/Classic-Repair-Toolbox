@@ -430,18 +430,33 @@ namespace Handlers.MaintainerHandling
             "Every file this board uses in the stable source - what everybody using CRT gets: its own folder, and the shared files its board cites.";
 
         // ###########################################################################################
-        // Above the views, for a board not in CRT's drop-down lists: the list's own mark - and, while
-        // it still NEEDS a place, where that is given: the Maintainer view. A view chosen for another
-        // board stays chosen, so the placement could otherwise go unseen. Null for every other board.
+        // Above the views, for a board placed but not listed yet: the list's own mark. Null for every
+        // other board - one still NEEDING a place says so in a panel of its own, PlacementNotice.
         // ###########################################################################################
-        public static string? PlacementLine(BoardListingAnswer? listing, string? boardId)
+        public static string? PlacedLine(BoardListingAnswer? listing, string? boardId) =>
+            BoardPlacementDisplay.UnlistedEntry(listing, boardId) is { Placement: not null }
+                ? BoardPlacementDisplay.ListMark(listing, boardId)
+                : null;
+
+        // ###########################################################################################
+        // *** A BOARD NEEDING A PLACE SAYS SO IN THE AMBER PANEL, WITH THE WAY THERE (owner report, 2026-11-05:
+        // "I can see the board and the badge with 'Needs a place in the drop-down lists', but where can I set
+        // this?"). *** A line above the views said "give it one under Maintainer", and that is a view named for
+        // something else; a view chosen for another board stays chosen, so the placement went unseen. Said by
+        // whoever may not place it too, with why. Null for every other board.
+        // ###########################################################################################
+        public static string? PlacementNotice(BoardListingAnswer? listing, string? boardId)
         {
-            if (BoardPlacementDisplay.ListMark(listing, boardId) is not string mark)
+            if (BoardPlacementDisplay.UnlistedEntry(listing, boardId) is not { Placement: null } entry)
                 return null;
 
-            return BoardPlacementDisplay.UnlistedEntry(listing, boardId)?.Placement is null
-                ? $"{mark} - give it one under Maintainer"
-                : mark;
+            string explanation = BoardPlacementDisplay.Explanation(entry);
+
+            return entry.CanPlace ? explanation : $"{explanation} {BoardPlacementDisplay.CannotPlaceMessage}";
         }
+
+        // Whether this account can be taken to where the place is saved.
+        public static bool OffersPlacement(BoardListingAnswer? listing, string? boardId) =>
+            BoardPlacementDisplay.UnlistedEntry(listing, boardId) is { Placement: null, CanPlace: true };
     }
 }

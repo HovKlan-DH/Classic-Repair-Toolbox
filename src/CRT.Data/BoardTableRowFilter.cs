@@ -52,8 +52,9 @@ namespace Handlers.DataHandling
         // The name a remembered choice used for what is Warnings now.
         private const string FlaggedName = "Flagged";
 
-        // The kinds one row is - several at once: a changed row can carry an error too.
-        public static BoardTableRowKinds KindsOf(BoardTableRow row)
+        // The kinds one row is - several at once: a changed row can carry an error too. On a part of a sheet
+        // in two, only a problem in a column it shows counts (BoardTableSheetParts.CellsShown).
+        public static BoardTableRowKinds KindsOf(BoardTableRow row, BoardTableSheetPart part = BoardTableSheetPart.Whole)
         {
             ArgumentNullException.ThrowIfNull(row);
 
@@ -65,42 +66,58 @@ namespace Handlers.DataHandling
                 _ => BoardTableRowKinds.None
             };
 
-            if (row.HasErrors)
-                kinds |= BoardTableRowKinds.Errors;
-
-            if (row.HasWarnings)
-                kinds |= BoardTableRowKinds.Warnings;
+            foreach (BoardTableCell cell in BoardTableSheetParts.CellsShown(part, row))
+            {
+                foreach (BoardDataProblem problem in cell.Problems)
+                {
+                    kinds |= problem.Level switch
+                    {
+                        BoardProblemLevel.Error => BoardTableRowKinds.Errors,
+                        BoardProblemLevel.Warning => BoardTableRowKinds.Warnings,
+                        _ => BoardTableRowKinds.None,
+                    };
+                }
+            }
 
             return kinds;
         }
 
         // Whether `kinds` shows `row` - every row when nothing is picked, and always a new one still
         // being filled in.
-        public static bool Shows(BoardTableRowKinds kinds, BoardTableRow row)
+        public static bool Shows(BoardTableRowKinds kinds, BoardTableRow row, BoardTableSheetPart part = BoardTableSheetPart.Whole)
         {
             ArgumentNullException.ThrowIfNull(row);
 
             if (kinds == BoardTableRowKinds.None || row.State is BoardTableRowState.Blank)
                 return true;
 
-            return (BoardTableRowFilter.KindsOf(row) & kinds) != BoardTableRowKinds.None;
+            return (BoardTableRowFilter.KindsOf(row, part) & kinds) != BoardTableRowKinds.None;
         }
 
         // Whether the table shows `row`: the row the cursor is on (see the header), or one both the
-        // picked pills and the search show.
-        public static bool Shows(BoardTableRowKinds kinds, BoardTableSearch search, BoardTableRow? rowInHand, BoardTableRow row)
+        // picked pills and the search show - on `part`, by the columns it shows.
+        public static bool Shows(BoardTableRowKinds kinds, BoardTableSearch search, BoardTableRow? rowInHand, BoardTableRow row, BoardTableSheetPart part = BoardTableSheetPart.Whole)
         {
             ArgumentNullException.ThrowIfNull(search);
 
-            return ReferenceEquals(row, rowInHand) || (BoardTableRowFilter.Shows(kinds, row) && search.Shows(row));
+            return ReferenceEquals(row, rowInHand) || (BoardTableRowFilter.Shows(kinds, row, part) && search.Shows(row, part));
         }
 
-        // The rows of a sheet the table shows, in the sheet's order.
-        public static List<BoardTableRow> RowsShown(IEnumerable<BoardTableRow> rows, BoardTableRowKinds kinds, BoardTableSearch search, BoardTableRow? rowInHand)
+        // The rows of a sheet the table shows, in the sheet's order - of `part`, on a sheet shown in two
+        // (BoardTableSheetParts). The row in hand stays whichever part it now belongs to.
+        public static List<BoardTableRow> RowsShown(
+            IEnumerable<BoardTableRow> rows,
+            BoardTableRowKinds kinds,
+            BoardTableSearch search,
+            BoardTableRow? rowInHand,
+            BoardTableSheetPart part = BoardTableSheetPart.Whole)
         {
             ArgumentNullException.ThrowIfNull(rows);
 
-            return rows.Where(row => BoardTableRowFilter.Shows(kinds, search, rowInHand, row)).ToList();
+            return rows
+                .Where(row => ReferenceEquals(row, rowInHand) || BoardTableSheetParts.Shows(part, row))
+                .Where(row => BoardTableRowFilter.Shows(kinds, search, rowInHand, row, part))
+                .ToList();
         }
 
         // ###########################################################################################
@@ -110,16 +127,16 @@ namespace Handlers.DataHandling
         //
         // Where the cursor starts when the table is given the focus under the pill (code review,
         // 2026-11-02): Submit on a draft with errors opens it so, and what is typed then goes where
-        // something is wrong anyway.
+        // something is wrong anyway. Only a column `part` shows: the grid has no other to put it on.
         // ###########################################################################################
-        public static BoardTableCell? FirstProblemCell(BoardTableRowKinds kinds, BoardTableRow row)
+        public static BoardTableCell? FirstProblemCell(BoardTableRowKinds kinds, BoardTableRow row, BoardTableSheetPart part = BoardTableSheetPart.Whole)
         {
             ArgumentNullException.ThrowIfNull(row);
 
             bool errors = kinds.HasFlag(BoardTableRowKinds.Errors);
             bool warnings = kinds.HasFlag(BoardTableRowKinds.Warnings);
 
-            return row.Cells.FirstOrDefault(cell => cell.Problems.Any(problem =>
+            return BoardTableSheetParts.CellsShown(part, row).FirstOrDefault(cell => cell.Problems.Any(problem =>
                 (errors && problem.Level == BoardProblemLevel.Error) ||
                 (warnings && problem.Level == BoardProblemLevel.Warning)));
         }

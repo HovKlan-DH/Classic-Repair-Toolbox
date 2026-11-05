@@ -280,6 +280,63 @@ namespace CRT
             }
         }
 
+        // ###########################################################################################
+        // A SUBMISSION'S NEW BOARD WITH NO PLACE YET (owner report, 2026-11-05: "where can I set this?"): the
+        // queue's panel offers the way there - the Boards screen, this board chosen as a click would, its
+        // Maintainer view. Switching screen hides, so the submission is where it was on coming back.
+        // ###########################################################################################
+        private void OfferPlacement(string? boardId)
+        {
+            if (this.FindControl<Button>("GoToPlacementButton") is Button button)
+            {
+                button.Content = BoardPlacementDisplay.Heading;
+                button.IsVisible = BoardSections.OffersPlacement(this.thisListing, boardId);
+            }
+        }
+
+        private async void OnGoToPlacementClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.GoToPlacementAsync, this.ShowHandlerFailure);
+
+        internal async Task GoToPlacementAsync()
+        {
+            string? boardId = this.thisShownDetail?.Submission.BoardId;
+
+            if (boardId is null)
+                return;
+
+            await this.ShowModeAsync(MaintainerMode.Boards);
+
+            ListBoxItem? wanted = this.thisBoardItems.FirstOrDefault(item => item.Tag is BoardOverviewEntry board &&
+                string.Equals(board.BoardId, boardId, StringComparison.OrdinalIgnoreCase));
+
+            // Not on the list - its read failed, and says so there, or the board has gone: no OTHER board's view is
+            // opened in its name, where its place would be looked for and not found (code review, 2026-11-05).
+            if (wanted is null || this.FindControl<ListBox>("BoardsList") is not ListBox list)
+                return;
+
+            // Chosen as a click would, and waited for: a table holding a change not sent asks first, and "Cancel" stays
+            // on the board it holds, in the view it was on (code review, 2026-11-05: the Maintainer view opened all the
+            // same, of the very board the maintainer had just chosen to stay in the table of).
+            if (!ReferenceEquals(list.SelectedItem, wanted))
+            {
+                this.thisSuppressBoardsSelection = true;
+
+                try
+                {
+                    list.SelectedItem = wanted;
+                }
+                finally
+                {
+                    this.thisSuppressBoardsSelection = false;
+                }
+
+                await this.BoardsSelectionChangedAsync();
+            }
+
+            if (string.Equals(this.BoardDetail.ShownBoard?.BoardId, boardId, StringComparison.OrdinalIgnoreCase))
+                await this.BoardDetail.ShowSectionAsync(BoardSection.Maintainer);
+        }
+
         private BoardOverviewEntry? SelectedBoard =>
             (this.FindControl<ListBox>("BoardsList")?.SelectedItem as ListBoxItem)?.Tag as BoardOverviewEntry;
 

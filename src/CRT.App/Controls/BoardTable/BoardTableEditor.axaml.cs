@@ -69,7 +69,9 @@ namespace CRT
     // changes handed over, saving by itself, undo and redo, the file changed outside it) and
     // BoardTableEditor.FilePreview.cs (the hover card on a file cell - its content is
     // BoardTableFilePreview, its bytes the host's IBoardTableFileSource),
-    // BoardTableEditor.ColourChange.cs (the same card on a changed color cell).
+    // BoardTableEditor.ColourChange.cs (the same card on a changed color cell),
+    // BoardTableEditor.SheetParts.cs (the Contribute tab's left column picking what the table shows,
+    // "Component images" in two).
     // ###########################################################################################
     public partial class BoardTableEditor : UserControl
     {
@@ -205,18 +207,29 @@ namespace CRT
         // Open again with the saved state, or ShowMessage to say why not. A draft's save state and
         // its notices do not apply and stay hidden.
         // ###########################################################################################
-        public void Open(BoardTableDocument document, string? message = null, string? preferredSheet = null)
+        public void Open(
+            BoardTableDocument document,
+            string? message = null,
+            string? preferredSheet = null,
+            BoardTableSheetPart preferredPart = BoardTableSheetPart.Whole)
         {
             ArgumentNullException.ThrowIfNull(document);
 
             // The sheet already on screen when the host re-opens after a save; otherwise the one the
             // host asks for - the Maintainer tab's last-visited sheet, so moving through the
-            // queue stays on it (owner request, 2026-09-26) - and failing that the FIRST SHEET WITH A
-            // CHANGE: a maintainer opening a submission wants what changed, not "Board schematics"
+            // queue stays on it (owner request, 2026-09-26) - and failing that the FIRST TAB WITH A
+            // CHANGE: a maintainer opening a submission wants what changed, not "Schematic images"
             // every time. A sheet whose tab "Show changes only" hides gives way - see Attach.
+            BoardTableTab? firstChanged = BoardTableTabs.FirstChanged(document);
+
             string? keepSheet = this.thisCurrentSheet?.Name
                 ?? preferredSheet
-                ?? document.Sheets.FirstOrDefault(sheet => sheet.ChangeCount > 0)?.Name;
+                ?? firstChanged?.Sheet;
+
+            if (this.thisCurrentSheet is null)
+            {
+                this.thisPart = preferredSheet is not null ? preferredPart : firstChanged?.Part ?? BoardTableSheetPart.Whole;
+            }
 
             this.thisExcelDataFile = string.Empty;
             this.thisPublished = null;
@@ -299,6 +312,7 @@ namespace CRT
             this.thisShownRows = null;
             this.thisView = null;
             this.thisRowInHand = null;
+            this.ForgetSheetShown();
 
             this.TableGrid.ItemsSource = Array.Empty<BoardTableRow>();
             this.TableGrid.Columns.Clear();
@@ -330,32 +344,22 @@ namespace CRT
             this.thisCurrentSheet = sheet;
             sheet.Rows.CollectionChanged += this.OnSheetRowsChanged;
             sheet.RowsChangedTogether += this.OnSheetRowsChangedTogether;
+            this.ChoosePartOf(sheet);
             this.RebuildColumns();
 
             // The rows shown, before the grid has them - and the grid told the view's filter is ours
             // once it has the view (ApplyViewFilter).
             this.thisRowInHand = null;
-            this.thisShownRows = new ShownRowList(BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null));
+            this.thisShownRows = new ShownRowList(BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null, this.thisPart));
             this.thisView = new DataGridCollectionView(this.thisShownRows);
             this.TableGrid.ItemsSource = this.thisView;
             this.ApplyViewFilter();
 
+            this.UpdateRowsDraggable();
             this.UpdateSheetTabs();
             this.UpdateToolbar();
             this.UpdateSearchMarks();
-        }
-
-        // The sheet of that name shown - for a host that opens the table on one of the board's parts
-        // (the Contribute tab's left column). False when the table holds no such sheet.
-        internal bool SelectSheetNamed(string sheetName)
-        {
-            if (this.thisDocument?.FindSheet(sheetName) is not BoardTableSheet sheet)
-            {
-                return false;
-            }
-
-            this.SelectSheet(sheet);
-            return true;
+            this.NoteSheetShown();
         }
 
         // The cell the grid's cursor is on, or null (no cell, or the marker column).
@@ -453,8 +457,11 @@ namespace CRT
 
             List<BoardTableRow> shown = this.ShownRows();
             int rowIndex = shown.IndexOf(row);
-            int column = this.CurrentCell?.ColumnIndex ?? -1;
-            int lastColumn = this.thisCurrentSheet.Columns.Count - 1;
+
+            // Along the columns shown - positions among them, as a part of a sheet leaves some out.
+            List<int> columns = this.ColumnsShownNow();
+            int column = this.CurrentCell is { } cell ? columns.IndexOf(cell.ColumnIndex) : -1;
+            int lastColumn = columns.Count - 1;
 
             if (forward)
             {
@@ -485,9 +492,9 @@ namespace CRT
                 }
             }
 
-            if (rowIndex >= 0)
+            if (rowIndex >= 0 && column >= 0)
             {
-                this.SelectCell(shown[rowIndex], column);
+                this.SelectCell(shown[rowIndex], columns[column]);
             }
 
             this.TableGrid.Focus();
@@ -715,8 +722,11 @@ namespace CRT
 
             if (result.Row is not null)
             {
-                int target = result.Column >= 0 ? result.Column : column;
-                this.SelectCell(result.Row, Math.Clamp(target, 0, result.Sheet.Columns.Count - 1));
+                // On a sheet in two, the part holding the row and a column it shows - or the cursor went
+                // nowhere, the change taken back out of sight (code review, 2026-11-05).
+                BoardTableRow row = this.RowToGoToAfterStep(result.Sheet, result.Row, before: null);
+
+                this.SelectCell(row, this.ColumnShownNear(result.Sheet, result.Column >= 0 ? result.Column : column));
             }
 
             this.UpdateToolbar();
@@ -838,6 +848,13 @@ namespace CRT
 
         private void OnCellEdited(object? sender, BoardTableCell cell)
         {
+            // The row the cursor is on, worked on among the baselines, stays where its pin can be typed
+            // (BoardTableSheetParts) - not every row a "Replace" on every sheet happens to reach.
+            if (this.thisPart == BoardTableSheetPart.Baselines && ReferenceEquals(cell.Row, this.CurrentRow))
+            {
+                cell.Row.StaysWithBaselines = true;
+            }
+
             if (this.thisRefreshPosted)
             {
                 return;
@@ -886,8 +903,8 @@ namespace CRT
 
             // A row whose last change was just reverted - or whose last error was just fixed - drops
             // out of the filter, and a newly changed one joins it: the view only re-reads states
-            // when asked.
-            if (this.thisFilter != BoardTableRowKinds.None)
+            // when asked. So too a row whose pin came or went, in a part of a sheet in two.
+            if (this.thisFilter != BoardTableRowKinds.None || this.thisPart != BoardTableSheetPart.Whole)
             {
                 this.ShowRows();
             }
@@ -900,14 +917,16 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // One tab per sheet, labelled with its change count when it has any: "Components (3)". The
-        // tabs carry no content of their own - see the markup's comment on SheetTabs.
+        // One tab per BoardTableTabs entry, labelled with its change count when it has any: "Basics (3)",
+        // each group under its heading - an item that cannot be picked, as the Maintainer tab's queue has its
+        // board headings. The tabs carry no content of their own - see the markup's comment on SheetTabs.
         // ###########################################################################################
         private void BuildSheetTabs()
         {
             this.ClearSheetTabs();
 
-            if (this.thisDocument is null)
+            // The host's own column picks the sheets: no strip behind it to keep up to date (UpdateSheetTabs).
+            if (this.thisDocument is null || this.SheetsPickedElsewhere)
             {
                 return;
             }
@@ -916,9 +935,27 @@ namespace CRT
 
             try
             {
-                foreach (BoardTableSheet sheet in this.thisDocument.Sheets)
+                string? group = null;
+
+                foreach (BoardTableTab tab in BoardTableTabs.All)
                 {
-                    this.SheetTabs.Items.Add(new TabItem { Tag = sheet });
+                    if (this.thisDocument.FindSheet(tab.Sheet) is not BoardTableSheet sheet)
+                    {
+                        continue;
+                    }
+
+                    if (!string.Equals(group, tab.Group, StringComparison.Ordinal))
+                    {
+                        var heading = new TabItem { Header = tab.Group, IsEnabled = false, Focusable = false };
+
+                        heading.Classes.Add("SheetGroup");
+                        heading.Classes.Set("First", group is null);
+                        this.SheetTabs.Items.Add(heading);
+
+                        group = tab.Group;
+                    }
+
+                    this.SheetTabs.Items.Add(new TabItem { Tag = new BoardTableSheetTab(tab, sheet) });
                 }
             }
             finally
@@ -945,17 +982,29 @@ namespace CRT
 
         private void UpdateSheetTabs()
         {
+            // No strip showing: the host asks WhatShows itself, once - done here as well, the draft was gone over
+            // twice per change, once for tabs nobody sees (code review, 2026-11-05).
+            if (this.SheetsPickedElsewhere)
+            {
+                this.SheetsShownChanged?.Invoke(this, EventArgs.Empty);
+                return;
+            }
+
             this.thisSyncingSheetTabs = true;
 
             try
             {
-                IReadOnlyList<BoardTableSheet> shown =
-                    this.thisDocument?.SheetsShown(this.thisFilter, this.thisSearch, this.thisCurrentSheet) ?? [];
+                Func<string, BoardTableSheetPart, bool> shows = this.WhatShows();
+
+                // A heading stands while a tab under it does - it comes before them, so it is told after.
+                TabItem? heading = null;
 
                 foreach (TabItem tab in this.SheetTabs.Items.OfType<TabItem>())
                 {
-                    if (tab.Tag is not BoardTableSheet sheet)
+                    if (tab.Tag is not BoardTableSheetTab shown)
                     {
+                        heading = tab;
+                        heading.IsVisible = false;
                         continue;
                     }
 
@@ -964,10 +1013,17 @@ namespace CRT
                     // when you click those badges"). *** A picked pill hides every tab with none
                     // of its rows, so the tabs left ARE the answer. The flagged, error and warning
                     // pills the tabs carried from 2026-09-26 and 2026-10-02 are gone.
-                    tab.Header = BoardTableEditor.SheetTabText(sheet);
-                    tab.IsVisible = shown.Contains(sheet);
+                    tab.Header = BoardTableEditor.SheetTabText(shown);
+                    tab.IsVisible = shows(shown.Sheet.Name, shown.Tab.Part);
 
-                    if (ReferenceEquals(sheet, this.thisCurrentSheet) && !ReferenceEquals(this.SheetTabs.SelectedItem, tab))
+                    if (tab.IsVisible && heading is not null)
+                    {
+                        heading.IsVisible = true;
+                    }
+
+                    if (ReferenceEquals(shown.Sheet, this.thisCurrentSheet) &&
+                        shown.Tab.Part == this.thisPart &&
+                        !ReferenceEquals(this.SheetTabs.SelectedItem, tab))
                     {
                         this.SheetTabs.SelectedItem = tab;
                     }
@@ -977,6 +1033,8 @@ namespace CRT
             {
                 this.thisSyncingSheetTabs = false;
             }
+
+            this.SheetsShownChanged?.Invoke(this, EventArgs.Empty);
         }
 
         // ###########################################################################################
@@ -995,15 +1053,12 @@ namespace CRT
 
             e.Handled = true;
 
-            if (this.thisSyncingSheetTabs || this.SheetTabs.SelectedItem is not TabItem { Tag: BoardTableSheet sheet })
+            if (this.thisSyncingSheetTabs || this.SheetTabs.SelectedItem is not TabItem { Tag: BoardTableSheetTab picked })
             {
                 return;
             }
 
-            if (!ReferenceEquals(sheet, this.thisCurrentSheet))
-            {
-                this.SelectSheet(sheet);
-            }
+            this.ShowSheetPart(picked.Sheet.Name, picked.Tab.Part);
 
             Dispatcher.UIThread.Post(this.FocusGrid, DispatcherPriority.Background);
         }
@@ -1032,17 +1087,21 @@ namespace CRT
 
                 if (first is not null)
                 {
-                    this.SelectCell(first, BoardTableRowFilter.FirstProblemCell(this.thisFilter, first)?.ColumnIndex ?? 0);
+                    this.SelectCell(first, BoardTableRowFilter.FirstProblemCell(this.thisFilter, first, this.thisPart)?.ColumnIndex ?? 0);
                 }
             }
 
             this.TableGrid.Focus();
         }
 
-        internal static string SheetTabText(BoardTableSheet sheet) =>
-            sheet.ChangeCount > 0
-                ? $"{sheet.Name} ({sheet.ChangeCount.ToString(CultureInfo.InvariantCulture)})"
-                : sheet.Name;
+        internal static string SheetTabText(BoardTableSheetTab shown)
+        {
+            int changes = BoardTableSheetParts.ChangeCountOf(shown.Sheet, shown.Tab.Part);
+
+            return changes > 0
+                ? $"{shown.Tab.Name} ({changes.ToString(CultureInfo.InvariantCulture)})"
+                : shown.Tab.Name;
+        }
 
         private void UpdateToolbar()
         {
@@ -1164,7 +1223,7 @@ namespace CRT
                 Tag = -1,
             });
 
-            for (int i = 0; i < this.thisCurrentSheet.Columns.Count; i++)
+            foreach (int i in this.ColumnsShownNow())
             {
                 this.TableGrid.Columns.Add(new BoardTableTextColumn
                 {

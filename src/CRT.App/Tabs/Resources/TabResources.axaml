@@ -53,9 +53,9 @@
 			<TextBlock Text="Board specific resources for troubleshooting and information."
 					   FontSize="14" />
 
-			<!-- Local Files Section -->
+			<!-- Board files section -->
 			<StackPanel Spacing="8">
-				<TextBlock Text="Local files"
+				<TextBlock Text="Board files"
 						   FontSize="14"
 						   FontWeight="Bold" />
 
@@ -133,9 +133,9 @@
 
 			</StackPanel>
 
-			<!-- Web Links Section -->
+			<!-- Board links section -->
 			<StackPanel Spacing="8">
-				<TextBlock Text="Links"
+				<TextBlock Text="Board links"
 						   FontSize="14"
 						   FontWeight="Bold" />
 

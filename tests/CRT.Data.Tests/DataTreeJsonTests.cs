@@ -177,7 +177,7 @@ public sealed class DataTreeJsonTests
     {
         BoardDocument board = Board();
         board.ComponentPins.Add(new BoardDocument.ComponentPinRow { BoardLabel = "U1", Pin = "40", Name = "VCC", Direction = "Power" });
-        board.ComponentReplacements.Add(new BoardDocument.ComponentReplacementRow { BoardLabel = "U1", PartNumber = "8500", Kind = "Drop-in", Note = "Datasheet" });
+        board.ComponentReplacements.Add(new BoardDocument.ComponentReplacementRow { BoardLabel = "U1", PartNumber = "8500", Kind = "Drop-in replacement", Note = "Datasheet" });
 
         BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
 

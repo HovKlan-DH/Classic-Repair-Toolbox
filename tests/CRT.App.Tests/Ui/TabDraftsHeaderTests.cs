@@ -366,8 +366,71 @@ public sealed class TabDraftsHeaderTests : IDisposable
             Assert.True(shown.IsVisible, "The window never opened.");
             Assert.Equal(undoButtons, shown.UndoButtonsForTests.Count);
 
-            // And its words say the same (code review, 2026-11-02).
+            // And its words say the same (code review, 2026-11-02) - on a new board, where it stands and
+            // nothing else (owner request, 2026-11-03).
             Assert.Equal(!draftOnly, (shown.GetControl<TextBlock>("IntroText").Text ?? string.Empty).Contains("compared with the published data", StringComparison.Ordinal));
+
+            if (draftOnly)
+            {
+                Assert.Equal(ReviewChangesWindow.NewBoardNotSubmitted, shown.GetControl<TextBlock>("IntroText").Text);
+                Assert.Empty(shown.GroupTitlesForTests);
+            }
+
+            shown.Close();
+            await review;
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // Sent, a new board says so: nothing published to compare with yet, and a send that never reached a
+    // maintainer is no submission (SubmissionReceiptPresenter.NeverReachedReview) - nor is one decided
+    // against any more (code review, 2026-11-04: rejected, it still read "submitted, not published yet") - and
+    // one in the stable data is published, whatever this machine has downloaded yet (code review, 2026-11-04:
+    // a new board until its next data check, it read "not published yet" of a board that was).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("submitted", ReviewChangesWindow.NewBoardSubmitted)]
+    [InlineData("merged", ReviewChangesWindow.NewBoardSubmitted)]
+    [InlineData("accepted", ReviewChangesWindow.NewBoardPublished)]
+    [InlineData("published", ReviewChangesWindow.NewBoardPublished)]
+    [InlineData("uploading", ReviewChangesWindow.NewBoardNotSubmitted)]
+    [InlineData("rejected", ReviewChangesWindow.NewBoardNotSubmitted)]
+    [InlineData("withdrawn", ReviewChangesWindow.NewBoardNotSubmitted)]
+    [InlineData("abandoned", ReviewChangesWindow.NewBoardNotSubmitted)]
+    public async Task Review_changes_on_a_new_board_says_where_it_stands(string state, string says)
+    {
+        WriteDraft(TabDraftsHeaderTests.BoardA, friendlyName: "ULA");
+
+        await UiTest.RunAsync(async () =>
+        {
+            var entry = new HardwareBoardEntry
+            {
+                HardwareName = "Commodore 64",
+                BoardName = "250407",
+                ExcelDataFile = TabDraftsHeaderTests.BoardA,
+                IsDraftOnly = true,
+            };
+
+            ReviewChangesWindow? shown = null;
+            (TabDrafts tab, _) = this.BuildTab(entry);
+            tab.ReviewWindowFactoryForTests = () => shown = new ReviewChangesWindow();
+            tab.ReceiptsOverrideForTests = [new SubmissionReceipt { SubmissionId = 7, BoardId = TabDraftsHeaderTests.BoardA, LastKnownState = state }];
+
+            var window = new Window { Content = tab, Width = 1300, Height = 600 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Task review = tab.ReviewChangesAsync(entry);
+
+            for (int attempt = 0; attempt < 200 && shown is not { IsVisible: true }; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.NotNull(shown);
+            Assert.Equal(says, shown.GetControl<TextBlock>("IntroText").Text);
 
             shown.Close();
             await review;
@@ -413,4 +476,67 @@ public sealed class TabDraftsHeaderTests : IDisposable
             window.Close();
         });
     }
+
+    // ###########################################################################################
+    // A DRAFT SAVES ITSELF, SO THAT IT DID GOES WITHOUT SAYING (owner request, 2026-11-04: "this is implied -
+    // it will always auto-save ... that line can be remove so the buttons can be moved one line upwards").
+    // A new board has nothing else for the row to say, so the row goes - and comes back when a save could NOT
+    // be made, the one thing nothing else tells, with Try again.
+    // ###########################################################################################
+    [Fact]
+    public void The_row_says_nothing_of_a_save_that_worked_and_a_failed_one_brings_it_back()
+    {
+        WriteDraft(TabDraftsHeaderTests.BoardA);
+
+        DraftMarkerStore.Save(
+            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, TabDraftsHeaderTests.BoardA),
+            new DraftMarker
+            {
+                BoardKey = TabDraftsHeaderTests.BoardA,
+                NewBoard = new NewBoardRegistration { HardwareName = "Commodore 64", BoardName = "250407" },
+            });
+
+        UiTest.Run(() =>
+        {
+            HardwareBoardEntry entry = Entry("250407", TabDraftsHeaderTests.BoardA);
+
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [entry],
+                PublishedBoardOverrideForTests = _ => null,
+            };
+
+            tab.RefreshDrafts();
+            tab.ShowBoard(entry, new BoardData(), "PAL", null);
+
+            var window = new Window { Content = tab, Width = 1300, Height = 800 };
+
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            ContentControl current = tab.GetControl<ContentControl>("CurrentDraftRow");
+            Border Row() => current.GetVisualDescendants().OfType<Border>().First(border => border.Classes.Contains("DraftRow"));
+            TextBlock State() => current.GetVisualDescendants().OfType<TextBlock>().First(text => text.Classes.Contains("DraftSaveState"));
+
+            // A new board: nothing to say, and the toolbar under it moved up.
+            Assert.False(Row().IsVisible);
+            Assert.False(State().IsEffectivelyVisible);
+
+            DraftSession session = SessionOf(TabDraftsHeaderTests.BoardA);
+
+            tab.RefreshDrafts();
+            session.Apply("Changes to [U0]", TabDraftsHeaderTests.Named("mine"));
+            WriteDraft(TabDraftsHeaderTests.BoardA, friendlyName: "theirs");
+            Assert.Equal(DraftWorkbookEditOutcome.ChangedOnDisk, session.Save());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(Row().IsVisible);
+            Assert.True(State().IsEffectivelyVisible);
+            Assert.Equal(DraftSaveWording.CouldNotSave(DraftWorkbookEditOutcome.ChangedOnDisk), State().Text);
+            Assert.Contains(current.GetVisualDescendants().OfType<Button>(), button => button.IsEffectivelyVisible && (button.Content as string) == "Try again");
+
+            window.Close();
+        });
+    }
+
 }

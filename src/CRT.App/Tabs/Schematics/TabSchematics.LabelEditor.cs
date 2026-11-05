@@ -131,7 +131,6 @@ public partial class TabSchematics
         this.LoadLabelEditorWorkingCopyForCurrentSchematic();
         this.UpdateLabelEditorLockState();
         this.RefreshLabelEditorOverlay();
-        this.HideSchematicsMenu();
         this.SchematicsContainer.Focus();
         this.FollowPictureTool();
 
@@ -159,7 +158,6 @@ public partial class TabSchematics
         this.thisLabelEditorRedoStack.Clear();
 
         this.UpdateLabelEditorLockState();
-        this.HideSchematicsMenu();
         this.HideNewLabelEditorPrompt();
         this.RefreshLabelEditorOverlay();
         this.SchematicsContainer.Focus();
@@ -303,7 +301,6 @@ public partial class TabSchematics
             this.thisLabelEditorRedoStack.Clear();
 
             this.UpdateLabelEditorLockState();
-            this.HideSchematicsMenu();
             this.HideNewLabelEditorPrompt();
             this.RefreshLabelEditorOverlay();
             this.SchematicsContainer.Focus();

@@ -39,6 +39,9 @@ namespace Handlers.DataHandling
     {
         public const string UndoHint = "Ctrl+Z undoes it.";
 
+        // A component picked in the list while the table shows a sheet it has no row on.
+        public static string NoRowsOfComponent(string label) => $"[{label.Trim()}] has no rows on this table.";
+
         // ###########################################################################################
         // A paste of several cells: where it went, then whatever of the clipboard did not go in and
         // why. Empty for ONE cell pasted into one cell, which needs no words - the cell shows it.

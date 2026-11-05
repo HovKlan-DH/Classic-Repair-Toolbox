@@ -186,6 +186,66 @@ public sealed class TabDraftsBoardNameTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // "With issues" ticked, and a category added and not used yet, follow the board to its new name (code review,
+    // 2026-11-04): by its identity for the run, the tick and the category were left under the old one - only a
+    // name not in use could bring them back, and nothing else this machine keeps under the name stays behind.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_tick_with_issues_and_a_category_not_used_yet_follow_the_board_to_its_new_name()
+    {
+        SeedNewBoard();
+
+        await UiTest.RunAsync(async () =>
+        {
+            HardwareBoardEntry entry = NewEntry();
+            var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", Category = string.Empty }] };
+
+            DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, NewBoard)!;
+            session.Apply("Waiting", content => content with { Board = board });
+            Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
+
+            TabDrafts tab = Tab(entry);
+            tab.BoardRenamedOverrideForTests = (_, _) => { };
+
+            tab.ShowBoard(entry, board, "PAL", null);
+
+            var box = new CheckBox();
+            tab.UseIssuesBox(box);
+            Assert.True(box.IsVisible);
+
+            box.IsChecked = true;
+
+            ComponentPane pane = tab.ComponentPaneForTests;
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Categories);
+            pane.GetControl<TextBox>("NewCategoryNameBox").Text = "Held";
+            pane.AddCategory();
+
+            await tab.OpenBoardNameAsync();
+            Fill(tab, "Commodore", "C64", "999001");
+            await tab.BoardNamePanelForTests.SaveAsync();
+
+            var movedEntry = new HardwareBoardEntry
+            {
+                HardwareName = "C64",
+                BoardName = "999001",
+                ExcelDataFile = NewBoardIdentity.BuildExcelDataFile("Commodore", "C64", "999001"),
+                IsDraftOnly = true,
+            };
+
+            tab.HardwareBoardsOverrideForTests = [movedEntry];
+            tab.RefreshDrafts();
+            tab.ShowBoard(movedEntry, board, "PAL", null);
+
+            Assert.True(box.IsChecked);
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Categories);
+
+            Assert.Contains(pane.CategoriesForTests, row => row.Name == "Held");
+        });
+    }
+
     // What the draft holds goes along: saved before the folder moves.
     [Fact]
     public async Task What_the_draft_holds_is_saved_before_it_moves()

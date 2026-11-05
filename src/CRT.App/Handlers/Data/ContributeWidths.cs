@@ -109,6 +109,13 @@ namespace Handlers.DataHandling
             return Math.Max(ContributeWidths.PreviewRange.Min, Math.Min(width, room));
         }
 
+        // ###########################################################################################
+        // The previews' width as their handle is dragged from `fromX` to `toX`. They stand on the card's
+        // RIGHT since 2026-11-03 (owner request), the handle at their left edge: dragging it left widens
+        // them. A drag over the settings' room is PreviewShown's to stop.
+        // ###########################################################################################
+        public static double PreviewDragged(double startWidth, double fromX, double toX) => startWidth - (toX - fromX);
+
         // A width inside the range; a value that is no number is the range's least.
         private static double Within(double width, (double Min, double Max) range) =>
             double.IsFinite(width) ? Math.Clamp(width, range.Min, range.Max) : range.Min;

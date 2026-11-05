@@ -103,6 +103,17 @@ public partial class TabSchematics
 
     internal void DeleteLabelEditorRowForTests(int workingIndex) => this.DeleteLabelEditorHighlight(workingIndex);
 
+    // A key handed straight to the tab's own handler, with no routing - returns whether it took it. Whether a
+    // press gets that far goes by what holds the focus (MainPictureToolsTests drives one through the window).
+    internal bool PressLabelEditorKeyForTests(Key key, KeyModifiers modifiers = KeyModifiers.None)
+    {
+        var press = new KeyEventArgs { RoutedEvent = KeyDownEvent, Key = key, KeyModifiers = modifiers };
+
+        this.OnSchematicsKeyDown(this, press);
+
+        return press.Handled;
+    }
+
     internal bool TryUndoLabelEditorChangeForTests() => this.TryUndoLabelEditorChange();
 
     internal bool TryRedoLabelEditorChangeForTests() => this.TryRedoLabelEditorChange();

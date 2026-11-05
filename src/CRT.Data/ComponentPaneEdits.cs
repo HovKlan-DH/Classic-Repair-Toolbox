@@ -465,8 +465,28 @@ namespace Handlers.DataHandling
             return board.ComponentLinks.Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region)).ToList();
         }
 
+        // ###########################################################################################
+        // EVERY link of the component, whatever region CRT shows: its "Links" page is the component's whole
+        // list, as "Board: Links" is the board's, each row saying what it applies to (owner request,
+        // 2026-11-03: "Each file or link will have set a region (if any) and then the complete list can be
+        // viewed and sorted"). What a region shows of them is still LinksOf - the popup, the copies.
+        // ###########################################################################################
+        public static List<ComponentLinkEntry> AllLinksOf(BoardData board, string? label)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            return board.ComponentLinks.Where(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label)).ToList();
+        }
+
         // The same as WithPins, for the component's links.
-        public static BoardData WithLinks(BoardData board, string? label, string? region, IReadOnlyList<ComponentLinkEntry> links)
+        public static BoardData WithLinks(BoardData board, string? label, string? region, IReadOnlyList<ComponentLinkEntry> links) =>
+            ComponentPaneEdits.WithLinksWhere(board, label, region, links, row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region));
+
+        // The component's whole list of links replaced by `links`, each in its own place.
+        public static BoardData WithAllLinks(BoardData board, string? label, IReadOnlyList<ComponentLinkEntry> links) =>
+            ComponentPaneEdits.WithLinksWhere(board, label, region: null, links, row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label));
+
+        private static BoardData WithLinksWhere(BoardData board, string? label, string? region, IReadOnlyList<ComponentLinkEntry> links, Func<ComponentLinkEntry, bool> inScope)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(links);
@@ -476,7 +496,7 @@ namespace Handlers.DataHandling
                 return board;
             }
 
-            List<ComponentLinkEntry> before = ComponentPaneEdits.LinksOf(board, label, region);
+            List<ComponentLinkEntry> before = board.ComponentLinks.Where(inScope).ToList();
             string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region, before.Select(row => row.BoardLabel));
 
             List<ComponentLinkEntry> rows = links
@@ -495,10 +515,7 @@ namespace Handlers.DataHandling
                 return board;
             }
 
-            return board.WithComponentSections(componentLinks: ComponentPaneEdits.ReplaceInScope(
-                board.ComponentLinks,
-                row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region),
-                rows));
+            return board.WithComponentSections(componentLinks: ComponentPaneEdits.ReplaceInScope(board.ComponentLinks, inScope, rows));
         }
 
         // ---- pictures and scope baselines (slice 3b) ---------------------------------------------
@@ -582,16 +599,16 @@ namespace Handlers.DataHandling
 
         // ---- files ------------------------------------------------------------------------------
 
-        // The component's files in `region` (owner request, 2026-11-02: a file can be of one region).
-        public static List<ComponentLocalFileEntry> FilesOf(BoardData board, string? label, string? region)
+        // EVERY file of the component, whatever region CRT shows - its "Files" page, as AllLinksOf its "Links".
+        public static List<ComponentLocalFileEntry> AllFilesOf(BoardData board, string? label)
         {
             ArgumentNullException.ThrowIfNull(board);
 
-            return board.ComponentLocalFiles.Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region)).ToList();
+            return board.ComponentLocalFiles.Where(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label)).ToList();
         }
 
-        // The same as WithLinks, for the component's files.
-        public static BoardData WithFiles(BoardData board, string? label, string? region, IReadOnlyList<ComponentLocalFileEntry> files)
+        // The component's whole list of files replaced by `files`, each in its own place.
+        public static BoardData WithAllFiles(BoardData board, string? label, IReadOnlyList<ComponentLocalFileEntry> files)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(files);
@@ -601,8 +618,10 @@ namespace Handlers.DataHandling
                 return board;
             }
 
-            List<ComponentLocalFileEntry> before = ComponentPaneEdits.FilesOf(board, label, region);
-            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region, before.Select(row => row.BoardLabel));
+            bool OfIt(ComponentLocalFileEntry row) => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label);
+
+            List<ComponentLocalFileEntry> before = board.ComponentLocalFiles.Where(OfIt).ToList();
+            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region: null, before.Select(row => row.BoardLabel));
 
             List<ComponentLocalFileEntry> rows = files
                 .Select(row => new ComponentLocalFileEntry
@@ -620,10 +639,7 @@ namespace Handlers.DataHandling
                 return board;
             }
 
-            return board.WithComponentSections(componentLocalFiles: ComponentPaneEdits.ReplaceInScope(
-                board.ComponentLocalFiles,
-                row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region),
-                rows));
+            return board.WithComponentSections(componentLocalFiles: ComponentPaneEdits.ReplaceInScope(board.ComponentLocalFiles, OfIt, rows));
         }
 
         // ---- shared -----------------------------------------------------------------------------
@@ -658,11 +674,15 @@ namespace Handlers.DataHandling
         }
 
         // A row of the component `label` as shown in `region` - its label, in any capitals, and its region.
-        internal static bool InScope(string? rowLabel, string? rowRegion, string? label, string? region)
+        internal static bool InScope(string? rowLabel, string? rowRegion, string? label, string? region) =>
+            ComponentPaneEdits.IsOfComponent(rowLabel, label) && ComponentPaneEdits.InRegion(rowRegion, region);
+
+        // A row of the component `label`, whatever its region - its label, in any capitals.
+        internal static bool IsOfComponent(string? rowLabel, string? label)
         {
             string wanted = label?.Trim() ?? string.Empty;
 
-            return wanted.Length > 0 && ComponentPaneEdits.SameLabel(rowLabel, wanted) && ComponentPaneEdits.InRegion(rowRegion, region);
+            return wanted.Length > 0 && ComponentPaneEdits.SameLabel(rowLabel, wanted);
         }
 
         private static string KeyOf(ComponentPinEntry pin) =>
@@ -706,7 +726,7 @@ namespace Handlers.DataHandling
         //     the last place.
         //   - Rows put in ANOTHER ORDER are a reorder, and it is meant: they take the places in turn.
         // ###########################################################################################
-        private static List<T> ReplaceInScope<T>(List<T> rows, Func<T, bool> inScope, IReadOnlyList<T> replacement)
+        internal static List<T> ReplaceInScope<T>(List<T> rows, Func<T, bool> inScope, IReadOnlyList<T> replacement)
             where T : class
         {
             (bool[] heldKept, bool[] replacementKept, bool sameOrder) = ComponentPaneEdits.RowsKept(rows.Where(inScope).ToList(), replacement);

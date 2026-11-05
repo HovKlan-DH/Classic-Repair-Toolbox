@@ -294,9 +294,9 @@ namespace Handlers.DataHandling
             [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName],
             [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName]);
 
-        // Write order across the workbook - and the order the Drafts tab's table editor shows the
-        // sheets in. Schematics first because that sheet also carries the revision-date marker, so
-        // a reader opening the file sees the board's identity first.
+        // Write order across the workbook (the table editor's tabs have their own: BoardTableTabs).
+        // Schematics first because that sheet also carries the revision-date marker, so a reader
+        // opening the file sees the board's identity first.
         //
         // *** "Credits" IS LAST, AS IN EVERY PUBLISHED WORKBOOK (2026-09-24). *** All thirteen
         // published boards with an "Important signals" sheet put it before "Credits"; this list had

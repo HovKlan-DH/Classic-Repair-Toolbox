@@ -99,16 +99,34 @@ namespace CRT
                 listed.IsVisible = line is not null;
             }
 
-            // Not in the lists: said above the views, since the placement is in one of them.
             if (this.FindControl<TextBlock>("BoardPlacementText") is TextBlock placement)
             {
-                string? line = BoardSections.PlacementLine(this.thisListing, boardId);
+                string? line = BoardSections.PlacedLine(this.thisListing, boardId);
                 placement.Text = line ?? string.Empty;
                 placement.IsVisible = line is not null;
             }
 
+            this.ShowPlacementNotice();
+
             this.GetControl<BoardPlacementView>("PlacementView").Show(this.thisListing, boardId);
         }
+
+        // No place yet: said above the views, with the way to the one that gives it (BoardSections.PlacementNotice).
+        private void ShowPlacementNotice()
+        {
+            if (this.FindControl<Border>("PlacementNotice") is not Border notice)
+                return;
+
+            string? boardId = this.ShownBoard?.BoardId;
+            string? text = BoardSections.PlacementNotice(this.thisListing, boardId);
+
+            this.GetControl<TextBlock>("PlacementNoticeText").Text = text ?? string.Empty;
+            this.GetControl<Button>("GoToPlacementButton").IsVisible = BoardSections.OffersPlacement(this.thisListing, boardId);
+            notice.IsVisible = text is not null && this.thisSection != BoardSection.Maintainer;
+        }
+
+        private async void OnGoToPlacementClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(() => this.ShowSectionAsync(BoardSection.Maintainer), message => this.ShowMessage(message, isError: true));
 
         // The board on screen, or null.
         public BoardOverviewEntry? ShownBoard { get; private set; }

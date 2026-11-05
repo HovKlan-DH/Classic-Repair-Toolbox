@@ -444,6 +444,7 @@ namespace CRT
         static App()
         {
             Handlers.Theming.ToolTipPlacement.UseControlEdgePlacement();
+            ColorPickerDropper.UseInEveryColorPicker();
         }
 
         // ###########################################################################################

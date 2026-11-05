@@ -157,7 +157,7 @@ namespace CRT
             this.thisLabel = string.Empty;
             this.thisIsNew = false;
             this.thisBoardPart = part;
-            this.CloseCopyPanel();
+            this.CloseClonePanel();
             this.ForgetKiCadPins();
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
@@ -288,7 +288,7 @@ namespace CRT
             this.NewComponentPanel.IsVisible = false;
             this.SectionsScrollViewer.IsVisible = false;
             this.BoardPartPanel.IsVisible = true;
-            this.ShowPageTabs();
+            this.TellPagesChanged();
 
             this.RegionsPart.IsVisible = part == PaneBoardPart.Regions;
             this.CategoriesPart.IsVisible = part == PaneBoardPart.Categories;

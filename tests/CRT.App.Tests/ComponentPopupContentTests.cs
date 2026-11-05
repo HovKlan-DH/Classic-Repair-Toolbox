@@ -55,15 +55,15 @@ public sealed class ComponentPopupContentTests
             ComponentPopupContent.PinsOf(pins, "U8", "PAL", nets));
     }
 
-    // "8500 - Drop-in" on the first line, its note under it.
+    // "8500 - Drop-in replacement" on the first line, its note under it.
     [Fact]
     public void A_replacement_part_reads_part_number_and_kind_then_its_note()
     {
         ComponentReplacementEntry[] parts =
         [
-            new() { BoardLabel = "U8", PartNumber = "8500", Kind = "Drop-in" },
-            new() { BoardLabel = "U8", PartNumber = "6502", Kind = "Needs changes", Note = "Add a 6522 for the port" },
-            new() { BoardLabel = "U8", Kind = "Needs changes" },
+            new() { BoardLabel = "U8", PartNumber = "8500", Kind = "Drop-in replacement" },
+            new() { BoardLabel = "U8", PartNumber = "6502", Kind = "Needs modification", Note = "Add a 6522 for the port" },
+            new() { BoardLabel = "U8", Kind = "Needs modification" },
             new() { BoardLabel = "U8", Region = "NTSC", PartNumber = "NTSC part" },
             new() { BoardLabel = "U8" },
         ];
@@ -71,12 +71,12 @@ public sealed class ComponentPopupContentTests
         List<ComponentPopupReplacement> shown = ComponentPopupContent.ReplacementsOf(parts, "U8", "PAL");
 
         Assert.Equal(3, shown.Count);
-        Assert.Equal(new ComponentPopupReplacement("8500 - Drop-in", string.Empty), shown[0]);
+        Assert.Equal(new ComponentPopupReplacement("8500 - Drop-in replacement", string.Empty), shown[0]);
         Assert.False(shown[0].HasNote);
-        Assert.Equal("6502 - Needs changes", shown[1].Title);
+        Assert.Equal("6502 - Needs modification", shown[1].Title);
         Assert.Equal("Add a 6522 for the port", shown[1].Note);
         Assert.True(shown[1].HasNote);
-        Assert.Equal("Needs changes", shown[2].Title);
+        Assert.Equal("Needs modification", shown[2].Title);
     }
 
     [Fact]

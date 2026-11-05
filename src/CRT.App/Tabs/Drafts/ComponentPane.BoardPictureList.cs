@@ -18,7 +18,7 @@ namespace CRT
     // what is best for having the best UX for the user. It should be as easy as possible"). The
     // "Schematic images" window is gone - its rules came along, unchanged:
     //
-    //   - "ADD PICTURES" (or pictures dropped on the tab, TabDrafts.Drop.cs): each copied into the draft
+    //   - "ADD PICTURES" (or pictures dropped on this page, TabDrafts.Drop.cs): each copied into the draft
     //     under a name of the board's own, at its top (ComponentPaneFileNames.ForBoardPicture), named
     //     after its file and never a name a picture has (BoardPictureEdits.NamesFor) - ONE step for
     //     all, the draft saved at once. Never a hidden file (ContributionPackaging.IsAddablePictureFile).
@@ -194,7 +194,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Pictures into the board - picked, or dropped on the tab: each copied in under a name of the
+        // Pictures into the board - picked, or dropped on this page: each copied in under a name of the
         // board's own and named after its file, ONE step for all, the draft saved at once. False when
         // nothing was added - said under the heading.
         // ###########################################################################################
@@ -240,7 +240,10 @@ namespace CRT
                 var landed = new HashSet<string>(copied, StringComparer.OrdinalIgnoreCase);
                 List<(string Name, string File)> added = pictures.Where(picture => landed.Contains(picture.File)).ToList();
 
-                this.ApplyBoardPart(DraftStepWording.SchematicsAdded(added.Count), board => BoardPictureEdits.WithAdded(board, added));
+                // A new board's images start in its colours (no published board: PictureColours.ForNewBoard).
+                PictureColours? startingColours = this.thisPublished is null ? PictureColours.ForNewBoard : null;
+
+                this.ApplyBoardPart(DraftStepWording.SchematicsAdded(added.Count), board => BoardPictureEdits.WithAdded(board, added, startingColours));
                 this.ShowPicturesAgain();
                 this.ShowPicturesNote(ComponentPaneWording.PicturesAdded(added.Count, notCopied: pictures.Count - added.Count - empty, empty: empty));
             });

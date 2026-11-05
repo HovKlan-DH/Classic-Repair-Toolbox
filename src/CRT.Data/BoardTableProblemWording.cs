@@ -62,7 +62,8 @@ namespace Handlers.DataHandling
             if (!errors && !warnings)
                 return null;
 
-            var sheetOrder = BoardWorkbookSchema.AllSheets
+            // The order the table's tabs stand in, which is the table's own (BoardTableTabs).
+            var sheetOrder = BoardTableTabs.SheetsInOrder
                 .Select((sheet, index) => (sheet.SheetName, index))
                 .ToDictionary(pair => pair.SheetName, pair => pair.index, StringComparer.OrdinalIgnoreCase);
 
@@ -81,9 +82,12 @@ namespace Handlers.DataHandling
                 .Take(BoardTableProblemWording.InSheetsShown)
                 .Select(problem =>
                 {
+                    // By the names on the tabs and the Contribute tab's column, neither of which names a sheet.
+                    string sheet = $"\"{BoardTableTabs.NameOf(problem.Sheet!)}\"";
+
                     string where = problem.Subject is { Length: > 0 } subject
-                        ? $"{problem.Sheet}, {subject}"
-                        : $"{problem.Sheet}, row {(problem.Index + 1).ToString(CultureInfo.InvariantCulture)}";
+                        ? $"{sheet}, {subject}"
+                        : $"{sheet}, row {(problem.Index + 1).ToString(CultureInfo.InvariantCulture)}";
 
                     if (!string.IsNullOrWhiteSpace(problem.Column))
                         where += $", {problem.Column}";

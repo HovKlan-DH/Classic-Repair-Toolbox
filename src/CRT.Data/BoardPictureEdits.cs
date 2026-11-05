@@ -27,8 +27,9 @@ namespace Handlers.DataHandling
     {
         public const string FallbackName = "Board image";
 
-        // The board with `pictures` after its last picture - each a new row by its name and image file.
-        public static BoardData WithAdded(BoardData board, IReadOnlyList<(string Name, string File)> pictures)
+        // The board with `pictures` after its last picture - each a new row by its name and image file,
+        // in `colours` when given (PictureColours.ForNewBoard), else blank.
+        public static BoardData WithAdded(BoardData board, IReadOnlyList<(string Name, string File)> pictures, PictureColours? colours = null)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(pictures);
@@ -39,10 +40,15 @@ namespace Handlers.DataHandling
             }
 
             var rows = new List<BoardSchematicEntry>(board.Schematics);
-            rows.AddRange(pictures.Select(picture => new BoardSchematicEntry
+            rows.AddRange(pictures.Select(picture =>
             {
-                SchematicName = picture.Name.Trim(),
-                SchematicImageFile = picture.File.Trim(),
+                var row = new BoardSchematicEntry
+                {
+                    SchematicName = picture.Name.Trim(),
+                    SchematicImageFile = picture.File.Trim(),
+                };
+
+                return colours is null ? row : row.WithColours(colours);
             }));
 
             return board.WithSchematics(rows);

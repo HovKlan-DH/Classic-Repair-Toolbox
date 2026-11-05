@@ -571,6 +571,47 @@ public sealed class SchematicsThumbnailGalleryTests
 
     // Out of the visual tree it must not stay subscribed to the tab, which lives as long as the
     // application - that is what kept closed detached windows alive. It catches up instead.
+    // ###########################################################################################
+    // *** A BOARD READ AGAIN WITH A THUMBNAIL SELECTED (owner report, 2026-11-03: no image on the
+    // "Schematics" tab, "not a picture of the board shown" from "Align KiCad data"). *** Emptying the
+    // tiles tells the tab first, the tab tells the gallery the selection is gone, and the gallery set
+    // its list's selection while the list had not seen the tiles go: the list then read the tile it
+    // was letting go of from the empty collection, and threw. Main's load, which empties them, died
+    // right there - no thumbnails, no picture, no message, until another board was shown. The list
+    // reads what it lets go of once anything has asked it for its SelectedItems.
+    // ###########################################################################################
+    [Fact]
+    public void Emptying_the_thumbnails_with_one_selected_leaves_nothing_selected()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, TabSchematics tab) = ShowTabWithThumbnails();
+            var gallery = InlineGalleryOf(tab);
+            var list = GalleryListOf(gallery);
+
+            tab.SelectThumbnailFromGallery(tab.currentThumbnails[1]);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Same(tab.currentThumbnails[1], gallery.SelectedThumbnail);
+
+            _ = list.SelectedItems;
+
+            tab.currentThumbnails.Clear();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Null(tab.SelectedThumbnail);
+            Assert.Null(gallery.SelectedThumbnail);
+
+            // And the board's tiles coming back are the gallery's again.
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = "Read again" });
+            tab.SelectThumbnailFromGallery(tab.currentThumbnails[0]);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Same(tab.currentThumbnails[0], gallery.SelectedThumbnail);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void A_gallery_out_of_the_visual_tree_does_not_follow_the_selection()
     {

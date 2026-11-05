@@ -64,37 +64,8 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
         <!-- The four screens' tab strip (owner request, 2026-10-01; TabMaintainer.Modes.cs): App.axaml's
              ScreenTab, which a component's pages use too. -->
 
-        <!--
-        A SUBMISSION'S THREE VIEWS, AS ONE JOINED SWITCH (2026-10-01; TabMaintainer.SubmissionViews.cs)
-        - a different look from the tab strip on purpose. Square inner corners, rounded outer ones,
-        neighbours sharing one border line (each after the first pulled 1px left); the chosen one is
-        filled and outlined in front of its neighbours, and stays so under the pointer.
-        -->
-        <Style Selector="Button.Segment">
-            <Setter Property="Padding" Value="12,4" />
-            <Setter Property="CornerRadius" Value="0" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
-            <Setter Property="Margin" Value="-1,0,0,0" />
-        </Style>
-
-        <Style Selector="Button.Segment.First">
-            <Setter Property="CornerRadius" Value="4,0,0,4" />
-            <Setter Property="Margin" Value="0" />
-        </Style>
-
-        <Style Selector="Button.Segment.Last">
-            <Setter Property="CornerRadius" Value="0,4,4,0" />
-        </Style>
-
-        <Style Selector="Button.Segment.Selected">
-            <Setter Property="ZIndex" Value="1" />
-        </Style>
-
-        <Style Selector="Button.Segment.Selected /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{DynamicResource Mode_Selected_Bg}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Mode_Selected_Border}" />
-        </Style>
+        <!-- A submission's three views are one joined switch (TabMaintainer.SubmissionViews.cs) - a
+             different look from the tab strip on purpose: Button.Segment, App.axaml's. -->
 
         <!--
         The count on a button. ATTENTION (Review, BETA) is filled and only there when something waits
@@ -868,9 +839,18 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                 Classes="Notice"
                                 IsVisible="False"
                                 Margin="0,0,0,10">
-                            <Grid ColumnDefinitions="Auto,*">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
                                 <TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
                                 <StackPanel Grid.Column="1" x:Name="BeforeApprovingPanel" Spacing="4" />
+
+                                <!-- A new board with no place in the drop-down lists yet: straight to where it is
+                                     saved (owner report, 2026-11-05: "where can I set this?"). -->
+                                <Button Grid.Column="2"
+                                        x:Name="GoToPlacementButton"
+                                        Margin="12,0,0,0"
+                                        VerticalAlignment="Center"
+                                        IsVisible="False"
+                                        Click="OnGoToPlacementClick" />
                             </Grid>
                         </Border>
 

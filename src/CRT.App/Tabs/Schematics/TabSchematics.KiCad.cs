@@ -385,7 +385,15 @@ public partial class TabSchematics
 
         this.RebuildImportantSignalsPanel();
         this.RestoreBoardSettings(currentBoardKey);
-        this.RefreshKiCadOverlay();
+
+        // ###########################################################################################
+        // *** WHAT THE LIST HAS SELECTED LIGHTS ITS TRACES NOW THERE ARE ANY (code review, 2026-11-05). ***
+        // This load let go of the selected components' references and nets, above, and nothing asked for them
+        // again: with the selection kept across a board read again (Main.ShowListsOfBoard), the rectangles
+        // came back with no copper, no pin 1 and no "KiCad nets". This goes by the list, so it also lights
+        // what was picked while the data was being read. It refreshes the overlay.
+        // ###########################################################################################
+        this.RefreshHighlightsFromCurrentComponentSelection();
 
         this.SetKiCadInitializingIndicatorVisible(false);
 
@@ -544,6 +552,8 @@ public partial class TabSchematics
 
     // A test's KiCad project, in place of a board's load - and the nets locked, lit up.
     internal void UseKiCadProjectForTests(KiCadProjectBundle? project) => this.thisKiCadProject = project;
+
+    internal void RefreshKiCadOverlayForTests() => this.RefreshKiCadOverlayNow();
 
     internal IReadOnlyCollection<string> LockedKiCadNetNamesForTests => this.thisLockedKiCadNetNames;
 

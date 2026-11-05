@@ -21,19 +21,15 @@ public sealed class PictureToolWordingTests
     [Fact]
     public void Each_tools_help_says_how_it_is_used_and_that_Done_saves_into_the_draft()
     {
-        Assert.Contains("right-click it to remove it", PictureToolWording.Help(PictureTool.MarkComponents), StringComparison.Ordinal);
-        Assert.Contains("Ctrl+Z undoes", PictureToolWording.Help(PictureTool.MarkComponents), StringComparison.Ordinal);
-        Assert.Contains("Esc cancels", PictureToolWording.Help(PictureTool.AlignKiCad), StringComparison.Ordinal);
-        Assert.All([PictureTool.MarkComponents, PictureTool.AlignKiCad], tool =>
-            Assert.Contains("\"Done\" saves it", PictureToolWording.Help(tool), StringComparison.Ordinal));
-    }
+        // As read on screen, the keys' bold marks gone (2026-11-03).
+        static string Read(PictureTool tool) => Handlers.Theming.BoldRuns.Plain(PictureToolWording.Help(tool));
 
-    [Fact]
-    public void The_component_menu_says_what_its_highlight_item_does()
-    {
-        Assert.Equal("Highlight [U8]", PictureToolWording.Highlight(" U8 "));
-        Assert.Equal("Take the highlight away from [U8]", PictureToolWording.TakeHighlightAway("U8"));
-        Assert.Equal("Edit this component", PictureToolWording.EditComponent);
+        Assert.Contains("right-click it to remove it", Read(PictureTool.MarkComponents), StringComparison.Ordinal);
+        Assert.Contains("press Delete to remove the ones selected", Read(PictureTool.MarkComponents), StringComparison.Ordinal);
+        Assert.Contains("Ctrl+Z undoes", Read(PictureTool.MarkComponents), StringComparison.Ordinal);
+        Assert.Contains("Esc cancels", Read(PictureTool.AlignKiCad), StringComparison.Ordinal);
+        Assert.All([PictureTool.MarkComponents, PictureTool.AlignKiCad], tool =>
+            Assert.Contains("\"Done\" saves it", Read(tool), StringComparison.Ordinal));
     }
 
     // Plain ASCII, no Excel, no "contributor mode" (it went), and no button label with "...".

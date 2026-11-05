@@ -12,8 +12,8 @@ public sealed class ComponentPaneWordingTests
     [Fact]
     public void The_title_is_the_label_and_what_the_component_list_shows_beside_it()
     {
-        Assert.Equal("Component: U8 - CPU | 6510", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510" }));
-        Assert.Equal("Component: C12 - 10uF", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "C12", TechnicalNameOrValue = " 10uF " }));
+        Assert.Equal("Component: U8 | CPU | 6510", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510" }));
+        Assert.Equal("Component: C12 | 10uF", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "C12", TechnicalNameOrValue = " 10uF " }));
         Assert.Equal("Component: R1", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "R1" }));
     }
 
@@ -80,15 +80,74 @@ public sealed class ComponentPaneWordingTests
 
     // ---- the component as a whole (slice 3c) ------------------------------------------------------
 
-    // The region a new component is in: first the one most components are in - every region, blank.
+    // What "Clone component from another board" says of the component picked: its title as the popup's,
+    // what is filled, and every count - "0" as much as any.
     [Fact]
-    public void A_new_components_region_choices_stand_for_the_regions_the_list_knows()
+    public void What_is_shown_of_a_component_to_clone_is_its_title_what_is_filled_and_its_counts()
     {
-        Assert.Equal(["PAL and NTSC", "PAL only", "NTSC only"], ComponentPaneWording.RegionChoices);
-        Assert.Equal(string.Empty, ComponentPaneWording.RegionOfChoice("PAL and NTSC"));
-        Assert.Equal("PAL", ComponentPaneWording.RegionOfChoice("PAL only"));
-        Assert.Equal("NTSC", ComponentPaneWording.RegionOfChoice("NTSC only"));
-        Assert.Equal(string.Empty, ComponentPaneWording.RegionOfChoice(null));
+        var facts = new ComponentCloneFacts(
+            new ComponentEntry { BoardLabel = "U7", FriendlyName = "PLA", TechnicalNameOrValue = "906114", PartNumber = "906114-01", Category = "IC" },
+            "PAL",
+            Pins: 28,
+            Replacements: 0,
+            Pictures: 1,
+            Baselines: 2,
+            Files: 0,
+            Links: 3,
+            EveryRegionComes: false,
+            OtherRegionsLeftOut: false);
+
+        Assert.Equal(
+            [
+                "<b>U7 | PLA | 906114</b>",
+                "<b>Category:</b> IC",
+                "<b>Part number:</b> 906114-01",
+                "<b>Holds:</b> 28 pins, 0 replacement parts, 1 picture, 2 oscilloscope baselines, 0 files, 3 links",
+            ],
+            ComponentPaneWording.CloneFacts(facts));
+    }
+
+    // What another board's data says is its words: a "<b>" in it says nothing of what is bold in the panel, and
+    // only the panel's own headings are (code review, 2026-11-04).
+    [Fact]
+    public void A_tag_in_another_boards_data_is_neither_shown_nor_read_as_bold()
+    {
+        var facts = new ComponentCloneFacts(
+            new ComponentEntry { BoardLabel = "U7", FriendlyName = "<b>PLA", Category = "<b>IC</b>", Description = "Glue <b>logic", PartNumber = "<b></b>" },
+            "PAL",
+            0, 0, 0, 0, 0, 0,
+            EveryRegionComes: false,
+            OtherRegionsLeftOut: false);
+
+        List<string> lines = ComponentPaneWording.CloneFacts(facts);
+
+        Assert.Equal(
+            [
+                "<b>U7 | PLA</b>",
+                "<b>Category:</b> IC",
+                "<b>Short description:</b> Glue logic",
+            ],
+            lines.Take(3));
+
+        Assert.Equal(
+            [("Short description:", true), (" Glue logic", false)],
+            Handlers.Theming.BoldRuns.Marked(lines[2]));
+    }
+
+    [Fact]
+    public void A_component_differing_per_region_says_what_comes_of_that()
+    {
+        var row = new ComponentEntry { BoardLabel = "U7" };
+
+        Assert.Contains("every region comes along", ComponentPaneWording.CloneFacts(new ComponentCloneFacts(row, "PAL", 0, 0, 0, 0, 0, 0, true, false))[^1], StringComparison.Ordinal);
+        Assert.Contains("NTSC is the one taken", ComponentPaneWording.CloneFacts(new ComponentCloneFacts(row, "NTSC", 0, 0, 0, 0, 0, 0, false, true))[^1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void What_a_clone_says_names_where_it_came_from_and_any_file_left_out()
+    {
+        Assert.Equal("Cloned from [U7] of C64 / 250425. \"Undo\" takes it back.", ComponentPaneWording.Cloned("U7", "C64 / 250425", []));
+        Assert.Contains("left out: Images/a.png", ComponentPaneWording.Cloned("U7", "C64 / 250425", ["Images/a.png"]), StringComparison.Ordinal);
     }
 
     // Only a label taken is said - nothing typed yet says nothing, and no category is said elsewhere.

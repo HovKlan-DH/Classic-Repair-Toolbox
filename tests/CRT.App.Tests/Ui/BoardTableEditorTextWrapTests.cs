@@ -253,7 +253,10 @@ public sealed class BoardTableEditorTextWrapTests
 
             if (fromTheNextHeadingsLeftEdge)
             {
-                DoubleClick(window, Header(window, BoardWorkbookSchema.ComponentImages.ColumnOrder.ElementAt(NameColumn + 1)), x: 2);
+                // The next heading shown: a picture's part of the sheet leaves some columns out.
+                List<int> shown = BoardTableSheetParts.ColumnsShown(editor.SheetPart, editor.CurrentSheet!);
+
+                DoubleClick(window, Header(window, editor.CurrentSheet!.Columns[shown[shown.IndexOf(NameColumn) + 1]]), x: 2);
             }
             else
             {

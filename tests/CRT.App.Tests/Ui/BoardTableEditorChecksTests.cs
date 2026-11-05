@@ -78,7 +78,7 @@ public sealed class BoardTableEditorChecksTests
         ((System.Collections.IEnumerable)editor.GetControl<DataGrid>("TableGrid").ItemsSource!).Cast<BoardTableRow>().ToList();
 
     private static TabItem SheetTab(BoardTableEditor editor, string sheet) =>
-        editor.GetControl<TabControl>("SheetTabs").Items.OfType<TabItem>().Single(tab => ((BoardTableSheet)tab.Tag!).Name == sheet);
+        editor.GetControl<TabControl>("SheetTabs").Items.OfType<TabItem>().First(tab => tab.Tag is BoardTableSheetTab shown && shown.Sheet.Name == sheet);
 
     private static void Select(BoardTableEditor editor, string sheet) =>
         editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(sheet)!);
@@ -296,8 +296,8 @@ public sealed class BoardTableEditorChecksTests
             TabItem components = SheetTab(editor, BoardWorkbookSchema.SheetComponents);
 
             // The rows really have problems - or a tab without pills would prove nothing.
-            Assert.Equal(1, ((BoardTableSheet)links.Tag!).ErrorRowCount);
-            Assert.Equal(1, ((BoardTableSheet)components.Tag!).WarningRowCount);
+            Assert.Equal(1, ((BoardTableSheetTab)links.Tag!).Sheet.ErrorRowCount);
+            Assert.Equal(1, ((BoardTableSheetTab)components.Tag!).Sheet.WarningRowCount);
 
             foreach (TabItem tab in new[] { links, components })
             {
@@ -411,7 +411,7 @@ public sealed class BoardTableEditorChecksTests
             Dispatcher.UIThread.RunJobs();
 
             Assert.True(list.IsVisible);
-            Assert.StartsWith($"Error - {BoardWorkbookSchema.SheetComponentLinks}", list.Text);
+            Assert.StartsWith("Error - \"Components: Links\"", list.Text);
             Assert.DoesNotContain("Warning", list.Text);
 
             editor.TogglePill(BoardTableRowKinds.Errors);

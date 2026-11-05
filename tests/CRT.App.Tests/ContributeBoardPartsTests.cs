@@ -47,14 +47,14 @@ public sealed class ContributeBoardPartsTests
 
         Assert.Equal(2, ContributeBoardParts.Of(board).Categories);
         Assert.Equal("PAL, NTSC", ContributeBoardParts.RegionsText(board));
-        Assert.Equal("none", ContributeBoardParts.RegionsText(new BoardData()));
-        Assert.Equal("none", ContributeBoardParts.RegionsText(null));
+        Assert.Equal("0", ContributeBoardParts.RegionsText(new BoardData()));
+        Assert.Equal("0", ContributeBoardParts.RegionsText(null));
     }
 
-    // "none", not a bare 0, which reads like a fault.
+    // "0" with none (owner request, 2026-11-04).
     [Theory]
-    [InlineData(0, "none")]
-    [InlineData(-1, "none")]
+    [InlineData(0, "0")]
+    [InlineData(-1, "0")]
     [InlineData(1, "1")]
     [InlineData(12, "12")]
     public void A_count_reads_as_the_column_shows_it(int count, string expected)
@@ -71,25 +71,18 @@ public sealed class ContributeBoardPartsTests
         Assert.Equal(expected, ContributeBoardParts.MyDraftsLine(drafts));
     }
 
-    // An empty list says why, and what adds the first one (the plan: "Every empty area says what goes
-    // there and carries the button that adds it").
+    // The tab's top line names the board shown, its two names bold (owner request, 2026-11-05), and says
+    // what a change does - and that nothing is shared. It stays a sentence with no board shown.
     [Fact]
-    public void An_empty_component_list_says_why()
+    public void The_top_line_names_the_hardware_and_the_board_in_bold()
     {
-        Assert.Equal("No board is shown.", ContributeBoardParts.NoComponentsLine(hasBoard: false, searching: false));
-        Assert.Equal("No component matches the search.", ContributeBoardParts.NoComponentsLine(hasBoard: true, searching: true));
-        Assert.Contains("\"Add component\"", ContributeBoardParts.NoComponentsLine(hasBoard: true, searching: false), StringComparison.Ordinal);
-    }
+        string line = ContributeBoardParts.TopLine(" Commodore 64 ", "250425 (long board)");
 
-    // The header of a board with no draft says what a change does - and that nothing is shared.
-    [Fact]
-    public void A_board_with_no_draft_says_what_the_first_change_does()
-    {
-        string line = ContributeBoardParts.NoDraftLine(hasBoard: true);
+        Assert.StartsWith("Improve data for the [<b>Commodore 64</b>] hardware and [<b>250425 (long board)</b>] board. ", line, StringComparison.Ordinal);
+        Assert.Contains("nobody else sees it until you submit it", line, StringComparison.Ordinal);
 
-        Assert.Contains("first change makes your own draft", line, StringComparison.Ordinal);
-        Assert.Contains("nothing is shared until you submit", line, StringComparison.Ordinal);
-        Assert.Contains("Pick a hardware and a board", ContributeBoardParts.NoDraftLine(hasBoard: false), StringComparison.Ordinal);
+        Assert.StartsWith("Improve data for a board. ", ContributeBoardParts.TopLine(null, null), StringComparison.Ordinal);
+        Assert.StartsWith("Improve data for a board. ", ContributeBoardParts.TopLine("Commodore 64", " "), StringComparison.Ordinal);
     }
 
     // ###########################################################################################
@@ -111,7 +104,7 @@ public sealed class ContributeBoardPartsTests
         ]));
 
         Assert.Equal(0, ContributeBoardParts.KiCadFileCount([]));
-        Assert.Equal("none", ContributeBoardParts.CountText(ContributeBoardParts.KiCadFileCount(["Images/top.png"])));
+        Assert.Equal("0", ContributeBoardParts.CountText(ContributeBoardParts.KiCadFileCount(["Images/top.png"])));
     }
 
     // ###########################################################################################

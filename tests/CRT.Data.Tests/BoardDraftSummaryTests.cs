@@ -175,7 +175,7 @@ public sealed class BoardDraftSummaryTests
                 new ComponentEntry { BoardLabel = "U7" }, new ComponentEntry { BoardLabel = "U8" },
             ],
             ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "1", Name = "A" }],
-            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U2", PartNumber = "X", Kind = "Drop-in" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U2", PartNumber = "X", Kind = "Drop-in replacement" }],
             ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U3", Name = "Datasheet", File = "a.pdf" }],
             ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U4", Name = "Article", Url = "https://example.org/a" }],
             ComponentImages =

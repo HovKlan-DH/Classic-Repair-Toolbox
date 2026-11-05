@@ -7,15 +7,6 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="CRT.TabSchematics">
 
-	<UserControl.Styles>
-		<!-- The "Global settings" popover in the panels' own colours, as the panel it replaced. -->
-		<Style Selector="FlyoutPresenter.SchematicsSettings">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Panels_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Panels_Border}" />
-			<Setter Property="Padding" Value="10,8" />
-		</Style>
-	</UserControl.Styles>
-
 	<Grid x:Name="SchematicsInnerGrid">
 		<Grid.ColumnDefinitions>
 			<ColumnDefinition Width="*" MinWidth="80" />
@@ -298,29 +289,36 @@
 					  ColumnSpacing="8"
 					  ZIndex="200">
 
-					<!-- GLOBAL SETTINGS: a gear button whose popover holds them (CRT 4.0 step 5 - the plan:
-					     "Global settings become a gear button that opens a popover"). The rows are the
-					     panel's as they were, wired by name in TabSchematics.Settings.cs; the popover takes
-					     the panels' own colours (FlyoutPresenter.SchematicsSettings, above). -->
-					<Button x:Name="GlobalSettingsButton"
+					<!-- GLOBAL SETTINGS PANEL: as the two beside it (owner request, 2026-11-05 - a gear button's popover
+					     from CRT 4.0 step 5 until then). Shown while a row is. -->
+					<Border x:Name="GlobalSettingsPanel"
 							IsVisible="False"
 							Grid.Row="0"
 							Grid.Column="0"
 							HorizontalAlignment="Left"
 							VerticalAlignment="Bottom"
-							Padding="9,6"
-							ToolTip.Tip="Global settings">
-						<TextBlock Text="&#xf013;"
-								   FontFamily="{DynamicResource FontAwesomeSolid}"
-								   FontSize="14" />
-						<Button.Flyout>
-							<Flyout Placement="TopEdgeAlignedLeft" FlyoutPresenterClasses="SchematicsSettings">
+							Background="{DynamicResource Schematics_Panels_Bg}"
+							BorderBrush="{DynamicResource Schematics_Panels_Border}"
+							BorderThickness="1"
+							CornerRadius="4"
+							Padding="8,8">
 						<StackPanel Spacing="6">
 
-							<TextBlock Text="Global settings"
-									   FontSize="11"
-									   FontWeight="Bold"
-									   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+								<TextBlock Grid.Column="0"
+										   Text="Global settings"
+										   FontSize="11"
+										   VerticalAlignment="Center"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+								<Button x:Name="ToggleGlobalSettingsPanelButton"
+										Grid.Column="1"
+										Content="Collapse"
+										FontSize="9"
+										Padding="6,2"
+										HorizontalAlignment="Right"
+										VerticalAlignment="Top" />
+							</Grid>
 
 							<StackPanel x:Name="GlobalSettingsListPanel" Spacing="4">
 
@@ -508,9 +506,7 @@
 
 							</StackPanel>
 						</StackPanel>
-							</Flyout>
-						</Button.Flyout>
-					</Button>
+					</Border>
 
 					<!-- LABELS VISIBLE PANEL -->
 					<Border x:Name="LabelsPanel"
@@ -758,6 +754,12 @@
 							</Button.Flyout>
 						</Button>
 
+						<!-- A color already on the screen (owner request, 2026-11-03, "a general thing"). -->
+						<local:ColorDropperButton x:Name="TraceColorDropper"
+												  Width="24"
+												  Height="24"
+												  Padding="0" />
+
 						<Border Width="1" Height="18" Background="{DynamicResource SchematicsPanels_Fg}" Margin="2,0"/>
 
 						<TextBlock Text="🗑"
@@ -857,10 +859,7 @@
 		                                  Grid.Column="2" />
 
 		<!-- Right-click menu over the inline thumbnail panel - a quick way to detach thumbnails to
-		     their own window without going to the Configuration tab. Same visual style as
-		     SchematicsMenuBorder below (Schematics_Panels_Bg/Border, CornerRadius 6),
-		     but a separate control: that menu is contributor-mode/label-editor/calibration specific
-		     and lives over the schematic image, not the thumbnail column. -->
+		     their own window without going to the Configuration tab. -->
 		<!-- Spans ALL THREE columns (no Grid.Column), deliberately. Confined to the thumbnail
 		     column it could never be wider than that column, which is routinely ~170px - the text
 		     then wrapped down to one character per line. It opens to the LEFT of the cursor
@@ -887,38 +886,6 @@
 					<TextBlock Text="Detach thumbnails into their own window"
 							   TextWrapping="Wrap" />
 				</Button>
-			</StackPanel>
-		</Border>
-
-		<Border x:Name="SchematicsMenuBorder"
-				IsVisible="False"
-				ZIndex="5000"
-				HorizontalAlignment="Left"
-				VerticalAlignment="Top"
-				Background="{DynamicResource Schematics_Panels_Bg}"
-				BorderBrush="{DynamicResource Schematics_Panels_Border}"
-				BorderThickness="1"
-				CornerRadius="6"
-				Padding="10,8">
-			<!-- THE MENU A RIGHT-CLICK ON A COMPONENT OPENS, for everyone (CRT 4.0 step 2, slice 6 - the
-			     plan: "Right-clicking a component offers Edit this component to everyone"). It was
-			     contributor mode's menu over an empty spot; the two tools it offered now start from the
-			     Contribute tab's Pictures, with the bar below (TabSchematics.PictureTools.cs). -->
-			<StackPanel x:Name="SchematicsMenuPanel"
-						Spacing="8"
-						Width="235">
-				<TextBlock x:Name="SchematicsMenuTitleText"
-						   FontSize="11"
-						   FontWeight="Bold"
-						   TextWrapping="Wrap"
-						   Foreground="{DynamicResource Schematics_Panels_Fg}" />
-
-				<Button x:Name="MenuHighlightButton"
-						HorizontalAlignment="Stretch" />
-
-				<Button x:Name="MenuEditComponentButton"
-						Content="Edit this component"
-						HorizontalAlignment="Stretch" />
 			</StackPanel>
 		</Border>
 

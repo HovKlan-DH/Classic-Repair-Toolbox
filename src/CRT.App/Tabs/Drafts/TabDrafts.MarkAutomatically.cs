@@ -9,16 +9,18 @@ namespace CRT
 {
     // ###########################################################################################
     // "MARK ALL AUTOMATICALLY" (CRT 4.0 step 3, slice 3c - the plan: "Mark: on aligned PCB pictures,
-    // Mark all automatically draws each component's rectangle from its footprint").
+    // Mark all automatically draws each component's rectangle from its footprint"; on a schematic sheet
+    // from its symbols too since 2026-11-04).
     //
     // A picture card's button in the component pane's Pictures part: the draft opened as every change
     // opens it (DraftEdits.OpenForChangeAsync - what the editors hold handed over, a file written
     // outside read), the board's KiCad data read (KiCadProjectLoader keeps the parse) and the image's
-    // size read from its header, then KiCadFootprintMarks.Plan decides - a side of the board, aligned,
-    // or the reason it cannot. Every component the board has, seen from that side and not marked on
-    // the picture yet, gets its footprint's rectangle as ONE step of the draft's history, worked out
-    // on the draft as the change finds it, saved at once - all under the BusyOverlay. What came of it
-    // is said in the part; the board on screen follows as it does the pane's saves.
+    // size read from its header, then KiCadFootprintMarks.Plan decides - a KiCad view, aligned, or the
+    // reason it cannot. Every component the board has, in that view and not marked on the picture yet,
+    // gets its rectangles as ONE step of the draft's history, worked out on the draft as the change
+    // finds it, saved at once - all under the BusyOverlay. What came of it is said in the part, counted
+    // in components: a chip drawn in four units has four rectangles and is one component
+    // (KiCadFootprintMarks.ComponentsIn). The board on screen follows as it does the pane's saves.
     //
     // A picture with marks on it already asks first (owner request, 2026-11-01; AskBeforeMarkingAsync).
     //
@@ -80,7 +82,7 @@ namespace CRT
                 {
                     KiCadMarkPlan plan = KiCadFootprintMarks.Plan(content, picture, root, size, imageFile);
 
-                    return plan.Problem is null ? plan.Marks(content.Board).Count : 0;
+                    return plan.Problem is null ? KiCadFootprintMarks.ComponentsIn(plan.Marks(content.Board)) : 0;
                 });
             });
 
@@ -110,10 +112,9 @@ namespace CRT
         // is not clear that I must first do the Align KiCad, before I can do the Mark all automatically
         // from KiCad" - Done marks without asking, Undo takes it back). *** Main asks once the tool has
         // handed back to this tab, for every picture aligned with Done on the way (Main.PictureTools.cs).
-        // As "Mark all automatically", with three differences: a picture with ANY mark on it is left
+        // As "Mark all automatically", with two differences: a picture with ANY mark on it is left
         // alone - its marks were drawn, by hand or from KiCad, and another round is the contributor's to
-        // ask for; a schematic sheet is passed over without a word (nothing to mark from KiCad there);
-        // and what came of it says the alignment is in too.
+        // ask for; and what came of it says the alignment is in too.
         //
         // *** ALIGNED AGAIN, THE MARKS KiCad DREW FOLLOW (owner request, 2026-11-01: "if I then again do the
         // Align KiCad then it seems it will not readjust the components, which I think it should"). ***
@@ -158,7 +159,7 @@ namespace CRT
 
                 if (plan.Problem is { } problem)
                 {
-                    return afterAligning && plan.NotABoardSide ? null : problem;
+                    return problem;
                 }
 
                 if (hasMarks)
@@ -194,7 +195,7 @@ namespace CRT
                     return changed ? PictureToolWording.MarksFollowedAlignment(followed, plan.Picture) : null;
                 }
 
-                int count = plan.Marks(session.Content.Board).Count;
+                int count = KiCadFootprintMarks.ComponentsIn(plan.Marks(session.Content.Board));
 
                 if (count == 0)
                 {
@@ -210,7 +211,7 @@ namespace CRT
                     board =>
                     {
                         List<ComponentHighlightEntry> marks = plan.Marks(board);
-                        marked = marks.Count;
+                        marked = KiCadFootprintMarks.ComponentsIn(marks);
                         return KiCadFootprintMarks.WithMarks(board, marks);
                     });
 
@@ -261,8 +262,8 @@ namespace CRT
             {
                 KiCadMarkPlan plan = KiCadFootprintMarks.Plan(content, picture, root, size, imageFile);
 
-                return plan.Problem is { } problem
-                    ? (PreviewTraces.None, (string?)problem)
+                return plan.Problem is { } problem ? (PreviewTraces.None, (string?)problem)
+                    : plan.Sheet is not null ? (PreviewTraces.None, PictureToolWording.NoCopperOnSheet(plan.Picture))
                     : (KiCadPreviewTraces.For(plan), null);
             });
         }

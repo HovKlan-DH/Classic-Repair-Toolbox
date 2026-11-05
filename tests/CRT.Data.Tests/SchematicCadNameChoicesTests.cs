@@ -9,17 +9,34 @@ public sealed class SchematicCadNameChoicesTests
 {
     private static readonly string[] Views = ["Open128 - PCB Top", "Open128 - PCB Bottom", "Open128", "Reset"];
 
+    private static readonly string[] Sorted = ["Open128", "Open128 - PCB Bottom", "Open128 - PCB Top", "Reset"];
+
     private static IReadOnlyList<SchematicCadNameChoice> For(int imageIndex, params (string SchematicName, string CadName)[] images) =>
         SchematicCadNameChoices.For(images, imageIndex, Views);
 
+    // Alphabetical since 2026-11-03 (owner request: "alphabetically sorted, except the 'Not associated',
+    // which should be at top") - the project's own order until then.
     [Fact]
-    public void Not_associated_comes_first_then_every_view_in_the_projects_order()
+    public void Not_associated_comes_first_then_every_view_alphabetically()
     {
         IReadOnlyList<SchematicCadNameChoice> choices = For(0, ("Top", ""));
 
-        Assert.Equal(["", .. Views], choices.Select(choice => choice.CadName));
-        Assert.Equal(["Not associated", .. Views], choices.Select(choice => choice.Label));
+        Assert.Equal(["", .. Sorted], choices.Select(choice => choice.CadName));
+        Assert.Equal(["Not associated", .. Sorted], choices.Select(choice => choice.Label));
         Assert.Equal(SchematicCadNameChoices.NoCadNameLabel, choices[0].Label);
+    }
+
+    // A project's sheets are numbered: "Sheet 10" alphabetically before "Sheet 2" is no help to anybody.
+    // Capitals say nothing about the order either.
+    [Fact]
+    public void The_views_numbers_sort_as_numbers_and_capitals_are_ignored()
+    {
+        IReadOnlyList<SchematicCadNameChoice> choices = SchematicCadNameChoices.For(
+            [("Top", "")],
+            0,
+            ["Sheet 10", "power", "Sheet 2", "Clock"]);
+
+        Assert.Equal(["", "Clock", "power", "Sheet 2", "Sheet 10"], choices.Select(choice => choice.CadName));
     }
 
     // ###########################################################################################
@@ -37,7 +54,7 @@ public sealed class SchematicCadNameChoicesTests
             ("C128 Neo.3.B", "Reset"),
             ("Bottom scan", ""));
 
-        Assert.Equal(["", "Open128 - PCB Bottom", "Open128"], choices.Select(choice => choice.CadName));
+        Assert.Equal(["", "Open128", "Open128 - PCB Bottom"], choices.Select(choice => choice.CadName));
         Assert.DoesNotContain(choices, choice => choice.Label.Contains("used by", StringComparison.Ordinal));
     }
 
@@ -51,12 +68,12 @@ public sealed class SchematicCadNameChoicesTests
     }
 
     [Fact]
-    public void An_images_own_name_is_always_offered_to_it_in_the_projects_order()
+    public void An_images_own_name_is_always_offered_to_it_in_its_place()
     {
         IReadOnlyList<SchematicCadNameChoice> choices = For(0, ("C128 Neo.3.F", "Open128 - PCB Top"), ("Bottom scan", "Reset"));
 
-        Assert.Equal(["", "Open128 - PCB Top", "Open128 - PCB Bottom", "Open128"], choices.Select(choice => choice.CadName));
-        Assert.Equal("Open128 - PCB Top", choices[1].Label);
+        Assert.Equal(["", "Open128", "Open128 - PCB Bottom", "Open128 - PCB Top"], choices.Select(choice => choice.CadName));
+        Assert.Equal("Open128 - PCB Top", choices[3].Label);
     }
 
     // Two images given the same name in Excel: nothing here takes it from either of them.
@@ -72,7 +89,7 @@ public sealed class SchematicCadNameChoicesTests
     // "Top (replica)" and page numbers resolve on the Schematics tab without being a view's name,
     // so a name that is no view is listed as it is - never dropped, never called wrong.
     [Fact]
-    public void An_images_name_that_is_no_view_is_listed_last_as_it_is()
+    public void An_images_name_that_is_no_view_is_listed_among_them_as_it_is()
     {
         IReadOnlyList<SchematicCadNameChoice> choices = For(0, ("Top", "Top (replica)"));
 
@@ -80,6 +97,15 @@ public sealed class SchematicCadNameChoicesTests
         Assert.Equal("Top (replica)", last.CadName);
         Assert.Equal("Top (replica)", last.Label);
         Assert.Equal(Views.Length + 2, choices.Count);
+
+        Assert.Equal(
+            ["", "Open128", "Reset", "Top (replica)"],
+            SchematicCadNameChoices.For([("Top", "Top (replica)"), ("Bottom", "Open128 - PCB Top"), ("Other", "Open128 - PCB Bottom")], 0, Views)
+                .Select(choice => choice.CadName));
+
+        Assert.Equal(
+            ["", "A view", "Top (replica)", "Z view"],
+            SchematicCadNameChoices.For([("Top", "Top (replica)")], 0, ["Z view", "A view"]).Select(choice => choice.CadName));
     }
 
     [Fact]
@@ -90,7 +116,7 @@ public sealed class SchematicCadNameChoicesTests
             0,
             ["Reset", " ", "reset", "", " Clock "]);
 
-        Assert.Equal(["", "Reset", "Clock"], choices.Select(choice => choice.CadName));
+        Assert.Equal(["", "Clock", "Reset"], choices.Select(choice => choice.CadName));
     }
 
     [Fact]

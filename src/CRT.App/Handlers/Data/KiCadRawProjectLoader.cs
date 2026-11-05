@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Handlers.Geometry;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -79,83 +80,6 @@ namespace Handlers.DataHandling
                 Pcb = pcbs,
                 Schematics = schematics
             };
-        }
-
-        // ###########################################################################################
-        // The view names LoadAsync would give these files, in the same order - WITHOUT PARSING A
-        // PCB (2026-10-10). The "Schematic images" window offered them as CAD names, and a board's
-        // .kicad_pcb runs to tens of megabytes that window had no other use for. *** UNUSED SINCE
-        // CRT 4.0 STEP 3 *** - the window went, and the Pictures part takes the views from the project
-        // its host reads anyway (TabDrafts.ReadBoardKiCadAsync, kept by KiCadProjectLoader's cache).
-        //
-        // A PCB's two views are named after its FILE, so only its opening is read, to keep a file
-        // that is no KiCad board out as LoadAsync keeps it out. The schematic sheets ARE read as
-        // LoadAsync reads them, because a child sheet's name is the one its parent gives it.
-        //
-        // Never throws: an unreadable file gives fewer names, not a broken window.
-        // ###########################################################################################
-        public static async Task<List<string>> LoadViewDisplayNamesAsync(IReadOnlyList<string> rawPaths)
-        {
-            try
-            {
-                var pcbs = new List<KiCadPcb>();
-                var schematicPaths = new List<string>();
-
-                foreach (string path in ExpandRawKiCadPaths(rawPaths).Where(File.Exists))
-                {
-                    string extension = Path.GetExtension(path);
-
-                    if (string.Equals(extension, ".kicad_pcb", StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (await StartsAsKiCadPcbAsync(path).ConfigureAwait(false))
-                        {
-                            pcbs.Add(new KiCadPcb { Filename = Path.GetFileName(path) });
-                        }
-
-                        continue;
-                    }
-
-                    if (string.Equals(extension, ".kicad_sch", StringComparison.OrdinalIgnoreCase))
-                    {
-                        schematicPaths.Add(path);
-                    }
-                }
-
-                var schematics = new List<KiCadSchematic>();
-                await LoadSchematicsAsync(schematicPaths, schematics).ConfigureAwait(false);
-
-                return BuildProjectViews(pcbs, schematics)
-                    .Select(view => view.DisplayName?.Trim() ?? string.Empty)
-                    .Where(name => name.Length > 0)
-                    .ToList();
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Could not read the KiCad view names - [{ex.Message}]");
-                return new List<string>();
-            }
-        }
-
-        // True when the file opens with a "(kicad_pcb" form - LoadAsync's test for a PCB, made on
-        // the first few hundred characters instead of the whole parsed file.
-        private static async Task<bool> StartsAsKiCadPcbAsync(string path)
-        {
-            using var reader = new StreamReader(path, detectEncodingFromByteOrderMarks: true);
-
-            char[] buffer = new char[256];
-            int read = await reader.ReadBlockAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
-
-            string opening = new string(buffer, 0, read).TrimStart();
-
-            if (!opening.StartsWith('('))
-            {
-                return false;
-            }
-
-            string head = opening.Substring(1).TrimStart();
-
-            return head.StartsWith("kicad_pcb", StringComparison.OrdinalIgnoreCase) &&
-                   (head.Length == "kicad_pcb".Length || char.IsWhiteSpace(head["kicad_pcb".Length]) || head["kicad_pcb".Length] == ')');
         }
 
         // ###########################################################################################
@@ -755,6 +679,7 @@ namespace Handlers.DataHandling
         private static KiCadSchematic ParseSchematic(SExpressionNode schematic, string filename, string? displayName)
         {
             string fallbackDisplayName = Path.GetFileNameWithoutExtension(filename);
+            Dictionary<string, LibraryDrawing> drawings = ExtractLibraryDrawings(schematic);
 
             return new KiCadSchematic
             {
@@ -766,9 +691,10 @@ namespace Handlers.DataHandling
                 {
                     Local = ExtractSchematicLabelGroup(schematic, "label"),
                     Global = ExtractSchematicLabelGroup(schematic, "global_label"),
-                    Hierarchical = ExtractSchematicLabelGroup(schematic, "hierarchical_label")
+                    Hierarchical = ExtractSchematicLabelGroup(schematic, "hierarchical_label"),
+                    Power = ExtractSchematicPowerLabels(schematic, drawings)
                 },
-                Symbols = ExtractSchematicSymbols(schematic),
+                Symbols = ExtractSchematicSymbols(schematic, drawings),
                 ChildSheets = ExtractSchematicChildSheets(schematic)
             };
         }
@@ -878,7 +804,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // Extracts schematic symbols and their detailed properties.
         // ###########################################################################################
-        private static List<KiCadSchematicSymbol> ExtractSchematicSymbols(SExpressionNode schematic)
+        private static List<KiCadSchematicSymbol> ExtractSchematicSymbols(SExpressionNode schematic, Dictionary<string, LibraryDrawing> drawings)
         {
             var result = new List<KiCadSchematicSymbol>();
             Dictionary<string, List<KiCadSchematicPin>> libraryPins = ExtractLibrarySymbolPins(schematic);
@@ -913,8 +839,276 @@ namespace Handlers.DataHandling
                     Value = value,
                     At = ExtractAt(Child(symbolNode, "at")),
                     PropertiesDetailed = properties,
-                    Pins = libraryPins.TryGetValue(libraryName, out List<KiCadSchematicPin>? pins) ? pins : new List<KiCadSchematicPin>()
+                    Pins = libraryPins.TryGetValue(libraryName, out List<KiCadSchematicPin>? pins) ? pins : new List<KiCadSchematicPin>(),
+                    Extent = drawings.TryGetValue(libraryName, out LibraryDrawing? drawing) ? ExtentOf(drawing, symbolNode) : null
                 });
+            }
+
+            return result;
+        }
+
+        // ###########################################################################################
+        // What a sheet's library symbols draw: each one's parts - "<name>_<unit>_<style>", unit 0 and style
+        // 0 being common to all of them - and whether it is a power symbol. A symbol derived from another
+        // ("extends") draws its parent's, as ExtractLibrarySymbolPins has it.
+        // ###########################################################################################
+        private sealed class LibraryDrawing
+        {
+            public bool IsPower { get; set; }
+
+            public List<LibraryDrawingPart> Parts { get; set; } = new();
+        }
+
+        private sealed record LibraryDrawingPart(int Unit, int BodyStyle, List<KiCadPoint2D> Points, List<SExpressionNode> Pins);
+
+        private static Dictionary<string, LibraryDrawing> ExtractLibraryDrawings(SExpressionNode schematic)
+        {
+            var result = new Dictionary<string, LibraryDrawing>(StringComparer.Ordinal);
+
+            if (Child(schematic, "lib_symbols") is not { } library)
+            {
+                return result;
+            }
+
+            var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (var symbolNode in Children(library, "symbol"))
+            {
+                string? name = Arg(symbolNode, 0);
+
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                var parts = new List<LibraryDrawingPart> { DrawingPartOf(symbolNode, 0, 0) };
+
+                foreach (var unitNode in Children(symbolNode, "symbol"))
+                {
+                    (int unit, int bodyStyle) = UnitAndBodyStyleOf(Arg(unitNode, 0));
+                    parts.Add(DrawingPartOf(unitNode, unit, bodyStyle));
+                }
+
+                result[name] = new LibraryDrawing { IsPower = Child(symbolNode, "power") != null, Parts = parts };
+
+                if (ChildValue(symbolNode, "extends") is { Length: > 0 } parent)
+                {
+                    parents[name] = parent;
+                }
+            }
+
+            foreach ((string name, string parent) in parents)
+            {
+                // The parent is named without its library: "74xx:74LS00" extends "74LS01".
+                int colon = name.IndexOf(':');
+                string sameLibrary = colon >= 0 ? name[..(colon + 1)] + parent : parent;
+
+                if (result.TryGetValue(sameLibrary, out LibraryDrawing? drawing) || result.TryGetValue(parent, out drawing))
+                {
+                    LibraryDrawing own = result[name];
+
+                    own.IsPower |= drawing.IsPower;
+
+                    if (own.Parts.All(part => part.Points.Count == 0 && part.Pins.Count == 0))
+                    {
+                        own.Parts = drawing.Parts;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        // "74LS00_2_1" is unit 2 in body style 1. Anything else is common to all of them.
+        private static (int Unit, int BodyStyle) UnitAndBodyStyleOf(string? unitName)
+        {
+            string[] parts = (unitName ?? string.Empty).Split('_');
+
+            return parts.Length >= 3 &&
+                   int.TryParse(parts[^2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int unit) &&
+                   int.TryParse(parts[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int bodyStyle)
+                ? (unit, bodyStyle)
+                : (0, 0);
+        }
+
+        // The points one part's lines reach, Y up as a library symbol is drawn, and its pins.
+        private static LibraryDrawingPart DrawingPartOf(SExpressionNode node, int unit, int bodyStyle)
+        {
+            var points = new List<KiCadPoint2D>();
+
+            void Take(KiCadPoint2D? point)
+            {
+                if (point != null)
+                {
+                    points.Add(point);
+                }
+            }
+
+            foreach (var rectangle in Children(node, "rectangle"))
+            {
+                Take(ExtractPoint(Child(rectangle, "start")));
+                Take(ExtractPoint(Child(rectangle, "end")));
+            }
+
+            foreach (var line in Children(node, "polyline").Concat(Children(node, "bezier")))
+            {
+                foreach (var point in Children(Child(line, "pts") ?? line, "xy"))
+                {
+                    Take(ExtractPoint(point));
+                }
+            }
+
+            foreach (var circle in Children(node, "circle"))
+            {
+                KiCadPoint2D? center = ExtractPoint(Child(circle, "center"));
+                double radius = ToDoubleOrNull(ChildValue(circle, "radius")) ?? 0.0;
+
+                if (center != null)
+                {
+                    Take(new KiCadPoint2D { X = center.X - radius, Y = center.Y - radius });
+                    Take(new KiCadPoint2D { X = center.X + radius, Y = center.Y + radius });
+                }
+            }
+
+            foreach (var arc in Children(node, "arc"))
+            {
+                Take(ExtractPoint(Child(arc, "start")));
+                Take(ExtractPoint(Child(arc, "mid")));
+                Take(ExtractPoint(Child(arc, "end")));
+            }
+
+            return new LibraryDrawingPart(unit, bodyStyle, points, Children(node, "pin").ToList());
+        }
+
+        // The parts one placed symbol draws: its unit's and those common to all, in its body style.
+        private static IEnumerable<LibraryDrawingPart> PartsOf(LibraryDrawing drawing, SExpressionNode symbolNode)
+        {
+            int unit = ToIntOrDefault(ChildValue(symbolNode, "unit"), 1);
+            int bodyStyle = ToIntOrDefault(ChildValue(symbolNode, "body_style") ?? ChildValue(symbolNode, "convert"), 1);
+
+            return drawing.Parts.Where(part => (part.Unit == 0 || part.Unit == unit) && (part.BodyStyle == 0 || part.BodyStyle == bodyStyle));
+        }
+
+        private static int ToIntOrDefault(string? text, int fallback) =>
+            int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int value) ? value : fallback;
+
+        // "(pin ... hide ...)" in an older file, "(hide yes)" in a newer one.
+        private static bool IsHiddenPin(SExpressionNode pin)
+        {
+            if (pin.Items.Any(item => string.Equals(item.Atom, "hide", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            return Child(pin, "hide") is { } hide && !string.Equals(Arg(hide, 0), "no", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // ###########################################################################################
+        // Where a placed symbol's unit lies on the sheet: its lines, and each visible pin from its tip to
+        // the body. Null with nothing to go by.
+        // ###########################################################################################
+        private static KiCadSheetExtent? ExtentOf(LibraryDrawing drawing, SExpressionNode symbolNode)
+        {
+            if (ExtractAt(Child(symbolNode, "at")) is not { } at)
+            {
+                return null;
+            }
+
+            string? mirror = ChildValue(symbolNode, "mirror");
+            double left = double.MaxValue;
+            double top = double.MaxValue;
+            double right = double.MinValue;
+            double bottom = double.MinValue;
+
+            void Include(double x, double y)
+            {
+                (double sheetX, double sheetY) = KiCadSymbolPlacement.OnSheet(x, y, at.X, at.Y, at.Angle ?? 0.0, mirror);
+
+                left = Math.Min(left, sheetX);
+                right = Math.Max(right, sheetX);
+                top = Math.Min(top, sheetY);
+                bottom = Math.Max(bottom, sheetY);
+            }
+
+            foreach (LibraryDrawingPart part in PartsOf(drawing, symbolNode))
+            {
+                foreach (KiCadPoint2D point in part.Points)
+                {
+                    Include(point.X, point.Y);
+                }
+
+                foreach (var pin in part.Pins.Where(pin => !IsHiddenPin(pin)))
+                {
+                    if (ExtractAt(Child(pin, "at")) is { } tip)
+                    {
+                        double length = ToDoubleOrNull(ChildValue(pin, "length")) ?? 0.0;
+                        double angle = (tip.Angle ?? 0.0) * Math.PI / 180.0;
+
+                        Include(tip.X, tip.Y);
+                        Include(tip.X + (length * Math.Cos(angle)), tip.Y + (length * Math.Sin(angle)));
+                    }
+                }
+            }
+
+            return left > right ? null : new KiCadSheetExtent { Left = left, Top = top, Right = right, Bottom = bottom };
+        }
+
+        // ###########################################################################################
+        // The power symbols on a sheet as labels: what names the net of the wire at a power pin's tip.
+        //
+        //   - WHAT IS ONE: a library symbol flagged "(power)" with a power_in pin. PWR_FLAG is flagged too,
+        //     but its pin is power_out: it names no net, and read as a label it would make one of "PWR_FLAG".
+        //   - WHICH NAME: its Value is the net's name in today's KiCad, its pin's name was in older ones, and
+        //     they do differ - 250469's "9V_UNREG" symbol has a pin "+9V_UNREG", which is what its PCB calls
+        //     the net. So a label for each, a pin named "~" or nothing being no name.
+        // ###########################################################################################
+        private static List<KiCadSchematicLabel> ExtractSchematicPowerLabels(SExpressionNode schematic, Dictionary<string, LibraryDrawing> drawings)
+        {
+            var result = new List<KiCadSchematicLabel>();
+
+            foreach (var symbolNode in Children(schematic, "symbol"))
+            {
+                string libraryName = ChildValue(symbolNode, "lib_name") ?? ChildValue(symbolNode, "lib_id") ?? string.Empty;
+
+                if (!drawings.TryGetValue(libraryName, out LibraryDrawing? drawing) || !drawing.IsPower ||
+                    ExtractAt(Child(symbolNode, "at")) is not { } at)
+                {
+                    continue;
+                }
+
+                SExpressionNode? powerPin = PartsOf(drawing, symbolNode)
+                    .SelectMany(part => part.Pins)
+                    .FirstOrDefault(pin => string.Equals(Arg(pin, 0), "power_in", StringComparison.OrdinalIgnoreCase));
+
+                if (powerPin == null || ExtractAt(Child(powerPin, "at")) is not { } tip)
+                {
+                    continue;
+                }
+
+                string? value = Children(symbolNode, "property")
+                    .FirstOrDefault(property => string.Equals(Arg(property, 0), "Value", StringComparison.OrdinalIgnoreCase)) is { } valueNode
+                    ? Arg(valueNode, 1)
+                    : null;
+
+                (double x, double y) = KiCadSymbolPlacement.OnSheet(tip.X, tip.Y, at.X, at.Y, at.Angle ?? 0.0, ChildValue(symbolNode, "mirror"));
+
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (string? name in new[] { value, Arg(Child(powerPin, "name"), 0) })
+                {
+                    string text = name?.Trim() ?? string.Empty;
+
+                    if (text.Length > 0 && text != "~" && names.Add(NormalizeNetName(text) ?? string.Empty))
+                    {
+                        result.Add(new KiCadSchematicLabel
+                        {
+                            Type = "power",
+                            Text = text,
+                            NormalizedText = NormalizeNetName(text),
+                            At = new KiCadPoint2DAngle { X = x, Y = y }
+                        });
+                    }
+                }
             }
 
             return result;

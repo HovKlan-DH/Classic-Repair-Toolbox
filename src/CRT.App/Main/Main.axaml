@@ -124,6 +124,68 @@
 						<RowDefinition Height="*" />
 					</Grid.RowDefinitions>
 
+					<!-- TWO LISTS IN EACH PLACE (code review, 2026-11-04; Main.ContributeLists.cs): the Contribute tab
+					     picks its components in lists of its own, and only one of each pair is ever shown. So they
+					     look the same by these, and neither can touch what the other holds. -->
+					<Grid.Styles>
+						<Style Selector="ListBox.SideList /template/ Border">
+							<Setter Property="CornerRadius" Value="3" />
+							<Setter Property="ClipToBounds" Value="True" />
+						</Style>
+						<Style Selector="ListBox.SideList /template/ ScrollViewer">
+							<Setter Property="CornerRadius" Value="3" />
+							<Setter Property="ClipToBounds" Value="True" />
+						</Style>
+						<Style Selector="ListBox.SideList ListBoxItem">
+							<Setter Property="Padding" Value="8,3" />
+							<Setter Property="MinHeight" Value="0" />
+							<Setter Property="FontSize" Value="11" />
+						</Style>
+						<Style Selector="ListBox.ComponentRows ListBoxItem">
+							<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+						</Style>
+					</Grid.Styles>
+
+					<!-- ComponentListItem.IsDrafted (NewContributeStrategy.md Phase 2, session 2b):
+					     a small chip after the row's own text, for a component whose entry was
+					     added or changed by a local, unpublished draft.
+
+					     And on the Contribute tab what the draft's checks found on the component (owner
+					     request, 2026-11-04; TabDrafts.Problems.cs). In a column of their own at the row's
+					     end: after the text, a long name left them out of sight, and they are what is
+					     looked for. -->
+					<Grid.Resources>
+						<DataTemplate x:Key="ComponentRowTemplate" DataType="data:ComponentListItem">
+							<Grid ColumnDefinitions="*,Auto">
+								<TextBlock Text="{Binding DisplayText}"
+										   TextTrimming="CharacterEllipsis"
+										   VerticalAlignment="Center" />
+								<StackPanel Grid.Column="1" Orientation="Horizontal">
+									<!-- Styled by App.axaml's Border.DraftChip, shared with the
+									     Hardware and Board drop-downs' chips. -->
+									<Border Classes="DraftChip"
+											Margin="6,0,0,0"
+											IsVisible="{Binding IsDrafted}"
+											ToolTip.Tip="This row is a local, unpublished draft edit">
+										<TextBlock Text="Draft" />
+									</Border>
+									<Border Classes="NavBadge error"
+											Margin="3,0,0,0"
+											IsVisible="{Binding HasErrors}"
+											ToolTip.Tip="{Binding ErrorsTip}">
+										<TextBlock Text="{Binding ErrorsText}" />
+									</Border>
+									<Border Classes="NavBadge warning"
+											Margin="3,0,0,0"
+											IsVisible="{Binding HasWarnings}"
+											ToolTip.Tip="{Binding WarningsTip}">
+										<TextBlock Text="{Binding WarningsText}" />
+									</Border>
+								</StackPanel>
+							</Grid>
+						</DataTemplate>
+					</Grid.Resources>
+
 					<TextBlock Grid.Row="0"
 							   Text="Hardware"
 							   FontSize="11" />
@@ -147,83 +209,89 @@
 							   Margin="0,8,0,0" />
 					<ListBox Grid.Row="5"
 							 x:Name="CategoryFilterListBox"
+							 Classes="SideList"
 							 SelectionMode="Multiple,Toggle"
 							 Margin="0,8,0,0"
 							 BorderThickness="1"
 							 CornerRadius="4"
 							 ClipToBounds="True"
 							 Padding="0"
-							 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-						<ListBox.Styles>
-							<Style Selector="ListBox /template/ Border">
-								<Setter Property="CornerRadius" Value="3" />
-								<Setter Property="ClipToBounds" Value="True" />
-							</Style>
-							<Style Selector="ListBox /template/ ScrollViewer">
-								<Setter Property="CornerRadius" Value="3" />
-								<Setter Property="ClipToBounds" Value="True" />
-							</Style>
-							<Style Selector="ListBoxItem">
-								<Setter Property="Padding" Value="8,3" />
-								<Setter Property="MinHeight" Value="0" />
-								<Setter Property="FontSize" Value="11" />
-							</Style>
-						</ListBox.Styles>
-					</ListBox>
+							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+					<ListBox Grid.Row="5"
+							 x:Name="ContributeCategoryListBox"
+							 Classes="SideList"
+							 IsVisible="False"
+							 SelectionMode="Multiple,Toggle"
+							 Margin="0,8,0,0"
+							 BorderThickness="1"
+							 CornerRadius="4"
+							 ClipToBounds="True"
+							 Padding="0"
+							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
 
-					<TextBlock Grid.Row="6"
-							   Text="Component"
-							   FontSize="11"
-							   Foreground="{DynamicResource Fg}"
-							   Margin="0,8,0,0" />
+					<!-- "With issues" is the Contribute tab's alone, there only while a component has an issue (owner
+					     requests, 2026-11-04; Main hands it over as the tab is shown, TabDrafts.Problems.cs owns it). The
+					     size and the click on the whole row are the "Labels visible" panel's, the box after its text as
+					     asked. Its margin takes back what it is taller than the word beside it, so the list stands in one
+					     place on every tab. -->
+					<Grid Grid.Row="6" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
+						<TextBlock Text="Component"
+								   FontSize="11"
+								   VerticalAlignment="Center"
+								   Foreground="{DynamicResource Fg}" />
+						<StackPanel Grid.Column="1"
+									x:Name="ComponentsWithIssuesRow"
+									Orientation="Horizontal"
+									Spacing="2"
+									Margin="8,-4,0,-4"
+									HorizontalAlignment="Right"
+									VerticalAlignment="Center"
+									Background="Transparent"
+									Cursor="Hand"
+									IsVisible="{Binding #ComponentsWithIssuesCheckBox.IsVisible}"
+									ToolTip.Tip="List only the components with an error or a warning"
+									PointerPressed="OnComponentsWithIssuesRowClicked">
+							<TextBlock Text="With issues"
+									   FontSize="11"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Fg}"
+									   IsHitTestVisible="False" />
+							<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+								<CheckBox x:Name="ComponentsWithIssuesCheckBox"
+										  MinHeight="0"
+										  Margin="0"
+										  Padding="0"
+										  CornerRadius="2"
+										  IsChecked="False"
+										  IsHitTestVisible="False"
+										  IsVisible="False" />
+							</Viewbox>
+						</StackPanel>
+					</Grid>
 					<ListBox Grid.Row="7"
 							 x:Name="ComponentFilterListBox"
+							 Classes="SideList ComponentRows"
+							 ItemTemplate="{StaticResource ComponentRowTemplate}"
+							 AutoScrollToSelectedItem="False"
 							 SelectionMode="Multiple,Toggle"
 							 Margin="0,8,0,0"
 							 BorderThickness="1"
 							 CornerRadius="4"
 							 ClipToBounds="True"
 							 Padding="0"
-							 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-						<ListBox.Styles>
-							<Style Selector="ListBox /template/ Border">
-								<Setter Property="CornerRadius" Value="3" />
-								<Setter Property="ClipToBounds" Value="True" />
-							</Style>
-							<Style Selector="ListBox /template/ ScrollViewer">
-								<Setter Property="CornerRadius" Value="3" />
-								<Setter Property="ClipToBounds" Value="True" />
-							</Style>
-
-							<!-- Default (non-selected) state -->
-							<Style Selector="ListBoxItem">
-								<Setter Property="Padding" Value="8,3" />
-								<Setter Property="MinHeight" Value="0" />
-								<Setter Property="FontSize" Value="11" />
-							</Style>
-						</ListBox.Styles>
-
-						<!-- ComponentListItem.IsDrafted (NewContributeStrategy.md Phase 2, session 2b):
-						     a small chip after the row's own text, for a component whose entry was
-						     added or changed by a local, unpublished draft. This is the list's first
-						     ItemTemplate ever - it previously rendered through bare ToString(), which a
-						     single TextBlock cannot mix with a conditional chip. -->
-						<ListBox.ItemTemplate>
-							<DataTemplate DataType="data:ComponentListItem">
-								<StackPanel Orientation="Horizontal" Spacing="6">
-									<TextBlock Text="{Binding DisplayText}"
-											   VerticalAlignment="Center" />
-									<!-- Styled by App.axaml's Border.DraftChip, shared with the
-									     Hardware and Board drop-downs' chips. -->
-									<Border Classes="DraftChip"
-											IsVisible="{Binding IsDrafted}"
-											ToolTip.Tip="This row is a local, unpublished draft edit">
-										<TextBlock Text="Draft" />
-									</Border>
-								</StackPanel>
-							</DataTemplate>
-						</ListBox.ItemTemplate>
-					</ListBox>
+							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+					<ListBox Grid.Row="7"
+							 x:Name="ContributeComponentListBox"
+							 Classes="SideList ComponentRows"
+							 ItemTemplate="{StaticResource ComponentRowTemplate}"
+							 IsVisible="False"
+							 SelectionMode="Single"
+							 Margin="0,8,0,0"
+							 BorderThickness="1"
+							 CornerRadius="4"
+							 ClipToBounds="True"
+							 Padding="0"
+							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
 				</Grid>
 
 				<!-- Action Controls -->
@@ -235,10 +303,19 @@
 							VerticalContentAlignment="Center"
 							TextChanged="OnComponentSearchTextChanged">
 					</TextBox>
+					<TextBox x:Name="ContributeSearchTextBox"
+							 FontSize="12"
+							 MinHeight="0"
+							 Padding="4"
+							 IsVisible="False"
+							 PlaceholderText="Filter components"
+							 VerticalContentAlignment="Center"
+							 TextChanged="OnContributeSearchTextChanged" />
 
 					<!-- Selection Actions -->
 					<Grid ColumnDefinitions="*,6,*">
 						<Button Grid.Column="0"
+								x:Name="ClearComponentsButton"
 								Content="Clear"
 								HorizontalAlignment="Stretch"
 								HorizontalContentAlignment="Center"
@@ -246,6 +323,7 @@
 								Padding="4"
 								Click="OnClearComponentsClick" />
 						<Button Grid.Column="2"
+								x:Name="MarkAllComponentsButton"
 								Content="Mark all"
 								HorizontalAlignment="Stretch"
 								HorizontalContentAlignment="Center"

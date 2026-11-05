@@ -37,8 +37,13 @@ namespace Handlers.DataHandling
 
         public const string CapturingOscilloscope = "Taking the screenshot from the oscilloscope...";
 
-        // "Copy from another board" (slice 5) - the other boards' files read for the same part.
+        // "Also on other boards" (slice 5) - the other boards' files read for the same part.
         public const string LookingAtOtherBoards = "Looking for the same part on the other boards...";
+
+        // "Clone component from another board" - the board picked read for its components, and the clone.
+        public const string ReadingOtherBoard = "Reading that board...";
+
+        public const string CloningComponent = "Cloning the component into your draft...";
 
         // "Also on other boards" for a file replaced - the other boards' file lists read for its bytes.
         public const string LookingForFilesOnOtherBoards = "Looking for the same files on the other boards...";
@@ -75,6 +80,8 @@ namespace Handlers.DataHandling
 
         public const string ImportingKiCad = "Importing the KiCad data...";
 
+        public const string ReadingKiCad = "Reading the board's KiCad data...";
+
         public const string CheckingKiCadMatches = "Checking what the KiCad data lines up with...";
 
         // The KiCad components added to the board (step 3).
@@ -83,10 +90,13 @@ namespace Handlers.DataHandling
         // "Mark all automatically" on a picture aligned with KiCad (step 3).
         public const string MarkingFromKiCad = "Drawing the components' rectangles from the KiCad data...";
 
+        // TEMPORARY, with BaselinePinMigration: "Create pinouts for the whole board".
+        public const string MigrationMakingPinouts = "Making the pinouts of the whole board...";
+
         // A suggested match used on Board status (step 3).
         public const string MatchingPictures = "Matching the pictures to their KiCad views...";
 
-        // Files dropped on the Contribute tab, looked at before their window opens (step 3).
+        // Files dropped on "Board: Schematic images", looked at before they are added (step 3).
         public const string ReadingDroppedFiles = "Looking at the files dropped...";
 
         // A device's photos copied in, and a device deleted with its photos (step 4).

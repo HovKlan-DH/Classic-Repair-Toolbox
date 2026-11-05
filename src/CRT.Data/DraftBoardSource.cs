@@ -318,10 +318,9 @@ namespace Handlers.DataHandling
         // *** NOT "whatever file sits at the published path". *** For a new board that file can
         // only be the contributor's OWN copy: a board registered the old way, in a
         // "_UserContribution" workbook, lives in Data/ at exactly this path, and its copy put into
-        // Drafts/ (DraftFolderImport) was compared against itself - every row unchanged, "New
-        // board, nothing added yet", and Submit disabled. A new board counts every row as an
-        // addition, which is what its "New board, N rows so far" wording already says, and what
-        // the table editor already did (it opens a new board with no published board).
+        // Drafts/ (DraftFolderImport) was compared against itself - every row unchanged, and Submit
+        // disabled. A new board counts every row as an addition, which is what the table
+        // editor already did (it opens a new board with no published board).
         //
         // Retirement does not come through here: it compares against the board the application
         // LISTS (DraftStatusReader.ResolveForBoard), the right question once a board is published.

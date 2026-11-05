@@ -51,7 +51,11 @@ namespace CRT
 
         // One panel's controls, made once: its icon, words and button - and Extra, under its lines, for
         // what only that part has (the suggested matches, what each component lacks).
-        private sealed record StatusRow(Border Panel, TextBlock Icon, TextBlock Title, TextBlock Explanation, StackPanel Lines, Button Action, Button Table, StackPanel Extra);
+        private sealed record StatusRow(Border Panel, TextBlock Icon, TextBlock Title, TextBlock Explanation, StackPanel Lines, Button Action, Button Table, StackPanel Extra, StatusProblems Problems);
+
+        // A panel's errors and warnings, in a panel of their own inside it: how many, then each. Inner is what
+        // stands in it, which the components marked nowhere and "Show in the table" join.
+        private sealed record StatusProblems(Border Block, TextBlock Icon, TextBlock Title, StackPanel Inner, StackPanel Rows, TextBlock More);
 
         private readonly Dictionary<BoardStatusPart, StatusRow> thisStatusRows = new();
 
@@ -73,8 +77,9 @@ namespace CRT
         // The last KiCad facts read, and the board they are of.
         private (string Board, BoardKiCadFacts Facts)? thisReadinessFacts;
 
-        // The draft's errors and warnings as last checked, and the board they are of.
-        private (string Board, IReadOnlyList<BoardDataProblem> Problems)? thisStatusProblems;
+        // The draft's errors and warnings as last checked, with the rows they are numbered by, and the board
+        // they are of.
+        private (string Board, BoardProblemsRead Read)? thisStatusProblems;
 
         // How many credits' rows a new board would be given, as last worked out, and the board it is of.
         private (string Board, int Rows)? thisStatusCreditsToOffer;
@@ -112,7 +117,21 @@ namespace CRT
 
         internal Button StatusTableButtonForTests(BoardStatusPart part) => this.thisStatusRows[part].Table;
 
-        internal string? ReadinessNoteForTests => this.ReadinessNoteText.IsVisible ? this.ReadinessNoteText.Text : null;
+        // A panel's own panel of errors and warnings as it stands: not shown is null.
+        internal (string Title, List<Grid> Rows, string More)? StatusProblemsForTests(BoardStatusPart part)
+        {
+            StatusProblems shown = this.thisStatusRows[part].Problems;
+
+            return shown.Block.IsVisible
+                ? (shown.Title.IsVisible ? shown.Title.Text ?? string.Empty : string.Empty,
+                   shown.Rows.Children.OfType<Grid>().ToList(),
+                   shown.More.IsVisible ? shown.More.Text ?? string.Empty : string.Empty)
+                : null;
+        }
+
+        internal Border StatusProblemsBlockForTests(BoardStatusPart part) => this.thisStatusRows[part].Problems.Block;
+
+        internal string? ReadinessNoteForTests => this.ReadinessNoteText.IsVisible ? Handlers.Theming.BoldRuns.TextOf(this.ReadinessNoteText) : null;
 
         internal BoardMissing? MissingForTests { get; private set; }
 
@@ -234,12 +253,17 @@ namespace CRT
                 string draftFolder = DraftFolderLayout.GetBoardFolder(draftsRoot, identity);
 
                 // The draft's errors and warnings, as the table's checks find them on what it holds now -
-                // a board with no draft has none to say.
-                (BoardContent? content, List<string> files, IReadOnlyList<BoardDataProblem> problems, int creditsToOffer) = await Task.Run(() =>
-                    (session?.Content ?? TabDrafts.PublishedContentOf(published),
-                     TabDrafts.KiCadFileNamesOf(draftsRoot, identity, listed, published),
-                     session is null ? [] : DraftStatusReader.ProblemsOf(session.Content.Board, dataRoot, draftFolder),
-                     session is null ? 0 : TabDrafts.NewBoardCreditsToOffer(entry, session)));
+                // a board with no draft has none to say. They go with the very board they ran on.
+                (BoardContent? content, List<string> files, BoardProblemsRead problems, int creditsToOffer) = await Task.Run(() =>
+                {
+                    BoardContent? read = session?.Content ?? TabDrafts.PublishedContentOf(published);
+                    IReadOnlyList<BoardDataProblem> found = session is null || read is null ? [] : DraftStatusReader.ProblemsOf(read.Board, dataRoot, draftFolder);
+
+                    return (read,
+                            TabDrafts.KiCadFileNamesOf(draftsRoot, identity, listed, published),
+                            new BoardProblemsRead(BoardProblemCounts.Of(found), found, read?.Board),
+                            session is null ? 0 : TabDrafts.NewBoardCreditsToOffer(entry, session));
+                });
 
                 if (ask != this.thisReadinessAsk)
                 {
@@ -307,8 +331,8 @@ namespace CRT
             this.thisStatusFiles is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Files : null;
 
         // The draft's errors and warnings as last checked - none known yet is none said.
-        private IReadOnlyList<BoardDataProblem> KnownProblems(string identity) =>
-            this.thisStatusProblems is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Problems : [];
+        private BoardProblemsRead KnownProblems(string identity) =>
+            this.thisStatusProblems is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Read : BoardProblemsRead.None;
 
         // The credits' rows a new board would be given, as last worked out - none known yet is none said.
         private int KnownCreditsToOffer(string identity) =>
@@ -323,7 +347,7 @@ namespace CRT
                              ReferenceEquals(note.Content, session.Content) &&
                              !(note.GoesWhenSaved && session.SaveState == DraftSaveState.Saved);
 
-            this.ReadinessNoteText.Text = noteShown ? this.thisReadinessNote!.Text : null;
+            Handlers.Theming.BoldRuns.ShowMarked(this.ReadinessNoteText, noteShown ? this.thisReadinessNote!.Text : null);
             this.ReadinessNoteText.IsVisible = noteShown;
         }
 
@@ -344,13 +368,13 @@ namespace CRT
             IReadOnlyList<KiCadCalibrationEntry>? calibrations,
             IReadOnlyList<string>? files,
             BoardKiCadFacts? kiCad,
-            IReadOnlyList<BoardDataProblem> problems,
+            BoardProblemsRead problems,
             int creditsToOffer)
         {
             this.CreateStatusRows();
 
             BoardMissing missing = BoardReadiness.Missing(board, hasKiCadFiles: files is { Count: > 0 }, kiCad);
-            List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, missing, calibrations, files, kiCad, problems, creditsToOffer);
+            List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, missing, calibrations, files, kiCad, problems.Problems, creditsToOffer, problems.Board);
 
             this.MissingForTests = missing;
             this.thisStatusPanels = panels;
@@ -360,6 +384,7 @@ namespace CRT
                 if (panels.FirstOrDefault(panel => panel.Part == part) is { } panel)
                 {
                     TabDrafts.ShowStatusRow(row, panel);
+                    this.ShowStatusProblems(row.Problems, panel);
                 }
                 else
                 {
@@ -378,20 +403,23 @@ namespace CRT
             this.StatusPanelsHost.IsVisible = true;
         }
 
+        // A panel's icon, which differs in shape too, so nothing rests on the color alone.
+        private static string StatusIconOf(BoardStatusState state) => state switch
+        {
+            BoardStatusState.Done => "\uf058",
+            BoardStatusState.ToDo => "\uf06a",
+            BoardStatusState.Error => "\uf057",
+            _ => "\uf056",
+        };
+
         private static void ShowStatusRow(StatusRow row, BoardStatusPanel panel)
         {
             row.Panel.IsVisible = true;
             row.Title.Text = panel.Title;
-            row.Explanation.Text = panel.Explanation;
+            Handlers.Theming.BoldRuns.ShowMarked(row.Explanation, panel.Explanation);
             row.Action.Content = panel.Action;
 
-            row.Icon.Text = panel.State switch
-            {
-                BoardStatusState.Done => "\uf058",
-                BoardStatusState.ToDo => "\uf06a",
-                BoardStatusState.Error => "\uf057",
-                _ => "\uf056",
-            };
+            row.Icon.Text = TabDrafts.StatusIconOf(panel.State);
 
             TabDrafts.UseStateClasses(row.Panel, panel.State);
             TabDrafts.UseStateClasses(row.Icon, panel.State);
@@ -425,6 +453,69 @@ namespace CRT
             row.Table.IsVisible = panel.TableSheet is not null && panel.Part != BoardStatusPart.Problems;
         }
 
+        // ###########################################################################################
+        // WHAT THE CHECKS FOUND ON A PANEL'S PART, IN A PANEL OF THEIR OWN INSIDE IT (owner requests, 2026-11-04:
+        // "the error and warning panels should be shown specifically inside those panels and then detail the
+        // issues in there also"; "encapsulated in its own panel, as now the text is kind of mixed with the normal
+        // text"), right under the headline: how many, then each - a component's with the way to it - as the panel
+        // of a page has them. Changed in place, as everything here: a row made again under a press threw the
+        // click away.
+        // ###########################################################################################
+        private void ShowStatusProblems(StatusProblems shown, BoardStatusPanel panel)
+        {
+            BoardProblemCounts counts = panel.ProblemCounts;
+            bool any = counts.Errors > 0 || counts.Warnings > 0;
+            BoardStatusState state = counts.Errors > 0 ? BoardStatusState.Error : BoardStatusState.ToDo;
+
+            shown.Block.IsVisible = any;
+            shown.Title.IsVisible = any;
+            shown.Title.Text = ContributeProblems.Said(counts);
+            shown.Icon.Text = TabDrafts.StatusIconOf(state);
+
+            TabDrafts.UseStateClasses(shown.Block, state);
+            TabDrafts.UseStateClasses(shown.Icon, state);
+
+            InPlaceList.Sync(
+                shown.Rows.Children,
+                panel.Problems ?? [],
+                (control, item) => control is Grid { Tag: EntryProblem row } && row == item,
+                this.StatusProblemRow);
+
+            shown.More.Text = panel.ProblemsMore;
+            shown.More.IsVisible = panel.ProblemsMore.Length > 0;
+        }
+
+        private Control StatusProblemRow(EntryProblem item)
+        {
+            (Border level, TextBlock levelText) = TabDrafts.Badge(item.Problem.Level == BoardProblemLevel.Error ? "error" : "warning");
+
+            levelText.Text = ContributeProblems.LevelWord(item.Problem.Level);
+
+            var text = new TextBlock
+            {
+                Text = item.Text,
+                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Avalonia.Thickness(8, 0),
+            };
+
+            level.IsVisible = true;
+            Grid.SetColumn(text, 1);
+
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), Tag = item, Children = { level, text } };
+
+            if (item.ComponentLabel.Length > 0)
+            {
+                var open = new Button { Content = ContributeProblems.OpenLabel(item.ComponentLabel), VerticalAlignment = VerticalAlignment.Center };
+
+                open.Click += (_, _) => this.RunGuarded(() => this.OpenComponentOfProblemAsync(item), "Open the component of a problem");
+                Grid.SetColumn(open, 2);
+                row.Children.Add(open);
+            }
+
+            return row;
+        }
+
         private static void UseStateClasses(Control control, BoardStatusState state)
         {
             control.Classes.Set("done", state == BoardStatusState.Done);
@@ -456,11 +547,16 @@ namespace CRT
                 var table = new Button { Content = BoardReadiness.TableAction, Tag = part, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Avalonia.Thickness(0, 6, 0, 0), IsVisible = false };
                 table.Click += this.OnStatusTableClick;
 
+                StatusProblems problems = TabDrafts.MakeStatusProblems();
+
+                // "Show in the table" is about what the checks found, so it stands with them.
+                problems.Inner.Children.Add(table);
+
                 var text = new StackPanel { Spacing = 1 };
                 text.Children.Add(title);
                 text.Children.Add(explanation);
+                text.Children.Add(problems.Block);
                 text.Children.Add(lines);
-                text.Children.Add(table);
                 text.Children.Add(extra);
 
                 var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("28,*,Auto") };
@@ -474,8 +570,28 @@ namespace CRT
                 var panel = new Border { Classes = { "StatusPanel" }, Child = grid, Tag = part };
                 this.StatusPanelsHost.Children.Add(panel);
 
-                this.thisStatusRows[part] = new StatusRow(panel, icon, title, explanation, lines, action, table, extra);
+                this.thisStatusRows[part] = new StatusRow(panel, icon, title, explanation, lines, action, table, extra, problems);
             }
+        }
+
+        private static StatusProblems MakeStatusProblems()
+        {
+            var icon = new TextBlock { Classes = { "StatusIcon" }, Margin = new Avalonia.Thickness(0, 2, 10, 0) };
+            var title = new TextBlock { Classes = { "StatusTitle" } };
+            var rows = new StackPanel { Spacing = 4 };
+            var more = new TextBlock { Classes = { "StatusExplanation" }, IsVisible = false };
+            var inner = new StackPanel { Spacing = 6, Children = { title, rows, more } };
+
+            Grid.SetColumn(inner, 1);
+
+            var block = new Border
+            {
+                Classes = { "StatusProblems" },
+                IsVisible = false,
+                Child = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), Children = { icon, inner } },
+            };
+
+            return new StatusProblems(block, icon, title, inner, rows, more);
         }
 
         private void OnStatusActionClick(object? sender, RoutedEventArgs e)
@@ -492,7 +608,7 @@ namespace CRT
             if (sender is Button { Tag: BoardStatusPart part } &&
                 this.thisStatusPanels.FirstOrDefault(panel => panel.Part == part)?.TableSheet is { } sheet)
             {
-                this.RunGuarded(() => this.ShowTableOnSheetAsync(sheet), "Table view");
+                this.RunGuarded(() => this.ShowTableOnSheetAsync(sheet), "Table");
             }
         }
 
@@ -502,37 +618,37 @@ namespace CRT
             switch (part)
             {
                 case BoardStatusPart.Problems:
-                    this.RunGuarded(() => this.OnCurrentDraftAsync(this.ShowTableAsync), "Table view");
+                    this.RunGuarded(() => this.OnCurrentDraftAsync(this.ShowTableAsync), "Table");
                     break;
                 case BoardStatusPart.Name:
                     this.RunGuarded(this.OpenBoardNameAsync, "Board name");
                     break;
                 case BoardStatusPart.Regions:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Regions), "Regions");
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.Regions), "Regions");
                     break;
                 case BoardStatusPart.Categories:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Categories), "Categories");
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.Categories), "Categories");
                     break;
                 case BoardStatusPart.KiCad:
                     this.RunGuarded(this.OpenKiCadAsync, "KiCad data");
                     break;
                 case BoardStatusPart.Pictures:
-                    this.ManagePictures();
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.SchematicImages), "Schematic images");
                     break;
                 case BoardStatusPart.Signals:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.ImportantSignals), "Important signals");
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.ImportantSignals), "Important signals");
                     break;
                 case BoardStatusPart.Components:
                     this.PickComponents();
                     break;
                 case BoardStatusPart.Files:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Files), "Files");
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.Files), "Files");
                     break;
                 case BoardStatusPart.Links:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Links), "Links");
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.Links), "Links");
                     break;
                 case BoardStatusPart.Credits:
-                    this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Credits), "Credits");
+                    this.RunGuarded(() => this.ShowEntryAsync(ContributeEntry.Credits), "Credits");
                     break;
             }
         }
@@ -762,9 +878,18 @@ namespace CRT
 
             this.ShowMissingGroup(groups[0], BoardReadiness.NotInKiCadHeading(missing.NotInKiCadLabels.Count), missing.NotInKiCadLabels);
             this.ShowMissingGroup(groups[1], BoardReadiness.WithoutDescriptionHeading(missing.WithoutDescription.Count), missing.WithoutDescription);
-            this.ShowMissingGroup(groups[2], BoardReadiness.UnmarkedHeading(missing.Unmarked.Count), missing.Unmarked);
+            this.ShowMissingGroup(groups[TabDrafts.UnmarkedGroup], BoardReadiness.UnmarkedHeading(missing.Unmarked.Count), missing.Unmarked);
             this.ShowMissingGroup(groups[3], BoardReadiness.PinsWithoutBaselineHeading(missing.PinsWithoutBaseline.Count), missing.PinsWithoutBaseline);
+
+            // The components marked nowhere stand in the frame of the panel's warnings, being one
+            // (MissingControls), so the frame is there for them as the checks come in.
+            Border frame = this.thisStatusRows[BoardStatusPart.Components].Problems.Block;
+
+            frame.IsVisible = frame.IsVisible || groups[TabDrafts.UnmarkedGroup].Panel.IsVisible;
         }
+
+        // Which of the groups below is the components marked nowhere.
+        private const int UnmarkedGroup = 2;
 
         private void ShowMissingGroup(MissingGroup group, string heading, IReadOnlyList<string> labels)
         {
@@ -799,7 +924,8 @@ namespace CRT
                 return made;
             }
 
-            StackPanel host = this.thisStatusRows[BoardStatusPart.Components].Extra;
+            StatusRow components = this.thisStatusRows[BoardStatusPart.Components];
+            StackPanel host = components.Extra;
             host.Margin = new Avalonia.Thickness(0, 8, 0, 0);
 
             made = new MissingGroup[4];
@@ -807,14 +933,29 @@ namespace CRT
             for (int index = 0; index < made.Length; index++)
             {
                 var panel = new StackPanel { Spacing = 4 };
-                var heading = new TextBlock { FontWeight = Avalonia.Media.FontWeight.SemiBold, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+
+                // In the panel of the warnings it is a sentence, with the panel's own title over it (owner
+                // request, 2026-11-04); the others are headings of the panel's lines.
+                var heading = new TextBlock
+                {
+                    FontWeight = index == TabDrafts.UnmarkedGroup ? Avalonia.Media.FontWeight.Normal : Avalonia.Media.FontWeight.SemiBold,
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                };
                 var buttons = new WrapPanel();
                 var more = new TextBlock { FontSize = 11, Opacity = 0.75 };
 
                 panel.Children.Add(heading);
                 panel.Children.Add(buttons);
                 panel.Children.Add(more);
-                host.Children.Add(panel);
+
+                if (index == TabDrafts.UnmarkedGroup)
+                {
+                    components.Problems.Inner.Children.Insert(components.Problems.Inner.Children.IndexOf(components.Table), panel);
+                }
+                else
+                {
+                    host.Children.Add(panel);
+                }
 
                 made[index] = new MissingGroup(panel, heading, buttons, more);
             }

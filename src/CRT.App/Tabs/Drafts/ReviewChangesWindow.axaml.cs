@@ -26,20 +26,43 @@ namespace CRT
     {
         private Func<string, Task<(DraftChangeSummary Summary, string? Failure)>>? thisUndoComponent;
 
-        // ###########################################################################################
-        // What the window says it shows (code review, 2026-11-02): a new board has nothing published to
-        // be compared with, and no "Undo changes to" to explain (owner request, 2026-11-02).
-        // ###########################################################################################
         internal const string IntroPublished =
             "What your draft changes, compared with the published data. \"Undo changes to\" puts one component back as it is published - " +
             "and \"Undo\" in the draft's header on the \"Contribute\" tab takes that back too, while CRT is running.";
 
-        internal const string IntroNewBoard =
-            "What your draft holds. This is a new board, so nothing of it is published yet and all of it is new.";
-
         internal const string NothingPublished = "Your draft holds no changes from the published data.";
 
-        internal const string NothingNewBoard = "Your draft holds nothing yet.";
+        // ###########################################################################################
+        // *** A NEW BOARD HAS NO CHANGES TO LIST (owner request, 2026-11-03: "the only thing it needs to
+        // state is 'New board - not submitted yet' ... viewing 'a million' changes on a new board is not
+        // helpful"). *** Every row is new until it is published. Sent, it is compared with the published
+        // board once that is there - nothing here holds a copy of what was sent to compare with.
+        // ###########################################################################################
+        internal const string NewBoardNotSubmitted = "New board - not submitted yet";
+
+        internal const string NewBoardSubmitted = "New board - submitted, not published yet. Your changes can be listed here once it is published.";
+
+        internal const string NewBoardPublished = "New board - published. Your changes can be listed here once CRT has downloaded it.";
+
+        // ###########################################################################################
+        // Where a new board stands, from what was sent of it (TabDrafts.SentReceiptsOf). Published comes first
+        // (code review, 2026-11-04): a board stays new on this machine until its next data check downloads it,
+        // and StillStands is true of one published too, as its name is then for good, so it read "not published
+        // yet" of a board that was.
+        // ###########################################################################################
+        internal static string NewBoardStanding(IReadOnlyCollection<SubmissionReceipt> sent)
+        {
+            ArgumentNullException.ThrowIfNull(sent);
+
+            if (sent.Any(receipt => SubmissionReceiptPresenter.IsInPublishedData(receipt.LastKnownState)))
+            {
+                return ReviewChangesWindow.NewBoardPublished;
+            }
+
+            return sent.Any(SubmissionReceiptPresenter.StillStands)
+                ? ReviewChangesWindow.NewBoardSubmitted
+                : ReviewChangesWindow.NewBoardNotSubmitted;
+        }
 
         public ReviewChangesWindow()
         {
@@ -49,21 +72,29 @@ namespace CRT
         }
 
         // `undoComponent` puts one component back and answers the summary afterwards, with why it
-        // could not when it could not. Null offers no undo. `isNewBoard`: nothing of it is published.
+        // could not when it could not. Null offers no undo.
         public void Initialize(
             string boardDisplayName,
             DraftChangeSummary summary,
-            Func<string, Task<(DraftChangeSummary Summary, string? Failure)>>? undoComponent = null,
-            bool isNewBoard = false)
+            Func<string, Task<(DraftChangeSummary Summary, string? Failure)>>? undoComponent = null)
         {
             ArgumentNullException.ThrowIfNull(summary);
 
             this.BoardNameText.Text = boardDisplayName;
-            this.IntroText.Text = isNewBoard ? ReviewChangesWindow.IntroNewBoard : ReviewChangesWindow.IntroPublished;
-            this.NothingText.Text = isNewBoard ? ReviewChangesWindow.NothingNewBoard : ReviewChangesWindow.NothingPublished;
+            this.IntroText.Text = ReviewChangesWindow.IntroPublished;
+            this.NothingText.Text = ReviewChangesWindow.NothingPublished;
             this.thisUndoComponent = undoComponent;
 
             this.ShowSummary(summary);
+        }
+
+        // A new board: where it stands (NewBoardStanding), and nothing to list.
+        public void InitializeNewBoard(string boardDisplayName, string standing)
+        {
+            this.BoardNameText.Text = boardDisplayName;
+            this.IntroText.Text = standing;
+            this.NothingText.IsVisible = false;
+            this.GroupsPanel.Children.Clear();
         }
 
         // ###########################################################################################

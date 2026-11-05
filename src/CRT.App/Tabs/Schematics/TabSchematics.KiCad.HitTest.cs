@@ -86,6 +86,11 @@ public partial class TabSchematics
         {
             yield return label;
         }
+
+        foreach (var label in schematic.Labels.Power)
+        {
+            yield return label;
+        }
     }
 
     // ###########################################################################################
@@ -554,13 +559,16 @@ public partial class TabSchematics
             : Cursor.Default;
         this.CheckGlobalShowCalibrationTracesAndPads.IsEnabled = isCalibrationTraceToggleVisible;
 
-        this.GlobalShowZonesRow.IsVisible = isCurrentViewPcb;
-        this.GlobalShowZonesRow.IsEnabled = isCurrentViewPcb;
-        this.GlobalShowZonesRow.Opacity = isCurrentViewPcb ? 1.0 : 0.55;
-        this.GlobalShowZonesRow.Cursor = isCurrentViewPcb
+        // Aligning draws no zones whatever it says (RenderKiCadPcbGeometry), so it is not offered then.
+        bool mayShowZones = isCurrentViewPcb && !this.thisIsKiCadTraceCalibrationMode;
+
+        this.GlobalShowZonesRow.IsVisible = mayShowZones;
+        this.GlobalShowZonesRow.IsEnabled = mayShowZones;
+        this.GlobalShowZonesRow.Opacity = mayShowZones ? 1.0 : 0.55;
+        this.GlobalShowZonesRow.Cursor = mayShowZones
             ? new Cursor(StandardCursorType.Hand)
             : Cursor.Default;
-        this.CheckGlobalShowZones.IsEnabled = isCurrentViewPcb;
+        this.CheckGlobalShowZones.IsEnabled = mayShowZones;
 
         this.SchematicsInteractiveCadTraceHoverHoldShiftRow.IsVisible = hasKiCadTraces;
 
@@ -569,9 +577,9 @@ public partial class TabSchematics
 
         this.UpdateSchematicsInteractiveCadTraceHoverHoldShiftVisualState(isHoldShiftEnabled);
 
-        // The gear only while its popover has a setting to show (CRT 4.0 step 5) - every row is a
-        // KiCad one, so a board without KiCad data has none, and an empty popover is no setting.
-        this.GlobalSettingsButton.IsVisible = this.GlobalSettingsListPanel.Children.Any(row => row.IsVisible);
+        // Only while it has a setting to show - every row is a KiCad one, so a board without KiCad data
+        // has none, and a headline over nothing is no setting.
+        this.GlobalSettingsPanel.IsVisible = this.GlobalSettingsListPanel.Children.Any(row => row.IsVisible);
     }
 
     // ###########################################################################################

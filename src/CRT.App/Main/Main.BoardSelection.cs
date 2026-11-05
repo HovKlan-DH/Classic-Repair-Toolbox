@@ -35,9 +35,10 @@ namespace CRT
         // The running board load's cancellation - cancelled by the next one (LoadSelectedBoardAsync).
         private CancellationTokenSource? _boardLoadCts;
         // ###########################################################################################
-        // Populates the hardware drop-down with distinct hardware names from loaded data.
+        // Populates the hardware drop-down with distinct hardware names from loaded data. Internal for
+        // MainBoardSwitchTests, which starts the drop-downs as StartAsync does.
         // ###########################################################################################
-        private void PopulateHardwareDropDown()
+        internal void PopulateHardwareDropDown()
         {
             var hardwareNames = BuildVisibleHardwareNames(UserSettings.CatalogueUncheckedKeysSnapshot);
 
@@ -128,9 +129,7 @@ namespace CRT
             if (this._suppressBoardHardwareSelectionReload)
                 return;
 
-            this._suppressComponentSearchRefresh = true;
-            this.ComponentSearchTextBox.Text = string.Empty;
-            this._suppressComponentSearchRefresh = false;
+            this.ShowComponentSearchText(string.Empty);
 
             var selectedHardware = this.HardwareComboBox.SelectedItem as string;
 
@@ -185,7 +184,31 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Loading the selected board failed: [{ex.Message}]");
+                // The whole exception: a user's log with only its message could not say where it came from.
+                Logger.Critical($"Loading the selected board failed - [{ex}]");
+            }
+        }
+
+        // ###########################################################################################
+        // A board load, ending with the other tabs' lists taking clicks whatever came of it - another board, none,
+        // one that could not be read, a step that threw - unless a later load has them by then. The rows a board
+        // read again keeps take none meanwhile (Main.ContributeLists.cs, LetGoOfListsForLoad; code review,
+        // 2026-11-05), and left so, the lists would never take one again.
+        // ###########################################################################################
+        private async Task LoadSelectedBoardAsync(bool clearComponentSearch)
+        {
+            int loadsBefore = this._boardSelectionLoadVersion;
+
+            try
+            {
+                await this.ReadSelectedBoardAsync(clearComponentSearch);
+            }
+            finally
+            {
+                if (this._boardSelectionLoadVersion == unchecked(loadsBefore + 1))
+                {
+                    this.OtherTabsListsTakeClicks(true);
+                }
             }
         }
 
@@ -199,7 +222,7 @@ namespace CRT
         // search box is emptied for a board change the user made in the drop-down, but not for a
         // load triggered some other way.
         // ###########################################################################################
-        private async Task LoadSelectedBoardAsync(bool clearComponentSearch)
+        private async Task ReadSelectedBoardAsync(bool clearComponentSearch)
         {
             this.TabSchematicsControl.CancelWorklogEntryMode();
 
@@ -227,10 +250,13 @@ namespace CRT
 
             if (clearComponentSearch)
             {
-                this._suppressComponentSearchRefresh = true;
-                this.ComponentSearchTextBox.Text = string.Empty;
-                this._suppressComponentSearchRefresh = false;
+                this.ShowComponentSearchText(string.Empty);
             }
+
+            // The Contribute tab's filter box has a word per board (Main.ContributeLists.cs).
+            this.FollowBoardInContributeLists();
+
+            this.FollowBoardInPopups();
 
             // No thumbnail drag or held press may outlive the tiles it is on, in any gallery.
             this.TabSchematicsControl.CancelThumbnailDrags();
@@ -250,8 +276,8 @@ namespace CRT
 
             // Emptying the thumbnails leaves no schematic selected (TabSchematics.OnCurrentThumbnailsChanged).
             this.TabSchematicsControl.currentThumbnails.Clear();
-            this.CategoryFilterListBox.ItemsSource = null;
-            this.ComponentFilterListBox.ItemsSource = null;
+
+            this.LetGoOfListsForLoad();
 
             this.TabSchematicsControl.highlightIndexBySchematic = new(StringComparer.OrdinalIgnoreCase);
             this.TabSchematicsControl.schematicByName = new(StringComparer.OrdinalIgnoreCase);
@@ -296,7 +322,9 @@ namespace CRT
                 // Same reasoning as the no-selection case above: this board has no data file, so
                 // there is nothing to load and _currentBoardData stays null. Refresh so the worklog
                 // surfaces show THIS board (its workbook list does not need board data) with an
-                // empty board pane, rather than the previous board's previews.
+                // empty board pane, rather than the previous board's previews. Its rows go too: no new
+                // ones are coming to replace those LetGoOfListsForLoad kept.
+                this.LetGoOfOtherTabsLists();
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 this.ShowBoardInContributeTab(null);
@@ -318,6 +346,7 @@ namespace CRT
                 // The board's Excel file is missing or unreadable. Still the currently selected
                 // board, so its worklog surfaces must show IT (empty board pane, real workbook
                 // list) rather than whatever the previously selected board left on screen.
+                this.LetGoOfOtherTabsLists();
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 this.ShowBoardInContributeTab(null);
@@ -370,67 +399,11 @@ namespace CRT
             // Nothing above the await needs it back: the splitter-ratio restore reads only boardKey.
             this.RefreshWorklogBar();
 
-            var categories = ComponentListBuilder.BuildDistinctCategories(boardData);
-            this.CategoryFilterListBox.ItemsSource = categories;
+            // The Contribute tab's lists follow it as the board is shown there, below (Main.ContributeLists.cs).
+            this.ShowListsOfBoard(boardData, boardKey, UserSettings.Region);
 
-            var savedCategories = UserSettings.GetSelectedCategories(boardKey);
-            if (savedCategories == null)
-            {
-                try
-                {
-                    this.CategoryFilterListBox.SelectAll();
-                }
-                catch (OutOfMemoryException ex)
-                {
-                    Logger.Debug(ex, "Failed to apply default category selection - group was too large to select");
-                }
-            }
-            else
-            {
-                var seenCategories = UserSettings.GetSeenCategories(boardKey);
-
-                for (int i = 0; i < categories.Count; i++)
-                {
-                    if (SavedCategoryFilter.IsTicked(categories[i], savedCategories, seenCategories))
-                    {
-                        this.CategoryFilterListBox.Selection.Select(i);
-                    }
-                }
-
-                // Saved before what was seen was kept: what comes after this shows.
-                if (seenCategories == null)
-                {
-                    UserSettings.SetSeenCategories(boardKey, categories);
-                }
-            }
-
+            this.LetGoOfSelectionShown(boardKey);
             this._suppressCategoryFilterSave = false;
-
-            var activeCategories = new HashSet<string>(
-                this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? Enumerable.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
-
-            string searchTerm = this.ComponentSearchTextBox?.Text ?? string.Empty;
-            var componentItems = ComponentListBuilder.BuildComponentItems(
-                boardData, UserSettings.Region, activeCategories, searchTerm, this._currentBoardDraftSummary.DraftedComponentBoardLabels);
-
-            this._suppressComponentHighlightUpdate = true;
-            this.ComponentFilterListBox.ItemsSource = componentItems;
-
-            if (!string.IsNullOrWhiteSpace(searchTerm))
-            {
-                // ItemsSource was just reassigned above; SelectAll can throw if Avalonia's
-                // selection model has not yet caught up with the new item count.
-                try
-                {
-                    this.ComponentFilterListBox.SelectAll();
-                }
-                catch
-                {
-                }
-            }
-
-            this._suppressComponentHighlightUpdate = false;
 
             // ###########################################################################################
             // *** EVERYTHING THE POOL NEEDS IS READ HERE, ON THE UI THREAD (code review, 2026-10-13). ***
@@ -595,6 +568,9 @@ namespace CRT
                         this.ShowBoardInContributeTab(entry);
                         this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
 
+                        // What the lists have selected by now, on the board as it now is.
+                        this.ShowHighlightsOfSelectionAfterLoad();
+
                         // The Contribute tab's "Show on board" or a picture tool waited for this board to
                         // be read again (OnBoardShownUpToDate) - now its highlights and thumbnails are there.
                         this.DoWhatWasAskedAfterLoad(boardKey);
@@ -645,14 +621,10 @@ namespace CRT
             if (this._suppressComponentHighlightUpdate)
                 return;
 
-            var boardLabels = this.ComponentFilterListBox.SelectedItems?
-                .Cast<ComponentListItem>()
-                .Select(item => item.BoardLabel)
-                .Where(l => !string.IsNullOrEmpty(l))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList() ?? new List<string>();
+            // The user chose: what was held for a load to select again is no longer wanted.
+            this._selectionToKeep = null;
 
-            this.TabSchematicsControl.UpdateHighlightsForComponents(boardLabels);
+            this.TabSchematicsControl.UpdateHighlightsForComponents(this.SelectedComponentLabels());
             this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
         }
 
@@ -663,6 +635,9 @@ namespace CRT
         {
             if (this._suppressCategoryFilterSave)
                 return;
+
+            // Somebody's choice, as a selection made is: nothing held comes back in its place at the next load.
+            this._selectionToKeep = null;
 
             var boardKey = this.GetCurrentBoardKey();
             if (string.IsNullOrEmpty(boardKey))
@@ -697,11 +672,7 @@ namespace CRT
                 }
                 else
                 {
-                    for (int i = 0; i < componentItems.Count; i++)
-                    {
-                        if (previouslySelectedKeys.Contains(componentItems[i].SelectionKey))
-                            this.ComponentFilterListBox.Selection.Select(i);
-                    }
+                    this.SelectInComponentList(componentItems, previouslySelectedKeys);
                 }
 
                 this._suppressComponentHighlightUpdate = false;

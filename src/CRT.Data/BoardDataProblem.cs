@@ -49,6 +49,12 @@ namespace Handlers.DataHandling
         }
     }
 
+    // What a board's checks found: the counts, the problems, and the board their row numbers are of.
+    public sealed record BoardProblemsRead(BoardProblemCounts Counts, IReadOnlyList<BoardDataProblem> Problems, BoardData? Board)
+    {
+        public static BoardProblemsRead None { get; } = new(BoardProblemCounts.None, [], null);
+    }
+
     public sealed record BoardDataProblem(
         BoardProblemLevel Level,
         string Code,

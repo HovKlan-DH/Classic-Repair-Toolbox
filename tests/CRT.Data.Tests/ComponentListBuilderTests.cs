@@ -10,6 +10,35 @@ namespace ClassicRepairToolbox.Tests;
 // display string, and a component with no usable text is dropped entirely.
 public class ComponentListBuilderTests
 {
+    // A row says what the draft's checks found on it (the Contribute tab's list), changing as it stands: a
+    // row made again lets go of the selection.
+    [Fact]
+    public void A_row_says_its_problems_and_tells_when_they_change()
+    {
+        var item = new ComponentListItem { BoardLabel = "U8" };
+        var told = new List<string?>();
+        item.PropertyChanged += (_, change) => told.Add(change.PropertyName);
+
+        Assert.False(item.HasErrors);
+        Assert.False(item.HasWarnings);
+
+        item.Problems = new BoardProblemCounts(1, 3);
+
+        Assert.True(item.HasErrors);
+        Assert.Equal("1", item.ErrorsText);
+        Assert.Equal("1 error on this component", item.ErrorsTip);
+        Assert.True(item.HasWarnings);
+        Assert.Equal("3", item.WarningsText);
+        Assert.Equal("3 warnings on this component", item.WarningsTip);
+        Assert.Contains(nameof(ComponentListItem.HasErrors), told);
+        Assert.Contains(nameof(ComponentListItem.WarningsText), told);
+
+        // The same again says nothing: this runs for every row, after every save.
+        told.Clear();
+        item.Problems = new BoardProblemCounts(1, 3);
+        Assert.Empty(told);
+    }
+
     private static BoardData Board(params ComponentEntry[] components)
         => new() { Components = components.ToList() };
 

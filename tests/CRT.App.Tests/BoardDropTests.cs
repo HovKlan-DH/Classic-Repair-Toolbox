@@ -3,8 +3,8 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// BoardDrop - what files dropped on the Contribute tab are (CRT 4.0 step 3, slice 3e): pictures of
-// the board, its KiCad project, or neither. What was dropped decides which window opens with them.
+// BoardDrop - what files dropped on "Board: Schematic images" are (CRT 4.0 step 3, slice 3e; only that
+// page since 2026-11-03): images of the board, or nothing it can take - said for what it is.
 // ###########################################################################################
 public sealed class BoardDropTests : IDisposable
 {
@@ -22,13 +22,16 @@ public sealed class BoardDropTests : IDisposable
             folder => folders[folder],
             folder => $"why {folder}");
 
+    // A KiCad project goes on "KiCad: Files" (owner decision, 2026-11-03) - told so, whatever images lie
+    // in its folder: they are no folder of scans.
     [Fact]
-    public void A_folder_holding_a_KiCad_project_is_the_KiCad_project()
+    public void A_folder_holding_a_KiCad_project_is_told_where_it_goes()
     {
         BoardDrop drop = Of(["Open128"], new() { ["Open128"] = ["Open128/Open128.kicad_pro", "Open128/top.png"] });
 
-        Assert.Equal(BoardDropKind.KiCad, drop.Kind);
-        Assert.Equal(["Open128"], drop.Paths);
+        Assert.Equal(BoardDropKind.Nothing, drop.Kind);
+        Assert.Empty(drop.Paths);
+        Assert.Equal(BoardDrop.KiCadGoesElsewhere, drop.Problem);
     }
 
     // A folder of board scans - no KiCad file, pictures at its top - is those pictures.
@@ -56,27 +59,21 @@ public sealed class BoardDropTests : IDisposable
     }
 
     // ###########################################################################################
-    // A KiCad FILE on its own is no project (code review, 2026-10-28 - it stood for its folder, which
-    // was walked in full): said, and nothing opens. Of several folders the first is taken.
+    // A KiCad FILE on its own is told the same (code review, 2026-10-28 - it stood for its folder, which
+    // was walked in full); with images dropped beside it, the images are added and it is told where it goes.
     // ###########################################################################################
     [Fact]
-    public void A_KiCad_file_on_its_own_is_said_and_the_first_folder_is_taken()
+    public void A_KiCad_file_on_its_own_is_told_where_it_goes()
     {
         string pro = Path.Combine("Projects", "Open128", "Open128.kicad_pro");
 
         BoardDrop byFile = Of([pro], []);
         Assert.Equal(BoardDropKind.Nothing, byFile.Kind);
-        Assert.Equal(BoardDrop.KiCadFileNotFolder, byFile.Problem);
+        Assert.Equal(BoardDrop.KiCadGoesElsewhere, byFile.Problem);
 
-        // With pictures dropped beside it, the pictures are added - the file said to be left out.
         BoardDrop beside = Of([pro, "top.png"], []);
         Assert.Equal(BoardDropKind.Pictures, beside.Kind);
-        Assert.Equal(BoardDrop.LeftWithoutPictures(1), beside.Note);
-
-        // One KiCad project at a time - the other one said to be left.
-        BoardDrop twoFolders = Of(["A", "B"], new() { ["A"] = ["A/a.kicad_pcb"], ["B"] = ["B/b.kicad_pcb"] });
-        Assert.Equal(["A"], twoFolders.Paths);
-        Assert.Equal(BoardDrop.LeftBesideKiCad(1), twoFolders.Note);
+        Assert.Equal(BoardDrop.KiCadLeftOut, beside.Note);
     }
 
     // Picture files are pictures - anything else dropped with them is left out, and said.
@@ -108,31 +105,48 @@ public sealed class BoardDropTests : IDisposable
         Assert.Equal(BoardDrop.LeftWithoutPictures(1), drop.Note);
     }
 
-    // A KiCad project dropped with pictures is taken on its own - the pictures said to be left.
+    // ###########################################################################################
+    // Images dropped with a KiCad project go in - the project never read for images of its own, and told
+    // where it goes, as dropped alone (code review, 2026-11-04: it was said to hold no image CRT can show,
+    // of a folder that holds a render).
+    // ###########################################################################################
     [Fact]
-    public void A_KiCad_project_dropped_with_pictures_is_taken_alone_and_the_rest_said()
+    public void Images_dropped_with_a_KiCad_project_go_in_and_the_project_is_told_where_it_goes()
     {
-        BoardDrop drop = Of(["Top.jpg", "Open128", "Bottom.jpg"], new() { ["Open128"] = ["Open128/Open128.kicad_pro"] });
+        BoardDrop drop = Of(["Top.jpg", "Open128", "Bottom.jpg"], new() { ["Open128"] = ["Open128/Open128.kicad_pro", "Open128/render.png"] });
 
-        Assert.Equal(BoardDropKind.KiCad, drop.Kind);
-        Assert.Equal(["Open128"], drop.Paths);
-        Assert.Equal(BoardDrop.LeftBesideKiCad(2), drop.Note);
+        Assert.Equal(BoardDropKind.Pictures, drop.Kind);
+        Assert.Equal(["Top.jpg", "Bottom.jpg"], drop.Paths);
+        Assert.Equal(BoardDrop.KiCadLeftOut, drop.Note);
+    }
+
+    // Both said, each for what it is.
+    [Fact]
+    public void Images_dropped_with_a_KiCad_project_and_something_else_say_both()
+    {
+        BoardDrop drop = Of(["Top.jpg", "Open128", "notes.txt"], new() { ["Open128"] = ["Open128/Open128.kicad_pro"] });
+
+        Assert.Equal(["Top.jpg"], drop.Paths);
+        Assert.Equal($"{BoardDrop.LeftWithoutPictures(1)} {BoardDrop.KiCadLeftOut}", drop.Note);
     }
 
     // ###########################################################################################
-    // What the drop says names the board's images as the start panel's hint does - "schematic
-    // images", never "pictures" (code review, 2026-10-30: the hint was renamed, these were not).
+    // What the drop says names the board's images as the page does - "schematic images", never
+    // "pictures" (code review, 2026-10-30: the part was renamed, these were not) - and offers no KiCad
+    // folder any more (2026-11-03: this page takes images alone).
     // ###########################################################################################
     [Fact]
-    public void What_a_drop_says_names_schematic_images_as_the_start_panel_does()
+    public void What_a_drop_says_names_schematic_images_as_the_page_does()
     {
-        foreach (string said in new[] { BoardDrop.NothingUsable, BoardDrop.LeftBesideKiCad(1), BoardDrop.LeftBesideKiCad(3), BoardDrop.LeftWithoutPictures(1), BoardDrop.LeftWithoutPictures(2) })
+        foreach (string said in new[] { BoardDrop.NothingUsable, BoardDrop.KiCadGoesElsewhere, BoardDrop.KiCadLeftOut, BoardDrop.LeftWithoutPictures(1), BoardDrop.LeftWithoutPictures(2) })
         {
             Assert.DoesNotContain("picture", said, StringComparison.OrdinalIgnoreCase);
         }
 
         Assert.StartsWith("Drop schematic images of the board", BoardDrop.NothingUsable, StringComparison.Ordinal);
-        Assert.EndsWith("Drop schematic images on their own to add them.", BoardDrop.LeftBesideKiCad(2), StringComparison.Ordinal);
+        Assert.DoesNotContain("KiCad", BoardDrop.NothingUsable, StringComparison.Ordinal);
+        Assert.Contains("\"KiCad: Files\"", BoardDrop.KiCadGoesElsewhere, StringComparison.Ordinal);
+        Assert.Contains("\"KiCad: Files\"", BoardDrop.KiCadLeftOut, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -158,7 +172,7 @@ public sealed class BoardDropTests : IDisposable
 
         BoardDrop drop = BoardDrop.OnDisk([pro]);
         Assert.Equal(BoardDropKind.Nothing, drop.Kind);
-        Assert.Equal(BoardDrop.KiCadFileNotFolder, drop.Problem);
+        Assert.Equal(BoardDrop.KiCadGoesElsewhere, drop.Problem);
     }
 
     // ###########################################################################################
@@ -216,7 +230,7 @@ public sealed class BoardDropTests : IDisposable
         this.thisWorkspace.WriteFile(Path.Combine("Scans", "top.png"), "x");
         Directory.CreateDirectory(project);
 
-        Assert.Equal(BoardDropKind.KiCad, BoardDrop.OnDisk([project]).Kind);
+        Assert.Equal(BoardDrop.KiCadGoesElsewhere, BoardDrop.OnDisk([project]).Problem);
 
         BoardDrop pictures = BoardDrop.OnDisk([scans]);
         Assert.Equal(BoardDropKind.Pictures, pictures.Kind);

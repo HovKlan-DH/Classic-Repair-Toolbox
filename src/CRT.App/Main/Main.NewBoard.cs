@@ -91,9 +91,11 @@ namespace CRT
         // ###########################################################################################
         internal void AfterBoardRenamed(HardwareBoardEntry entry, NewBoardRegistration renamed)
         {
-            BoardKeyMove.Run(
-                CatalogueVisibility.BuildKey(entry.HardwareName, entry.BoardName),
-                CatalogueVisibility.BuildKey(renamed.HardwareName, renamed.BoardName));
+            string from = CatalogueVisibility.BuildKey(entry.HardwareName, entry.BoardName);
+            string to = CatalogueVisibility.BuildKey(renamed.HardwareName, renamed.BoardName);
+
+            BoardKeyMove.Run(from, to);
+            this.CarryListsToRenamedBoard(from, to);
 
             DataManager.RefreshDraftOnlyBoards();
 

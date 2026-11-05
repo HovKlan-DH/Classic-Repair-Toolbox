@@ -17,8 +17,8 @@ namespace CRT
     // goes back to the Contribute tab it came from; "Done - next picture" (step 3, slice 3d) goes on
     // to the next picture's alignment instead (AlignNext).
     //
-    // "Edit this component" on the menu a right-click on a component opens - for everyone - opens it
-    // in the Contribute tab's pane.
+    // "Edit component" on a component's popup - for everyone - opens it in the Contribute tab's pane
+    // (owner request, 2026-11-05: on a menu a right-click opened until then).
     //
     // *** EVERY PICTURE ALIGNED WITH DONE IS MARKED ONCE THE TOOL HANDS BACK (owner request,
     // 2026-11-01: "it is not clear that I must first do the Align KiCad, before I can do the Mark all
@@ -99,7 +99,6 @@ namespace CRT
             this.TabSchematicsControl.PictureToolEnded += (_, _) => this.OnPictureToolEnded();
             this.TabSchematicsControl.AlignNextRequested += (_, picture) => this.AlignNext(picture);
             this.TabSchematicsControl.AlignedFromWorkspace += (_, aligned) => this.RememberAligned(aligned.Picture, aligned.ImageFile, aligned.AlignedFrom);
-            this.TabSchematicsControl.EditComponentRequested += (sender, label) => _ = this.EditComponentAsync(label);
             this.TabSchematicsControl.BackToContributeRequested += (_, _) => this.SwitchToContributeTab();
 
             // After the tool's own end has run: the label editor's Done reads the board again itself,
@@ -158,8 +157,9 @@ namespace CRT
             this.thisAlignedToMark.Clear();
 
             this.thisPictureToolFromContribute = true;
-            this.OnBoardShownUpToDate(readBoardFirst, picture, () => this.TabSchematicsControl.StartPictureTool(tool, picture));
+
             this.SwitchToSchematicsTab();
+            this.OnBoardShownUpToDate(readBoardFirst, picture, () => this.TabSchematicsControl.StartPictureTool(tool, picture));
         }
 
         // ###########################################################################################
@@ -221,12 +221,19 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // "Edit this component": the Contribute tab, the component open in its pane - the board's
-        // draft made as it opens, as for every other way in, and let go of again when the pane closes
-        // with nothing in it (TabDrafts.LetGoOfDraftMadeOnlyToLook).
+        // "Edit component": the Contribute tab, the component open in its pane - the board's draft made as
+        // it opens, as for every other way in, and let go of again when the pane closes with nothing in it
+        // (TabDrafts.LetGoOfDraftMadeOnlyToLook). With a picture tool on, that tool is shown, as for a tool
+        // asked for meanwhile: it holds the board and the picture until it ends.
         // ###########################################################################################
         internal async Task EditComponentAsync(string boardLabel)
         {
+            if (this.IsPictureToolOn)
+            {
+                this.SwitchToSchematicsTab();
+                return;
+            }
+
             try
             {
                 this.SwitchToContributeTab();

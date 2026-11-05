@@ -28,7 +28,7 @@ namespace CRT.Data.Tests
             Credits = [new CreditEntry { Category = "Board", NameOrHandle = "Dennis" }],
             KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "CLK", KiCadNetName = "CLK" }],
             ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VCC", Direction = "Power" }],
-            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in replacement" }],
             KiCadCalibrations = [new KiCadCalibrationEntry()]
         };
 

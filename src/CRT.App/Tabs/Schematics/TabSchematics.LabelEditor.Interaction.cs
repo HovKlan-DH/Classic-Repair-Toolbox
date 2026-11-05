@@ -169,6 +169,45 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
+    // The Delete key (owner request, 2026-11-03): every rectangle selected on this picture goes, as
+    // ONE step for the editor's undo - a right-click takes one at a time. Not in the middle of a drag
+    // or a rectangle being drawn, whose end would be working on what is gone.
+    // ###########################################################################################
+    private bool TryDeleteSelectedLabelEditorHighlights()
+    {
+        if (!this.thisIsLabelEditorMode ||
+            this.SchematicsNewLabelPromptBorder.IsVisible ||
+            this.thisIsDrawingLabelEditorRectangle ||
+            this.thisLabelEditorDragMode != LabelEditorDragMode.None)
+        {
+            return false;
+        }
+
+        List<EditableComponentHighlight> selected = this.GetSelectedLabelEditorHighlightsForCurrentSchematic();
+
+        if (selected.Count == 0)
+        {
+            return false;
+        }
+
+        this.PushLabelEditorUndoState(this.CreateLabelEditorUndoState());
+
+        foreach (EditableComponentHighlight row in selected)
+        {
+            this.thisLabelEditorWorkingHighlights.Remove(row);
+            this.thisSelectedLabelEditorHighlights.Remove(row);
+            this.thisLabelEditorOriginalDragRectangles.Remove(row);
+        }
+
+        this.thisSelectedLabelEditorHighlight = this.GetFirstSelectedLabelEditorHighlightForCurrentSchematic();
+        this.RefreshLabelEditorOverlay();
+
+        Logger.Debug($"Label editor deleted [{selected.Count}] selected rectangles on schematic [{this.GetCurrentSchematicName()}]");
+
+        return true;
+    }
+
+    // ###########################################################################################
     // Returns true when the pointer is currently inside the new-label prompt bounds.
     // ###########################################################################################
     private bool IsPointerInsideNewLabelPrompt(Point containerPoint)

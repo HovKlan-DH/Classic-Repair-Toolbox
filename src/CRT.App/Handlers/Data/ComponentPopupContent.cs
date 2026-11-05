@@ -26,6 +26,19 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     internal static class ComponentPopupContent
     {
+        // ###########################################################################################
+        // "U8 | CPU | 6510" - what is filled of the label, the friendly name and the technical name or
+        // value. The popup's title, and the headline of the component in the Contribute tab (owner request,
+        // 2026-11-04: "should be identical to what is shown in the component info popup"). "" with nothing
+        // filled.
+        // ###########################################################################################
+        public static string TitleOf(string? label, ComponentEntry? entry) =>
+            string.Join(
+                " | ",
+                new[] { label, entry?.FriendlyName, entry?.TechnicalNameOrValue }
+                    .Select(part => part?.Trim() ?? string.Empty)
+                    .Where(part => part.Length > 0));
+
         // "IC | 6510 | DIP-40" - what is filled of category, part number and package, in that order.
         public static string CategoryLine(ComponentEntry? entry) =>
             string.Join(
@@ -76,7 +89,7 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The component's replacement parts in `region`, as the board lists them: "8500 - Drop-in" (the
+        // The component's replacement parts in `region`, as the board lists them: "8500 - Drop-in replacement" (the
         // part number alone without a kind, the kind alone without a part number) and its note.
         // ###########################################################################################
         public static List<ComponentPopupReplacement> ReplacementsOf(IEnumerable<ComponentReplacementEntry> replacements, string? label, string? region)

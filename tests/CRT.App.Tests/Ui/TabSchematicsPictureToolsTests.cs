@@ -1,13 +1,15 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using Tabs.TabSchematics;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The picture tools and the component menu on the Schematics tab (TabSchematics.PictureTools.cs -
+// The picture tools on the Schematics tab (TabSchematics.PictureTools.cs -
 // CRT 4.0 step 2, slice 6: "Contributor mode goes. Mark components and Align KiCad open the
 // Schematics tab in that tool, with a bar and a Done button. Right-clicking a component offers Edit
 // this component to everyone.").
@@ -43,12 +45,20 @@ public sealed class TabSchematicsPictureToolsTests
         return (tab, ended);
     }
 
-    private static string Text(TabSchematics tab, string name) => tab.GetControl<TextBlock>(name).Text ?? string.Empty;
+    // Bold pieces or not (BoldRuns: a line with a bold piece has no Text).
+    private static string Text(TabSchematics tab, string name) => BoldRuns.TextOf(tab.GetControl<TextBlock>(name));
 
     private static bool BarShown(TabSchematics tab) => tab.GetControl<Border>("PictureToolBarBorder").IsVisible;
 
     private static void Click(TabSchematics tab, string name) =>
         tab.GetControl<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    // The keys in the alignment's bar are bold (owner request, 2026-11-03: "e.g. <b>Shift</b>").
+    [Fact]
+    public void The_alignments_help_says_its_keys_in_bold()
+    {
+        Assert.Equal(["Arrow keys", "Shift", "Alt", "Esc"], BoldRuns.Marked(PictureToolWording.Help(PictureTool.AlignKiCad)).Where(run => run.IsBold).Select(run => run.Text));
+    }
 
     // ###########################################################################################
     // "Mark components": waiting while the picture is read, then the label editor on it with the bar -
@@ -73,7 +83,8 @@ public sealed class TabSchematicsPictureToolsTests
             Assert.True(tab.IsLabelEditorModeForTests);
             Assert.Equal(Picture, tab.LabelEditorSchematicNameForTests);
             Assert.Equal("Mark components manually on [Board top]", Text(tab, "PictureToolTitleText"));
-            Assert.Equal(PictureToolWording.Help(PictureTool.MarkComponents), Text(tab, "PictureToolHelpText"));
+            Assert.Equal(BoldRuns.Plain(PictureToolWording.Help(PictureTool.MarkComponents)), Text(tab, "PictureToolHelpText"));
+            Assert.Equal(["Delete", "D", "Arrow keys", "Ctrl+Z"], BoldRuns.BoldPiecesOf(tab.GetControl<TextBlock>("PictureToolHelpText")));
             Assert.True(tab.GetControl<Button>("PictureToolDoneButton").IsVisible);
             Assert.Empty(ended);
 
@@ -270,6 +281,285 @@ public sealed class TabSchematicsPictureToolsTests
     }
 
     // ###########################################################################################
+    // *** A SHEET BEING ALIGNED SHOWS EVERY WIRE, NAMED OR NOT (owner report, 2026-11-04: "it has no traces
+    // in the alignment that I can align to" - of a sheet of 221 wires). *** Going by the nets drew only the
+    // wires a name could be found for: here, none. The bounds are the wires', so a primitive per wire.
+    // ###########################################################################################
+    [Fact]
+    public void Aligning_a_sheet_draws_every_wire_whether_or_not_a_net_is_known_for_it()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, _) = CreateAligningTab();
+
+            var sheet = new BoardSchematicEntry { SchematicName = "Power", SchematicImageFile = "power.png", CadName = "Board - Power" };
+            tab.CurrentBoardDataOverrideForTests = new BoardData { Schematics = [sheet] };
+            tab.schematicByName[sheet.SchematicName] = sheet;
+            tab.currentThumbnails.Add(new SchematicThumbnail { Name = sheet.SchematicName });
+
+            static KiCadSchematicPathItem Wire(double fromX, double fromY, double toX, double toY) => new()
+            {
+                Points = [new KiCadPoint2D { X = fromX, Y = fromY }, new KiCadPoint2D { X = toX, Y = toY }],
+            };
+
+            tab.UseKiCadProjectForTests(new KiCadProjectBundle
+            {
+                Root = new KiCadProjectRoot
+                {
+                    Project = new KiCadProjectInfo
+                    {
+                        Views = [new KiCadProjectView { DisplayName = "Board - Power", Type = "schematic", SourceKind = "schematic", SourceIndex = 0 }],
+                    },
+                    Schematics =
+                    [
+                        new KiCadSchematic
+                        {
+                            Wires = [Wire(0, 0, 100, 0), Wire(0, 50, 100, 50)],
+                            Polylines = [Wire(10, 10, 20, 20)],
+                        },
+                    ],
+                },
+
+                // The sheet's nets: none, as the Open128's "Power" sheet had before its power symbols were read.
+                SchematicNetPathIndexBySchematicIndex = { [0] = new Dictionary<string, List<KiCadResolvedPath>>(StringComparer.OrdinalIgnoreCase) },
+            });
+
+            var window = new Window { Width = 1000, Height = 700, Content = tab };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            KiCadOverlayRenderControl overlay = tab.GetControl<KiCadOverlayRenderControl>("SchematicsKiCadOverlayCanvas");
+
+            Align(tab, "Power");
+            Dispatcher.UIThread.RunJobs();
+            tab.RefreshKiCadOverlayForTests();
+
+            Assert.Equal(3, overlay.Primitives.Count(primitive => primitive.Kind == KiCadOverlayPrimitiveKind.Polyline));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // ALIGNING SHOWS ONLY THE SIDE BEING ALIGNED (owner request, 2026-11-03: "if I am aligning the top PCB,
+    // then I only want to see traces from the top"), whatever "Show opposite side traces" says - it is on
+    // here (the default), so the other side's copper would be drawn too. Two traces on top, one on the
+    // bottom, so the count says which side is drawn. The net's graph is built off the UI thread, so the
+    // lines arrive a moment later - a wait that gives up says so.
+    // ###########################################################################################
+    [Fact]
+    public void Aligning_draws_only_the_traces_of_the_side_being_aligned()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, _) = CreateAligningTab();
+
+            KiCadNetRef net = new() { Id = "1", Name = "+5V", NormalizedName = "+5V" };
+
+            tab.UseKiCadProjectForTests(new KiCadProjectBundle
+            {
+                Root = new KiCadProjectRoot
+                {
+                    Project = new KiCadProjectInfo
+                    {
+                        Views =
+                        [
+                            new KiCadProjectView { DisplayName = "Board - PCB Top", Type = "pcb_top", SourceKind = "pcb", SourceIndex = 0 },
+                            new KiCadProjectView { DisplayName = "Board - PCB Bottom", Type = "pcb_bottom", SourceKind = "pcb", SourceIndex = 0 },
+                        ],
+                    },
+                    Pcb =
+                    [
+                        new KiCadPcb
+                        {
+                            Nets = new KiCadPcbNets { List = [net] },
+
+                            // A net is drawn from its pads outward (BuildKiCadPcbActiveDrawIds), so a pad at the
+                            // start of each trace.
+                            Footprints =
+                            [
+                                new KiCadPcbFootprint
+                                {
+                                    Reference = "U1",
+                                    Pads =
+                                    [
+                                        new KiCadPcbPad { Number = "1", AbsoluteCenter = new KiCadPoint2D { X = 0, Y = 0 }, Layers = ["F.Cu"], Net = net },
+                                        new KiCadPcbPad { Number = "2", AbsoluteCenter = new KiCadPoint2D { X = 0, Y = 25 }, Layers = ["F.Cu"], Net = net },
+                                        new KiCadPcbPad { Number = "3", AbsoluteCenter = new KiCadPoint2D { X = 0, Y = 50 }, Layers = ["B.Cu"], Net = net },
+                                    ],
+                                },
+                            ],
+                            Routing = new KiCadPcbRouting
+                            {
+                                Segments =
+                                [
+                                    new KiCadPcbSegment { Start = new KiCadPoint2D { X = 0, Y = 0 }, End = new KiCadPoint2D { X = 50, Y = 0 }, Width = 1, Layer = "F.Cu", Net = net },
+                                    new KiCadPcbSegment { Start = new KiCadPoint2D { X = 0, Y = 25 }, End = new KiCadPoint2D { X = 50, Y = 25 }, Width = 1, Layer = "F.Cu", Net = net },
+                                    new KiCadPcbSegment { Start = new KiCadPoint2D { X = 0, Y = 50 }, End = new KiCadPoint2D { X = 50, Y = 50 }, Width = 1, Layer = "B.Cu", Net = net },
+                                ],
+                            },
+                            HighlightIndex = new Dictionary<string, KiCadPcbHighlightBucket>
+                            {
+                                ["1"] = new KiCadPcbHighlightBucket
+                                {
+                                    Segments = [0, 1, 2],
+                                    Pads =
+                                    [
+                                        new KiCadPcbHighlightPadRef { FootprintIndex = 0, PadIndex = 0, Reference = "U1", PadNumber = "1" },
+                                        new KiCadPcbHighlightPadRef { FootprintIndex = 0, PadIndex = 1, Reference = "U1", PadNumber = "2" },
+                                        new KiCadPcbHighlightPadRef { FootprintIndex = 0, PadIndex = 2, Reference = "U1", PadNumber = "3" },
+                                    ],
+                                },
+                            },
+                        },
+                    ],
+                },
+            });
+
+            var window = new Window { Width = 1000, Height = 700, Content = tab };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            KiCadOverlayRenderControl overlay = tab.GetControl<KiCadOverlayRenderControl>("SchematicsKiCadOverlayCanvas");
+
+            int Traces() => overlay.Primitives.Count(primitive => primitive.Kind is KiCadOverlayPrimitiveKind.Line or KiCadOverlayPrimitiveKind.Polyline);
+
+            int TracesDrawnOnceSettled(int expected)
+            {
+                for (int tries = 0; tries < 400 && Traces() < expected; tries++)
+                {
+                    Thread.Sleep(5);
+                    Dispatcher.UIThread.RunJobs();
+                    tab.RefreshKiCadOverlayForTests();
+                }
+
+                Assert.True(Traces() >= expected, $"Only {Traces()} of the {expected} traces were drawn in time");
+
+                // The other side's graph, were it asked for, lands in the next look.
+                Thread.Sleep(200);
+                Dispatcher.UIThread.RunJobs();
+                tab.RefreshKiCadOverlayForTests();
+
+                return Traces();
+            }
+
+            Align(tab, "Top");
+            Assert.Equal(2, TracesDrawnOnceSettled(2));
+
+            Click(tab, "PictureToolCancelButton");
+
+            Align(tab, "Bottom");
+            Assert.Equal(1, TracesDrawnOnceSettled(1));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // ALIGNING DRAWS NO COPPER POUR (owner request, 2026-11-05: "NOT include any ground plane, as it is hard
+    // to align those nets"): a filled zone hides the traces under it and has no edge worth lining up, whatever
+    // "Show zones" says - it is on here (the default). Measured on the shipped KiCad data, the pours are on
+    // "GND" or "Earth" and on "+5V" too, so it goes by what is drawn, never by the net's name. Its tracks and
+    // pads stay, and the zone is back once the tool has ended.
+    // ###########################################################################################
+    [Fact]
+    public void Aligning_draws_the_tracks_and_pads_of_a_ground_net_but_not_its_copper_pour()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, _) = CreateAligningTab();
+
+            KiCadNetRef ground = new() { Id = "1", Name = "GND", NormalizedName = "GND" };
+
+            tab.UseKiCadProjectForTests(new KiCadProjectBundle
+            {
+                Root = new KiCadProjectRoot
+                {
+                    Project = new KiCadProjectInfo
+                    {
+                        Views = [new KiCadProjectView { DisplayName = "Board - PCB Top", Type = "pcb_top", SourceKind = "pcb", SourceIndex = 0 }],
+                    },
+                    Pcb =
+                    [
+                        new KiCadPcb
+                        {
+                            Nets = new KiCadPcbNets { List = [ground] },
+                            Footprints =
+                            [
+                                new KiCadPcbFootprint
+                                {
+                                    Reference = "U1",
+                                    Pads = [new KiCadPcbPad { Number = "1", AbsoluteCenter = new KiCadPoint2D { X = 0, Y = 0 }, Layers = ["F.Cu"], Net = ground }],
+                                },
+                            ],
+                            Routing = new KiCadPcbRouting
+                            {
+                                Segments = [new KiCadPcbSegment { Start = new KiCadPoint2D { X = 0, Y = 0 }, End = new KiCadPoint2D { X = 50, Y = 0 }, Width = 1, Layer = "F.Cu", Net = ground }],
+                                Zones =
+                                [
+                                    new KiCadPcbZone
+                                    {
+                                        Layers = ["F.Cu"],
+                                        Net = ground,
+                                        FilledPolygons =
+                                        [
+                                            new KiCadPcbZonePolygon
+                                            {
+                                                Points =
+                                                [
+                                                    new KiCadPoint2D { X = 0, Y = 0 },
+                                                    new KiCadPoint2D { X = 100, Y = 0 },
+                                                    new KiCadPoint2D { X = 100, Y = 100 },
+                                                    new KiCadPoint2D { X = 0, Y = 100 },
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                            HighlightIndex = new Dictionary<string, KiCadPcbHighlightBucket>
+                            {
+                                ["1"] = new KiCadPcbHighlightBucket
+                                {
+                                    Segments = [0],
+                                    Zones = [0],
+                                    Pads = [new KiCadPcbHighlightPadRef { FootprintIndex = 0, PadIndex = 0, Reference = "U1", PadNumber = "1" }],
+                                },
+                            },
+                        },
+                    ],
+                },
+            });
+
+            var window = new Window { Width = 1000, Height = 700, Content = tab };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            KiCadOverlayRenderControl overlay = tab.GetControl<KiCadOverlayRenderControl>("SchematicsKiCadOverlayCanvas");
+
+            int Traces() => overlay.Primitives.Count(primitive => primitive.Kind is KiCadOverlayPrimitiveKind.Line or KiCadOverlayPrimitiveKind.Polyline);
+            int Shapes() => overlay.Primitives.Count(primitive => primitive.Kind == KiCadOverlayPrimitiveKind.Geometry);
+
+            Align(tab, "Top");
+
+            // The net's graph is built off the UI thread, so the lines arrive a moment later.
+            for (int tries = 0; tries < 400 && Traces() < 1; tries++)
+            {
+                Thread.Sleep(5);
+                Dispatcher.UIThread.RunJobs();
+                tab.RefreshKiCadOverlayForTests();
+            }
+
+            Assert.True(Traces() >= 1, "The ground net's track was not drawn in time");
+
+            // The pad's shape alone - it was two with the pour's.
+            Assert.Equal(1, Shapes());
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // The plan's "Align: opens calibration on the Schematics tab with a Done - next picture button":
     // aligning the top, the bar offers the next picture with a view - the bottom, past the layout
     // drawing, which has none. Pressed: the top's alignment saved, the bottom asked for at once - no
@@ -432,33 +722,6 @@ public sealed class TabSchematicsPictureToolsTests
 
             Assert.True(tab.IsLabelEditorModeForTests);
             Assert.False(tab.GetControl<Button>("PictureToolDoneNextButton").IsVisible);
-        });
-    }
-
-    // ###########################################################################################
-    // The component menu: its name, and "Edit this component" - handed to whoever opens it, the
-    // menu closed.
-    // ###########################################################################################
-    [Fact]
-    public void The_component_menu_names_the_component_and_hands_on_Edit_this_component()
-    {
-        UiTest.Run(() =>
-        {
-            (TabSchematics tab, _) = CreateTab();
-            var asked = new List<string>();
-            tab.EditComponentRequested += (_, label) => asked.Add(label);
-
-            tab.ShowComponentMenuForTests(" U1 ");
-
-            Assert.True(tab.GetControl<Border>("SchematicsMenuBorder").IsVisible);
-            Assert.Equal("U1 - CPU", Text(tab, "SchematicsMenuTitleText"));
-            Assert.Equal("Highlight [U1]", tab.GetControl<Button>("MenuHighlightButton").Content);
-            Assert.Equal(PictureToolWording.EditComponent, tab.GetControl<Button>("MenuEditComponentButton").Content);
-
-            Click(tab, "MenuEditComponentButton");
-
-            Assert.Equal(["U1"], asked);
-            Assert.False(tab.GetControl<Border>("SchematicsMenuBorder").IsVisible);
         });
     }
 

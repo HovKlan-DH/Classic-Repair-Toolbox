@@ -448,7 +448,7 @@ public sealed class DraftChangeSummaryTests
         BoardData after = Board(new ComponentEntry { BoardLabel = "U8", FriendlyName = "CIA", Category = "IC", Package = "DIP-40" });
         after.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "GND" });
         after.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "2", Name = "PA0" });
-        after.ComponentReplacements.Add(new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in" });
+        after.ComponentReplacements.Add(new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in replacement" });
 
         DraftChangeGroup group = Single(DraftChangeSummary.Build(Content(before), Content(after)), "U8");
 

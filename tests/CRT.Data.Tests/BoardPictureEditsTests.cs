@@ -75,6 +75,27 @@ public sealed class BoardPictureEditsTests
         Assert.Same(board, BoardPictureEdits.WithAdded(board, []));
     }
 
+    // ###########################################################################################
+    // A new board's images start in its colors (owner request, 2026-11-03: "Thumbnail opacity = 80%",
+    // "Traces on this side = same color as the Schematic image"): the highlight's color written, so the
+    // traces' - left blank - follow it. Without them a row is blank, as a published board's stays.
+    // ###########################################################################################
+    [Fact]
+    public void Pictures_added_to_a_new_board_start_in_its_colors()
+    {
+        BoardData result = BoardPictureEdits.WithAdded(Board(Picture("Top", "top.png")), [("Bottom", "bottom.png")], PictureColours.ForNewBoard);
+
+        Assert.Equal(new PictureColours(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty), result.Schematics[0].ReadColours());
+
+        BoardSchematicEntry added = result.Schematics[1];
+
+        Assert.Equal(("Bottom", "bottom.png"), (added.SchematicName, added.SchematicImageFile));
+        Assert.Equal("IndianRed", added.SchematicHighlightColor);
+        Assert.Equal("80%", added.ThumbnailHighlightOpacity);
+        Assert.Equal(string.Empty, added.TraceHighlightColor);
+        Assert.Equal(string.Empty, added.ThumbnailHighlightColor);
+    }
+
     // ---- moving -------------------------------------------------------------------------------
 
     [Fact]

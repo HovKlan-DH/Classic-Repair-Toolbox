@@ -51,8 +51,9 @@ public sealed class BoardTableDocumentTests
     {
         BoardTableDocument document = BoardTableDocument.Create(null, new BoardData());
 
+        // In the order of the tabs, which is the table's own - a workbook keeps AllSheets'.
         Assert.Equal(
-            BoardWorkbookSchema.AllSheets.Select(sheet => sheet.SheetName),
+            BoardTableTabs.SheetsInOrder.Select(sheet => sheet.SheetName),
             document.Sheets.Select(sheet => sheet.Name));
 
         Assert.Equal(BoardWorkbookSchema.Components.ColumnOrder, Components(document).Columns);
@@ -531,7 +532,7 @@ public sealed class BoardTableDocumentTests
 
         Assert.Equal(BoardTableRowState.Added, second.State);
         Assert.Null(cell.ToolTip);
-        Assert.Equal("Error: This important signal has no KiCad net name. Fill it in - the board cannot be submitted while it is empty.", net.ToolTip);
+        Assert.Equal("Error: This important signal has no \"KiCad net name\". Fill it in - the board cannot be submitted while it is empty.", net.ToolTip);
         Assert.Contains(nameof(BoardTableCell.ToolTip), raised);
     }
 
@@ -819,7 +820,7 @@ public sealed class BoardTableDocumentTests
 
         BoardDataProblem problem = Assert.Single(net.Problems);
         Assert.Equal(BoardProblemLevel.Error, problem.Level);
-        Assert.Equal("This important signal has no KiCad net name. Fill it in - the board cannot be submitted while it is empty.", problem.Message);
+        Assert.Equal("This important signal has no \"KiCad net name\". Fill it in - the board cannot be submitted while it is empty.", problem.Message);
         Assert.Equal(1, sheet.ErrorRowCount);
 
         // Saved: the row is still there, and so is its error.
@@ -1614,7 +1615,7 @@ public sealed class BoardTableDocumentTests
             ComponentReplacements =
             [
                 new ComponentReplacementEntry { BoardLabel = "U8", Region = "PAL", PartNumber = "8565" },
-                new ComponentReplacementEntry { BoardLabel = "U9", PartNumber = "8580", Kind = "Needs changes" }
+                new ComponentReplacementEntry { BoardLabel = "U9", PartNumber = "8580", Kind = "Needs modification" }
             ]
         };
 

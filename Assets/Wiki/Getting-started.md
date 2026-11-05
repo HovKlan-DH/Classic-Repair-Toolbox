@@ -36,8 +36,8 @@ The "Schematics" tab is where you will spend your time.
 * Mouse wheel (or a trackpad pinch) zooms
 * Drag with the **right** or **middle** mouse button (or two fingers on a trackpad) to move the picture
 * The thumbnails down the side switch between schematics and photos of the board
-* **Click a component on the picture** to open its popup - what it is, its pins, datasheet links, replacement parts, local files, and any oscilloscope baseline readings
-* **Right-click a component** to highlight it, or to correct it with **Edit this component**
+* **Click a component on the picture** to open its popup - what it is, its pins, datasheet links, replacement parts, local files, and any oscilloscope baseline readings. **Edit component** there lets you correct it
+* **Right-click a component** to highlight it
 * **Draw trace** lets you draw lines of your own over the picture, while you follow a signal
 
 If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up the whole copper net it belongs to, across every picture.

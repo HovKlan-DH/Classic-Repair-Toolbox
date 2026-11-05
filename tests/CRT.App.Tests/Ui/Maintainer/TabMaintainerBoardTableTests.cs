@@ -26,7 +26,7 @@ public sealed class TabMaintainerBoardTableTests
         new(id, board, "pending", $"Submission {id}.", "c@example.com", DateTimeOffset.UtcNow.AddDays(-1), false, false, true);
 
     // Two boards listed, the first on screen with its table open on BETA's board and one change in it.
-    private static (TabMaintainer Main, ListBox List) WithChangedTable()
+    internal static (TabMaintainer Main, ListBox List) WithChangedTable()
     {
         var main = new TabMaintainer();
 

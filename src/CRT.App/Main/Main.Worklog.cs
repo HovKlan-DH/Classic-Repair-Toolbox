@@ -244,6 +244,9 @@ namespace CRT
             // come back on leaving it (Main.Maintainer.cs).
             this.ApplyMaintainerLayoutForSelection(e);
 
+            // The Contribute tab has lists of its own on the far left, in place of the other tabs' (Main.ContributeLists.cs).
+            this.FollowContributeTabInLists();
+
             // "Draw trace" is the Schematics tab's: leaving the tab stops it (code review, 2026-10-29 -
             // left on, the window's Escape went on taking a key meant for another tab).
             if (!ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem))

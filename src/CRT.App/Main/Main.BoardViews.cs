@@ -22,6 +22,10 @@ namespace CRT
     //   - The retry timer (2026-09-27) fires every BoardViewRetryInterval for as long as the window
     //     is open, and sends when anything still waits - a send that found no network, at launch
     //     or later, is tried again without waiting for the next board change or the next start.
+    //   - Nothing is counted until StartAsync has run (StartCountingBoardViews), which CRT always
+    //     does and a test never does (MainWindowTests' header): a view of a board a test loads would
+    //     be sent to the live service, by timers that outlive the window on the tests' shared
+    //     dispatcher. A gate every test gets, so none has to remember to ask for it.
     // ###########################################################################################
     public partial class Main
     {
@@ -48,8 +52,19 @@ namespace CRT
                 _ = BoardViewReporter.SendWaitingAsync();
         }
 
+        // Off until StartAsync - see the header.
+        private bool thisCountsBoardViews;
+
+        private void StartCountingBoardViews() => this.thisCountsBoardViews = true;
+
+        // Whether a view of the board on screen is being counted - a test's proof that none is.
+        internal bool IsCountingBoardViewForTests => this.thisBoardViewCountTimer?.IsEnabled == true;
+
         private void NoteBoardOnScreen(HardwareBoardEntry? entry)
         {
+            if (!this.thisCountsBoardViews)
+                return;
+
             string? boardId = entry is { IsPublished: true }
                 ? BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile)
                 : null;

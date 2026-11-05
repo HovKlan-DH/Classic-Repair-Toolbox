@@ -40,9 +40,6 @@ namespace CRT
         // Stands in for Main's part of a save - a test has no Main.
         internal Action<HardwareBoardEntry, NewBoardRegistration>? BoardRenamedOverrideForTests { get; set; }
 
-        private void OnBoardNameClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(this.OpenBoardNameAsync, "Board name");
-
         // ###########################################################################################
         // The page, in place of what is open on the right - each closed as its own close does, a picture's
         // name it cannot take keeping the Pictures part open.
@@ -72,6 +69,7 @@ namespace CRT
             }
 
             this.thisBoardNamePicked = true;
+            this.thisNoComponentPage = null;
 
             this.ShowBoardNamePage(entry);
             this.ShowWorkspace();
@@ -102,19 +100,7 @@ namespace CRT
                 return BoardNameWording.Published;
             }
 
-            string boardId = BoardDescriptorRules.BuildBoardId(
-                NewBoardIdentity.ExtractManufacturer(entry.ExcelDataFile),
-                NewBoardIdentity.ExtractHardware(entry.ExcelDataFile),
-                NewBoardIdentity.ExtractBoard(entry.ExcelDataFile));
-
-            IEnumerable<SubmissionReceipt> receipts = this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All;
-
-            List<SubmissionReceipt> sent = receipts
-                .Where(receipt =>
-                    (string.Equals(receipt.BoardId?.Trim(), boardId, StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(receipt.BoardId?.Trim(), entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)) &&
-                    receipt.NotFoundUtc is null)
-                .ToList();
+            List<SubmissionReceipt> sent = this.SentReceiptsOf(entry);
 
             // Published, on a machine that has not synced it yet: it reads as a new board here, and under
             // a new name its next submission would be a second board beside the published one.
@@ -126,9 +112,27 @@ namespace CRT
             // A send that never finished is with nobody (code review, 2026-11-02): "has been sent for
             // review" was untrue of it, for up to a day until the sweep marked it abandoned. One whose
             // finalise request went may well be - NeverReachedReview keeps that one.
-            return sent.Any(receipt => !SubmissionReceiptPresenter.IsDecidedAgainst(receipt.LastKnownState) && !SubmissionReceiptPresenter.NeverReachedReview(receipt))
+            return sent.Any(SubmissionReceiptPresenter.StillStands)
                 ? BoardNameWording.SentForReview
                 : null;
+        }
+
+        // What was sent of a new board, as receipts - those the server has not lost.
+        private List<SubmissionReceipt> SentReceiptsOf(HardwareBoardEntry entry)
+        {
+            string boardId = BoardDescriptorRules.BuildBoardId(
+                NewBoardIdentity.ExtractManufacturer(entry.ExcelDataFile),
+                NewBoardIdentity.ExtractHardware(entry.ExcelDataFile),
+                NewBoardIdentity.ExtractBoard(entry.ExcelDataFile));
+
+            IEnumerable<SubmissionReceipt> receipts = this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All;
+
+            return receipts
+                .Where(receipt =>
+                    (string.Equals(receipt.BoardId?.Trim(), boardId, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(receipt.BoardId?.Trim(), entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)) &&
+                    receipt.NotFoundUtc is null)
+                .ToList();
         }
 
         // ###########################################################################################
@@ -191,6 +195,15 @@ namespace CRT
 
             if (moved)
             {
+                // What the tab and the pane hold of it for the run, by its identity, goes along (code review,
+                // 2026-11-04): "With issues" ticked, and a category waiting for its first component.
+                if (this.thisBoardsOnlyWithIssues.Remove(identity))
+                {
+                    this.thisBoardsOnlyWithIssues.Add(wanted.ExcelDataFile);
+                }
+
+                this.ComponentPane.FollowBoardRenamed(identity, wanted.ExcelDataFile);
+
                 this.ShowBoard(null, null, this.thisCurrentRegion, null);
             }
 

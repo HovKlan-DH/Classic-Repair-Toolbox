@@ -266,6 +266,82 @@ internal static class KiCadFixtures
     )
     """;
 
+    // A sheet naming its nets with power symbols alone, as the Open128's "Power" sheet does. Today's KiCad
+    // names the net by the Value; 9V_UNREG has an older pin whose name differs, and which its PCB uses.
+    // PWR_FLAG is flagged as power too, but its pin drives: it names nothing. VEE's pin stands off its
+    // origin, and it is turned a quarter - its tip lands at (42.54, 10). The last wire is on no net.
+    public const string SchematicWithPowerSymbols = """
+    (kicad_sch (version 20230121) (generator eeschema)
+      (lib_symbols
+        (symbol "power:+5V" (power)
+          (symbol "+5V_0_1" (polyline (pts (xy -0.762 1.27) (xy 0 2.54) (xy 0.762 1.27))))
+          (symbol "+5V_1_1" (pin power_in line (at 0 0 90) (length 0) hide (name "+5V" (effects (font (size 1 1)))) (number "1")))
+        )
+        (symbol "power:GND" (power global)
+          (symbol "GND_1_1" (pin power_in line (at 0 0 270) (length 0) (hide yes) (name "") (number "1")))
+        )
+        (symbol "power:PWR_FLAG" (power)
+          (symbol "PWR_FLAG_1_1" (pin power_out line (at 0 0 90) (length 0) (name "pwr") (number "1")))
+        )
+        (symbol "power:9V_UNREG" (power)
+          (symbol "9V_UNREG_1_1" (pin power_in line (at 0 0 90) (length 0) hide (name "+9V_UNREG") (number "1")))
+        )
+        (symbol "power:VEE" (power)
+          (symbol "VEE_1_1" (pin power_in line (at 0 -2.54 90) (length 0) hide (name "~") (number "1")))
+        )
+        (symbol "Device:R"
+          (symbol "R_1_1" (pin power_in line (at 0 0 90) (length 0) (name "NOT_A_RAIL") (number "1")))
+        )
+      )
+      (wire (pts (xy 10 10) (xy 10 20)))
+      (wire (pts (xy 10 20) (xy 15 20)))
+      (wire (pts (xy 20 10) (xy 20 15)))
+      (wire (pts (xy 50 50) (xy 60 50)))
+      (symbol (lib_id "power:+5V") (at 10 10 0) (property "Reference" "#PWR01") (property "Value" "+5V"))
+      (symbol (lib_id "power:GND") (at 20 10 0) (property "Reference" "#PWR02") (property "Value" "GND"))
+      (symbol (lib_id "power:PWR_FLAG") (at 30 10 0) (property "Reference" "#FLG01") (property "Value" "PWR_FLAG"))
+      (symbol (lib_id "power:9V_UNREG") (at 35 10 0) (property "Reference" "#PWR03") (property "Value" "9V_UNREG"))
+      (symbol (lib_id "power:VEE") (at 40 10 90) (property "Reference" "#PWR04") (property "Value" "VEE"))
+      (symbol (lib_id "Device:R") (at 70 70 0) (property "Reference" "R1") (property "Value" "10k"))
+    )
+    """;
+
+    // Where a symbol lands: "Test:L" is lopsided on purpose - a body 0..4 by 0..2 (Y up), a pin coming in
+    // from x -2 - so a turn or a flip cannot land on the same rectangle. "Test:Gate" has a part common to
+    // its units, two units apart, and a De Morgan body; a hidden pin is far out, and must not count.
+    public const string SchematicWithPlacedSymbols = """
+    (kicad_sch (version 20230121) (generator eeschema)
+      (lib_symbols
+        (symbol "Test:L"
+          (symbol "L_0_1" (rectangle (start 0 0) (end 4 2)))
+          (symbol "L_1_1" (pin input line (at -2 1 0) (length 2) (name "A") (number "1")))
+        )
+        (symbol "Test:Gate"
+          (symbol "Gate_0_1" (circle (center 1 1) (radius 1)))
+          (symbol "Gate_1_1"
+            (polyline (pts (xy 0 0) (xy 3 0)))
+            (pin input line (at 50 50 0) (length 2) hide (name "H1") (number "1"))
+            (pin input line (at 60 60 0) (length 2) (hide yes) (name "H2") (number "2"))
+          )
+          (symbol "Gate_1_2" (arc (start 0 0) (mid 6 6) (end 7 0)))
+          (symbol "Gate_2_1" (rectangle (start 10 0) (end 12 2)))
+        )
+        (symbol "Test:Gate2" (extends "Gate"))
+      )
+      (symbol (lib_id "Test:L") (at 100 100 0) (property "Reference" "L1"))
+      (symbol (lib_id "Test:L") (at 100 100 0) (mirror x) (property "Reference" "L2"))
+      (symbol (lib_id "Test:L") (at 100 100 0) (mirror y) (property "Reference" "L3"))
+      (symbol (lib_id "Test:L") (at 100 100 90) (property "Reference" "L4"))
+      (symbol (lib_id "Test:L") (at 100 100 90) (mirror x) (property "Reference" "L5"))
+      (symbol (lib_id "Test:Gate") (at 200 200 0) (unit 1) (property "Reference" "U1"))
+      (symbol (lib_id "Test:Gate") (at 200 200 0) (unit 2) (property "Reference" "U1"))
+      (symbol (lib_id "Test:Gate") (at 200 200 0) (unit 1) (convert 2) (property "Reference" "U2"))
+      (symbol (lib_id "Test:Gate") (at 200 200 0) (unit 1) (body_style 2) (property "Reference" "U3"))
+      (symbol (lib_id "Test:Gate2") (at 200 200 0) (unit 2) (property "Reference" "U4"))
+      (symbol (lib_id "Test:NotInTheLibrary") (at 300 300 0) (property "Reference" "U5"))
+    )
+    """;
+
     public const string Schematic = """
     (kicad_sch (version 20230121) (generator eeschema)
       (uuid "11111111-2222-3333-4444-555555555555")

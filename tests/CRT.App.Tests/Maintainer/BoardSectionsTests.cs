@@ -295,21 +295,40 @@ public sealed class BoardSectionsTests
     // placement could otherwise go unseen. Placed already: the list's own mark alone.
     // ###########################################################################################
     [Fact]
-    public void A_board_needing_a_place_says_so_and_where_and_a_placed_one_only_says_so()
+    public void A_board_needing_a_place_says_what_to_do_in_the_panel_and_a_placed_one_only_says_so()
     {
         var suggested = new BoardPlacement("C64", "250407", string.Empty, null);
-        var unlisted = new UnlistedBoardEntry(BoardSectionsTests.BoardId, "Commodore", "C64", "250407", InBeta: true, CanPlace: true, Placement: null, Suggested: suggested);
+        var unlisted = new UnlistedBoardEntry(BoardSectionsTests.BoardId, "Commodore", "C64", "250407", InBeta: false, CanPlace: true, Placement: null, Suggested: suggested);
+        var needing = new BoardListingAnswer(true, [], [unlisted]);
+        var placed = new BoardListingAnswer(true, [], [unlisted with { Placement = suggested }]);
 
-        Assert.Equal(
-            "Needs a place in the drop-down lists - give it one under Maintainer",
-            BoardSections.PlacementLine(new BoardListingAnswer(true, [], [unlisted]), BoardSectionsTests.BoardId));
+        Assert.Equal(BoardPlacementDisplay.Explanation(unlisted), BoardSections.PlacementNotice(needing, BoardSectionsTests.BoardId));
+        Assert.Contains("drag it to where it belongs", BoardSections.PlacementNotice(needing, BoardSectionsTests.BoardId), StringComparison.Ordinal);
+        Assert.True(BoardSections.OffersPlacement(needing, BoardSectionsTests.BoardId));
+        Assert.Null(BoardSections.PlacedLine(needing, BoardSectionsTests.BoardId));
 
-        Assert.Equal(
-            "Placed - listed when published to BETA",
-            BoardSections.PlacementLine(new BoardListingAnswer(true, [], [unlisted with { Placement = suggested }]), BoardSectionsTests.BoardId));
+        Assert.Equal("Placed - listed when published to BETA", BoardSections.PlacedLine(placed, BoardSectionsTests.BoardId));
+        Assert.Null(BoardSections.PlacementNotice(placed, BoardSectionsTests.BoardId));
+        Assert.False(BoardSections.OffersPlacement(placed, BoardSectionsTests.BoardId));
 
-        Assert.Null(BoardSections.PlacementLine(new BoardListingAnswer(true, [], []), BoardSectionsTests.BoardId));
-        Assert.Null(BoardSections.PlacementLine(null, BoardSectionsTests.BoardId));
+        foreach (BoardListingAnswer? neither in new[] { new BoardListingAnswer(true, [], []), null })
+        {
+            Assert.Null(BoardSections.PlacedLine(neither, BoardSectionsTests.BoardId));
+            Assert.Null(BoardSections.PlacementNotice(neither, BoardSectionsTests.BoardId));
+            Assert.False(BoardSections.OffersPlacement(neither, BoardSectionsTests.BoardId));
+        }
+    }
+
+    // Who may not place it is told why, and no button takes them where nothing can be saved.
+    [Fact]
+    public void A_board_this_account_cannot_place_says_who_can_and_offers_no_way_there()
+    {
+        var suggested = new BoardPlacement("C64", "250407", string.Empty, null);
+        var unlisted = new UnlistedBoardEntry(BoardSectionsTests.BoardId, "Commodore", "C64", "250407", InBeta: false, CanPlace: false, Placement: null, Suggested: suggested);
+        var listing = new BoardListingAnswer(true, [], [unlisted]);
+
+        Assert.EndsWith(BoardPlacementDisplay.CannotPlaceMessage, BoardSections.PlacementNotice(listing, BoardSectionsTests.BoardId), StringComparison.Ordinal);
+        Assert.False(BoardSections.OffersPlacement(listing, BoardSectionsTests.BoardId));
     }
 
     // ###########################################################################################

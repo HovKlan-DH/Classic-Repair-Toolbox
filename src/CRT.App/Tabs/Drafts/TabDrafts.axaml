@@ -13,11 +13,22 @@
 		     Its buttons are the header's toolbar below it (HeaderToolbar, one row), its parts on the left
 		     (WorkspaceNav). -->
 		<DataTemplate x:Key="DraftRowTemplate" DataType="local:DraftListItem">
+			<!-- Nothing to say, no line: the buttons under it move up (owner request, 2026-11-04). -->
 			<Border Classes="DraftRow" Padding="8,8,8,4">
+				<Border.IsVisible>
+					<MultiBinding Converter="{x:Static BoolConverters.Or}">
+						<Binding Path="HasHeaderSummary" />
+						<Binding Path="HasSubmission" />
+						<Binding Path="HasDrift" />
+						<Binding Path="HasNote" />
+						<Binding Path="Header.IsFailed" />
+					</MultiBinding>
+				</Border.IsVisible>
 				<Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto">
 					<StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" VerticalAlignment="Center">
 						<StackPanel Orientation="Horizontal" Spacing="8">
-							<TextBlock Text="{Binding RowSummary}"
+							<TextBlock Text="{Binding HeaderSummary}"
+									   IsVisible="{Binding HasHeaderSummary}"
 									   FontWeight="SemiBold"
 									   VerticalAlignment="Center"
 									   Foreground="{DynamicResource Table_Fg}" />
@@ -42,52 +53,30 @@
 										   Foreground="{Binding SubmissionAccentBrush}" />
 							</Border>
 
-							<!-- The draft's errors and warnings (owner report, 2026-10-02) - the
-							     table's own checks, in the colours of its sheet tabs' pills. -->
-							<Border Classes="DraftErrors"
-									IsVisible="{Binding HasErrors}"
-									Background="{DynamicResource BoardTable_Error_Mark}"
-									CornerRadius="9"
-									Padding="7,0"
-									VerticalAlignment="Center"
-									ToolTip.Tip="Something the server would refuse. Open the table view to see it - every error has to be fixed before the draft can be submitted.">
-								<TextBlock Text="{Binding ErrorsText}"
-										   FontSize="10"
-										   FontWeight="SemiBold"
-										   Foreground="{DynamicResource BoardTable_Error_Fg}" />
-							</Border>
-							<Border Classes="DraftWarnings"
-									IsVisible="{Binding HasWarnings}"
-									Background="{DynamicResource BoardTable_Warning_Mark}"
-									CornerRadius="9"
-									Padding="7,0"
-									VerticalAlignment="Center"
-									ToolTip.Tip="Worth a look, but nothing stops the draft being submitted. Open the table view to see them.">
-								<TextBlock Text="{Binding WarningsText}"
-										   FontSize="10"
-										   FontWeight="SemiBold"
-										   Foreground="{DynamicResource BoardTable_Warning_Fg}" />
-							</Border>
+							<!-- The draft's errors and warnings are where they are (owner request, 2026-11-04;
+							     TabDrafts.Problems.cs): on the left column's entries and over the page open. -->
 						</StackPanel>
 					</StackPanel>
 
-					<!-- The draft's save state (DraftHeaderState): Saved / Saving... / "Could not save - <reason>"
-					     with Try again - a status, at the top right as an editor shows it, apart from the
-					     buttons. The state is the open table's to say while it is open (its own line, beside
-					     its cells). -->
+					<!-- A draft saves itself, so that it did goes without saying (owner request, 2026-11-04: "this is
+					     implied - it will always auto-save"; DraftHeaderState). What is said is that a save could
+					     NOT be made, with Try again: that is the contributor's to know, and nothing else tells.
+					     The open table has its own, beside its cells. -->
 					<StackPanel Grid.Row="0" Grid.Column="1"
 								Orientation="Horizontal"
 								Spacing="8"
 								VerticalAlignment="Center"
 								HorizontalAlignment="Right">
-						<TextBlock Classes="DraftSaveState"
-								   Classes.failed="{Binding Header.IsFailed}"
-								   Text="{Binding Header.SaveStateText}"
-								   IsVisible="{Binding !IsTableOpen}"
-								   MaxWidth="360"
-								   TextWrapping="Wrap"
-								   FontSize="11"
-								   VerticalAlignment="Center" />
+						<Panel IsVisible="{Binding !IsTableOpen}">
+							<TextBlock Classes="DraftSaveState"
+									   Classes.failed="{Binding Header.IsFailed}"
+									   Text="{Binding Header.SaveStateText}"
+									   IsVisible="{Binding Header.IsFailed}"
+									   MaxWidth="360"
+									   TextWrapping="Wrap"
+									   FontSize="11"
+									   VerticalAlignment="Center" />
+						</Panel>
 						<Button Content="Try again"
 								IsVisible="{Binding Header.IsFailed}"
 								Command="{Binding TryAgainCommand}"
@@ -195,16 +184,7 @@
 			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
 		</Style>
 
-		<!-- The board's components, in their panel below while "Components" is open - a list with its
-		     selection. -->
-		<Style Selector="ListBox#ComponentsListBox ListBoxItem">
-			<Setter Property="Padding" Value="6,3" />
-			<Setter Property="MinHeight" Value="0" />
-		</Style>
-
-		<!-- The left column's two panels - "Board data editable", and the components below it - each
-		     with an edge of its own, so the list reads as apart from the entries (owner request,
-		     2026-10-29). -->
+		<!-- The left column's panel, with an edge of its own (owner request, 2026-10-29). -->
 		<Style Selector="Border.WorkspaceNavPanel">
 			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
 			<Setter Property="BorderThickness" Value="1" />
@@ -220,7 +200,12 @@
 		<Style Selector="TextBlock.WorkspaceNavHeading">
 			<Setter Property="FontWeight" Value="Bold" />
 			<Setter Property="FontSize" Value="13" />
-			<Setter Property="Margin" Value="6,0,0,4" />
+			<Setter Property="Margin" Value="6,8,0,4" />
+		</Style>
+
+		<!-- A component's page with something on it that stops Submit. -->
+		<Style Selector="Button.WorkspaceNavItem TextBlock.error">
+			<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
 		</Style>
 
 		<Style Selector="TextBlock.WorkspaceNavCount">
@@ -228,6 +213,7 @@
 			<Setter Property="FontSize" Value="11" />
 			<Setter Property="VerticalAlignment" Value="Center" />
 		</Style>
+
 
 		<!-- "Board status": a panel per part of the board, its frame and icon saying how far it is (owner
 		     request, 2026-11-01: "some coloring and the checkmark icon or a 'missing to do' icon"). The
@@ -269,6 +255,23 @@
 			<Setter Property="FontSize" Value="14" />
 			<Setter Property="FontWeight" Value="SemiBold" />
 		</Style>
+		<!-- A panel's errors and warnings, in a panel of their own inside it (owner report, 2026-11-04: "the text is
+		     kind of mixed with the normal text"): the same edge and icon as the panel over a page, on a ground
+		     that stands out from the card around it (TabDrafts.Readiness.cs). -->
+		<Style Selector="Border.StatusProblems">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Table_BorderRowLine}" />
+			<Setter Property="BorderThickness" Value="4,1,1,1" />
+			<Setter Property="CornerRadius" Value="4" />
+			<Setter Property="Padding" Value="10,8" />
+			<Setter Property="Margin" Value="0,8,0,2" />
+		</Style>
+		<Style Selector="Border.StatusProblems.todo">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Waiting_Fg}" />
+		</Style>
+		<Style Selector="Border.StatusProblems.error">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
 		<Style Selector="TextBlock.StatusExplanation">
 			<Setter Property="FontSize" Value="11" />
 			<Setter Property="Opacity" Value="0.75" />
@@ -299,10 +302,10 @@
 				<TextBlock Text="Contribute"
 						   FontSize="16"
 						   FontWeight="Bold" />
-				<TextBlock TextWrapping="Wrap"
-						   Text="Improve the data of the board shown. Every change is saved at once into your own draft and shows up on the board straight away - nobody else sees it until you submit it." />
+				<!-- Names the board shown (ContributeBoardParts.TopLine, ShowHeader). -->
+				<TextBlock x:Name="TopLineText" TextWrapping="Wrap" />
 
-				<!-- Why "Table view" or "Add a new board" made no draft - set by Main (ShowDraftProblem). -->
+				<!-- Why "Table" or "Add a new board" made no draft - set by Main (ShowDraftProblem). -->
 				<TextBlock x:Name="DraftProblemText"
 						   TextWrapping="Wrap"
 						   Foreground="{DynamicResource Text_Fail_Fg}"
@@ -368,13 +371,13 @@
 			</StackPanel>
 		</Grid>
 
-		<!-- The board shown: its draft's header, or - with no draft yet - what it is; then ONE row of
+		<!-- The board shown: its draft's header, if it has a draft; then ONE row of
 		     buttons (owner request, 2026-10-30: Saved, Undo and Redo on one line with four buttons under
-		     them, "not aligned or anything"): the draft's history on the left - Undo, Redo - and on the
-		     right "Table view", set apart, then what is done with the draft as a whole. "Table view" is
-		     there with a draft or without (2026-10-29: the table takes the whole workspace, the left
-		     column with it); the rest only with a draft. The toolbar's DataContext is the draft's row
-		     (TabDrafts.Workspace.cs, ShowHeader), so its buttons are never made again under a press. -->
+		     them, "not aligned or anything"): "View", "UI" or "Table" on the left (owner request, 2026-11-04:
+		     "these UI buttons are more important"), and on the right the draft's history - Undo, Redo - set
+		     apart, then what is done with the draft as a whole. The view is there with a draft or without;
+		     the rest only with a draft. The toolbar's DataContext is the draft's row (TabDrafts.Workspace.cs,
+		     ShowHeader), so its buttons are never made again under a press. -->
 		<StackPanel Grid.Row="1" Margin="16,0,16,8" Spacing="8">
 			<Border x:Name="HeaderPanel"
 					BorderBrush="{DynamicResource Table_BorderRowLine}"
@@ -384,36 +387,47 @@
 									ContentTemplate="{StaticResource DraftRowTemplate}"
 									IsVisible="False" />
 
-					<!-- No board name here either (2026-10-30) - the drop-down lists say which board. -->
-					<Border x:Name="NoDraftPanel" Padding="8,8,8,4">
-						<TextBlock x:Name="NoDraftText"
-								   TextWrapping="Wrap" />
-					</Border>
+					<!-- No board at all: where to pick one. A board with no draft says nothing here (owner request,
+					     2026-11-05: the top line says what a change does). -->
+					<TextBlock x:Name="NoBoardText"
+							   Margin="8,8,8,4"
+							   TextWrapping="Wrap" />
 
 					<Grid x:Name="HeaderToolbar" ColumnDefinitions="Auto,*,Auto" Margin="8,4,8,8">
-						<!-- Undo and Redo across every editor - the open table's while it is open, which shows
-						     where. -->
-						<StackPanel x:Name="HistoryButtons" Grid.Column="0" Orientation="Horizontal" Spacing="6" x:DataType="local:DraftListItem">
-							<Button Content="Undo"
-									IsEnabled="{Binding Header.CanUndo}"
-									ToolTip.Tip="{Binding Header.UndoTip}"
-									ToolTip.ShowOnDisabled="True"
-									Command="{Binding UndoCommand}" />
-							<Button Content="Redo"
-									IsEnabled="{Binding Header.CanRedo}"
-									ToolTip.Tip="{Binding Header.RedoTip}"
-									ToolTip.ShowOnDisabled="True"
-									Command="{Binding RedoCommand}" />
+						<!-- The two views of what the left column picks (owner requests, 2026-11-03 and 2026-11-04: a
+						     joined switch with "View" beside it - TabDrafts.Entries.cs). As tall as the buttons
+						     beside them: the row is one line of buttons. -->
+						<StackPanel x:Name="ViewSwitch" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+							<TextBlock Text="View" VerticalAlignment="Center" Margin="0,0,8,0" />
+							<Button x:Name="UiViewButton"
+									Classes="Segment First Selected"
+									Padding="12,5,12,6"
+									Content="UI"
+									ToolTip.Tip="Show what is picked on the left as its page"
+									Click="OnViewClick" />
+							<Button x:Name="TableViewButton"
+									Classes="Segment Last"
+									Padding="12,5,12,6"
+									Content="Table"
+									ToolTip.Tip="Show what is picked on the left as a table of its rows - every difference from the published data colored in"
+									Click="OnViewClick" />
 						</StackPanel>
 
 						<StackPanel Grid.Column="2" Orientation="Horizontal">
-							<!-- The whole draft as sheets - one view of the same draft (the plan). Reads "Close
-							     table view" while open. Before "Review changes", set apart from the draft's own
-							     actions (owner request, 2026-10-30). -->
-							<Button x:Name="TableViewButton"
-									Content="Table view"
-									ToolTip.Tip="Show the whole board as sheets and rows - every difference from the published data colored in"
-									Click="OnTableViewClick" />
+							<!-- Undo and Redo across every editor - the open table's while it is open, which shows
+							     where. Before "Review changes", set apart from the draft's own actions. -->
+							<StackPanel x:Name="HistoryButtons" Orientation="Horizontal" Spacing="6" x:DataType="local:DraftListItem">
+								<Button Content="Undo"
+										IsEnabled="{Binding Header.CanUndo}"
+										ToolTip.Tip="{Binding Header.UndoTip}"
+										ToolTip.ShowOnDisabled="True"
+										Command="{Binding UndoCommand}" />
+								<Button Content="Redo"
+										IsEnabled="{Binding Header.CanRedo}"
+										ToolTip.Tip="{Binding Header.RedoTip}"
+										ToolTip.ShowOnDisabled="True"
+										Command="{Binding RedoCommand}" />
+							</StackPanel>
 
 							<StackPanel x:Name="DraftActions" Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" x:DataType="local:DraftListItem">
 								<Button Content="What changed"
@@ -474,39 +488,38 @@
 		     dragged at the splitter beside it, and kept per board (TabDrafts.Splitters.cs). -->
 		<Grid Grid.Row="2" x:Name="WorkspaceGrid" ColumnDefinitions="260,4,*" Margin="16,0,16,16">
 
-			<!-- THE LEFT COLUMN (owner decisions, 2026-11-01): "Board" and what is under it - a tree, its headings
-			     no entries - and below it a panel of its own with the search, the list and "Add component", always
-			     there and taking the room left. A component's own pages are tabs over the pane (ComponentPane.Pages.cs),
-			     so they take none here. The entry open on the right is selected (TabDrafts.Workspace.cs,
-			     ShowNavSelection). Hidden while the table is open: the table takes the whole workspace. -->
-			<Grid Grid.Column="0" x:Name="WorkspaceNav" RowDefinitions="Auto,*" Margin="0,0,8,0" SizeChanged="OnWorkspaceNavSizeChanged">
+			<!-- THE LEFT COLUMN (owner decisions, 2026-11-01 and 2026-11-03): "Overview", then "Board" and
+			     "Components" and what is under them - a tree, its headings no entries - and "Add component" just
+			     below it. The entry open on the right is selected (TabDrafts.Entries.cs, EntryOpen). -->
+			<Grid Grid.Column="0" x:Name="WorkspaceNav" RowDefinitions="Auto,Auto,*" Margin="0,0,8,0" SizeChanged="OnWorkspaceNavSizeChanged">
 
 				<Border Grid.Row="0" Classes="WorkspaceNavPanel">
 				<!-- Scrolls only on a window too low for it and the list (OnWorkspaceNavSizeChanged). -->
 				<ScrollViewer x:Name="BoardNavScroll" HorizontalScrollBarVisibility="Disabled">
 				<StackPanel Spacing="0">
-					<TextBlock Classes="WorkspaceNavHeading" Text="Board" />
-
 					<!-- The entries carry no tooltip (owner request, 2026-10-30) - their names say it.
 
-					     "Overview" FIRST ("Board status" until 2026-11-01; owner request, the same day: "must be shown
-					     first, as this is the overview for the board" - the start page, owner request, 2026-10-30:
-					     "could be a nice page to have always up-to-date, but please do have it as a new menu item"): how
-					     far the board is, and everything it still lacks (TabDrafts.Readiness.cs). Selected whenever
-					     nothing else is open on the right; picking it closes what is (TabDrafts.ShowBoardStatus). -->
-					<Button x:Name="StatusNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnBoardStatusClick">
+					     "Overview" THE VERY FIRST (owner requests: "must be shown first, as this is the overview for the
+					     board", 2026-11-01; "before the 'Board' one", 2026-11-03; "Board status" until 2026-11-01; the
+					     start page, owner request, 2026-10-30): how far the board is, and everything it still lacks
+					     (TabDrafts.Readiness.cs). Selected whenever nothing else is open on the right; picking it closes
+					     what is (TabDrafts.ShowBoardStatusAsync). -->
+					<Button x:Name="StatusNavButton" Classes="WorkspaceNavItem"
+							Click="OnNavEntryClick">
 						<TextBlock Text="Overview" />
 					</Button>
+
+					<TextBlock Classes="WorkspaceNavHeading" Text="Board" />
+
 					<!-- The page of its own, TabDrafts.BoardName.cs (owner request, 2026-11-01: "how to edit those
 					     details again afterwards"). -->
 					<Button x:Name="NameNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnBoardNameClick">
+							Click="OnNavEntryClick">
 						<TextBlock Text="Name" />
 					</Button>
 					<!-- Whether the board comes in PAL and NTSC versions (owner decisions, 2026-11-01). -->
 					<Button x:Name="RegionsNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnRegionsClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Regions" />
 							<TextBlock x:Name="RegionsCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
@@ -515,7 +528,7 @@
 
 					<TextBlock Classes="WorkspaceNavGroup" Text="KiCad" />
 					<Button x:Name="KiCadNavButton" Classes="WorkspaceNavItem NestedTwice"
-							Click="OnKiCadClick">
+							Click="OnNavEntryClick">
 						<!-- How many KiCad files the board has (owner request, 2026-10-30). -->
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Files" />
@@ -524,7 +537,7 @@
 					</Button>
 					<!-- Just after the KiCad files (owner request, 2026-11-01) - ComponentPaneWording.ImportantSignals. -->
 					<Button x:Name="SignalsNavButton" Classes="WorkspaceNavItem NestedTwice"
-							Click="OnImportantSignalsClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Important signals" />
 							<TextBlock x:Name="SignalsCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
@@ -532,7 +545,7 @@
 					</Button>
 
 					<Button x:Name="PicturesNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnPicturesClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Schematic images" />
 							<TextBlock x:Name="PicturesCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
@@ -540,100 +553,104 @@
 					</Button>
 					<!-- What the components are sorted under: renamed, added, deleted (owner request, 2026-11-01). -->
 					<Button x:Name="CategoriesNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnCategoriesClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Categories" />
 							<TextBlock x:Name="CategoriesCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
 						</Grid>
 					</Button>
 					<Button x:Name="FilesNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnFilesClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Files" />
 							<TextBlock x:Name="FilesCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
 						</Grid>
 					</Button>
 					<Button x:Name="LinksNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnLinksClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Links" />
 							<TextBlock x:Name="LinksCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
 						</Grid>
 					</Button>
 					<Button x:Name="CreditsNavButton" Classes="WorkspaceNavItem Nested"
-							Click="OnCreditsClick">
+							Click="OnNavEntryClick">
 						<Grid ColumnDefinitions="*,Auto">
 							<TextBlock Text="Credits" />
 							<TextBlock x:Name="CreditsCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+
+					<!-- The pages of the component picked in CRT's own list, in place of tabs over the pane (owner
+					     request, 2026-11-03). Each says how many it holds - Basics its rows: "1" when the region
+					     is not different, "2" if it is - and is red while something on it stops Submit. With none
+					     picked its entry says where to pick one (NoComponentPanel). -->
+					<TextBlock Classes="WorkspaceNavHeading" Text="Components" />
+					<Button x:Name="BasicsNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="BasicsNavLabel" Text="Basics" />
+							<TextBlock x:Name="BasicsCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+					<Button x:Name="ReplacementsNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="ReplacementsNavLabel" Text="Replacement parts" />
+							<TextBlock x:Name="ReplacementsCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+					<Button x:Name="PinoutNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="PinoutNavLabel" Text="Pinout" />
+							<TextBlock x:Name="PinoutCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+					<Button x:Name="ComponentPicturesNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="ComponentPicturesNavLabel" Text="Pictures" />
+							<TextBlock x:Name="ComponentPicturesCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+					<Button x:Name="BaselinesNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="BaselinesNavLabel" Text="Oscilloscope baseline" />
+							<TextBlock x:Name="BaselinesCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+					<Button x:Name="ComponentFilesNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="ComponentFilesNavLabel" Text="Files" />
+							<TextBlock x:Name="ComponentFilesCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+						</Grid>
+					</Button>
+					<Button x:Name="ComponentLinksNavButton" Classes="WorkspaceNavItem Nested"
+							Click="OnNavEntryClick">
+						<Grid ColumnDefinitions="*,Auto">
+							<TextBlock x:Name="ComponentLinksNavLabel" Text="Links" />
+							<TextBlock x:Name="ComponentLinksCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
 						</Grid>
 					</Button>
 				</StackPanel>
 				</ScrollViewer>
 				</Border>
 
-				<!-- THE COMPONENTS, below the board's entries and always there: the search, the list (its selection
-				     the component open on the right) and "Add component". -->
-				<Border Grid.Row="1" x:Name="ComponentsListPanel" Classes="WorkspaceNavPanel" Margin="0,10,0,0">
-					<Grid RowDefinitions="Auto,Auto,*,Auto">
-						<Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-							<TextBlock Classes="WorkspaceNavHeading" Text="Components" />
-							<TextBlock x:Name="ComponentsCountText" Grid.Column="1" Classes="WorkspaceNavCount" Margin="0,0,6,4" />
-						</Grid>
-
-						<TextBox Grid.Row="1"
-								 x:Name="ComponentSearchBox"
-								 Margin="0,0,0,6"
-								 Watermark="Search components"
-								 TextChanged="OnComponentSearchChanged" />
-
-						<Grid Grid.Row="2">
-							<ListBox x:Name="ComponentsListBox"
-									 SelectionMode="Single"
-									 BorderThickness="1"
-									 CornerRadius="4"
-									 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-									 SelectionChanged="OnComponentsListSelectionChanged">
-								<ListBox.ItemTemplate>
-									<DataTemplate x:DataType="data:ComponentListItem">
-										<!-- No tooltip (owner request, 2026-10-30: "Edit this component" confused more than it helped). -->
-										<Grid ColumnDefinitions="*,Auto">
-											<TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis" />
-
-											<!-- The draft changes it from the published board - the same mark, in the same word,
-											     the component list on the left of CRT shows (owner request, 2026-11-02). None on a new
-											     board: there is nothing published to differ from. -->
-											<TextBlock Grid.Column="1"
-													   Text="Draft"
-													   Classes="WorkspaceNavCount"
-													   Margin="6,0,0,0"
-													   IsVisible="{Binding IsDrafted}" />
-										</Grid>
-									</DataTemplate>
-								</ListBox.ItemTemplate>
-							</ListBox>
-
-							<!-- What the list would hold, when it holds nothing. -->
-							<TextBlock x:Name="NoComponentsText"
-									   Margin="8,6,8,0"
-									   VerticalAlignment="Top"
-									   FontSize="11"
-									   Opacity="0.75"
-									   TextWrapping="Wrap"
-									   IsHitTestVisible="False"
-									   IsVisible="False" />
-						</Grid>
-
-						<Button Grid.Row="3"
-								x:Name="AddComponentButton"
-								Classes="Accept"
-								Content="Add component"
-								Margin="0,8,0,0"
-								HorizontalAlignment="Stretch"
-								HorizontalContentAlignment="Center"
-								ToolTip.Tip="Add a component the board does not have yet"
-								Click="OnAddComponentClick" />
-					</Grid>
-				</Border>
+				<!-- THE COMPONENTS ARE PICKED IN THE LISTS ON THE FAR LEFT (owner request, 2026-11-03: "why not utilize
+				     the existing lists already available in the left-side"; Main.ContributeLists.cs has this tab's
+				     there), so all this column has of them is the button that adds one. -->
+				<Button Grid.Row="1"
+						x:Name="AddComponentButton"
+						Classes="Accept"
+						Content="Add component"
+						Margin="0,8,0,0"
+						HorizontalAlignment="Stretch"
+						HorizontalContentAlignment="Center"
+						ToolTip.Tip="Add a component the board does not have yet"
+						Click="OnAddComponentClick" />
 			</Grid>
 
 			<!-- The left column's width, dragged (owner request, 2026-10-29) - kept per board. A 4px
@@ -645,30 +662,33 @@
 						  HorizontalAlignment="Stretch"
 						  ToolTip.Tip="Drag to make the column on the left wider or narrower" />
 
-			<Grid Grid.Column="2" x:Name="WorkspaceContent" Margin="8,0,0,0">
+			<Grid Grid.Column="2" x:Name="WorkspaceContent" Margin="8,0,0,0" RowDefinitions="Auto,*">
+				<StackPanel Grid.Row="0">
+					<!-- "Table" picked, and an entry with no table of its own (TabDrafts.Entries.cs). -->
+					<Border x:Name="NoTableNotice" Classes="Notice" IsVisible="False" Margin="4,0,12,8">
+						<Grid ColumnDefinitions="Auto,*">
+							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+							<TextBlock Grid.Column="1" Classes="NoticeText" x:Name="NoTableNoticeText" />
+						</Grid>
+					</Border>
+				</StackPanel>
+
 				<!-- "BOARD STATUS" (owner request, 2026-10-30 - the start page made an entry of the left column,
 				     always up to date): what to do here, how far the board is, and everything it lacks - shown
 				     while nothing else is open on the right, scrolled when it is long (the ScrollViewer's
 				     visibility is the panel's). -->
-				<ScrollViewer IsVisible="{Binding #StartPanel.IsVisible}" HorizontalScrollBarVisibility="Disabled">
+				<ScrollViewer Grid.Row="1" IsVisible="{Binding #StartPanel.IsVisible}" HorizontalScrollBarVisibility="Disabled">
 				<StackPanel x:Name="StartPanel" Spacing="8" Margin="4,0,12,12" MaxWidth="760" HorizontalAlignment="Left">
 					<!-- Its headline, as every part's in the pane. -->
 					<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
 							BorderThickness="0,0,0,1"
 							Padding="0,0,0,8"
 							Margin="0,0,0,4">
-						<TextBlock Text="Board: Overview" FontSize="16" FontWeight="Bold" />
+						<TextBlock Text="Overview" FontSize="16" FontWeight="Bold" />
 					</Border>
-					<TextBlock x:Name="StartText"
-							   TextWrapping="Wrap"
-							   Text="Pick a part of the board on the left, or one of its components, to correct or add to what it says. &quot;Table view&quot; shows the whole board as sheets." />
-					<!-- Files dropped anywhere on the tab are added to the board (TabDrafts.Drop.cs). -->
-					<TextBlock x:Name="DropHintText"
-							   TextWrapping="Wrap"
-							   FontSize="11"
-							   Opacity="0.75"
-							   Margin="0,4,0,0"
-							   Text="Drag schematic images of the board, or its KiCad project folder, onto this tab to add them." />
+					<!-- What the page is for, and the two ways to work (owner's words, 2026-11-03 and 2026-11-05).
+					     Nothing is dragged here: images go on "Schematic images", a KiCad project on "KiCad: Files". -->
+					<TextBlock x:Name="StartText" TextWrapping="Wrap"><Run Text="The panels below walk you through every step of adding data to a board. The exact flow depends on whether the board has KiCad data. Where good KiCad data is available we recommend using it: it makes the work much easier, and the community gets more out of the board, for example by being able to follow its traces." /><LineBreak /><LineBreak /><Run Text="There are two ways to manage the data - either through the &quot;UI&quot; or the &quot;Table&quot; view. The UI is for easy management of individual entries, while the table will allow for more bulk-operations in an Excel-like style. Both give the same result, so use whichever you prefer." /></TextBlock>
 					<TextBlock x:Name="PublishedOnText"
 							   FontSize="11"
 							   Opacity="0.75"
@@ -683,20 +703,79 @@
 				</StackPanel>
 				</ScrollViewer>
 
-				<local:BoardTableEditor x:Name="TableEditor"
+				<local:BoardTableEditor Grid.Row="1"
+										x:Name="TableEditor"
 										IsVisible="False" />
 
 				<!-- A component, edited in place (TabDrafts.Component.cs). -->
-				<local:ComponentPane x:Name="ComponentPane"
+				<local:ComponentPane Grid.Row="1"
+									 x:Name="ComponentPane"
 									 IsVisible="False" />
+
+				<!-- A component's page with no component picked: where to pick one (owner request, 2026-11-03). -->
+				<StackPanel Grid.Row="1" x:Name="NoComponentPanel" IsVisible="False" Spacing="8" Margin="4,0,12,12" MaxWidth="760" HorizontalAlignment="Left">
+					<Border BorderBrush="{DynamicResource Table_BorderRowLine}"
+							BorderThickness="0,0,0,1"
+							Padding="0,0,0,8"
+							Margin="0,0,0,4">
+						<TextBlock x:Name="NoComponentTitle" FontSize="16" FontWeight="Bold" />
+					</Border>
+					<!-- WHAT THE CHECKS FOUND ON THE PAGE OPEN, UNDER ITS HEADLINE (owner requests, 2026-11-04: "those errors and
+					     warnings should be clearly visible in there"; "should come below the headline everywhere"). It is
+					     moved to the page open (TabDrafts.Problems.cs): here, or the component pane's ProblemsHost. The
+					     frame and icon as "Overview"'s panels have them. Its list scrolls: it must leave room for the page. -->
+					<Decorator x:Name="NoComponentProblemsHost">
+					<Border x:Name="EntryProblemsPanel" Classes="StatusPanel" IsVisible="False" Margin="4,8,12,0">
+						<Grid ColumnDefinitions="Auto,*">
+							<TextBlock Grid.Column="0" x:Name="EntryProblemsIcon" Classes="StatusIcon" Margin="0,2,10,0" />
+							<StackPanel Grid.Column="1" Spacing="4">
+								<TextBlock x:Name="EntryProblemsTitle" Classes="StatusTitle" />
+								<TextBlock x:Name="EntryProblemsHelp" Classes="StatusExplanation" />
+								<ScrollViewer MaxHeight="170" HorizontalScrollBarVisibility="Disabled">
+									<StackPanel Spacing="4" Margin="0,0,12,0">
+										<ItemsControl x:Name="EntryProblemsList">
+											<ItemsControl.ItemTemplate>
+												<DataTemplate x:DataType="local:EntryProblemRow">
+													<Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+														<Border Grid.Column="0"
+																Classes="NavBadge"
+																Classes.error="{Binding IsError}"
+																Classes.warning="{Binding IsWarning}">
+															<TextBlock Text="{Binding Level}" />
+														</Border>
+														<TextBlock Grid.Column="1"
+																   Text="{Binding Message}"
+																   TextWrapping="Wrap"
+																   VerticalAlignment="Center"
+																   Margin="8,0" />
+														<Button Grid.Column="2"
+																Content="{Binding OpenLabel}"
+																IsVisible="{Binding CanOpen}"
+																VerticalAlignment="Center"
+																Command="{Binding OpenCommand}" />
+													</Grid>
+												</DataTemplate>
+											</ItemsControl.ItemTemplate>
+										</ItemsControl>
+										<TextBlock x:Name="EntryProblemsMore" Classes="StatusExplanation" IsVisible="False" />
+									</StackPanel>
+								</ScrollViewer>
+							</StackPanel>
+						</Grid>
+					</Border>
+					</Decorator>
+					<TextBlock x:Name="NoComponentText" TextWrapping="Wrap" />
+				</StackPanel>
 
 				<!-- "KiCad data" (KiCadDataPanel - a window until 2026-10-30), one made for each opening
 				     (TabDrafts.KiCad.cs). -->
-				<ContentControl x:Name="KiCadPanelHost"
+				<ContentControl Grid.Row="1"
+								x:Name="KiCadPanelHost"
 								IsVisible="False" />
 
 				<!-- "Board name": the board's names and notes, changed on a new board (TabDrafts.BoardName.cs). -->
-				<local:BoardNamePanel x:Name="BoardNamePanel"
+				<local:BoardNamePanel Grid.Row="1"
+									  x:Name="BoardNamePanel"
 									  IsVisible="False" />
 			</Grid>
 		</Grid>

@@ -26,6 +26,21 @@ namespace Handlers.DataHandling
         string TraceOpacity = "",
         string OppositeTraceOpacity = "")
     {
+        // ###########################################################################################
+        // How a schematic image added to a NEW board starts (owner request, 2026-11-03: "Thumbnail
+        // opacity = 80%", "Traces on this side = same color as the Schematic image"). The highlight's
+        // colour is written - the very one a blank row shows on its card - so the traces' colour, left
+        // blank, follows it and any it is changed to (TraceColours.Resolve); blank, a row's traces go
+        // DeepSkyBlue beside an IndianRed highlight, as published boards keep. A board already published
+        // has its look: only a new board starts this way.
+        // ###########################################################################################
+        public static readonly PictureColours ForNewBoard = new(
+            HighlightColor: "IndianRed",
+            HighlightOpacity: string.Empty,
+            OppositeTraceColor: string.Empty,
+            ThumbnailHighlightColor: string.Empty,
+            ThumbnailHighlightOpacity: "80%");
+
         // Every value trimmed, as it is written.
         public PictureColours Trimmed() => new(
             this.HighlightColor?.Trim() ?? string.Empty,

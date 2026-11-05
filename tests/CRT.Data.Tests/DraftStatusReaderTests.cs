@@ -104,6 +104,75 @@ public sealed class DraftStatusReaderTests : IDisposable
         Assert.Equal(new BoardProblemCounts(1, 2), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
     }
 
+    // The problems themselves come with the counts - where they are is what the Contribute tab says (owner
+    // request, 2026-11-04) - with the board their row numbers are of. The very same read while nothing moved,
+    // which is how the tab knows there is nothing to work out again.
+    [Fact]
+    public void A_drafts_problems_come_with_the_board_they_were_found_on_and_stay_the_same_read_until_it_changes()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+
+        BoardData draft = DraftStatusReaderTests.BoardWith(2);
+        draft.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" });
+        this.WriteDraft(draft);
+
+        DraftStatus? status = this.Status();
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
+
+        BoardProblemsRead read = DraftStatusReader.ProblemsCached(status, this.DataRoot, draftFolder);
+
+        Assert.Equal(new BoardProblemCounts(1, 2), read.Counts);
+        Assert.Equal(3, read.Problems.Count);
+        BoardDataProblem link = Assert.Single(read.Problems, problem => problem.Level == BoardProblemLevel.Error);
+        Assert.Equal("U0", read.Board!.ComponentLinks[link.Index].BoardLabel);
+
+        Assert.Same(read, DraftStatusReader.ProblemsCached(status, this.DataRoot, draftFolder));
+        Assert.Equal(read.Counts, DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+
+        this.WriteDraft(DraftStatusReaderTests.BoardWith(2));
+        File.SetLastWriteTimeUtc(status!.WorkbookPath, DateTime.UtcNow.AddMinutes(1));
+
+        BoardProblemsRead after = DraftStatusReader.ProblemsCached(status, this.DataRoot, draftFolder);
+
+        Assert.NotSame(read, after);
+        Assert.Equal(new BoardProblemCounts(0, 2), after.Counts);
+    }
+
+    // What is kept per draft holds its whole board, so a draft gone must not be kept for the rest of the run
+    // (code review, 2026-11-04): a discarded, retired or renamed one goes at the next refresh of the drafts'
+    // list (TabDraftsProblemsTests). Asked of each draft's read it cost drafts x drafts checks per refresh.
+    [Fact]
+    public void What_the_checks_found_is_let_go_of_once_the_draft_is_gone()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+        this.WriteDraft(DraftStatusReaderTests.BoardWith(2));
+
+        DraftStatus status = this.Status()!;
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
+
+        DraftStatusReader.ProblemsCached(status, this.DataRoot, draftFolder);
+        Assert.True(DraftStatusReader.HoldsProblemsForTests(status.WorkbookPath));
+
+        // Still there: still kept.
+        DraftStatusReader.ForgetProblemsOfVanishedDrafts();
+        Assert.True(DraftStatusReader.HoldsProblemsForTests(status.WorkbookPath));
+
+        File.Delete(status.WorkbookPath);
+
+        // A read looks at no other draft.
+        DraftStatusReader.ProblemsCached(null, this.DataRoot, string.Empty);
+        Assert.True(DraftStatusReader.HoldsProblemsForTests(status.WorkbookPath));
+
+        DraftStatusReader.ForgetProblemsOfVanishedDrafts();
+        Assert.False(DraftStatusReader.HoldsProblemsForTests(status.WorkbookPath));
+    }
+
+    [Fact]
+    public void No_draft_has_no_problems()
+    {
+        Assert.Same(BoardProblemsRead.None, DraftStatusReader.ProblemsCached(null, this.DataRoot, string.Empty));
+    }
+
     // ###########################################################################################
     // Case 18 (owner request, 2026-10-03: "Flagged" became warnings; cases agreed with the project
     // owner). A draft's row counts its duplicate rows as warnings, one per row. An important signal

@@ -24,7 +24,7 @@
 
 		<TextBlock TextWrapping="Wrap"
 				   Margin="0,8,0,12"
-				   Text="Nothing is shared with anyone until you submit it. A board you never submit stays yours and keeps working locally." />
+				   Text="Nothing is shared with anyone until you submit it. A board you never submit stays yours and keeps working locally, and it will not be overwritten by data from any online source." />
 
 		<!-- Manufacturer, hardware, board and notes, with every rule about them - the Contribute tab's
 		     "Board name" shows the same (2026-11-01). -->

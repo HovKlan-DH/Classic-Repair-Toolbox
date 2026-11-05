@@ -38,12 +38,12 @@ public sealed class BoardTableEditorSelectionTests
         Image("R307", "Pinout (secondary)", "x/resistor.png")
     ];
 
-    private static (Window Window, BoardTableEditor Editor) Shown(BoardData draft, BoardData? published)
+    private static (Window Window, BoardTableEditor Editor) Shown(BoardData draft, BoardData? published, string sheet = BoardWorkbookSchema.SheetComponentImages)
     {
         var editor = new BoardTableEditor();
         BoardTableDocument document = BoardTableDocument.Create(published, draft);
         editor.Open(document);
-        editor.SelectSheet(document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!);
+        editor.SelectSheet(document.FindSheet(sheet)!);
 
         var window = new Window { Content = editor, Width = 1400, Height = 800 };
         window.Show();
@@ -329,7 +329,13 @@ public sealed class BoardTableEditorSelectionTests
     {
         UiTest.Run(() =>
         {
-            (Window window, BoardTableEditor editor) = ShownUnchanged();
+            // A sheet shown whole: "Component images" is in two since 2026-11-05, whose rows never move by their grip.
+            BoardData Links() => new()
+            {
+                ComponentLinks = [.. Screenshot().Select(image => new ComponentLinkEntry { BoardLabel = image.BoardLabel, Name = image.Name, Url = $"https://example.com/{image.File}" })],
+            };
+
+            (Window window, BoardTableEditor editor) = Shown(Links(), Links(), BoardWorkbookSchema.SheetComponentLinks);
 
             ClickRow(window, editor, Row(editor, "CR13"));
             ClickRow(window, editor, Row(editor, "CR17"), RawInputModifiers.Shift);

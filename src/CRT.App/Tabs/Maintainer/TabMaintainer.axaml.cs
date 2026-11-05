@@ -1059,6 +1059,7 @@ namespace CRT
             }
 
             this.ShowBeforeApproving(beforeApproving);
+            this.OfferPlacement(detail.Submission.BoardId);
 
             // A shared-file replacement's other boards, on the approval status line (2026-10-13).
             this.ReadFilesForApproval(detail);

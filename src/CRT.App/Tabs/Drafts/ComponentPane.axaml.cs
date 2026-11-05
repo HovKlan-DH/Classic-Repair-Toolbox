@@ -52,10 +52,9 @@ namespace CRT
     // The file map:
     //   ComponentPane.axaml.cs  - showing a component, the fields, pins, replacement parts and links,
     //                             committing and saving, Undo changes
-    //   ComponentPane.Pages.cs  - a component's pages as tabs, the region shown and "Applies to", its
-    //                             label, what Submit would refuse marked where it is, and the temporary
-    //                             tool making pinouts of oscilloscope baselines
-    //   PaneRegionSwitch.cs     - "Showing [PAL] [NTSC]" on a component's pages
+    //   ComponentPane.Pages.cs  - a component's pages (the left column picks them), the region shown and
+    //                             "Applies to", its label, what Submit would refuse marked where it is, and
+    //                             the temporary tool making pinouts of oscilloscope baselines
     //   ComponentPane.RegionsAndCategories.cs - "Board: Regions" and "Board: Categories"
     //   ComponentPane.Files.cs  - oscilloscope baselines (with the new-baseline panel and the capture),
     //                             pictures and files: adding, changing, moving, thumbnails
@@ -73,7 +72,7 @@ namespace CRT
     //                             "Show on board" lighting a net up on the Schematics tab
     //   ComponentPane.KiCadPins.cs - the component's pins from the board's KiCad data: "Fill from
     //                             KiCad" and each pin's net on this board
-    //   ComponentPane.Copy.cs   - "Copy from another board": the same part's data from another board;
+    //   ComponentPane.Copy.cs   - "Clone component from another board": everything of one picked there;
     //                             "Also on other boards": this draft's change of the part, and the
     //                             files it replaced, onto the other boards' own drafts
     // ###########################################################################################
@@ -136,10 +135,11 @@ namespace CRT
             this.thisLinksDrag = new ListRowDrag<ComponentPaneLinkRow>(
                 this, this.LinksItemsControl, this.SectionsScrollViewer, this.thisLinks, (_, _, _) => this.CommitLinks());
             this.PackageBox.ItemsSource = ComponentVocabulary.Packages;
+            this.PackageBox.ItemFilter = this.PackageShowsAll;
+            this.PackageBox.AddHandler(InputElement.GotFocusEvent, this.OnPackageBoxFocused, handledEventsToo: true);
             this.InitializeImagesAndFiles();
             this.InitializeWhole();
             this.InitializeBoardParts();
-            this.InitializeRegionSwitches();
 
             this.thisSaveTimer.Tick += (_, _) => this.SaveIfDue();
             this.thisTypingTimer.Tick += (_, _) =>
@@ -152,6 +152,7 @@ namespace CRT
             this.AddHandler(InputElement.LostFocusEvent, this.OnAnyLostFocus, handledEventsToo: true);
             this.AddHandler(SelectingItemsControl.SelectionChangedEvent, this.OnAnySelectionChanged, handledEventsToo: true);
             this.AddHandler(InputElement.KeyDownEvent, this.OnPaneKeyDown, RoutingStrategies.Tunnel);
+            this.AddHandler(InputElement.PointerWheelChangedEvent, this.OnPaneWheel, RoutingStrategies.Tunnel);
         }
 
         // ---- what the host sees -----------------------------------------------------------------
@@ -272,7 +273,7 @@ namespace CRT
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
             this.thisIsNew = false;
             this.thisBoardPart = null;
-            this.CloseCopyPanel();
+            this.CloseClonePanel();
             this.ForgetKiCadPins();
 
             this.ShowComponent();
@@ -328,7 +329,7 @@ namespace CRT
             this.thisSignalSuggestions.Clear();
             this.thisBoardPictures.Clear();
             this.ForgetPreviews();
-            this.CloseCopyPanel();
+            this.CloseClonePanel();
             this.ForgetKiCadPins();
         }
 
@@ -441,7 +442,7 @@ namespace CRT
                 this.GoneText.Text = ComponentPaneWording.NotOnBoard(this.thisLabel);
                 this.ShowChangedState();
                 this.ShowGoneActions();
-                this.ShowPageTabs();
+                this.TellPagesChanged();
                 return;
             }
 
@@ -466,6 +467,9 @@ namespace CRT
             {
                 this.thisRowRegion = row.Region?.Trim() ?? string.Empty;
 
+                // Before the fields: a drop-down list can select only what it lists.
+                this.CategoryBox.ItemsSource = this.CategoryChoicesWith(board, row.Category);
+
                 foreach (ComponentField field in Enum.GetValues<ComponentField>())
                 {
                     string value = ComponentPaneEdits.ValueOf(row, field);
@@ -477,11 +481,9 @@ namespace CRT
                 this.BoardLabelBox.Text = this.thisLabelShown;
                 this.ShowLabelProblem(null);
 
-                this.CategoryBox.ItemsSource = this.CategoryChoices(board);
-
                 ComponentPane.Fill(this.thisPins, ComponentPaneEdits.PinsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPanePinRow.From));
                 ComponentPane.Fill(this.thisReplacements, ComponentPaneEdits.ReplacementsOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneReplacementRow.From));
-                ComponentPane.Fill(this.thisLinks, ComponentPaneEdits.LinksOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneLinkRow.From));
+                ComponentPane.Fill(this.thisLinks, ComponentPaneEdits.AllLinksOf(board, this.thisLabel).Select(ComponentPaneLinkRow.From));
                 this.ShowImagesAndFiles(board);
 
                 this.TitleText.Text = ComponentPaneWording.Title(row);
@@ -524,7 +526,7 @@ namespace CRT
 
         private string BoxText(ComponentField field) => field switch
         {
-            ComponentField.Category => this.CategoryBox.Text ?? string.Empty,
+            ComponentField.Category => this.CategoryBox.SelectedItem as string ?? string.Empty,
             ComponentField.Package => this.PackageBox.Text ?? string.Empty,
             _ => this.BoxOf(field)?.Text ?? string.Empty,
         };
@@ -534,7 +536,7 @@ namespace CRT
             switch (field)
             {
                 case ComponentField.Category:
-                    this.CategoryBox.Text = value;
+                    this.CategoryBox.SelectedItem = value.Length > 0 ? value : null;
                     break;
                 case ComponentField.Package:
                     this.PackageBox.Text = value;
@@ -556,6 +558,9 @@ namespace CRT
 
             this.DescriptionCounter.Text = string.Create(CultureInfo.InvariantCulture, $"{length}/{ComponentVocabulary.ShortDescriptionLimit}");
             this.DescriptionCounter.Classes.Set("over", length > ComponentVocabulary.ShortDescriptionLimit);
+
+            this.DescriptionTooLongText.Text = ComponentPaneWording.DescriptionTooLong(length);
+            this.DescriptionTooLongText.IsVisible = length > ComponentVocabulary.ShortDescriptionLimit;
         }
 
         // The case drawn with the pins as the pane holds them, and the offer to add the case's pins.
@@ -572,7 +577,7 @@ namespace CRT
             this.AddCasePinsButton.Content = ComponentPaneWording.AddCasePins(package, missing, pins.Count == 0);
             this.ShowKiCadPins();
             this.ShowPinProblems();
-            this.ShowPageTabs();
+            this.TellPagesChanged();
         }
 
         private void ShowEmptyLines()
@@ -584,7 +589,7 @@ namespace CRT
             this.LinksHeading.IsVisible = this.thisLinks.Count > 0;
             this.ShowImageAndFileHeadings();
             this.FollowRegionChoices(this.thisBoardHasRegions);
-            this.ShowPageTabs();
+            this.TellPagesChanged();
         }
 
         // "Draft", and "Undo changes to <label>", while the draft changes the component.
@@ -686,6 +691,14 @@ namespace CRT
             this.Apply(
                 DraftStepWording.ComponentField(this.thisLabel, ComponentPaneEdits.NameOf(field)),
                 board => ComponentPaneEdits.WithField(board, this.thisLabel, this.thisRegion, field, text));
+
+            // The headline says the names, as the popup's title does - and the pane reads nothing back after
+            // its own edit (code review, 2026-11-04).
+            if (this.thisSession is { } session &&
+                ComponentPaneEdits.RowShown(session.Content.Board, this.thisLabel, this.thisRegion) is { } row)
+            {
+                this.TitleText.Text = ComponentPaneWording.Title(row);
+            }
         }
 
         private void CommitPins()
@@ -708,11 +721,11 @@ namespace CRT
 
         private void CommitLinks()
         {
-            List<ComponentLinkEntry> links = this.thisLinks.Where(row => !this.IsWaitingToBeTyped(row)).Select(row => row.ToEntry()).ToList();
+            List<ComponentLinkEntry> links = this.thisLinks.Select(row => row.ToEntry()).ToList();
 
             this.Apply(
                 DraftStepWording.ComponentLinks(this.thisLabel),
-                board => ComponentPaneEdits.WithLinks(board, this.thisLabel, this.thisRegion, links));
+                board => ComponentPaneEdits.WithAllLinks(board, this.thisLabel, links));
         }
 
         // One change applied to the draft held in memory, as the pane's own step.
@@ -841,7 +854,40 @@ namespace CRT
                 return;
             }
 
+            // The new-component form holds what it holds until it is added - judged as it is picked in.
+            if (this.thisIsNew)
+            {
+                this.OnNewComponentTextChanged();
+                return;
+            }
+
             Dispatcher.UIThread.Post(() => this.CommitHeld(), DispatcherPriority.Background);
+        }
+
+        // ###########################################################################################
+        // THE WHEEL NEVER CHANGES A CLOSED DROP-DOWN LIST HERE (code review, 2026-11-04). A ComboBox with the
+        // focus steps its selection under the wheel, so scrolling the page with the pointer over the category
+        // just picked gave the component another one, a step of the draft nobody meant - and over the clone
+        // panel's board, each notch read another board's file. A pick is made from the open list, as on Main's
+        // device picker. The page scrolls on, by the wheel's own step (Avalonia's ScrollContentPresenter), as it
+        // does over any other box; an open list keeps its wheel, and one without the focus never took it.
+        // ###########################################################################################
+        private const double WheelStep = 50;
+
+        private void OnPaneWheel(object? sender, PointerWheelEventArgs e)
+        {
+            if (e.Source is not Visual source ||
+                source.FindAncestorOfType<ComboBox>(includeSelf: true) is not { IsDropDownOpen: false, IsFocused: true } box)
+            {
+                return;
+            }
+
+            e.Handled = true;
+
+            if (box.FindAncestorOfType<ScrollViewer>() is { } page)
+            {
+                page.Offset = page.Offset.WithY(page.Offset.Y - e.Delta.Y * ComponentPane.WheelStep);
+            }
         }
 
         // Enter in a one-line box takes what it says into the draft at once.
@@ -1253,9 +1299,6 @@ namespace CRT
         public bool UrlNotWeb => BoardDataChecks.IsRefusedLink(this.thisUrl);
 
         public string NotWebText => ComponentPaneWording.LinkNotWeb;
-
-        // ComponentPaneEdits.WithLinks' rule for a row it leaves out.
-        public override bool HoldsNothingYet => string.IsNullOrWhiteSpace(this.thisName) && string.IsNullOrWhiteSpace(this.thisUrl);
 
         public static ComponentPaneLinkRow From(ComponentLinkEntry row) => new()
         {

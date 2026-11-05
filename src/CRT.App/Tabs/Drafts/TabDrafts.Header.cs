@@ -163,14 +163,20 @@ namespace CRT
                 return;
             }
 
-            DraftChangeSummary summary = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
-
             var window = this.ReviewWindowFactoryForTests?.Invoke() ?? new ReviewChangesWindow();
 
-            // A new board has nothing published to go back to (owner request, 2026-11-02), so no undo -
-            // and its window says so (code review, 2026-11-02).
-            bool isNewBoard = TabDrafts.IsDraftOnly(entry);
-            window.Initialize(entry.ToString(), summary, isNewBoard ? null : label => this.UndoComponentChangesAsync(entry, label), isNewBoard);
+            // A new board has nothing published to compare with, so nothing to list - its window says where
+            // it stands, nothing else (owner request, 2026-11-03).
+            if (TabDrafts.IsDraftOnly(entry))
+            {
+                window.InitializeNewBoard(entry.ToString(), ReviewChangesWindow.NewBoardStanding(this.SentReceiptsOf(entry)));
+            }
+            else
+            {
+                DraftChangeSummary summary = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
+
+                window.Initialize(entry.ToString(), summary, label => this.UndoComponentChangesAsync(entry, label));
+            }
 
             await window.ShowDialog(ownerWindow);
         }

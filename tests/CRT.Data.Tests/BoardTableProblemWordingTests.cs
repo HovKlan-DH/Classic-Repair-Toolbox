@@ -69,8 +69,8 @@ public sealed class BoardTableProblemWordingTests
         string[] lines = both!.Split(Environment.NewLine);
 
         Assert.Equal(2, lines.Length);
-        Assert.Equal($"Error - {BoardWorkbookSchema.SheetComponentLinks}, U1, {BoardWorkbookSchema.ColUrl}: Not a web address.", lines[0]);
-        Assert.StartsWith($"Warning - {BoardWorkbookSchema.SheetComponentImages}, U9", lines[1]);
+        Assert.Equal($"Error - \"Components: Links\", U1, {BoardWorkbookSchema.ColUrl}: Not a web address.", lines[0]);
+        Assert.StartsWith("Warning - \"Components: Pictures or Oscilloscope baseline\", U9", lines[1]);
 
         Assert.DoesNotContain("Warning", BoardTableProblemWording.InSheets([warning, error], errors: true, warnings: false));
         Assert.Null(BoardTableProblemWording.InSheets([warning, error], errors: false, warnings: false));
@@ -88,5 +88,19 @@ public sealed class BoardTableProblemWordingTests
 
         Assert.Equal(BoardTableProblemWording.InSheetsShown + 1, lines.Length);
         Assert.Equal("... and 5 more.", lines[^1]);
+    }
+
+    // In the order the table's tabs stand in, which is the table's own - not the order a workbook is written in
+    // (code review, 2026-11-05).
+    [Fact]
+    public void The_problems_in_the_sheets_are_listed_in_the_order_of_the_tabs()
+    {
+        BoardDataProblem image = new(BoardProblemLevel.Error, "image.a", "U9", "An image.", BoardWorkbookSchema.SheetComponentImages, 0, BoardWorkbookSchema.ColFile);
+        BoardDataProblem credit = new(BoardProblemLevel.Error, "credit.a", "Me", "A credit.", BoardWorkbookSchema.SheetCredits, 0, null);
+
+        string[] lines = BoardTableProblemWording.InSheets([image, credit], errors: true, warnings: false)!.Split(Environment.NewLine);
+
+        Assert.StartsWith("Error - \"Board: Credits\"", lines[0]);
+        Assert.StartsWith("Error - \"Components: Pictures or Oscilloscope baseline\"", lines[1]);
     }
 }

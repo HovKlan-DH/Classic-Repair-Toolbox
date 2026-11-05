@@ -16,10 +16,10 @@ namespace Handlers.DataHandling
         Signals,
         Pictures,
         Categories,
-        Components,
         Files,
         Links,
         Credits,
+        Components,
     }
 
     internal enum BoardStatusState
@@ -41,7 +41,9 @@ namespace Handlers.DataHandling
     internal sealed record BoardStatusLine(string Text, int Depth = 0, BoardStatusState? Tone = null);
 
     // One panel: its headline, what it is about, its button, how far it is, and what it counts.
-    // TableSheet: the sheet of the table that shows its errors and warnings, when it has any.
+    // TableSheet: the sheet of the table that shows its errors and warnings, when it has any and offers it.
+    // Problems: the errors and warnings it lists, the first ListedAtMost, with how many it has in all and
+    // what says the rest.
     internal sealed record BoardStatusPanel(
         BoardStatusPart Part,
         BoardStatusState State,
@@ -49,7 +51,10 @@ namespace Handlers.DataHandling
         string Explanation,
         string Action,
         IReadOnlyList<BoardStatusLine> Lines,
-        string? TableSheet = null);
+        string? TableSheet = null,
+        IReadOnlyList<EntryProblem>? Problems = null,
+        BoardProblemCounts ProblemCounts = default,
+        string ProblemsMore = "");
 
     // ###########################################################################################
     // "BOARD STATUS", A PANEL PER PART OF THE BOARD (owner request, 2026-11-01: "each point in its own
@@ -62,9 +67,13 @@ namespace Handlers.DataHandling
     //     aligned, every component marked, a credit named.
     //   - THE KiCad PROJECT IS OPTIONAL: without it the panel is neither done nor missing, and nothing
     //     else is held against the board for it.
-    //   - EVERY ERROR AND WARNING IS SAID ON THE PANEL IT IS ABOUT (owner request, 2026-11-01: "it should
-    //     have the errors and warnings directly per section"), by the sheet it is on (PartOf); only what
-    //     belongs to no panel keeps a panel of its own above the rest, shown only while there is any.
+    //   - EVERY ERROR AND WARNING IS SAID ON THE PANEL IT IS ABOUT (owner requests, 2026-11-01: "it should
+    //     have the errors and warnings directly per section"; and 2026-11-04: "the error and warning panels
+    //     should be shown specifically inside those panels and then detail the issues in there also"), by
+    //     the sheet it is on (PartOf); only what belongs to no panel keeps a panel of its own above the rest,
+    //     shown only while there is any. Each is counted and said in the panel's frame: that a row misses a
+    //     field, or the components marked nowhere somewhere below the panel's lines, hid them until then, and
+    //     the page's total pointed at nothing. The components marked nowhere are one line and their buttons there.
     //   - "NOT KNOWN YET" IS SAID: the KiCad data is read a moment after the rest (`kiCadFiles` null, or
     //     `kiCad` null with files), and no count is guessed meanwhile.
     //
@@ -85,6 +94,14 @@ namespace Handlers.DataHandling
         public const string CategoriesAction = "Open categories";
         public const string ComponentsAction = "Open components";
 
+        // Where a component is picked and, with no KiCad data to add them, how one comes (owner request,
+        // 2026-11-03).
+        public const string ComponentsExplanation =
+            "The chips and parts on the board, each by the label printed on it. Pick one in the \"Category\" and \"Component\" lists on the far left to change it.";
+
+        public const string ComponentsWithoutKiCad =
+            "This board has no KiCad data, so add each new one with \"Add component\", and then mark it on one or more schematic images.";
+
         public const string ReadingKiCad = "Reading the KiCad data...";
 
         public static List<BoardStatusPanel> Panels(
@@ -94,7 +111,8 @@ namespace Handlers.DataHandling
             IReadOnlyList<string>? kiCadFiles,
             BoardKiCadFacts? kiCad,
             IReadOnlyList<BoardDataProblem>? problems = null,
-            int creditsToOffer = 0)
+            int creditsToOffer = 0,
+            BoardData? problemsFoundOn = null)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(missing);
@@ -118,7 +136,6 @@ namespace Handlers.DataHandling
             panels.Add(BoardStatusPage.SignalsPanel(board, missing, kiCadFiles, facts, unreadable));
             panels.Add(BoardStatusPage.PicturesPanel(board, calibrations, facts));
             panels.Add(BoardStatusPage.CategoriesPanel(board));
-            panels.Add(BoardStatusPage.ComponentsPanel(board, facts));
 
             panels.Add(BoardStatusPage.ListPanel(
                 BoardStatusPart.Files, FilesTitle, "Manuals, notes and other documents about the board.", BoardReadiness.FilesAction,
@@ -134,7 +151,11 @@ namespace Handlers.DataHandling
 
             panels.Add(BoardStatusPage.CreditsPanel(board, missing, creditsToOffer));
 
-            return BoardStatusPage.WithProblems(panels, problems ?? []);
+            // After "Board: Credits" (owner request, 2026-11-03): the one panel that is not about the board
+            // as a whole, and with what each component lacks under it the longest by far.
+            panels.Add(BoardStatusPage.ComponentsPanel(board, facts, noKiCadData: kiCadFiles is { Count: 0 }));
+
+            return BoardStatusPage.WithProblems(panels, problems ?? [], board, problemsFoundOn ?? board);
         }
 
         // ###########################################################################################
@@ -160,16 +181,20 @@ namespace Handlers.DataHandling
             _ => BoardStatusPart.Problems,
         };
 
-        // Said another way on the page, so not again as a line: a list's "has a field it needs left
-        // empty" line - a board file's empty file is one of those fields (BoardRowRequired), under a code
-        // of its own - and the buttons of the components marked on no image (the tab's group).
-        private static bool IsSaidElsewhere(BoardDataProblem problem) =>
-            problem.Code is "row.required_empty" or "component.no_highlight" ||
-            (problem.Code == "file.unreferenced" && problem.Sheet == BoardWorkbookSchema.SheetBoardLocalFiles);
-
-        private static List<BoardStatusPanel> WithProblems(List<BoardStatusPanel> panels, IReadOnlyList<BoardDataProblem> problems)
+        // ###########################################################################################
+        // `problems` are numbered by the rows of the board they were found on, which until the checks run
+        // again is not `board` (code review, 2026-11-04: on the way back to "Overview" after a delete, U5's
+        // problem read as U4's, with "Open [U5]" beside it). So they are read on that board - and only a
+        // component `board` still has gets its way there.
+        // ###########################################################################################
+        private static List<BoardStatusPanel> WithProblems(List<BoardStatusPanel> panels, IReadOnlyList<BoardDataProblem> problems, BoardData board, BoardData foundOn)
         {
-            ILookup<BoardStatusPart, BoardDataProblem> byPart = problems.ToLookup(BoardStatusPage.PartOf);
+            var labelsNow = new HashSet<string>(board.Components.Select(row => row.BoardLabel?.Trim() ?? string.Empty), StringComparer.OrdinalIgnoreCase);
+
+            ILookup<BoardStatusPart, EntryProblem> byPart = ContributeProblems
+                .Placed(new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, foundOn))
+                .Select(item => labelsNow.Contains(item.ComponentLabel) ? item : item with { ComponentLabel = string.Empty })
+                .ToLookup(item => BoardStatusPage.PartOf(item.Problem));
 
             List<BoardStatusPanel> shown = panels.Select(panel => BoardStatusPage.WithProblemsOf(panel, byPart[panel.Part])).ToList();
 
@@ -193,41 +218,39 @@ namespace Handlers.DataHandling
         // `panel` saying `problems`, errors first - the first ListedAtMost in full, the rest counted, the
         // table a button away. An error makes the panel one; a warning leaves nothing done or optional.
         // ###########################################################################################
-        private static BoardStatusPanel WithProblemsOf(BoardStatusPanel panel, IEnumerable<BoardDataProblem> problems)
+        private static BoardStatusPanel WithProblemsOf(BoardStatusPanel panel, IEnumerable<EntryProblem> problems)
         {
-            List<BoardDataProblem> all = problems.OrderByDescending(problem => problem.Level).ToList();
+            List<EntryProblem> all = problems.ToList();
 
             if (all.Count == 0)
             {
                 return panel;
             }
 
-            List<BoardDataProblem> listed = all.Where(problem => !BoardStatusPage.IsSaidElsewhere(problem)).ToList();
-            List<BoardStatusLine> lines = panel.Lines.ToList();
-
-            lines.AddRange(listed
-                .Take(BoardReadiness.ListedAtMost)
-                .Select(problem => problem.Level == BoardProblemLevel.Error
-                    ? new BoardStatusLine($"Error - {problem.Message}", Tone: BoardStatusState.Error)
-                    : new BoardStatusLine($"Warning - {problem.Message}", Tone: BoardStatusState.ToDo)));
-
-            string more = BoardReadiness.MoreThanListed(listed.Count);
-
-            if (more.Length > 0)
-            {
-                lines.Add(new BoardStatusLine(more));
-            }
+            BoardProblemCounts counts = BoardProblemCounts.Of(all.Select(item => item.Problem));
 
             BoardStatusState state =
-                all.Any(problem => problem.Level == BoardProblemLevel.Error) ? BoardStatusState.Error
+                counts.Errors > 0 ? BoardStatusState.Error
                 : panel.State == BoardStatusState.Error ? BoardStatusState.Error
                 : BoardStatusState.ToDo;
+
+            // Counted with the rest, and in the same frame, as one line and a button per component (the
+            // tab's group): the same four lines for each of eleven components say nothing the one does not.
+            List<EntryProblem> listed = all.Where(item => item.Problem.Code != "component.no_highlight").ToList();
 
             return panel with
             {
                 State = state,
-                Lines = lines,
-                TableSheet = all.Select(problem => problem.Sheet).FirstOrDefault(sheet => sheet is not null),
+
+                // What its list's line in red says of rows left incomplete, these errors say row by row (owner
+                // request, 2026-11-04: "it already shows the error panel, so no need to also show the red text").
+                Lines = counts.Errors > 0 ? panel.Lines.Where(line => line.Tone != BoardStatusState.Error).ToList() : panel.Lines,
+
+                // Every line on "Components" has the way to its own component, so no table (owner request, 2026-11-04).
+                TableSheet = panel.Part == BoardStatusPart.Components ? null : all.Select(item => item.Problem.Sheet).FirstOrDefault(sheet => sheet is not null),
+                Problems = listed.Take(BoardReadiness.ListedAtMost).ToList(),
+                ProblemCounts = counts,
+                ProblemsMore = BoardReadiness.MoreThanListed(listed.Count),
             };
         }
 
@@ -240,9 +263,9 @@ namespace Handlers.DataHandling
                 BoardStatusPart.Regions,
                 has ? BoardStatusState.Done : BoardStatusState.Optional,
                 ComponentPaneWording.Title(PaneBoardPart.Regions),
-                "Whether the board came in a PAL and an NTSC version, so what a component has can differ between them.",
+                "Whether the board comes in a <b>PAL</b> and <b>NTSC</b> version, so component information can differ between them.",
                 RegionsAction,
-                [new BoardStatusLine(has ? ComponentPaneWording.RegionsHasOnBoard : "One version - no regions.")]);
+                [new BoardStatusLine(has ? ComponentPaneWording.RegionsHasOnBoard : "No regions.")]);
         }
 
         // What the components are sorted under. The ones with none are its error (PartOf).
@@ -256,7 +279,7 @@ namespace Handlers.DataHandling
                 ComponentPaneWording.Title(PaneBoardPart.Categories),
                 "What the board's components are sorted under.",
                 CategoriesAction,
-                [new BoardStatusLine(categories == 0 ? "No categories yet." : Counted(categories, "category", "categories"))]);
+                [new BoardStatusLine(categories == 0 ? "No categories yet." : ContributeProblems.Counted(categories, "category", "categories"))]);
         }
 
         private static BoardStatusPanel KiCadPanel(BoardData board, IReadOnlyList<string>? kiCadFiles, BoardKiCadFacts? facts, bool unreadable)
@@ -273,13 +296,13 @@ namespace Handlers.DataHandling
             }
             else
             {
-                lines.Add(new BoardStatusLine(Counted(kiCadFiles.Count, "KiCad file imported", "KiCad files imported")));
+                lines.Add(new BoardStatusLine(ContributeProblems.Counted(kiCadFiles.Count, "KiCad file imported", "KiCad files imported")));
 
                 (int pcb, int schematic, int project, int other) = KiCadImportSummary.KindsOf(kiCadFiles);
 
                 if (project > 0)
                 {
-                    lines.Add(new BoardStatusLine(Counted(project, "project file", "project files"), 1));
+                    lines.Add(new BoardStatusLine(ContributeProblems.Counted(project, "project file", "project files"), 1));
                 }
 
                 if (pcb > 0)
@@ -294,12 +317,12 @@ namespace Handlers.DataHandling
 
                 if (schematic > 0)
                 {
-                    lines.Add(new BoardStatusLine(Counted(schematic, "schematic file", "schematic files"), 1));
+                    lines.Add(new BoardStatusLine(ContributeProblems.Counted(schematic, "schematic file", "schematic files"), 1));
                 }
 
                 if (other > 0)
                 {
-                    lines.Add(new BoardStatusLine(Counted(other, "other file", "other files"), 1));
+                    lines.Add(new BoardStatusLine(ContributeProblems.Counted(other, "other file", "other files"), 1));
                 }
 
                 if (unreadable)
@@ -326,19 +349,8 @@ namespace Handlers.DataHandling
                             Tone: BoardStatusState.ToDo));
                     }
 
-                    int byHand = facts.OnlyInSchematic?.Count ?? 0;
-
-                    if (byHand > 0)
-                    {
-                        lines.Add(new BoardStatusLine(
-                            byHand == 1
-                                ? "1 component known by KiCad needs marking by hand - it is on no PCB file"
-                                : $"{Number(byHand)} components known by KiCad need marking by hand - they are on no PCB file",
-                            Tone: BoardStatusState.ToDo));
-                    }
-
-                    lines.Add(new BoardStatusLine($"{Counted(facts.Nets?.Names.Count ?? 0, "net", "nets")} available"));
-                    lines.Add(new BoardStatusLine($"{Counted(BoardStatusPage.NetsUsed(board, facts), "net", "nets")} used in \"{ComponentPaneWording.ImportantSignals}\"", 1));
+                    lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(facts.Nets?.Names.Count ?? 0, "net", "nets")} available"));
+                    lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(BoardStatusPage.NetsUsed(board, facts), "net", "nets")} used in \"{ComponentPaneWording.ImportantSignals}\"", 1));
                 }
             }
 
@@ -350,7 +362,7 @@ namespace Handlers.DataHandling
                 BoardStatusPart.KiCad,
                 state,
                 KiCadTitle,
-                "The board's KiCad project, if it has one. With it the traces light up on the pictures, and its components can be added and marked for you.",
+                "The board's KiCad project, if it has one. With it the traces will be highlighted on the schematic images, and the components can be automatically added and marked for you. KiCad data is optional, but can improve the quality of the data, if it exists.",
                 BoardReadiness.KiCadAction,
                 lines);
         }
@@ -365,7 +377,7 @@ namespace Handlers.DataHandling
 
             if (facts is not null)
             {
-                lines.Add(new BoardStatusLine($"{Counted(facts.Views.Count, "image", "images")} known by KiCad data"));
+                lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(facts.Views.Count, "image", "images")} known by KiCad data"));
             }
 
             int matched = 0;
@@ -377,7 +389,7 @@ namespace Handlers.DataHandling
             }
             else
             {
-                lines.Add(new BoardStatusLine($"{Counted(pictures.Count, "image", "images")} added"));
+                lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(pictures.Count, "image", "images")} added"));
 
                 if (facts is not null)
                 {
@@ -389,17 +401,17 @@ namespace Handlers.DataHandling
                     aligned = showing.Count(row => calibrated.Contains(row.SchematicName?.Trim() ?? string.Empty));
 
                     lines.Add(new BoardStatusLine(
-                        $"{Counted(matched, "KiCad file", "KiCad files")} mapped",
+                        $"{ContributeProblems.Counted(matched, "KiCad file", "KiCad files")} mapped",
                         1,
                         matched == 0 ? BoardStatusState.ToDo : null));
 
                     if (matched > 0)
                     {
-                        lines.Add(new BoardStatusLine($"{Counted(aligned, "KiCad file", "KiCad files")} aligned", 2));
+                        lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(aligned, "KiCad file", "KiCad files")} aligned", 2));
 
                         if (aligned < matched)
                         {
-                            lines.Add(new BoardStatusLine($"{Counted(matched - aligned, "KiCad file", "KiCad files")} not aligned yet", 2, BoardStatusState.ToDo));
+                            lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(matched - aligned, "KiCad file", "KiCad files")} not aligned yet", 2, BoardStatusState.ToDo));
                         }
                     }
                 }
@@ -425,7 +437,7 @@ namespace Handlers.DataHandling
                 BoardStatusPart.Pictures,
                 done ? BoardStatusState.Done : BoardStatusState.ToDo,
                 ComponentPaneWording.SchematicImages,
-                "Photos of both sides of the board and its schematic sheets - everything else is marked on them.",
+                "Images of both sides of the board and its schematic sheets - everything else is marked on them.",
                 BoardReadiness.PicturesAction,
                 lines);
         }
@@ -438,7 +450,7 @@ namespace Handlers.DataHandling
 
             if (facts is not null)
             {
-                lines.Add(new BoardStatusLine($"{Counted(facts.Nets?.Names.Count ?? 0, "net", "nets")} available"));
+                lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(facts.Nets?.Names.Count ?? 0, "net", "nets")} available"));
 
                 if (rows == 0)
                 {
@@ -457,8 +469,8 @@ namespace Handlers.DataHandling
                         .Count();
 
                     lines.Add(new BoardStatusLine(names == used
-                        ? $"{Counted(used, "net", "nets")} used"
-                        : $"{Counted(used, "net", "nets")} used, shown as {Counted(names, "name", "names")} on the \"Schematics\" tab"));
+                        ? $"{ContributeProblems.Counted(used, "net", "nets")} used"
+                        : $"{ContributeProblems.Counted(used, "net", "nets")} used, shown as {ContributeProblems.Counted(names, "name", "names")} on the \"Schematics\" tab"));
 
                     int notFound = board.KiCadImportantSignals.Count(row => facts.Nets?.Finds(row.KiCadNetName) == false);
 
@@ -475,7 +487,7 @@ namespace Handlers.DataHandling
             }
             else if (noKiCad)
             {
-                lines.Add(new BoardStatusLine(rows == 0 ? "They need the board's KiCad data." : Counted(rows, "important KiCad signal", "important KiCad signals")));
+                lines.Add(new BoardStatusLine(rows == 0 ? "They need the board's KiCad data." : ContributeProblems.Counted(rows, "important KiCad signal", "important KiCad signals")));
             }
             else if (unreadable)
             {
@@ -503,7 +515,7 @@ namespace Handlers.DataHandling
                 BoardStatusPart.Signals,
                 state,
                 ComponentPaneWording.ImportantSignals,
-                "The signals worth checking first - each lights up its KiCad net on the \"Schematics\" tab.",
+                "The signals worth checking first - each signal highlights its KiCad net on the \"Schematics\" tab.",
                 BoardReadiness.SignalsAction,
                 lines);
         }
@@ -514,7 +526,7 @@ namespace Handlers.DataHandling
         // not, and how much more they hold. What each still lacks is under them, a button per component
         // (BoardMissing's groups, drawn by the tab) - never counted a second time here.
         // ###########################################################################################
-        private static BoardStatusPanel ComponentsPanel(BoardData board, BoardKiCadFacts? facts)
+        private static BoardStatusPanel ComponentsPanel(BoardData board, BoardKiCadFacts? facts, bool noKiCadData)
         {
             List<string> labels = BoardReadiness.Labels(board);
             int notOnBoard = facts is null ? 0 : BoardReadiness.NotOnBoard(board, facts.References);
@@ -527,7 +539,7 @@ namespace Handlers.DataHandling
             }
             else
             {
-                lines.Add(new BoardStatusLine(Counted(labels.Count, "component", "components")));
+                lines.Add(new BoardStatusLine(ContributeProblems.Counted(labels.Count, "component", "components")));
             }
 
             int withPins = board.ComponentPins.Select(row => row.BoardLabel?.Trim() ?? string.Empty).Where(label => label.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count();
@@ -541,12 +553,12 @@ namespace Handlers.DataHandling
 
             if (baselines > 0)
             {
-                lines.Add(new BoardStatusLine(Counted(baselines, "oscilloscope baseline", "oscilloscope baselines"), 1));
+                lines.Add(new BoardStatusLine(ContributeProblems.Counted(baselines, "oscilloscope baseline", "oscilloscope baselines"), 1));
             }
 
             if (replacements > 0)
             {
-                lines.Add(new BoardStatusLine(Counted(replacements, "replacement part", "replacement parts"), 1));
+                lines.Add(new BoardStatusLine(ContributeProblems.Counted(replacements, "replacement part", "replacement parts"), 1));
             }
 
             if (notOnBoard > 0)
@@ -562,7 +574,7 @@ namespace Handlers.DataHandling
                 BoardStatusPart.Components,
                 labels.Count > 0 && notOnBoard == 0 ? BoardStatusState.Done : BoardStatusState.ToDo,
                 ComponentsTitle,
-                "The chips and parts on the board, each by the label printed on it.",
+                noKiCadData ? ComponentsExplanation + " " + ComponentsWithoutKiCad : ComponentsExplanation,
                 ComponentsAction,
                 lines);
         }
@@ -594,8 +606,8 @@ namespace Handlers.DataHandling
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count();
 
-                lines.Add(new BoardStatusLine($"{Counted(rows, one, many)} defined"));
-                lines.Add(new BoardStatusLine($"{Counted(categoryCount, "category", "categories")} defined"));
+                lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(rows, one, many)} defined"));
+                lines.Add(new BoardStatusLine($"{ContributeProblems.Counted(categoryCount, "category", "categories")} defined"));
             }
 
             BoardGap? incomplete = BoardStatusPage.GapOf(missing, incompleteKind);
@@ -622,7 +634,7 @@ namespace Handlers.DataHandling
 
             lines.Add(board.Credits.Count == 0
                 ? new BoardStatusLine(BoardReadiness.NoCreditsGap, Tone: BoardStatusState.ToDo)
-                : new BoardStatusLine($"{Counted(board.Credits.Count, "credit", "credits")} defined"));
+                : new BoardStatusLine($"{ContributeProblems.Counted(board.Credits.Count, "credit", "credits")} defined"));
 
             if (rowsToOffer > 0)
             {
@@ -660,9 +672,6 @@ namespace Handlers.DataHandling
 
         private static BoardGap? GapOf(BoardMissing missing, BoardGapKind kind) =>
             missing.BoardGaps.FirstOrDefault(gap => gap.Kind == kind);
-
-        private static string Counted(int count, string one, string many) =>
-            count == 1 ? $"1 {one}" : $"{Number(count)} {many}";
 
         private static string Number(int count) => count.ToString(CultureInfo.InvariantCulture);
     }

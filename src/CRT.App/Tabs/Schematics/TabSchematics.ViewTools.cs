@@ -14,7 +14,7 @@ namespace CRT;
 //     ONE-TIME TIP saying so in the view's corner ("a middle-button drag pans too, with a one-time
 //     hint in the corner"), put away by "Got it" or by the first pan, and never shown again
 //     (UserSettings.SchematicsPanHintSeen). A middle click that does not move does nothing more:
-//     only a right click opens the component menu.
+//     only a right click turns a component's highlight on or off.
 //   - "DRAW TRACE" ("Traces are drawn only with Draw trace"): traces are drawn and changed ONLY
 //     while it is on. Off, a press on the picture never starts, bends or deletes a trace - a left
 //     press selects what is under it, a right drag over a trace pans - and the traces are only
@@ -22,7 +22,6 @@ namespace CRT;
 //     greyed out, its tooltip saying why (FollowToolsInDrawTrace). "Done drawing" is a plain button
 //     - it turns a mode off and saves nothing, so the Accept colour is not its (code review,
 //     2026-10-29).
-//   - "Global settings" behind a gear button: the markup's flyout, nothing here.
 //
 // Part of the TabSchematics partial class - see TabSchematics.axaml.cs for the file map.
 // ###########################################################################################

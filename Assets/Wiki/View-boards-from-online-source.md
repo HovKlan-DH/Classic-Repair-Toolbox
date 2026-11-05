@@ -5,8 +5,8 @@ See every board exactly as everybody else sees it, without your own local change
 ---
 
 When you change a board in CRT - on the "Contribute" tab (a component, a picture, the table view),
-with **Mark components manually** or **Align KiCad data** on a picture, or with **Edit this component** from a
-right-click - the change goes into your own local **draft** of that board. A draft saves itself;
+with **Mark components manually** or **Align KiCad data** on a picture, or with **Edit component** on a
+component's popup - the change goes into your own local **draft** of that board. A draft saves itself;
 there is no Save button. CRT shows the board WITH your changes from then on, which is usually what
 you want: you see your own work as you build it.
 
@@ -43,8 +43,8 @@ same tab.
 * **Your drafts are not touched.** Nothing is deleted, cleared or changed. Untick the setting and
   every change is back.
 * **The "Contribute" tab still shows and edits your drafts** as normal - "My drafts", the component
-  pane, **Table view**, **Review changes** and **Submit**. "Preview popup" there shows your draft
-  whatever this setting says.
+  pane, **Table**, **Review changes** and **Submit**. "Preview component info popup" there shows
+  your draft whatever this setting says.
 * **The "Draft" chips in the Hardware and Board drop-downs stay**, because your drafts are still
   there.
 

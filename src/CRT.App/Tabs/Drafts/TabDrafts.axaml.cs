@@ -23,7 +23,7 @@ namespace CRT
     // drafts" lists every board with a local, unpublished draft (`Drafts`, which Main also reads for
     // the drop-downs' chips and the tab's title) and shows the one picked. Always on screen.
     //
-    // *** TABLE MODE (2026-09-24). *** "Table view" opens the board's draft as editable sheets
+    // *** TABLE MODE (2026-09-24). *** "Table" shows the board's draft as editable sheets
     // (BoardTableEditor) on the right; the header shows the draft the table is open on.
     //
     // The table saves itself (CRT 4.0 step 1, 2026-10-25). Anything that acts on the draft's file
@@ -34,12 +34,14 @@ namespace CRT
     //
     // FILE MAP:
     //   TabDrafts.axaml.cs  - the drafts' rows and their actions (discard, files, drift, submit), the badge
-    //   TabDrafts.Workspace.cs - the board the tab is about: its header with "Table view", the left
-    //                         column (its parts, the components' panel below them with "Add
-    //                         component", the entry open shown selected) and "My drafts"
+    //   TabDrafts.Entries.cs - the left column's entries and "UI" or "Table": which is open, what each
+    //     shows in either view, the component picked
+    //   TabDrafts.Workspace.cs - the board the tab is about: its header with "UI" and "Table", the left
+    //                         column (its entries, "Add component" below the board's - the components
+    //                         are picked in CRT's own lists on the far left - and the entry open shown
+    //                         selected) and "My drafts"
     //   TabDrafts.Splitters.cs - the widths dragged on the tab - the left column, and the previews on
-    //                         the schematic images' cards - kept per board; the left column gone
-    //                         while the table is open
+    //                         the schematic images' cards - kept per board
     //   TabDrafts.BoardName.cs - "Board name": the page, and a new board's name changed
     //   TabDrafts.Table.cs  - table mode: opening/closing the table on its draft's session, saving
     //                         it (and the component pane) before the draft's file is acted on, and the
@@ -47,6 +49,8 @@ namespace CRT
     //   TabDrafts.Component.cs - the component pane on the right (ComponentPane): opening it on a
     //                         component or on a new one's form, closing, what follows its changes,
     //                         and its "Show on board" and "Preview popup"
+    //   TabDrafts.Problems.cs - the draft's errors and warnings where they are: the left column's
+    //                         badges, and the panel over the page open
     //   TabDrafts.Header.cs - the draft's header on its row: save state, Undo/Redo, Try again,
     //                         "Review changes" with "Undo changes to <component>", and the summary
     //                         the Submit and Discard draft dialogs show
@@ -62,8 +66,8 @@ namespace CRT
     //   TabDrafts.MarkAutomatically.cs - a picture's "Mark all automatically": every component's
     //                         rectangle from its KiCad footprint, on a picture aligned with KiCad - and
     //                         the other side's traces for its card's preview
-    //   TabDrafts.Drop.cs   - pictures or the KiCad project folder dropped on the tab, added to the
-    //                         board shown through the part or the panel that manages them
+    //   TabDrafts.Drop.cs   - images dropped on "Board: Schematic images", the only page that takes
+    //                         them, added as its button adds them
     //   TabDrafts.KiCad.cs  - "KiCad data" on the right of the tab (KiCadDataPanel - a window until
     //                         2026-10-30): opening it, closing it, and catching up with each change
     // ###########################################################################################
@@ -114,7 +118,6 @@ namespace CRT
             this.InitializeComponent();
 
             this.MyDraftsComboBox.ItemsSource = this.Drafts;
-            this.ComponentsListBox.ItemsSource = this.thisComponentItems;
 
             // A key moving the list's selection opens the component once the keys pause (TabDrafts.Workspace.cs).
             this.WireComponentsList();
@@ -129,8 +132,9 @@ namespace CRT
             this.TableEditor.ReloadedFromOutside += this.OnTableSaved;
 
             this.WireComponentPane();
+            this.WireEntries();
 
-            // Pictures or the KiCad project dropped anywhere on the tab (TabDrafts.Drop.cs).
+            // Pictures dropped on "Board: Schematic images" (TabDrafts.Drop.cs).
             this.WireDrop();
         }
 
@@ -186,6 +190,9 @@ namespace CRT
 
             // Read once for every row - each row's badge is its board's latest submission.
             IReadOnlyList<SubmissionReceipt> receipts = this.ReceiptsOverrideForTests ?? SubmissionReceiptStore.All;
+            var problemsRead = new Dictionary<string, BoardProblemsRead>(StringComparer.OrdinalIgnoreCase);
+
+            DraftStatusReader.ForgetProblemsOfVanishedDrafts();
 
             foreach (var entry in draftedBoards.OrderBy(e => e.ShortHardwareBoardLabel, StringComparer.OrdinalIgnoreCase))
             {
@@ -221,6 +228,16 @@ namespace CRT
                 // anywhere (Excel included) is still counted afresh.
                 this.thisDraftedBoards.Add(entry);
 
+                // The table's own checks - remembered until the workbook or its sidecar changes, so this
+                // costs nothing for a draft nobody touched, and catches an edit made in Excel. The counts
+                // for the row, and each problem for where it is (TabDrafts.Problems.cs).
+                BoardProblemsRead problems = DraftStatusReader.ProblemsCached(
+                    status,
+                    DataManager.DataRoot,
+                    DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile));
+
+                problemsRead[entry.ExcelDataFile] = problems;
+
                 SubmissionReceipt? lastSubmission = SubmissionReceiptPresenter.LatestForBoard(
                     receipts,
                     BoardDescriptorRules.BoardIdFromExcelDataFile(entry.ExcelDataFile),
@@ -230,14 +247,7 @@ namespace CRT
                     entry,
                     status,
                     DraftStatusReader.CountChangesCached(status),
-
-                    // The table's own checks, on the row (owner report, 2026-10-02) - remembered
-                    // until the workbook or its sidecar changes, so this costs nothing for a draft
-                    // nobody touched, and catches an edit made in Excel.
-                    DraftStatusReader.CountProblemsCached(
-                        status,
-                        DataManager.DataRoot,
-                        DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile)),
+                    problems.Counts,
                     ResolveDriftState(entry, status),
                     this.DiscardAsync,
                     this.ViewDriftAsync,
@@ -256,6 +266,7 @@ namespace CRT
             }
 
             this.ForgetHeadersExcept(this.thisDraftedBoards);
+            this.thisProblemsRead = problemsRead;
 
             TabDrafts.KeepUnchangedRows(this.Drafts, fresh);
 
@@ -1017,12 +1028,12 @@ namespace CRT
         // The badge beside the name: this board's latest submission, in "My submissions"' words
         // and colour. Hidden when it was never sent.
         // ###########################################################################################
-        // *** THE DRAFT'S ERRORS AND WARNINGS, ON ITS ROW (owner report, 2026-10-02: "It must
-        // check for errors when creating the draft, and if the board changes "offline", outside of
-        // app"). *** The table's own checks (DraftStatusReader.CountProblemsCached), so a draft with
-        // something to fix says so the moment it exists or is changed in Excel - not only once its
-        // table is opened. Red for errors (Submit opens the table on them instead of sending),
-        // amber for warnings, nothing at all for a clean draft.
+        // *** THE DRAFT'S ERRORS AND WARNINGS (owner report, 2026-10-02: "It must check for errors when
+        // creating the draft, and if the board changes "offline", outside of app"). *** The table's own
+        // checks (DraftStatusReader.ProblemsCached), so a draft with something to fix says so the moment it
+        // exists or is changed in Excel - not only once its table is opened. "My drafts" says them, and what
+        // Submit says. On the board shown they stand where they are (owner request, 2026-11-04;
+        // TabDrafts.Problems.cs), so the header has none.
         // ###########################################################################################
         public bool HasErrors { get; }
         public string ErrorsText { get; } = string.Empty;
@@ -1047,7 +1058,15 @@ namespace CRT
         // other value on it is. The table, the pictures and the KiCad data are opened from the left
         // of the Contribute tab since CRT 4.0 step 2, not from the row.
         public bool IsTableOpen { get; }
+
+        // What the draft holds, as "My drafts" and the Submit dialog's list say it.
         public string RowSummary { get; }
+
+        // The same over the board shown - nothing for a new board (owner request, 2026-11-04: "New board,
+        // 3503 rows so far - I do not think we need this text at all"): the notice under the header says what
+        // it is, and a count of rows nobody is comparing with anything says nothing.
+        public string HeaderSummary { get; }
+        public bool HasHeaderSummary => this.HeaderSummary.Length > 0;
         public ICommand DiscardCommand { get; }
         public ICommand ViewDriftCommand { get; }
         public ICommand SubmitCommand { get; }
@@ -1163,13 +1182,15 @@ namespace CRT
             // Files and KiCad calibrations count too (code review, 2026-10-13) - "0 rows changed" on
             // a draft whose work is a re-calibrated overlay said there was nothing in it.
             this.RowSummary = status.IsNewBoard
-                ? (rowCount == 0 ? "New board, nothing added yet" : $"New board, {rowText} so far")
+                ? "New board"
                 : (rowCount, otherChanges.Any) switch
                 {
                     (0, true) => DraftListItem.Capitalised(otherChanges.Describe()),
                     (_, true) => $"{rowText} changed, {otherChanges.Describe()}",
                     _ => $"{rowText} changed",
                 };
+
+            this.HeaderSummary = status.IsNewBoard ? string.Empty : this.RowSummary;
 
             // ###########################################################################################
             // *** PUBLISHED, CHANGED BY A MAINTAINER, AND NOTHING NEW SINCE (code review, 2026-10-13). ***
@@ -1207,9 +1228,11 @@ namespace CRT
             // Nothing to review in a draft holding no change (owner request, 2026-10-30) - greyed out,
             // its tooltip saying why, as Submit's does.
             this.CanReviewChanges = hasSomething;
-            this.ReviewChangesTooltip = hasSomething
-                ? "See what your draft changes, component by component - and put a component back as it is published"
-                : "There is nothing to review yet - this draft holds no change from the published data.";
+            this.ReviewChangesTooltip = !hasSomething
+                ? "There is nothing to review yet - this draft holds no change from the published data."
+                : entry.IsDraftOnly
+                    ? "See where this new board stands"
+                    : "See what your draft changes, component by component - and put a component back as it is published";
 
             this.CanSubmit = hasSomething && !alreadySent;
             this.NotOfferedWithOthers = SubmitDraftsWording.NotOffered(hasSomething, alreadySent, problems.Errors);

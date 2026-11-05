@@ -1,18 +1,20 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using CRT;
 using Handlers.DataHandling;
+using Tabs.TabSchematics;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The picture tools and the component menu as Main carries them between the tabs (Main.PictureTools.cs
-// - CRT 4.0 step 2, slice 6): a tool asked for on the Contribute tab opens the Schematics tab - on the
-// board read again first when asked, the tool started by THAT board's load - and its end goes back to
-// the Contribute tab. The component menu's highlight item does what a right-click did by itself
-// before; "Edit this component" opens the Contribute tab. Main's StartAsync is never called
-// (MainWindowTests' header).
+// The picture tools as Main carries them between the tabs (Main.PictureTools.cs - CRT 4.0 step 2,
+// slice 6): a tool asked for on the Contribute tab opens the Schematics tab - on the board read again
+// first when asked, the tool started by THAT board's load - and its end goes back to the Contribute
+// tab. "Edit component" on a component's popup opens the Contribute tab. Main's StartAsync is never
+// called (MainWindowTests' header).
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class MainPictureToolsTests : IDisposable
@@ -59,6 +61,62 @@ public sealed class MainPictureToolsTests : IDisposable
             Click(tab, "PictureToolCancelButton");
 
             Assert.Same(window.ContributeTabItem, window.MainTabControl.SelectedItem);
+        });
+    }
+
+    // ###########################################################################################
+    // THE DELETE KEY THE WAY A REAL PRESS TAKES IT (code review, 2026-11-04: LabelEditorInteractionTests call the tab's
+    // handler straight, whatever holds the focus, so none could tell where the key really goes). With the picture
+    // holding the focus, as a press on it leaves it, the rectangles selected go. In the component filter, in Main's
+    // left panel, the tab is not on the key's route: it takes a letter out of the search, and the rectangles stay.
+    // ###########################################################################################
+    [Fact]
+    public void The_Delete_key_is_the_pictures_while_it_has_the_focus_and_the_filters_while_that_has()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main { Width = 1300, Height = 800 };
+            TabSchematics tab = window.TabSchematicsControl;
+
+            tab.CurrentBoardDataOverrideForTests = new BoardData
+            {
+                Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }, new ComponentEntry { BoardLabel = "U2", Category = "IC" }],
+                ComponentHighlights =
+                [
+                    new ComponentHighlightEntry { SchematicName = "Board top", BoardLabel = "U1", X = "100", Y = "100", Width = "50", Height = "40" },
+                    new ComponentHighlightEntry { SchematicName = "Board top", BoardLabel = "U2", X = "400", Y = "400", Width = "60", Height = "30" },
+                ],
+            };
+
+            tab.SelectedThumbnail = new SchematicThumbnail { Name = "Board top" };
+
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            tab.BeginLabelEditorModeForTests();
+            tab.SelectLabelEditorRowForTests(0);
+
+            TextBox filter = window.ComponentSearchTextBox;
+
+            filter.Text = "U1";
+            filter.Focus();
+            filter.CaretIndex = 0;
+            Assert.True(filter.IsFocused);
+
+            window.KeyPress(Key.Delete, RawInputModifiers.None, PhysicalKey.Delete, keySymbol: null);
+
+            Assert.Equal(["U1", "U2"], tab.LabelEditorWorkingRowsForTests.Select(row => row.BoardLabel));
+            Assert.Equal("1", filter.Text);
+
+            tab.SchematicsContainer.Focus();
+            Assert.True(tab.SchematicsContainer.IsFocused);
+
+            window.KeyPress(Key.Delete, RawInputModifiers.None, PhysicalKey.Delete, keySymbol: null);
+
+            Assert.Equal(["U2"], tab.LabelEditorWorkingRowsForTests.Select(row => row.BoardLabel));
+            Assert.Equal("1", filter.Text);
+
+            window.Close();
         });
     }
 
@@ -333,35 +391,9 @@ public sealed class MainPictureToolsTests : IDisposable
     // The menu's first item: the component's highlight on, then off - what a right-click on a
     // component did by itself before the menu.
     // ###########################################################################################
+    // "Edit component": the Contribute tab.
     [Fact]
-    public void The_component_menu_puts_the_highlight_on_and_takes_it_away()
-    {
-        UiTest.Run(() =>
-        {
-            var window = new CRT.Main();
-            window.ComponentFilterListBox.ItemsSource = new List<ComponentListItem>
-            {
-                new() { BoardLabel = "U1", DisplayText = "U1 | VIC", SelectionKey = "U1" },
-                new() { BoardLabel = "U8", DisplayText = "U8 | CPU", SelectionKey = "U8" },
-            };
-
-            TabSchematics tab = window.TabSchematicsControl;
-
-            tab.ShowComponentMenuForTests("U8");
-            Assert.Equal("Highlight [U8]", tab.GetControl<Button>("MenuHighlightButton").Content);
-            Click(tab, "MenuHighlightButton");
-            Assert.True(tab.IsComponentSelectedForTests("U8"));
-
-            tab.ShowComponentMenuForTests("U8");
-            Assert.Equal("Take the highlight away from [U8]", tab.GetControl<Button>("MenuHighlightButton").Content);
-            Click(tab, "MenuHighlightButton");
-            Assert.False(tab.IsComponentSelectedForTests("U8"));
-        });
-    }
-
-    // "Edit this component": the Contribute tab.
-    [Fact]
-    public async Task Edit_this_component_opens_the_Contribute_tab()
+    public async Task Edit_component_opens_the_Contribute_tab()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -370,6 +402,64 @@ public sealed class MainPictureToolsTests : IDisposable
             await window.EditComponentAsync("U8");
 
             Assert.Same(window.ContributeTabItem, window.MainTabControl.SelectedItem);
+        });
+    }
+
+    // ###########################################################################################
+    // "EDIT COMPONENT" ON THE POPUP (owner request, 2026-11-05: "maybe there could be a button in the component
+    // info popup for 'Edit component' or alike"): the popup goes - it stands over CRT's window - and the
+    // Contribute tab shows. A popup stays open as another board is shown, whose same label is another
+    // component, so it no longer offers it. The Contribute tab's own preview never does: that is where the
+    // component is being edited.
+    // ###########################################################################################
+    [Fact]
+    public void Edit_component_on_the_popup_closes_it_and_opens_the_Contribute_tab()
+    {
+        UiTest.Run(() =>
+        {
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" };
+            var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", Category = "IC" }] };
+            var window = new CRT.Main { BoardKeyOverrideForTests = BoardKey };
+
+            window.UseBoardForTests(entry, board);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            window.OpenComponentInfoPopup("U8", "U8 | CPU");
+            ComponentInfoWindow popup = window.SingleComponentInfoWindowForTests!;
+            Button edit = popup.GetControl<Button>("EditComponentButton");
+
+            Assert.True(edit.IsVisible);
+            Assert.Equal(PictureToolWording.EditComponent, edit.Content);
+
+            edit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(popup.IsVisible);
+            Assert.Same(window.ContributeTabItem, window.MainTabControl.SelectedItem);
+
+            window.MainTabControl.SelectedItem = window.SchematicsTabItem;
+            Dispatcher.UIThread.RunJobs();
+
+            // Open as another board is chosen: not this board's component.
+            window.OpenComponentInfoPopup("U8", "U8 | CPU");
+            popup = window.SingleComponentInfoWindowForTests!;
+            edit = popup.GetControl<Button>("EditComponentButton");
+            Assert.True(edit.IsVisible);
+
+            popup.FollowBoardShown("Commodore/C64/250425/board.json");
+            Assert.False(edit.IsVisible);
+
+            // No drop-down list is filled here, so the board is known to both as none.
+            popup.FollowBoardShown(string.Empty);
+            Assert.True(edit.IsVisible);
+
+            // The Contribute tab's preview: what will be published, with nothing to go and edit.
+            window.OpenComponentPreview(board, "U8", string.Empty, entry.ExcelDataFile);
+            Assert.False(window.SingleComponentInfoWindowForTests!.GetControl<Button>("EditComponentButton").IsVisible);
+
+            window.IsApplicationShuttingDownForTests = true;
+            window.Close();
         });
     }
 }

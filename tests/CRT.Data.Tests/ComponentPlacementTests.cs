@@ -17,9 +17,6 @@ public sealed class ComponentPlacementTests
     private static ComponentEntry C(string label, string category = "Capacitor") =>
         new() { BoardLabel = label, Category = category };
 
-    private static List<string> Labels(IEnumerable<ComponentEntry> components) =>
-        components.Select(component => component.BoardLabel).ToList();
-
     // ------------------------------------------------------------------ InsertionIndex
 
     [Fact]
@@ -72,78 +69,24 @@ public sealed class ComponentPlacementTests
         Assert.Equal(0, ComponentPlacement.InsertionIndex([], "IC", "U1"));
     }
 
-    // ------------------------------------------------------------------ ReplaceComponent
-
-    [Fact]
-    public void An_EDITED_component_stays_exactly_where_it_was()
-    {
-        // The reported drift: C1 edited after C2 was added moved below C2.
-        var components = new List<ComponentEntry> { C("C1"), C("C2"), C("U1", "IC") };
-
-        List<ComponentEntry> result = ComponentPlacement.ReplaceComponent(
-            components, "C1", [new ComponentEntry { BoardLabel = "C1", Category = "Capacitor", FriendlyName = "Edited" }]);
-
-        Assert.Equal(["C1", "C2", "U1"], Labels(result));
-        Assert.Equal("Edited", result[0].FriendlyName);
-    }
-
-    [Fact]
-    public void An_edited_component_stays_put_even_if_its_category_changed()
-    {
-        // Existing rows are never re-sorted behind the user's back - only NEW rows are placed.
-        var components = new List<ComponentEntry> { C("C1"), C("C2"), C("U1", "IC") };
-
-        List<ComponentEntry> result = ComponentPlacement.ReplaceComponent(components, "C1", [C("C1", "IC")]);
-
-        Assert.Equal(["C1", "C2", "U1"], Labels(result));
-    }
-
-    [Fact]
-    public void A_NEW_component_is_placed_by_category_and_label()
-    {
-        var components = new List<ComponentEntry> { C("C1"), C("C3"), C("U1", "IC") };
-
-        List<ComponentEntry> result = ComponentPlacement.ReplaceComponent(components, "C2", [C("C2")]);
-
-        Assert.Equal(["C1", "C2", "C3", "U1"], Labels(result));
-    }
-
-    [Fact]
-    public void A_component_with_one_row_per_region_is_kept_together_in_its_own_order()
-    {
-        var components = new List<ComponentEntry>
-        {
-            C("U1", "IC"),
-            new() { BoardLabel = "U2", Category = "IC", Region = "PAL" },
-            new() { BoardLabel = "U2", Category = "IC", Region = "NTSC" },
-            C("U3", "IC"),
-        };
-
-        List<ComponentEntry> result = ComponentPlacement.ReplaceComponent(
-            components,
-            "u2",
-            [
-                new() { BoardLabel = "U2", Category = "IC", Region = "NTSC" },
-                new() { BoardLabel = "U2", Category = "IC", Region = "PAL" },
-            ]);
-
-        Assert.Equal(["U1", "U2", "U2", "U3"], Labels(result));
-        Assert.Equal(["", "NTSC", "PAL", ""], result.Select(component => component.Region));
-    }
+    // ------------------------------------------------------------------ Sheets without a category
 
     [Fact]
     public void A_blank_label_removes_nothing()
     {
         // A blank label identifies no component; treating it as a wildcard would clear every row
         // whose own label happened to be blank.
-        var components = new List<ComponentEntry> { C(""), C("C1") };
+        var rows = new List<ComponentLocalFileEntry>
+        {
+            new() { BoardLabel = string.Empty, Name = "a" },
+            new() { BoardLabel = "C1", Name = "b" },
+        };
 
-        List<ComponentEntry> result = ComponentPlacement.ReplaceComponent(components, "", [C("C2")]);
+        List<ComponentLocalFileEntry> result = ComponentPlacement.ReplaceRowsForLabel(
+            rows, string.Empty, row => row.BoardLabel, [new ComponentLocalFileEntry { BoardLabel = string.Empty, Name = "new" }]);
 
         Assert.Equal(3, result.Count);
     }
-
-    // ------------------------------------------------------------------ Sheets without a category
 
     [Fact]
     public void A_new_components_files_sit_among_their_neighbours_in_label_order()

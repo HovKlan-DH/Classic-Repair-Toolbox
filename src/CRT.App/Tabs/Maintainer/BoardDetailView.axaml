@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:CRT"
+             xmlns:mh="using:Handlers.MaintainerHandling"
              x:Class="CRT.BoardDetailView">
 
     <!--
@@ -9,8 +10,8 @@
 
     IN SIX VIEWS (five since 2026-10-03 - owner request: "I would like all the same
     functionalities, as the 'Contributor Submissions' has" - and History since 2026-10-04), chosen
-    by the same joined switch a submission's views use (Button.Segment, TabMaintainer.axaml's
-    styles). BoardSections names them and says why each is where it is:
+    by the same joined switch a submission's views use (Button.Segment, App.axaml's styles).
+    BoardSections names them and says why each is where it is:
 
       Board data  - BETA's board in the table editor; a save asks for a reason and goes straight
                     to BETA (BoardDetailView.Table.cs).
@@ -68,7 +69,7 @@
                    TextWrapping="Wrap"
                    IsVisible="False" />
 
-        <!-- Not in the lists yet: so, and where it is given a place (BoardSections.PlacementLine). -->
+        <!-- Placed, and not in the lists until published (BoardSections.PlacedLine). -->
         <TextBlock DockPanel.Dock="Top"
                    x:Name="BoardPlacementText"
                    FontSize="12"
@@ -81,6 +82,26 @@
                    TextWrapping="Wrap"
                    IsVisible="False"
                    Margin="0,6,0,0" />
+
+        <!-- A NEW BOARD WITH NO PLACE IN THE DROP-DOWN LISTS YET (owner report, 2026-11-05: "where can I set
+             this?"): so, with the button going to its panel in the Maintainer view - gone while that view,
+             which says the same, is shown (BoardSections.PlacementNotice). -->
+        <Border DockPanel.Dock="Top"
+                x:Name="PlacementNotice"
+                Classes="Notice"
+                IsVisible="False"
+                Margin="0,12,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+                <TextBlock Grid.Column="1" Classes="NoticeText" x:Name="PlacementNoticeText" />
+                <Button Grid.Column="2"
+                        x:Name="GoToPlacementButton"
+                        Content="{x:Static mh:BoardPlacementDisplay.Heading}"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Center"
+                        Click="OnGoToPlacementClick" />
+            </Grid>
+        </Border>
 
         <!-- WHY BETA'S TABLE CANNOT BE CHANGED, AS A PANEL OF ITS OWN (owner request, 2026-10-09: "I
              do think the information for this should be more visible, so please highlight the text

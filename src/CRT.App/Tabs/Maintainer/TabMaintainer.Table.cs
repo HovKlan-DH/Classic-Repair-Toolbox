@@ -53,7 +53,7 @@ namespace CRT
         // colour-key pills hide the remembered sheet's tab - see BoardTableDocument.SheetToShow. For as long
         // as the application runs.
         // ###########################################################################################
-        private readonly Dictionary<long, string> thisSheetBySubmission = [];
+        private readonly Dictionary<long, (string Sheet, BoardTableSheetPart Part)> thisSheetBySubmission = [];
 
         // ###########################################################################################
         // *** LOOKED UP BY NAME, NOT THROUGH A GENERATED FIELD. *** This window loads its markup
@@ -237,10 +237,14 @@ namespace CRT
             // Read-only when the submission's detail already says this account may not publish it.
             this.ApplyTableReadOnly();
 
+            (string Sheet, BoardTableSheetPart Part) left = default;
+            bool leftOnOne = this.thisTableRow is { } row && this.thisSheetBySubmission.TryGetValue(row.Id, out left);
+
             this.TableEditor.Open(
                 BoardTableDocument.Create(published, submitted, baselineLabel),
                 message ?? ReviewTableWording.OpenedMessage(table),
-                preferredSheet: this.thisTableRow is { } row && this.thisSheetBySubmission.TryGetValue(row.Id, out string? sheet) ? sheet : null);
+                preferredSheet: leftOnOne ? left.Sheet : null,
+                preferredPart: left.Part);
         }
 
         // ###########################################################################################
@@ -424,7 +428,7 @@ namespace CRT
                 return;
 
             if (this.TableEditor.CurrentSheet?.Name is string sheet)
-                this.thisSheetBySubmission[this.thisTableRow!.Id] = sheet;
+                this.thisSheetBySubmission[this.thisTableRow!.Id] = (sheet, this.TableEditor.SheetPart);
 
             this.thisTableRow = null;
             this.thisTable = null;

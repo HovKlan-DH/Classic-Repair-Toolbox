@@ -24,13 +24,13 @@ namespace Handlers.DataHandling
                 board.Credits.Count,
                 ComponentListBuilder.BuildDistinctCategories(board).Count);
 
-        // "Regions" in the column: what the board comes in, or "none" as the counts say it.
+        // "Regions" in the column: what the board comes in, or "0" as the counts say it.
         public static string RegionsText(BoardData? board) =>
             BoardRegions.Has(board) ? string.Join(", ", BoardRegions.All) : ContributeBoardParts.CountText(0);
 
-        // A count as the column shows it - "none" rather than a bare 0, which reads like a fault.
+        // A count as the column shows it - "0" with none (owner request, 2026-11-04: "none" until then).
         public static string CountText(int count) =>
-            count <= 0 ? "none" : count.ToString(CultureInfo.InvariantCulture);
+            Math.Max(count, 0).ToString(CultureInfo.InvariantCulture);
 
         // ###########################################################################################
         // How many KiCad files a board lists (owner request, 2026-10-30: "KiCad data" in the column
@@ -48,10 +48,36 @@ namespace Handlers.DataHandling
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-        // The header of a board with no draft: what changing it does.
-        public static string NoDraftLine(bool hasBoard) => hasBoard
-            ? "The published data, as everybody sees it. Your first change makes your own draft of it - nothing is shared until you submit."
-            : "Pick a hardware and a board in the lists on the left to work on it.";
+        // A component's page with no component picked (owner request, 2026-11-03: "state that the user can
+        // use and select a component from the normal left-side component list").
+        internal static string NoComponentTitle(ComponentPage page) => $"Components: {ComponentPaneWording.PageName(page)}";
+
+        internal static string NoComponentPicked(ComponentPage page) =>
+            $"No component is selected. Select one in the component list on the far left - the \"Category\" list and the filter box above it narrow it down - and its \"{ComponentPaneWording.PageName(page)}\" shows here. \"Add component\" adds a new one.";
+
+        // "Table" picked, on an entry that is no sheet: why nothing changed.
+        public const string NoTableForEntry =
+            "This page has no table of its own, so it looks the same with \"UI\" and \"Table\". Pick another entry on the left to see its table.";
+
+        // ###########################################################################################
+        // THE TAB'S TOP LINE NAMES THE BOARD SHOWN (owner request, 2026-11-05), its two names in bold
+        // (BoldRuns.ShowMarked) - then what a change does, which is why "your first change makes your own
+        // draft" is said nowhere else any more.
+        // ###########################################################################################
+        internal static string TopLine(string? hardware, string? board)
+        {
+            string hardwareName = hardware?.Trim() ?? string.Empty;
+            string boardName = board?.Trim() ?? string.Empty;
+
+            string first = hardwareName.Length > 0 && boardName.Length > 0
+                ? $"Improve data for the [<b>{hardwareName}</b>] hardware and [<b>{boardName}</b>] board."
+                : "Improve data for a board.";
+
+            return $"{first} Every change is saved at once into your own draft and shows up on the board straight away - nobody else sees it until you submit it.";
+        }
+
+        // With no board to show: where to pick one.
+        public const string NoBoardLine = "Pick a hardware and a board in the lists on the left to work on it.";
 
         // ###########################################################################################
         // THE NOTICE OVER A BOARD WITH A DRAFT (owner request, 2026-10-30: "highlighted text clearly
@@ -61,12 +87,6 @@ namespace Handlers.DataHandling
         public static string LocalDraftNotice(bool isNewBoard) => isNewBoard
             ? "This new board is a local draft, saved only on this computer. Nobody else can see it until you submit it and a maintainer has reviewed and published it."
             : "You are working on a local draft, saved only on this computer. Nobody else can see these changes until you submit them and a maintainer of this board has reviewed and published them.";
-
-        // The component list when it lists nothing.
-        public static string NoComponentsLine(bool hasBoard, bool searching) =>
-            !hasBoard ? "No board is shown."
-            : searching ? "No component matches the search."
-            : "This board has no components yet. Add the first with \"Add component\".";
 
         // "My drafts" closed: how many there are - or that there are none yet.
         public static string MyDraftsLine(int drafts) => drafts switch

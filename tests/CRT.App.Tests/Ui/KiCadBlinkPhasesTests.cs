@@ -23,6 +23,27 @@ public sealed class KiCadBlinkPhasesTests
         Assert.Equal(drawn, KiCadOverlayRenderControl.IsDrawnInPhase(phase, shown));
     }
 
+    // A zone fainter than the floor stays that faint in the hidden phase (owner report, 2026-11-03): with
+    // a picture's traces at 5% the zone blinked brighter while hidden than while shown.
+    [Fact]
+    public void A_zone_fainter_than_the_floor_stays_as_faint_in_the_hidden_phase()
+    {
+        UiTest.Run(() =>
+        {
+            var zone = new KiCadOverlayPrimitive
+            {
+                Kind = KiCadOverlayPrimitiveKind.Geometry,
+                Geometry = new RectangleGeometry(new Rect(0, 0, 10, 10)),
+                Fill = new SolidColorBrush(Colors.Orange, 0.05),
+            };
+
+            var split = KiCadBlinkPhases.Split([zone], null);
+
+            Assert.Equal(KiCadBlinkPhase.OffPhase, split[1].BlinkPhase);
+            Assert.Equal(0.05, ((ISolidColorBrush)split[1].Fill!).Opacity, 3);
+        });
+    }
+
     [Fact]
     public void A_blinking_nets_copper_shows_only_in_the_shown_phase_its_zone_keeps_a_faint_fill_and_pin_one_stays()
     {

@@ -349,6 +349,13 @@ namespace Handlers.DataHandling
             {
                 yield return item;
             }
+
+            // The rails: a sheet's +5V and GND are power symbols. Without them CRT found a name for 1,556 of the
+            // Open128's 3,083 wires, and for none of its Power sheet's 221 (measured 2026-11-04).
+            foreach (var item in schematic.Labels.Power)
+            {
+                yield return item;
+            }
         }
 
         // ###########################################################################################

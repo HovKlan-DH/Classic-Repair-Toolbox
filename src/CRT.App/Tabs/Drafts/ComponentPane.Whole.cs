@@ -45,7 +45,8 @@ namespace CRT
 
         private void InitializeWhole()
         {
-            this.NewRegionBox.ItemsSource = ComponentPaneWording.RegionChoices;
+            // The same choices as every other row's "Applies to" (owner request, 2026-11-04).
+            this.NewRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(null);
             this.NewRegionBox.SelectedIndex = 0;
         }
 
@@ -75,7 +76,7 @@ namespace CRT
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
             this.thisIsNew = true;
             this.thisBoardPart = null;
-            this.CloseCopyPanel();
+            this.CloseClonePanel();
             this.ForgetKiCadPins();
             this.LetGoOfWhatIsOfTheComponentShown();
 
@@ -86,8 +87,8 @@ namespace CRT
                 BoardData board = session.Content.Board;
 
                 this.NewLabelBox.Text = string.Empty;
-                this.NewCategoryBox.Text = string.Empty;
                 this.NewCategoryBox.ItemsSource = this.CategoryChoices(board);
+                this.NewCategoryBox.SelectedItem = null;
                 this.NewRegionBox.SelectedIndex = 0;
                 this.NewRegionPanel.IsVisible = BoardRegions.Has(board);
             }
@@ -112,7 +113,7 @@ namespace CRT
             this.BoardPartPanel.IsVisible = false;
             this.NewComponentPanel.IsVisible = true;
 
-            this.ShowPageTabs();
+            this.TellPagesChanged();
             this.ShowNewComponentState();
         }
 
@@ -120,7 +121,7 @@ namespace CRT
             this.thisSession is { } session
                 ? ContributionPackaging.ValidateNewComponent(
                     this.NewLabelBox.Text,
-                    this.NewCategoryBox.Text,
+                    this.NewCategoryBox.SelectedItem as string,
                     session.Content.Board.Components.Select(row => row.BoardLabel))
                 : ContributionPackaging.NewComponentProblem.BoardLabelMissing;
 
@@ -132,7 +133,7 @@ namespace CRT
 
             this.NewLabelProblemText.Text = labelProblem ?? string.Empty;
             this.NewLabelProblemText.IsVisible = labelProblem is not null;
-            this.NewCategoryNoteText.Text = ComponentPaneWording.NoCategoryYet;
+            this.NewCategoryNoteText.Text = this.NewCategoryBox.ItemCount == 0 ? ComponentPaneWording.NoCategoriesToPick : ComponentPaneWording.NoCategoryYet;
             this.NewCategoryNoteText.IsVisible = problem == ContributionPackaging.NewComponentProblem.CategoryMissing;
             this.AddNewComponentButton.IsEnabled = ComponentPane.CanAdd(problem);
         }
@@ -163,8 +164,8 @@ namespace CRT
             }
 
             string label = ComponentPaneEdits.Normalised(ComponentField.FriendlyName, this.NewLabelBox.Text);
-            string region = this.NewRegionPanel.IsVisible ? ComponentPaneWording.RegionOfChoice(this.NewRegionBox.SelectedItem as string) : string.Empty;
-            string category = this.NewCategoryBox.Text ?? string.Empty;
+            string region = this.NewRegionPanel.IsVisible ? ComponentPaneWording.RegionOfAppliesTo(this.NewRegionBox.SelectedItem as string) : string.Empty;
+            string category = this.NewCategoryBox.SelectedItem as string ?? string.Empty;
 
             bool added = session.Apply(
                 DraftStepWording.ComponentAdded(label),

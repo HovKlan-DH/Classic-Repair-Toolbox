@@ -462,11 +462,22 @@
 			  Margin="12"
 			  RowDefinitions="Auto,Auto,*,Auto">
 
-			<SelectableTextBlock x:Name="TitleText"
-					 Grid.Row="0"
-					 FontSize="16"
-					 FontWeight="SemiBold"
-					 Margin="0,0,0,8" />
+			<Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+				<SelectableTextBlock x:Name="TitleText"
+						 FontSize="16"
+						 FontWeight="SemiBold"
+						 TextWrapping="Wrap" />
+
+				<!-- The component on the "Contribute" tab (owner request, 2026-11-05 - on a menu a right-click on it
+				     opened until then, and a right-click is its highlight again). Not on the Contribute tab's own
+				     preview of the popup, nor once another board is shown (Main.ComponentPopup.cs). -->
+				<Button x:Name="EditComponentButton"
+						Grid.Column="1"
+						Margin="8,0,0,0"
+						VerticalAlignment="Top"
+						IsVisible="False"
+						Click="OnEditComponentClick" />
+			</Grid>
 
 			<!-- Category | Part-number (hidden when empty). Kept outside the scrollable/
 			     overlaid area — together with TitleText above, this is the "header" that

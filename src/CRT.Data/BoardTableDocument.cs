@@ -112,8 +112,9 @@ namespace Handlers.DataHandling
                 thisCreating = true,
             };
 
+            // In the order of the table's tabs (BoardTableTabs), so a pill or a search goes to the first it finds there.
             var sheets = new List<BoardTableSheet>();
-            foreach (BoardWorkbookSchema.SheetDefinition definition in BoardWorkbookSchema.AllSheets)
+            foreach (BoardWorkbookSchema.SheetDefinition definition in BoardTableTabs.SheetsInOrder)
             {
                 var sheet = new BoardTableSheet(document, definition, published, draft);
                 sheet.Changed += (_, _) => document.Changed?.Invoke(document, EventArgs.Empty);
@@ -635,7 +636,7 @@ namespace Handlers.DataHandling
 
         // Whether two boards hold the same rows on `sheets` and the same highlights - a table's
         // change can only drop highlights (a deleted component's), so their number says it.
-        private static bool HasSameRows(BoardData before, BoardData after, IEnumerable<BoardWorkbookSchema.SheetDefinition> sheets) =>
+        internal static bool HasSameRows(BoardData before, BoardData after, IEnumerable<BoardWorkbookSchema.SheetDefinition> sheets) =>
             before.ComponentHighlights.Count == after.ComponentHighlights.Count &&
             sheets.All(sheet =>
             {
@@ -786,7 +787,9 @@ namespace Handlers.DataHandling
         // *** FIND & REPLACE (CRT 4.0, 2026-10-25 - the plan's step 0). *** Every occurrence of
         // `find` in the cells of `sheets` - ignoring capitals, as the search box does - becomes
         // `replacement`, as typed. Only rows `shows` lets through, which is the table's own view (a
-        // picked pill, a search): what changes is what can be seen. Red rows are never touched.
+        // picked pill, a search), and only the columns `columnsOf` gives of each sheet, every one without
+        // it (a sheet shown in two has columns one part leaves out - BoardTableSheetParts): what changes
+        // is what can be seen. Red rows are never touched.
         //
         // ONE change across every sheet it touches - one undo step - and the board checked once.
         // A replacement that leaves a cell as it was (the same text in other capitals) is not
@@ -796,7 +799,8 @@ namespace Handlers.DataHandling
             string? find,
             string? replacement,
             IReadOnlyList<BoardTableSheet> sheets,
-            Func<BoardTableRow, bool> shows)
+            Func<BoardTableRow, bool> shows,
+            Func<BoardTableSheet, IReadOnlyList<int>>? columnsOf = null)
         {
             ArgumentNullException.ThrowIfNull(sheets);
             ArgumentNullException.ThrowIfNull(shows);
@@ -819,10 +823,11 @@ namespace Handlers.DataHandling
                     foreach (BoardTableSheet sheet in sheets.Where(sheet => this.Sheets.Contains(sheet)).Distinct())
                     {
                         int cellsBefore = cells;
+                        IReadOnlyList<int>? columns = columnsOf?.Invoke(sheet);
 
                         foreach (BoardTableRow row in sheet.Rows.Where(row => !row.IsDeleted && shows(row)).ToList())
                         {
-                            foreach (BoardTableCell cell in row.Cells)
+                            foreach (BoardTableCell cell in columns is null ? row.Cells : columns.Select(column => row.Cells[column]))
                             {
                                 int count = BoardTableDocument.CountOccurrences(cell.Text, find);
 

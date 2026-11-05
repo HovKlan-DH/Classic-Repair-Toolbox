@@ -23,7 +23,7 @@ public sealed class ComponentCopyTests
             new ComponentPinEntry { BoardLabel = "U7", Pin = "1", Name = "FE", Direction = "Input" },
             new ComponentPinEntry { BoardLabel = "U7", Pin = "28", Name = "VCC", Direction = "Power" },
         ],
-        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "PLAnkton", Kind = "Drop-in" }],
+        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "PLAnkton", Kind = "Drop-in replacement" }],
         ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U7", Name = "Datasheet", Url = "https://example.org/pla" }],
         ComponentImages = [new ComponentImageEntry { BoardLabel = "U7", Pin = "1", File = "Scope baseline/U7_1.png", TimeDiv = "1us" }],
     };

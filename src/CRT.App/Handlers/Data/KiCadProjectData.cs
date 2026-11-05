@@ -396,6 +396,31 @@ namespace Handlers.DataHandling
         // library symbol (its "lib_symbols"). Shared between the instances of one library symbol.
         [JsonPropertyName("pins")]
         public List<KiCadSchematicPin> Pins { get; init; } = new();
+
+        // ###########################################################################################
+        // WHAT THIS UNIT OF THE SYMBOL DRAWS ON ITS SHEET, ITS PIN STUBS INCLUDED, in the sheet's own
+        // coordinates (2026-11-04) - what a component's rectangle on a picture of the sheet comes from
+        // (KiCadFootprintMarks). A chip drawn in four units is four symbols, each with its own. Null for a
+        // library symbol that draws nothing.
+        // ###########################################################################################
+        [JsonPropertyName("extent")]
+        public KiCadSheetExtent? Extent { get; init; }
+    }
+
+    // A rectangle in a sheet's own coordinates, Y down.
+    public sealed class KiCadSheetExtent
+    {
+        [JsonPropertyName("left")]
+        public double Left { get; init; }
+
+        [JsonPropertyName("top")]
+        public double Top { get; init; }
+
+        [JsonPropertyName("right")]
+        public double Right { get; init; }
+
+        [JsonPropertyName("bottom")]
+        public double Bottom { get; init; }
     }
 
     // One pin of a library symbol: its number, name ("~" for none) and electrical type ("input",
@@ -455,6 +480,15 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("hierarchical")]
         public List<KiCadSchematicLabel> Hierarchical { get; init; } = new();
+
+        // ###########################################################################################
+        // THE POWER SYMBOLS (+5V, GND) AS LABELS (2026-11-04): each names the net of the wire it touches,
+        // one label per name it goes by. A sheet's rails run through these and carry no other name - the
+        // Power sheet of the Open128 has 221 wires and not one label. NOT part of a sheet's world bounds
+        // (KiCadFootprintMarks.SheetWorldBounds): every alignment already saved is relative to those.
+        // ###########################################################################################
+        [JsonPropertyName("power")]
+        public List<KiCadSchematicLabel> Power { get; init; } = new();
     }
 
     public sealed class KiCadSchematicLabel

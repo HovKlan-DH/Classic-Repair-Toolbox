@@ -197,13 +197,57 @@ public sealed class BoardDetailViewTests
             Assert.True(view.PlacementForTests.IsVisible);
             Assert.Equal("Commodore/C128/310378 Open128", view.PlacementForTests.ShownBoardId);
             Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("In CRT's drop-down lists", StringComparison.Ordinal));
-            Assert.Contains("Needs a place in the drop-down lists - give it one under Maintainer", view.TextsForTests());
+            Assert.True(view.GetControl<Border>("PlacementNotice").IsVisible);
 
             view.ShowDetailForTests(BoardDetailViewTests.Detail(BoardDetailViewTests.Board()));
 
             Assert.False(view.PlacementForTests.IsVisible);
             Assert.Contains("In CRT's drop-down lists as Commodore 64 / 250407 (long board)", view.TextsForTests());
-            Assert.DoesNotContain(view.TextsForTests(), text => text.StartsWith("Needs a place", StringComparison.Ordinal));
+            Assert.False(view.GetControl<Border>("PlacementNotice").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // *** WHERE A NEW BOARD GETS ITS PLACE IS ONE PRESS AWAY (owner report, 2026-11-05: "I can see the board and
+    // the badge with 'Needs a place in the drop-down lists', but where can I set this?"). *** The view shown
+    // stays for the next board chosen, so its panel in the Maintainer view went unseen on Board data: the amber
+    // panel over the views says so, its button goes there, and it goes once there.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_panel_over_the_views_takes_a_board_needing_a_place_to_its_place()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var view = new BoardDetailView();
+
+            view.UseListing(BoardDetailViewTests.Listing());
+            view.ShowDetailForTests(BoardDetailViewTests.Detail(
+                new("Commodore/C128/310378 Open128", "Commodore", "C128", "310378 Open128", false, null, false, true, null, null, null, 0)));
+
+            Border notice = view.GetControl<Border>("PlacementNotice");
+            Button button = view.GetControl<Button>("GoToPlacementButton");
+
+            Assert.Equal(BoardSection.BoardData, view.ShownSection);
+            Assert.True(notice.IsVisible);
+            Assert.True(button.IsVisible);
+            Assert.Equal(BoardPlacementDisplay.Heading, button.Content);
+            Assert.False(view.GetControl<ScrollViewer>("MaintainerSection").IsVisible);
+
+            button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            for (int tries = 0; tries < 100 && view.ShownSection != BoardSection.Maintainer; tries++)
+            {
+                await Task.Delay(5);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Equal(BoardSection.Maintainer, view.ShownSection);
+            Assert.True(view.GetControl<ScrollViewer>("MaintainerSection").IsVisible);
+            Assert.True(view.PlacementForTests.IsVisible);
+            Assert.False(notice.IsVisible);
+
+            await view.ShowSectionAsync(BoardSection.Files);
+            Assert.True(notice.IsVisible);
         });
     }
 

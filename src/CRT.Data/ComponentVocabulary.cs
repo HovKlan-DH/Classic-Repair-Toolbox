@@ -17,9 +17,11 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class ComponentVocabulary
     {
-        // How long a short description may be: one line of the popup (owner decision, 2026-10-24:
-        // "about 100 characters"). Longer is a warning, never a refusal (BoardDataChecks).
-        public const int ShortDescriptionLimit = 100;
+        // How long a short description may be (owner decision, 2026-11-03; 100 since 2026-10-24). Measured
+        // that day: of the 539 published ones the longest is 118, 525 are at most 50 and none lies between
+        // 51 and 60 - the 14 over it are repair notes on three boards. Longer is a warning, never a refusal
+        // (BoardDataChecks).
+        public const int ShortDescriptionLimit = 50;
 
         // ###########################################################################################
         // A pin's job, as a hobbyist reads a pinout - KiCad's dozen electrical types fold into these.
@@ -43,18 +45,21 @@ namespace Handlers.DataHandling
         ];
 
         // A replacement part fits as it is, only after something is changed (said in its Note), or is
-        // better than the original (owner request, 2026-11-02).
+        // better than the original (owner requests, 2026-11-02 and 2026-11-03: "Drop-in" and "Needs
+        // changes" until then). No published board held a kind yet, nor any draft that day.
         public static IReadOnlyList<string> ReplacementKinds { get; } =
         [
-            "Drop-in",
-            "Needs changes",
+            "Drop-in replacement",
+            "Needs modification",
             "Improvement",
         ];
 
         // ###########################################################################################
-        // The cases the pinout drawing knows (the plan: "DIP-8 to DIP-40, wide DIP, SIP, TO-92,
-        // TO-220, or 'other'"). Offered, not enforced - a board may name any case, and one CRT cannot
-        // draw is shown as its pin list alone. A DIP's pin count is in its name.
+        // The cases a component comes in (the plan: "DIP-8 to DIP-40, wide DIP, SIP, TO-92, TO-220, or
+        // 'other'"; the rest read off the KiCad footprints of the six published boards with a PCB file,
+        // owner request, 2026-11-03: "what package is a resistor? Or a ferrite bead or a capacitor?").
+        // Offered, not enforced - a board may name any case, and one CRT cannot draw is shown as its pin
+        // list alone. A DIP's pin count is in its name; the leaded parts' say nothing of any count.
         // ###########################################################################################
         public static IReadOnlyList<string> Packages { get; } =
         [
@@ -74,6 +79,15 @@ namespace Handlers.DataHandling
             "SIP",
             "TO-92",
             "TO-220",
+            "Axial",
+            "Radial",
+            "Disc",
+            "DO-35",
+            "DO-41",
+            "EMI filter",
+            "HC-49",
+            "HC-18",
+            "Pin header",
             "Other",
         ];
 

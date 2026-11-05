@@ -166,8 +166,7 @@ public partial class TabSchematics
     {
         if (!this.thisIsKiCadTraceCalibrationMode ||
             this.currentFullResBitmap == null ||
-            this.thisKiCadTraceCalibrationDragMode != LabelEditorDragMode.None ||
-            this.SchematicsMenuBorder.IsVisible)
+            this.thisKiCadTraceCalibrationDragMode != LabelEditorDragMode.None)
         {
             return false;
         }
@@ -264,7 +263,6 @@ public partial class TabSchematics
         // to the live drag box - see InvalidateKiCadHoverHitTestCachesForCalibrationChange.
         this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
-        this.HideSchematicsMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.SchematicsContainer.Focus();
         this.Focus();
@@ -304,7 +302,6 @@ public partial class TabSchematics
         // back to the persisted box, and any cache built against the live drag box must go with it.
         this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
-        this.HideSchematicsMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.SchematicsContainer.Focus();
@@ -480,7 +477,6 @@ public partial class TabSchematics
         // where the visible traces now are, until the app restarted and rebuilt the caches fresh.
         this.InvalidateKiCadHoverHitTestCachesForCalibrationChange();
 
-        this.HideSchematicsMenu();
         this.UpdateInteractiveCadTraceHoverModeUi();
         this.RefreshKiCadOverlay(forceImmediate: true);
         this.SchematicsContainer.Focus();

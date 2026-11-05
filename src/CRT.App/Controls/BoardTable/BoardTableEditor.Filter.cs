@@ -222,6 +222,8 @@ namespace CRT
                     this.SelectSheet(sheet);
                 }
             }
+
+            this.ShowAPartWithRowsShown();
         }
 
         // ###########################################################################################
@@ -248,7 +250,7 @@ namespace CRT
 
             if (this.thisShownRows is { } shown && this.thisCurrentSheet is { } sheet)
             {
-                List<BoardTableRow> rows = BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null);
+                List<BoardTableRow> rows = BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null, this.thisPart);
 
                 if (!rows.SequenceEqual(shown))
                 {
@@ -298,7 +300,7 @@ namespace CRT
 
             this.RowsShownAskedForTests++;
 
-            BoardTableSheet.SyncRows(shown, BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, this.thisRowInHand));
+            BoardTableSheet.SyncRows(shown, BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, this.thisRowInHand, this.thisPart));
         }
 
         // How many times the sheet has been gone over for the rows to show - for tests.

@@ -134,11 +134,11 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Equal(
                 [
                     BoardStatusPart.Name, BoardStatusPart.Regions, BoardStatusPart.KiCad, BoardStatusPart.Signals, BoardStatusPart.Pictures,
-                    BoardStatusPart.Categories, BoardStatusPart.Components, BoardStatusPart.Files, BoardStatusPart.Links, BoardStatusPart.Credits,
+                    BoardStatusPart.Categories, BoardStatusPart.Files, BoardStatusPart.Links, BoardStatusPart.Credits, BoardStatusPart.Components,
                 ],
                 tab.StatusPanelsForTests.Select(panel => panel.Part));
 
-            Assert.Contains(LinesOf(tab, BoardStatusPart.Pictures), line => line.StartsWith("Error - ", StringComparison.Ordinal));
+            Assert.NotNull(tab.StatusProblemsForTests(BoardStatusPart.Pictures));
             Assert.True(tab.StatusTableButtonForTests(BoardStatusPart.Pictures).IsVisible);
             Assert.False(tab.StatusTableButtonForTests(BoardStatusPart.Files).IsVisible);
 
@@ -261,7 +261,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             await Until(() => tab.IsComponentOpen);
 
             Assert.Null(tab.ComponentPaneForTests.BoardPart);
-            Assert.Null(tab.SelectedNavEntryForTests);
+            Assert.Equal("BasicsNavButton", tab.SelectedNavEntryForTests);
         });
     }
 
@@ -321,12 +321,13 @@ public sealed class TabDraftsReadinessTests : IDisposable
             await tab.ReadinessShownForTests;
 
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, NewBoard)!;
-            Assert.Equal(["U1", "U2", "C1"], session.Content.Board.Components.Select(row => row.BoardLabel));
+            // A category the board does not have goes where the alphabet puts it (owner request, 2026-11-03).
+            Assert.Equal(["C1", "U1", "U2"], session.Content.Board.Components.Select(row => row.BoardLabel));
             Assert.Equal(20, session.Content.Board.ComponentPins.Count(row => row.BoardLabel == "U2"));
             Assert.False(session.HasUnsavedChanges);
             Assert.Equal([NewBoard], reloaded);
 
-            Assert.Equal("Added 2 components from KiCad - 1 with its pins.", tab.ReadinessNoteForTests);
+            Assert.Equal("Added 2 components from KiCad project:\n- 1 with its pins", tab.ReadinessNoteForTests);
 
             // Nothing of the KiCad data is left to add - marked on no image yet, they are still to do.
             Assert.DoesNotContain(LinesOf(tab, BoardStatusPart.Components), line => line.Contains("not on the board yet", StringComparison.Ordinal));
@@ -771,7 +772,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, NewBoard)!;
             Assert.Equal(["U1", "U2", "U3"], session.Content.Board.Components.Select(row => row.BoardLabel));
             Assert.Equal(DraftStepWording.ComponentsFromKiCad(1), session.UndoDescription);
-            Assert.Equal("Added 1 component from KiCad - 1 with its pins.", tab.ReadinessNoteForTests);
+            Assert.Equal("Added 1 component from KiCad project:\n- 1 with its pins", tab.ReadinessNoteForTests);
         });
     }
 
@@ -953,7 +954,8 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Equal(["U8", "U9"], tab.MissingForTests.Unmarked);
 
             List<Button> labels = ComponentButtons(tab);
-            Assert.Equal(["U8", "U8", "U9"], labels.Select(button => button.Content as string));
+            // Those marked nowhere first: they stand in the frame of the panel's warnings, above the rest.
+            Assert.Equal(["U8", "U9", "U8"], labels.Select(button => button.Content as string));
 
             labels[0].RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => tab.IsComponentOpen);
@@ -982,7 +984,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Equal(
                 [BoardReadiness.UnmarkedHeading(2)],
                 tab.GetControl<StackPanel>("StatusPanelsHost").GetLogicalDescendants().OfType<TextBlock>()
-                    .Select(text => text.Text).Where(text => text?.StartsWith("Warning - not marked", StringComparison.Ordinal) == true));
+                    .Select(text => text.Text).Where(text => text?.Contains("not marked on any schematic image", StringComparison.Ordinal) == true));
         });
     }
 

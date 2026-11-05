@@ -198,8 +198,8 @@ namespace Handlers.DataHandling
         // on reporting the state from before they did.
         //
         // A draft-only board compares against nothing, so every row in it counts as an addition -
-        // which is the literal truth, and is why the caller words that case differently ("New
-        // board, N rows so far") rather than as "N rows changed".
+        // which is the literal truth, and is why the caller says that case differently ("New
+        // board") rather than as "N rows changed".
         // ###########################################################################################
         public static int CountChanges(DraftStatus? status)
         {
@@ -286,11 +286,19 @@ namespace Handlers.DataHandling
         // workbook changes or the table opens - re-asking every found file (thousands on a large
         // board) on every refresh is the cost the cache exists to avoid.
         // ###########################################################################################
-        public static BoardProblemCounts CountProblemsCached(DraftStatus? status, string dataRoot, string draftBoardFolder)
+        public static BoardProblemCounts CountProblemsCached(DraftStatus? status, string dataRoot, string draftBoardFolder) =>
+            DraftStatusReader.ProblemsCached(status, dataRoot, draftBoardFolder).Counts;
+
+        // ###########################################################################################
+        // The same read, with the problems themselves and the board they were found on - what says which
+        // entry of the Contribute tab each is about (owner request, 2026-11-04). The very same object
+        // while nothing moved, so a caller can tell that nothing did.
+        // ###########################################################################################
+        public static BoardProblemsRead ProblemsCached(DraftStatus? status, string dataRoot, string draftBoardFolder)
         {
             if (status is null || string.IsNullOrWhiteSpace(status.WorkbookPath))
             {
-                return BoardProblemCounts.None;
+                return BoardProblemsRead.None;
             }
 
             string stamp = string.Join(
@@ -304,23 +312,43 @@ namespace Handlers.DataHandling
                 && string.Equals(cached.Stamp, stamp, StringComparison.Ordinal)
                 && DraftStatusReader.StillNotFound(cached.NotFound, dataRoot, draftBoardFolder))
             {
-                return cached.Counts;
+                return cached.Read;
             }
 
             BoardData? draft = BoardReadsByStamp.Read(status.WorkbookPath);
             var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftBoardFolder));
 
-            BoardProblemCounts counts = draft is null
-                ? BoardProblemCounts.None
-                : BoardProblemCounts.Of(BoardDataChecks.Check(
-                    BoardCheckRows.From(draft),
-                    lookup,
-                    BoardCheckScope.Everything));
+            IReadOnlyList<BoardDataProblem> problems = draft is null
+                ? []
+                : BoardDataChecks.Check(BoardCheckRows.From(draft), lookup, BoardCheckScope.Everything);
 
-            DraftStatusReader.ProblemCache[status.WorkbookPath] = new CachedProblems(stamp, counts, lookup.NotFound);
+            var read = new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, draft);
 
-            return counts;
+            DraftStatusReader.ProblemCache[status.WorkbookPath] = new CachedProblems(stamp, read, lookup.NotFound);
+
+            return read;
         }
+
+        // ###########################################################################################
+        // *** A DRAFT THAT IS GONE IS LET GO (code review, 2026-11-04), as BoardReadsByStamp lets go. *** What
+        // is kept per draft now holds its board, not a count, and a discarded, retired or renamed draft's
+        // stayed for the rest of the run: tens of megabytes for a large board. Drops the entries whose file no
+        // longer exists, one existence check each. Once per refresh of the drafts' list, NOT per draft's read
+        // (code review, 2026-11-04: 20 drafts made that 400 checks on the UI thread, at every save).
+        // ###########################################################################################
+        public static void ForgetProblemsOfVanishedDrafts()
+        {
+            foreach (string path in DraftStatusReader.ProblemCache.Keys)
+            {
+                if (!File.Exists(path))
+                {
+                    DraftStatusReader.ProblemCache.TryRemove(path, out _);
+                }
+            }
+        }
+
+        // Whether what the checks found is kept for `workbookPath` - for tests.
+        internal static bool HoldsProblemsForTests(string workbookPath) => DraftStatusReader.ProblemCache.ContainsKey(workbookPath);
 
         // The problems themselves, by the very checks and lookup the row counts them with - what "Board
         // status" says on each panel (owner request, 2026-11-01). On the draft as held in memory.
@@ -346,7 +374,7 @@ namespace Handlers.DataHandling
 
         private readonly record struct CachedProblems(
             string Stamp,
-            BoardProblemCounts Counts,
+            BoardProblemsRead Read,
             IReadOnlyDictionary<string, BoardFileLookupResult> NotFound);
 
         // The checks' file lookup, remembering every answer that was not a plain "found".

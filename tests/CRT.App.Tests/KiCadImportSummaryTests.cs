@@ -156,46 +156,6 @@ public sealed class KiCadImportSummaryTests
             KiCadImportSummary.NothingToImport(["photo.jpg"], []));
     }
 
-    // ---- left to do -----------------------------------------------------------------------------
-
-    // ###########################################################################################
-    // What is left to do is BoardReadiness' judgement (WorkLeftAfterKiCad): a board with pictures not
-    // matched, components the KiCad data has that it lacks, nothing marked and no signals has each of
-    // those to do - in the order they get done.
-    // ###########################################################################################
-    [Fact]
-    public void What_is_left_to_do_is_said_in_the_order_it_gets_done()
-    {
-        var board = new BoardData
-        {
-            Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "top.png" }],
-            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
-        };
-
-        var facts = new BoardKiCadFacts(["U1", "U2", "U3"], ["PCB top"]);
-
-        List<string> toDo = KiCadImportSummary.LeftToDo(BoardReadiness.WorkLeftAfterKiCad(new BoardContent(board, [], []), facts));
-
-        Assert.Equal(
-            [
-                "Match each picture to the KiCad view it shows.",
-                "Align the KiCad copper on each picture that shows a view.",
-                "Add the 2 components of the KiCad data not on the board yet.",
-                "Mark the components on the pictures.",
-                "Pick the important KiCad signals - CRT suggests them from the KiCad net names.",
-            ],
-            toDo);
-    }
-
-    // Components left to add that the KiCad data does not have are the board's own to add.
-    [Fact]
-    public void Components_the_KiCad_data_does_not_have_are_left_to_add_by_hand()
-    {
-        var left = new KiCadWorkLeft(Match: false, Align: false, Components: true, NotOnBoard: 0, Mark: false, Signals: false);
-
-        Assert.Equal(["Add the board's components."], KiCadImportSummary.LeftToDo(left));
-    }
-
     // The summary's button for the KiCad components still missing (2026-11-01 - Board status's "Add N
     // from KiCad" until then), one or several.
     [Fact]
@@ -203,25 +163,6 @@ public sealed class KiCadImportSummaryTests
     {
         Assert.Equal("Add 1 component from KiCad", KiCadImportSummary.AddComponentsButton(1));
         Assert.Equal("Add 214 components from KiCad", KiCadImportSummary.AddComponentsButton(214));
-    }
-
-    // Everything done: nothing left.
-    [Fact]
-    public void A_board_in_step_with_its_KiCad_data_has_nothing_left_to_do()
-    {
-        var board = new BoardData
-        {
-            Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "top.png", CadName = "PCB top" }],
-            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
-            ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "0", Y = "0", Width = "1", Height = "1" }],
-            KiCadImportantSignals = [new KiCadImportantSignalEntry { DisplayName = "+5VDC", KiCadNetName = "+5V" }],
-        };
-
-        var content = new BoardContent(board, [new KiCadCalibrationEntry { SchematicName = "Top", CadName = "PCB top" }], []);
-        KiCadWorkLeft left = BoardReadiness.WorkLeftAfterKiCad(content, new BoardKiCadFacts(["U1"], ["PCB top"]));
-
-        Assert.Empty(KiCadImportSummary.LeftToDo(left));
-        Assert.Equal("Nothing - the board is in step with its KiCad data.", KiCadImportSummary.NothingLeftToDo);
     }
 
     // ###########################################################################################
@@ -242,14 +183,17 @@ public sealed class KiCadImportSummaryTests
             "Images/top.png",
         ];
 
+        // The number in bold and a line per kind (owner request, 2026-11-03).
         Assert.Equal(
-            "The board has 4 KiCad files - the number beside \"Files\" under \"KiCad\" on the left: 1 PCB file, 2 schematic files and 1 project file.",
+            "The board now has <b>4</b> KiCad files:\n- 1 PCB file\n- 2 schematic files\n- 1 project file",
             KiCadImportSummary.Files(names));
         Assert.Equal(4, ContributeBoardParts.KiCadFileCount(names));
 
         Assert.Equal(
-            "The board has 2 KiCad files - the number beside \"Files\" under \"KiCad\" on the left: 1 PCB file and 1 other file.",
+            "The board now has <b>2</b> KiCad files:\n- 1 PCB file\n- 1 other file",
             KiCadImportSummary.Files(["KiCad data/a.kicad_pcb", "KiCad data/KiCad-traces.json"]));
+
+        Assert.Equal("The board now has <b>1</b> KiCad file:\n- 1 PCB file", KiCadImportSummary.Files(["KiCad data/a.kicad_pcb"]));
 
         Assert.Equal(string.Empty, KiCadImportSummary.Files(["Images/top.png"]));
     }

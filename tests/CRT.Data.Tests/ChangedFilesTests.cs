@@ -68,6 +68,25 @@ public sealed class ChangedFilesTests
         Assert.Equal("Datasheet (6510.pdf)", changed[0].DisplayText);
     }
 
+    // ###########################################################################################
+    // A component's "Files" page lists every file whatever region CRT shows (owner request, 2026-11-03), so
+    // one of the other region replaced there is a change like any - it stayed unoffered until CRT was
+    // switched over. Paired by name AND region, as ever.
+    // ###########################################################################################
+    [Fact]
+    public void A_file_of_the_region_not_shown_replaced_is_found_too()
+    {
+        BoardData published = Published();
+        published.ComponentLocalFiles[0] = new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/6510.pdf", Region = "NTSC" };
+
+        BoardData draft = Draft();
+        draft.ComponentLocalFiles[0] = new ComponentLocalFileEntry { BoardLabel = "U8", Name = "Datasheet", File = "Component local files/6510-2.pdf", Region = "NTSC" };
+
+        Assert.Contains(
+            ChangedFiles.OfComponent(draft, DraftFiles, published, PublishedFiles, "U8", "PAL"),
+            change => change is { Kind: ChangedFileKind.ComponentFile, RowName: "Datasheet", DraftSha256: NewPdf });
+    }
+
     // A scope baseline is measured on its board: one replaced is never offered to another.
     [Fact]
     public void A_scope_baseline_replaced_is_no_changed_file()

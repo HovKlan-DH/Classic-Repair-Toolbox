@@ -52,7 +52,7 @@ public sealed class BoardTableEditorNarrowedTests : IDisposable
 
         var editor = new BoardTableEditor { AutoSave = false };
         Assert.True(editor.Load(session, published));
-        Assert.True(editor.SelectSheetNamed(sheet));
+        Assert.True(editor.ShowSheetPart(sheet, BoardTableSheetPart.Whole));
 
         var window = new Window { Content = editor, Width = 1300, Height = 600 };
         window.Show();
@@ -691,7 +691,7 @@ public sealed class BoardTableEditorNarrowedTests : IDisposable
             var editor = new BoardTableEditor();
             BoardTableDocument document = BoardTableDocument.Create(null, Links(Link("Web"), Link("Docs")));
             editor.Open(document);
-            Assert.True(editor.SelectSheetNamed(BoardWorkbookSchema.SheetBoardLinks));
+            Assert.True(editor.ShowSheetPart(BoardWorkbookSchema.SheetBoardLinks, BoardTableSheetPart.Whole));
 
             var window = new Window { Content = editor, Width = 1300, Height = 600 };
             window.Show();
@@ -1271,6 +1271,273 @@ public sealed class BoardTableEditorNarrowedTests : IDisposable
         });
     }
 
+    // ------------------------------------------------------------------ An undo on a sheet shown in two
+
+    private static readonly int ImagePinColumn = BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColPin);
+    private static readonly int ImageNameColumn = BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName);
+    private static readonly int ImageFileColumn = BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColFile);
+    private static readonly int ImageTimeDivColumn = BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColTimeDiv);
+
+    private static BoardData Images(params ComponentImageEntry[] images) => new()
+    {
+        Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+        ComponentImages = [.. images],
+    };
+
+    private static ComponentImageEntry Picture(string name) => new() { BoardLabel = "U8", Name = name, File = $"Component images/{name}.png" };
+
+    private static ComponentImageEntry Baseline(string pin, string name) => new() { BoardLabel = "U8", Pin = pin, Name = name, File = $"Scope baseline/{name}.png" };
+
+    private static BoardTableRow ImageRow(BoardTableEditor editor, string name) =>
+        editor.CurrentSheet!.Rows.Single(row => !row.IsDeleted && row.Cells[ImageNameColumn].Text == name);
+
+    private static void ShowPart(BoardTableEditor editor, BoardTableSheetPart part)
+    {
+        editor.SheetsPickedElsewhere = true;
+        Assert.True(editor.ShowSheetPart(BoardWorkbookSchema.SheetComponentImages, part));
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    // ###########################################################################################
+    // A board file holds the pictures first, then the baselines. So a picture added below the last picture
+    // and undone leaves the FIRST BASELINE at its index. That row only slid there: the view stays, the cursor
+    // on the nearest row it shows (code review, 2026-11-04: the view jumped to "Oscilloscope baseline", and
+    // the left column's entry with it).
+    // ###########################################################################################
+    [Fact]
+    public void An_undo_landing_on_a_row_of_the_other_part_leaves_the_view_where_it_is()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(Picture("Top"), Baseline("1", "First"), Baseline("2", "Second")),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ShowPart(editor, BoardTableSheetPart.Pictures);
+
+            Put(editor, ImageRow(editor, "Top"), ImageNameColumn);
+            editor.InsertRowBelow();
+            Dispatcher.UIThread.RunJobs();
+
+            Put(editor, editor.CurrentRow!, ImageNameColumn);
+            Type(window, "New");
+            Press(window, Key.Tab);
+
+            Assert.Same(ImageRow(editor, "New"), editor.CurrentSheet!.Rows[1]);
+
+            editor.Undo();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(3, session.Content.Board.ComponentImages.Count);
+            Assert.Equal(BoardTableSheetPart.Pictures, editor.SheetPart);
+            Assert.Same(ImageRow(editor, "Top"), editor.CurrentRow);
+            Assert.DoesNotContain(ImageRow(editor, "First"), Shown(editor));
+
+            window.Close();
+        });
+    }
+
+    // A row the step really changed is what the undo goes to, whichever part shows.
+    [Fact]
+    public void An_undo_of_a_change_to_a_row_of_the_other_part_goes_to_that_part()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(Picture("Top"), Baseline("1", "First")),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ShowPart(editor, BoardTableSheetPart.Pictures);
+
+            Put(editor, ImageRow(editor, "Top"), ImageNameColumn);
+            Type(window, "Renamed");
+            Press(window, Key.Tab);
+
+            Assert.Equal("Renamed", session.Content.Board.ComponentImages[0].Name);
+
+            ShowPart(editor, BoardTableSheetPart.Baselines);
+
+            editor.Undo();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("Top", session.Content.Board.ComponentImages[0].Name);
+            Assert.Equal(BoardTableSheetPart.Pictures, editor.SheetPart);
+            Assert.Same(ImageRow(editor, "Top"), editor.CurrentRow);
+
+            window.Close();
+        });
+    }
+
+    // The step's own column may be one the part it goes to leaves out - the pin of a picture, here, which a
+    // "Replace" on every sheet can reach and a key press cannot, the column being hidden. The cursor goes to a
+    // column it has, or it lands nowhere and the next text typed is lost.
+    [Fact]
+    public void An_undo_going_to_a_part_without_the_steps_column_keeps_a_cursor()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(Picture("Other"), Picture("Top"), Baseline("1", "First")),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ImageRow(editor, "Top").Cells[ImagePinColumn].Text = "5";
+            editor.RefreshPendingForTests();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("5", session.Content.Board.ComponentImages[1].Pin);
+
+            ShowPart(editor, BoardTableSheetPart.Baselines);
+
+            editor.Undo();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableSheetPart.Pictures, editor.SheetPart);
+            Assert.Same(ImageRow(editor, "Top"), editor.CurrentRow);
+            Assert.NotNull(editor.CurrentCell);
+            Assert.Contains(editor.CurrentCell!.ColumnIndex, BoardTableSheetParts.ColumnsShown(BoardTableSheetPart.Pictures, editor.CurrentSheet!));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A ROW WORKED ON AMONG THE BASELINES STAYS THERE (code review, 2026-11-04). *** Left with no pin it
+    // was a picture by then, and went to a table with no Pin column: "Insert row", a file typed, another row
+    // clicked to look at a value, and only Ctrl+Z or deleting it got out. Here its pin can still be typed.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_row_left_with_no_pin_stays_among_the_baselines_and_can_be_given_one()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(Picture("Top"), Baseline("1", "First"), Baseline("2", "Second")),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ShowPart(editor, BoardTableSheetPart.Baselines);
+
+            Put(editor, ImageRow(editor, "First"), ImageNameColumn);
+            editor.InsertRowBelow();
+            Dispatcher.UIThread.RunJobs();
+
+            BoardTableRow added = editor.CurrentRow!;
+
+            Put(editor, added, ImageNameColumn);
+            Type(window, "New");
+            Press(window, Key.Tab);
+
+            Put(editor, added, ImageFileColumn);
+            Type(window, "Scope baseline/new.png");
+            Press(window, Key.Tab);
+
+            Put(editor, ImageRow(editor, "Second"), ImageNameColumn);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableSheetPart.Baselines, editor.SheetPart);
+            Assert.Contains(added, Shown(editor));
+
+            Put(editor, added, ImagePinColumn);
+            Type(window, "7");
+            Press(window, Key.Tab);
+
+            Assert.Equal("7", added.Cells[ImagePinColumn].Text);
+            Assert.Contains(added, Shown(editor));
+
+            window.Close();
+        });
+    }
+
+    // Its pin cleared, an existing baseline stays too - with its settings or, as here, without.
+    [Fact]
+    public void A_baseline_whose_pin_is_cleared_stays_among_the_baselines_and_shows_among_the_pictures_too()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(Picture("Top"), Baseline("1", "First"), Baseline("2", "Second")),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ShowPart(editor, BoardTableSheetPart.Baselines);
+
+            BoardTableRow row = ImageRow(editor, "Second");
+
+            Put(editor, row, ImagePinColumn);
+            row.Cells[ImagePinColumn].Text = string.Empty;
+            Dispatcher.UIThread.RunJobs();
+
+            Put(editor, ImageRow(editor, "First"), ImageNameColumn);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Contains(row, Shown(editor));
+
+            ShowPart(editor, BoardTableSheetPart.Pictures);
+
+            Assert.Contains(row, Shown(editor));
+
+            window.Close();
+        });
+    }
+
+    // Only among the baselines: a row worked on among the pictures is a picture, and stays one.
+    [Fact]
+    public void A_picture_worked_on_among_the_pictures_does_not_show_among_the_baselines()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(Picture("Top"), Baseline("1", "First")),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ShowPart(editor, BoardTableSheetPart.Pictures);
+
+            Put(editor, ImageRow(editor, "Top"), ImageNameColumn);
+            Type(window, "Renamed");
+            Press(window, Key.Tab);
+
+            BoardTableRow row = ImageRow(editor, "Renamed");
+
+            ShowPart(editor, BoardTableSheetPart.Baselines);
+
+            Assert.DoesNotContain(row, Shown(editor));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A pill on "Pictures" whose only answer is a problem in a column it hides (code review, 2026-11-04):
+    // the row was listed with nothing marked, and the cursor, sent to a column the grid did not have, was
+    // left nowhere - so what was typed next had no cell to go to. It goes to the row among the baselines.
+    // ###########################################################################################
+    [Fact]
+    public void A_pill_answered_only_in_a_hidden_column_goes_to_the_baselines_with_the_cursor_on_the_problem()
+    {
+        UiTest.Run(() =>
+        {
+            (BoardTableEditor editor, DraftSession session, Window window) = this.Open(
+                Images(
+                    Picture("Top"),
+                    new ComponentImageEntry { BoardLabel = "U8", Name = "Odd", File = "Component images/Odd.png", TimeDiv = "nonsense" }),
+                BoardWorkbookSchema.SheetComponentImages);
+
+            ShowPart(editor, BoardTableSheetPart.Pictures);
+
+            Grid(editor).CurrentCell = DataGridCellInfo.Unset;
+            editor.Filter = BoardTableRowKinds.Warnings;
+            Dispatcher.UIThread.RunJobs();
+
+            editor.FocusGrid();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardTableSheetPart.Baselines, editor.SheetPart);
+            Assert.Same(ImageRow(editor, "Odd"), editor.CurrentRow);
+            Assert.NotNull(editor.CurrentCell);
+            Assert.Equal(ImageTimeDivColumn, editor.CurrentCell!.ColumnIndex);
+
+            window.Close();
+        });
+    }
+
     // ------------------------------------------------------------------ Paste with a row edit open
 
     // ###########################################################################################
@@ -1511,7 +1778,7 @@ public sealed class BoardTableEditorNarrowedTests : IDisposable
 
             (BoardTableEditor editor, DraftSession session, Window window) = this.Open(board, BoardWorkbookSchema.SheetBoardLinks);
             Pick(editor, BoardTableRowKinds.Errors);
-            Assert.True(editor.SelectSheetNamed(BoardWorkbookSchema.SheetBoardLinks));
+            Assert.True(editor.ShowSheetPart(BoardWorkbookSchema.SheetBoardLinks, BoardTableSheetPart.Whole));
 
             Put(editor, Row(editor, "Docs"), UrlColumn);
             Type(window, "https://example.org/");
@@ -1589,7 +1856,7 @@ public sealed class BoardTableEditorNarrowedTests : IDisposable
         var editor = new BoardTableEditor();
         BoardTableDocument document = BoardTableDocument.Create(published, draft);
         editor.Open(document);
-        Assert.True(editor.SelectSheetNamed(sheet));
+        Assert.True(editor.ShowSheetPart(sheet, BoardTableSheetPart.Whole));
 
         var window = new Window { Content = editor, Width = 1300, Height = 600 };
         window.Show();

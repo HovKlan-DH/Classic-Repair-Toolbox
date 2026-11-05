@@ -45,13 +45,13 @@ public sealed class ComponentPaneTests : IDisposable
     };
 
     // The draft, as the published board - every change the pane makes is then a change of the draft.
-    private DraftSession OpenDraft()
+    private DraftSession OpenDraft(string boardKey = ComponentPaneTests.BoardKey)
     {
-        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, ComponentPaneTests.BoardKey);
+        string boardFile = DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, boardKey);
         Directory.CreateDirectory(Path.GetDirectoryName(boardFile)!);
         CachedWorkbooks.Write(boardFile, Published());
 
-        return DraftSession.Open(this.DraftsRoot, ComponentPaneTests.BoardKey)!;
+        return DraftSession.Open(this.DraftsRoot, boardKey)!;
     }
 
     private static (ComponentPane Pane, Window Window) Shown(DraftSession session, string label = "U8", string region = "PAL")
@@ -87,12 +87,12 @@ public sealed class ComponentPaneTests : IDisposable
         {
             (ComponentPane pane, Window window) = Shown(session);
 
-            Assert.Equal("Component: U8 - CPU | 6510", Get<TextBlock>(pane, "TitleText").Text);
+            Assert.Equal("Component: U8 | CPU | 6510", Get<TextBlock>(pane, "TitleText").Text);
             Assert.Equal("CPU", Get<TextBox>(pane, "FriendlyNameBox").Text);
             Assert.Equal("6510", Get<TextBox>(pane, "TechnicalNameBox").Text);
-            Assert.Equal("IC", Get<AutoCompleteBox>(pane, "CategoryBox").Text);
+            Assert.Equal("IC", Get<ComboBox>(pane, "CategoryBox").SelectedItem);
             Assert.Equal("The processor", Get<TextBox>(pane, "DescriptionBox").Text);
-            Assert.Equal("13/100", Get<TextBlock>(pane, "DescriptionCounter").Text);
+            Assert.Equal("13/50", Get<TextBlock>(pane, "DescriptionCounter").Text);
 
             // The draft is the published board: nothing changed, nothing to put back.
             Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
@@ -135,6 +135,36 @@ public sealed class ComponentPaneTests : IDisposable
             pane.CommitHeld();
             Assert.True(session.Undo());
             Assert.False(session.CanUndo);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE HEADLINE IS THE POPUP'S TITLE, SO IT FOLLOWS THE NAMES TYPED (code review, 2026-11-04). The pane reads
+    // nothing back after its own edit, so the title kept the old friendly name, while "Preview component info
+    // popup" showed the new one, until the component was opened again.
+    // ###########################################################################################
+    [Fact]
+    public void The_headline_follows_the_names_as_they_go_into_the_draft()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Get<TextBox>(pane, "FriendlyNameBox").Text = "Processor";
+            pane.CommitHeld();
+            Assert.Equal("Component: U8 | Processor | 6510", Get<TextBlock>(pane, "TitleText").Text);
+
+            Get<TextBox>(pane, "TechnicalNameBox").Text = "8500";
+            pane.CommitHeld();
+            Assert.Equal("Component: U8 | Processor | 8500", Get<TextBlock>(pane, "TitleText").Text);
+
+            Assert.True(session.Undo());
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Component: U8 | Processor | 6510", Get<TextBlock>(pane, "TitleText").Text);
 
             window.Close();
         });
@@ -197,8 +227,20 @@ public sealed class ComponentPaneTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             TextBlock counter = Get<TextBlock>(pane, "DescriptionCounter");
-            Assert.Equal("101/100", counter.Text);
+            Assert.Equal("51/50", counter.Text);
             Assert.Contains("over", counter.Classes);
+
+            // In words under the box too (owner report, 2026-11-03: "I cannot see any warning anywhere").
+            TextBlock warning = Get<TextBlock>(pane, "DescriptionTooLongText");
+            Assert.True(warning.IsVisible);
+            Assert.Contains("1 too long", warning.Text, StringComparison.Ordinal);
+            Assert.Contains("50 characters", warning.Text, StringComparison.Ordinal);
+
+            // At the limit there is nothing to say.
+            Get<TextBox>(pane, "DescriptionBox").Text = new string('x', ComponentVocabulary.ShortDescriptionLimit);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(warning.IsVisible);
 
             window.Close();
         });
@@ -303,7 +345,7 @@ public sealed class ComponentPaneTests : IDisposable
             Click(Get<Button>(pane, "AddReplacementButton"));
             ComponentPaneReplacementRow part = Get<ItemsControl>(pane, "ReplacementsItemsControl").Items.OfType<ComponentPaneReplacementRow>().Single();
             part.PartNumber = "8500";
-            part.Kind = "Drop-in";
+            part.Kind = "Drop-in replacement";
 
             Click(Get<Button>(pane, "AddLinkButton"));
             ComponentPaneLinkRow link = Get<ItemsControl>(pane, "LinksItemsControl").Items.OfType<ComponentPaneLinkRow>().Last();
@@ -313,7 +355,7 @@ public sealed class ComponentPaneTests : IDisposable
             pane.CommitHeld();
 
             ComponentReplacementEntry saved = Assert.Single(ComponentPaneEdits.ReplacementsOf(session.Content.Board, "U8", "PAL"));
-            Assert.Equal("8500|Drop-in", $"{saved.PartNumber}|{saved.Kind}");
+            Assert.Equal("8500|Drop-in replacement", $"{saved.PartNumber}|{saved.Kind}");
             Assert.Equal(["Datasheet", "Pinout"], ComponentPaneEdits.LinksOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
 
             pane.ShowPage(ComponentPage.Replacements);
@@ -873,9 +915,9 @@ public sealed class ComponentPaneTests : IDisposable
             (ComponentPane pane, Window window) = Shown(session);
             await pane.ThumbnailsLoadedForTests;
 
-            Assert.Equal("Oscilloscope baseline (1)", Get<TextBlock>(pane, "BaselinesPageLabel").Text);
-            Assert.Equal("Pictures (1)", Get<TextBlock>(pane, "PicturesPageLabel").Text);
-            Assert.Equal("Files (1)", Get<TextBlock>(pane, "FilesPageLabel").Text);
+            Assert.Equal(1, pane.PagesShown![ComponentPage.Baselines].Count);
+            Assert.Equal(1, pane.PagesShown![ComponentPage.Pictures].Count);
+            Assert.Equal(1, pane.PagesShown![ComponentPage.Files].Count);
 
             ComponentPaneBaselineRow baseline = Assert.Single(pane.BaselinesForTests);
             Assert.Equal(("1", "VSS", "50us", "1V", "1.5V"), (baseline.Pin, baseline.Name, baseline.TimeDiv, baseline.VoltsDiv, baseline.TriggerLevel));
@@ -1117,7 +1159,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.Equal(("2", "PA3", "Scope baseline/U8_2_PA3.png", "1V"), (added.Pin, added.Name, added.File, added.VoltsDiv));
             Assert.Contains("Scope baseline/U8_2_PA3.png", this.ListedOnDisk());
             Assert.False(Get<Border>(pane, "NewBaselinePanel").IsVisible);
-            Assert.Equal("Oscilloscope baseline (2)", Get<TextBlock>(pane, "BaselinesPageLabel").Text);
+            Assert.Equal(2, pane.PagesShown![ComponentPage.Baselines].Count);
 
             window.Close();
         });
@@ -1216,13 +1258,13 @@ public sealed class ComponentPaneTests : IDisposable
 
             await pane.AddFileAsync();
 
-            Assert.Equal(["Datasheet", "6510 errata"], ComponentPaneEdits.FilesOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
+            Assert.Equal(["Datasheet", "6510 errata"], ComponentPaneEdits.AllFilesOf(session.Content.Board, "U8").Select(row => row.Name));
             Assert.Contains("Component local files/6510 errata.txt", this.ListedOnDisk());
             Assert.Equal("Files of [U8]", session.UndoDescription);
 
             pane.FilesForTests[1].Name = "Errata";
             pane.CommitHeld();
-            Assert.Equal("Errata", ComponentPaneEdits.FilesOf(session.Content.Board, "U8", "PAL")[1].Name);
+            Assert.Equal("Errata", ComponentPaneEdits.AllFilesOf(session.Content.Board, "U8")[1].Name);
 
             window.Close();
         });
@@ -1284,7 +1326,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.False(Get<Button>(pane, "AddNewComponentButton").IsEnabled);
 
             Get<TextBox>(pane, "NewLabelBox").Text = " U9 ";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             Dispatcher.UIThread.RunJobs();
 
             // Typed, not added: the draft is as it was.
@@ -1342,7 +1384,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.False(Get<Button>(pane, "AddNewComponentButton").IsEnabled);
             Assert.False(pane.AddNewComponent());
 
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             Dispatcher.UIThread.RunJobs();
 
             Assert.True(Get<Button>(pane, "AddNewComponentButton").IsEnabled);
@@ -1369,9 +1411,14 @@ public sealed class ComponentPaneTests : IDisposable
 
             Assert.True(Get<StackPanel>(pane, "NewRegionPanel").IsVisible);
 
+            // The very choices every row's "Applies to" has (owner request, 2026-11-04), all regions first.
+            ComboBox regions = Get<ComboBox>(pane, "NewRegionBox");
+            Assert.Equal(["All regions", "PAL", "NTSC"], regions.Items.OfType<string>());
+            Assert.Equal("All regions", regions.SelectedItem);
+
             Get<TextBox>(pane, "NewLabelBox").Text = "U30";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
-            Get<ComboBox>(pane, "NewRegionBox").SelectedItem = "NTSC only";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
+            Get<ComboBox>(pane, "NewRegionBox").SelectedItem = "NTSC";
             Assert.True(pane.AddNewComponent());
             Assert.Equal("NTSC", ComponentPaneEdits.RowShown(session.Content.Board, "U30", "NTSC")!.Region);
 
@@ -1437,7 +1484,7 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.False(Get<StackPanel>(pane, "NewRegionPanel").IsVisible);
 
             Get<TextBox>(pane, "NewLabelBox").Text = "U9";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             Assert.True(pane.AddNewComponent());
             Assert.Equal(string.Empty, ComponentPaneEdits.RowShown(session.Content.Board, "U9", "PAL")!.Region);
 
@@ -1457,7 +1504,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             TextBox label = Get<TextBox>(pane, "NewLabelBox");
             label.Text = "U40";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             label.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter, Source = label });
 
             Assert.Equal("[U40] added", session.UndoDescription);
@@ -1944,7 +1991,7 @@ public sealed class ComponentPaneTests : IDisposable
             {
                 reads++;
                 (PreviewTraces Traces, string? Problem) answer = reads == 1
-                    ? (PreviewTraces.None, PictureToolWording.NotABoardView("Top"))
+                    ? (PreviewTraces.None, PictureToolWording.NoCopperOnSheet("Top"))
                     : (traces, null);
                 return Task.FromResult(answer);
             };
@@ -1952,7 +1999,7 @@ public sealed class ComponentPaneTests : IDisposable
             ComponentPaneBoardPictureRow top = pane.BoardPicturesForTests[0];
             top.ShowOtherSideTraces = true;
             await pane.PreviewsLoadedForTests;
-            Assert.Equal(PictureToolWording.NotABoardView("Top"), top.TracesNote);
+            Assert.Equal(PictureToolWording.NoCopperOnSheet("Top"), top.TracesNote);
 
             top.ShowOtherSideTraces = false;
             pane.CommitCadName(top, "PCB bottom");
@@ -2130,8 +2177,8 @@ public sealed class ComponentPaneTests : IDisposable
     // ###########################################################################################
     // *** THE MARKS TOLD APART, ONCE ANY WAS MADE BY HAND (owner request, 2026-11-01: "If any components
     // have been manually marked, then I think it should show like this"). *** A mark exactly where KiCad
-    // puts it is automatic; anything else is manual. With none by hand, only the total is said. On a
-    // schematic sheet there is no automatic line: nothing marks one from KiCad. Worked out from the
+    // puts it is automatic; anything else is manual. With none by hand, only the total is said; a
+    // schematic sheet says the same since its marks come from KiCad too (2026-11-04). Worked out from the
     // rectangles, so no board file changes: 1000 x 500 pixels over a 100 x 50 world is 10 pixels a unit.
     // ###########################################################################################
     [Fact]
@@ -2141,7 +2188,7 @@ public sealed class ComponentPaneTests : IDisposable
         {
             var footprints = new Dictionary<string, KiCadViewFootprints>(StringComparer.OrdinalIgnoreCase)
             {
-                ["PCB top"] = new KiCadViewFootprints(new Rect(0, 0, 100, 50), new Dictionary<string, Rect>(StringComparer.OrdinalIgnoreCase) { ["U1"] = new Rect(10, 10, 10, 10) }),
+                ["PCB top"] = new KiCadViewFootprints(new Rect(0, 0, 100, 50), new Dictionary<string, IReadOnlyList<Rect>>(StringComparer.OrdinalIgnoreCase) { ["U1"] = [new Rect(10, 10, 10, 10)] }),
             };
 
             ComponentPaneBoardPictureRow Card(Dictionary<string, List<Rect>> marks, KiCadCalibrationValues? alignment = null)
@@ -2188,11 +2235,12 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.True(Card(new() { ["U1"] = byHand }, unmoved).ShowsManuallyMarked);
             Assert.Equal("- 1 component manually marked", Card(new() { ["U1"] = onFootprint }).ComponentsManuallyMarkedText);
 
-            // A schematic sheet: no line about automatic marks.
-            ComponentPaneBoardPictureRow sheet = Card(new() { ["U2"] = byHand }, unmoved);
+            // A schematic sheet, which is no side of the board: told apart as well.
+            ComponentPaneBoardPictureRow sheet = Card(new() { ["U1"] = onFootprint, ["U2"] = byHand }, unmoved);
             sheet.BoardSides = ["PCB bottom"];
             Assert.True(sheet.ShowsManuallyMarked);
-            Assert.False(sheet.ShowsAutomaticallyMarked);
+            Assert.True(sheet.ShowsAutomaticallyMarked);
+            Assert.Equal("- 1 component automatically marked from KiCad data", sheet.ComponentsAutomaticallyMarkedText);
         });
     }
 
@@ -2917,48 +2965,262 @@ public sealed class ComponentPaneTests : IDisposable
                 {
                     Components = [new ComponentEntry { BoardLabel = "U7", FriendlyName = "PLA", PartNumber = "906114-01", Category = "IC", Package = "DIP-28" }],
                     ComponentPins = [new ComponentPinEntry { BoardLabel = "U7", Pin = "28", Name = "VCC", Direction = "Power" }],
-                    ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "PLAnkton", Kind = "Drop-in" }],
+                    ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "PLAnkton", Kind = "Drop-in replacement" }],
                 }
             )],
             "906114-01",
             "PAL")[0];
 
     // ###########################################################################################
-    // The same part on another board, found by the part number: the panel offers what it has, ticked,
-    // and "Copy" puts it into this component as ONE step named after the board.
+    // "Clone component from another board": picked by hardware, board and component, shown what it is,
+    // and "Clone" makes this component hold everything of it as ONE step - its label and marks staying,
+    // the panel closed, and the boxes reading what it took.
     // ###########################################################################################
+    private static HardwareBoardEntry CloneBoard(string hardware, string board) =>
+        new() { HardwareName = hardware, BoardName = board, ExcelDataFile = $"Commodore/{hardware}/{board}/board.json" };
+
+    private static ComponentCloneSource CloneSource(string boardName, Func<string, string?>? pathOf = null) => new(
+        boardName,
+        new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U7", FriendlyName = "PLA", TechnicalNameOrValue = "906114", PartNumber = "906114-01", Category = "Chips", Package = "DIP-28", Description = "Glue logic" },
+                new ComponentEntry { BoardLabel = "U9", FriendlyName = "SID" },
+            ],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U7", Pin = "28", Name = "VCC", Direction = "Power" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "PLAnkton", Kind = "Drop-in replacement" }],
+            ComponentLocalFiles = pathOf is null ? [] : [new ComponentLocalFileEntry { BoardLabel = "U7", Name = "Notes", File = "Component local files/pla.txt" }],
+        },
+        null,
+        pathOf ?? (_ => null));
+
+    private static (ComponentPane Pane, Window Window) ShownWithCloneBoards(DraftSession session, Func<HardwareBoardEntry, Task<ComponentCloneSource?>> read)
+    {
+        (ComponentPane pane, Window window) = Shown(session);
+
+        pane.CloneBoards = () => [CloneBoard("Commodore 64", "250425"), CloneBoard("Commodore 64", "250469"), CloneBoard("Commodore 128", "310378")];
+        pane.ReadCloneSource = read;
+
+        return (pane, window);
+    }
+
+    private static async Task PickCloneAsync(ComponentPane pane, string hardware, string board, string component)
+    {
+        Get<ComboBox>(pane, "CloneHardwareBox").SelectedItem = hardware;
+        Get<ComboBox>(pane, "CloneBoardBox").SelectedItem = board;
+        await pane.CloneReadForTests;
+
+        Get<ComboBox>(pane, "CloneComponentBox").SelectedItem =
+            Get<ComboBox>(pane, "CloneComponentBox").Items.OfType<ComponentCloneChoice>().First(choice => choice.Label == component);
+    }
+
     [Fact]
-    public async Task Copy_from_another_board_takes_what_is_ticked_in_one_step()
+    public async Task Cloning_takes_everything_of_the_component_picked_in_one_step_its_label_staying()
     {
         DraftSession session = this.OpenDraft();
 
         await UiTest.RunAsync(async () =>
         {
-            (ComponentPane pane, Window window) = Shown(session);
-            var asked = new List<string>();
-            pane.FindOnOtherBoards = (partNumber, region) =>
+            var read = new List<string>();
+
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
             {
-                asked.Add($"{partNumber}|{region}");
-                return Task.FromResult<IReadOnlyList<ComponentCopySource>>([OtherPla()]);
-            };
+                read.Add(board.BoardName);
+                return Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString()));
+            });
 
-            Get<TextBox>(pane, "PartNumberBox").Text = "906114-01";
-            await pane.OpenCopyPanelAsync();
+            Assert.Equal("Clone component from another board", Get<Button>(pane, "CloneFromOtherBoardButton").Content);
 
-            Assert.Equal(["906114-01|PAL"], asked);
-            Assert.True(pane.IsCopyPanelOpen);
-            List<CheckBox> parts = Get<StackPanel>(pane, "CopyPartsPanel").Children.OfType<CheckBox>().ToList();
-            Assert.Equal(["Package (DIP-28)", "Pins (1)", "Replacement parts (1)"], parts.Select(box => box.Content as string));
+            pane.OpenClonePanel();
 
-            parts[2].IsChecked = false;
-            Assert.True(pane.CopyPicked());
+            Assert.True(pane.IsClonePanelOpen);
+            Assert.Equal(["Commodore 64", "Commodore 128"], Get<ComboBox>(pane, "CloneHardwareBox").Items.OfType<string>());
+            Assert.False(Get<Button>(pane, "CloneButton").IsEnabled);
 
-            Assert.Equal("[U8] copied from Commodore 64 - 250425", session.UndoDescription);
-            Assert.Equal("DIP-28", U8(session).Package);
+            // Nothing read until a board is picked, and only the boards of the hardware picked offered.
+            Get<ComboBox>(pane, "CloneHardwareBox").SelectedItem = "Commodore 64";
+            Assert.Empty(read);
+            Assert.Equal(["250425", "250469"], Get<ComboBox>(pane, "CloneBoardBox").Items.OfType<string>());
+
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+
+            Assert.Equal(["250425"], read);
+            Assert.Equal(
+                ["U7 | PLA | 906114", "U9 | SID"],
+                Get<ComboBox>(pane, "CloneComponentBox").Items.OfType<ComponentCloneChoice>().Select(choice => choice.Title));
+
+            // What it is, before anything changes.
+            Assert.True(Get<Border>(pane, "CloneFactsPanel").IsVisible);
+            Assert.Contains(
+                "Part number: 906114-01",
+                Get<StackPanel>(pane, "CloneFactsLines").Children.OfType<TextBlock>().Select(Handlers.Theming.BoldRuns.TextOf));
+            Assert.True(Get<Button>(pane, "CloneButton").IsEnabled);
+            Assert.False(session.CanUndo);
+
+            Assert.True(await pane.ClonePickedAsync());
+
+            Assert.Equal("[U8] cloned from [U7] of " + CloneBoard("Commodore 64", "250425"), session.UndoDescription);
+
+            ComponentEntry row = U8(session);
+            Assert.Equal("U8", row.BoardLabel);
+            Assert.Equal("PLA", row.FriendlyName);
+            Assert.Equal("906114-01", row.PartNumber);
+            Assert.Equal("Chips", row.Category);
+            Assert.Equal("DIP-28", row.Package);
             Assert.Equal(["28:VCC"], ComponentPaneEdits.PinsOf(session.Content.Board, "U8", "PAL").Select(pin => $"{pin.Pin}:{pin.Name}"));
-            Assert.Empty(ComponentPaneEdits.ReplacementsOf(session.Content.Board, "U8", "PAL"));
-            Assert.False(pane.IsCopyPanelOpen);
+            Assert.DoesNotContain(session.Content.Board.ComponentLinks, link => link.BoardLabel == "U8");
+
+            // The pane read it back, and the panel is done with.
+            Assert.False(pane.IsClonePanelOpen);
+            Assert.Equal("PLA", Get<TextBox>(pane, "FriendlyNameBox").Text);
+            Assert.Equal("U8", Get<TextBox>(pane, "BoardLabelBox").Text);
             Assert.Equal("DIP-28", Get<AutoCompleteBox>(pane, "PackageBox").Text);
+            Assert.Equal("Component: U8 | PLA | 906114", Get<TextBlock>(pane, "TitleText").Text);
+            Assert.Contains("Cloned from [U7]", Get<TextBlock>(pane, "PaneMessageText").Text, StringComparison.Ordinal);
+
+            // One step: Undo takes all of it back.
+            session.Undo();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("CPU", U8(session).FriendlyName);
+            Assert.Equal("CPU", Get<TextBox>(pane, "FriendlyNameBox").Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE CLONE PANEL SAYS WHAT THE REGION SHOWN SHOWS, AS THE PANE BEHIND IT DOES (code review, 2026-11-04). The
+    // buttons under CRT's list stand beside it: switched there, the titles, the counts and "this is what PAL
+    // shows" stayed as read in the other region until the component was picked again.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_clone_panel_follows_the_region_shown()
+    {
+        DraftSession session = this.OpenDraft();
+
+        var source = new ComponentCloneSource(
+            "Commodore 64 - 250425",
+            new BoardData
+            {
+                Components =
+                [
+                    new ComponentEntry { BoardLabel = "U7", Region = "PAL", FriendlyName = "VIC", TechnicalNameOrValue = "6569", Category = "IC" },
+                    new ComponentEntry { BoardLabel = "U7", Region = "NTSC", FriendlyName = "VIC", TechnicalNameOrValue = "6567", Category = "IC" },
+                ],
+                ComponentPins =
+                [
+                    new ComponentPinEntry { BoardLabel = "U7", Region = "PAL", Pin = "1", Name = "D6" },
+                    new ComponentPinEntry { BoardLabel = "U7", Region = "NTSC", Pin = "1", Name = "D6" },
+                    new ComponentPinEntry { BoardLabel = "U7", Region = "NTSC", Pin = "2", Name = "D5" },
+                ],
+            },
+            null,
+            _ => null);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, _ => Task.FromResult<ComponentCloneSource?>(source));
+
+            List<string> Facts() => Get<StackPanel>(pane, "CloneFactsLines").Children.OfType<TextBlock>().Select(Handlers.Theming.BoldRuns.TextOf).ToList();
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+
+            ComboBox components = Get<ComboBox>(pane, "CloneComponentBox");
+
+            Assert.Equal(["U7 | VIC | 6569"], components.Items.OfType<ComponentCloneChoice>().Select(choice => choice.Title));
+            Assert.Contains(Facts(), line => line.Contains("1 pin,", StringComparison.Ordinal));
+            Assert.Contains(Facts(), line => line.Contains("what PAL shows", StringComparison.Ordinal));
+
+            pane.UseRegion("NTSC");
+
+            Assert.True(pane.IsClonePanelOpen);
+            Assert.Equal(["U7 | VIC | 6567"], components.Items.OfType<ComponentCloneChoice>().Select(choice => choice.Title));
+            Assert.Equal("U7", (components.SelectedItem as ComponentCloneChoice)?.Label);
+            Assert.True(Get<Button>(pane, "CloneButton").IsEnabled);
+            Assert.Equal("U7 | VIC | 6567", Facts()[0]);
+            Assert.Contains(Facts(), line => line.Contains("2 pins,", StringComparison.Ordinal));
+            Assert.Contains(Facts(), line => line.Contains("what NTSC shows", StringComparison.Ordinal));
+
+            window.Close();
+        });
+    }
+
+    // A file of the other board comes with its bytes, into the draft's list under a name of its own - one
+    // not on this computer does not, and what cites it is left out and said.
+    [Fact]
+    public async Task A_cloned_files_bytes_come_along_and_a_file_not_here_is_said()
+    {
+        DraftSession session = this.OpenDraft();
+        string notes = this.thisWorkspace.WriteFile("pla.txt", "The notes");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
+                Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString(), _ => notes)));
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+            Assert.True(await pane.ClonePickedAsync());
+
+            Assert.Equal("Component local files/pla.txt", Assert.Single(session.Content.Board.ComponentLocalFiles, file => file.BoardLabel == "U8").File);
+            Assert.True(session.ListedFiles.ContainsKey("Component local files/pla.txt"));
+            Assert.Equal("Cloned from [U7] of " + CloneBoard("Commodore 64", "250425") + ". \"Undo\" takes it back.", Get<TextBlock>(pane, "PaneMessageText").Text);
+
+            window.Close();
+        });
+
+        DraftSession other = this.OpenDraft("Commodore/C64/250466/board.json");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(other, board =>
+                Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString(), _ => null)));
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+            Assert.True(await pane.ClonePickedAsync());
+
+            Assert.DoesNotContain(other.Content.Board.ComponentLocalFiles, file => file.BoardLabel == "U8");
+            Assert.Equal("PLA", ComponentPaneEdits.RowShown(other.Content.Board, "U8", "PAL")!.FriendlyName);
+            Assert.Contains("left out: Component local files/pla.txt", Get<TextBlock>(pane, "PaneMessageText").Text, StringComparison.Ordinal);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // None of its files could be copied - one of no bytes, one gone since the board was read: the rows
+    // citing them are left out and said, and the rest of the component still comes (code review, 2026-11-04:
+    // the whole clone came to nothing, while one file of two failing did what this does).
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_clone_whose_only_file_cannot_be_copied_still_takes_the_rest(bool fileExists)
+    {
+        DraftSession session = this.OpenDraft();
+        string notes = fileExists
+            ? this.thisWorkspace.WriteFile("empty.txt", string.Empty)
+            : Path.Combine(this.thisWorkspace.Root, "gone.txt");
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
+                Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString(), _ => notes)));
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+
+            Assert.True(await pane.ClonePickedAsync());
+
+            Assert.Equal("PLA", U8(session).FriendlyName);
+            Assert.DoesNotContain(session.Content.Board.ComponentLocalFiles, file => file.BoardLabel == "U8");
+            Assert.False(session.ListedFiles.ContainsKey("Component local files/pla.txt"));
+            Assert.False(pane.IsClonePanelOpen);
+            Assert.Contains("left out: Component local files/pla.txt", Get<TextBlock>(pane, "PaneMessageText").Text, StringComparison.Ordinal);
 
             window.Close();
         });
@@ -3023,24 +3285,161 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
-    // Without a part number there is nothing to match by; with one nobody else has, it says so.
+    // No board to pick from says so; a board that cannot be read says so and offers no "Clone".
     [Fact]
-    public async Task Copy_from_another_board_says_why_when_there_is_nothing_to_offer()
+    public async Task Cloning_says_why_when_there_is_nothing_to_clone_from()
     {
         DraftSession session = this.OpenDraft();
 
         await UiTest.RunAsync(async () =>
         {
             (ComponentPane pane, Window window) = Shown(session);
-            pane.FindOnOtherBoards = (_, _) => Task.FromResult<IReadOnlyList<ComponentCopySource>>([]);
+            pane.CloneBoards = () => [];
 
-            await pane.OpenCopyPanelAsync();
-            Assert.Equal(ComponentPaneWording.CopyNeedsPartNumber, Get<TextBlock>(pane, "PaneMessageText").Text);
+            pane.OpenClonePanel();
+            Assert.Equal(ComponentPaneWording.CloneNoOtherBoards, Get<TextBlock>(pane, "PaneMessageText").Text);
+            Assert.False(pane.IsClonePanelOpen);
 
-            Get<TextBox>(pane, "PartNumberBox").Text = "XYZ";
-            await pane.OpenCopyPanelAsync();
-            Assert.Equal(ComponentPaneWording.CopyFoundNothing("XYZ"), Get<TextBlock>(pane, "PaneMessageText").Text);
-            Assert.False(pane.IsCopyPanelOpen);
+            pane.CloneBoards = () => [CloneBoard("Commodore 64", "250425")];
+            pane.ReadCloneSource = _ => Task.FromResult<ComponentCloneSource?>(null);
+
+            pane.OpenClonePanel();
+            Get<ComboBox>(pane, "CloneHardwareBox").SelectedItem = "Commodore 64";
+            Get<ComboBox>(pane, "CloneBoardBox").SelectedItem = "250425";
+            await pane.CloneReadForTests;
+
+            Assert.Equal(ComponentPaneWording.CloneBoardNotRead, Get<TextBlock>(pane, "CloneNoteText").Text);
+            Assert.False(Get<Button>(pane, "CloneButton").IsEnabled);
+            Assert.False(await pane.ClonePickedAsync());
+            Assert.False(session.CanUndo);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // Owner request, 2026-11-04: "When I have used the 'Clone component from another board' once, then do
+    // remember its hardware and board, but do empty the component" - one board's chips go across one after
+    // another.
+    // ###########################################################################################
+    [Fact]
+    public async Task After_a_clone_the_panel_opens_on_its_hardware_and_board_with_no_component_picked()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            var read = new List<string>();
+
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
+            {
+                read.Add(board.BoardName);
+                return Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString()));
+            });
+
+            pane.CloneHardwareShown = () => "Commodore 64";
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 128", "310378", "U7");
+            Assert.True(await pane.ClonePickedAsync());
+            Assert.False(pane.IsClonePanelOpen);
+
+            read.Clear();
+
+            // The next component, the panel again.
+            pane.Show(session, "U1", "PAL", Published());
+            Dispatcher.UIThread.RunJobs();
+            pane.OpenClonePanel();
+            await pane.CloneReadForTests;
+
+            Assert.True(pane.IsClonePanelOpen);
+            Assert.Equal("Commodore 128", Get<ComboBox>(pane, "CloneHardwareBox").SelectedItem);
+            Assert.Equal("310378", Get<ComboBox>(pane, "CloneBoardBox").SelectedItem);
+
+            // That board read again, its components there to pick from - none picked, nothing to clone yet.
+            Assert.Equal(["310378"], read);
+            Assert.Equal(["U7", "U9"], Get<ComboBox>(pane, "CloneComponentBox").Items.OfType<ComponentCloneChoice>().Select(choice => choice.Label));
+            Assert.Null(Get<ComboBox>(pane, "CloneComponentBox").SelectedItem);
+            Assert.False(Get<Border>(pane, "CloneFactsPanel").IsVisible);
+            Assert.False(Get<Button>(pane, "CloneButton").IsEnabled);
+
+            window.Close();
+        });
+    }
+
+    // The panel opened and left, nothing is remembered: it starts on the hardware shown, as it always did.
+    [Fact]
+    public async Task Cancelling_the_clone_panel_remembers_nothing()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
+                Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString())));
+
+            pane.CloneHardwareShown = () => "Commodore 64";
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 128", "310378", "U7");
+            Click(Get<Button>(pane, "CancelCloneButton"));
+
+            pane.OpenClonePanel();
+
+            Assert.Equal("Commodore 64", Get<ComboBox>(pane, "CloneHardwareBox").SelectedItem);
+            Assert.Null(Get<ComboBox>(pane, "CloneBoardBox").SelectedItem);
+            Assert.Null(Get<ComboBox>(pane, "CloneComponentBox").ItemsSource);
+
+            window.Close();
+        });
+    }
+
+    // The board remembered is the one now being worked on, and offered no more: its hardware alone stays.
+    [Fact]
+    public async Task A_board_remembered_that_is_no_longer_offered_is_not_picked()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
+                Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString())));
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+            Assert.True(await pane.ClonePickedAsync());
+
+            pane.CloneBoards = () => [CloneBoard("Commodore 64", "250469"), CloneBoard("Commodore 128", "310378")];
+            pane.OpenClonePanel();
+
+            Assert.Equal("Commodore 64", Get<ComboBox>(pane, "CloneHardwareBox").SelectedItem);
+            Assert.Equal(["250469"], Get<ComboBox>(pane, "CloneBoardBox").Items.OfType<string>());
+            Assert.Null(Get<ComboBox>(pane, "CloneBoardBox").SelectedItem);
+
+            window.Close();
+        });
+    }
+
+    // Another component shown: nothing picked for the one before stays.
+    [Fact]
+    public async Task The_clone_panel_goes_as_another_component_is_shown()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window window) = ShownWithCloneBoards(session, board =>
+                Task.FromResult<ComponentCloneSource?>(CloneSource(board.ToString())));
+
+            pane.OpenClonePanel();
+            await PickCloneAsync(pane, "Commodore 64", "250425", "U7");
+
+            pane.Show(session, "U1", "PAL", Published());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(pane.IsClonePanelOpen);
+            Assert.False(await pane.ClonePickedAsync());
+            Assert.False(session.CanUndo);
 
             window.Close();
         });
@@ -3411,6 +3810,86 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
+    // A card as the owner asked for it on 2026-11-03: the images on its right, "Use colors for all
+    // schematic images" right under "Mark components manually", and a dropper in every color picker's list.
+    // ###########################################################################################
+    [Fact]
+    public void A_card_has_its_images_on_the_right_its_colors_button_under_marking_and_the_dropper_in_each_pickers_list()
+    {
+        DraftSession session = this.OpenDraftWithPictures(withKiCad: true);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+            Dispatcher.UIThread.RunJobs();
+
+            Control card = pane.GetControl<ItemsControl>("BoardPicturesItemsControl").ContainerFromIndex(0)!;
+            PicturePreview preview = card.GetVisualDescendants().OfType<PicturePreview>().First();
+            TextBox name = card.GetVisualDescendants().OfType<TextBox>().First();
+
+            Assert.True(preview.TranslatePoint(default, card)!.Value.X > name.TranslatePoint(default, card)!.Value.X);
+
+            List<string?> buttons = card.GetVisualDescendants().OfType<Button>()
+                .Where(button => button is not ColorDropperButton && button.Content is string)
+                .Select(button => button.Content as string)
+                .ToList();
+
+            int marking = buttons.IndexOf("Mark components manually");
+
+            Assert.True(marking >= 0);
+            Assert.Equal("Use colors for all schematic images", buttons[marking + 1]);
+            Assert.Equal("Delete schematic image", buttons[^1]);
+
+            // The dropper is in each picker's list, none beside it taking the slider's room (owner report,
+            // 2026-11-03: "the width of the color picker is way too wide").
+            Assert.Empty(card.GetVisualDescendants().OfType<ColorDropperButton>());
+            Assert.All(card.GetVisualDescendants().OfType<ColorPicker>(), picker => Assert.NotNull(ColorPickerDropper.Of(picker)));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A new board's images start in its colors (owner request, 2026-11-03); a published board's stay blank,
+    // as the rest of its images are. A new board has no published board to compare with.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_image_added_to_a_new_board_starts_in_its_colors(bool isNewBoard)
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+        string picture = Path.Combine(this.DraftsRoot, "..", "Underside.png");
+        File.WriteAllBytes(picture, ComponentPaneTests.Png);
+
+        await UiTest.RunAsync(async () =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            pane.ShowBoardPart(session, PaneBoardPart.Pictures, isNewBoard ? null : WithBoardParts());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(await pane.AddPicturesAsync([picture]));
+
+            BoardSchematicEntry added = session.Content.Board.Schematics.Single(row => row.SchematicName == "Underside");
+
+            Assert.Equal(isNewBoard ? "80%" : string.Empty, added.ThumbnailHighlightOpacity);
+            Assert.Equal(isNewBoard ? "IndianRed" : string.Empty, added.SchematicHighlightColor);
+
+            if (isNewBoard)
+            {
+                ComponentPaneBoardPictureRow row = pane.BoardPicturesForTests.Single(card => card.Name == "Underside");
+
+                Assert.Equal(80, row.ThumbnailOpacity, 3);
+                Assert.Equal(row.HighlightColor, row.ThisSideTraceColor);
+            }
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // The previews on the cards (owner request, 2026-10-29): as wide as dragged at any card's handle,
     // the same on every card - told to the host, which keeps it per board - and never dragged past
     // the range.
@@ -3583,6 +4062,47 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
+    // THE CARD SAYS THE COLOR THE BOARD DRAWS (code review, 2026-11-04): a schematic sheet's wires are Orange
+    // while blank (TabSchematics.KiCad.Render.cs), and its card said DeepSkyBlue, a side of the board's. Known only
+    // once the views are read, so it follows them - and a picker writing Orange back there is still no change.
+    // ###########################################################################################
+    [Fact]
+    public void A_schematic_sheets_card_shows_the_blank_trace_color_the_board_draws()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentPaneBoardPictureRow sheet = ComponentPaneBoardPictureRow.From(new BoardSchematicEntry { SchematicName = "Sheet", CadName = "Sheet 1" }, [], boardHasKiCad: true);
+
+            // Not known yet what it shows.
+            Assert.Equal(TraceColours.DefaultHighlight, sheet.ThisSideTraceColor);
+
+            var raised = new List<string?>();
+            sheet.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+            sheet.BoardSides = ["PCB top"];
+
+            Assert.Equal(Avalonia.Media.Colors.Orange, sheet.ThisSideTraceColor);
+            Assert.Contains(nameof(sheet.ThisSideTraceColor), raised);
+
+            sheet.ThisSideTraceColor = Avalonia.Media.Colors.Orange;
+            Assert.Equal(string.Empty, sheet.ToColours().TraceColor);
+
+            // The image's own colour comes first, as on the board.
+            sheet.HighlightColor = Avalonia.Media.Colors.Gold;
+            Assert.Equal(Avalonia.Media.Colors.Gold, sheet.ThisSideTraceColor);
+
+            // A side of the board keeps its own blank.
+            ComponentPaneBoardPictureRow side = ComponentPaneBoardPictureRow.From(new BoardSchematicEntry { SchematicName = "Top", CadName = "PCB top" }, [], boardHasKiCad: true);
+            side.BoardSides = ["PCB top"];
+            Assert.Equal(TraceColours.DefaultHighlight, side.ThisSideTraceColor);
+
+            // Told another view, it says what that one draws.
+            side.CadName = "Sheet 1";
+            Assert.Equal(Avalonia.Media.Colors.Orange, side.ThisSideTraceColor);
+        });
+    }
+
+    // ###########################################################################################
     // An image with no KiCad data has its KiCad options off (owner request, 2026-10-29: "if the
     // schematic image has no KiCad data, then the KiCad (traces) options should be disabled"): the
     // trace colour and the ticks, the reason in their tooltips - on a board with no KiCad files, and
@@ -3633,13 +4153,13 @@ public sealed class ComponentPaneTests : IDisposable
         await UiTest.RunAsync(async () =>
         {
             (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
-            pane.ReadPreviewTraces = (_, _) => Task.FromResult((PreviewTraces.None, (string?)PictureToolWording.NotABoardView("Top")));
+            pane.ReadPreviewTraces = (_, _) => Task.FromResult((PreviewTraces.None, (string?)PictureToolWording.NoCopperOnSheet("Top")));
 
             ComponentPaneBoardPictureRow top = pane.BoardPicturesForTests[0];
             top.ShowOtherSideTraces = true;
             await pane.PreviewsLoadedForTests;
 
-            Assert.Equal(PictureToolWording.NotABoardView("Top"), top.TracesNote);
+            Assert.Equal(PictureToolWording.NoCopperOnSheet("Top"), top.TracesNote);
             Assert.True(top.HasTracesNote);
             Assert.Empty(top.ShownOtherSideTraces!);
 
@@ -4565,6 +5085,38 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
+    // A DRAG STARTS FROM THE WIDTH SHOWN (code review, 2026-11-04). Started from the width chosen, wider than the
+    // cards have room for, nothing moved until the pointer had covered the difference.
+    // ###########################################################################################
+    [Fact]
+    public void A_drag_of_the_previews_starts_from_the_width_shown()
+    {
+        DraftSession session = this.OpenDraftWithPictures();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Pictures);
+
+            pane.UseCardsWidth(1400);
+            pane.DragPreviewWidthForTests(+380);
+            Assert.Equal(700, pane.PreviewWidth, 3);
+
+            // Only 480 fits now, the 700 chosen kept.
+            pane.UseCardsWidth(900);
+            Assert.Equal(480, pane.BoardPicturesForTests[0].PreviewWidth, 3);
+            Assert.Equal(700, pane.PreviewWidth, 3);
+
+            // Twenty narrower is twenty narrower.
+            pane.DragPreviewWidthForTests(-20);
+
+            Assert.Equal(460, pane.PreviewWidth, 3);
+            Assert.All(pane.BoardPicturesForTests, row => Assert.Equal(460, row.PreviewWidth, 3));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // A picture's name is taken on Enter or when its box is left - never on a pause in typing (code
     // review, 2026-10-28: a pause after "Top" saved it as a rename, or refused it and put the old
     // name back under the caret). The pause - the colours' too - takes everything but the name.
@@ -5018,7 +5570,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             pane.ShowNew(session, "PAL", PublishedWithFiles());
             Get<TextBox>(pane, "NewLabelBox").Text = "U9";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             Assert.True(pane.AddNewComponent());
 
             Assert.False(Get<Border>(pane, "NewBaselinePanel").IsVisible);
@@ -5065,8 +5617,8 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
-    // WHAT THE PANE SAID OF ONE COMPONENT GOES WITH IT: "Moved to NTSC", a "Copy from another board"
-    // result or an "Also on other boards" outcome stayed under the title of the next one. A read-again
+    // WHAT THE PANE SAID OF ONE COMPONENT GOES WITH IT: "Moved to NTSC", what a clone came to or an
+    // "Also on other boards" outcome stayed under the title of the next one. A read-again
     // of the same component keeps it - what it says may be what that very read-again followed.
     // ###########################################################################################
     [Fact]
@@ -5113,7 +5665,7 @@ public sealed class ComponentPaneTests : IDisposable
         (ComponentPane pane, Window window) = ShownNew(session);
 
         Get<TextBox>(pane, "NewLabelBox").Text = "U9";
-        Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+        Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
         Dispatcher.UIThread.RunJobs();
 
         Assert.True(Get<Button>(pane, "AddNewComponentButton").IsEnabled);
@@ -5179,7 +5731,7 @@ public sealed class ComponentPaneTests : IDisposable
         {
             (ComponentPane pane, Window window) = ShownNewFilledIn(session);
 
-            AutoCompleteBox category = Get<AutoCompleteBox>(pane, "NewCategoryBox");
+            ComboBox category = Get<ComboBox>(pane, "NewCategoryBox");
             category.Focus();
             category.IsDropDownOpen = true;
             PressEnter(window);
@@ -5208,7 +5760,7 @@ public sealed class ComponentPaneTests : IDisposable
             }
             else
             {
-                Get<AutoCompleteBox>(pane, "NewCategoryBox").Focus();
+                Get<ComboBox>(pane, "NewCategoryBox").Focus();
             }
 
             PressEnter(window);
@@ -5242,7 +5794,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             pane.ShowNew(session, "PAL", Published());
             Get<TextBox>(pane, "NewLabelBox").Text = "U8";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             Assert.True(pane.AddNewComponent());
 
             pane.Show(session, "U9", "PAL", Published());
@@ -5366,7 +5918,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             pane.ShowNew(session, "PAL", Published());
             Get<TextBox>(pane, "NewLabelBox").Text = "U8";
-            Get<AutoCompleteBox>(pane, "NewCategoryBox").Text = "IC";
+            Get<ComboBox>(pane, "NewCategoryBox").SelectedItem = "IC";
             Assert.True(pane.AddNewComponent());
 
             pane.Show(session, "U9", "PAL", Published());
@@ -5525,7 +6077,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             var footprints = new Dictionary<string, KiCadViewFootprints>(StringComparer.OrdinalIgnoreCase)
             {
-                ["PCB top"] = new KiCadViewFootprints(new Rect(0, 0, 100, 50), new Dictionary<string, Rect>(StringComparer.OrdinalIgnoreCase) { ["U8"] = new Rect(10, 10, 10, 10) }),
+                ["PCB top"] = new KiCadViewFootprints(new Rect(0, 0, 100, 50), new Dictionary<string, IReadOnlyList<Rect>>(StringComparer.OrdinalIgnoreCase) { ["U8"] = [new Rect(10, 10, 10, 10)] }),
             };
 
             pane.UseKiCadViews(["PCB top"], viewFootprints: footprints);

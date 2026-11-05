@@ -278,7 +278,7 @@ public sealed class PublishMergeTests
     {
         Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "PLA" }],
         ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "FE" }],
-        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "PLAnkton", Kind = "Drop-in" }],
+        ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "PLAnkton", Kind = "Drop-in replacement" }],
     };
 
     // ###########################################################################################

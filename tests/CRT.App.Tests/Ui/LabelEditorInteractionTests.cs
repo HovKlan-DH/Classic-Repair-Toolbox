@@ -409,6 +409,82 @@ public class LabelEditorInteractionTests
         });
     }
 
+    // ###########################################################################################
+    // The Delete key (owner request, 2026-11-03): every rectangle selected goes, as ONE step of the
+    // editor's undo - and with none selected the key is not the editor's.
+    // ###########################################################################################
+    [Fact]
+    public void The_Delete_key_deletes_every_rectangle_selected_as_one_step()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = CreateTab();
+            tab.BeginLabelEditorModeForTests();
+            tab.SelectLabelEditorRowForTests(0);
+            tab.ToggleLabelEditorRowForTests(2);
+
+            Assert.True(tab.PressLabelEditorKeyForTests(Key.Delete));
+
+            Assert.Equal(new[] { U2Rect }, tab.LabelEditorWorkingRowsForTests.Select(row => row.Rect));
+            Assert.Equal(0, tab.SelectedLabelEditorCountForTests);
+
+            Assert.True(tab.TryUndoLabelEditorChangeForTests());
+
+            Assert.Equal(new[] { U1Rect, U2Rect, U3Rect }, tab.LabelEditorWorkingRowsForTests.Select(row => row.Rect));
+        });
+    }
+
+    [Fact]
+    public void The_Delete_key_with_nothing_selected_does_nothing()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = CreateTab();
+            tab.BeginLabelEditorModeForTests();
+            tab.ClearLabelEditorSelectionForTests();
+
+            Assert.False(tab.PressLabelEditorKeyForTests(Key.Delete));
+
+            Assert.Equal(new[] { U1Rect, U2Rect, U3Rect }, tab.LabelEditorWorkingRowsForTests.Select(row => row.Rect));
+            Assert.False(tab.TryUndoLabelEditorChangeForTests());
+        });
+    }
+
+    // Not under a modifier - Ctrl+Delete and the like are nothing of the editor's - nor while dragging,
+    // whose end would be working on what is gone.
+    [Fact]
+    public void The_Delete_key_needs_no_modifier_and_no_drag_running()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = CreateTab();
+            tab.BeginLabelEditorModeForTests();
+            tab.SelectLabelEditorRowForTests(0);
+
+            Assert.False(tab.PressLabelEditorKeyForTests(Key.Delete, KeyModifiers.Control));
+            Assert.Equal(3, tab.LabelEditorWorkingRowsForTests.Count);
+
+            tab.StartLabelEditorDragForTests(0, new Point(110, 110), LabelEditorDragMode.Move);
+
+            Assert.False(tab.PressLabelEditorKeyForTests(Key.Delete));
+            Assert.Equal(3, tab.LabelEditorWorkingRowsForTests.Count);
+
+            tab.CompleteLabelEditorDragForTests();
+        });
+    }
+
+    // Outside the editor the key is nobody's here - nothing is selected to delete.
+    [Fact]
+    public void The_Delete_key_is_nothing_outside_the_editor()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = CreateTab();
+
+            Assert.False(tab.PressLabelEditorKeyForTests(Key.Delete));
+        });
+    }
+
     // -----------------------------------------------------------------------------------------
     // Keyboard nudging
     // -----------------------------------------------------------------------------------------

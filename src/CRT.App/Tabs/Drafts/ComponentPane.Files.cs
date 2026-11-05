@@ -131,7 +131,7 @@ namespace CRT
         {
             ComponentPane.Fill(this.thisBaselines, ComponentPaneEdits.BaselinesOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneBaselineRow.From));
             ComponentPane.Fill(this.thisPictures, ComponentPaneEdits.PicturesOf(board, this.thisLabel, this.thisRegion).Select(ComponentPanePictureRow.From));
-            ComponentPane.Fill(this.thisFiles, ComponentPaneEdits.FilesOf(board, this.thisLabel, this.thisRegion).Select(ComponentPaneFileRow.From));
+            ComponentPane.Fill(this.thisFiles, ComponentPaneEdits.AllFilesOf(board, this.thisLabel).Select(ComponentPaneFileRow.From));
 
             this.ShowMeasuringNotes(board);
             this.LoadThumbnails();
@@ -311,11 +311,11 @@ namespace CRT
 
         private void CommitFiles()
         {
-            List<ComponentLocalFileEntry> files = this.thisFiles.Where(row => !this.IsWaitingToBeTyped(row)).Select(row => row.ToEntry()).ToList();
+            List<ComponentLocalFileEntry> files = this.thisFiles.Select(row => row.ToEntry()).ToList();
 
             this.Apply(
                 DraftStepWording.ComponentFiles(this.thisLabel),
-                board => ComponentPaneEdits.WithFiles(board, this.thisLabel, this.thisRegion, files));
+                board => ComponentPaneEdits.WithAllFiles(board, this.thisLabel, files));
         }
 
         // ###########################################################################################
@@ -1266,9 +1266,6 @@ namespace CRT
         public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
 
         public string File { get => this.thisFile; set => this.Set(ref this.thisFile, value ?? string.Empty); }
-
-        // ComponentPaneEdits.WithFiles' rule for a row it leaves out.
-        public override bool HoldsNothingYet => string.IsNullOrWhiteSpace(this.thisName) && string.IsNullOrWhiteSpace(this.thisFile);
 
         public static ComponentPaneFileRow From(ComponentLocalFileEntry row) => new()
         {

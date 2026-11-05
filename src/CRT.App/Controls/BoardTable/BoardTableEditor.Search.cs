@@ -50,7 +50,8 @@ namespace CRT
 
         // Whether the table shows only some rows - a pill picked or a search typed. Rows cannot be
         // moved then: a position among rows that cannot be seen means nothing.
-        private bool IsNarrowed => this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive;
+        private bool IsNarrowed =>
+            this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive || this.thisPart != BoardTableSheetPart.Whole;
 
         // The search applied - set to apply one at once (the box shows it too).
         internal string SearchText

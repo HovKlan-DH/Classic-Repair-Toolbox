@@ -30,7 +30,7 @@ public sealed class ComponentPaneEditsTests
         ComponentReplacements =
         [
             new ComponentReplacementEntry { BoardLabel = "U1", Region = "NTSC", PartNumber = "8562" },
-            new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "8500", Kind = "Drop-in" },
+            new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "8500", Kind = "Drop-in replacement" },
         ],
         ComponentLinks =
         [
@@ -418,7 +418,7 @@ public sealed class ComponentPaneEditsTests
     {
         BoardData after = ComponentPaneEdits.WithReplacements(Board(), "U1", "PAL",
         [
-            new ComponentReplacementEntry { Region = "PAL", PartNumber = "8565", Kind = "Needs changes", Note = "12 V to 9 V\r\nSee the forum" },
+            new ComponentReplacementEntry { Region = "PAL", PartNumber = "8565", Kind = "Needs modification", Note = "12 V to 9 V\r\nSee the forum" },
         ]);
 
         Assert.Equal(
@@ -434,7 +434,7 @@ public sealed class ComponentPaneEditsTests
     {
         BoardData before = Board();
 
-        Assert.Same(before, ComponentPaneEdits.WithReplacements(before, "U8", "PAL", [new ComponentReplacementEntry { PartNumber = " 8500 ", Kind = "Drop-in" }]));
+        Assert.Same(before, ComponentPaneEdits.WithReplacements(before, "U8", "PAL", [new ComponentReplacementEntry { PartNumber = " 8500 ", Kind = "Drop-in replacement" }]));
     }
 
     // A link with no region is the component's in every region, so it is a row of the region shown.
@@ -605,7 +605,7 @@ public sealed class ComponentPaneEditsTests
 
         Assert.Same(board, ComponentPaneEdits.WithPictures(board, "U8", "PAL", ComponentPaneEdits.PicturesOf(board, "U8", "PAL")));
         Assert.Same(board, ComponentPaneEdits.WithBaselines(board, "U8", "PAL", ComponentPaneEdits.BaselinesOf(board, "U8", "PAL")));
-        Assert.Same(board, ComponentPaneEdits.WithFiles(board, "U8", "PAL", ComponentPaneEdits.FilesOf(board, "U8", "PAL")));
+        Assert.Same(board, ComponentPaneEdits.WithAllFiles(board, "U8", ComponentPaneEdits.AllFilesOf(board, "U8")));
     }
 
     // ###########################################################################################
@@ -649,7 +649,7 @@ public sealed class ComponentPaneEditsTests
     {
         BoardData board = BoardWithImages();
 
-        BoardData after = ComponentPaneEdits.WithFiles(board, "u8", "PAL",
+        BoardData after = ComponentPaneEdits.WithAllFiles(board, "u8",
         [
             new ComponentLocalFileEntry { Name = " Datasheet ", File = "Component local files/6510.pdf" },
             new ComponentLocalFileEntry { Name = "Service note", File = "Component local files/6510 note.txt" },
@@ -657,7 +657,7 @@ public sealed class ComponentPaneEditsTests
         ]);
 
         Assert.Equal(["U8|Datasheet", "U8|Service note", "U1|Datasheet"], after.ComponentLocalFiles.Select(row => $"{row.BoardLabel}|{row.Name}"));
-        Assert.Equal(["Datasheet"], ComponentPaneEdits.FilesOf(board, "U8", "PAL").Select(row => row.Name));
+        Assert.Equal(["Datasheet"], ComponentPaneEdits.AllFilesOf(board, "U8").Select(row => row.Name));
     }
 
     // Every edit keeps the board's other sections - its caption and date included.
@@ -700,7 +700,7 @@ public sealed class ComponentPaneEditsTests
             ComponentLocalFiles = [new ComponentLocalFileEntry { BoardLabel = "U1", Name = "Datasheet", File = "a.pdf" }],
             ComponentLinks = [new ComponentLinkEntry { BoardLabel = "U1", Name = "Link", Url = "https://example.org" }],
             ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "1", Name = "VSS", Direction = "Ground" }, new ComponentPinEntry { BoardLabel = "U2", Pin = "1" }],
-            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U1", PartNumber = "6567", Kind = "Drop-in" }],
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U1", PartNumber = "6567", Kind = "Drop-in replacement" }],
             ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Top", BoardLabel = "U1", X = "1", Y = "2", Width = "3", Height = "4" }],
         };
 
@@ -855,12 +855,10 @@ public sealed class ComponentPaneEditsTests
     };
 
     [Fact]
-    public void A_region_lists_its_own_files_and_links_and_those_for_every_region()
+    public void A_region_lists_its_own_links_and_those_for_every_region()
     {
         BoardData board = BoardWithRegionalFilesAndLinks();
 
-        Assert.Equal(["Datasheet", "PAL note"], ComponentPaneEdits.FilesOf(board, "U8", "PAL").Select(row => row.Name));
-        Assert.Equal(["Datasheet", "NTSC note"], ComponentPaneEdits.FilesOf(board, "U8", "NTSC").Select(row => row.Name));
         Assert.Equal(["Forum"], ComponentPaneEdits.LinksOf(board, "U8", "PAL").Select(row => row.Name));
         Assert.Equal(["Forum", "NTSC page"], ComponentPaneEdits.LinksOf(board, "U8", "NTSC").Select(row => row.Name));
     }
@@ -871,13 +869,13 @@ public sealed class ComponentPaneEditsTests
     {
         BoardData board = BoardWithRegionalFilesAndLinks();
 
-        BoardData after = ComponentPaneEdits.WithFiles(board, "U8", "PAL",
+        BoardData after = ComponentPaneEdits.WithLinks(board, "U8", "PAL",
         [
-            new ComponentLocalFileEntry { Region = "PAL", Name = "PAL note", File = "b.pdf" },
+            new ComponentLinkEntry { Region = "PAL", Name = "PAL page", Url = "https://example.org/c" },
         ]);
 
-        Assert.Equal(["PAL note", "NTSC note"], after.ComponentLocalFiles.Select(row => row.Name));
-        Assert.Equal("NTSC", after.ComponentLocalFiles[1].Region);
+        Assert.Equal(["PAL page", "NTSC page"], after.ComponentLinks.Select(row => row.Name));
+        Assert.Equal("NTSC", after.ComponentLinks[1].Region);
     }
 
     // A row's own "Applies to" moves it, and is a change.
@@ -898,12 +896,68 @@ public sealed class ComponentPaneEditsTests
     public void Files_and_links_handed_back_in_another_order_are_a_change()
     {
         BoardData board = BoardWithRegionalFilesAndLinks();
-        List<ComponentLocalFileEntry> shown = ComponentPaneEdits.FilesOf(board, "U8", "PAL");
+        List<ComponentLocalFileEntry> shown = ComponentPaneEdits.AllFilesOf(board, "U8");
         shown.Reverse();
 
-        BoardData after = ComponentPaneEdits.WithFiles(board, "U8", "PAL", shown);
+        BoardData after = ComponentPaneEdits.WithAllFiles(board, "U8", shown);
 
-        Assert.Equal(["PAL note", "Datasheet", "NTSC note"], after.ComponentLocalFiles.Select(row => row.Name));
+        Assert.Equal(["NTSC note", "PAL note", "Datasheet"], after.ComponentLocalFiles.Select(row => row.Name));
+    }
+
+    // ###########################################################################################
+    // THE COMPONENT'S WHOLE LISTS - its "Files" and "Links" pages (owner request, 2026-11-03): every row of
+    // the component whatever its region, in the board's order; no other component's row touched.
+    // ###########################################################################################
+    [Fact]
+    public void All_files_and_links_of_a_component_are_listed_whatever_their_region()
+    {
+        BoardData board = BoardWithRegionalFilesAndLinks();
+
+        Assert.Equal(["Datasheet", "PAL note", "NTSC note"], ComponentPaneEdits.AllFilesOf(board, " u8 ").Select(row => row.Name));
+        Assert.Equal(["Forum", "NTSC page"], ComponentPaneEdits.AllLinksOf(board, "U8").Select(row => row.Name));
+        Assert.Empty(ComponentPaneEdits.AllFilesOf(board, "U9"));
+        Assert.Empty(ComponentPaneEdits.AllLinksOf(board, " "));
+    }
+
+    [Fact]
+    public void The_whole_list_handed_back_as_it_was_is_no_change()
+    {
+        BoardData board = BoardWithRegionalFilesAndLinks();
+
+        Assert.Same(board, ComponentPaneEdits.WithAllFiles(board, "U8", ComponentPaneEdits.AllFilesOf(board, "U8")));
+        Assert.Same(board, ComponentPaneEdits.WithAllLinks(board, "U8", ComponentPaneEdits.AllLinksOf(board, "U8")));
+        Assert.Same(board, ComponentPaneEdits.WithAllLinks(board, " ", [new ComponentLinkEntry { Name = "x", Url = "y" }]));
+    }
+
+    // Past a row of another region: the list is one list, so a row can stand anywhere in it.
+    [Fact]
+    public void The_whole_list_in_another_order_moves_rows_past_the_other_regions()
+    {
+        BoardData board = BoardWithRegionalFilesAndLinks();
+        List<ComponentLocalFileEntry> shown = ComponentPaneEdits.AllFilesOf(board, "U8");
+        shown.Reverse();
+
+        BoardData after = ComponentPaneEdits.WithAllFiles(board, "U8", shown);
+
+        Assert.Equal(["NTSC note", "PAL note", "Datasheet"], after.ComponentLocalFiles.Select(row => row.Name));
+        Assert.Equal(["NTSC", "PAL", ""], after.ComponentLocalFiles.Select(row => row.Region));
+    }
+
+    // A row given another region stays where it stood, and every other component keeps its rows and places.
+    [Fact]
+    public void A_row_of_the_whole_list_given_another_region_keeps_its_place_and_touches_no_other_component()
+    {
+        BoardData board = BoardWithRegionalFilesAndLinks();
+        board.ComponentLinks.Insert(1, new ComponentLinkEntry { BoardLabel = "U9", Name = "Other chip", Url = "https://example.org/c" });
+
+        List<ComponentLinkEntry> links = ComponentPaneEdits.AllLinksOf(board, "U8");
+        links[1] = new ComponentLinkEntry { Region = "PAL", Name = "NTSC page", Url = "https://example.org/b" };
+
+        BoardData after = ComponentPaneEdits.WithAllLinks(board, "U8", links);
+
+        Assert.Equal(
+            ["U8|Forum|", "U9|Other chip|", "U8|NTSC page|PAL"],
+            after.ComponentLinks.Select(row => $"{row.BoardLabel}|{row.Name}|{row.Region}"));
     }
 
     // A rename takes the regions along.

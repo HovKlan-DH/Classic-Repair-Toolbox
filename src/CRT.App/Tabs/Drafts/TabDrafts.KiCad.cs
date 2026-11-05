@@ -25,8 +25,6 @@ namespace CRT
     //     writes lands with nothing on screen saying so - except when another board is shown or the
     //     draft goes, which cannot be called off: the panel goes at once and its changes end by
     //     themselves, still caught up with.
-    //   - A KiCad PROJECT FOLDER DROPPED ON THE TAB (TabDrafts.Drop.cs) opens it importing the folder,
-    //     or is imported by the panel already open on that board.
     //   - AN IMPORT ADDS THE KiCad BOARD'S COMPONENTS TOO (owner request, 2026-11-01: "it should add all
     //     components when importing the KiCad data. Then you can delete this option from 'Board
     //     status'"), while the panel's check box is ticked - the tab's AddFromKiCadToAsync, the one
@@ -60,28 +58,20 @@ namespace CRT
         // The board labels and the "Important signals" rows handed over - what the KiCad report judges
         // the KiCad data against - are the DRAFT's, read from its board file on disk
         // (BoardForFilesWindowAsync), after the table and the pane have saved what they hold.
-        //
-        // `toImport`: a KiCad project folder dropped on the tab - imported as the panel opens, as its
-        // own drop target imports it.
         // ###########################################################################################
-        private async Task ManageFilesAsync(HardwareBoardEntry entry, IReadOnlyList<string>? toImport = null)
+        private async Task ManageFilesAsync(HardwareBoardEntry entry)
         {
             // What closes on the way hands the draft over - never lets it go (OpeningOn).
             using (this.OpeningOn(entry))
             {
-                await this.OpenKiCadOnDraftAsync(entry, toImport);
+                await this.OpenKiCadOnDraftAsync(entry);
             }
         }
 
-        private async Task OpenKiCadOnDraftAsync(HardwareBoardEntry entry, IReadOnlyList<string>? toImport)
+        private async Task OpenKiCadOnDraftAsync(HardwareBoardEntry entry)
         {
-            if (this.thisKiCadPanel is { } open && this.IsKiCadOpenFor(entry))
+            if (this.IsKiCadOpenFor(entry))
             {
-                if (toImport is { Count: > 0 })
-                {
-                    open.ImportOnceOpen(toImport);
-                }
-
                 return;
             }
 
@@ -154,16 +144,12 @@ namespace CRT
 
             this.thisKiCadPanel = panel;
             this.thisKiCadEntry = entry;
+            this.thisNoComponentPage = null;
             this.KiCadPanelHost.Content = panel;
             this.ShowWorkspace();
 
             // In the tab before it reads, so its "please wait" is CRT's own (BusyOverlay.For).
             panel.Initialize(entry.ExcelDataFile, boardLabels, boardData?.KiCadImportantSignals);
-
-            if (toImport is { Count: > 0 })
-            {
-                panel.ImportOnceOpen(toImport);
-            }
         }
 
         // The left column's "KiCad data", and Board status's KiCad panel.

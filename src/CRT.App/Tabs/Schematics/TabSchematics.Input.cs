@@ -124,7 +124,7 @@ public partial class TabSchematics
             return;
         }
 
-        if (this.IsPointerInsideSchematicsMenu(point) || this.IsPointerInsideNewLabelPrompt(point) || this.IsPointerOnDrawTraceButton(point))
+        if (this.IsPointerInsideNewLabelPrompt(point) || this.IsPointerOnDrawTraceButton(point))
         {
             e.Handled = true;
             return;
@@ -134,11 +134,6 @@ public partial class TabSchematics
         {
             e.Handled = true;
             return;
-        }
-
-        if (pointer.Properties.IsLeftButtonPressed && this.thisIsShowingSchematicsMenu)
-        {
-            this.HideSchematicsMenu();
         }
 
         if (this.thisIsKiCadTraceCalibrationMode)
@@ -665,7 +660,6 @@ public partial class TabSchematics
                 if (this.TryGetLabelEditorHighlightAtContainerPoint(point, out var workingIndex))
                 {
                     this.DeleteLabelEditorHighlight(workingIndex);
-                    this.HideSchematicsMenu();
                 }
             }
             else
@@ -674,8 +668,9 @@ public partial class TabSchematics
 
                 if (this.TryGetHoveredBoardLabel(point, out var boardLabel, out _))
                 {
-                    // Its highlight on or off, and "Edit this component" - for everyone (slice 6).
-                    this.ShowComponentMenu(point, boardLabel);
+                    // Its highlight on or off, and nothing more (owner request, 2026-11-05: a menu here from
+                    // CRT 4.0 until then). "Edit component" is on its popup, a left-click away.
+                    this.ToggleComponentSelectionByBoardLabel(boardLabel);
                 }
                 else if (!string.IsNullOrWhiteSpace(activeHoveredKiCadNetName) && this.thisLockedKiCadNetNames.Contains(activeHoveredKiCadNetName))
                 {
@@ -689,12 +684,6 @@ public partial class TabSchematics
                     this.thisLockedKiCadNetNames.Clear();
                     this.RefreshKiCadOverlay();
                     this.RefreshBlinkStateFromCurrentSelection();
-                }
-                else
-                {
-                    // An empty spot: the menu that was contributor mode's opened here - its two tools
-                    // start from the Contribute tab's Pictures now.
-                    this.HideSchematicsMenu();
                 }
             }
         }
@@ -743,9 +732,16 @@ public partial class TabSchematics
     // Handles keyboard interaction for label-editor and KiCad calibration workflows.
     // Ctrl+Z undoes label-editor changes and Ctrl+Y redoes them within the current editor session.
     // Pressing D duplicates the currently selected editor rectangle and opens the new-label prompt.
+    // Pressing Delete deletes every selected editor rectangle.
     // ###########################################################################################
     private void OnSchematicsKeyDown(object? sender, KeyEventArgs e)
     {
+        // A color dropper on: the key is its own (2026-11-03).
+        if (ColorDropperButton.IsAnyPicking)
+        {
+            return;
+        }
+
         this.UpdateInteractiveCadTraceHoverShiftState(e.KeyModifiers);
 
         // Escape stops "Draw trace" (TabSchematics.ViewTools.cs).
@@ -812,6 +808,20 @@ public partial class TabSchematics
         if (thisIsCtrlDown && e.Key == Key.Y)
         {
             if (this.TryRedoLabelEditorChange())
+            {
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        // Every rectangle selected goes (owner request, 2026-11-03) - while the focus is in this tab, where a
+        // press on the picture leaves it. The component filter stands outside it, in Main's left panel, so this
+        // handler is not on the route of a key pressed there: it takes a letter out of the search, the
+        // rectangles staying (MainPictureToolsTests).
+        if (e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None)
+        {
+            if (this.TryDeleteSelectedLabelEditorHighlights())
             {
                 e.Handled = true;
             }

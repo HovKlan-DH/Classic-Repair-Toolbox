@@ -87,34 +87,9 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The components with one component's rows replaced: IN PLACE when it already had rows,
-        // otherwise at InsertionIndex. `replacements` stay together and in their own order (a
-        // component can have one row per region).
-        // ###########################################################################################
-        public static List<ComponentEntry> ReplaceComponent(
-            IReadOnlyList<ComponentEntry> components,
-            string boardLabel,
-            IReadOnlyList<ComponentEntry> replacements)
-        {
-            ArgumentNullException.ThrowIfNull(components);
-            ArgumentNullException.ThrowIfNull(replacements);
-
-            string label = boardLabel?.Trim() ?? string.Empty;
-
-            return ComponentPlacement.ReplaceByLabel(
-                components,
-                label,
-                entry => entry.BoardLabel,
-                replacements,
-                kept => replacements.Count == 0
-                    ? kept.Count
-                    : ComponentPlacement.InsertionIndex(kept, replacements[0].Category, replacements[0].BoardLabel));
-        }
-
-        // ###########################################################################################
-        // The same for a component-scoped sheet with no category (images, local files, links): in
-        // place when the component already has rows there, otherwise before the first row whose
-        // label sorts after it - so a new component's files sit among their neighbours rather than
+        // One component's rows replaced on a component-scoped sheet with no category (pins, links):
+        // in place when the component already has rows there, otherwise before the first row whose
+        // label sorts after it - so a new component's rows sit among their neighbours rather than
         // collecting at the bottom.
         // ###########################################################################################
         public static List<T> ReplaceRowsForLabel<T>(

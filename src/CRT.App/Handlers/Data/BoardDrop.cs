@@ -5,58 +5,72 @@ using System.Linq;
 
 namespace Handlers.DataHandling
 {
-    // What files dropped on the Contribute tab are: pictures of the board, its KiCad project, or neither.
+    // What files dropped on "Board: Schematic images" are: images of the board, or nothing it can take.
     internal enum BoardDropKind
     {
         Nothing,
         Pictures,
-        KiCad,
     }
 
     // ###########################################################################################
-    // FILES DROPPED ON THE CONTRIBUTE TAB (CRT 4.0 step 3, slice 3e - the plan: "Pictures: today's
-    // Schematic images content, moved inline ... KiCad: drop the project folder and get a summary").
-    // What was dropped decides what is done with it - pictures go into the Pictures part as its "Add
-    // pictures" adds them, a KiCad project opens the "KiCad data" window importing it:
+    // FILES DROPPED ON "BOARD: SCHEMATIC IMAGES" (CRT 4.0 step 3, slice 3e; only that page since
+    // 2026-11-03, TabDrafts.Drop.cs). What was dropped decides what is taken - as "Add schematic image(s)"
+    // adds them:
     //
-    //   - A FOLDER holding a KiCad file CRT reads is the KiCad project. One holding none, but pictures
-    //     at its top (a folder of board scans), is those pictures. One holding neither is NOTHING, said
-    //     for what it is - an older KiCad's or another program's project told what to do (code review,
-    //     2026-10-28: tried as the KiCad project, a published board got a draft made for nothing).
-    //   - A KiCad FILE on its own is no project (code review, 2026-10-28): taken as its folder, a file
-    //     from Downloads imported every project under Downloads, and a sheet from Pages/ only Pages/.
     //   - PICTURE FILES (the types CRT shows, never a hidden one - macOS's "._IMG_0001.JPG",
-    //     ContributionPackaging.IsAddablePictureFile) are pictures.
-    //   - Nothing of these: said, and nothing opens.
+    //     ContributionPackaging.IsAddablePictureFile) are pictures, and so are those at the top of a
+    //     folder (a folder of board scans).
+    //   - A FOLDER holding a KiCad file CRT reads is a KiCad project, which goes on "KiCad: Files" - it is
+    //     no folder of scans, whatever images lie in it. Dropped alone it is told where to go (2026-11-03).
+    //   - A folder holding neither is NOTHING, said for what it is - an older KiCad's or another program's
+    //     project told what to do.
+    //   - A KiCad FILE on its own is told the same way (code review, 2026-10-28).
+    //   - Either dropped WITH images is told too (KiCadLeftOut; code review, 2026-11-04: it was counted as
+    //     an item holding no image - of a folder that may well hold some, and never said where it goes).
+    //   - Nothing of these: said, and nothing is added.
     //
     // *** EVERYTHING DROPPED COUNTS, AND WHAT IS LEFT OUT IS SAID (code review, 2026-10-28). *** The
     // first folder used to decide alone: two loose photos dropped with a folder of scans were skipped
-    // without a word. Now a KiCad project folder is taken on its own - one project at a time - and the
-    // rest is said to be left (Note); else every picture dropped, loose or at a folder's top, goes in
-    // together, and whatever held no picture is said. The file system is asked through the functions
-    // handed in, so the rule is tested without one.
+    // without a word. Every picture dropped, loose or at a folder's top, goes in together, and whatever
+    // held no picture is said (Note). The file system is asked through the functions handed in, so the
+    // rule is tested without one.
     // ###########################################################################################
     internal sealed record BoardDrop(BoardDropKind Kind, IReadOnlyList<string> Paths, string Problem = "", string Note = "")
     {
-        // Named as the start panel's hint names them - "schematic images" (code review, 2026-10-30: the
-        // part was renamed on 2026-10-29, and these still said "pictures").
+        // Named as the page names them - "schematic images" (code review, 2026-10-30: the part was renamed
+        // on 2026-10-29, and these still said "pictures").
         public const string NothingUsable =
-            "Drop schematic images of the board (PNG, JPG, GIF, BMP or WEBP files) or its KiCad project folder to add them.";
+            "Drop schematic images of the board (PNG, JPG, GIF, BMP or WEBP files) here to add them.";
 
-        public const string KiCadFileNotFolder =
-            "Drop the folder that holds the KiCad project, not one of its files - CRT takes the project's files from it, its sub-folders included.";
+        public const string KiCadGoesElsewhere =
+            "That is a KiCad project - add it under \"KiCad: Files\" on the left. Only schematic images can be dropped here.";
 
-        // Said beside a KiCad project dropped with other things - one project at a time, pictures apart.
-        public static string LeftBesideKiCad(int others) =>
-            others == 1
-                ? "The KiCad project was taken - the other item dropped with it was left. Drop schematic images on their own to add them."
-                : $"The KiCad project was taken - the other {others.ToString(System.Globalization.CultureInfo.InvariantCulture)} items dropped with it were left. Drop schematic images on their own to add them.";
+        // Said beside pictures taken: the KiCad files dropped with them.
+        public const string KiCadLeftOut =
+            "The KiCad files dropped with the images were left out - add them under \"KiCad: Files\" on the left.";
 
         // Said beside pictures taken: the items dropped that held none.
         public static string LeftWithoutPictures(int count) =>
             count == 1
                 ? "1 item dropped holds no image CRT can show and was left out."
                 : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} items dropped hold no image CRT can show and were left out.";
+
+        private static string NoteOf(int leftOut, bool kiCadLeftOut)
+        {
+            var note = new List<string>(2);
+
+            if (leftOut > 0)
+            {
+                note.Add(BoardDrop.LeftWithoutPictures(leftOut));
+            }
+
+            if (kiCadLeftOut)
+            {
+                note.Add(BoardDrop.KiCadLeftOut);
+            }
+
+            return string.Join(" ", note);
+        }
 
         public static BoardDrop Of(
             IReadOnlyList<string> dropped,
@@ -69,20 +83,21 @@ namespace Handlers.DataHandling
 
             List<string> paths = dropped.Where(path => !string.IsNullOrWhiteSpace(path)).ToList();
             List<string> folders = paths.Where(isFolder).ToList();
-
-            if (folders.FirstOrDefault(holdsKiCad) is { } project)
-            {
-                int others = paths.Count - 1;
-                return new BoardDrop(BoardDropKind.KiCad, [project], Note: others > 0 ? BoardDrop.LeftBesideKiCad(others) : string.Empty);
-            }
+            List<string> projects = folders.Where(holdsKiCad).ToList();
 
             var pictures = new List<string>();
             int leftOut = 0;
+            bool kiCadLeftOut = false;
 
             foreach (string path in paths)
             {
-                List<string> found = folders.Contains(path)
-                    ? filesAtTop(path).Where(ContributionPackaging.IsAddablePictureFile).ToList()
+                if (projects.Contains(path) || (!folders.Contains(path) && ComponentListBuilder.IsSupportedKiCadRawFile(path)))
+                {
+                    kiCadLeftOut = true;
+                    continue;
+                }
+
+                List<string> found = folders.Contains(path) ? filesAtTop(path).Where(ContributionPackaging.IsAddablePictureFile).ToList()
                     : ContributionPackaging.IsAddablePictureFile(path) ? [path] : [];
 
                 if (found.Count == 0)
@@ -95,25 +110,24 @@ namespace Handlers.DataHandling
 
             if (pictures.Count > 0)
             {
-                return new BoardDrop(BoardDropKind.Pictures, pictures, Note: leftOut > 0 ? BoardDrop.LeftWithoutPictures(leftOut) : string.Empty);
+                return new BoardDrop(BoardDropKind.Pictures, pictures, Note: BoardDrop.NoteOf(leftOut, kiCadLeftOut));
             }
 
-            if (folders.Count > 0)
+            if (projects.Count > 0 || paths.Any(ComponentListBuilder.IsSupportedKiCadRawFile))
             {
-                return new BoardDrop(BoardDropKind.Nothing, [], whyNothingIn(folders[0]));
+                return new BoardDrop(BoardDropKind.Nothing, [], BoardDrop.KiCadGoesElsewhere);
             }
 
-            return paths.Any(ComponentListBuilder.IsSupportedKiCadRawFile)
-                ? new BoardDrop(BoardDropKind.Nothing, [], BoardDrop.KiCadFileNotFolder)
+            return folders.Count > 0
+                ? new BoardDrop(BoardDropKind.Nothing, [], whyNothingIn(folders[0]))
                 : new BoardDrop(BoardDropKind.Nothing, [], BoardDrop.NothingUsable);
         }
 
         // ###########################################################################################
         // The rule on the real file system. The folder is walked ONCE (KiCadRawFileScanner.Probe -
         // second code review, 2026-10-28: a folder holding nothing usable was walked in full twice):
-        // stopping at its first KiCad file - the import walks it in full itself - and else keeping only
-        // its .sch and .brd files, to say why nothing can be imported: an older KiCad's or another
-        // program's project told what to do.
+        // stopping at its first KiCad file, and else keeping only its .sch and .brd files, to say why
+        // nothing can be taken: an older KiCad's or another program's project told what to do.
         // ###########################################################################################
         public static BoardDrop OnDisk(IReadOnlyList<string> dropped)
         {

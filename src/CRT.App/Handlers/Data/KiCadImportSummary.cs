@@ -7,9 +7,10 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHAT A KiCad IMPORT FOUND, LEFT OUT AND LEAVES TO DO (CRT 4.0 step 3, slice 3e - the plan:
-    // "KiCad: drop the project folder and get a summary of what was found, what was ignored, and what
-    // is left to do"). Said at the top of the "KiCad data" window:
+    // WHAT A KiCad IMPORT FOUND AND LEFT OUT (CRT 4.0 step 3, slice 3e - the plan: "KiCad: drop the
+    // project folder and get a summary of what was found, what was ignored, and what is left to do").
+    // What is left to do went on 2026-11-03 (owner request: "it should show elsewhere") - "Board status"
+    // says it. Said in the "KiCad data" panel:
     //
     //   - FOUND: the PCB files - the first, the one CRT draws, with its components (the very ones "Add
     //     N from KiCad" counts, KiCadComponentTable) and its nets - and the schematic sheets.
@@ -18,8 +19,6 @@ namespace Handlers.DataHandling
     //     3D models, Gerbers, hidden files never among them... A schematic or board CRT cannot read
     //     (.sch, .brd) is SAID so, with what to do about it - an older KiCad's (told by its first line)
     //     and EAGLE's alike - such a project used to read only "No KiCad files in that folder".
-    //   - LEFT TO DO: what the board still needs now its KiCad data is in, by BoardReadiness' rules -
-    //     never a second copy of them.
     //
     // PURE: words only, so they are tested without a display.
     // ###########################################################################################
@@ -52,14 +51,11 @@ namespace Handlers.DataHandling
             (Kind.Other, "other file", "other files"),
         ];
 
-        public const string NothingLeftToDo = "Nothing - the board is in step with its KiCad data.";
-
         // ###########################################################################################
-        // THE BOARD'S KiCad FILES, COUNTED BY KIND (owner request, 2026-10-30: "KiCad data" in the left
-        // column showed 4, read as "4 KiCad pictures" - the Summary must say where the number comes from).
-        // The same names the column counts (ContributeBoardParts.KiCadFileCount): "The board has 4 KiCad
-        // files - the number beside KiCad data on the left: 1 PCB file, 2 schematic files and 1 project
-        // file." - "" for none.
+        // THE BOARD'S KiCad FILES, COUNTED BY KIND (owner requests, 2026-10-30: "KiCad data" in the left
+        // column showed 4, read as "4 KiCad pictures" - the Summary must say where the number comes from;
+        // 2026-11-03: a line per kind, the number in bold - BoldRuns.ShowMarked shows it). The same names
+        // the column counts (ContributeBoardParts.KiCadFileCount) - "" for none.
         // ###########################################################################################
         // The board's KiCad file names by kind (Board status counts them too, 2026-11-01) - what they end
         // in; anything else is "other".
@@ -109,9 +105,9 @@ namespace Handlers.DataHandling
                 kinds.Add(KiCadImportSummary.Count(other, "other file", "other files"));
             }
 
-            string listed = kinds.Count == 1 ? kinds[0] : $"{string.Join(", ", kinds.Take(kinds.Count - 1))} and {kinds[^1]}";
+            string total = $"<b>{KiCadImportSummary.Number(kiCad.Count)}</b> {(kiCad.Count == 1 ? "KiCad file" : "KiCad files")}";
 
-            return $"The board has {KiCadImportSummary.Count(kiCad.Count, "KiCad file", "KiCad files")} - the number beside \"Files\" under \"KiCad\" on the left: {listed}.";
+            return $"The board now has {total}:\n{string.Join("\n", kinds.Select(kind => "- " + kind))}";
         }
 
         // ###########################################################################################
@@ -263,30 +259,8 @@ namespace Handlers.DataHandling
             (files == 1 ? "it yet. It goes in with the next save." : "them yet. They go in with the next save.");
 
         // ###########################################################################################
-        // What is left to do once the KiCad data is in (BoardReadiness.WorkLeftAfterKiCad), in the order
-        // it gets done - nothing for what is done.
-        // ###########################################################################################
-        public static List<string> LeftToDo(KiCadWorkLeft left)
-        {
-            ArgumentNullException.ThrowIfNull(left);
-
-            (bool ToDo, string Line)[] steps =
-            [
-                (left.Match, "Match each picture to the KiCad view it shows."),
-                (left.Align, "Align the KiCad copper on each picture that shows a view."),
-                (left.Components, left.NotOnBoard > 0
-                    ? $"Add the {KiCadImportSummary.Count(left.NotOnBoard, "component", "components")} of the KiCad data not on the board yet."
-                    : "Add the board's components."),
-                (left.Mark, "Mark the components on the pictures."),
-                (left.Signals, "Pick the important KiCad signals - CRT suggests them from the KiCad net names."),
-            ];
-
-            return steps.Where(step => step.ToDo).Select(step => step.Line).ToList();
-        }
-
-        // ###########################################################################################
         // The summary's button for the KiCad components the board still lacks - imported with "Add the
-        // KiCad components to the board" unticked, or deleted since (2026-11-01; Board status's "Add N
+        // KiCad components automatically to the board" unticked, or deleted since (2026-11-01; Board status's "Add N
         // from KiCad" until then).
         // ###########################################################################################
         public static string AddComponentsButton(int count) =>

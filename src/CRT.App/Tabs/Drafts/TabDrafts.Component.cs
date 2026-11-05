@@ -54,13 +54,15 @@ namespace CRT
             this.ComponentPane.PreviewRequested += (_, label) => this.PreviewComponent(label);
             this.ComponentPane.PictureToolRequested += (_, asked) => this.RunGuarded(() => this.StartPictureToolAsync(asked.Tool, asked.Picture), "Picture tool");
             this.ComponentPane.MarkAutomaticallyRequested += (_, asked) => this.RunGuarded(() => this.MarkAutomaticallyAsync(asked.Picture, asked.File), "Mark all automatically");
-            this.ComponentPane.FindOnOtherBoards = this.FindOnOtherBoardsAsync;
+            this.ComponentPane.CloneBoards = this.OtherPublishedEntries;
+            this.ComponentPane.CloneHardwareShown = () => (this.thisComponentEntry ?? this.thisCurrentEntry)?.HardwareName;
+            this.ComponentPane.ReadCloneSource = this.ReadCloneSourceAsync;
             this.ComponentPane.FindAlsoTargets = this.FindAlsoTargetsAsync;
             this.ComponentPane.ApplyToOtherBoards = this.ApplyToOtherBoardsAsync;
             this.ComponentPane.ComponentShown += (_, label) => this.RunGuarded(() => this.LoadKiCadPinsAsync(label), "Reading the KiCad pins");
+            this.ComponentPane.ReadKiCadForPinouts = this.ReadKiCadForPinoutsAsync;
             this.ComponentPane.KiCadViewsWanted += (_, ask) => this.RunGuarded(() => this.LoadKiCadViewsAsync(ask), "Reading the KiCad views");
             this.ComponentPane.ShowNetRequested += (_, net) => this.RunGuarded(() => this.ShowNetOnBoardAsync(net), "Show on board");
-            this.ComponentPane.RegionPicked += (_, region) => this.PickRegion(region);
             this.ComponentPane.ReadPreviewTraces = this.PreviewTracesAsync;
         }
 
@@ -96,6 +98,33 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // *** REMOVED BEFORE CRT 4.0 GOES LIVE, with BaselinePinMigration. *** What the board's KiCad data
+        // has for "Create pinouts for the whole board" - each component's pins and guessed package. Null
+        // without any, and the baselines alone are used.
+        // ###########################################################################################
+        private async Task<KiCadPinoutSource?> ReadKiCadForPinoutsAsync()
+        {
+            if (this.ComponentPane.Session is not { } session)
+            {
+                return null;
+            }
+
+            string identity = session.ExcelDataFile;
+
+            return await BusyOverlay.RunLocalAsync<KiCadPinoutSource?>(this, CrtWaitWording.ReadingKiCad, async () =>
+            {
+                if (await TabDrafts.ReadBoardKiCadAsync(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(session.DraftsRoot, identity), identity, "the board's pinouts") is not { } root)
+                {
+                    return null;
+                }
+
+                List<KiCadBoardComponent> components = await Task.Run(() => KiCadComponentTable.Of(root));
+
+                return new KiCadPinoutSource(components, label => KiCadPinTable.PinsOf(root, label));
+            });
+        }
+
+        // ###########################################################################################
         // The board's KiCad project as the Schematics tab draws it - the files Main.KiCadRawPathsFor
         // copies (on the pool), parsed once and kept by KiCadProjectLoader - for the important signals'
         // nets and a component's pins alike (code review, 2026-10-26: two copies of this read). Null
@@ -127,8 +156,18 @@ namespace CRT
         private string PublishedBoardFileOf(HardwareBoardEntry entry) =>
             this.PublishedBoardFileOverrideForTests?.Invoke(entry) ?? DraftBoardSource.PublishedPathOf(DataManager.DataRoot, entry.ExcelDataFile);
 
-        // One other published board as "Copy from another board" and "Also on other boards" read it.
+        // One other published board as "Clone component from another board" and "Also on other boards" read it.
         private sealed record OtherBoard(HardwareBoardEntry Entry, BoardData Board, IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? Files);
+
+        // The OTHER published boards of this machine, as the drop-down lists list them.
+        private List<HardwareBoardEntry> OtherPublishedEntries()
+        {
+            HardwareBoardEntry? shown = this.thisComponentEntry ?? this.thisCurrentEntry;
+
+            return (this.HardwareBoardsOverrideForTests ?? DataManager.HardwareBoards)
+                .Where(entry => !entry.IsDraftOnly && (shown is null || !TabDrafts.SameBoard(entry, shown)))
+                .ToList();
+        }
 
         // ###########################################################################################
         // The OTHER published boards of this machine - never the board the pane is on - read IN
@@ -139,11 +178,7 @@ namespace CRT
         // ###########################################################################################
         private async Task<List<OtherBoard>> ReadOtherPublishedBoardsAsync(bool withFiles)
         {
-            HardwareBoardEntry? shown = this.thisComponentEntry ?? this.thisCurrentEntry;
-
-            List<HardwareBoardEntry> boards = (this.HardwareBoardsOverrideForTests ?? DataManager.HardwareBoards)
-                .Where(entry => !entry.IsDraftOnly && (shown is null || !TabDrafts.SameBoard(entry, shown)))
-                .ToList();
+            List<HardwareBoardEntry> boards = this.OtherPublishedEntries();
 
             Func<HardwareBoardEntry, BoardData?>? published = this.PublishedBoardOverrideForTests;
 
@@ -189,18 +224,27 @@ namespace CRT
             });
         }
 
-        // "Copy from another board" (slice 5): the components with `partNumber` on the OTHER published
-        // boards, under CRT's "please wait".
-        private async Task<IReadOnlyList<ComponentCopySource>> FindOnOtherBoardsAsync(string partNumber, string region) =>
-            await BusyOverlay.RunLocalAsync(this, CrtWaitWording.LookingAtOtherBoards, async () =>
-            {
-                List<OtherBoard> others = await this.ReadOtherPublishedBoardsAsync(withFiles: false);
+        // ###########################################################################################
+        // "Clone component from another board" (owner request, 2026-11-04): the published board picked -
+        // its data and list of files from one read of its board file, under CRT's "please wait" - and where
+        // a file of it lies. Never a draft of it: what is published is what can be said to be that board.
+        // ###########################################################################################
+        private async Task<ComponentCloneSource?> ReadCloneSourceAsync(HardwareBoardEntry entry)
+        {
+            string path = this.PublishedBoardFileOf(entry);
+            Func<HardwareBoardEntry, BoardData?>? published = this.PublishedBoardOverrideForTests;
+            string dataRoot = DataManager.DataRoot;
+            string identity = entry.ExcelDataFile;
 
-                return (IReadOnlyList<ComponentCopySource>)ComponentCopy.Sources(
-                    others.Select(other => (other.Entry.ToString(), other.Entry.ExcelDataFile, other.Board)),
-                    partNumber,
-                    region);
-            });
+            // Its files are found by ONE read of its board file (code review, 2026-11-04: a chip with 40
+            // baselines parsed it 40 times under the wait).
+            var listings = new BoardFileListings();
+
+            return await BusyOverlay.RunLocalAsync<ComponentCloneSource?>(this, CrtWaitWording.ReadingOtherBoard, async () =>
+                await TabDrafts.ReadOtherBoardAsync(entry, path, published, withFiles: true) is { } read
+                    ? new ComponentCloneSource(entry.ToString(), read.Board, read.Files, name => DraftFileResolver.ResolveWithSource(dataRoot, string.Empty, name, identity, listings)?.FullPath)
+                    : null);
+        }
 
         // ###########################################################################################
         // "Also on other boards": the components with `partNumber` ("" for none to look for) on the
@@ -494,14 +538,9 @@ namespace CRT
             return any;
         }
 
-        // For tests, in place of Main: another region picked on top of a component's pages.
-        internal Action<string>? PickRegionOverrideForTests { get; set; }
-
         // ###########################################################################################
-        // The region CRT shows, from the switch under the component list: the component list here and
-        // what is open on the right follow. They read the region when something opened, so until
-        // 2026-11-01 they stayed on the old one - harmless with no switch of their own, and two switches
-        // saying different things with one.
+        // The region CRT shows, from the buttons under its component list: the list and what is open on
+        // the right follow.
         // ###########################################################################################
         internal void UseRegion(string? region)
         {
@@ -509,21 +548,6 @@ namespace CRT
             this.ComponentPane.UseRegion(this.thisCurrentRegion);
             this.ShowComponents();
             this.ShowNavSelection();
-        }
-
-        // The switch on top of a component's pages is the one under the component list: all of CRT shows
-        // the region picked.
-        private void PickRegion(string region)
-        {
-            this.UseRegion(region);
-
-            if (this.PickRegionOverrideForTests is { } pick)
-            {
-                pick(region);
-                return;
-            }
-
-            this.thisMainWindow?.PickRegion(region);
         }
 
         // For tests, in place of Main: showing a component on the board (whether the board on screen
@@ -607,8 +631,7 @@ namespace CRT
         // UI thread (ReadBoardKiCadAsync - KiCadProjectLoader keeps its parse), handed to the part it
         // was read for - `ask`, the pane's numbered ask, so an older read ending last is not taken.
         // None for a board without KiCad data. With them, which are a side of the board
-        // (BoardKiCadFacts.BoardViewsOf) - a card says what comes next on such
-        // a picture (2026-11-01).
+        // (BoardKiCadFacts.BoardViewsOf) - a blank trace color is drawn otherwise on a schematic sheet.
         // ###########################################################################################
         private async Task LoadKiCadViewsAsync(int ask)
         {
@@ -763,7 +786,15 @@ namespace CRT
             // (its KiCad views, its nets) is handed over only while it is still open on this board,
             // and a read done at once was otherwise dropped as being for no pane.
             this.thisComponentEntry = entry;
+            this.thisNoComponentPage = null;
             show(session, published, publishedBoardFile);
+
+            // Something with a table of its own opened here is the "UI" view, however it was asked for
+            // ("Edit component" on a component's popup, a page's own button).
+            if (this.EntryOpen() is not { } opened || ContributeEntries.TableOf(opened) is not null)
+            {
+                this.thisTableMode = false;
+            }
 
             // The draft's header follows the session now open.
             this.RefreshDrafts();
@@ -987,7 +1018,7 @@ namespace CRT
         // is held in memory whatever is open: its credits' rows offered before Submit, with nothing open,
         // were not counted until the board was next read (code review, 2026-11-02).
         // ###########################################################################################
-        private BoardData? BoardForList()
+        internal BoardData? BoardForList()
         {
             if (this.thisCurrentEntry is { } entry &&
                 (entry.IsDraftOnly || this.IsComponentOpenFor(entry) || this.IsTableOpenFor(entry)) &&

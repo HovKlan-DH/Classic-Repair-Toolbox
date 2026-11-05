@@ -7,7 +7,7 @@
 	     (NewBoardWindow) and the Contribute tab's "Board name" (BoardNamePanel). -->
 	<StackPanel Spacing="4">
 		<TextBlock Text="Manufacturer" FontWeight="SemiBold" />
-		<TextBlock Text="The company that made it, for example Commodore. This becomes the top folder your board is stored in."
+		<TextBlock Text="The company that made it, for example &quot;Commodore&quot;. This becomes the top folder your board is stored in."
 				   TextWrapping="Wrap"
 				   FontSize="11"
 				   Opacity="0.75"
@@ -26,7 +26,7 @@
 		</StackPanel>
 
 		<TextBlock Text="Hardware" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<TextBlock Text="The machine itself, as CRT's hardware list names it - for example Commodore 64 or Amiga 500."
+		<TextBlock Text="The machine itself, as CRT's hardware list names it - for example &quot;Commodore 64&quot; or &quot;Amiga 500&quot;."
 				   TextWrapping="Wrap"
 				   FontSize="11"
 				   Opacity="0.75"
@@ -39,7 +39,7 @@
 		</StackPanel>
 
 		<TextBlock Text="Board" FontWeight="SemiBold" Margin="0,10,0,0" />
-		<TextBlock Text="The board revision, for example 250407. If you do not know it, use something that identifies the board to you."
+		<TextBlock Text="The board revision, for example &quot;250407&quot;. If you do not know it, use something that identifies the board to you."
 				   TextWrapping="Wrap"
 				   FontSize="11"
 				   Opacity="0.75"

@@ -5,14 +5,12 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // WHAT EACH EDITOR'S CHANGE IS CALLED IN A DRAFT'S HISTORY (DraftSession's step descriptions,
-    // CRT 4.0 step 1, 2026-10-25) - "Undone: Changes to [U8]." on the table's status line now, the
+    // CRT 4.0 step 1, 2026-10-25) - "Undone: [U8] deleted." on the table's status line now, the
     // draft's Undo and Redo later. One place, so a change reads the same whichever screen undoes it.
     // The table's own steps are BoardTableSessionWording.Step.
     // ###########################################################################################
     public static class DraftStepWording
     {
-        public static string ComponentSaved(string label) => $"Changes to [{label}]";
-
         public static string ComponentDeleted(string label) => $"[{label}] deleted";
 
         // A new component, from the component pane's "Add component" (slice 3c).
@@ -61,8 +59,11 @@ namespace Handlers.DataHandling
                 ? $"1 component on [{picture}] moved with its KiCad alignment"
                 : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components on [{picture}] moved with their KiCad alignment";
 
-        // "Copy from another board" (slice 5) - what the component took, and from where.
+        // "Also on other boards" (slice 5) - what the component took, and from where.
         public static string ComponentCopied(string label, string fromBoard) => $"[{label}] copied from {fromBoard}";
+
+        // "Clone component from another board" (owner request, 2026-11-04).
+        public static string ComponentCloned(string label, string fromLabel, string fromBoard) => $"[{label}] cloned from [{fromLabel}] of {fromBoard}";
 
         // "Also on other boards" for files - the files another board's draft took, by their row names.
         public static string FilesCopied(IReadOnlyList<string> rowNames, string fromBoard) =>

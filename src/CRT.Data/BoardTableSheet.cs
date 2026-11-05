@@ -580,7 +580,8 @@ namespace Handlers.DataHandling
             BoardTableCell anchor,
             IReadOnlyList<IReadOnlyList<string>> block,
             IReadOnlyList<BoardTableRow> shownRows,
-            bool mayAddRows)
+            bool mayAddRows,
+            IReadOnlyList<int>? columnsShown = null)
         {
             ArgumentNullException.ThrowIfNull(anchor);
             ArgumentNullException.ThrowIfNull(block);
@@ -591,9 +592,13 @@ namespace Handlers.DataHandling
                 return BoardTablePasteResult.Nothing;
             }
 
-            int column = anchor.ColumnIndex;
+            // The columns the block walks along: those shown, so nothing lands in one nobody can see
+            // (BoardTableSheetParts) - every column of a sheet shown whole.
+            IReadOnlyList<int> columns = columnsShown ?? Enumerable.Range(0, this.Columns.Count).ToList();
+            int firstColumn = Math.Max(0, columns.ToList().IndexOf(anchor.ColumnIndex));
+
             List<IReadOnlyList<string>> rows = block.ToList();
-            bool headingsLeftOut = rows.Count > 1 && this.IsHeadingRow(rows[0], column);
+            bool headingsLeftOut = rows.Count > 1 && this.IsHeadingRow(rows[0], columns, firstColumn);
 
             if (headingsLeftOut)
             {
@@ -610,7 +615,7 @@ namespace Handlers.DataHandling
             int missing = rows.Count - targets.Count;
             int rowsAdded = mayAddRows ? missing : 0;
             int widest = rows.Count == 0 ? 0 : rows.Max(row => row.Count);
-            int fitting = Math.Min(widest, this.Columns.Count - column);
+            int fitting = Math.Min(widest, columns.Count - firstColumn);
 
             int WriteRows(int from, int to)
             {
@@ -620,7 +625,7 @@ namespace Handlers.DataHandling
                 {
                     for (int j = 0; j < Math.Min(rows[i].Count, fitting); j++)
                     {
-                        written += BoardTableSheet.Write(targets[i].Cells[column + j], rows[i][j]) ? 1 : 0;
+                        written += BoardTableSheet.Write(targets[i].Cells[columns[firstColumn + j]], rows[i][j]) ? 1 : 0;
                     }
                 }
 
@@ -641,7 +646,7 @@ namespace Handlers.DataHandling
 
             return new BoardTablePasteResult(
                 targets,
-                column,
+                anchor.ColumnIndex,
                 fitting,
                 changed,
                 rowsAdded,
@@ -807,7 +812,7 @@ namespace Handlers.DataHandling
 
         // Whether a pasted row is this sheet's column headings from `fromColumn` on: every cell
         // with text in it names the column it would land in (ignoring capitals), and one does.
-        private bool IsHeadingRow(IReadOnlyList<string> row, int fromColumn)
+        private bool IsHeadingRow(IReadOnlyList<string> row, IReadOnlyList<int> columns, int fromColumn)
         {
             bool named = false;
 
@@ -820,8 +825,8 @@ namespace Handlers.DataHandling
                     continue;
                 }
 
-                if (fromColumn + j >= this.Columns.Count ||
-                    !string.Equals(text, this.Columns[fromColumn + j], StringComparison.OrdinalIgnoreCase))
+                if (fromColumn + j >= columns.Count ||
+                    !string.Equals(text, this.Columns[columns[fromColumn + j]], StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }

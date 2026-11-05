@@ -49,13 +49,14 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // COPY FROM ANOTHER BOARD (CRT 4.0 step 2, slice 5 - the plan: "Copy from another board pulls data
-    // across for a part with the same part number").
+    // WHAT "ALSO ON OTHER BOARDS" PUTS ON THE SAME PART ELSEWHERE (CRT 4.0 step 2, slice 5; it was also
+    // "Copy from another board" until 2026-11-04 - owner request: ComponentClone took that over, picked by
+    // hardware, board and component).
     //
     // A chip is the same chip on every board it sits on: its case, its pins and what can replace it. So
-    // the component pane offers the components of the other boards on this machine with the SAME PART
+    // the component pane finds the components of the other boards on this machine with the SAME PART
     // NUMBER (trimmed, capitals ignored - a component without one matches nothing), and copies what is
-    // picked into the component shown, as ONE step:
+    // picked into the component named, as ONE step:
     //
     //   - the package and the short description - each a field set;
     //   - the pins, the replacement parts and the links - the component's own in the region shown

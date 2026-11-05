@@ -18,10 +18,10 @@ namespace CRT
     // of the same draft").
     //
     // Owns: the board the tab is about - the one shown in CRT's drop-down lists (ShowBoard, from
-    // Main); its header - the draft's own row, or what the board is while it has no draft - with "Table
-    // view" at its end; the left column - the board's parts with their counts (ContributeBoardParts),
-    // and below them its components with a search, the draft's "Draft" mark and "Add component" -
-    // hidden while the table is open; and "My drafts", which shows the board picked, everywhere in CRT.
+    // Main); its header - the draft's own row, or what the board is while it has no draft - with "UI" and
+    // "Table" at its end; the left column's parts with their counts (ContributeBoardParts - its entries
+    // are TabDrafts.Entries.cs) and "Add component"; and "My drafts", which shows the board picked,
+    // everywhere in CRT.
     //
     // *** A FIRST CHANGE MAKES THE DRAFT. *** Every action on the left works on the board's draft,
     // and on a board with none it makes one first (Main.EnsureDraftAsync - the published file
@@ -71,10 +71,13 @@ namespace CRT
 
             bool anotherBoard = entry is null || this.thisCurrentEntry is null || !TabDrafts.SameBoard(entry, this.thisCurrentEntry);
 
-            // "Board name" is a view of the board shown - another one's page is no use.
+            // "Board name" is a view of the board shown - another one's page is no use - and the component
+            // picked was one of its.
             if (anotherBoard)
             {
                 this.thisBoardNamePicked = false;
+                this.thisNoComponentPage = null;
+                this.thisPickedComponent = string.Empty;
             }
 
             this.thisCurrentEntry = entry;
@@ -154,8 +157,8 @@ namespace CRT
 
         // ###########################################################################################
         // *** A DRAFT MADE ONLY TO OPEN SOMETHING ON THE BOARD GOES AGAIN when that closes with nothing
-        // in it (code review, 2026-10-26). *** Opening a component - "Edit this component" is on
-        // everybody's right-click menu - a board part or the table makes the board's draft first
+        // in it (code review, 2026-10-26). *** Opening a component - "Edit component" is on everybody's
+        // popup - a board part or the table makes the board's draft first
         // (OnCurrentDraftAsync); looked at and closed, it stayed - the tab's title red, an empty draft in
         // "My drafts". Only a draft such an opening made this run, with nothing waiting to be saved, no
         // change against the published board and nothing else open on it - never a new board's.
@@ -398,7 +401,7 @@ namespace CRT
 
         // Board status shows while nothing else is open on the right - ONE thing there at a time.
         private bool NothingElseOpenOnTheRight =>
-            !this.IsTableOpen && !this.IsComponentOpen && !this.IsKiCadOpen && !this.thisBoardNamePicked;
+            !this.IsTableOpen && !this.IsComponentOpen && !this.IsKiCadOpen && !this.thisBoardNamePicked && this.thisNoComponentPage is null;
 
         // ###########################################################################################
         // Everything the workspace shows, read again: the header, the left column, "My drafts".
@@ -414,13 +417,12 @@ namespace CRT
 
             bool hasBoard = this.thisCurrentBoard is not null;
             this.WorkspaceNav.IsEnabled = hasBoard;
-            this.TableViewButton.IsEnabled = hasBoard;
+            this.ViewSwitch.IsEnabled = hasBoard;
             this.ComponentPane.IsVisible = !this.IsTableOpen && this.IsComponentOpen;
             this.KiCadPanelHost.IsVisible = !this.IsTableOpen && !this.IsComponentOpen && this.IsKiCadOpen;
             this.BoardNamePanel.IsVisible = this.thisBoardNamePicked && !this.IsTableOpen && !this.IsComponentOpen && !this.IsKiCadOpen;
+            this.ShowNoComponentPage();
             this.ShowStartPanel(this.NothingElseOpenOnTheRight);
-            this.ShowWorkspaceColumns();
-            this.TableViewButton.Content = this.thisCurrentEntry is { } entry && this.IsTableOpenFor(entry) ? "Close table view" : "Table view";
 
             string revision = this.thisCurrentBoard?.RevisionDate?.Trim() ?? string.Empty;
             this.PublishedOnText.Text = revision.Length == 0 ? string.Empty : $"The board's data was last published on {revision}.";
@@ -428,8 +430,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The header: the draft's row of the board the table is open on, else of the board shown -
-        // or, with no draft, what the board is and that the first change makes one.
+        // The header: the draft's row of the board the table is open on, else of the board shown - and
+        // the tab's top line, naming that board.
         // ###########################################################################################
         private void ShowHeader()
         {
@@ -447,7 +449,6 @@ namespace CRT
             }
 
             this.CurrentDraftRow.IsVisible = row is not null;
-            this.NoDraftPanel.IsVisible = row is null;
             this.HeaderPanel.Classes.Set("hasDraft", row is not null);
 
             // The toolbar's buttons act on the row shown - the same buttons, only their context moves,
@@ -464,15 +465,33 @@ namespace CRT
             this.LocalDraftNotice.IsVisible = row is not null;
             this.LocalDraftNoticeText.Text = ContributeBoardParts.LocalDraftNotice(isNewBoard: headerEntry?.IsDraftOnly == true);
 
-            this.NoDraftText.Text = ContributeBoardParts.NoDraftLine(hasBoard: headerEntry is not null);
+            this.NoBoardText.Text = ContributeBoardParts.NoBoardLine;
+            this.NoBoardText.IsVisible = headerEntry is null;
+
+            Handlers.Theming.BoldRuns.ShowMarked(this.TopLineText, ContributeBoardParts.TopLine(headerEntry?.HardwareName, headerEntry?.BoardName));
+        }
+
+        internal string TopLineForTests => Handlers.Theming.BoldRuns.TextOf(this.TopLineText);
+
+        // A component's page with no component picked: where to pick one.
+        private void ShowNoComponentPage()
+        {
+            bool shown = this.thisNoComponentPage is not null && !this.IsTableOpen && !this.IsComponentOpen && !this.IsKiCadOpen && !this.thisBoardNamePicked;
+
+            this.NoComponentPanel.IsVisible = shown;
+
+            if (shown && this.thisNoComponentPage is { } page)
+            {
+                this.NoComponentTitle.Text = ContributeBoardParts.NoComponentTitle(page);
+                this.NoComponentText.Text = ContributeBoardParts.NoComponentPicked(page);
+            }
         }
 
         internal bool IsLocalDraftNoticeShownForTests => this.LocalDraftNotice.IsVisible;
 
         internal string LocalDraftNoticeForTests => this.LocalDraftNoticeText.Text ?? string.Empty;
 
-        // The board's parts on the left, each with how many it holds - the components counted by
-        // ShowComponents, as the list shows them.
+        // The board's parts on the left, each with how many it holds.
         private void ShowBoardParts()
         {
             ContributeBoardParts parts = ContributeBoardParts.Of(this.BoardForList());
@@ -494,7 +513,7 @@ namespace CRT
         // when it has one (its session's list, and a file copied in and not listed yet), else the
         // published board's. Read off the UI thread - a board file is parsed for its list - and shown
         // when it arrives, only while the board it was read for is still the one shown; the last count
-        // stays meanwhile for that board, and "none" is not said before it is known.
+        // stays meanwhile for that board, and "0" is not said before it is known.
         // ###########################################################################################
         private string? thisKiCadCountBoard;
 
@@ -610,41 +629,156 @@ namespace CRT
         // How many times the KiCad files were counted - for a test.
         internal int KiCadCountsForTests { get; private set; }
 
-        // The components the list shows - ONE list for the tab's lifetime, changed in place.
+        // ###########################################################################################
+        // THE LISTS IT PICKS COMPONENTS IN STAND ON THE FAR LEFT (owner request, 2026-11-03; Main has them, in
+        // place of the other tabs' while this one is shown - Main.ContributeLists.cs). What they show is held
+        // here, as only this tab knows the draft as it is being edited: ONE collection each for the tab's
+        // lifetime, changed in place.
+        // ###########################################################################################
         private readonly ObservableCollection<ComponentListItem> thisComponentItems = new();
+
+        private readonly ObservableCollection<string> thisCategoryItems = new();
+
+        // The list on the far left - null for a tab a test builds until it hands it one.
+        private ListBox? thisComponentList;
+
+        // What narrows the list: the categories unticked, and the words typed over it (Main keeps them per
+        // board - Main.ContributeLists.cs).
+        private HashSet<string> thisCategoriesUnticked = new(StringComparer.OrdinalIgnoreCase);
+
+        private string thisComponentSearch = string.Empty;
 
         // True while the list's selection is set from code, to follow the pane - no pick then.
         private bool thisFollowingComponentSelection;
 
+        internal ObservableCollection<ComponentListItem> ComponentItems => this.thisComponentItems;
+
+        internal ObservableCollection<string> CategoryItems => this.thisCategoryItems;
+
+        // The lists were read again - whoever shows them follows what else hangs on the board.
+        internal event EventHandler? ComponentListsShown;
+
         // ###########################################################################################
-        // The components of the board shown in the region shown - the list on CRT's left with its
-        // "drafted" mark, by the one rule that builds it (ComponentListBuilder) - narrowed by the
-        // search box's words. With the component pane or the table open, the draft as they left it
-        // (BoardForList), so a name typed in the pane is in the list at once.
+        // The list components are picked in: a pick in it opens the component, and a key moving its selection
+        // waits for the keys to pause (OnComponentsListSelectionChanged).
+        // ###########################################################################################
+        internal void UseComponentList(ListBox? list)
+        {
+            this.thisComponentKeyTimer?.Stop();
+
+            if (this.thisComponentList is { } before)
+            {
+                before.SelectionChanged -= this.OnComponentsListSelectionChanged;
+                before.Tapped -= this.OnComponentsListTapped;
+                before.RemoveHandler(InputElement.KeyDownEvent, this.OnComponentsListKeyDown);
+                before.RemoveHandler(InputElement.KeyDownEvent, this.OnComponentsListKeyHandled);
+            }
+
+            this.thisComponentList = list;
+
+            if (list is not null)
+            {
+                list.SelectionChanged += this.OnComponentsListSelectionChanged;
+                list.Tapped += this.OnComponentsListTapped;
+                list.AddHandler(InputElement.KeyDownEvent, this.OnComponentsListKeyDown, RoutingStrategies.Tunnel);
+                list.AddHandler(InputElement.KeyDownEvent, this.OnComponentsListKeyHandled, RoutingStrategies.Bubble, handledEventsToo: true);
+
+                this.ShowComponents();
+                this.ShowNavSelection();
+            }
+        }
+
+        // The categories unticked and the words typed over the list, as they now read. The third thing that
+        // narrows it, "With issues", is the tab's own (TabDrafts.Problems.cs).
+        internal void UseComponentFilter(IReadOnlyCollection<string> unticked, string search)
+        {
+            this.KeepComponentFilter(unticked, search);
+
+            this.ShowComponents();
+            this.ShowNavSelection();
+        }
+
+        // The same for a board about to be shown, which reads the list itself (ShowBoard).
+        internal void KeepComponentFilter(IReadOnlyCollection<string> unticked, string search)
+        {
+            this.thisCategoriesUnticked = new HashSet<string>(unticked, StringComparer.OrdinalIgnoreCase);
+            this.thisComponentSearch = search ?? string.Empty;
+        }
+
+        // ###########################################################################################
+        // The categories and the components of the board shown in the region shown - the list on CRT's
+        // left with its "drafted" mark, by the one rule that builds it (ComponentListBuilder) - narrowed by
+        // the categories unticked and the words typed. With the component pane or the table open, the draft
+        // as they left it (BoardForList), so a name typed in the pane is in the list at once.
         //
         // *** CHANGED IN PLACE (InPlaceList.Sync), never a new list: *** this runs after every save
         // of the drafts list, and a list replaced under the pointer scrolled back to its top and let
         // go of its selection.
+        //
+        // *** NEVER INSIDE ITSELF: *** a category picked that goes from the list is a selection changed while
+        // the list is still being changed, so whoever shows the lists asks IsReadingComponentLists - that is
+        // nobody's choice - and the list's own selection is thisFollowingComponentSelection, the box's
+        // thisFollowingIssuesBox.
         // ###########################################################################################
+        private bool thisShowingComponents;
+
+        internal bool IsReadingComponentLists => this.thisShowingComponents;
+
         private void ShowComponents()
         {
+            this.thisShowingComponents = true;
+
+            try
+            {
+                this.ReadComponentLists();
+            }
+            finally
+            {
+                this.thisShowingComponents = false;
+            }
+
+            this.ComponentListsShown?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void ReadComponentLists()
+        {
             BoardData? board = this.BoardForList();
-            string search = this.ComponentSearchBox.Text ?? string.Empty;
-            IReadOnlySet<string>? drafted = this.DraftedLabelsForList();
 
-            // Built once, then narrowed by the search's own rule - the count is of them all.
-            List<ComponentListItem> all = board is null
+            // The list can be narrowed by what the checks found (TabDrafts.Problems.cs).
+            this.PlaceProblems();
+            this.LetGoOfIssuesTickWithNoIssues();
+
+            List<ComponentListItem> items = board is null
                 ? []
-                : ComponentListBuilder.BuildComponentItems(board, this.thisCurrentRegion, categoryFilter: null, string.Empty, drafted);
+                : this.NarrowedToIssues(ComponentListBuilder.BuildComponentItems(board, this.thisCurrentRegion, this.CategoriesTicked(board), this.thisComponentSearch, this.DraftedLabelsForList()));
 
-            List<ComponentListItem> items = string.IsNullOrWhiteSpace(search)
-                ? all
-                : all.Where(item => ComponentListBuilder.MatchesSearch(item.DisplayText, search)).ToList();
+            // ###########################################################################################
+            // *** THE LIST COMES BACK TO THE SELECTION ONCE, NOT ROW BY ROW (owner report, 2026-11-04: "some
+            // kind of slow scroll behaviour, where it populates the list and scrolls to the same component
+            // afterwards"). *** Every row put in or taken out above the selection moves its index, and the
+            // list by itself asks to be scrolled to each index in turn, posted, a layout pass apiece: 392
+            // scrolls for 399 rows, seen as the list scrolling down slowly. Off while it changes, then once -
+            // only when the selection moved at all, or a save below it would pull the list back to it.
+            // ###########################################################################################
+            ListBox? list = this.thisComponentList;
+            int selectedWas = list?.SelectedIndex ?? -1;
+            bool scrollsItself = list?.AutoScrollToSelectedItem == true;
+
+            if (list is not null)
+            {
+                list.AutoScrollToSelectedItem = false;
+            }
 
             this.thisFollowingComponentSelection = true;
 
             try
             {
+                InPlaceList.Sync(
+                    this.thisCategoryItems,
+                    board is null ? [] : ComponentListBuilder.BuildDistinctCategories(board),
+                    (shown, wanted) => string.Equals(shown, wanted, StringComparison.Ordinal),
+                    wanted => wanted);
+
                 InPlaceList.Sync(
                     this.thisComponentItems,
                     items,
@@ -653,77 +787,90 @@ namespace CRT
                                        string.Equals(shown.SelectionKey, wanted.SelectionKey, StringComparison.Ordinal) &&
                                        shown.IsDrafted == wanted.IsDrafted,
                     wanted => wanted,
-                    keep: this.ComponentsListBox.SelectedItem as ComponentListItem);
+                    keep: this.thisComponentList?.SelectedItem as ComponentListItem);
             }
             finally
             {
                 this.thisFollowingComponentSelection = false;
+
+                if (list is not null)
+                {
+                    list.AutoScrollToSelectedItem = scrollsItself;
+                }
             }
 
-            this.ComponentsCountText.Text = ContributeBoardParts.CountText(all.Count);
+            if (list is { SelectedIndex: >= 0 } && list.SelectedIndex != selectedWas)
+            {
+                list.ScrollIntoView(list.SelectedIndex);
+            }
 
-            this.NoComponentsText.Text = ContributeBoardParts.NoComponentsLine(
-                hasBoard: board is not null,
-                searching: !string.IsNullOrWhiteSpace(search));
-            this.NoComponentsText.IsVisible = items.Count == 0;
+            // A row just made says what the checks found on it too (TabDrafts.Problems.cs).
+            this.ShowProblemsInComponentList();
+            this.ShowIssuesBox();
+        }
+
+        // The categories that let their components through: null for all of them. A component with no
+        // category has no tick that could hide it, and is what has to be found to give it one.
+        private HashSet<string>? CategoriesTicked(BoardData board)
+        {
+            if (this.thisCategoriesUnticked.Count == 0)
+            {
+                return null;
+            }
+
+            var ticked = new HashSet<string>(ComponentListBuilder.BuildDistinctCategories(board), StringComparer.OrdinalIgnoreCase) { string.Empty };
+
+            ticked.ExceptWith(this.thisCategoriesUnticked);
+
+            return ticked;
         }
 
         internal IReadOnlyList<ComponentListItem> ComponentsShownForTests => this.thisComponentItems;
 
-        private void OnComponentSearchChanged(object? sender, TextChangedEventArgs e)
-        {
-            this.ShowComponents();
-            this.ShowNavSelection();
-        }
-
         // ---- which entry of the left column is open ------------------------------------------------
-
-        // The entry of the left column shown selected - the part open in the pane; none while a
-        // component is, which the list below them shows.
-        internal string? SelectedNavEntryForTests =>
-            new[] { this.NameNavButton, this.StatusNavButton, this.RegionsNavButton, this.PicturesNavButton, this.CategoriesNavButton, this.KiCadNavButton, this.SignalsNavButton, this.FilesNavButton, this.LinksNavButton, this.CreditsNavButton }
-                .FirstOrDefault(button => button.Classes.Contains("selected"))?.Name;
 
         // ###########################################################################################
         // THE LEFT COLUMN FOLLOWS WHAT IS OPEN (owner request, 2026-10-29: "Selecting a component will
-        // highlight it as normal, so it is possible to see in list which component is selected"). The
-        // part open in the pane is selected; a component open selects itself in the list below them.
-        // Worked out from the pane every time, never kept beside it, so a part that refused to close (a
-        // schematic image's name it cannot take) or a table that stayed open leaves the column right.
+        // highlight it as normal, so it is possible to see in list which component is selected"). The entry
+        // open is selected (EntryOpen), so a part that refused to close (a schematic image's name it
+        // cannot take) or a table that stayed open leaves the column right; the component picked stays
+        // selected in the list whatever is open beside it (owner request, 2026-11-03).
         // ###########################################################################################
         private void ShowNavSelection()
         {
-            PaneBoardPart? part = this.IsComponentOpen ? this.ComponentPane.BoardPart : null;
-            bool componentOpen = this.IsComponentOpen && part is null;
-            bool kiCadShown = this.IsKiCadOpen && !this.IsComponentOpen && !this.IsTableOpen;
-
             // Anything else open on the right lets "Name" go.
             if (this.IsTableOpen || this.IsComponentOpen || this.IsKiCadOpen)
             {
                 this.thisBoardNamePicked = false;
             }
 
-            TabDrafts.ShowSelected(this.NameNavButton, this.thisBoardNamePicked);
+            this.FollowPickedComponent();
 
-            // "Overview" while it is what the right side shows - nothing else open (2026-10-30).
-            TabDrafts.ShowSelected(this.StatusNavButton, !this.IsTableOpen && !this.IsComponentOpen && !this.IsKiCadOpen && !this.thisBoardNamePicked);
-            TabDrafts.ShowSelected(this.RegionsNavButton, part == PaneBoardPart.Regions);
-            TabDrafts.ShowSelected(this.PicturesNavButton, part == PaneBoardPart.Pictures);
-            TabDrafts.ShowSelected(this.CategoriesNavButton, part == PaneBoardPart.Categories);
-            TabDrafts.ShowSelected(this.KiCadNavButton, kiCadShown);
-            TabDrafts.ShowSelected(this.SignalsNavButton, part == PaneBoardPart.ImportantSignals);
-            TabDrafts.ShowSelected(this.FilesNavButton, part == PaneBoardPart.Files);
-            TabDrafts.ShowSelected(this.LinksNavButton, part == PaneBoardPart.Links);
-            TabDrafts.ShowSelected(this.CreditsNavButton, part == PaneBoardPart.Credits);
+            ContributeEntry? current = this.EntryOpen();
 
-            string label = componentOpen ? this.ComponentPane.Label : string.Empty;
+            foreach ((Button button, ContributeEntry entry) in this.NavEntries())
+            {
+                TabDrafts.ShowSelected(button, entry == current);
+            }
+
+            this.ShowComponentPagesInNav();
+            this.ShowTableEntriesEnabled();
+            this.ShowViewSwitch();
+            this.ShowProblems();
+
+            if (this.thisComponentList is not { } list)
+            {
+                return;
+            }
+
+            string label = this.thisPickedComponent;
             ComponentListItem? selected = label.Length == 0
                 ? null
                 : this.thisComponentItems.FirstOrDefault(item => string.Equals(item.BoardLabel, label, StringComparison.OrdinalIgnoreCase));
 
             // A selection the keys moved, waiting to open, is left where the keys put it - the pane
             // follows it once they pause (OpenKeyPickedComponent).
-            if (ReferenceEquals(this.ComponentsListBox.SelectedItem, selected) || this.thisComponentKeyTimer?.IsEnabled == true)
+            if (ReferenceEquals(list.SelectedItem, selected) || this.thisComponentKeyTimer?.IsEnabled == true)
             {
                 return;
             }
@@ -732,7 +879,7 @@ namespace CRT
 
             try
             {
-                this.ComponentsListBox.SelectedItem = selected;
+                list.SelectedItem = selected;
             }
             finally
             {
@@ -741,30 +888,34 @@ namespace CRT
 
             if (selected is not null)
             {
-                this.ComponentsListBox.ScrollIntoView(selected);
+                list.ScrollIntoView(selected);
             }
         }
 
         private static void ShowSelected(Button button, bool selected) => button.Classes.Set("selected", selected);
 
         // ###########################################################################################
-        // The "Open components" of "Overview": the first component on the right, when none is - the
-        // list below the board's entries is always there, so the keyboard goes to its search too.
+        // The "Open components" of "Overview": the component picked, else the first - and the keyboard to
+        // the filter over the list on the far left.
         // ###########################################################################################
         internal void PickComponents()
         {
-            if (!(this.IsComponentOpen && this.ComponentPane.BoardPart is null) &&
-                this.thisComponentItems.FirstOrDefault() is { } first)
+            ComponentListItem? item =
+                this.thisComponentItems.FirstOrDefault(listed => string.Equals(listed.BoardLabel, this.thisPickedComponent, StringComparison.OrdinalIgnoreCase)) ??
+                this.thisComponentItems.FirstOrDefault();
+
+            if (item is not null)
             {
-                this.OpenPickedComponent(first);
+                this.OpenPickedComponent(item);
             }
 
-            this.ComponentSearchBox.Focus();
+            this.thisMainWindow?.FocusComponentFilter();
         }
 
         // ###########################################################################################
-        // A component picked in the list - opened in the pane. A selection set from code to follow the
-        // pane, or the one already open, opens nothing; the column follows what the pane did either way.
+        // A component picked in the list - opened in the pane on the page it stands on, or with "Table"
+        // picked, gone to on its sheet. A selection set from code to follow the pane, or the one already
+        // open, opens nothing; the column follows what the pane did either way.
         //
         // *** A KEY MOVING THE SELECTION OPENS THE COMPONENT ONLY ONCE THE KEYS PAUSE *** (code review,
         // 2026-10-30): Down five times opened - and saved - each component on the way, every one under
@@ -784,10 +935,9 @@ namespace CRT
         {
             this.thisComponentKeyTimer = new DispatcherTimer { Interval = TabDrafts.ComponentKeyPause };
             this.thisComponentKeyTimer.Tick += (_, _) => this.OpenKeyPickedComponent();
-
-            this.ComponentsListBox.AddHandler(InputElement.KeyDownEvent, this.OnComponentsListKeyDown, RoutingStrategies.Tunnel);
-            this.ComponentsListBox.AddHandler(InputElement.KeyDownEvent, (_, _) => this.thisComponentKeyMoving = false, RoutingStrategies.Bubble, handledEventsToo: true);
         }
+
+        private void OnComponentsListKeyHandled(object? sender, KeyEventArgs e) => this.thisComponentKeyMoving = false;
 
         private void OnComponentsListKeyDown(object? sender, KeyEventArgs e)
         {
@@ -807,7 +957,7 @@ namespace CRT
         {
             this.thisComponentKeyTimer?.Stop();
 
-            if (this.ComponentsListBox.IsKeyboardFocusWithin && this.ComponentsListBox.SelectedItem is ComponentListItem item)
+            if (this.thisComponentList is { IsKeyboardFocusWithin: true, SelectedItem: ComponentListItem item })
             {
                 this.OpenPickedComponent(item);
                 return;
@@ -819,7 +969,7 @@ namespace CRT
         private void OnComponentsListSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (this.thisFollowingComponentSelection ||
-                this.ComponentsListBox.SelectedItem is not ComponentListItem item ||
+                this.thisComponentList?.SelectedItem is not ComponentListItem item ||
                 item.BoardLabel.Length == 0)
             {
                 return;
@@ -843,22 +993,72 @@ namespace CRT
                 return;
             }
 
-            if (this.IsComponentOpen && this.ComponentPane.BoardPart is null &&
-                string.Equals(this.ComponentPane.Label, item.BoardLabel, StringComparison.OrdinalIgnoreCase))
+            // The list stands outside the tab, so "CRT has to be updated" over the tab does not cover it.
+            if (this.IsUpdateRequiredShown)
+            {
+                this.ShowNavSelection();
+                return;
+            }
+
+            string label = item.BoardLabel;
+
+            this.thisPickedComponent = label;
+
+            // One click is a selection changed and then a tap, each coming here - in the table too (code
+            // review, 2026-11-04: the table was read and built twice).
+            if (string.Equals(this.thisOpeningComponent, label, StringComparison.OrdinalIgnoreCase) ||
+                (!this.thisTableMode && this.IsPaneOnComponent(label)))
             {
                 return;
             }
 
+            this.thisOpeningComponent = label;
+
             this.RunGuarded(async () =>
             {
-                await this.OpenComponentAsync(item.BoardLabel);
+                try
+                {
+                    await this.OpenPickedInTheViewPickedAsync(label);
+                }
+                finally
+                {
+                    this.thisOpeningComponent = null;
+                }
+
                 this.ShowNavSelection();
             }, "Open component");
         }
 
-        // A component picked in the list, as a click on it picks it - for a test.
-        internal void PickComponentForTests(string label) =>
-            this.ComponentsListBox.SelectedItem = this.thisComponentItems.First(item => string.Equals(item.BoardLabel, label, StringComparison.OrdinalIgnoreCase));
+        private Task OpenPickedInTheViewPickedAsync(string label)
+        {
+            if (!this.thisTableMode)
+            {
+                return this.OpenComponentAsync(label);
+            }
+
+            ContributeEntry entry = this.EntryOpen() is { } shown && ContributeEntries.PageOf(shown) is not null
+                ? shown
+                : ContributeEntries.OfPage(this.ComponentPane.Page);
+
+            return this.ShowEntryInTableAsync(entry, takeFocus: false);
+        }
+
+        // A component picked in the list, as a click on it picks it - for a test, whose tab has no list unless
+        // it hands it one.
+        internal void PickComponentForTests(string label)
+        {
+            ComponentListItem item = this.thisComponentItems.First(item => string.Equals(item.BoardLabel, label, StringComparison.OrdinalIgnoreCase));
+
+            // Already selected, a click changes no selection - and is what opens it again.
+            if (this.thisComponentList is { } list && !ReferenceEquals(list.SelectedItem, item))
+            {
+                list.SelectedItem = item;
+            }
+            else
+            {
+                this.OpenPickedComponent(item);
+            }
+        }
 
         // ---- "My drafts" --------------------------------------------------------------------------
 
@@ -950,19 +1150,19 @@ namespace CRT
             this.LetGoOfDraftMadeOnlyToLook(entry);
         }
 
-        // The table view on one of its sheets - a board part the plan's screens are not built for yet.
+        // A sheet's table - "Show in the table" under the problems found on it - never a sheet in two, as
+        // "Components" has no such button (BoardStatusPage.WithProblemsOf). The left column follows
+        // (TabDrafts.Entries.cs).
         internal Task ShowTableOnSheetAsync(string sheetName) =>
             this.OnCurrentDraftAsync(async entry =>
             {
                 await this.ShowTableAsync(entry);
-                this.TableEditor.SelectSheetNamed(sheetName);
-            });
 
-        // "Table view", or "Close table view" while it is open on this board.
-        internal Task ToggleTableViewAsync() =>
-            this.thisCurrentEntry is { } entry && this.IsTableOpenFor(entry)
-                ? this.CloseTableAsync()
-                : this.OnCurrentDraftAsync(this.ShowTableAsync);
+                if (this.IsTableOpenFor(entry))
+                {
+                    this.TableEditor.ShowSheetPart(sheetName, BoardTableSheetPart.Whole);
+                }
+            });
 
         // ###########################################################################################
         // "BOARD STATUS" (owner request, 2026-10-30: the start page "as a new menu item in Board contents
@@ -970,11 +1170,9 @@ namespace CRT
         // what it holds saved as it goes; a schematic image's name it cannot take keeps the Pictures part
         // open, the reason under its heading, as the pane's Close did - the components' list closes, and
         // the page is worked out again, so it is up to date whenever it is asked for. "Overview" in the
-        // column and "Board: Overview" over the page since 2026-11-01 (owner request).
+        // column since 2026-11-01, the first entry and the page's headline too since 2026-11-03 (owner
+        // requests).
         // ###########################################################################################
-        private void OnBoardStatusClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(this.ShowBoardStatusAsync, "Board status");
-
         internal async Task ShowBoardStatusAsync()
         {
             // Asked BEFORE anything closes (code review, 2026-10-30): a close shows the page, which
@@ -999,6 +1197,7 @@ namespace CRT
             }
 
             this.thisBoardNamePicked = false;
+            this.thisNoComponentPage = null;
             this.ShowWorkspace();
 
             // Coming back works it out by itself (ShowStartPanel); shown already, it is worked out again.
@@ -1007,41 +1206,6 @@ namespace CRT
                 this.ShowReadiness();
             }
         }
-
-        // The board's schematic images in the pane - added, named, matched to their KiCad views,
-        // ordered, deleted and colored there (slice 4b; step 3 moved the "Schematic images" window in).
-        private void OnPicturesClick(object? sender, RoutedEventArgs e) => this.ManagePictures();
-
-        private void ManagePictures() =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Pictures), "Schematic images");
-
-        // "KiCad data" on the right, in place of a component or a part (TabDrafts.KiCad.cs) - a window
-        // until 2026-10-30.
-        private void OnKiCadClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(this.OpenKiCadAsync, "KiCad data");
-
-        // The board's own lists, in the pane on the right (slice 4a - TabDrafts.Component.cs). Files
-        // and Links are an entry each since 2026-10-29.
-        private void OnImportantSignalsClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.ImportantSignals), "Important signals");
-
-        private void OnRegionsClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Regions), "Regions");
-
-        private void OnCategoriesClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Categories), "Categories");
-
-        private void OnFilesClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Files), "Files");
-
-        private void OnLinksClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Links), "Links");
-
-        private void OnCreditsClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(() => this.OpenBoardPartAsync(PaneBoardPart.Credits), "Credits");
-
-        private void OnTableViewClick(object? sender, RoutedEventArgs e) =>
-            this.RunGuarded(this.ToggleTableViewAsync, "Table view");
 
         // A new component, named in the component pane's form (TabDrafts.Component.cs).
         private void OnAddComponentClick(object? sender, RoutedEventArgs e) =>
@@ -1064,7 +1228,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Why "Table view", a board part or "Add a new board" made no draft - or nothing, to clear
+        // Why "Table", a board part or "Add a new board" made no draft - or nothing, to clear
         // it. Said about the board it was pressed on: a new board shown clears it.
         // ###########################################################################################
         internal void ShowDraftProblem(string? problem)

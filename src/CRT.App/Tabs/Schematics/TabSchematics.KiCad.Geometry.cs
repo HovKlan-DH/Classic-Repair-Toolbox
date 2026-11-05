@@ -108,67 +108,10 @@ public partial class TabSchematics
     private Rect GetKiCadPcbWorldBounds(KiCadPcb pcb) => KiCadFootprintMarks.PcbWorldBounds(pcb);
 
     // ###########################################################################################
-    // Computes a world bounding box for schematic wires, polylines, and net labels.
+    // The world bounding box of a schematic sheet - KiCadFootprintMarks' rule, so a component's
+    // rectangle lands where this tab draws the wires, as on a side of the board.
     // ###########################################################################################
-    private Rect GetKiCadSchematicWorldBounds(KiCadSchematic schematic)
-    {
-        bool hasValue = false;
-        double minX = 0;
-        double minY = 0;
-        double maxX = 0;
-        double maxY = 0;
-
-        void Include(double x, double y)
-        {
-            if (!hasValue)
-            {
-                minX = maxX = x;
-                minY = maxY = y;
-                hasValue = true;
-                return;
-            }
-
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-
-        foreach (var wire in schematic.Wires)
-        {
-            foreach (var point in wire.Points)
-            {
-                Include(point.X, point.Y);
-            }
-        }
-
-        foreach (var polyline in schematic.Polylines)
-        {
-            foreach (var point in polyline.Points)
-            {
-                Include(point.X, point.Y);
-            }
-        }
-
-        foreach (var label in schematic.Labels.Local)
-        {
-            if (label.At != null) Include(label.At.X, label.At.Y);
-        }
-
-        foreach (var label in schematic.Labels.Global)
-        {
-            if (label.At != null) Include(label.At.X, label.At.Y);
-        }
-
-        foreach (var label in schematic.Labels.Hierarchical)
-        {
-            if (label.At != null) Include(label.At.X, label.At.Y);
-        }
-
-        return hasValue
-            ? new Rect(minX, minY, Math.Max(0.0001, maxX - minX), Math.Max(0.0001, maxY - minY))
-            : default;
-    }
+    private Rect GetKiCadSchematicWorldBounds(KiCadSchematic schematic) => KiCadFootprintMarks.SheetWorldBounds(schematic);
 
     // ###########################################################################################
     // Samples one quadratic Bézier curve for PCB arc rendering.

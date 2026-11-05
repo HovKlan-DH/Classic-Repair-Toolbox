@@ -16,8 +16,9 @@ namespace Handlers.DataHandling
     //
     // A CAD name is the KiCad VIEW an image's traces are drawn from - the Schematics tab looks for
     // the view whose display name equals it, case-insensitively (ResolveKiCadViewForSchematicName).
-    // So the choices are the project's view names, in the project's own order (the order "CAD names
-    // you can use" lists them in).
+    // So the choices are the project's view names - "Not associated" first, the rest in alphabetical
+    // order (owner request, 2026-11-03; the project's own order until then), its numbers as numbers
+    // so "Sheet 2" comes before "Sheet 10" (NaturalLabelComparer).
     //
     // *** A NAME ANOTHER IMAGE HAS IS LEFT OUT ENTIRELY (owner request, 2026-10-10: "remove the CAD
     // name entirely from the drop-down when it has been selected once, so it will be easier and
@@ -58,7 +59,7 @@ namespace Handlers.DataHandling
                 }
             }
 
-            var choices = new List<SchematicCadNameChoice> { new(string.Empty, SchematicCadNameChoices.NoCadNameLabel) };
+            var names = new List<string>();
             var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (string viewName in viewNames.Select(name => name?.Trim() ?? string.Empty))
@@ -72,14 +73,19 @@ namespace Handlers.DataHandling
 
                 if (isOwn || !heldByOthers.Contains(viewName))
                 {
-                    choices.Add(new SchematicCadNameChoice(viewName, viewName));
+                    names.Add(viewName);
                 }
             }
 
             if (own.Length > 0 && !listed.Contains(own))
             {
-                choices.Add(new SchematicCadNameChoice(own, own));
+                names.Add(own);
             }
+
+            names.Sort(NaturalLabelComparer.Instance);
+
+            var choices = new List<SchematicCadNameChoice> { new(string.Empty, SchematicCadNameChoices.NoCadNameLabel) };
+            choices.AddRange(names.Select(name => new SchematicCadNameChoice(name, name)));
 
             return choices;
         }

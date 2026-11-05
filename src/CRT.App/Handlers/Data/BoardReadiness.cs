@@ -5,11 +5,6 @@ using System.Linq;
 
 namespace Handlers.DataHandling
 {
-    // What is left to do on a board once its KiCad data is in, as the KiCad import's summary says it
-    // (KiCadImportSummary.LeftToDo). NotOnBoard: the components the KiCad data has that the board lacks -
-    // the summary's button adds them.
-    internal sealed record KiCadWorkLeft(bool Match, bool Align, bool Components, int NotOnBoard, bool Mark, bool Signals);
-
     // ###########################################################################################
     // What the board's KiCad data says: the labels of its components - the very ones "Add N from
     // KiCad" adds (KiCadComponentTable: its first PCB file's footprints, no placeholder, logo or
@@ -17,9 +12,8 @@ namespace Handlers.DataHandling
     // side, and its PCB file's name). Not Read: the KiCad files could not be read - no data, never data
     // with nothing in it (code review, 2026-10-26).
     //
-    // For "Board status" (2026-11-01): how many components have a footprint to mark them from (Markable -
-    // none without a PCB file), the parts only the schematic has (OnlyInSchematic - marked by hand), and
-    // the board's nets (Nets).
+    // For "Board status" (2026-11-01): how many components KiCad has a place for to mark them from - a
+    // footprint or a schematic symbol (Markable; 2026-11-04) - and the board's nets (Nets).
     // ###########################################################################################
     internal sealed record BoardKiCadFacts(
         IReadOnlyList<string> References,
@@ -27,7 +21,6 @@ namespace Handlers.DataHandling
         bool Read = true,
         IReadOnlyList<KiCadViewToMatch>? ToMatch = null,
         int Markable = 0,
-        IReadOnlyList<string>? OnlyInSchematic = null,
         KiCadNetChoices? Nets = null)
     {
         public static BoardKiCadFacts Of(KiCadProjectRoot? root)
@@ -51,8 +44,7 @@ namespace Handlers.DataHandling
                 references,
                 views.Select(view => view.Name).ToList(),
                 ToMatch: views,
-                Markable: root.Pcb.Count > 0 ? references.Count : 0,
-                OnlyInSchematic: KiCadComponentTable.OnlyInSchematic(root),
+                Markable: references.Concat(KiCadComponentTable.OnlyInSchematic(root)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
                 Nets: KiCadNetNames.Choices(root.Pcb.SelectMany(pcb => pcb.Nets.List).Select(net => (net.Name, net.NormalizedName, net.IsNoNet))));
         }
 
@@ -102,9 +94,8 @@ namespace Handlers.DataHandling
     internal sealed record BoardGap(BoardGapKind Kind, string Text);
 
     // ###########################################################################################
-    // WHAT A BOARD STILL LACKS ("Board status" says it, BoardStatusPage), AND WHAT IS LEFT TO DO ONCE ITS
-    // KiCad DATA IS IN (the KiCad import's summary says it, KiCadImportSummary.LeftToDo). Worked out from
-    // the board as its draft has it - its rows, its KiCad alignments - and what its KiCad data says.
+    // WHAT A BOARD STILL LACKS ("Board status" says it, BoardStatusPage). Worked out from the board as
+    // its draft has it - its rows, its KiCad alignments - and what its KiCad data says.
     //
     // PURE: the board in, the answer out.
     // ###########################################################################################
@@ -112,46 +103,6 @@ namespace Handlers.DataHandling
     {
         // How many labels a "What's missing" list names before "and N more".
         internal const int ListedAtMost = 8;
-
-        // ###########################################################################################
-        // What is left to do once the KiCad data is in, by what the board holds - never a box ticked:
-        //
-        //   - A PICTURE SHOWS A VIEW once its CAD name is one of the views, and is aligned once it has a
-        //     calibration.
-        //   - ANY PICTURE MATCHED ENDS MATCHING (code review, 2026-10-26): CRT cannot know whether a
-        //     picture shows a view - a photo of the ports shows none - and one such photo left it to do
-        //     for ever.
-        //   - KiCad FILES THAT COULD NOT BE READ ARE NO KiCad DATA AT ALL (code review, 2026-10-26: they
-        //     read as data with nothing in it - "All 0 are on the board", ticked): nothing to match,
-        //     align or pick signals from, and no component is missing from the board for them.
-        // ###########################################################################################
-        public static KiCadWorkLeft WorkLeftAfterKiCad(BoardContent content, BoardKiCadFacts kiCad)
-        {
-            ArgumentNullException.ThrowIfNull(content);
-            ArgumentNullException.ThrowIfNull(kiCad);
-
-            BoardData board = content.Board;
-
-            var views = new HashSet<string>(kiCad.Views.Select(view => view.Trim()), StringComparer.OrdinalIgnoreCase);
-            var calibrated = new HashSet<string>(content.Calibrations.Select(row => row.SchematicName.Trim()), StringComparer.OrdinalIgnoreCase);
-
-            List<BoardSchematicEntry> matched = board.Schematics
-                .Where(row => !string.IsNullOrWhiteSpace(row.SchematicImageFile) && row.CadName?.Trim() is { Length: > 0 } view && views.Contains(view))
-                .ToList();
-
-            int aligned = matched.Count(row => calibrated.Contains(row.SchematicName?.Trim() ?? string.Empty));
-
-            List<string> labels = BoardReadiness.Labels(board);
-            int notOnBoard = BoardReadiness.NotOnBoard(board, kiCad.References);
-
-            return new KiCadWorkLeft(
-                Match: kiCad.Read && matched.Count == 0,
-                Align: kiCad.Read && (matched.Count == 0 || aligned < matched.Count),
-                Components: labels.Count == 0 || notOnBoard > 0,
-                NotOnBoard: notOnBoard,
-                Mark: labels.Count == 0 || BoardReadiness.UnmarkedOf(board, labels).Count > 0,
-                Signals: kiCad.Read && board.KiCadImportantSignals.Count == 0);
-        }
 
         // ###########################################################################################
         // What an existing board still lacks: components with no short description, components marked
@@ -231,22 +182,23 @@ namespace Handlers.DataHandling
                 return "Every component in the KiCad data is on the board already.";
             }
 
-            string components = added.Components == 1 ? "1 component" : $"{BoardReadiness.Count(added.Components)} components";
+            string components = added.Components == 1 ? "<b>1</b> component" : $"<b>{BoardReadiness.Count(added.Components)}</b> components";
             var with = new List<string>();
 
             if (added.WithPins > 0)
             {
-                with.Add($"{BoardReadiness.Count(added.WithPins)} with {(added.WithPins == 1 ? "its" : "their")} pins");
+                with.Add($"- {BoardReadiness.Count(added.WithPins)} with {(added.WithPins == 1 ? "its" : "their")} pins");
             }
 
             if (added.WithDatasheet > 0)
             {
-                with.Add($"{BoardReadiness.Count(added.WithDatasheet)} with a datasheet link");
+                with.Add($"- {BoardReadiness.Count(added.WithDatasheet)} with a datasheet link");
             }
 
+            // A line per kind, the number in bold (owner request, 2026-11-03) - BoldRuns.ShowMarked shows it.
             return with.Count == 0
-                ? $"Added {components} from KiCad."
-                : $"Added {components} from KiCad - {string.Join(", ", with)}.";
+                ? $"Added {components} from KiCad project."
+                : $"Added {components} from KiCad project:\n{string.Join("\n", with)}";
         }
 
         // ###########################################################################################
@@ -293,7 +245,7 @@ namespace Handlers.DataHandling
             ? $"1 {what} has a field it needs left empty - fill it in, or the draft cannot be submitted."
             : $"{BoardReadiness.Count(rows)} {whats} have fields they need left empty - fill them in, or the draft cannot be submitted.";
 
-        public const string NoPicturesGap = "No schematic images yet - photos of both sides and the schematic sheets, which everything else is marked on.";
+        public const string NoPicturesGap = "No schematic images yet - images of both sides and the schematic sheets, which everything else is marked on.";
 
         public const string NoSignalsGap = "No important KiCad signals yet - the signals worth checking first, each lighting up its KiCad net.";
 
@@ -310,8 +262,9 @@ namespace Handlers.DataHandling
         public static string WithoutDescriptionHeading(int count) => $"No short description ({BoardReadiness.Count(count)})";
 
         // The warning "component.no_highlight" is, said once for them all: each component is a button.
-        public static string UnmarkedHeading(int count) =>
-            $"Warning - not marked on any schematic image, so CRT cannot point them out on the board ({BoardReadiness.Count(count)})";
+        public static string UnmarkedHeading(int count) => count == 1
+            ? "The following component is not marked on any schematic image, so CRT cannot point it out on the board:"
+            : $"The following {BoardReadiness.Count(count)} components are not marked on any schematic image, so CRT cannot point them out on the board:";
 
         public static string PinsWithoutBaselineHeading(int count) => $"Pins listed, but no oscilloscope baseline ({BoardReadiness.Count(count)})";
 

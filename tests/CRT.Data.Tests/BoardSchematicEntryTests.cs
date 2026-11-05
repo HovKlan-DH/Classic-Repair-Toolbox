@@ -98,6 +98,15 @@ public sealed class BoardSchematicEntryTests
     }
 
     [Fact]
+    public void A_credit_for_a_renamed_image_keeps_who_is_credited()
+    {
+        AssertCopiesEverythingBut<CreditEntry>(
+            credit => credit.WithSubCategory("PCB top"),
+            nameof(CreditEntry.SubCategory),
+            "PCB top");
+    }
+
+    [Fact]
     public void A_highlight_of_a_relabelled_component_keeps_its_rectangle_and_schematic()
     {
         AssertCopiesEverythingBut<ComponentHighlightEntry>(

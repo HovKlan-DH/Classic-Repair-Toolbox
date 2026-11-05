@@ -45,9 +45,8 @@
 //   TabSchematics.Settings.cs                 Board-level and global setting rows
 //   TabSchematics.PictureTools.cs             "Mark components" and "Align KiCad" started on a
 //                                             picture from the Contribute tab, with their bar
-//                                             (Done/Cancel), and the menu a right-click on a
-//                                             component opens ("Edit this component")
-//   TabSchematics.ViewTools.cs                Panning with the right or middle button and the
+//                                             (Done/Cancel)
+//   TabSchematics.ViewTools.cs               Panning with the right or middle button and the
 //                                             one-time tip saying so, and "Draw trace" - traces
 //                                             drawn and changed only while it is on
 //
@@ -131,7 +130,7 @@ public partial class TabSchematics : UserControl
 
         this.ClearImportantSignalsButton.Click += (_, _) => this.ClearImportantSignalsSelection();
 
-        // The picture tools' bar and the component menu (TabSchematics.PictureTools.cs).
+        // The picture tools' bar (TabSchematics.PictureTools.cs).
         this.WirePictureTools();
 
         this.ConfirmNewLabelEditorBoardLabelButton.Click += (_, _) => this.ConfirmNewLabelEditorPrompt();
@@ -153,6 +152,9 @@ public partial class TabSchematics : UserControl
 
         // The selection stays among the thumbnails (see OnCurrentThumbnailsChanged).
         this.currentThumbnails.CollectionChanged += this.OnCurrentThumbnailsChanged;
+
+        // The dropper's color goes where the flyout's goes (OnTraceColorPickerPropertyChanged).
+        this.TraceColorDropper.Picked += (_, color) => this.SetTraceColorPickerColor(color);
 
         // The thumbnail column is the same gallery the detached window shows.
         this.InlineThumbnailGallery.Initialize(this);
@@ -221,6 +223,10 @@ public partial class TabSchematics : UserControl
             handledEventsToo: true);
 
         UserSettings.InteractiveCadTraceHoverModeChanged += this.OnInteractiveCadTraceHoverModeChanged;
+
+        bool isGlobalSettingsExpanded = UserSettings.SchematicsGlobalSettingsPanelExpanded;
+        this.GlobalSettingsListPanel.IsVisible = isGlobalSettingsExpanded;
+        this.ToggleGlobalSettingsPanelButton.Content = isGlobalSettingsExpanded ? "Collapse" : "Expand";
 
         bool isLabelsExpanded = UserSettings.SchematicsLabelsPanelExpanded;
         this.LabelsListPanel.IsVisible = isLabelsExpanded;
@@ -339,6 +345,14 @@ public partial class TabSchematics : UserControl
 
         this.SchematicsInteractiveCadTraceHoverHoldShiftCheckBox.IsCheckedChanged +=
             this.OnSchematicsInteractiveCadTraceHoverModeChanged;
+
+        this.ToggleGlobalSettingsPanelButton.Click += (s, e) =>
+        {
+            bool willBeExpanded = !this.GlobalSettingsListPanel.IsVisible;
+            this.GlobalSettingsListPanel.IsVisible = willBeExpanded;
+            this.ToggleGlobalSettingsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
+            UserSettings.SchematicsGlobalSettingsPanelExpanded = willBeExpanded;
+        };
 
         this.ToggleLabelsPanelButton.Click += (s, e) =>
         {
@@ -665,7 +679,7 @@ public partial class TabSchematics : UserControl
             return overlayRect.Contains(containerPoint);
         }
 
-        return IsInsideVisibleOverlay(this.GlobalSettingsButton) ||
+        return IsInsideVisibleOverlay(this.GlobalSettingsPanel) ||
                IsInsideVisibleOverlay(this.DrawTraceButton) ||
                IsInsideVisibleOverlay(this.PanHintBorder) ||
                IsInsideVisibleOverlay(this.LabelsPanel) ||
@@ -673,7 +687,6 @@ public partial class TabSchematics : UserControl
                IsInsideVisibleOverlay(this.TracesPanel) ||
                IsInsideVisibleOverlay(this.KiCadNetConnectionsPanel) ||
                IsInsideVisibleOverlay(this.TraceFloatingPalette) ||
-               IsInsideVisibleOverlay(this.SchematicsMenuBorder) ||
                IsInsideVisibleOverlay(this.PictureToolBarBorder) ||
                IsInsideVisibleOverlay(this.SchematicsNewLabelPromptBorder);
     }
@@ -820,7 +833,6 @@ public partial class TabSchematics : UserControl
         this.thisLabelEditorOriginalDragRectangles.Clear();
         this.thisLabelEditorWorkingHighlights.Clear();
         this.UpdateLabelEditorLockState();
-        this.HideSchematicsMenu();
         this.HideNewLabelEditorPrompt();
 
         // Whatever a picture tool asked for was for the board before - once BOTH tools are reset, so

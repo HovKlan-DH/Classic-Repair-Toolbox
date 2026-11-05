@@ -1,6 +1,7 @@
 using Avalonia.Media;
 using Handlers.DataHandling;
 using Handlers.Geometry;
+using System;
 
 namespace ClassicRepairToolbox.Tests;
 
@@ -75,5 +76,92 @@ public sealed class TraceColoursTests
         });
 
         Assert.Equal(TraceColours.Resolve(null), traces);
+    }
+
+    // A new board's image: this side's traces in the Schematic image's color, and in whatever that is
+    // changed to (owner request, 2026-11-03) - a blank row shows DeepSkyBlue beside an IndianRed highlight.
+    [Fact]
+    public void A_new_boards_image_has_its_traces_in_the_schematic_images_color()
+    {
+        BoardSchematicEntry row = new BoardSchematicEntry().WithColours(PictureColours.ForNewBoard);
+
+        Assert.Equal(Colors.IndianRed, TraceColours.Resolve(row).ThisSide);
+        Assert.Equal(Colors.Gold, TraceColours.Resolve(row.WithColours(PictureColours.ForNewBoard with { HighlightColor = "Gold" })).ThisSide);
+    }
+
+    // ###########################################################################################
+    // *** AN OPACITY GIVEN HOLDS FOR THE NET UNDER THE POINTER TOO (owner report, 2026-11-03: "even if
+    // I change the opacity down to 5% ... it uses a solid/100% opacity"). *** Hovering drew a net at 1.0
+    // whatever the card said, and hovering is how most traces are ever seen.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_opacity_given_holds_for_the_net_under_the_pointer(bool hovered)
+    {
+        TraceColours traces = TraceColours.Resolve(new BoardSchematicEntry
+        {
+            TraceHighlightOpacity = "5%",
+            OppositeTraceHighlightOpacity = "5%",
+        });
+
+        Assert.Equal(0.05, traces.ThisSideStroke(hovered), 3);
+        Assert.Equal(0.05, traces.OtherSideStroke(hovered), 3);
+    }
+
+    // Each side by its own column: only the side the row says nothing of stands out under the pointer.
+    [Fact]
+    public void Each_side_goes_by_its_own_column_under_the_pointer()
+    {
+        TraceColours traces = TraceColours.Resolve(new BoardSchematicEntry { OppositeTraceHighlightOpacity = "5%" });
+
+        Assert.Equal(1.0, traces.ThisSideStroke(hovered: true), 3);
+        Assert.Equal(0.05, traces.OtherSideStroke(hovered: true), 3);
+    }
+
+    // Blank, nothing changes: a published board with no opacity of its own hovers as it always did.
+    [Fact]
+    public void With_no_opacity_given_the_net_under_the_pointer_stands_out_as_before()
+    {
+        TraceColours traces = TraceColours.Resolve(null);
+
+        Assert.Equal(1.0, traces.ThisSideStroke(hovered: true), 3);
+        Assert.Equal(1.0, traces.OtherSideStroke(hovered: true), 3);
+        Assert.Equal(0.45, traces.ThisSideStroke(hovered: false), 3);
+        Assert.Equal(0.45, traces.OtherSideStroke(hovered: false), 3);
+
+        Assert.Equal(0.32, traces.ThisSideZoneFill(hovered: true), 3);
+        Assert.Equal(Math.Clamp(0.45 * 0.65, 0.10, 0.38) + 0.12, traces.OtherSideZoneFill(hovered: true), 3);
+        Assert.Equal(Math.Clamp(0.45 * 0.65, 0.10, 0.38), traces.ThisSideZoneFill(hovered: false), 3);
+    }
+
+    // A zone is never stronger than the copper it belongs to - its old 10 % floor was twice 5 % - and
+    // keeps its old strength everywhere else.
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(0.05, 0.05)]
+    [InlineData(0.10, 0.10)]
+    [InlineData(0.20, 0.13)]
+    [InlineData(0.45, 0.2925)]
+    [InlineData(1.0, 0.38)]
+    public void A_zone_is_lighter_than_its_copper(double opacity, double fill)
+    {
+        Assert.Equal(fill, TraceColours.ZoneFill(opacity), 4);
+    }
+
+    // A schematic sheet's wires have always been Orange while blank - and follow the card since
+    // 2026-11-03, when "Traces on this side" changed nothing on a sheet.
+    [Fact]
+    public void A_schematic_sheet_keeps_its_own_blank_colour_and_follows_what_the_card_says()
+    {
+        Assert.Equal(Colors.Orange, TraceColours.Resolve(null, Colors.Orange).ThisSide);
+        Assert.Equal(0.45, TraceColours.Resolve(null, Colors.Orange).ThisSideOpacity, 3);
+
+        TraceColours given = TraceColours.Resolve(
+            new BoardSchematicEntry { TraceHighlightColor = "Red", TraceHighlightOpacity = "5%" },
+            Colors.Orange);
+
+        Assert.Equal(Colors.Red, given.ThisSide);
+        Assert.Equal(0.05, given.ThisSideOpacity, 3);
     }
 }

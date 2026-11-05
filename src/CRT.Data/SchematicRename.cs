@@ -59,6 +59,13 @@ namespace Handlers.DataHandling
     //
     // Names compare trimmed and without regard to capitals, as the checks and the Schematics tab
     // compare them; a change of capitals alone is a rename like any other.
+    //
+    // *** THE CREDIT NAMING THE IMAGE FOLLOWS TOO (owner request, 2026-11-04: "check if the old name exists
+    // in the credits, and then change the name in there also"). *** A credit for an image says
+    // "Schematic image" under "What" and the image's name under "Sub-category" - measured on the 14 live
+    // boards that day, 59 rows, none of any other kind naming an image - so only those: "Oscilloscope
+    // baseline" with "PAL" is no credit for an image someone happens to have called "PAL". Who is
+    // credited stays as it is.
     // ###########################################################################################
     public static class SchematicRename
     {
@@ -123,7 +130,22 @@ namespace Handlers.DataHandling
                     : highlight)
                 .ToList();
 
-            return (board.WithSchematics(schematics).WithComponentHighlights(highlights), true);
+            BoardData renamed = board.WithSchematics(schematics).WithComponentHighlights(highlights);
+
+            return (SchematicRename.WithCreditsFollowing(renamed, oldName, wanted), true);
+        }
+
+        // `board` with each credit for the image `oldName` naming `newName` - the same board with none.
+        private static BoardData WithCreditsFollowing(BoardData board, string oldName, string newName)
+        {
+            bool IsFor(CreditEntry credit) =>
+                string.Equals(credit.Category?.Trim(), CreditSuggestions.SchematicImage, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(credit.SubCategory) &&
+                SchematicRename.SameName(credit.SubCategory, oldName);
+
+            return board.Credits.Exists(IsFor)
+                ? board.WithBoardSections(credits: board.Credits.Select(credit => IsFor(credit) ? credit.WithSubCategory(newName) : credit).ToList())
+                : board;
         }
 
         // ###########################################################################################

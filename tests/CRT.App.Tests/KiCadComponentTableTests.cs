@@ -66,8 +66,12 @@ public sealed class KiCadComponentTableTests
         Assert.Equal(2, counts["Main"]);
         Assert.Equal(0, counts["Nowhere"]);
 
-        // Y1 has no footprint: it can only be marked by hand.
+        // Y1 has no footprint: only a sheet's picture can be marked from it, by its symbol.
         Assert.Equal(["Y1"], KiCadComponentTable.OnlyInSchematic(root));
+
+        // So it counts among what KiCad can mark, once, with those on the PCB (2026-11-04: "need marking by
+        // hand" until then, for what a sheet's alignment now marks).
+        Assert.Equal(KiCadComponentTable.Of(root).Count + 1, BoardKiCadFacts.Of(root).Markable);
 
         Assert.Empty(KiCadComponentTable.CountsByView(null));
         Assert.Empty(KiCadComponentTable.OnlyInSchematic(null));
@@ -133,8 +137,8 @@ public sealed class KiCadComponentTableTests
     {
         Assert.Equal(
             [
-                new KiCadBoardComponent("U4", "2364A", "IC", "DIP-24 wide", "https://archive.org/download/mos_2364_rom_feb_1980/mos_2364_rom_feb_1980.pdf"),
                 new KiCadBoardComponent("C3", ".1", "Capacitor", "", ""),
+                new KiCadBoardComponent("U4", "2364A", "IC", "DIP-24 wide", "https://archive.org/download/mos_2364_rom_feb_1980/mos_2364_rom_feb_1980.pdf"),
             ],
             KiCadComponentTable.Of(Root()));
 

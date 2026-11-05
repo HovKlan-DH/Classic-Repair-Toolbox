@@ -81,8 +81,26 @@ public partial class TabSchematics
         if (this.SuppressThumbnailSelectionChanged && e.Action != NotifyCollectionChangedAction.Reset)
             return;
 
-        this.SelectedThumbnail = null;
+        this.IsThumbnailsChangeUnderway = true;
+
+        try
+        {
+            this.SelectedThumbnail = null;
+        }
+        finally
+        {
+            this.IsThumbnailsChangeUnderway = false;
+        }
     }
+
+    // ###########################################################################################
+    // The selection is going because the thumbnails just changed, and the galleries' lists have not
+    // seen that change yet - they are told after this tab. A list set now reads the tile it lets go
+    // of from the collection as it already is, and throws (owner report, 2026-11-03): the board load
+    // emptying the thumbnails died there, leaving no thumbnails and no picture. So a gallery shows it
+    // once its list has caught up (SchematicsThumbnailGallery.OnOwnerSelectedThumbnailChanged).
+    // ###########################################################################################
+    internal bool IsThumbnailsChangeUnderway { get; private set; }
 
     // The label editor's lock on picking another schematic from the thumbnails, wherever they are
     // shown. Set by UpdateLabelEditorLockState; every gallery follows it, and drops a drag on it.

@@ -288,14 +288,13 @@ public partial class TabSchematics
                 }
                 else if (string.Equals(currentView.Type, "schematic", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (this.thisKiCadProject.SchematicNetPathIndexBySchematicIndex.TryGetValue(currentView.SourceIndex, out var indexByNet))
-                    {
-                        var calibrationNetNames = new HashSet<string>(
-                            indexByNet.Keys.Where(key => !string.IsNullOrWhiteSpace(key)),
-                            StringComparer.OrdinalIgnoreCase);
-
-                        this.RenderKiCadSchematicGeometry(currentView, calibrationNetNames);
-                    }
+                    // ###########################################################################################
+                    // *** EVERY WIRE OF THE SHEET, NAMED OR NOT (owner report, 2026-11-04: "it has no traces in
+                    // the alignment that I can align to"). *** Going by the nets drew only the wires a name
+                    // could be found for, none at all on a sheet of power symbols with no label - and what is
+                    // being lined up is the drawing, whatever its wires are called.
+                    // ###########################################################################################
+                    this.RenderKiCadSchematicGeometry(currentView, new HashSet<string>(StringComparer.OrdinalIgnoreCase), everyWire: true);
                 }
             }
 
@@ -504,8 +503,16 @@ public partial class TabSchematics
             ? "B.Cu"
             : "F.Cu";
 
-        bool showOppositeSideTraces = UserSettings.SchematicsShowOppositeSideTraces;
-        bool showZones = UserSettings.SchematicsShowZones;
+        // Aligning, only the copper of the side being aligned, whatever "Show opposite side traces" says
+        // (owner request, 2026-11-03: "if I am aligning the top PCB, then I only want to see traces from
+        // the top") - the other side's lie over what is being lined up with the picture.
+        bool showOppositeSideTraces = UserSettings.SchematicsShowOppositeSideTraces && !this.thisIsKiCadTraceCalibrationMode;
+
+        // Aligning, no copper pour either, whatever "Show zones" says (owner request, 2026-11-05: "NOT include
+        // any ground plane, as it is hard to align those nets") - a filled area hides the traces under it and
+        // has no edge worth lining up. Measured on the KiCad data at hand, the pours are on "GND" or "Earth" and
+        // on "+5V" too, so this goes by what is drawn, not by the net's name; each net's tracks and pads stay.
+        bool showZones = UserSettings.SchematicsShowZones && !this.thisIsKiCadTraceCalibrationMode;
 
         var primitives = new List<KiCadOverlayPrimitive>();
         var firstPinBrush = this.ResolveThemeBrush("Schematics_FirstPin", new SolidColorBrush(Colors.Orange));
@@ -532,6 +539,8 @@ public partial class TabSchematics
             OppositeTraceColor = oppositeTraceHighlightColor,
             TranslatedOpacity = translatedOpacity,
             OppositeTranslatedOpacity = oppositeTranslatedOpacity,
+            ThisSideOpacityGiven = traceColours.ThisSideOpacityGiven,
+            OtherSideOpacityGiven = traceColours.OtherSideOpacityGiven,
             ShowOppositeSideTraces = showOppositeSideTraces,
             ShowZones = showZones,
             IsCalibrationMode = this.thisIsKiCadTraceCalibrationMode,
@@ -742,17 +751,15 @@ public partial class TabSchematics
 
             var netPrimitives = new List<KiCadOverlayPrimitive>();
 
-            SolidColorBrush primaryBrush = isHoveredNet && !shouldBlinkThisNet
-                ? new SolidColorBrush(overlayColor, 1.0)
-                : new SolidColorBrush(overlayColor, effectiveOpacity);
+            // The net under the pointer stands out only while the picture says no opacity of its own
+            // (TraceColours - owner report, 2026-11-03: 5% still drew it solid).
+            bool isHoveredSteadily = isHoveredNet && !shouldBlinkThisNet;
+
+            SolidColorBrush primaryBrush = new SolidColorBrush(overlayColor, traceColours.ThisSideStroke(isHoveredSteadily));
 
             // The other side at its own opacity (2026-10-30) - the same as this side's unless the
             // picture says otherwise (TraceColours).
-            double oppositeEffectiveOpacity = Math.Clamp(oppositeTranslatedOpacity, 0.0, 1.0);
-
-            IBrush oppositeBrush = isHoveredNet && !shouldBlinkThisNet
-                ? new SolidColorBrush(oppositeTraceHighlightColor, 1.0)
-                : new SolidColorBrush(oppositeTraceHighlightColor, oppositeEffectiveOpacity);
+            IBrush oppositeBrush = new SolidColorBrush(oppositeTraceHighlightColor, traceColours.OtherSideStroke(isHoveredSteadily));
 
             if (showOppositeSideTraces)
             {
@@ -790,15 +797,11 @@ public partial class TabSchematics
                                 continue;
                             }
 
-                            double oppositeZoneFillOpacity = isHoveredNet && !shouldBlinkThisNet
-                                ? Math.Min(1.0, Math.Clamp(oppositeTranslatedOpacity * 0.65, 0.10, 0.38) + 0.12)
-                                : Math.Clamp(oppositeEffectiveOpacity * 0.65, 0.10, 0.38);
-
                             netPrimitives.Add(new KiCadOverlayPrimitive
                             {
                                 Kind = KiCadOverlayPrimitiveKind.Geometry,
                                 Geometry = zoneGeometry,
-                                Fill = new SolidColorBrush(oppositeTraceHighlightColor, oppositeZoneFillOpacity),
+                                Fill = new SolidColorBrush(oppositeTraceHighlightColor, traceColours.OtherSideZoneFill(isHoveredSteadily)),
                                 Pen = new Pen(oppositeBrush, 1.0)
                             });
                         }
@@ -845,15 +848,11 @@ public partial class TabSchematics
                         continue;
                     }
 
-                    double zoneFillOpacity = isHoveredNet && !shouldBlinkThisNet
-                        ? 0.32
-                        : Math.Clamp(effectiveOpacity * 0.65, 0.10, 0.38);
-
                     netPrimitives.Add(new KiCadOverlayPrimitive
                     {
                         Kind = KiCadOverlayPrimitiveKind.Geometry,
                         Geometry = zoneGeometry,
-                        Fill = new SolidColorBrush(overlayColor, zoneFillOpacity),
+                        Fill = new SolidColorBrush(overlayColor, traceColours.ThisSideZoneFill(isHoveredSteadily)),
                         Pen = new Pen(primaryBrush, 1.0)
                     });
                 }
@@ -961,7 +960,8 @@ public partial class TabSchematics
     // ###########################################################################################
     private void RenderKiCadSchematicGeometry(
         KiCadProjectView view,
-        IReadOnlySet<string> activeNets)
+        IReadOnlySet<string> activeNets,
+        bool everyWire = false)
     {
         var bundle = this.thisKiCadProject;
         if (bundle == null ||
@@ -994,18 +994,35 @@ public partial class TabSchematics
         // Same reason as the PCB path - see NoteKiCadOverlayBuiltCalibration.
         this.NoteKiCadOverlayBuiltCalibration(calibration, worldBounds, contentRect);
 
-        Color overlayColor = Colors.Orange;
-        double baseOpacity = 0.20;
-        if (this.schematicByName.TryGetValue(currentSchematicName, out var schematicEntry))
-        {
-            overlayColor = RectGeometry.ParseColorOrDefault(schematicEntry.SchematicHighlightColor, Colors.Orange);
-            baseOpacity = RectGeometry.ParseOpacityOrDefault(schematicEntry.SchematicHighlightOpacity, 0.20);
-        }
+        // "Traces on this side", as on a side of the board (owner report, 2026-11-03: a sheet went by the
+        // highlight's columns alone, so what the card picked changed nothing here) - Orange while blank.
+        TraceColours traceColours = TraceColours.Resolve(
+            this.schematicByName.TryGetValue(currentSchematicName, out var schematicEntry) ? schematicEntry : null,
+            TraceColours.SheetBlankHighlight);
 
-        double translatedOpacity = Math.Clamp(baseOpacity + 0.25, 0.0, 1.0);
+        Color overlayColor = traceColours.ThisSide;
+        double translatedOpacity = traceColours.ThisSideOpacity;
         string? activeHoveredKiCadNetName = this.GetActiveHoveredKiCadNetName();
 
         var primitives = new List<KiCadOverlayPrimitive>();
+
+        if (everyWire)
+        {
+            var wirePen = new Pen(new SolidColorBrush(overlayColor, traceColours.ThisSideStroke(false)), 1.2);
+
+            foreach (var path in schematic.Wires.Concat(schematic.Polylines).Where(path => path.Points.Count >= 2))
+            {
+                primitives.Add(new KiCadOverlayPrimitive
+                {
+                    Kind = KiCadOverlayPrimitiveKind.Polyline,
+                    BlinkPhase = KiCadBlinkPhase.Always,
+                    Points = path.Points
+                        .Select(point => this.MapKiCadWorldToLocal(point.X, point.Y, worldBounds, contentRect, calibration))
+                        .ToList(),
+                    Pen = wirePen
+                });
+            }
+        }
 
         foreach (string normalizedNetName in activeNets)
         {
@@ -1025,12 +1042,9 @@ public partial class TabSchematics
 
             // Full strength; a blinking net's wires are drawn in the blink's shown phase only
             // (KiCadBlinkPhase.OnPhase) - at factor 0 they were drawn at opacity 0.
-            double effectiveOpacity = Math.Clamp(translatedOpacity, 0.0, 1.0);
             var blinkPhase = shouldBlinkThisNet ? KiCadBlinkPhase.OnPhase : KiCadBlinkPhase.Always;
 
-            IBrush strokeBrush = isHoveredNet && !shouldBlinkThisNet
-                ? new SolidColorBrush(overlayColor, 1.0)
-                : new SolidColorBrush(overlayColor, effectiveOpacity);
+            IBrush strokeBrush = new SolidColorBrush(overlayColor, traceColours.ThisSideStroke(isHoveredNet && !shouldBlinkThisNet));
 
             var pen = new Pen(strokeBrush, 1.2);
 

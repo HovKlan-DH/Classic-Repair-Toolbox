@@ -18,18 +18,16 @@ namespace CRT
     //     each board shown gets its own (ShowWidths, from ShowBoard).
     //   - THE SETTINGS' through the four seams below, handed in by Initialize; a tab a test builds has
     //     none - it keeps what is dragged for the run - unless the test hands its own.
-    //   - THE LEFT COLUMN GONE WHILE THE TABLE IS OPEN (ShowWorkspaceColumns, 2026-10-29), and back at
-    //     its width when it closes.
     // ###########################################################################################
     public partial class TabDrafts
     {
-        // How much room the component list keeps however low the window is: its heading, search box,
-        // "Add component" and a few rows.
-        internal const double ComponentListKeepsAtLeast = 230;
+        // How much room "Add component" keeps below the board's entries however low the window is: its
+        // height, its margin and the panel's edge.
+        internal const double AddComponentKeepsAtLeast = 56;
 
-        // The board's entries scroll only when they would leave the list less than that.
+        // The board's entries scroll only when they would leave the button no room.
         private void OnWorkspaceNavSizeChanged(object? sender, Avalonia.Controls.SizeChangedEventArgs e) =>
-            this.BoardNavScroll.MaxHeight = System.Math.Max(120, e.NewSize.Height - TabDrafts.ComponentListKeepsAtLeast);
+            this.BoardNavScroll.MaxHeight = System.Math.Max(120, e.NewSize.Height - TabDrafts.AddComponentKeepsAtLeast);
 
         internal Func<string, double>? NavWidthFor { get; set; }
 
@@ -67,7 +65,6 @@ namespace CRT
 
         // ###########################################################################################
         // The board shown gets its widths - as last dragged on it, else as dragged last on any board.
-        // While the table hides the left column, the width waits to be put back (ShowWorkspaceColumns).
         // ###########################################################################################
         private void ShowWidths()
         {
@@ -75,14 +72,7 @@ namespace CRT
 
             if (this.NavWidthFor is { } nav)
             {
-                if (this.thisNavHiddenForTable)
-                {
-                    this.thisNavWidthBeforeTable = new GridLength(nav(key));
-                }
-                else
-                {
-                    this.WorkspaceGrid.ColumnDefinitions[0].Width = new GridLength(nav(key));
-                }
+                this.WorkspaceGrid.ColumnDefinitions[0].Width = new GridLength(nav(key));
             }
 
             if (this.PreviewWidthFor is { } preview)
@@ -91,53 +81,9 @@ namespace CRT
             }
         }
 
-        // ###########################################################################################
-        // THE TABLE TAKES THE WHOLE WORKSPACE (owner request, 2026-10-29: "When clicking Table view then
-        // I see no reason to still see the Board data editable selections, as then the table view has
-        // taken over"): the left column and its splitter go while the table is open, their columns to
-        // nothing, and come back at the width they had. Run wherever the table opens or closes
-        // (ShowWorkspace, ApplyTableMode). The columns' widths change - never the columns.
-        // ###########################################################################################
-        private bool thisNavHiddenForTable;
-
         // The splitter's column - 4px, as every splitter of CRT (the Schematics tab's; owner request,
         // 2026-10-30: "bulky and visible"), drawn in the global GridSplitter style.
         internal const double SplitterWidth = 4;
-
-        private GridLength thisNavWidthBeforeTable = new(ContributeWidths.DefaultNavWidth);
-
-        private void ShowWorkspaceColumns()
-        {
-            bool hide = this.IsTableOpen;
-
-            if (hide == this.thisNavHiddenForTable)
-            {
-                return;
-            }
-
-            ColumnDefinition nav = this.WorkspaceGrid.ColumnDefinitions[0];
-            ColumnDefinition gap = this.WorkspaceGrid.ColumnDefinitions[1];
-
-            if (hide)
-            {
-                this.thisNavWidthBeforeTable = nav.Width;
-                nav.MinWidth = 0;
-                nav.Width = new GridLength(0);
-                gap.Width = new GridLength(0);
-                this.WorkspaceContent.Margin = default;
-            }
-            else
-            {
-                nav.MinWidth = ContributeWidths.NavRange.Min;
-                nav.Width = this.thisNavWidthBeforeTable;
-                gap.Width = new GridLength(TabDrafts.SplitterWidth);
-                this.WorkspaceContent.Margin = new Avalonia.Thickness(8, 0, 0, 0);
-            }
-
-            this.thisNavHiddenForTable = hide;
-            this.WorkspaceNav.IsVisible = !hide;
-            this.WorkspaceSplitter.IsVisible = !hide;
-        }
 
         internal bool IsNavShownForTests => this.WorkspaceNav.IsVisible && this.WorkspaceGrid.ColumnDefinitions[0].Width.Value > 0;
 

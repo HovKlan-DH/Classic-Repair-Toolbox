@@ -646,7 +646,7 @@ namespace Handlers.DataHandling
                     context.Error(
                         "row.required_empty",
                         column,
-                        $"This {what} has no {column}. Fill it in - the board cannot be submitted while it is empty.",
+                        $"This {what} has no \"{column}\". Fill it in - the board cannot be submitted while it is empty.",
                         sheet, i, column);
                 }
             }
@@ -762,6 +762,10 @@ namespace Handlers.DataHandling
         // and a highlight for a component that is not there. Highlights are drawn in the label
         // editor, not typed into a sheet, so a component's own row is where its missing highlight
         // is told; a stray highlight has no row at all.
+        //
+        // *** TOLD ONCE PER COMPONENT, ON ITS FIRST ROW (owner decision, 2026-11-04: "it should only be
+        // reported once as it is ONE physical component only"): *** one different per region is a row per
+        // region, and a mark belongs to the label, so marking it once clears them all.
         // ###########################################################################################
         private static void CheckHighlightCoverage(Context context)
         {
@@ -771,11 +775,13 @@ namespace Handlers.DataHandling
                     .Where(label => label.Length > 0),
                 StringComparer.OrdinalIgnoreCase);
 
+            var told = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             for (int i = 0; i < context.Rows.Components.Count; i++)
             {
                 string label = (context.Rows.Components[i].BoardLabel ?? string.Empty).Trim();
 
-                if (label.Length > 0 && !highlighted.Contains(label))
+                if (label.Length > 0 && !highlighted.Contains(label) && told.Add(label))
                 {
                     context.Warning(
                         "component.no_highlight",
@@ -891,8 +897,8 @@ namespace Handlers.DataHandling
         // none of these: a new local rule is a warning, and unfinished work is fine - so an empty
         // value is never a problem, only one CRT will not understand, or a row that belongs nowhere.
         //
-        //   - a short description longer than one popup line (ComponentVocabulary.ShortDescriptionLimit;
-        //     2 of the 539 published ones, 2026-10-25);
+        //   - a short description longer than its limit (ComponentVocabulary.ShortDescriptionLimit;
+        //     14 of the 539 published ones, 2026-11-03);
         //   - a pin or replacement row for a component the board does not have, as files and links;
         //   - a pin with no number, a replacement with no part number - nothing to show it by;
         //   - a pin's direction and a replacement's kind outside their words (ComponentVocabulary).

@@ -8,7 +8,7 @@ namespace CRT
     // A BOARD'S FIRST DRAFT, MADE WHEN THE FIRST CHANGE IS STARTED (CRT 4.0 step 2, 2026-10-25). See
     // Main.axaml.cs for the file map of the whole class.
     //
-    // The Contribute tab's left column - its board parts, "Table view" - works on the board's draft,
+    // The Contribute tab's left column - its board parts, "Table" - works on the board's draft,
     // and a board with none gets one first: the published file as it is on disk
     // (DraftSeeder.SeedFromPublishedFile, the one seeding path every save shares), then the board read
     // again so every surface shows the draft. This replaces "Edit board as draft" (owner request,

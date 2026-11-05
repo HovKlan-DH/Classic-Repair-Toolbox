@@ -276,13 +276,17 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            Assert.Equal("New board, nothing added yet", tab.Drafts[0].RowSummary);
-            Assert.DoesNotContain("changed", tab.Drafts[0].RowSummary);
+            Assert.Equal("New board", tab.Drafts[0].RowSummary);
         });
     }
 
+    // ###########################################################################################
+    // Owner request, 2026-11-04: "New board, 3503 rows so far - I do not think we need this text at all".
+    // "My drafts" and the Submit dialog still say it is new, without a count; the header says nothing - the
+    // notice under it says what it is. A published board's "N rows changed" stays.
+    // ###########################################################################################
     [Fact]
-    public void A_new_board_that_has_been_worked_on_says_how_much_is_in_it()
+    public void A_new_board_that_has_been_worked_on_counts_no_rows_and_its_header_says_nothing_of_it()
     {
         UiTest.Run(() =>
         {
@@ -300,7 +304,9 @@ public sealed class TabDraftsTests : IDisposable
 
             tab.RefreshDrafts();
 
-            Assert.Equal("New board, 1 row so far", tab.Drafts[0].RowSummary);
+            Assert.Equal("New board", tab.Drafts[0].RowSummary);
+            Assert.Equal(string.Empty, tab.Drafts[0].HeaderSummary);
+            Assert.False(tab.Drafts[0].HasHeaderSummary);
         });
     }
 
@@ -812,12 +818,13 @@ public sealed class TabDraftsTests : IDisposable
             Assert.Same(row.DiscardCommand, Named("Discard draft").Command);
 
             // ###########################################################################################
-            // ONE ROW OF BUTTONS (owner request, 2026-10-30: "Saved", Undo and Redo on one line and four
-            // buttons under them, "not aligned or anything"): every button on one line, left to right
-            // with none over another - Undo, Redo, then "Table view", set apart, before "Review
+            // ONE ROW OF BUTTONS (owner requests, 2026-10-30: "Saved", Undo and Redo on one line and four
+            // buttons under them, "not aligned or anything"; 2026-11-04: "UI" and "Table" where Undo and
+            // Redo were, "as these UI buttons are more important"): every button on one line, left to right
+            // with none over another - "UI" and "Table", then Undo and Redo, set apart, before "Review
             // changes", Submit and "Discard draft".
             // ###########################################################################################
-            List<Button> toolbar = new[] { "Undo", "Redo", "Table view", "Review changes", "Submit", "Discard draft" }
+            List<Button> toolbar = new[] { "UI", "Table", "Undo", "Redo", "Review changes", "Submit", "Discard draft" }
                 .Select(Named)
                 .ToList();
 
@@ -826,24 +833,32 @@ public sealed class TabDraftsTests : IDisposable
             Assert.All(toolbar, button => Assert.True(button.Bounds.Width > 0, $"[{button.Content}] is not laid out"));
             Assert.All(toolbar, button => Assert.Equal(TopLeft(toolbar[0]).Y + toolbar[0].Bounds.Height / 2, TopLeft(button).Y + button.Bounds.Height / 2, 1));
 
-            for (int i = 1; i < toolbar.Count; i++)
+            // From "Undo" on: "UI" and "Table" share a border line on purpose, held below.
+            for (int i = 2; i < toolbar.Count; i++)
             {
                 Assert.True(
                     TopLeft(toolbar[i]).X >= TopLeft(toolbar[i - 1]).X + toolbar[i - 1].Bounds.Width,
                     $"[{toolbar[i]}] should stand right of [{toolbar[i - 1]}], not on it");
             }
 
-            Button tableView = Named("Table view");
+            // "View" says what the switch is, first of all; the switch is joined - one border line shared.
+            StackPanel views = tab.GetControl<StackPanel>("ViewSwitch");
+            TextBlock helper = Assert.Single(views.Children.OfType<TextBlock>());
+            Assert.Equal("View", helper.Text);
+            Assert.Equal(0, views.Children.IndexOf(helper));
+            Assert.Empty(views.GetVisualDescendants().OfType<RadioButton>());
+            Assert.Equal(TopLeft(Named("UI")).X + Named("UI").Bounds.Width - 1, TopLeft(Named("Table")).X, 1);
+
+            Button redo = Named("Redo");
             Button review = Named("Review changes");
             Assert.True(
-                TopLeft(review).X - (TopLeft(tableView).X + tableView.Bounds.Width) >= 24,
-                "Table view should stand apart from the draft's own actions");
+                TopLeft(review).X - (TopLeft(redo).X + redo.Bounds.Width) >= 24,
+                "Undo and Redo should stand apart from the draft's own actions");
 
             // "What changed" is in that row too, shown only while the published board moved.
             Assert.False(Named("What changed").IsVisible);
 
             Assert.DoesNotContain(buttons, button => (button.Content as string) is "Edit in table format" or "Schematic images");
-            Assert.Same(tab.GetControl<Button>("TableViewButton"), Named("Table view"));
             Assert.True(tab.GetControl<Button>("PicturesNavButton").IsEffectivelyEnabled);
 
             window.Close();
@@ -948,7 +963,7 @@ public sealed class TabDraftsTests : IDisposable
             Assert.All(tab.Drafts, row => Assert.False(row.IsTableOpen));
             Assert.False(tab.GetControl<BoardTableEditor>("TableEditor").IsVisible);
             Assert.True(tab.GetControl<StackPanel>("StartPanel").IsVisible);
-            Assert.Equal("Table view", tab.GetControl<Button>("TableViewButton").Content);
+            Assert.Contains("Selected", tab.GetControl<Button>("UiViewButton").Classes);
         });
     }
 
@@ -1141,7 +1156,7 @@ public sealed class TabDraftsTests : IDisposable
             DraftListItem shown = HeaderRow(tab)!;
             Assert.Equal(TabDraftsTests.TableBoardA, shown.ExcelDataFile);
             Assert.True(shown.IsTableOpen);
-            Assert.Equal("Close table view", tab.GetControl<Button>("TableViewButton").Content);
+            Assert.Contains("Selected", tab.GetControl<Button>("TableViewButton").Classes);
 
             Assert.True(tab.GetControl<BoardTableEditor>("TableEditor").IsVisible);
             Assert.True(tab.GetControl<BoardTableEditor>("TableEditor").HasTable);
@@ -1189,7 +1204,7 @@ public sealed class TabDraftsTests : IDisposable
     {
         // Measured, not just listed. A first version drew the open row at ZERO height (a
         // RowDefinitions collection replaced instead of changed): the row was there yet drawn
-        // nowhere. The header and the way out ("Close table view") must be on screen with the table.
+        // nowhere. The header and the way out ("UI") must be on screen with the table.
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = TabWithTwoDrafts();
@@ -1208,9 +1223,9 @@ public sealed class TabDraftsTests : IDisposable
             Assert.True(editor.TranslatePoint(new Point(0, 0), tab)!.Value.Y >= header.TranslatePoint(new Point(0, header.Bounds.Height), tab)!.Value.Y,
                 "The table should sit BELOW the header");
 
-            Button close = tab.GetControl<Button>("TableViewButton");
-            Assert.Equal("Close table view", close.Content);
-            Assert.True(close.Bounds.Height > 0);
+            Button wayOut = tab.GetControl<Button>("UiViewButton");
+            Assert.DoesNotContain("Selected", wayOut.Classes);
+            Assert.True(wayOut.Bounds.Height > 0);
 
             window.Close();
         });
@@ -2074,7 +2089,6 @@ public sealed class TabDraftsTests : IDisposable
     [Theory]
     [InlineData("Review changes")]
     [InlineData("Discard draft")]
-    [InlineData("Table view")]
     [InlineData("Add component")]
     public void A_click_on_a_rows_button_survives_the_list_being_read_again_mid_click(string label)
     {

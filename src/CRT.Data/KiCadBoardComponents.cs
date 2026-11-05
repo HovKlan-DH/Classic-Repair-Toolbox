@@ -47,20 +47,26 @@ namespace Handlers.DataHandling
     //   - THE PACKAGE is ComponentVocabulary's word when the footprint's name says it AND its pads
     //     agree: a name STARTING "DIP-14_W7.62mm", "DIP16" or "PDIP-40" with that many pads
     //     ("Oscillator_DIP-14" is a can, "SOIC-DIP-8" surface-mounted), a 24- or 28-pin DIP "wide" when
-    //     its rows are 600 mil apart; SIP; TO-92 and TO-220 with three pads. Anything else is left
-    //     empty - "Other" says nothing more.
+    //     its rows are 600 mil apart; SIP and a resistor array; TO-92 and TO-220 with three pads; and
+    //     since 2026-11-03 (owner request: "ideally guess their 'package'"), by what the footprints of the
+    //     six published boards with a PCB file call them: DO-35, DO-41, HC-49, HC-18, a pin header, a
+    //     three-legged EMI filter, and with two pads Axial, Radial or Disc as the name says - a resistor,
+    //     a ferrite bead, an inductor, a diode by theirs, and a resistor whatever its footprint is called
+    //     (the Spectrum's "Passive_small": no surface-mounted one on any of them, and "SMD" or "0805" in
+    //     a name, or "SMD" in its library, says otherwise). Anything else is left empty - a "CAP_P5.08mm" says only its pitch, and
+    //     "Other" says nothing more.
     //   - THE DATASHEET is the symbol's, else the footprint's, when it is a web address (TextLinkFinder's
     //     shapes - "www." opened as "https://"); KiCad's "~" and a library path are none.
     //   - THE VALUE is KiCad's as it stands; "~" is none.
+    //   - THE CATEGORIES ARE ADDED IN ALPHABETICAL ORDER (owner request, 2026-11-03; the chips first until
+    //     then) - the board's own stay where they are, only a new one is placed among them. The order is
+    //     then the contributor's to drag.
     // ###########################################################################################
     public static partial class KiCadBoardComponents
     {
-        // The categories in the order a new board lists them - the chips first.
-        private static readonly string[] CategoryOrder = ["IC", "Transistor", "Diode", "Resistor", "Capacitor", "Connector", "Misc"];
-
         // ###########################################################################################
         // Every component of the KiCad data, once each, in the order a new board lists them: by
-        // category (CategoryOrder), then in natural label order.
+        // category alphabetically, then in natural label order.
         // ###########################################################################################
         public static List<KiCadBoardComponent> Of(IReadOnlyList<KiCadFootprintInfo> footprints, IReadOnlyList<KiCadSymbolInfo> symbols)
         {
@@ -96,7 +102,7 @@ namespace Handlers.DataHandling
                         label,
                         value,
                         KiCadBoardComponents.CategoryOf(label),
-                        KiCadBoardComponents.PackageOf(footprint.Footprint, footprint.Pads),
+                        KiCadBoardComponents.PackageOf(footprint.Footprint, footprint.Pads, label),
                         datasheet);
                 }
             }
@@ -114,7 +120,7 @@ namespace Handlers.DataHandling
             }
 
             return found.Values
-                .OrderBy(component => Array.IndexOf(KiCadBoardComponents.CategoryOrder, component.Category))
+                .OrderBy(component => component.Category, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(component => component.Label, NaturalLabelComparer.Instance)
                 .ToList();
         }
@@ -185,7 +191,7 @@ namespace Handlers.DataHandling
             foreach (KiCadBoardComponent component in missing)
             {
                 rows.Insert(
-                    ComponentPlacement.InsertionIndex(rows, component.Category, component.Label),
+                    KiCadBoardComponents.IndexFor(rows, component),
                     new ComponentEntry
                     {
                         BoardLabel = component.Label,
@@ -228,6 +234,31 @@ namespace Handlers.DataHandling
             return board.WithComponentSections(components: rows, componentLinks: links, componentPins: pins);
         }
 
+        // ###########################################################################################
+        // Where an added component's row goes: into its category as every new component does
+        // (ComponentPlacement) - and a category the board does not have yet before the first one that
+        // sorts after it, so the import's categories come out in alphabetical order around the board's.
+        // ###########################################################################################
+        private static int IndexFor(IReadOnlyList<ComponentEntry> rows, KiCadBoardComponent component)
+        {
+            bool hasCategory = rows.Any(row => string.Equals(row.Category?.Trim(), component.Category, StringComparison.OrdinalIgnoreCase));
+
+            if (hasCategory)
+            {
+                return ComponentPlacement.InsertionIndex(rows, component.Category, component.Label);
+            }
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                if (string.Compare(rows[index].Category?.Trim(), component.Category, StringComparison.OrdinalIgnoreCase) > 0)
+                {
+                    return index;
+                }
+            }
+
+            return rows.Count;
+        }
+
         // ---- the guesses --------------------------------------------------------------------------
 
         // ###########################################################################################
@@ -253,17 +284,26 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // The package a footprint's name says, when its pads agree - see the class comment.
+        // The package a footprint's name says, when its pads agree - see the class comment. `reference`:
+        // the component's label, which is all a resistor's plain footprint has to say.
         // ###########################################################################################
-        public static string PackageOf(string? footprint, IReadOnlyList<KiCadPadPlace> pads)
+        public static string PackageOf(string? footprint, IReadOnlyList<KiCadPadPlace> pads, string? reference = null)
         {
             ArgumentNullException.ThrowIfNull(pads);
 
             string name = footprint?.Trim() ?? string.Empty;
             int colon = name.LastIndexOf(':');
+            string library = colon >= 0 ? name[..colon] : string.Empty;
 
             if (colon >= 0)
                 name = name[(colon + 1)..];
+
+            // ###########################################################################################
+            // No leads to speak of, by its name or the library it comes from (code review, 2026-11-04):
+            // "Resistor_SMD:R_Shunt_Ohmite_LVK12" says so only there, and read as "Axial". The library only by
+            // the word "SMD": a project's library can be called anything, and "C64_2010" is no chip size.
+            // ###########################################################################################
+            bool surfaceMounted = KiCadBoardComponents.SurfaceMounted().IsMatch(name) || KiCadBoardComponents.SurfaceMountLibrary().IsMatch(library);
 
             List<KiCadPadPlace> numbered = pads
                 .Where(pad => (pad.Number?.Trim() ?? string.Empty).Length > 0)
@@ -286,7 +326,8 @@ namespace Handlers.DataHandling
                 return wide ? $"DIP-{count} wide" : $"DIP-{count}";
             }
 
-            if (KiCadBoardComponents.Sip().IsMatch(name))
+            // "R_Array_Concave_4x0603" is an array too, on a surface (code review, 2026-11-04).
+            if (!surfaceMounted && (KiCadBoardComponents.Sip().IsMatch(name) || KiCadBoardComponents.ResistorArray().IsMatch(name)))
                 return "SIP";
 
             // A case CRT draws with three pins, only for a footprint with three (code review,
@@ -295,7 +336,54 @@ namespace Handlers.DataHandling
                 : KiCadBoardComponents.To92().IsMatch(name) ? "TO-92"
                 : string.Empty;
 
-            return threePins.Length > 0 && numbered.Count == ComponentVocabulary.PinCountOf(threePins) ? threePins : string.Empty;
+            if (threePins.Length > 0)
+                return numbered.Count == ComponentVocabulary.PinCountOf(threePins) ? threePins : string.Empty;
+
+            if (KiCadBoardComponents.PinHeader().IsMatch(name))
+                return "Pin header";
+
+            return numbered.Count switch
+            {
+                2 => KiCadBoardComponents.TwoLeggedOf(name, reference, surfaceMounted),
+                3 when KiCadBoardComponents.EmiFilter().IsMatch(name) => "EMI filter",
+                _ when KiCadBoardComponents.Crystal49().IsMatch(name) => "HC-49",
+                _ when KiCadBoardComponents.Crystal18().IsMatch(name) => "HC-18",
+                _ => string.Empty,
+            };
+        }
+
+        // What a part on two pads is, by its footprint's name - and a resistor by its reference.
+        private static string TwoLeggedOf(string name, string? reference, bool surfaceMounted)
+        {
+            if (KiCadBoardComponents.Do35().IsMatch(name))
+                return "DO-35";
+
+            if (KiCadBoardComponents.Do41().IsMatch(name))
+                return "DO-41";
+
+            if (KiCadBoardComponents.Crystal49().IsMatch(name))
+                return "HC-49";
+
+            if (KiCadBoardComponents.Crystal18().IsMatch(name))
+                return "HC-18";
+
+            if (KiCadBoardComponents.Axial().IsMatch(name))
+                return "Axial";
+
+            if (KiCadBoardComponents.Radial().IsMatch(name))
+                return "Radial";
+
+            if (KiCadBoardComponents.Disc().IsMatch(name))
+                return "Disc";
+
+            if (surfaceMounted)
+                return string.Empty;
+
+            string prefix = new((reference?.Trim() ?? string.Empty).TakeWhile(char.IsAsciiLetter).ToArray());
+
+            return KiCadBoardComponents.LeadedByName().IsMatch(name) || string.Equals(prefix, "R", StringComparison.OrdinalIgnoreCase)
+                ? "Axial"
+                : string.Empty;
         }
 
         // ###########################################################################################
@@ -397,5 +485,54 @@ namespace Handlers.DataHandling
 
         [GeneratedRegex(@"(?<![A-Za-z0-9])TO-?92", RegexOptions.IgnoreCase)]
         private static partial Regex To92();
+
+        // "RP_ARRAY_7WAY" - "R_Array_SIP8" says SIP itself.
+        [GeneratedRegex(@"^RP?_ARRAY", RegexOptions.IgnoreCase)]
+        private static partial Regex ResistorArray();
+
+        [GeneratedRegex(@"^Pin(Header|Socket)_", RegexOptions.IgnoreCase)]
+        private static partial Regex PinHeader();
+
+        [GeneratedRegex(@"(?<![A-Za-z0-9])DO-?35(?![0-9])", RegexOptions.IgnoreCase)]
+        private static partial Regex Do35();
+
+        [GeneratedRegex(@"(?<![A-Za-z0-9])DO-?41(?![0-9])", RegexOptions.IgnoreCase)]
+        private static partial Regex Do41();
+
+        [GeneratedRegex(@"(?<![A-Za-z0-9])HC-?49", RegexOptions.IgnoreCase)]
+        private static partial Regex Crystal49();
+
+        [GeneratedRegex(@"(?<![A-Za-z0-9])HC-?18", RegexOptions.IgnoreCase)]
+        private static partial Regex Crystal18();
+
+        // "R_Axial_DIN0207_...", "CAP_AXIAL_P12mm", "CP_Radial_D5.0mm" - a word of its own, never inside "Coaxial".
+        [GeneratedRegex(@"(?<![A-Za-z0-9])Axial(?![A-Za-z])", RegexOptions.IgnoreCase)]
+        private static partial Regex Axial();
+
+        [GeneratedRegex(@"(?<![A-Za-z0-9])Radial(?![A-Za-z])", RegexOptions.IgnoreCase)]
+        private static partial Regex Radial();
+
+        // "C_Disc_D5.0mm_...", "CAP_DISC_P100mil" - a word of its own, never inside "Discrete".
+        [GeneratedRegex(@"(?<![A-Za-z0-9])Disc(?![A-Za-z])", RegexOptions.IgnoreCase)]
+        private static partial Regex Disc();
+
+        // Three legs: "EMI-Filter", "T-FILTER", and the C128's "Ferrite_Bead_vertical" (its EMI row's too).
+        [GeneratedRegex(@"^(EMI-?Filter|T-?FILTER|Ferrite_Bead_vertical)", RegexOptions.IgnoreCase)]
+        private static partial Regex EmiFilter();
+
+        // Two legs, its own name saying what it is: "RESISTOR", "POWER_RESISTOR", "FERRITE_BEAD_TH_P12.7mm",
+        // "INDUCTOR_P200mil", "RECTIFIER_TH_P12.7mm", "ZENER_12.7mm", "Diode".
+        [GeneratedRegex(@"^((POWER_)?RESISTOR|FERRITE|INDUCTOR|RECTIFIER|ZENER|DIODE)", RegexOptions.IgnoreCase)]
+        private static partial Regex LeadedByName();
+
+        // "R_0805_2012Metric", "R_2512_6332Metric", "R_2010", "C_SMD_...", "R_MELF_MMB-0207" - no leads to speak
+        // of: KiCad's "...Metric" and every chip size by its name (code review, 2026-11-04: R_2512 and R_MELF
+        // read as "Axial"). By the list, as a through-hole part can hold four digits too ("DIN0207").
+        [GeneratedRegex(@"(SMD|MELF|[0-9]Metric|(?<![0-9])(0201|0402|0603|0612|0805|0815|1008|1020|1206|1210|1218|1806|1812|2010|2220|2225|2512|2816|2920|4020)(?![0-9]))", RegexOptions.IgnoreCase)]
+        private static partial Regex SurfaceMounted();
+
+        // KiCad's own "Resistor_SMD", "Package_TO_SOT_SMD" - a word of its own, in the library's name.
+        [GeneratedRegex(@"(?<![A-Za-z])SMD(?![A-Za-z])", RegexOptions.IgnoreCase)]
+        private static partial Regex SurfaceMountLibrary();
     }
 }

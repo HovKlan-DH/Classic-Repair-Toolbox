@@ -376,7 +376,7 @@ public sealed class ReviewSummaryTests
 
             // CRT 4.0's own sections (2026-10-25).
             ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VCC", Direction = "Power" }],
-            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in" }]
+            ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U8", PartNumber = "6526A", Kind = "Drop-in replacement" }]
         };
 
         // The calibrations ride alongside rather than inside the board: BoardData has no

@@ -91,6 +91,8 @@ public sealed class KiCadOverlayCacheKeysTests
             { "OppositeTraceColor", b with { OppositeTraceColor = Colors.Red } },
             { "TranslatedOpacity", b with { TranslatedOpacity = 0.5 } },
             { "OppositeTranslatedOpacity", b with { OppositeTranslatedOpacity = 0.5 } },
+            { "ThisSideOpacityGiven", b with { ThisSideOpacityGiven = true } },
+            { "OtherSideOpacityGiven", b with { OtherSideOpacityGiven = true } },
             { "ShowOppositeSideTraces", b with { ShowOppositeSideTraces = false } },
             { "ShowZones", b with { ShowZones = false } },
             { "IsCalibrationMode", b with { IsCalibrationMode = true } },

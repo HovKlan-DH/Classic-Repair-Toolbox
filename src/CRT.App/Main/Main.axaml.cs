@@ -36,6 +36,7 @@ namespace CRT
         //   Main.Worklog.cs           - worklog bar, workbook activation, worklog entry mode
         //   Main.Devices.cs           - the device picker above Hardware, and the bar naming a repair's device
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
+        //   Main.ContributeLists.cs   - the Contribute tab's own lists on the far left, its selector
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
         //   Main.Notices.cs           - what the notice cards over the tabs' bottom-right corner share
@@ -58,8 +59,7 @@ namespace CRT
         //                               where the unreadable file was kept
         //   Main.PictureTools.cs      - "Mark components" and "Align KiCad" from the Contribute tab, on
         //                               the Schematics tab and back, "Back to Contribute" after "Show
-        //                               on board", and "Edit this component" from a right-click on a
-        //                               component
+        //                               on board", and "Edit component" from a component's popup
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -71,7 +71,6 @@ namespace CRT
 
         // Category filter: suppresses saves during programmatic selection changes
         private bool _suppressCategoryFilterSave;
-        private bool _suppressComponentSearchRefresh;
 
         // ###########################################################################################
         // Suppresses OnHardwareSelectionChanged/OnBoardSelectionChanged while ApplyCatalogueVisibility
@@ -372,6 +371,7 @@ namespace CRT
             this.BoardComboBox.SelectionChanged += this.OnBoardSelectionChanged;
             this.CategoryFilterListBox.SelectionChanged += this.OnCategoryFilterSelectionChanged;
             this.ComponentFilterListBox.SelectionChanged += this.OnComponentFilterSelectionChanged;
+            this.WireContributeLists();
 
             // Renders each workbook as "#{Id} | {Title} (hardware/board)", e.g. "#3 | Black screen
             // (C64/250469)", a repair on one of the user's devices "#3 | Breadbin #2 - Black screen
@@ -481,6 +481,10 @@ namespace CRT
         {
             try
             {
+                // Board views count from here on, before the first board load below - and never in a
+                // test, which does not run this (Main.BoardViews.cs).
+                this.StartCountingBoardViews();
+
                 // A settings file that could not be read was kept, and CRT started on defaults - said
                 // before anything else (Main.SettingsNotice.cs).
                 this.ShowSettingsUnreadableNoticeIfNeeded();
@@ -846,6 +850,9 @@ namespace CRT
         // ###########################################################################################
         internal void ShowBoardInContributeTab(HardwareBoardEntry? entry)
         {
+            // What narrows its list is what was left on this board - never another board's.
+            this.UseContributeListsOfBoardShown();
+
             this.TabDrafts.ShowBoard(
                 entry,
                 this._currentBoardData,
@@ -1126,8 +1133,8 @@ namespace CRT
                 return false;
             }
 
-            // The Contribute tab owns the keyboard too (CRT 4.0 step 2): its table, and its own search
-            // of the board's components - the filter it would steal focus for is the same list.
+            // The Contribute tab owns the keyboard too (CRT 4.0 step 2): its table and its boxes. The filter
+            // is one click away there, narrowing the list it picks components in (Main.ContributeLists.cs).
             if (ReferenceEquals(selectedTab, this.ContributeTabItem))
             {
                 return false;

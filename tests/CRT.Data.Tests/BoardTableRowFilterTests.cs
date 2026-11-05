@@ -99,12 +99,13 @@ public sealed class BoardTableRowFilterTests
         // The first U4 is new - counted as added - and carries the duplicate's error too (every
         // row of a duplicate since 2026-10-03, owner decision: "it should show all rows"). The
         // second is not a change at all, only the server's error (a duplicate on Components);
-        // "Flagged" was a kind of its own until 2026-10-03.
+        // "Flagged" was a kind of its own until 2026-10-03. That U4 is marked nowhere is a warning on
+        // its first row alone: one label, told once (owner decision, 2026-11-04).
         Assert.Equal(
             BoardTableRowKinds.Added | BoardTableRowKinds.Errors | BoardTableRowKinds.Warnings,
             BoardTableRowFilter.KindsOf(sheet.Rows.First(row => row.Cells[0].Text == "U4")));
         Assert.Equal(
-            BoardTableRowKinds.Errors | BoardTableRowKinds.Warnings,
+            BoardTableRowKinds.Errors,
             BoardTableRowFilter.KindsOf(sheet.Rows.Last(row => row.Cells[0].Text == "U4")));
     }
 

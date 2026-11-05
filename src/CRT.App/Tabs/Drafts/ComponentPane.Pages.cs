@@ -6,29 +6,35 @@ using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT
 {
     // ###########################################################################################
     // A COMPONENT'S PAGES (owner decision, 2026-11-01: "the functionality in this is too massive, if all
-    // data is filled, so I think we need to split this into multiple menu items" - as tabs over the pane,
-    // so the left column keeps its room for the component list).
+    // data is filled, so I think we need to split this into multiple menu items"; tabs over the pane until
+    // 2026-11-03 - owner request: the left column has the room for them now, "and no tabs in the 'component
+    // view'" - TabDrafts.Entries.cs).
     //
     // Owns:
-    //   - THE TABS: Basics, Replacement parts, Pinout, Pictures, Oscilloscope baseline, Files and Links,
-    //     each saying how many it holds. One page shows; every section stays filled behind it, so what the
-    //     pane commits is what it always was. The page stays as another component is picked: walking a
-    //     board's chips stays on one page.
+    //   - THE PAGES: Basics, Replacement parts, Pinout, Pictures, Oscilloscope baseline, Files and Links,
+    //     what each holds told to the host (PagesShown). One page shows; every section stays filled behind
+    //     it, so what the pane commits is what it always was. The page stays as another component is
+    //     picked: walking a board's chips stays on one page.
     //   - THE REGION SHOWN, on a board that has regions (BoardRegions). What a page lists is what that
     //     region shows: its own rows and those for every region. A row's "Applies to" moves it (one
     //     leaving the region shown is let go of here, and said), and Basics and Pinout have a "This data
-    //     is different per region" tick instead - a set of rows that belong together. The switch under
-    //     the component list is on every page again (PaneRegionSwitch; RegionPicked - Main's, so all of
-    //     CRT follows): under Basics' and Pinout's tick and only while it is ticked (owner request,
-    //     2026-11-01), and always on the five others (owner request, 2026-11-02).
+    //     is different per region" tick instead - a set of rows that belong together. THE BUTTONS SWITCHING
+    //     THE REGION ARE THE ONES UNDER CRT'S COMPONENT LIST (owner request, 2026-11-03: "use the regions
+    //     from the left-side instead of adding new region buttons in the component pages"); a line says
+    //     which region a page is showing (ShowRegionShown).
+    //   - FILES AND LINKS ARE THE COMPONENT'S WHOLE LISTS (owner request, 2026-11-03: "Each file
+    //     or link will have set a region (if any) and then the complete list can be viewed and sorted. So,
+    //     it should work in same was as 'Board: Files' and 'Board: Links'"): every row whatever region CRT
+    //     shows, each saying what it applies to, so one changing region stays where it is.
     //   - ITS LABEL (owner report, 2026-11-01: "unable to rename the component label"): on Enter or when
     //     its box is left, never on a pause in typing - every row of the component moves with it.
-    //   - WHAT SUBMIT WOULD REFUSE, MARKED WHERE IT IS AND ON ITS TAB: no category; a pin the case does not
+    //   - WHAT SUBMIT WOULD REFUSE, MARKED WHERE IT IS AND ON ITS ENTRY: no category; a pin the case does not
     //     have; a baseline lacking its signal name or image; a link's address that is no web address.
     //   - THE TEMPORARY TOOL making pinouts of oscilloscope baselines (BaselinePinMigration - gone before
     //     CRT 4.0 goes live, with this section).
@@ -46,25 +52,10 @@ namespace CRT
         // The label as the box last read it - its capitals are a change of their own.
         private string thisLabelShown = string.Empty;
 
-        // Asked to show another region - Main's, so all of CRT follows.
-        public event EventHandler<string>? RegionPicked;
-
         // Whether the board open has regions - what offers "Applies to" and the ticks.
         private bool thisBoardHasRegions;
 
         internal ComponentPage Page => this.thisPage;
-
-        private void OnPageClick(object? sender, RoutedEventArgs e)
-        {
-            foreach (ComponentPage page in Enum.GetValues<ComponentPage>())
-            {
-                if (ReferenceEquals(sender, this.PageButton(page)))
-                {
-                    this.ShowPage(page);
-                    return;
-                }
-            }
-        }
 
         // The page asked for, what the boxes hold handed to the draft first, at its top.
         internal void ShowPage(ComponentPage page)
@@ -74,28 +65,6 @@ namespace CRT
             this.ShowCurrentPage();
             this.SectionsScrollViewer.Offset = default;
         }
-
-        private Button PageButton(ComponentPage page) => page switch
-        {
-            ComponentPage.Basics => this.BasicsPageButton,
-            ComponentPage.Replacements => this.ReplacementsPageButton,
-            ComponentPage.Pinout => this.PinoutPageButton,
-            ComponentPage.Pictures => this.PicturesPageButton,
-            ComponentPage.Baselines => this.BaselinesPageButton,
-            ComponentPage.Files => this.FilesPageButton,
-            _ => this.LinksPageButton,
-        };
-
-        private TextBlock PageLabel(ComponentPage page) => page switch
-        {
-            ComponentPage.Basics => this.BasicsPageLabel,
-            ComponentPage.Replacements => this.ReplacementsPageLabel,
-            ComponentPage.Pinout => this.PinoutPageLabel,
-            ComponentPage.Pictures => this.PicturesPageLabel,
-            ComponentPage.Baselines => this.BaselinesPageLabel,
-            ComponentPage.Files => this.FilesPageLabel,
-            _ => this.LinksPageLabel,
-        };
 
         private void ShowCurrentPage()
         {
@@ -109,85 +78,50 @@ namespace CRT
 
             // Which row of its Basics this is - the other pages' rows say their own region.
             this.RegionText.IsVisible = this.thisPage == ComponentPage.Basics && !string.IsNullOrEmpty(this.RegionText.Text);
+            this.ShowRegionShown();
 
-            foreach (ComponentPage page in Enum.GetValues<ComponentPage>())
-            {
-                this.PageButton(page).Classes.Set("Selected", page == this.thisPage);
-            }
-
-            this.ShowPageTabs();
+            this.TellPagesChanged();
         }
 
+        // What a page holds may have changed - the left column reads PagesShown.
+        internal event EventHandler? PagesChanged;
+
+        private void TellPagesChanged() => this.PagesChanged?.Invoke(this, EventArgs.Empty);
+
         // ###########################################################################################
-        // The tabs, while a component's pages are what shows - each with how many it holds, and marked
-        // when something on it stops the draft being submitted. The line under the header gives way to
-        // the strip's own.
+        // What each page holds and whether something on it stops Submit, while a component's pages are
+        // what shows - from the rows on screen, which know what is held back and what is still blank. Null
+        // otherwise. Basics holds the component's rows: one per region it differs in.
         // ###########################################################################################
-        private void ShowPageTabs()
+        internal IReadOnlyDictionary<ComponentPage, ComponentPageFact>? PagesShown
         {
-            bool shown = this.SectionsScrollViewer.IsVisible && this.thisBoardPart is null && !this.thisIsNew;
-
-            this.PageTabs.IsVisible = shown;
-            this.PaneHeader.BorderThickness = shown ? default : new Thickness(0, 0, 0, 1);
-
-            if (!shown)
+            get
             {
-                return;
+                if (!this.SectionsScrollViewer.IsVisible || this.thisBoardPart is not null || this.thisIsNew || this.thisSession is not { } session)
+                {
+                    return null;
+                }
+
+                int rows = session.Content.Board.Components.Count(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, this.thisLabel));
+
+                return new Dictionary<ComponentPage, ComponentPageFact>
+                {
+                    [ComponentPage.Basics] = new(rows, string.IsNullOrWhiteSpace(this.BoxText(ComponentField.Category))),
+                    [ComponentPage.Replacements] = new(this.thisReplacements.Count, false),
+                    [ComponentPage.Pinout] = new(this.thisPins.Count, this.thisPins.Any(row => row.PinOutside)),
+                    [ComponentPage.Pictures] = new(this.thisPictures.Count, false),
+                    [ComponentPage.Baselines] = new(this.thisBaselines.Count, this.thisBaselines.Any(row => row.PinOutside || row.LacksWhatItNeeds)),
+                    [ComponentPage.Files] = new(this.thisFiles.Count, false),
+                    [ComponentPage.Links] = new(this.thisLinks.Count, this.thisLinks.Any(row => row.UrlNotWeb)),
+                };
             }
-
-            this.ShowPageTab(ComponentPage.Basics, 0, string.IsNullOrWhiteSpace(this.CategoryBox.Text));
-            this.ShowPageTab(ComponentPage.Replacements, this.thisReplacements.Count, hasError: false);
-            this.ShowPageTab(ComponentPage.Pinout, this.thisPins.Count, this.thisPins.Any(row => row.PinOutside));
-            this.ShowPageTab(ComponentPage.Pictures, this.thisPictures.Count, hasError: false);
-            this.ShowPageTab(ComponentPage.Baselines, this.thisBaselines.Count, this.thisBaselines.Any(row => row.PinOutside || row.LacksWhatItNeeds));
-            this.ShowPageTab(ComponentPage.Files, this.thisFiles.Count, hasError: false);
-            this.ShowPageTab(ComponentPage.Links, this.thisLinks.Count, this.thisLinks.Any(row => row.UrlNotWeb));
-        }
-
-        private void ShowPageTab(ComponentPage page, int count, bool hasError)
-        {
-            TextBlock label = this.PageLabel(page);
-
-            label.Text = ComponentPaneWording.PageTitle(page, count);
-            label.Classes.Set("error", hasError);
-            ToolTip.SetTip(this.PageButton(page), hasError ? ComponentPaneWording.PageHasErrorTip : null);
         }
 
         // ---- the region shown ----------------------------------------------------------------------
 
-        private void InitializeRegionSwitches()
-        {
-            foreach (PaneRegionSwitch regionSwitch in this.RegionSwitches())
-            {
-                regionSwitch.RegionPicked += (_, region) => this.OnPaneRegionPicked(region);
-            }
-        }
-
-        private PaneRegionSwitch[] RegionSwitches() =>
-        [
-            this.BasicsRegionSwitch,
-            this.PinsRegionSwitch,
-            this.ReplacementsRegionSwitch,
-            this.PicturesRegionSwitch,
-            this.BaselinesRegionSwitch,
-            this.FilesRegionSwitch,
-            this.LinksRegionSwitch,
-        ];
-
-        private void OnPaneRegionPicked(string region)
-        {
-            if (string.Equals(region, this.thisRegion, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            this.UseRegion(region);
-            this.RegionPicked?.Invoke(this, region);
-        }
-
         // ###########################################################################################
-        // The region CRT shows, from either switch: what the boxes hold goes in under the region it was
-        // typed in, then the pages read that region's rows.
+        // The region CRT shows, from the buttons under its component list: what the boxes hold goes in
+        // under the region it was typed in, then the pages read that region's rows.
         // ###########################################################################################
         internal void UseRegion(string? region)
         {
@@ -207,35 +141,50 @@ namespace CRT
             this.CommitHeld();
             this.thisRegion = wanted;
             this.ShowComponent();
+            this.FollowRegionInClonePanel();
         }
 
         private void UseBoardRegions(BoardData board) => this.thisBoardHasRegions = BoardRegions.Has(board);
 
-        // The ticks with their switches, and the "Applies to" lists, as the board has regions or not.
+        // The ticks and the "Applies to" lists, as the board has regions or not.
         private void ShowRegionChoices(BoardData board)
         {
             bool has = BoardRegions.Has(board);
-            bool basics = ComponentPaneEdits.IsRegional(board, this.thisLabel);
-            bool pins = ComponentPaneEdits.PinsAreRegional(board, this.thisLabel);
 
             this.UseBoardRegions(board);
 
             this.BasicsRegionalCheck.IsVisible = has;
-            this.BasicsRegionalCheck.IsChecked = basics;
-            this.BasicsRegionSwitch.Show(has && basics, this.thisRegion);
+            this.BasicsRegionalCheck.IsChecked = ComponentPaneEdits.IsRegional(board, this.thisLabel);
+
+            // The one box of Basics that is never per region: it is what every row of the component is
+            // filed under, so it is said (owner report, 2026-11-04).
+            this.BoardLabelOneText.Text = ComponentPaneWording.LabelInEveryRegion;
+            this.BoardLabelOneText.IsVisible = has && this.BasicsRegionalCheck.IsChecked == true;
 
             this.PinsRegionalCheck.IsVisible = has;
-            this.PinsRegionalCheck.IsChecked = pins;
-            this.PinsRegionSwitch.Show(has && pins, this.thisRegion);
+            this.PinsRegionalCheck.IsChecked = ComponentPaneEdits.PinsAreRegional(board, this.thisLabel);
 
-            // The pages whose rows each say what they apply to need no tick - a row is moved by its own.
-            this.ReplacementsRegionSwitch.Show(has, this.thisRegion);
-            this.PicturesRegionSwitch.Show(has, this.thisRegion);
-            this.BaselinesRegionSwitch.Show(has, this.thisRegion);
-            this.FilesRegionSwitch.Show(has, this.thisRegion);
-            this.LinksRegionSwitch.Show(has, this.thisRegion);
-
+            this.ShowRegionShown();
             this.FollowRegionChoices(has);
+        }
+
+        // ###########################################################################################
+        // Which region the page shows - on a page that lists what the region shows: Basics and Pinout while
+        // ticked (unticked they are one set, for every region), and the three whose rows each say what they
+        // apply to. Files and Links list every row, so nothing there depends on it.
+        // ###########################################################################################
+        private void ShowRegionShown()
+        {
+            bool depends = this.thisBoardHasRegions && this.thisPage switch
+            {
+                ComponentPage.Basics => this.BasicsRegionalCheck.IsChecked == true,
+                ComponentPage.Pinout => this.PinsRegionalCheck.IsChecked == true,
+                ComponentPage.Replacements or ComponentPage.Pictures or ComponentPage.Baselines => true,
+                _ => false,
+            };
+
+            this.RegionShownText.Text = ComponentPaneWording.RegionShownLine(this.thisRegion);
+            this.RegionShownText.IsVisible = depends;
         }
 
         // Every row of the page offers "Applies to" while the board has regions - new rows too - and the
@@ -271,8 +220,6 @@ namespace CRT
             movedTo = this.LetGoOfRowsOfOtherRegions(this.thisBaselines) ?? movedTo;
             movedTo = this.LetGoOfRowsOfOtherRegions(this.thisPictures) ?? movedTo;
             movedTo = this.LetGoOfRowsOfOtherRegions(this.thisReplacements) ?? movedTo;
-            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisFiles) ?? movedTo;
-            movedTo = this.LetGoOfRowsOfOtherRegions(this.thisLinks) ?? movedTo;
 
             if (movedTo is not null)
             {
@@ -304,14 +251,16 @@ namespace CRT
 
         // ###########################################################################################
         // *** A NEW ROW GIVEN ANOTHER REGION WAITS UNTIL IT HAS BEEN TYPED IN (code review, 2026-11-02). ***
-        // "Add link", "NTSC" picked, a name typed and a pause: into the draft half typed and off this
-        // region's page, the box gone from under the caret, and no way there to type the address. So it
-        // waits - out of the draft and on the page - through the typing pause and the Tab to its next box,
-        // and moves as the focus leaves the row. Whatever else commits takes it as it is (RowsWaiting.None).
+        // "Add replacement part", "NTSC" picked, a part number typed and a pause: into the draft half typed
+        // and off this region's page, the box gone from under the caret, and no way there to type the rest.
+        // So it waits - out of the draft and on the page - through the typing pause and the Tab to its next
+        // box, and moves as the focus leaves the row. Whatever else commits takes it as it is
+        // (RowsWaiting.None).
         //
         // Only such a row can be here: an existing row moves the moment its region is picked, and a new
-        // part, file or link is the only row that can stay behind for holding nothing (HoldsNothingYet). A
-        // baseline or a picture cannot wait - CommitBaselines has already filed it.
+        // part is the only row that can stay behind for holding nothing (HoldsNothingYet). A baseline or a
+        // picture cannot wait - CommitBaselines has already filed it - and a file or a link never leaves its
+        // page, the component's whole list.
         // ###########################################################################################
         private enum RowsWaiting
         {
@@ -325,7 +274,7 @@ namespace CRT
         private bool IsWaitingToBeTyped(ComponentPaneRegionalRow row)
         {
             if (this.thisRowsWaiting == RowsWaiting.None ||
-                row is not (ComponentPaneReplacementRow or ComponentPaneFileRow or ComponentPaneLinkRow) ||
+                row is not ComponentPaneReplacementRow ||
                 ComponentPaneEdits.InRegion(row.Region, this.thisRegion))
             {
                 return false;
@@ -359,7 +308,7 @@ namespace CRT
             }
 
             List<ComponentEntry> rows = board.Components
-                .Where(row => string.Equals(row.BoardLabel?.Trim(), this.thisLabel, StringComparison.OrdinalIgnoreCase))
+                .Where(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, this.thisLabel))
                 .ToList();
 
             return rows.Count == 1 ? rows[0].Region?.Trim() ?? string.Empty : string.Empty;
@@ -539,13 +488,31 @@ namespace CRT
             }
         }
 
+        // ---- the package's list --------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // The list opens with the focus, so what can be picked is seen at once (owner request, 2026-11-03) -
+        // every case, as the box filled in already would narrow it to itself, and narrowing once typed in.
+        // ###########################################################################################
+        private string thisPackageTextAtFocus = string.Empty;
+
+        private void OnPackageBoxFocused(object? sender, RoutedEventArgs e)
+        {
+            this.thisPackageTextAtFocus = this.PackageBox.Text ?? string.Empty;
+            this.PackageBox.IsDropDownOpen = true;
+        }
+
+        private bool PackageShowsAll(string? search, object? item) =>
+            string.Equals(search ?? string.Empty, this.thisPackageTextAtFocus, StringComparison.Ordinal) ||
+            (item as string)?.Contains(search ?? string.Empty, StringComparison.OrdinalIgnoreCase) == true;
+
         // ---- what Submit would refuse, marked where it is ----------------------------------------------
 
         // No component may have an empty category (owner decision, 2026-11-01) - an error, like a field a
         // row of the board's lists needs.
         private void ShowCategoryProblem()
         {
-            bool empty = string.IsNullOrWhiteSpace(this.CategoryBox.Text);
+            bool empty = string.IsNullOrWhiteSpace(this.BoxText(ComponentField.Category));
 
             this.CategoryBox.Classes.Set("Missing", empty);
             this.CategoryRequiredText.IsVisible = empty;
@@ -582,13 +549,28 @@ namespace CRT
         private void ShowMigrationOffer(BoardData board)
         {
             this.MigrationNoteText.Text = ComponentPaneWording.MigrationNote;
-            this.MigrationPanel.IsVisible = board.ComponentImages.Any(ComponentImageKinds.IsScopeBaseline);
+            this.MigrationPanel.IsVisible = board.ComponentImages.Any(ComponentImageKinds.IsScopeBaseline) ||
+                                            this.thisSession?.ListedFiles.Values.Any(DraftFiles.IsKiCad) == true;
             this.MigrateComponentButton.IsEnabled = BaselinePinMigration.CanRun(board, this.thisLabel);
         }
 
         private void OnMigrateComponentClick(object? sender, RoutedEventArgs e) => this.MigrateComponent();
 
-        private void OnMigrateBoardClick(object? sender, RoutedEventArgs e) => this.MigrateBoard();
+        private async void OnMigrateBoardClick(object? sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await this.MigrateBoardAsync();
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler: App lets such an exception end CRT.
+                Logger.Critical($"Making the board's pinouts failed - [{ex}]");
+            }
+        }
+
+        // Reads the board's KiCad data for the whole board's pinouts - the host's, off the UI thread.
+        internal Func<Task<KiCadPinoutSource?>>? ReadKiCadForPinouts { get; set; }
 
         internal void MigrateComponent()
         {
@@ -618,7 +600,7 @@ namespace CRT
             }
         }
 
-        internal void MigrateBoard()
+        internal async Task MigrateBoardAsync()
         {
             if (this.thisSession is not { } session)
             {
@@ -627,11 +609,23 @@ namespace CRT
 
             this.CommitHeld();
 
-            BaselinePinMigration.ApplyToBoard(session.Content.Board, out int components);
+            KiCadPinoutSource? kiCad = this.ReadKiCadForPinouts is { } read ? await read() : null;
 
+            // Off the UI thread and under CRT's "please wait" (code review, 2026-11-04): on a large KiCad board
+            // going over every component froze the window with nothing on screen saying why.
+            BoardData before = session.Content.Board;
+
+            (BoardData made, int components) = await BusyOverlay.RunLocalAsync<(BoardData, int)>(this, CrtWaitWording.MigrationMakingPinouts, () => Task.Run(() =>
+            {
+                BoardData result = BaselinePinMigration.ApplyToBoard(before, out int count, kiCad);
+
+                return (result, count);
+            }));
+
+            // Worked out again only for a draft that moved meanwhile - what was held is handed over as this applies.
             bool changed = components > 0 && session.Apply(
                 DraftStepWording.PinsFromBaselinesOfBoard(components),
-                content => BaselinePinMigration.ApplyToBoard(content.Board, out _) is BoardData board && !ReferenceEquals(board, content.Board)
+                content => (ReferenceEquals(content.Board, before) ? made : BaselinePinMigration.ApplyToBoard(content.Board, out _, kiCad)) is BoardData board && !ReferenceEquals(board, content.Board)
                     ? content with { Board = board }
                     : null);
 

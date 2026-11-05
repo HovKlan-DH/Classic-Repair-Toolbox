@@ -1,4 +1,3 @@
-using Avalonia;
 using Avalonia.Controls;
 using Handlers.DataHandling;
 using System;
@@ -8,9 +7,8 @@ using System.Linq;
 namespace CRT;
 
 // ###########################################################################################
-// THE PICTURE TOOLS AND THE COMPONENT MENU (CRT 4.0 step 2, slice 6 - the plan: "Contributor mode
-// goes. Mark components and Align KiCad open the Schematics tab in that tool, with a bar and a Done
-// button. Right-clicking a component offers Edit this component to everyone.").
+// THE PICTURE TOOLS (CRT 4.0 step 2, slice 6 - the plan: "Contributor mode goes. Mark components and
+// Align KiCad open the Schematics tab in that tool, with a bar and a Done button.").
 //
 // A tool is started on a PICTURE from the Contribute tab (StartPictureTool, through Main). The
 // picture's image and the board's KiCad data are read in the background, so the request waits until
@@ -31,20 +29,10 @@ namespace CRT;
 // next picture aligned at once (PictureToolStart.NextToAlign picks it), the Contribute tab gone back
 // to only when the last one ends.
 //
-// The floating menu that was contributor mode's (over an empty spot: "Enable component label
-// editor", "Calibrate KiCad traces") is now the menu a right-click on a COMPONENT opens for everyone:
-// highlight it or take the highlight away - what that right-click did by itself before - and "Edit
-// this component", which opens it in the Contribute tab's pane (EditComponentRequested).
-//
 // Part of the TabSchematics partial class - see TabSchematics.axaml.cs for the tab overview.
 // ###########################################################################################
 public partial class TabSchematics
 {
-    private bool thisIsShowingSchematicsMenu;
-
-    // The component the menu is open on.
-    private string thisMenuBoardLabel = string.Empty;
-
     // A tool asked for on a picture, waiting for it - with the board it was asked on.
     private (PictureTool Tool, string Picture, string BoardKey)? thisPendingTool;
 
@@ -69,9 +57,6 @@ public partial class TabSchematics
     internal event EventHandler? ToolOff;
 
     private bool thisToolWasOn;
-
-    // "Edit this component" on the component menu, with the component's label.
-    internal event EventHandler<string>? EditComponentRequested;
 
     // "Done - next picture": the picture it goes on to, while aligning - null with none left.
     private string? thisNextToAlign;
@@ -102,10 +87,6 @@ public partial class TabSchematics
         this.PictureToolDoneNextButton.Click += (_, _) => this.OnPictureToolDoneNext();
         this.PictureToolCancelButton.Click += (_, _) => this.OnPictureToolCancel();
         this.BackToContributeButton.Click += (_, _) => this.BackToContributeRequested?.Invoke(this, EventArgs.Empty);
-
-        this.MenuHighlightButton.Click += (_, _) => this.OnMenuHighlightClick();
-        this.MenuEditComponentButton.Click += (_, _) => this.OnMenuEditComponentClick();
-        ToolTip.SetTip(this.MenuEditComponentButton, PictureToolWording.EditComponentTip);
     }
 
     // ###########################################################################################
@@ -121,7 +102,6 @@ public partial class TabSchematics
         }
 
         this.CancelWorklogEntryMode();
-        this.HideSchematicsMenu();
 
         this.thisRefusedTool = null;
         this.thisPendingTool = (tool, picture?.Trim() ?? string.Empty, this.MainWindow?.GetCurrentBoardKey() ?? string.Empty);
@@ -254,7 +234,7 @@ public partial class TabSchematics
     private void ShowPictureToolBar(string title, string help, string cancel, bool withDone, string? next = null)
     {
         this.PictureToolTitleText.Text = title;
-        this.PictureToolHelpText.Text = help;
+        Handlers.Theming.BoldRuns.ShowMarked(this.PictureToolHelpText, help);
         this.PictureToolHelpText.IsVisible = help.Length > 0;
         this.PictureToolCancelButton.Content = cancel;
         this.PictureToolDoneButton.IsVisible = withDone;
@@ -411,86 +391,7 @@ public partial class TabSchematics
         this.FollowPictureTool();
     }
 
-    // ###########################################################################################
-    // THE COMPONENT MENU: a right-click on a component - its name, its highlight on or off, and
-    // "Edit this component". At the pointer, kept inside the view.
-    // ###########################################################################################
-    private void ShowComponentMenu(Point containerPoint, string boardLabel)
-    {
-        string label = boardLabel.Trim();
-
-        if (label.Length == 0 || this.thisIsWorklogEntryMode)
-        {
-            return;
-        }
-
-        this.thisMenuBoardLabel = label;
-
-        string friendlyName = this.CurrentBoardDataForLabelEditor?.Components
-            .FirstOrDefault(component => string.Equals(component.BoardLabel?.Trim(), label, StringComparison.OrdinalIgnoreCase))
-            ?.FriendlyName?.Trim() ?? string.Empty;
-
-        this.SchematicsMenuTitleText.Text = friendlyName.Length == 0 ? label : $"{label} - {friendlyName}";
-        this.MenuHighlightButton.Content = this.IsComponentBoardLabelSelected(label)
-            ? PictureToolWording.TakeHighlightAway(label)
-            : PictureToolWording.Highlight(label);
-        this.MenuEditComponentButton.Content = PictureToolWording.EditComponent;
-
-        const double estimatedWidth = 250.0;
-        const double estimatedHeight = 120.0;
-
-        double x = Math.Clamp(containerPoint.X, 6.0, Math.Max(6.0, this.SchematicsContainer.Bounds.Width - estimatedWidth));
-        double y = Math.Clamp(containerPoint.Y, 6.0, Math.Max(6.0, this.SchematicsContainer.Bounds.Height - estimatedHeight));
-
-        this.SchematicsMenuBorder.Margin = new Thickness(x, y, 0, 0);
-        this.SchematicsMenuBorder.IsVisible = true;
-        this.thisIsShowingSchematicsMenu = true;
-    }
-
-    private void HideSchematicsMenu()
-    {
-        this.SchematicsMenuBorder.IsVisible = false;
-        this.thisIsShowingSchematicsMenu = false;
-    }
-
-    // Whether a press landed on the menu - it is the menu's, not the picture's.
-    private bool IsPointerInsideSchematicsMenu(Point containerPoint)
-    {
-        if (!this.SchematicsMenuBorder.IsVisible)
-        {
-            return false;
-        }
-
-        Point? topLeft = this.SchematicsMenuBorder.TranslatePoint(new Point(0, 0), this.SchematicsContainer);
-        return topLeft.HasValue && new Rect(topLeft.Value, this.SchematicsMenuBorder.Bounds.Size).Contains(containerPoint);
-    }
-
-    // What a right-click on a component did by itself before the menu: its highlight on or off.
-    private void OnMenuHighlightClick()
-    {
-        string label = this.thisMenuBoardLabel;
-        this.HideSchematicsMenu();
-
-        if (label.Length > 0)
-        {
-            this.ToggleComponentSelectionByBoardLabel(label);
-        }
-    }
-
-    private void OnMenuEditComponentClick()
-    {
-        string label = this.thisMenuBoardLabel;
-        this.HideSchematicsMenu();
-
-        if (label.Length > 0)
-        {
-            this.EditComponentRequested?.Invoke(this, label);
-        }
-    }
-
     // ---- for tests ------------------------------------------------------------------------------------
-
-    internal void ShowComponentMenuForTests(string boardLabel) => this.ShowComponentMenu(new Point(10, 10), boardLabel);
 
     internal void ImageSettledForTests(string picture, bool shown = true) => this.ImageSettled(picture, shown);
 

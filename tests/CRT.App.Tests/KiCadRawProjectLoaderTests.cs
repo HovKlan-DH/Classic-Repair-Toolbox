@@ -800,6 +800,93 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
         Assert.Contains(root!.Schematics[0].Symbols, s => s.Reference == "R1");
     }
 
+    // ###########################################################################################
+    // WHERE A SYMBOL LANDS ON ITS SHEET (owner decision, 2026-11-04) - what a component's rectangle is
+    // drawn from. Turned, flipped, or both, "Test:L" covers another rectangle each time; see KiCadFixtures.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("L1", 98, 98, 104, 100)]
+    [InlineData("L2", 98, 100, 104, 102)]
+    [InlineData("L3", 96, 98, 102, 100)]
+    [InlineData("L4", 98, 96, 100, 102)]
+    [InlineData("L5", 98, 98, 100, 104)]
+    public async Task A_symbols_extent_is_its_drawing_and_pins_turned_and_flipped_onto_the_sheet(string reference, double left, double top, double right, double bottom)
+    {
+        KiCadSheetExtent extent = (await this.PlacedSymbolsAsync()).First(symbol => symbol.Reference == reference).Extent!;
+
+        Assert.Equal((left, top, right, bottom), (extent.Left, extent.Top, extent.Right, extent.Bottom));
+    }
+
+    // A unit draws its own part and the one common to all, in its own body style; a hidden pin draws
+    // nothing, written either way; a derived symbol draws its parent's.
+    [Fact]
+    public async Task A_symbols_extent_is_of_its_own_unit_and_body_style()
+    {
+        List<KiCadSchematicSymbol> symbols = await this.PlacedSymbolsAsync();
+        List<KiCadSchematicSymbol> u1 = symbols.Where(symbol => symbol.Reference == "U1").ToList();
+
+        static (double, double, double, double) Of(KiCadSchematicSymbol symbol) =>
+            (symbol.Extent!.Left, symbol.Extent.Top, symbol.Extent.Right, symbol.Extent.Bottom);
+
+        Assert.Equal((200, 198, 203, 200), Of(u1[0]));
+        Assert.Equal((200, 198, 212, 200), Of(u1[1]));
+        Assert.Equal((200, 194, 207, 200), Of(symbols.First(symbol => symbol.Reference == "U2")));
+        Assert.Equal((200, 194, 207, 200), Of(symbols.First(symbol => symbol.Reference == "U3")));
+        Assert.Equal((200, 198, 212, 200), Of(symbols.First(symbol => symbol.Reference == "U4")));
+    }
+
+    [Fact]
+    public async Task A_symbol_with_no_copy_in_the_sheets_library_has_no_extent()
+    {
+        Assert.Null((await this.PlacedSymbolsAsync()).First(symbol => symbol.Reference == "U5").Extent);
+    }
+
+    private async Task<List<KiCadSchematicSymbol>> PlacedSymbolsAsync()
+    {
+        string schematic = this.thisWorkspace.WriteFile("placed.kicad_sch", KiCadFixtures.SchematicWithPlacedSymbols);
+
+        return (await this.LoadAsync(schematic))!.Schematics[0].Symbols;
+    }
+
+    // ###########################################################################################
+    // *** A POWER SYMBOL NAMES THE NET AT ITS PIN'S TIP (owner decision, 2026-11-04). *** By its Value, and
+    // by its pin's name too where that differs (250469's "9V_UNREG" has a pin "+9V_UNREG", what its PCB calls
+    // the net). A pin named "~" or nothing is no name. PWR_FLAG is flagged as power, but its pin drives, and
+    // read as a label it would make a net of "PWR_FLAG". A symbol not flagged as power is no rail.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_power_symbol_is_a_label_at_its_pins_tip_and_a_flag_is_none()
+    {
+        string schematic = this.thisWorkspace.WriteFile("power.kicad_sch", KiCadFixtures.SchematicWithPowerSymbols);
+
+        KiCadSchematicLabels labels = (await this.LoadAsync(schematic))!.Schematics[0].Labels;
+
+        Assert.Equal(
+            [("+5V", 10.0, 10.0), ("GND", 20.0, 10.0), ("9V_UNREG", 35.0, 10.0), ("+9V_UNREG", 35.0, 10.0), ("VEE", 42.54, 10.0)],
+            labels.Power.Select(label => (label.Text!, label.At!.X, Math.Round(label.At.Y, 6))));
+
+        Assert.Equal(42.54, labels.Power.Single(label => label.Text == "VEE").At!.X, 6);
+        Assert.Empty(labels.Local);
+        Assert.Empty(labels.Global);
+    }
+
+    // What a sheet of power symbols was missing (owner report, 2026-11-04: the Open128's "Power" sheet had
+    // 221 wires and no net CRT could find): the rails reach their wires, and whatever joins them end to end.
+    [Fact]
+    public async Task A_wire_at_a_power_symbol_is_on_its_net()
+    {
+        string schematic = this.thisWorkspace.WriteFile("power.kicad_sch", KiCadFixtures.SchematicWithPowerSymbols);
+
+        KiCadProjectBundle? bundle = await KiCadProjectLoader.LoadRawAsync([schematic]);
+
+        Dictionary<string, List<KiCadResolvedPath>> nets = bundle!.SchematicNetPathIndexBySchematicIndex[0];
+
+        Assert.Equal(2, nets["+5V"].Count);
+        Assert.Single(nets["GND"]);
+        Assert.False(nets.ContainsKey("PWR_FLAG"));
+        Assert.Equal(["+5V", "GND"], nets.Keys.Order());
+    }
+
     // ----------------------------------------------------------------------- views
 
     [Fact]
@@ -945,58 +1032,5 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
 
         // The SAME geometry, not a second copy of it: an alias is another way to ask for one net.
         Assert.Same(index["CNT1"], index["CNT"]);
-    }
-
-    // --------------------------------------------------------------- view names without the PCB
-    //
-    // The "Schematic images" window offers a board's KiCad view names as CAD names (2026-10-10),
-    // read WITHOUT parsing the PCB - which runs to tens of megabytes. What it offers must be exactly
-    // what LoadAsync names the views, or a picked name would match no view on the Schematics tab.
-
-    [Fact]
-    public async Task The_view_names_alone_are_LoadAsyncs_view_names_in_the_same_order()
-    {
-        string pcb = this.WritePcb();
-        string child = this.thisWorkspace.WriteFile("child.kicad_sch", KiCadFixtures.SchematicChildSheet);
-        string parent = this.thisWorkspace.WriteFile("root.kicad_sch", KiCadFixtures.SchematicRootWithChildSheet);
-
-        // The child first, as a folder listing has it - the parent still names it.
-        string[] paths = [pcb, child, parent];
-
-        KiCadProjectRoot? root = await KiCadRawProjectLoader.LoadAsync(paths);
-        List<string> names = await KiCadRawProjectLoader.LoadViewDisplayNamesAsync(paths);
-
-        Assert.Equal(root!.Project.Views.Select(view => view.DisplayName), names);
-        Assert.Equal(["board - PCB Top", "board - PCB Bottom", "root", "Power supply"], names);
-    }
-
-    // LoadAsync keeps a .kicad_pcb that is no KiCad board out; so must the quick read, which only
-    // looks at the file's opening.
-    [Fact]
-    public async Task A_kicad_pcb_file_that_is_no_KiCad_board_gives_no_view_names()
-    {
-        string notABoard = this.WritePcb("(kicad_sch (version 20230121))", "fake.kicad_pcb");
-        string alsoNot = this.WritePcb("garbage", "garbage.kicad_pcb");
-        string prefixOnly = this.WritePcb("(kicad_pcbnew (version 1))", "prefix.kicad_pcb");
-
-        Assert.Empty(await KiCadRawProjectLoader.LoadViewDisplayNamesAsync([notABoard, alsoNot, prefixOnly]));
-    }
-
-    [Fact]
-    public async Task A_kicad_pcb_opening_with_white_space_and_a_byte_order_mark_still_counts()
-    {
-        string path = Path.Combine(this.thisWorkspace.Root, "bom.kicad_pcb");
-        File.WriteAllText(path, "\n  ( kicad_pcb (version 20221018))", new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
-
-        Assert.Equal(
-            ["bom - PCB Top", "bom - PCB Bottom"],
-            await KiCadRawProjectLoader.LoadViewDisplayNamesAsync([path]));
-    }
-
-    [Fact]
-    public async Task Missing_files_give_no_view_names_and_no_exception()
-    {
-        Assert.Empty(await KiCadRawProjectLoader.LoadViewDisplayNamesAsync(
-            [Path.Combine(this.thisWorkspace.Root, "gone.kicad_pcb"), Path.Combine(this.thisWorkspace.Root, "gone.kicad_sch")]));
     }
 }

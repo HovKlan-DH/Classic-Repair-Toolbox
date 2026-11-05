@@ -81,12 +81,38 @@ namespace CRT
             return held;
         }
 
+        // A new board renamed: those waiting for their first component go with it, under its new identity.
+        internal void FollowBoardRenamed(string from, string to)
+        {
+            if (this.thisHeldCategories.Remove(from, out List<string>? held))
+            {
+                this.thisHeldCategories[to] = held;
+            }
+        }
+
         // What a category box offers: the board's, and those added and waiting for their first component.
         private List<string> CategoryChoices(BoardData board) =>
             ComponentListBuilder.BuildDistinctCategories(board)
                 .Concat(this.HeldCategories(board))
                 .OrderBy(category => category, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+        // ###########################################################################################
+        // The same with `own` among them as it is spelt, the word a component's row holds: a list only
+        // able to select the board's first spelling would read "ic" as a change to "IC" nobody made.
+        // ###########################################################################################
+        private List<string> CategoryChoicesWith(BoardData board, string? own)
+        {
+            List<string> choices = this.CategoryChoices(board);
+
+            if (!string.IsNullOrEmpty(own) && !choices.Contains(own, StringComparer.Ordinal))
+            {
+                int place = choices.FindIndex(choice => string.Compare(choice, own, StringComparison.OrdinalIgnoreCase) > 0);
+                choices.Insert(place < 0 ? choices.Count : place, own);
+            }
+
+            return choices;
+        }
 
         // ###########################################################################################
         // The rows, changed in place: a name commits as its box loses focus - on the PRESS of another

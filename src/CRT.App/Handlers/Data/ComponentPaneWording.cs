@@ -24,10 +24,9 @@ namespace Handlers.DataHandling
     }
 
     // ###########################################################################################
-    // THE PAGES OF A COMPONENT, its tabs over the pane (owner decision, 2026-11-01: "the functionality in
-    // this is too massive, if all data is filled, so I think we need to split this into multiple menu
-    // items" - as tabs on the right, so the left column keeps its room for the component list). In the
-    // order the tabs stand.
+    // THE PAGES OF A COMPONENT, under "Components" in the left column (owner decision, 2026-11-01: "the
+    // functionality in this is too massive, if all data is filled, so I think we need to split this into
+    // multiple menu items"; tabs over the pane until 2026-11-03). In the order their entries stand.
     // ###########################################################################################
     internal enum ComponentPage
     {
@@ -47,22 +46,16 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     internal static class ComponentPaneWording
     {
-        // "Component: U8 - VIC-II | 6569" - the label, then what the component list shows beside it. It
-        // says "Component" as a board part's headline says "Board" (owner request, 2026-11-02).
+        // "Component: U8 | VIC-II | 6569" - what it is, as a board part's headline says "Board", then exactly
+        // the component popup's title by its one rule (owner requests, 2026-11-04).
         public static string Title(ComponentEntry row)
         {
             ArgumentNullException.ThrowIfNull(row);
 
-            string label = row.BoardLabel?.Trim() ?? string.Empty;
-            string[] names = new[] { row.FriendlyName, row.TechnicalNameOrValue }
-                .Select(name => name?.Trim() ?? string.Empty)
-                .Where(name => name.Length > 0)
-                .ToArray();
-
-            return names.Length == 0 ? ComponentPaneWording.Title(label) : $"{ComponentPaneWording.Title(label)} - {string.Join(" | ", names)}";
+            return ComponentPaneWording.Title(ComponentPopupContent.TitleOf(row.BoardLabel, row));
         }
 
-        public static string Title(string label) => $"Component: {label}";
+        public static string Title(string name) => $"Component: {name}";
 
         // Said only for a component with a row of its own per region - which one is open.
         public static string RegionLine(string? rowRegion)
@@ -81,20 +74,6 @@ namespace Handlers.DataHandling
 
         public const string NewComponentTitle = "New component";
 
-        // ###########################################################################################
-        // The regions a new component can be in, as the drop-down list says them - first the one a
-        // component is in most often - and the region each stands for (blank: every region, the
-        // component list's rule).
-        // ###########################################################################################
-        public static IReadOnlyList<string> RegionChoices { get; } = ["PAL and NTSC", "PAL only", "NTSC only"];
-
-        public static string RegionOfChoice(string? choice) => choice switch
-        {
-            "PAL only" => "PAL",
-            "NTSC only" => "NTSC",
-            _ => string.Empty,
-        };
-
         // Why a typed label cannot be added - null when it can, or while nothing is typed yet.
         public static string? NewLabelProblem(ContributionPackaging.NewComponentProblem problem, string? label) =>
             problem == ContributionPackaging.NewComponentProblem.BoardLabelAlreadyExists
@@ -103,7 +82,16 @@ namespace Handlers.DataHandling
 
         // Under a new component's empty category - every component needs one (owner decision, 2026-11-01).
         public const string NoCategoryYet =
-            "Every component needs a category - pick one of the board's, or type a new one.";
+            "Every component needs a category - pick one of the board's. A new one is added under \"Board: Categories\".";
+
+        // ... and with none to pick from: the one place a category is made (owner request, 2026-11-03).
+        public const string NoCategoriesToPick =
+            "Every component needs a category, and this board has none yet - add one under \"Board: Categories\" first.";
+
+        // Which region a page shows, now that the buttons switching it are CRT's own (owner request,
+        // 2026-11-03: "use the regions from the left-side instead of adding new region buttons").
+        public static string RegionShownLine(string? region) =>
+            $"Showing {region?.Trim()} - the \"PAL\" and \"NTSC\" buttons under the component list switch it.";
 
         // ---- a component's label (2026-11-01) --------------------------------------------------------
 
@@ -121,6 +109,10 @@ namespace Handlers.DataHandling
                 ? $"This board already has [{wanted}] - a label names one component."
                 : null;
         }
+
+        // Under the label of a component told apart per region: what the other boxes are not.
+        public const string LabelInEveryRegion =
+            "The same in every region - what is printed on the board. The other boxes here are per region.";
 
         // ---- regions (2026-11-01) ---------------------------------------------------------------------
 
@@ -199,14 +191,14 @@ namespace Handlers.DataHandling
         // *** REMOVED BEFORE CRT 4.0 GOES LIVE - see BaselinePinMigration. ***
 
         public const string MigrationNote =
-            "Temporary, until CRT 4.0 goes live: make the pins from the oscilloscope baselines - each pin's number and signal name, and the package when that is certain. What you typed stays, and \"Undo\" takes it back.";
+            "Temporary, until CRT 4.0 goes live: make the pins from the oscilloscope baselines - each pin's number and signal name, and the package when that is certain. \"Create pinouts for the whole board\" also fills in every component the board's KiCad data has, with the package its footprint says. What you typed stays, and \"Undo\" takes it back.";
 
-        public const string MigrationNothing = "The pins already have everything the oscilloscope baselines say.";
+        public const string MigrationNothing = "The pins already have everything the oscilloscope baselines and the KiCad data say.";
 
         public static string MigratedBoard(int components) =>
             components == 1
-                ? "Made the pins of 1 component from its oscilloscope baselines. \"Undo\" takes it back."
-                : $"Made the pins of {components.ToString(CultureInfo.InvariantCulture)} components from their oscilloscope baselines. \"Undo\" takes them all back.";
+                ? "Made the pins of 1 component from its oscilloscope baselines and the KiCad data. \"Undo\" takes it back."
+                : $"Made the pins of {components.ToString(CultureInfo.InvariantCulture)} components from their oscilloscope baselines and the KiCad data. \"Undo\" takes them all back.";
 
         public static string ShowOnBoardTip(string label, bool marked) =>
             marked
@@ -234,25 +226,25 @@ namespace Handlers.DataHandling
             _ => ImportantSignals,
         };
 
-        // A component's page as its tab says it, with how many it holds when it holds any.
-        public static string PageTitle(ComponentPage page, int count)
+        // A component's page by the name its entry has.
+        public static string PageName(ComponentPage page) => page switch
         {
-            string name = page switch
-            {
-                ComponentPage.Basics => "Basics",
-                ComponentPage.Replacements => "Replacement parts",
-                ComponentPage.Pinout => "Pinout",
-                ComponentPage.Pictures => "Pictures",
-                ComponentPage.Baselines => "Oscilloscope baseline",
-                ComponentPage.Files => "Files",
-                _ => "Links",
-            };
+            ComponentPage.Basics => "Basics",
+            ComponentPage.Replacements => "Replacement parts",
+            ComponentPage.Pinout => "Pinout",
+            ComponentPage.Pictures => "Pictures",
+            ComponentPage.Baselines => "Oscilloscope baseline",
+            ComponentPage.Files => "Files",
+            _ => "Links",
+        };
 
-            return count > 0 ? ComponentPaneWording.Heading(name, count) : name;
-        }
-
-        // A tab marked because of what is on its page.
+        // A page's entry in the left column marked because of what is on the page.
         public const string PageHasErrorTip = "Something on this page stops the draft being submitted";
+
+        // Under the short description once it is too long for the popup's line (owner report, 2026-11-03:
+        // the counter's color alone was not seen). A warning: the draft can still be submitted.
+        public static string DescriptionTooLong(int length) =>
+            $"This is {length - ComponentVocabulary.ShortDescriptionLimit} too long - the popup has room for {ComponentVocabulary.ShortDescriptionLimit} characters. It can still be submitted, but please shorten it.";
 
         // What the board's pictures are called wherever the part is named (owner requests, 2026-10-29:
         // "rename 'Pictures' to 'Schematic images'", and 2026-11-01: "'Board: Schematic images'").
@@ -362,16 +354,78 @@ namespace Handlers.DataHandling
                 : $"How this board's baselines were measured is written down for {elsewhere.Trim()} only - show {elsewhere.Trim()} to read it, or add a file for this region {where}.";
         }
 
-        // ---- copy from another board (slice 5) --------------------------------------------------------
+        // ---- clone a component from another board (owner request, 2026-11-04) ---------------------------
+
+        public const string CloneIntro =
+            "Pick the component to clone. This component takes over everything it has - every field, its pins, replacement parts, pictures, oscilloscope baselines, files and links - and what it holds of those now is replaced. Its board label stays, and so do the places it is marked on this board's schematic images. \"Undo\" takes it all back.";
+
+        public const string CloneNoOtherBoards =
+            "There is no other published board on this computer to clone a component from.";
+
+        public const string CloneBoardNotRead =
+            "That board could not be read - its data may still be downloading. Try again in a moment.";
+
+        public const string CloneBoardHasNoComponents = "That board has no components.";
+
+        // What is shown of the component picked, a line each - the names in bold (BoldRuns), its title first.
+        public static List<string> CloneFacts(ComponentCloneFacts facts)
+        {
+            ArgumentNullException.ThrowIfNull(facts);
+
+            // What another board's data says is its words alone: a "<b>" in it says nothing of what is bold here
+            // (code review, 2026-11-04).
+            static string Its(string? data) => Handlers.Theming.BoldRuns.Plain(data).Trim();
+
+            var lines = new List<string> { $"<b>{Its(ComponentPopupContent.TitleOf(facts.Row.BoardLabel, facts.Row))}</b>" };
+
+            void Line(string name, string? value)
+            {
+                if (!string.IsNullOrWhiteSpace(Its(value)))
+                {
+                    lines.Add($"<b>{name}:</b> {Its(value)}");
+                }
+            }
+
+            Line("Category", facts.Row.Category);
+            Line("Part number", facts.Row.PartNumber);
+            Line("Package", facts.Row.Package);
+            Line("Short description", facts.Row.Description);
+
+            lines.Add(
+                $"<b>Holds:</b> {ContributeProblems.Counted(facts.Pins, "pin", "pins")}, {ContributeProblems.Counted(facts.Replacements, "replacement part", "replacement parts")}, " +
+                $"{ContributeProblems.Counted(facts.Pictures, "picture", "pictures")}, {ContributeProblems.Counted(facts.Baselines, "oscilloscope baseline", "oscilloscope baselines")}, " +
+                $"{ContributeProblems.Counted(facts.Files, "file", "files")}, {ContributeProblems.Counted(facts.Links, "link", "links")}");
+
+            if (facts.EveryRegionComes)
+            {
+                lines.Add($"It differs per region and every region comes along - this is what {facts.Region} shows.");
+            }
+
+            if (facts.OtherRegionsLeftOut)
+            {
+                lines.Add($"It differs per region and this component has room for one - {facts.Region} is the one taken.");
+            }
+
+            return lines;
+        }
+
+        // Said once it is done - with the files that did not come, whose rows were left out.
+        public static string Cloned(string fromLabel, string fromBoard, IReadOnlyCollection<string> filesLeftOut)
+        {
+            string done = $"Cloned from [{fromLabel}] of {fromBoard}. \"Undo\" takes it back.";
+
+            return filesLeftOut.Count == 0
+                ? done
+                : $"{done} These files could not be brought over, so what cites them was left out: {string.Join(", ", filesLeftOut)}.";
+        }
+
+        // ---- the same part on other boards (slice 5) ------------------------------------------------------
 
         public const string CopyNeedsPartNumber =
             "Give the component its part number first - the same part is found on the other boards by it.";
 
         public static string CopyFoundNothing(string partNumber) =>
             $"No other board on this machine has a component with the part number [{partNumber.Trim()}].";
-
-        public static string CopyIntro(string partNumber) =>
-            $"The same part - part number [{partNumber.Trim()}] - on the other boards. Pick one, and what to take from it; what this component has of it is replaced.";
 
         // ---- also on other boards (slice 5) -----------------------------------------------------------
 

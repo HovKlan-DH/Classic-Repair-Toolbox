@@ -82,7 +82,7 @@ namespace CRT
 
         // The sheet last looked at in each board, so coming back to one opens it where it was left -
         // the submission table's own rule (TabMaintainer.Table.cs). For as long as CRT runs.
-        private readonly Dictionary<string, string> thisSheetByBoard = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (string Sheet, BoardTableSheetPart Part)> thisSheetByBoard = new(StringComparer.Ordinal);
 
         private BoardTableEditor BoardTable => this.FindControl<BoardTableEditor>("BoardDataTable")!;
 
@@ -217,7 +217,7 @@ namespace CRT
         private void TakeTable(BoardTableAnswer table)
         {
             if (this.thisTable is not null && this.BoardTable.CurrentSheet?.Name is string current)
-                this.thisSheetByBoard[this.thisTable.BoardId] = current;
+                this.thisSheetByBoard[this.thisTable.BoardId] = (current, this.BoardTable.SheetPart);
 
             this.thisTable = table;
         }
@@ -266,7 +266,8 @@ namespace CRT
                     beta,
                     stable is null ? BoardSections.BaselineLabel : BoardTableDocument.StableSourceBaselineLabel),
                 null,
-                preferredSheet: this.thisSheetByBoard.TryGetValue(table.BoardId, out string? sheet) ? sheet : null);
+                preferredSheet: this.thisSheetByBoard.TryGetValue(table.BoardId, out var left) ? left.Sheet : null,
+                preferredPart: left.Part);
 
             // What the table is - under the BETA / Stable switch, above the table (owner request,
             // 2026-10-04: it sat under the search box, and moved the table about between the two).
@@ -628,7 +629,7 @@ namespace CRT
         private void CloseTableNow()
         {
             if (this.thisTable is not null && this.BoardTable.CurrentSheet?.Name is string sheet)
-                this.thisSheetByBoard[this.thisTable.BoardId] = sheet;
+                this.thisSheetByBoard[this.thisTable.BoardId] = (sheet, this.BoardTable.SheetPart);
 
             this.thisTable = null;
             this.thisTableReadAt = null;

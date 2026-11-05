@@ -84,6 +84,67 @@ public sealed class SchematicRenameTests
     private static readonly Dictionary<string, string?> TopRenamedBottomDeleted =
         new(StringComparer.OrdinalIgnoreCase) { ["Top"] = "PCB; Top", ["Bottom"] = null };
 
+    // ###########################################################################################
+    // THE CREDIT FOR THE IMAGE FOLLOWS ITS NAME (owner request, 2026-11-04): who is credited stays, and no
+    // other kind of credit is touched - "Oscilloscope baseline" with "PAL" is no credit for an image someone
+    // has called "PAL".
+    // ###########################################################################################
+    [Fact]
+    public void The_credit_for_the_image_follows_its_name_and_no_other_credit_does()
+    {
+        BoardData board = Board("PAL", "Bottom").WithBoardSections(credits:
+        [
+            new CreditEntry { Category = "Schematic image", SubCategory = " pal ", NameOrHandle = "Anna", Contact = "anna@example.org" },
+            new CreditEntry { Category = "Schematic image", SubCategory = "Bottom", NameOrHandle = "Bo" },
+            new CreditEntry { Category = "Oscilloscope baseline", SubCategory = "PAL", NameOrHandle = "Cy" },
+            new CreditEntry { Category = "Board data", NameOrHandle = "Di" },
+        ]);
+
+        (BoardData renamed, bool moved) = SchematicRename.Apply(board, 0, "Top");
+
+        Assert.True(moved);
+        Assert.Equal(
+            ["Schematic image|Top|Anna|anna@example.org", "Schematic image|Bottom|Bo|", "Oscilloscope baseline|PAL|Cy|", "Board data||Di|"],
+            renamed.Credits.Select(credit => $"{credit.Category}|{credit.SubCategory}|{credit.NameOrHandle}|{credit.Contact}"));
+    }
+
+    // Nothing says which of two rows of one name a credit was for - as for what is drawn on them, it stays.
+    [Fact]
+    public void A_credit_stays_while_another_image_keeps_the_old_name()
+    {
+        BoardData board = Board("Top", "Top").WithBoardSections(credits: [new CreditEntry { Category = "Schematic image", SubCategory = "Top", NameOrHandle = "Anna" }]);
+
+        (BoardData renamed, _) = SchematicRename.Apply(board, 1, "Bottom");
+
+        Assert.Equal("Top", Assert.Single(renamed.Credits).SubCategory);
+    }
+
+    // The rename the Contribute tab's cards go through.
+    [Fact]
+    public void A_rename_planned_on_a_board_carries_its_credit()
+    {
+        BoardData board = Board("Top").WithBoardSections(credits: [new CreditEntry { Category = "Schematic image", SubCategory = "Top", NameOrHandle = "Anna" }]);
+
+        SchematicRenamePlan plan = SchematicRename.Plan(board, SchematicRows.RefOf(board.Schematics.Select(row => (row.SchematicName, row.SchematicImageFile)).ToList(), 0), "PCB top");
+
+        Assert.Equal("PCB top", Assert.Single(plan.Board!.Credits).SubCategory);
+    }
+
+    // A new board's row with nobody named follows too, and is then not offered a second time.
+    [Fact]
+    public void A_new_boards_credit_row_renamed_with_its_image_is_not_offered_again()
+    {
+        BoardData board = Board("Top");
+        NewBoardCreditOffer offer = NewBoardCredits.Offer(board, null);
+
+        (BoardData renamed, _) = SchematicRename.Apply(offer.Board, 0, "PCB top");
+        NewBoardCreditOffer again = NewBoardCredits.Offer(renamed, offer.Offered);
+
+        Assert.Equal(renamed.Credits.Count, again.Board.Credits.Count);
+        Assert.Single(again.Board.Credits, credit => credit.SubCategory == "PCB top");
+        Assert.DoesNotContain(again.Board.Credits, credit => credit.SubCategory == "Top");
+    }
+
     [Fact]
     public void A_highlight_follows_its_schematic_renamed_goes_with_it_deleted_and_stays_otherwise()
     {

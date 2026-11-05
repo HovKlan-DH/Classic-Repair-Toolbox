@@ -19,6 +19,22 @@
 			<Setter Property="Padding" Value="12,4" />
 		</Style>
 
+		<!-- A group's heading among the tabs (BoardTableTabs; owner request, 2026-11-05): no tab, nothing to pick,
+		     set apart from the group before it. -->
+		<Style Selector="TabControl#SheetTabs TabItem.SheetGroup">
+			<Setter Property="FontWeight" Value="Bold" />
+			<Setter Property="Padding" Value="0,4,4,4" />
+			<Setter Property="Margin" Value="20,0,0,0" />
+			<Setter Property="MinHeight" Value="0" />
+			<Setter Property="Cursor" Value="Arrow" />
+		</Style>
+		<Style Selector="TabControl#SheetTabs TabItem.SheetGroup.First">
+			<Setter Property="Margin" Value="0" />
+		</Style>
+		<Style Selector="TabControl#SheetTabs TabItem.SheetGroup:disabled /template/ Border#PART_SelectedPipe">
+			<Setter Property="IsVisible" Value="False" />
+		</Style>
+
 		<!-- *** THE POINTER GOES THROUGH A TOOLTIP TO WHAT IS UNDER IT (owner report, 2026-10-02:
 		     "the mouse should follow the cell below, and not the tooltip"). *** A cell's tooltip
 		     opens over the next row, and Avalonia keeps a tooltip open while the pointer is on it -
@@ -360,9 +376,10 @@
 		<DockPanel Grid.Row="1" Margin="0,0,0,6">
 			<StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top" Margin="16,0,0,0">
 				<!-- A DRAFT SAVES ITSELF (CRT 4.0 step 1, 2026-10-25): where "Save changes" is, the
-				     Contribute tab's table says Saved, Saving... or "Could not save - <reason>", with
-				     Try again after a failure (BoardTableEditor.DraftSession.cs, DraftSaveWording).
-				     No Reload: the table follows the draft by itself. -->
+				     Contribute tab's table says nothing while all is well (owner request, 2026-11-04) and
+				     "Could not save - <reason>", with Try again, after a failure
+				     (BoardTableEditor.DraftSession.cs, DraftSaveWording). No Reload: the table follows
+				     the draft by itself. -->
 				<StackPanel x:Name="SaveStatePanel" Orientation="Horizontal" Spacing="8" IsVisible="False">
 					<TextBlock x:Name="SaveStateText"
 							   VerticalAlignment="Center"

@@ -134,7 +134,7 @@ namespace CRT
                 return false;
             }
 
-            BoardTablePasteResult result = sheet.PasteBlock(anchor, block, this.ShownRows(), mayAddRows: !this.IsNarrowed);
+            BoardTablePasteResult result = sheet.PasteBlock(anchor, block, this.ShownRows(), mayAddRows: !this.IsNarrowed, this.ColumnsShownNow());
 
             this.ShowStatus(BoardTableEditWording.Pasted(result));
 
@@ -156,13 +156,15 @@ namespace CRT
 
             var cells = new List<DataGridCellInfo>();
 
+            List<int> columns = this.ColumnsShownNow().SkipWhile(column => column != result.FirstColumn).Take(result.ColumnCount).ToList();
+
             foreach (BoardTableRow row in result.Rows)
             {
                 int rowIndex = this.thisView?.IndexOf(row) ?? -1;
 
-                for (int column = result.FirstColumn; rowIndex >= 0 && column < result.FirstColumn + result.ColumnCount; column++)
+                foreach (int column in columns)
                 {
-                    if (this.TableGrid.Columns.FirstOrDefault(c => c.Tag is int index && index == column) is { } gridColumn)
+                    if (rowIndex >= 0 && this.TableGrid.Columns.FirstOrDefault(c => c.Tag is int index && index == column) is { } gridColumn)
                     {
                         cells.Add(new DataGridCellInfo(row, gridColumn, rowIndex, gridColumn.DisplayIndex, true));
                     }
@@ -271,8 +273,13 @@ namespace CRT
             this.FocusGrid();
         }
 
+        // ###########################################################################################
         // "Replace all": the rows the table shows - the pills and the search as they are - on this
-        // sheet, or on every sheet with "On every sheet" ticked.
+        // sheet, or on every sheet with "On every sheet" ticked. Of a sheet shown in two, the part shown,
+        // rows and columns (code review, 2026-11-04: Replace on "Component: Pictures" rewrote the
+        // oscilloscope baselines too, unseen, and hidden cells of the pictures). "On every sheet" asks for
+        // what is not on screen anyway, so it takes the sheet whole.
+        // ###########################################################################################
         internal void ReplaceAll()
         {
             if (this.thisIsReadOnly || this.thisDocument is not { } document || this.thisCurrentSheet is not { } sheet)
@@ -295,12 +302,14 @@ namespace CRT
             BoardTableRowKinds kinds = this.thisFilter;
             BoardTableSearch search = this.thisSearch;
             BoardTableRow? inHand = this.thisRowInHand;
+            BoardTableSheetPart part = everySheet ? BoardTableSheetPart.Whole : this.thisPart;
 
             BoardTableReplaceResult result = document.ReplaceAll(
                 find,
                 this.ReplaceWithBox.Text,
                 everySheet ? document.Sheets : [sheet],
-                row => BoardTableRowFilter.Shows(kinds, search, inHand, row));
+                row => (ReferenceEquals(row, inHand) || BoardTableSheetParts.Shows(part, row)) && BoardTableRowFilter.Shows(kinds, search, inHand, row, part),
+                each => BoardTableSheetParts.ColumnsShown(part, each));
 
             this.ShowStatus(BoardTableEditWording.Replaced(result, find, everySheet));
             this.UpdateSheetTabs();

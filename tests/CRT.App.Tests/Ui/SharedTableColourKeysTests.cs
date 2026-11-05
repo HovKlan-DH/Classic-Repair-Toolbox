@@ -69,7 +69,7 @@ public sealed class SharedTableColourKeysTests
         // A parse that found nothing cannot pass: two of the keys that came over from the separate
         // application.
         Assert.Contains("Badge_Attention_Bg", keys);
-        Assert.Contains("Mode_Selected_Bg", keys);
+        Assert.Contains("Badge_NewBoard_Bg", keys);
 
         SharedTableColourKeysTests.AssertResolvesInBothThemes(keys);
     }

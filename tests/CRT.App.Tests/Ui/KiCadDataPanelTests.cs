@@ -46,8 +46,9 @@ public sealed class KiCadDataPanelTests : IDisposable
         string[]? views = null) =>
         new(matched, unmatched, unused, pcbFileCount, views ?? Array.Empty<string>());
 
+    // Bold pieces or not (BoldRuns: a line with a bold piece has no Text).
     private static string TextOf(KiCadDataPanel panel, string name) =>
-        panel.GetControl<TextBlock>(name).Text ?? string.Empty;
+        Handlers.Theming.BoldRuns.TextOf(panel.GetControl<TextBlock>(name));
 
     private static bool VisibleOf(KiCadDataPanel panel, string name) =>
         panel.GetControl<StackPanel>(name).IsVisible;
@@ -883,28 +884,32 @@ public sealed class KiCadDataPanelTests : IDisposable
         });
     }
 
-    // ---- dropped on the Contribute tab, and the KiCad summary (step 3, slice 3e) ----------------------
+    // ---- dropped on "KiCad: Files", and the KiCad summary (step 3, slice 3e) --------------------------
 
-    private static async Task UntilImported(KiCadDataPanel panel)
+    // A folder imported as the panel's own drop target imports it, once it has read what it opens on.
+    private static async Task ImportOnceOpen(KiCadDataPanel panel, string folder)
     {
-        for (int i = 0; i < 500 && !(panel.DroppedImport.IsCompleted && panel.DraftChanging.IsCompleted); i++)
+        await panel.Opening;
+        await panel.ImportKiCadFolderAsync(folder);
+
+        for (int i = 0; i < 500 && !panel.DraftChanging.IsCompleted; i++)
         {
             await Task.Delay(10);
             Dispatcher.UIThread.RunJobs();
         }
 
         Dispatcher.UIThread.RunJobs();
-        Assert.True(panel.DroppedImport.IsCompleted, "The files dropped should have been imported.");
+        Assert.True(panel.DraftChanging.IsCompleted, "The files dropped should have been imported.");
     }
 
     // ###########################################################################################
     // The plan's "KiCad: drop the project folder and get a summary of what was found, what was
-    // ignored, and what is left to do": a folder dropped on the Contribute tab is imported as the
-    // window opens, and the summary says what the KiCad data holds, what was left out - its schematic
-    // still in an older KiCad's form, said with what to do - and what is left to do.
+    // ignored, and what is left to do": a folder dropped on "KiCad: Files" is imported, and the summary
+    // says what the KiCad data holds and what was left out - its schematic still in an older KiCad's form,
+    // said with what to do. What is left to do went on 2026-11-03: "Board status" says it.
     // ###########################################################################################
     [Fact]
-    public async Task A_KiCad_folder_dropped_is_imported_as_the_window_opens_and_summed_up()
+    public async Task A_KiCad_folder_dropped_is_imported_and_summed_up()
     {
         this.SeedBoardWithSchematic("top.png", writeTheImageFile: true);
 
@@ -918,9 +923,8 @@ public sealed class KiCadDataPanelTests : IDisposable
         {
             var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
             panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
-            panel.ImportOnceOpen([source]);
 
-            await UntilImported(panel);
+            await ImportOnceOpen(panel, source);
             for (int i = 0; i < 200 && !panel.GetControl<Border>("KiCadSummaryPanel").IsVisible; i++)
             {
                 await Task.Delay(10);
@@ -932,8 +936,8 @@ public sealed class KiCadDataPanelTests : IDisposable
             Assert.Equal("Found 1 PCB with 1 component and 1 net, and no schematic sheet.", TextOf(panel, "KiCadFoundText"));
 
             // Where the count beside "KiCad data" comes from (owner request, 2026-10-30).
-            Assert.Equal(KiCadImportSummary.Files(["KiCad data/board.kicad_pcb"]), TextOf(panel, "KiCadFilesText"));
-            Assert.StartsWith("The board has 1 KiCad file - ", TextOf(panel, "KiCadFilesText"), StringComparison.Ordinal);
+            Assert.Equal("The board now has 1 KiCad file:\n- 1 PCB file", TextOf(panel, "KiCadFilesText"));
+            Assert.Equal(["1"], Handlers.Theming.BoldRuns.BoldPiecesOf(panel.GetControl<TextBlock>("KiCadFilesText")));
             Assert.True(panel.GetControl<TextBlock>("KiCadFilesText").IsVisible);
 
             Assert.Equal(
@@ -942,9 +946,9 @@ public sealed class KiCadDataPanelTests : IDisposable
             Assert.Equal(string.Join(" ", KiCadImportSummary.CannotRead(["board.sch"], ["board.sch"], ["board.kicad_pcb"])), TextOf(panel, "KiCadOlderText"));
             Assert.True(panel.GetControl<TextBlock>("KiCadOlderText").IsVisible);
 
-            // What is left to do, by BoardReadiness' rules on the draft as it now is.
-            Assert.True(VisibleOf(panel, "KiCadLeftToDoPanel"));
-            Assert.Contains("- Match each picture to the KiCad view it shows.", TextOf(panel, "KiCadLeftToDoText"), StringComparison.Ordinal);
+            // No "Left to do" any more (owner request, 2026-11-03: "it should show elsewhere") - "Board
+            // status" says it.
+            Assert.Null(panel.FindControl<Control>("KiCadLeftToDoPanel"));
 
             // The check done, the status line no longer says it is checking (render, 2026-10-28: it
             // read "Checking what it lines up with..." under the finished summary).
@@ -969,9 +973,8 @@ public sealed class KiCadDataPanelTests : IDisposable
         {
             var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
             panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
-            panel.ImportOnceOpen([source]);
 
-            await UntilImported(panel);
+            await ImportOnceOpen(panel, source);
             for (int i = 0; i < 200 && !panel.GetControl<Border>("KiCadSummaryPanel").IsVisible; i++)
             {
                 await Task.Delay(10);
@@ -1120,9 +1123,8 @@ public sealed class KiCadDataPanelTests : IDisposable
         {
             var panel = KiCadDataPanelTests.Hosted(new KiCadDataPanel());
             panel.Initialize(KiCadDataPanelTests.BoardKey, ["U1"]);
-            panel.ImportOnceOpen([source]);
 
-            await UntilImported(panel);
+            await ImportOnceOpen(panel, source);
 
             Assert.Empty(panel.KiCadFiles);
             Assert.Equal(KiCadImportSummary.NothingToImport(["c64.pro", "c64.sch"], ["c64.sch"]), panel.StatusTextForTests);

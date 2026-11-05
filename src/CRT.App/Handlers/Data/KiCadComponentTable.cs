@@ -19,8 +19,9 @@ namespace Handlers.DataHandling
             root is null ? [] : KiCadBoardComponents.Of(KiCadComponentTable.Footprints(root), KiCadComponentTable.Symbols(root));
 
         // ###########################################################################################
-        // The components KiCad knows but has no footprint for (2026-11-01) - nothing to mark them from,
-        // so they are marked by hand (KiCadBoardComponents.OnlyInSchematic).
+        // The components KiCad has a symbol for but no footprint (2026-11-01) - marked from the symbol on a
+        // schematic sheet's picture, with nothing to mark them from on a side of the board
+        // (KiCadBoardComponents.OnlyInSchematic).
         // ###########################################################################################
         public static List<string> OnlyInSchematic(KiCadProjectRoot? root) =>
             root is null ? [] : KiCadBoardComponents.OnlyInSchematic(KiCadComponentTable.Footprints(root), KiCadComponentTable.Symbols(root));

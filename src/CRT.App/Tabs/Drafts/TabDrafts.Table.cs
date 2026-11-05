@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace CRT
 {
     // ###########################################################################################
-    // TABLE MODE on the Contribute tab - "Table view" (owner request, 2026-09-24; on the right of the
+    // TABLE MODE on the Contribute tab - "Table" (owner request, 2026-09-24; on the right of the
     // workspace since CRT 4.0 step 2).
     //
     // Owns: which draft's table is open, showing it or the start panel, and what happens to the
@@ -170,21 +170,8 @@ namespace CRT
             this.thisTableEntry is not null &&
             string.Equals(this.thisTableEntry.ExcelDataFile, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase);
 
-        // The row's "Edit in table format" / "Close table" button.
-        internal async Task ToggleTableAsync(HardwareBoardEntry entry)
-        {
-            if (this.IsTableOpenFor(entry))
-            {
-                await this.CloseTableAsync();
-            }
-            else
-            {
-                await this.OpenTableAsync(entry);
-            }
-        }
-
-        // Opens this draft's table, or keeps it open when it already is - for the Contribute tab's
-        // "Table view" and the board parts on the left of the tab (TabDrafts.Workspace.cs).
+        // Opens this draft's table, or keeps it open when it already is - "Show in the table" and the like
+        // (TabDrafts.Workspace.cs); the left column's entries show theirs by TabDrafts.Entries.cs.
         internal async Task ShowTableAsync(HardwareBoardEntry entry)
         {
             if (this.IsTableOpenFor(entry))
@@ -196,20 +183,27 @@ namespace CRT
             await this.OpenTableAsync(entry);
         }
 
+        // How many times a table was read and built - for tests: a large board's costs seconds.
+        internal int TableLoadsForTests { get; private set; }
+
         // ###########################################################################################
         // Opens one draft's table. The published board is what the colours compare against - none
         // for a board that exists only as a draft, where nothing is coloured.
+        //
+        // `takeFocus` false: a component picked in the list keeps the keys there, so the arrow keys go on
+        // walking the list while the table follows (code review, 2026-11-04: it held only once the table
+        // was open, as opening it took the focus whatever was asked).
         // ###########################################################################################
-        internal async Task OpenTableAsync(HardwareBoardEntry entry)
+        internal async Task OpenTableAsync(HardwareBoardEntry entry, bool takeFocus = true)
         {
             // What closes on the way hands the draft over - never lets it go (OpeningOn).
             using (this.OpeningOn(entry))
             {
-                await this.OpenTableOnDraftAsync(entry);
+                await this.OpenTableOnDraftAsync(entry, takeFocus);
             }
         }
 
-        private async Task OpenTableOnDraftAsync(HardwareBoardEntry entry)
+        private async Task OpenTableOnDraftAsync(HardwareBoardEntry entry, bool takeFocus)
         {
             if (this.IsTableOpen && !await this.CloseTableAsync())
             {
@@ -281,9 +275,20 @@ namespace CRT
                 return;
             }
 
+            this.TableLoadsForTests++;
             this.thisTableEntry = entry;
+
+            // However it was asked for ("Show in the table", Submit on a draft with errors), the table is
+            // what shows now - the column and the switch say so (TabDrafts.Entries.cs).
+            this.thisTableMode = true;
+            this.thisNoComponentPage = null;
+
             this.RefreshDrafts();
-            this.FocusTableIfOpen();
+
+            if (takeFocus)
+            {
+                this.FocusTableIfOpen();
+            }
         }
 
         // ###########################################################################################
@@ -607,9 +612,6 @@ namespace CRT
             // this brought Board status back for a moment at every RefreshDrafts - its session opened, its
             // checks run and the KiCad data read, behind the page.
             this.ShowStartPanel(this.NothingElseOpenOnTheRight);
-
-            // The table takes the whole workspace, the left column with it (TabDrafts.Splitters.cs).
-            this.ShowWorkspaceColumns();
         }
 
         // ###########################################################################################

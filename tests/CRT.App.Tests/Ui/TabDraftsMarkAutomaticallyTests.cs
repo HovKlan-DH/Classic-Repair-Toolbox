@@ -353,43 +353,88 @@ public sealed class TabDraftsMarkAutomaticallyTests : IDisposable
         });
     }
 
-    // A picture of a schematic sheet is passed over without a word after aligning - nothing to mark
-    // from KiCad there.
-    [Fact]
-    public async Task After_aligning_a_schematic_sheet_nothing_is_marked_or_said()
+    // A schematic sheet: U1 drawn in two units, U2 in one, and nothing else of the board's.
+    private static KiCadProjectRoot KiCadWithSheet()
     {
-        var sheet = new BoardData
+        KiCadProjectRoot kiCad = KiCad();
+        kiCad.Project.Views.Add(new KiCadProjectView { DisplayName = "Main sheet", Type = "schematic", SourceIndex = 0 });
+        kiCad.Schematics.Add(new KiCadSchematic
         {
-            Schematics = [new BoardSchematicEntry { SchematicName = "Sheet", SchematicImageFile = "Images/sheet.png", CadName = "Main sheet" }],
-            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
-        };
+            Wires = [new KiCadSchematicPathItem { Points = [new KiCadPoint2D { X = 0, Y = 0 }, new KiCadPoint2D { X = 42, Y = 22 }] }],
+            Symbols =
+            [
+                new KiCadSchematicSymbol { Reference = "U1", Extent = new KiCadSheetExtent { Left = 1, Top = 1, Right = 5, Bottom = 5 } },
+                new KiCadSchematicSymbol { Reference = "U1", Extent = new KiCadSheetExtent { Left = 11, Top = 1, Right = 15, Bottom = 5 } },
+                new KiCadSchematicSymbol { Reference = "U2", Extent = new KiCadSheetExtent { Left = 21, Top = 1, Right = 25, Bottom = 5 } },
+            ],
+        });
 
-        WriteDraft(sheet, aligned: "Sheet");
+        return kiCad;
+    }
+
+    private static BoardData BoardOfSheet() => new()
+    {
+        Schematics = [new BoardSchematicEntry { SchematicName = "Sheet", SchematicImageFile = "Images/sheet.png", CadName = "Main sheet" }],
+        Components =
+        [
+            new ComponentEntry { BoardLabel = "U1", Category = "IC" },
+            new ComponentEntry { BoardLabel = "U2", Category = "IC" },
+        ],
+    };
+
+    // ###########################################################################################
+    // *** DONE ON A SCHEMATIC SHEET MARKS ITS COMPONENTS, AS ON A SIDE OF THE BOARD (owner report,
+    // 2026-11-04: "nor has it automatically added any components when I aligned"). *** One step, which
+    // "Undo" takes back; and a chip in two units is one component in what is said, with two rectangles.
+    // ###########################################################################################
+    [Fact]
+    public async Task After_aligning_a_schematic_sheet_its_components_are_marked_from_their_symbols()
+    {
+        WriteDraft(BoardOfSheet(), aligned: "Sheet");
 
         await UiTest.RunAsync(async () =>
         {
-            KiCadProjectRoot kiCad = KiCad();
-            kiCad.Project.Views.Add(new KiCadProjectView { DisplayName = "Main sheet", Type = "schematic", SourceIndex = 0 });
-
-            TabDrafts tab = Tab(Entry(), kiCad);
+            TabDrafts tab = Tab(Entry(), KiCadWithSheet());
             await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
 
             await tab.MarkAfterAligningAsync("Sheet", "Images/sheet.png");
 
             DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, Identity)!;
+            Assert.Equal(["U1", "U1", "U2"], session.Content.Board.ComponentHighlights.Select(row => row.BoardLabel));
+            Assert.All(session.Content.Board.ComponentHighlights, row => Assert.Equal("Sheet", row.SchematicName));
+            Assert.Equal(PictureToolWording.MarkedAfterAligning(2, "Sheet"), tab.ComponentPaneForTests.PicturesNoteForTests);
+
+            Assert.True(session.CanUndo);
+            session.Undo();
             Assert.Empty(session.Content.Board.ComponentHighlights);
-            Assert.False(session.CanUndo);
-            Assert.Null(tab.ComponentPaneForTests.PicturesNoteForTests);
+        });
+    }
+
+    // "Mark all" counts components too, and on a sheet it says so in a sheet's words when nothing is there.
+    [Fact]
+    public async Task Mark_all_on_a_schematic_sheet_says_how_many_components_not_how_many_rectangles()
+    {
+        WriteDraft(BoardOfSheet(), aligned: "Sheet");
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabDrafts tab = Tab(Entry(), KiCadWithSheet());
+            await tab.OpenBoardPartAsync(PaneBoardPart.Pictures);
+
+            await tab.MarkAutomaticallyAsync("Sheet", "Images/sheet.png");
+
+            Assert.Equal(PictureToolWording.MarkedAutomatically(2, "Sheet"), tab.ComponentPaneForTests.PicturesNoteForTests);
+            Assert.Equal(3, DraftManager.Sessions.Find(DraftManager.DraftsRoot, Identity)!.Content.Board.ComponentHighlights.Count);
         });
     }
 
     // ###########################################################################################
-    // THE CARD SAYS WHAT COMES NEXT (owner request, 2026-11-01): a picture of a side of the board not
-    // aligned yet tells to align it, and that its Done marks the components; aligned, it says no more.
-    // "Mark all automatically" is not offered on a schematic sheet, where it can mark nothing.
+    // THE CARD SAYS WHAT COMES NEXT (owner request, 2026-11-01): a picture with a KiCad view not aligned
+    // yet, a side of the board or a schematic sheet, tells to align it, and that its Done marks the
+    // components; aligned, it says no more. "Mark all automatically" is offered on all of them.
     // ###########################################################################################
     [Fact]
-    public async Task A_card_says_to_align_first_and_offers_no_marking_on_a_schematic_sheet()
+    public async Task A_card_says_to_align_first_and_offers_marking_on_a_schematic_sheet_too()
     {
         BoardData board = Board();
         board.Schematics.Add(new BoardSchematicEntry { SchematicName = "Sheet", SchematicImageFile = "Images/sheet.png", CadName = "Main sheet" });
@@ -410,9 +455,10 @@ public sealed class TabDraftsMarkAutomaticallyTests : IDisposable
             Assert.True(Row("Photo").AlignsFirst);
             Assert.Equal(PictureToolWording.AlignFirst, Row("Photo").AlignFirstText);
 
-            // A schematic sheet: aligning it lights its nets, but no marking is offered - nor said.
-            Assert.False(Row("Sheet").AlignsFirst);
-            Assert.False(Row("Sheet").ShowsMarkAutomatically);
+            // A schematic sheet is told the same, and greyed out until it is aligned.
+            Assert.True(Row("Sheet").AlignsFirst);
+            Assert.True(Row("Sheet").ShowsMarkAutomatically);
+            Assert.False(Row("Sheet").CanMarkAutomatically);
             Assert.True(Row("Photo").ShowsMarkAutomatically);
             Assert.True(Row("Top").ShowsMarkAutomatically);
         });

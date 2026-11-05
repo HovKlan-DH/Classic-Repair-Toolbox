@@ -65,7 +65,7 @@ public sealed class DraftEditsTests : IDisposable
         {
             outcome = await DraftEdits.ApplyAndSaveAsync(
                 DraftEditsTests.BoardKey,
-                DraftStepWording.ComponentSaved("U1"),
+                DraftStepWording.ComponentReverted("U1"),
                 board =>
                 {
                     ranOnUiThread.Add(Dispatcher.UIThread.CheckAccess());
@@ -78,7 +78,7 @@ public sealed class DraftEditsTests : IDisposable
         Assert.Equal("2026-10-25", DraftEditsTests.OnDisk()!.RevisionDate);
 
         DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, DraftEditsTests.BoardKey)!;
-        Assert.Equal(DraftStepWording.ComponentSaved("U1"), session.UndoDescription);
+        Assert.Equal(DraftStepWording.ComponentReverted("U1"), session.UndoDescription);
         Assert.False(session.HasUnsavedChanges);
     }
 
@@ -129,7 +129,7 @@ public sealed class DraftEditsTests : IDisposable
 
         await UiTest.RunAsync(async () =>
         {
-            outcome = await DraftEdits.ApplyAndSaveAsync(DraftEditsTests.BoardKey, DraftStepWording.ComponentSaved("U1"), (BoardData unchanged) => unchanged, takeInNewFiles: true);
+            outcome = await DraftEdits.ApplyAndSaveAsync(DraftEditsTests.BoardKey, DraftStepWording.ComponentReverted("U1"), (BoardData unchanged) => unchanged, takeInNewFiles: true);
         });
 
         Assert.Equal(DraftWorkbookEditOutcome.Saved, outcome);

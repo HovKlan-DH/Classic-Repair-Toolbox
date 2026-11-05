@@ -96,7 +96,7 @@
 							   TextWrapping="Wrap"
 							   FontSize="11"
 							   Opacity="0.75"
-							   Text="Add the KiCad project that backs this board's pictures. The files are copied into your own local draft - your original project is left where it is." />
+							   Text="Add the KiCad project that has the data for the board's schematic images. The files are copied into your own local draft - your original project is left where it is." />
 				</StackPanel>
 				<!-- No Close (2026-10-30) - the left column's "Board status" goes back. -->
 			</Grid>
@@ -130,9 +130,9 @@
 							<CheckBox x:Name="AddComponentsCheckBox"
 									  IsChecked="True"
 									  HorizontalAlignment="Center"
-									  ToolTip.Tip="Every component of the KiCad board that this board does not have yet is added - with its package and pins where the footprint says them. One step, so &quot;Undo&quot; takes them all back."
+									  ToolTip.Tip="Every component of the KiCad board that this board does not have yet is added - with its package and pins where the footprint says them."
 									  IsCheckedChanged="OnAddComponentsCheckedChanged">
-								<TextBlock Text="Add the KiCad components to the board" />
+								<TextBlock Text="Add the KiCad components automatically to the board" />
 							</CheckBox>
 						</StackPanel>
 					</Border>
@@ -195,9 +195,9 @@
 					</Border>
 				</StackPanel>
 
-				<!-- What the KiCad data holds, what an import left out, and what is left to do (CRT 4.0
-				     step 3, slice 3e - the plan: "drop the project folder and get a summary of what was
-				     found, what was ignored, and what is left to do"; KiCadImportSummary). -->
+				<!-- What the KiCad data holds and what an import left out (CRT 4.0 step 3, slice 3e;
+				     KiCadImportSummary). What is left to do on the board is "Board status"'s to say (owner
+				     request, 2026-11-03). -->
 				<Border x:Name="KiCadSummaryPanel"
 						BorderBrush="{DynamicResource Form_Border}"
 						BorderThickness="1"
@@ -211,7 +211,7 @@
 						<TextBlock x:Name="KiCadFilesText" TextWrapping="Wrap" IsVisible="False" />
 						<TextBlock x:Name="KiCadFoundText" TextWrapping="Wrap" />
 						<!-- What the import's "Add the KiCad components" did (2026-11-01). -->
-						<TextBlock x:Name="KiCadComponentsAddedText" TextWrapping="Wrap" FontWeight="SemiBold" IsVisible="False" />
+						<TextBlock x:Name="KiCadComponentsAddedText" TextWrapping="Wrap" IsVisible="False" />
 						<TextBlock x:Name="KiCadLeftOutText"
 								   TextWrapping="Wrap"
 								   FontSize="12"
@@ -222,21 +222,17 @@
 								   FontWeight="SemiBold"
 								   Foreground="{DynamicResource Text_Fail_Fg}"
 								   IsVisible="False" />
-						<StackPanel x:Name="KiCadLeftToDoPanel" Spacing="2" IsVisible="False">
-							<TextBlock Text="Left to do" FontWeight="SemiBold" Margin="0,4,0,0" />
-							<TextBlock x:Name="KiCadLeftToDoText" TextWrapping="Wrap" />
 
-							<!-- The KiCad components the board still lacks - imported with the check box
-							     unticked, or deleted since - added in one go (Board status's "Add N from KiCad"
-							     until 2026-11-01). -->
-							<Button x:Name="AddKiCadComponentsButton"
-									Classes="Accept"
-									HorizontalAlignment="Left"
-									Margin="0,6,0,0"
-									IsVisible="False"
-									ToolTip.Tip="Add every component of the KiCad board that this board does not have yet - one step, so &quot;Undo&quot; takes them all back"
-									Click="OnAddKiCadComponentsClick" />
-						</StackPanel>
+						<!-- The KiCad components the board still lacks - imported with the check box
+						     unticked, or deleted since - added in one go (Board status's "Add N from KiCad"
+						     until 2026-11-01). -->
+						<Button x:Name="AddKiCadComponentsButton"
+								Classes="Accept"
+								HorizontalAlignment="Left"
+								Margin="0,6,0,0"
+								IsVisible="False"
+								ToolTip.Tip="Add every component of the KiCad board that this board does not have yet - one step, so &quot;Undo&quot; takes them all back"
+								Click="OnAddKiCadComponentsClick" />
 					</StackPanel>
 				</Border>
 

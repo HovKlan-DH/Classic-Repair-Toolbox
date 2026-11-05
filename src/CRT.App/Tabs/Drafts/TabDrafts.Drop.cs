@@ -7,23 +7,22 @@ using System.Threading.Tasks;
 namespace CRT
 {
     // ###########################################################################################
-    // FILES DROPPED ON THE CONTRIBUTE TAB (CRT 4.0 step 3, slice 3e - the plan: "Pictures: today's
-    // Schematic images content, moved inline ... KiCad: drop the project folder and get a summary of
-    // what was found, what was ignored, and what is left to do").
+    // FILES DROPPED ON "BOARD: SCHEMATIC IMAGES" (CRT 4.0 step 3, slice 3e - the plan: "Pictures: today's
+    // Schematic images content, moved inline").
     //
-    // Pictures of the board, or its KiCad project folder, dragged onto the tab anywhere are added to
-    // the board shown: what was dropped decides which (BoardDrop). Pictures go into the Pictures part,
-    // opened for them, as its "Add pictures" adds them (ComponentPane.AddPicturesAsync); a KiCad
-    // project opens "KiCad data" with it being imported, as that panel's own drop target imports it
-    // (KiCadDataPanel.ImportOnceOpen) - its summary and all. The board's draft is made as for every
-    // other way in (OnCurrentDraftAsync). Nothing usable dropped is said on the tab's problem line.
+    // *** ONLY THAT PAGE TAKES IMAGES (owner decision, 2026-11-03: "it should not allow to drag any
+    // schematics into" the Overview page - "it is not the logical place to do this"). *** Until then
+    // anything dropped anywhere on the tab was added, and opened what it belonged to. Images now go in
+    // where they are seen, as "Add schematic image(s)" adds them (ComponentPane.AddPicturesAsync); a KiCad
+    // project goes on "KiCad: Files", whose panel has its own drop target - dropped here it is told so.
+    // Every other page of the tab refuses the drag, so the pointer says it before anything is let go.
     //
     // Part of the TabDrafts partial class - see TabDrafts.axaml.cs for the file map.
     // ###########################################################################################
     public partial class TabDrafts
     {
-        // Stands in for adding what was dropped - the pictures, or the KiCad project's panel.
-        internal Func<HardwareBoardEntry, BoardDropKind, IReadOnlyList<string>, Task>? ManageDroppedFilesOverrideForTests { get; set; }
+        // Stands in for adding what was dropped.
+        internal Func<HardwareBoardEntry, IReadOnlyList<string>, Task>? AddDroppedPicturesOverrideForTests { get; set; }
 
         // Stands in for reading what was dropped - a test holds it to change the board meanwhile.
         internal Func<IReadOnlyList<string>, Task<BoardDrop>>? ReadDropOverrideForTests { get; set; }
@@ -35,11 +34,18 @@ namespace CRT
             this.AddHandler(DragDrop.DropEvent, this.OnDropOnTab);
         }
 
-        // Only a copy is offered, and only of files, onto a board - the window's own drop targets' rule -
-        // and never onto "CRT has to be updated", which lies inside the tab (code review, 2026-10-28).
+        // The page that takes images is open on a board - and never under "CRT has to be updated", which
+        // lies inside the tab (code review, 2026-10-28).
+        private bool TakesDroppedPictures =>
+            this.thisCurrentEntry is not null &&
+            !this.IsUpdateRequiredShown &&
+            this.IsComponentOpen &&
+            this.ComponentPane.BoardPart == PaneBoardPart.Pictures;
+
+        // Only a copy is offered, and only of files, onto that page.
         private void OnDragOverTab(object? sender, DragEventArgs e)
         {
-            e.DragEffects = this.thisCurrentEntry is not null && !this.IsUpdateRequiredShown && e.DataTransfer.Contains(DataFormat.File)
+            e.DragEffects = this.TakesDroppedPictures && e.DataTransfer.Contains(DataFormat.File)
                 ? DragDropEffects.Copy
                 : DragDropEffects.None;
             e.Handled = true;
@@ -53,17 +59,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // What was dropped, added to the board shown: the pictures, or the KiCad project - read off the
-        // UI thread (a folder can be large) under the BusyOverlay, then its window opened with them.
-        //
-        // *** NOTHING UNDER "CRT HAS TO BE UPDATED", AND ONLY ON THE BOARD IT WAS DROPPED ON (code
-        // review, 2026-10-28). *** The cover lies inside the tab, so a drop on it reached the tab and
-        // opened a window over it; and a board shown while the drop was read - the read awaited, the
-        // board taken after - took the files dropped on the one before.
+        // What was dropped, added to the board shown - read off the UI thread (a folder can be large)
+        // under the BusyOverlay, and only by the board it was dropped on: a board shown while the drop
+        // was read - the read awaited, the board taken after - took the files dropped on the one before
+        // (code review, 2026-10-28). The page has to be open still: nothing goes in out of sight.
         // ###########################################################################################
         internal async Task DropOnBoardAsync(IReadOnlyList<string> paths)
         {
-            if (this.thisCurrentEntry is not { } droppedOn || paths.Count == 0 || this.IsUpdateRequiredShown)
+            if (!this.TakesDroppedPictures || this.thisCurrentEntry is not { } droppedOn || paths.Count == 0)
             {
                 return;
             }
@@ -73,7 +76,7 @@ namespace CRT
                 CrtWaitWording.ReadingDroppedFiles,
                 () => this.ReadDropOverrideForTests?.Invoke(paths) ?? Task.Run(() => BoardDrop.OnDisk(paths)));
 
-            if (this.thisCurrentEntry is not { } shown || !TabDrafts.SameBoard(shown, droppedOn) || this.IsUpdateRequiredShown)
+            if (!this.TakesDroppedPictures || this.thisCurrentEntry is not { } shown || !TabDrafts.SameBoard(shown, droppedOn))
             {
                 return;
             }
@@ -84,54 +87,16 @@ namespace CRT
                 return;
             }
 
-            this.ShowDraftProblem(null);
+            // What was dropped with them and left out, said on the tab's line.
+            this.ShowDraftProblem(drop.Note.Length > 0 ? drop.Note : null);
 
-            // ###########################################################################################
-            // What was dropped with it and left out, said on the tab's line (BoardDrop.Note) - ONCE
-            // THE DRAFT IS THERE (code review, 2026-10-28): making a board's first draft clears that
-            // line (Main.EnsureDraftAsync), and the note said before it went unseen on most boards.
-            // ###########################################################################################
-            void SayWhatWasLeftOut() => this.ShowDraftProblem(drop.Note.Length > 0 ? drop.Note : null);
-
-            if (this.ManageDroppedFilesOverrideForTests is { } manage)
+            if (this.AddDroppedPicturesOverrideForTests is { } add)
             {
-                await this.OnCurrentDraftAsync(entry =>
-                {
-                    SayWhatWasLeftOut();
-                    return manage(entry, drop.Kind, drop.Paths);
-                });
-
+                await add(shown, drop.Paths);
                 return;
             }
 
-            if (drop.Kind == BoardDropKind.KiCad)
-            {
-                await this.OnCurrentDraftAsync(entry =>
-                {
-                    SayWhatWasLeftOut();
-                    return this.ManageFilesAsync(entry, drop.Paths);
-                });
-
-                return;
-            }
-
-            await this.AddDroppedPicturesAsync(drop.Paths, SayWhatWasLeftOut);
-        }
-
-        // ###########################################################################################
-        // Pictures dropped: the Pictures part opened on the board shown - its draft made first when it
-        // has none - and the pictures added there, as "Add pictures" adds them (step 3 - the
-        // "Schematic images" window went). `sayWhatWasLeftOut` once the part is open on its draft.
-        // ###########################################################################################
-        private async Task AddDroppedPicturesAsync(IReadOnlyList<string> pictures, Action sayWhatWasLeftOut)
-        {
-            await this.OpenBoardPartAsync(PaneBoardPart.Pictures);
-
-            if (this.IsComponentOpen && this.ComponentPane.BoardPart == PaneBoardPart.Pictures)
-            {
-                sayWhatWasLeftOut();
-                await this.ComponentPane.AddPicturesAsync(pictures);
-            }
+            await this.ComponentPane.AddPicturesAsync(drop.Paths);
         }
     }
 }

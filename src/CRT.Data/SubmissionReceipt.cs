@@ -871,6 +871,20 @@ namespace Handlers.DataHandling
             return receipt.FinaliseSentUtc is not DateTimeOffset went || receipt.LastCheckedUtc > went;
         }
 
+        // ###########################################################################################
+        // Whether what was sent still stands: it reached a maintainer, or may have, and nobody decided
+        // against it. What keeps a new board's name, and what "Review changes" says of a new board (code
+        // review, 2026-11-04: it said "submitted, not published yet" of one a maintainer had rejected) -
+        // and it stays so once published, as the name is then for good, so whatever says "not published"
+        // asks IsInPublishedData first.
+        // ###########################################################################################
+        public static bool StillStands(SubmissionReceipt receipt)
+        {
+            ArgumentNullException.ThrowIfNull(receipt);
+
+            return !SubmissionReceiptPresenter.IsDecidedAgainst(receipt.LastKnownState) && !SubmissionReceiptPresenter.NeverReachedReview(receipt);
+        }
+
         // Whether the server refused this submission - the one state its reasons are kept for.
         public static bool IsRefused(string? state) =>
             string.Equals(state?.Trim(), "rejected", StringComparison.OrdinalIgnoreCase);

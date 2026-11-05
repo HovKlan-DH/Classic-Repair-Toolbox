@@ -553,6 +553,9 @@ public sealed class BoardTableFilePreviewTests
 
         BoardTableEditor editor = Open(null, draft, source);
 
+        // Rows with a pin: the sheet's "Oscilloscope baseline" tab.
+        Assert.True(editor.ShowSheetPart(BoardWorkbookSchema.SheetComponentImages, BoardTableSheetPart.Baselines));
+
         var window = new Window { Content = editor, Width = 1800, Height = 700 };
         window.Show();
         Dispatcher.UIThread.RunJobs();

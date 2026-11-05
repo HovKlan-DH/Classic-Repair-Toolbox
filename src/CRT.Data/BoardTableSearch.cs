@@ -29,16 +29,26 @@ namespace Handlers.DataHandling
     {
         private readonly HashSet<BoardTableRow> thisHidden;
 
-        private BoardTableSearch(string text, WorklogSearchQuery query, HashSet<BoardTableRow> hidden)
+        // The same, judged only by the cells a sheet's "Pictures" part shows (BoardTableSheetParts): a row
+        // listed there for a word in a column it hides would show nothing that says why, and one left out for
+        // such a word would have nothing to be left out for (code review, 2026-11-04). It shows among the
+        // baselines too, every cell in sight.
+        private readonly HashSet<BoardTableRow> thisHiddenAmongPictures;
+
+        private BoardTableSearch(string text, WorklogSearchQuery query, HashSet<BoardTableRow> hidden, HashSet<BoardTableRow> hiddenAmongPictures)
         {
             this.Text = text;
             this.Query = query;
             this.thisHidden = hidden;
+            this.thisHiddenAmongPictures = hiddenAmongPictures;
         }
 
         // No search: every row shows.
-        public static BoardTableSearch None { get; } =
-            new(string.Empty, WorklogSearchQuery.Parse(null), new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance));
+        public static BoardTableSearch None { get; } = new(
+            string.Empty,
+            WorklogSearchQuery.Parse(null),
+            new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance),
+            new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance));
 
         public string Text { get; }
 
@@ -58,16 +68,28 @@ namespace Handlers.DataHandling
             }
 
             var hidden = new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance);
+            var hiddenAmongPictures = new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance);
 
             foreach (BoardTableRow row in document.Sheets.SelectMany(sheet => sheet.Rows))
             {
-                if (row.State != BoardTableRowState.Blank && !BoardTableSearch.Matches(query, row))
+                if (row.State == BoardTableRowState.Blank)
+                {
+                    continue;
+                }
+
+                if (!BoardTableSearch.Matches(query, row))
                 {
                     hidden.Add(row);
                 }
+
+                if (BoardTableSheetParts.IsSplit(row.Sheet.Name) &&
+                    !query.Matches(BoardTableSheetParts.CellsShown(BoardTableSheetPart.Pictures, row).Select(cell => cell.Text)))
+                {
+                    hiddenAmongPictures.Add(row);
+                }
             }
 
-            return new BoardTableSearch(text!, query, hidden);
+            return new BoardTableSearch(text!, query, hidden, hiddenAmongPictures);
         }
 
         // Whether `query` finds `row` - in its cells, the values it shows.
@@ -80,6 +102,9 @@ namespace Handlers.DataHandling
         }
 
         public bool Shows(BoardTableRow row) => !this.thisHidden.Contains(row);
+
+        public bool Shows(BoardTableRow row, BoardTableSheetPart part) =>
+            !(part == BoardTableSheetPart.Pictures ? this.thisHiddenAmongPictures : this.thisHidden).Contains(row);
 
         // Where the search's words are in one cell's text - the runs to mark. None with no search.
         public IReadOnlyList<WorklogSearchHit> HitsIn(string? text) => this.Query.FindHits(text);

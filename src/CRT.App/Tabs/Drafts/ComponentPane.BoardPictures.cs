@@ -807,13 +807,18 @@ namespace CRT
         // Schematics tab's own rule (TraceColours.Resolve): blank, this side's colour follows the
         // image's highlight colour and both opacities its highlight opacity plus a quarter, as before.
         // A picker writing back what it shows writes nothing, as every colour of the card.
+        //
+        // A SCHEMATIC SHEET HAS ITS OWN BLANK, ORANGE (code review, 2026-11-04: the card said DeepSkyBlue of what the
+        // tab drew Orange) - told from a side of the board once the views are read (ShowsBoardSide, RaiseTools).
         // ###########################################################################################
-        private TraceColours ResolvedTraces => TraceColours.Resolve(new BoardSchematicEntry().WithColours(this.ToColours()));
+        private TraceColours ResolvedTraces => this.TracesOf(this.ToColours());
 
         // The traces' colours and opacities as they were before a change - what the pickers read back
         // as no change, the derived values of blank columns included.
-        private TraceColours ResolvedTracesWithout(Func<PictureColours, PictureColours> blanked) =>
-            TraceColours.Resolve(new BoardSchematicEntry().WithColours(blanked(this.ToColours())));
+        private TraceColours ResolvedTracesWithout(Func<PictureColours, PictureColours> blanked) => this.TracesOf(blanked(this.ToColours()));
+
+        private TraceColours TracesOf(PictureColours colours) =>
+            TraceColours.Resolve(new BoardSchematicEntry().WithColours(colours), this.ShowsBoardSide == false ? TraceColours.SheetBlankHighlight : null);
 
         public Color ThisSideTraceColor
         {
@@ -957,8 +962,8 @@ namespace CRT
 
         public string AlignTip => this.CanAlignKiCad ? PictureToolWording.AlignTip : PictureToolWording.AlignNeedsKiCadTip;
 
-        // "Mark all automatically" needs that, and KiCad aligned on the picture - whether its view is a
-        // side of the board, the host finds out and says (KiCadFootprintMarks.Plan).
+        // "Mark all automatically" needs that, and KiCad aligned on the picture - from a side of the board's
+        // footprints or a schematic sheet's symbols (KiCadFootprintMarks.Plan).
         public bool CanMarkAutomatically => this.CanAlignKiCad && this.thisAligned;
 
         public string MarkAutomaticallyTip => this.CanMarkAutomatically
@@ -996,8 +1001,7 @@ namespace CRT
         //
         // *** A MARK IS AUTOMATIC WHEN IT IS WHERE KiCad PUTS IT (KiCadFootprintMarks.CountAutomatic) - NOTHING
         // IS STORED. *** So one moved by hand counts as manual, and so does every mark on a picture not
-        // aligned: nothing says where KiCad would put it. A schematic sheet has no automatic marks to speak
-        // of, so its line is left out.
+        // aligned: nothing says where KiCad would put it.
         // ###########################################################################################
         internal IReadOnlyDictionary<string, int>? ViewComponents
         {
@@ -1014,8 +1018,8 @@ namespace CRT
 
         private IReadOnlyDictionary<string, int>? thisViewComponents;
 
-        // Where the footprints of each side of the board lie - null while not known; set by the pane with
-        // the views.
+        // Where each view has its components, a side of the board's footprints and a sheet's symbols - null
+        // while not known; set by the pane with the views.
         internal IReadOnlyDictionary<string, KiCadViewFootprints>? ViewFootprints
         {
             get => this.thisViewFootprints;
@@ -1055,7 +1059,7 @@ namespace CRT
 
         public bool ShowsManuallyMarked => this.ManuallyMarked > 0;
 
-        public bool ShowsAutomaticallyMarked => this.ShowsManuallyMarked && this.ShowsBoardSide != false;
+        public bool ShowsAutomaticallyMarked => this.ShowsManuallyMarked;
 
         public string ComponentsAvailableText =>
             this.ComponentsFromKiCad is { } count ? ComponentPaneWording.PictureComponentsAvailable(count) : string.Empty;
@@ -1085,19 +1089,18 @@ namespace CRT
             : this.thisBoardSides.Contains(this.thisCadName, StringComparer.OrdinalIgnoreCase);
 
         // ###########################################################################################
-        // WHAT COMES NEXT ON A SIDE OF THE BOARD NOT ALIGNED YET (owner request, 2026-11-01: "it is not
-        // clear that I must first do the Align KiCad, before I can do the Mark all automatically from
+        // WHAT COMES NEXT ON A PICTURE WITH A KiCad VIEW NOT ALIGNED YET (owner request, 2026-11-01: "it is
+        // not clear that I must first do the Align KiCad, before I can do the Mark all automatically from
         // KiCad") - said on the card, not only in a greyed-out button's tooltip: align it, and its Done
         // marks every component (PictureToolWording.AlignFirst).
         // ###########################################################################################
-        public bool AlignsFirst => this.CanAlignKiCad && !this.thisAligned && this.ShowsBoardSide == true;
+        public bool AlignsFirst => this.CanAlignKiCad && !this.thisAligned;
 
         public string AlignFirstText => PictureToolWording.AlignFirst;
 
-        // "Mark all automatically" is offered on a picture of a side of the board - never on a schematic
-        // sheet, where it can never mark anything (hidden, not greyed out - owner request, 2026-10-30:
-        // "less disabled elements to relate to"); while that is not known, as before.
-        public bool ShowsMarkAutomatically => this.HasKiCadData && this.ShowsBoardSide != false;
+        // "Mark all automatically" is offered on every picture with a KiCad view (hidden otherwise, not
+        // greyed out - owner request, 2026-10-30: "less disabled elements to relate to").
+        public bool ShowsMarkAutomatically => this.HasKiCadData;
 
         private void RaiseTools()
         {
@@ -1107,7 +1110,7 @@ namespace CRT
                 nameof(this.CanAlignKiCad), nameof(this.AlignTip), nameof(this.CanMarkAutomatically), nameof(this.MarkAutomaticallyTip),
                 nameof(this.ShowsCadNames), nameof(this.CanShowTraces), nameof(this.ThisSideTracesTip), nameof(this.OtherSideTracesTip),
                 nameof(this.HasKiCadData), nameof(this.TraceColourTip), nameof(this.ThisSideTraceColourTip),
-                nameof(this.ThisSideTraceOpacityTip), nameof(this.OppositeTraceOpacityTip),
+                nameof(this.ThisSideTraceOpacityTip), nameof(this.OppositeTraceOpacityTip), nameof(this.ThisSideTraceColor),
             })
             {
                 this.Raise(property);

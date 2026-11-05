@@ -44,7 +44,7 @@ namespace CRT
         private BoardOverviewEntry? thisStableFilesReadAt;
 
         // The sheet last looked at in each board's stable table, for as long as CRT runs.
-        private readonly Dictionary<string, string> thisStableSheetByBoard = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (string Sheet, BoardTableSheetPart Part)> thisStableSheetByBoard = new(StringComparer.Ordinal);
 
         private BoardTableEditor StableBoardTable => this.FindControl<BoardTableEditor>("StableTable")!;
 
@@ -238,7 +238,7 @@ namespace CRT
         private void TakeStableTable(BoardTableAnswer table)
         {
             if (this.thisStableTable is not null && this.StableBoardTable.CurrentSheet?.Name is string current)
-                this.thisStableSheetByBoard[this.thisStableTable.BoardId] = current;
+                this.thisStableSheetByBoard[this.thisStableTable.BoardId] = (current, this.StableBoardTable.SheetPart);
 
             this.thisStableTable = table;
         }
@@ -279,7 +279,8 @@ namespace CRT
                     stable,
                     beta is null ? BoardSections.StableBaselineLabel : BoardTableDocument.BetaSourceBaselineLabel),
                 null,
-                preferredSheet: this.thisStableSheetByBoard.TryGetValue(table.BoardId, out string? sheet) ? sheet : null);
+                preferredSheet: this.thisStableSheetByBoard.TryGetValue(table.BoardId, out var left) ? left.Sheet : null,
+                preferredPart: left.Part);
 
             // Why it cannot be changed - under the switch, where BETA's table says what it is.
             WindowMessage.Show(this.FindControl<TextBlock>("StableTableMessageText"), table.MayNotEditReason, isError: false);
@@ -299,7 +300,7 @@ namespace CRT
         private void CloseStableTable()
         {
             if (this.thisStableTable is not null && this.StableBoardTable.CurrentSheet?.Name is string sheet)
-                this.thisStableSheetByBoard[this.thisStableTable.BoardId] = sheet;
+                this.thisStableSheetByBoard[this.thisStableTable.BoardId] = (sheet, this.StableBoardTable.SheetPart);
 
             this.thisStableTable = null;
             this.thisStableTableReadAt = null;

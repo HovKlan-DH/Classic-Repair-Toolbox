@@ -61,7 +61,7 @@ or `NTSC`.
 
 Some entries need fields filled in: a component its category; a board file its category, name and file; a board link its
 category, name and address; a credit what it is for and the name or handle; an important signal its
-name and its KiCad net; an oscilloscope baseline its pin, its signal name and its image. The "Contribute" tab marks an empty one where you type it, "Board: Overview"
+name and its KiCad net; an oscilloscope baseline its pin, its signal name and its image. The "Contribute" tab marks an empty one where you type it, "Overview"
 lists it, and a board with one cannot be submitted until it is filled in. A link's address must be
 the whole address, starting with `http://` or `https://`. A pin - of a component's pinout or of an oscilloscope
 baseline - must be on the component's package: a DIP-24 has no pin 48.

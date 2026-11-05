@@ -336,6 +336,9 @@ namespace CRT
             int column = focus is { Column: >= 0 } ? focus.Column : this.CurrentCell?.ColumnIndex ?? 0;
             List<string>? currentValues = focus is null ? this.CurrentRow?.Cells.Select(cell => cell.Text).ToList() : null;
 
+            // What the sheet held: which row a step really changed (RowToGoToAfterStep).
+            BoardTableSheet? sheetBefore = sheetName is null ? null : this.thisDocument?.FindSheet(sheetName);
+
             BoardTableDocument document = BoardTableDocument.Create(this.thisPublished, session.Content.Board, this.thisBaselineLabel, this.thisFiles);
             this.Attach(document, session, sheetName);
 
@@ -358,9 +361,13 @@ namespace CRT
 
                     BoardTableRow row = same ?? sheet.Rows[Math.Min(rowIndex, sheet.Rows.Count - 1)];
 
+                    // A step's row may be of the other part of a sheet in two. With no step to say so -
+                    // the file read again - the row at this place is no reason to go anywhere.
+                    row = this.RowToGoToAfterStep(sheet, row, focus is null ? sheet : sheetBefore);
+
                     // New objects, so nothing keeps it shown yet - and the pill may no longer show it.
                     this.KeepInHand(row);
-                    this.SelectCell(row, Math.Clamp(column, 0, sheet.Columns.Count - 1));
+                    this.SelectCell(row, this.ColumnShownNear(sheet, column));
                 }
             }
         }
@@ -589,6 +596,7 @@ namespace CRT
                 : draft.SaveState;
 
             this.SaveStateText.Text = DraftSaveWording.StateLine(state, draft.SaveFailure);
+            this.SaveStateText.IsVisible = state == DraftSaveState.Failed;
 
             bool changedOutside = state == DraftSaveState.Failed && draft.SaveFailure == DraftWorkbookEditOutcome.ChangedOnDisk;
 
