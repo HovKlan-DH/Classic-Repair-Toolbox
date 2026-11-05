@@ -646,6 +646,9 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
+          # The commit this run built - unset, a new tag goes on the default branch (main), which is
+          # not what a release made from another branch was built from.
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.prerelease_check.outputs.release_name }}
           body: |
             ${{ steps.prerelease_check.outputs.is_prerelease == 'true' && format('This is a {0} version, and should not be downloaded/used unless if coordinated with the developer.', steps.prerelease_check.outputs.body_label) || format('{0}

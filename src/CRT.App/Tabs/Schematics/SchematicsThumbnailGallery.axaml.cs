@@ -191,7 +191,15 @@ public partial class SchematicsThumbnailGallery : UserControl
         this.GalleryListBox.IsEnabled = !this.thisOwner.IsThumbnailNavigationLocked;
     }
 
-    private void OnOwnerSelectedThumbnailChanged(object? sender, EventArgs e) => this.ShowOwnerSelection();
+    // In the middle of the tiles changing the list is not told yet - shown once it is (TabSchematics
+    // .IsThumbnailsChangeUnderway).
+    private void OnOwnerSelectedThumbnailChanged(object? sender, EventArgs e)
+    {
+        if (this.thisOwner?.IsThumbnailsChangeUnderway == true)
+            this.ShowOwnerSelectionSoon();
+        else
+            this.ShowOwnerSelection();
+    }
 
     // ###########################################################################################
     // The label editor's lock reaches every gallery through the tab. Locking also ends a drag in

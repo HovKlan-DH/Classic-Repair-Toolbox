@@ -1,3 +1,9 @@
+# 3.1.1, 2026-November-5
+------------------------
+- **Application**
+  - Fixed schematic image would not always show in "Schematics" tab
+
+
 # 3.1.0, 2026-October-24
 ------------------------
 - **Application**
